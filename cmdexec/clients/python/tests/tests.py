@@ -3,9 +3,8 @@ import grpc
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 
-import cmdexec.clients.python.command_exec_client as command_exec_client
-import cmdexec.clients.python.sql_command_service_pb2 as command_pb2
-from cmdexec.clients.python.errors import InterfaceError, DatabaseError, Error
+import cmdexec.clients.python.command_exec_client
+from cmdexec.clients.python.errors import InterfaceError, OperationalError
 
 
 class TestConnection(unittest.TestCase):
@@ -29,8 +28,31 @@ class TestConnection(unittest.TestCase):
 
         for args in bad_connection_args:
             with self.assertRaises(InterfaceError) as ie:
-                command_exec_client.connect(**args)
+                cmdexec.clients.python.command_exec_client.connect(**args)
                 self.assertIn("HOST and PORT", ie.message)
+
+    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
+    def test_rpc_error_will_throw_operational_exception_during_connection(self, mock_client_class):
+        instance = mock_client_class.return_value
+        instance.make_request.side_effect = grpc.RpcError
+        good_connection_args = {"HOST": 1, "PORT": 1}
+
+        with self.assertRaises(OperationalError):
+            cmdexec.clients.python.command_exec_client.connect(**good_connection_args)
+
+    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
+    def test_rpc_error_will_throw_operational_exception_during_connection_close(
+            self, mock_client_class):
+        instance = mock_client_class.return_value
+        mock_response = Mock()
+        mock_response.id = b'\x22'
+        instance.make_request.side_effect = [mock_response, grpc.RpcError]
+        good_connection_args = {"HOST": 1, "PORT": 1}
+
+        connection = cmdexec.clients.python.command_exec_client.connect(**good_connection_args)
+
+        with self.assertRaises(OperationalError):
+            connection.close()
 
     @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
     def test_close_uses_the_correct_session_id(self, mock_client_class):
@@ -40,107 +62,12 @@ class TestConnection(unittest.TestCase):
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
 
-        connection = command_exec_client.connect(**good_connection_args)
+        connection = cmdexec.clients.python.command_exec_client.connect(**good_connection_args)
         connection.close()
 
         # Check the close session request has an id of x22
         _, close_session_request = instance.make_request.call_args[0]
         self.assertEqual(close_session_request.id, mock_response.id)
-
-    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
-    @patch("cmdexec.clients.python.command_exec_client.ResultSet")
-    def test_closing_connection_soft_closes_commands(self, mock_result_set_class,
-                                                     mock_client_class):
-        instance = mock_client_class.return_value
-        mock_response = Mock()
-        mock_response.id = b'\x22'
-        instance.make_request.return_value = mock_response
-        instance.stub.CloseCommand = Mock()
-        mock_response.status.state = 2
-        mock_result_set = Mock()
-        mock_result_set_class.return_value = mock_result_set
-
-        good_connection_args = {"HOST": 1, "PORT": 1}
-        connection = command_exec_client.connect(**good_connection_args)
-        cursor = connection.cursor()
-        cursor.execute("SELECT 1;")
-        connection.close()
-
-        self.assertTrue(mock_result_set.has_been_closed_server_side)
-        mock_result_set.close.assert_called_once_with()
-
-    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
-    def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
-        instance = mock_client_class.return_value
-        mock_response = Mock()
-        mock_response.id = b'\x22'
-        instance.make_request.return_value = mock_response
-        good_connection_args = {"HOST": 1, "PORT": 1}
-        connection = command_exec_client.connect(**good_connection_args)
-        self.assertTrue(connection.open)
-        connection.close()
-        self.assertFalse(connection.open)
-        with self.assertRaises(Error) as e:
-            cursor = connection.cursor()
-            self.assertIn("closed", e.msg)
-
-    def test_closing_result_set_hard_closes_commands(self):
-        mock_connection = Mock()
-        mock_response = Mock()
-        mock_response.id = b'\x22'
-        mock_connection.base_client.make_request.return_value = mock_response
-        result_set = command_exec_client.ResultSet(mock_connection, b'\x10', command_pb2.SUCCESS,
-                                                   False)
-        mock_connection.closed = False
-
-        result_set.close()
-
-        mock_connection.base_client.make_request.assert_called_with(
-            mock_connection.base_client.stub.CloseCommand,
-            command_pb2.CloseCommandRequest(id=b'\x10'))
-
-    @patch("cmdexec.clients.python.command_exec_client.ResultSet")
-    def test_executing_multiple_commands_uses_the_most_recent_command(self, mock_result_set_class):
-        mock_client = Mock()
-        mock_response = Mock()
-        mock_connection = Mock()
-        mock_response.id = b'\x22'
-        mock_response.status.state = command_pb2.SUCCESS
-        mock_client.make_request.return_value = mock_response
-        mock_connection.session_id = b'\x33'
-        mock_connection.base_client = mock_client
-        mock_result_sets = [Mock(), Mock()]
-        mock_result_set_class.side_effect = mock_result_sets
-
-        cursor = command_exec_client.Cursor(mock_connection)
-        cursor.execute("SELECT 1;")
-        cursor.execute("SELECT 1;")
-
-        mock_result_sets[0].close.assert_called_once_with()
-        mock_result_sets[1].close.assert_not_called()
-
-        cursor.fetchall()
-
-        mock_result_sets[0].fetchall.assert_not_called()
-        mock_result_sets[1].fetchall.assert_called_once_with()
-
-    def test_closed_cursor_doesnt_allow_operations(self):
-        mock_connection = Mock()
-        mock_response = Mock()
-        mock_response.id = b'\x22'
-        mock_response.status.state = command_pb2.SUCCESS
-        mock_connection.base_client.make_request.return_value = mock_response
-
-        cursor = command_exec_client.Cursor(mock_connection)
-        cursor.close()
-
-        with self.assertRaises(Error) as e:
-            cursor.execute("SELECT 1;")
-            self.assertIn("closed", e.msg)
-
-        with self.assertRaises(Error) as e:
-            cursor.fetchall()
-            self.assertIn("closed", e.msg)
 
 
 if __name__ == '__main__':
