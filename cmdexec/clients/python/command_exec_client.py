@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Tuple, List
+from collections import deque
 
 import grpc
 import pyarrow
@@ -11,6 +12,8 @@ from cmdexec.clients.python.errors import OperationalError, InterfaceError, Data
 import time
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_BUFFER_SIZE_ROWS = 1000
 
 
 def connect(**kwargs):
@@ -39,10 +42,10 @@ class Connection:
         logger.info("Successfully opened session " + str(self.session_id.hex()))
         self._cursors = []
 
-    def cursor(self):
+    def cursor(self, buffer_size_rows=DEFAULT_BUFFER_SIZE_ROWS):
         if not self.open:
             raise Error("Cannot create cursor from closed connection")
-        cursor = Cursor(self)
+        cursor = Cursor(self, buffer_size_rows)
         self._cursors.append(cursor)
         return cursor
 
@@ -56,12 +59,12 @@ class Connection:
 
 
 class Cursor:
-    def __init__(self, connection):
+    def __init__(self, connection, buffer_size_rows=DEFAULT_BUFFER_SIZE_ROWS):
         self.connection = connection
         self.description = None
         self.rowcount = -1
         self.arraysize = 1
-
+        self.buffer_size_rows = buffer_size_rows
         self.active_result_set = None
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
@@ -70,9 +73,10 @@ class Cursor:
         command_id = execute_command_response.command_id
         arrow_results = execute_command_response.results.arrow_ipc_stream
         has_been_closed_server_side = execute_command_response.closed
+        number_of_valid_rows = execute_command_response.results.number_of_valid_rows
 
         return ResultSet(self.connection, command_id, status, has_been_closed_server_side,
-                         arrow_results)
+                         arrow_results, number_of_valid_rows, self.buffer_size_rows)
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -148,6 +152,20 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
+    def fetchone(self):
+        self._check_not_closed()
+        if self.active_result_set:
+            return self.active_result_set.fetchone()
+        else:
+            raise Error("There is no active result set")
+
+    def fetchmany(self, n_rows):
+        self._check_not_closed()
+        if self.active_result_set:
+            return self.active_result_set.fetchmany(n_rows)
+        else:
+            raise Error("There is no active result set")
+
     def close(self):
         self.open = False
         if self.active_result_set:
@@ -160,18 +178,24 @@ class ResultSet:
                  command_id,
                  status,
                  has_been_closed_server_side,
-                 arrow_ipc_stream=None):
+                 arrow_ipc_stream=None,
+                 number_of_valid_rows=None,
+                 buffer_size_rows=DEFAULT_BUFFER_SIZE_ROWS):
         self.connection = connection
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
+        self.buffer_size_rows = buffer_size_rows
 
         assert (self.status not in [command_pb2.PENDING, command_pb2.RUNNING])
 
         if arrow_ipc_stream:
-            self.results = self._deserialize_arrow_ipc_stream(arrow_ipc_stream)
+            self.results = deque(
+                self._deserialize_arrow_ipc_stream(arrow_ipc_stream)[:number_of_valid_rows])
+            self.has_more_rows = False
         else:
-            self.results = None
+            self.results = deque()
+            self.has_more_rows = True
 
     def _deserialize_arrow_ipc_stream(self, ipc_stream):
         # TODO: Proper results deserialization, taking into account the logical schema, convert
@@ -182,40 +206,77 @@ class ResultSet:
         list_repr = [[col[i] for col in dict_repr.values()] for i in range(n_rows)]
         return list_repr
 
-    def _fetch_results(self):
-        # TODO: Offsets, number of rows (SC-77872)
-
+    def _fetch_and_deserialize_results(self):
         fetch_results_request = command_pb2.FetchCommandResultsRequest(
             id=self.command_id,
             options=command_pb2.CommandResultOptions(
-                max_rows=1,
+                max_rows=self.buffer_size_rows,
                 include_metadata=True,
             ))
 
-        return self.connection.base_client.make_request(
+        result_message = self.connection.base_client.make_request(
             self.connection.base_client.stub.FetchCommandResults, fetch_results_request).results
+        number_of_valid_rows = result_message.number_of_valid_rows
+        # TODO: Make efficient with less copying (https://databricks.atlassian.net/browse/SC-77868)
+        results = deque(
+            self._deserialize_arrow_ipc_stream(
+                result_message.arrow_ipc_stream)[:number_of_valid_rows])
+        return results, result_message.has_more_rows
 
-    def fetchall(self):
-        # TODO: Check that these results are in the right place (SC-77872)
-        if self.status == command_pb2.SUCCESS:
-            return self.results
-        elif self.status in [command_pb2.PENDING, command_pb2.RUNNING]:
-            # TODO: Pre-fetch results (SC-77868)
-            result_message = self._fetch_results()
-            self.results = self._deserialize_arrow_ipc_stream(result_message.arrow_ipc_stream)
-            return self.results
-        elif self.status == command_pb2.CLOSED:
+    def _fill_results_buffer(self):
+        if self.status == command_pb2.CLOSED:
             raise Error("Can't fetch results on closed command %s" % self.command_id)
         elif self.status == command_pb2.ERROR:
             raise DatabaseError("Command %s failed" % self.command_id)
         else:
-            raise Error(
-                "Command %s is in an unrecognised state: %s" % (self.command_id, self.status))
+            results, has_more_rows = self._fetch_and_deserialize_results()
+            self.results = results
+            if not has_more_rows:
+                self.has_more_rows = False
+
+    def _take_n_from_deque(self, deque, n):
+        arr = []
+        for _ in range(n):
+            try:
+                arr.append(deque.popleft())
+            except IndexError:
+                break
+        return arr
+
+    def fetchmany(self, n_rows):
+        # TODO: Make efficient with less copying
+        if n_rows < 0:
+            raise ValueError("n_rows argument for fetchmany is %s but must be >= 0", n_rows)
+        results = self._take_n_from_deque(self.results, n_rows)
+        n_remaining_rows = n_rows - len(results)
+
+        while n_remaining_rows > 0 and not self.has_been_closed_server_side and self.has_more_rows:
+            self._fill_results_buffer()
+            partial_results = self._take_n_from_deque(self.results, n_remaining_rows)
+            results += partial_results
+            n_remaining_rows -= len(partial_results)
+
+        return results
+
+    def fetchone(self):
+        return self.fetchmany(1)
+
+    def fetchall(self):
+        results = []
+        while True:
+            partial_results = self.fetchmany(self.buffer_size_rows)
+            # TODO: What's the optimal sequence of sizes to fetch?
+            results += partial_results
+
+            if len(partial_results) == 0:
+                break
+
+        return results
 
     def close(self):
         try:
             if self.status != command_pb2.CLOSED and not self.has_been_closed_server_side \
-                and not self.connection.closed:
+              and self.connection.open:
                 close_command_request = command_pb2.CloseCommandRequest(id=self.command_id)
                 self.connection.base_client.make_request(
                     self.connection.base_client.stub.CloseCommand, close_command_request)
