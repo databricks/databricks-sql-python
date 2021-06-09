@@ -1,14 +1,14 @@
-import grpc
-
+import sys
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 
 import cmdexec.clients.python.command_exec_client as command_exec_client
 import cmdexec.clients.python.sql_command_service_pb2 as command_pb2
 from cmdexec.clients.python.errors import InterfaceError, DatabaseError, Error
+from cmdexec.clients.python.tests.test_fetches import FetchTests
 
 
-class TestConnection(unittest.TestCase):
+class SimpleTests(unittest.TestCase):
     """
     Unit tests for isolated client behaviour. See
     qa/test/cmdexec/python/suites/simple_connection_test.py for integration tests that
@@ -49,25 +49,28 @@ class TestConnection(unittest.TestCase):
 
     @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
     @patch("cmdexec.clients.python.command_exec_client.ResultSet")
-    def test_closing_connection_soft_closes_commands(self, mock_result_set_class,
-                                                     mock_client_class):
-        instance = mock_client_class.return_value
-        mock_response = Mock()
-        mock_response.id = b'\x22'
-        instance.make_request.return_value = mock_response
-        instance.stub.CloseCommand = Mock()
-        mock_response.status.state = 2
-        mock_result_set = Mock()
-        mock_result_set_class.return_value = mock_result_set
+    def test_closing_connection_closes_commands(self, mock_result_set_class, mock_client_class):
+        # Test once with has_been_closed_server side, once without
+        for closed in (True, False):
+            with self.subTest(closed=closed):
+                instance = mock_client_class.return_value
+                mock_response = Mock()
+                mock_response.id = b'\x22'
+                instance.make_request.return_value = mock_response
+                instance.stub.CloseCommand = Mock()
+                mock_response.status.state = command_pb2.SUCCESS
+                mock_response.closed = closed
+                mock_result_set = Mock()
+                mock_result_set_class.return_value = mock_result_set
 
-        good_connection_args = {"HOST": 1, "PORT": 1}
-        connection = command_exec_client.connect(**good_connection_args)
-        cursor = connection.cursor()
-        cursor.execute("SELECT 1;")
-        connection.close()
+                good_connection_args = {"HOST": 1, "PORT": 1}
+                connection = command_exec_client.connect(**good_connection_args)
+                cursor = connection.cursor()
+                cursor.execute("SELECT 1;")
+                connection.close()
 
-        self.assertTrue(mock_result_set.has_been_closed_server_side)
-        mock_result_set.close.assert_called_once_with()
+                self.assertTrue(mock_result_set.has_been_closed_server_side)
+                mock_result_set.close.assert_called_once_with()
 
     @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
@@ -84,6 +87,22 @@ class TestConnection(unittest.TestCase):
             cursor = connection.cursor()
             self.assertIn("closed", e.msg)
 
+    def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
+        mock_connection = Mock()
+        mock_response = Mock()
+        mock_response.id = b'\x22'
+        mock_connection.base_client.make_request.return_value = mock_response
+        result_set = command_exec_client.ResultSet(mock_connection, b'\x10', command_pb2.SUCCESS,
+                                                   False)
+        mock_connection.open = False
+
+        result_set.close()
+
+        with self.assertRaises(AssertionError):
+            mock_connection.base_client.make_request.assert_called_with(
+                mock_connection.base_client.stub.CloseCommand,
+                command_pb2.CloseCommandRequest(id=b'\x10'))
+
     def test_closing_result_set_hard_closes_commands(self):
         mock_connection = Mock()
         mock_response = Mock()
@@ -91,7 +110,7 @@ class TestConnection(unittest.TestCase):
         mock_connection.base_client.make_request.return_value = mock_response
         result_set = command_exec_client.ResultSet(mock_connection, b'\x10', command_pb2.SUCCESS,
                                                    False)
-        mock_connection.closed = False
+        mock_connection.open = True
 
         result_set.close()
 
@@ -142,6 +161,23 @@ class TestConnection(unittest.TestCase):
             cursor.fetchall()
             self.assertIn("closed", e.msg)
 
+    def test_negative_fetch_throws_exception(self):
+        result_set = command_exec_client.ResultSet(Mock(), Mock(), command_pb2.SUCCESS, Mock())
+
+        with self.assertRaises(ValueError) as e:
+            result_set.fetchmany(-1)
+
 
 if __name__ == '__main__':
-    unittest.main()
+    suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
+    loader = unittest.TestLoader()
+    test_classes = [SimpleTests, FetchTests]
+    suites_list = []
+    for test_class in test_classes:
+        suite = loader.loadTestsFromTestCase(test_class)
+        suites_list.append(suite)
+    suite = unittest.TestSuite(suites_list)
+    test_result = unittest.TextTestRunner().run(suite)
+
+    if len(test_result.errors) != 0 or len(test_result.failures) != 0:
+        sys.exit(1)
