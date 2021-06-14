@@ -73,10 +73,10 @@ class Cursor:
         command_id = execute_command_response.command_id
         arrow_results = execute_command_response.results.arrow_ipc_stream
         has_been_closed_server_side = execute_command_response.closed
-        number_of_valid_rows = execute_command_response.results.number_of_valid_rows
+        num_valid_rows = execute_command_response.results.num_valid_rows
 
         return ResultSet(self.connection, command_id, status, has_been_closed_server_side,
-                         arrow_results, number_of_valid_rows, self.buffer_size_rows)
+                         arrow_results, num_valid_rows, self.buffer_size_rows)
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -179,7 +179,7 @@ class ResultSet:
                  status,
                  has_been_closed_server_side,
                  arrow_ipc_stream=None,
-                 number_of_valid_rows=None,
+                 num_valid_rows=None,
                  buffer_size_rows=DEFAULT_BUFFER_SIZE_ROWS):
         self.connection = connection
         self.command_id = command_id
@@ -190,21 +190,14 @@ class ResultSet:
         assert (self.status not in [command_pb2.PENDING, command_pb2.RUNNING])
 
         if arrow_ipc_stream:
-            self.results = deque(
-                self._deserialize_arrow_ipc_stream(arrow_ipc_stream)[:number_of_valid_rows])
+            # In the case we are passed in an initial result set, the server has taken the
+            # fast path and has no more rows to send
+            self.results = ArrowQueue(
+                pyarrow.ipc.open_stream(arrow_ipc_stream).read_all(), num_valid_rows)
             self.has_more_rows = False
         else:
-            self.results = deque()
-            self.has_more_rows = True
-
-    def _deserialize_arrow_ipc_stream(self, ipc_stream):
-        # TODO: Proper results deserialization, taking into account the logical schema, convert
-        #  via pd df for efficiency (SC-77871)
-        pyarrow_table = pyarrow.ipc.open_stream(ipc_stream).read_all()
-        dict_repr = pyarrow_table.to_pydict()
-        n_rows, n_cols = pyarrow_table.shape
-        list_repr = [[col[i] for col in dict_repr.values()] for i in range(n_rows)]
-        return list_repr
+            # In this case, there are results waiting on the server so we fetch now for simplicity
+            self._fill_results_buffer()
 
     def _fetch_and_deserialize_results(self):
         fetch_results_request = command_pb2.FetchCommandResultsRequest(
@@ -216,11 +209,9 @@ class ResultSet:
 
         result_message = self.connection.base_client.make_request(
             self.connection.base_client.stub.FetchCommandResults, fetch_results_request).results
-        number_of_valid_rows = result_message.number_of_valid_rows
-        # TODO: Make efficient with less copying (https://databricks.atlassian.net/browse/SC-77868)
-        results = deque(
-            self._deserialize_arrow_ipc_stream(
-                result_message.arrow_ipc_stream)[:number_of_valid_rows])
+        num_valid_rows = result_message.num_valid_rows
+        arrow_table = pyarrow.ipc.open_stream(result_message.arrow_ipc_stream).read_all()
+        results = ArrowQueue(arrow_table, num_valid_rows)
         return results, result_message.has_more_rows
 
     def _fill_results_buffer(self):
@@ -231,49 +222,74 @@ class ResultSet:
         else:
             results, has_more_rows = self._fetch_and_deserialize_results()
             self.results = results
-            if not has_more_rows:
-                self.has_more_rows = False
+            self.has_more_rows = has_more_rows
 
-    def _take_n_from_deque(self, deque, n):
-        arr = []
-        for _ in range(n):
-            try:
-                arr.append(deque.popleft())
-            except IndexError:
-                break
-        return arr
+    @staticmethod
+    def _convert_arrow_table(table):
+        dict_repr = table.to_pydict()
+        n_rows, n_cols = table.shape
+        list_repr = [[col[i] for col in dict_repr.values()] for i in range(n_rows)]
+        return list_repr
 
-    def fetchmany(self, n_rows):
+    def fetchmany_arrow(self, n_rows):
+        """
+        Fetch the next set of rows of a query result, returning a PyArrow table.
+        An empty sequence is returned when no more rows are available.
+        """
         # TODO: Make efficient with less copying
         if n_rows < 0:
             raise ValueError("n_rows argument for fetchmany is %s but must be >= 0", n_rows)
-        results = self._take_n_from_deque(self.results, n_rows)
-        n_remaining_rows = n_rows - len(results)
+        results = self.results.next_n_rows(n_rows)
+        n_remaining_rows = n_rows - results.num_rows
 
         while n_remaining_rows > 0 and not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
-            partial_results = self._take_n_from_deque(self.results, n_remaining_rows)
-            results += partial_results
-            n_remaining_rows -= len(partial_results)
+            partial_results = self.results.next_n_rows(n_remaining_rows)
+            results = pyarrow.concat_tables([results, partial_results])
+            n_remaining_rows -= partial_results.num_rows
+
+        return results
+
+    def fetchall_arrow(self):
+        """
+         Fetch all (remaining) rows of a query result, returning them as a PyArrow table.
+        """
+        results = self.fetchmany_arrow(self.buffer_size_rows)
+        while self.has_more_rows:
+            # TODO: What's the optimal sequence of sizes to fetch?
+            results = pyarrow.concat_tables([results, self.fetchmany_arrow(self.buffer_size_rows)])
 
         return results
 
     def fetchone(self):
-        return self.fetchmany(1)
+        """
+        Fetch the next row of a query result set, returning a single sequence,
+        or None when no more data is available.
+        """
+        res = self._convert_arrow_table(self.fetchmany_arrow(1))
+        if len(res) > 0:
+            return res[0]
+        else:
+            return None
 
     def fetchall(self):
-        results = []
-        while True:
-            partial_results = self.fetchmany(self.buffer_size_rows)
-            # TODO: What's the optimal sequence of sizes to fetch?
-            results += partial_results
+        """
+        Fetch all (remaining) rows of a query result, returning them as a list of lists.
+        """
+        return self._convert_arrow_table(self.fetchall_arrow())
 
-            if len(partial_results) == 0:
-                break
-
-        return results
+    def fetchmany(self, n_rows):
+        """
+        Fetch the next set of rows of a query result, returning a list of lists.
+        An empty sequence is returned when no more rows are available.
+        """
+        return self._convert_arrow_table(self.fetchmany_arrow(n_rows))
 
     def close(self):
+        """
+        Close the cursor. If the connection has not been closed, and the cursor has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
         try:
             if self.status != command_pb2.CLOSED and not self.has_been_closed_server_side \
               and self.connection.open:
@@ -283,6 +299,22 @@ class ResultSet:
         finally:
             self.has_been_closed_server_side = True
             self.status = command_pb2.CLOSED
+
+
+class ArrowQueue:
+    def __init__(self, arrow_table, n_valid_rows):
+        self.cur_row_index = 0
+        self.arrow_table = arrow_table
+        self.n_valid_rows = n_valid_rows
+
+    def next_n_rows(self, num_rows):
+        """
+        Get upto the next n rows of the Arrow dataframe
+        """
+        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
+        slice = self.arrow_table.slice(self.cur_row_index, length)
+        self.cur_row_index += slice.num_rows
+        return slice
 
 
 class CmdExecBaseHttpClient:
