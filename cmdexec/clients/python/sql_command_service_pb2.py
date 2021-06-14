@@ -18,7 +18,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
     serialized_options=b'\n\026com.databricks.command\240\001\001',
     create_key=_descriptor._internal_create_key,
     serialized_pb=
-    b'\n\x19sql_command_service.proto\x12\x16\x63om.databricks.command\"\x95\x01\n\x11SessionInfoFields\x12\x13\n\x0bserver_name\x18\x01 \x01(\x08\x12\x15\n\rspark_version\x18\x02 \x01(\x08\x12\x1b\n\x13max_column_name_len\x18\x06 \x01(\x08\x12\x1b\n\x13max_schema_name_len\x18\x07 \x01(\x08\x12\x1a\n\x12max_table_name_len\x18\x08 \x01(\x08\"\x8f\x01\n\x0bSessionInfo\x12\x13\n\x0bserver_name\x18\x01 \x01(\t\x12\x15\n\rspark_version\x18\x02 \x01(\t\x12\x1b\n\x13max_column_name_len\x18\x06 \x01(\x05\x12\x1b\n\x13max_schema_name_len\x18\x07 \x01(\x05\x12\x1a\n\x12max_table_name_len\x18\x08 \x01(\x05\"G\n\x06\x43olumn\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0f\n\x07\x63omment\x18\x03 \x01(\t\x12\x10\n\x08position\x18\x04 \x01(\x05\">\n\x0bTableSchema\x12/\n\x07\x63olumns\x18\x01 \x03(\x0b\x32\x1e.com.databricks.command.Column\"l\n\x0eResultMetadata\x12\x33\n\x06schema\x18\x01 \x01(\x0b\x32#.com.databricks.command.TableSchema\x12\x10\n\x08num_rows\x18\x02 \x01(\x05\x12\x13\n\x0bnum_batches\x18\x03 \x01(\x05\"\x7f\n\x14\x43ommandResultOptions\x12\x14\n\x0c\x62\x61tch_offset\x18\x01 \x01(\x05\x12\x12\n\nrow_offset\x18\x02 \x01(\x05\x12\x10\n\x08max_rows\x18\x03 \x01(\x05\x12\x11\n\tmax_bytes\x18\x04 \x01(\x03\x12\x18\n\x10include_metadata\x18\x05 \x01(\x08\"\xb3\x01\n\x0e\x43ommandResults\x12\x18\n\x10\x61rrow_ipc_stream\x18\x01 \x01(\x0c\x12\x18\n\x10start_row_offset\x18\x05 \x01(\x05\x12\x15\n\rhas_more_rows\x18\x06 \x01(\x08\x12\x38\n\x08metadata\x18\x07 \x01(\x0b\x32&.com.databricks.command.ResultMetadata\x12\x1c\n\x14number_of_valid_rows\x18\x08 \x01(\x05\"[\n\rCommandStatus\x12\x33\n\x05state\x18\x01 \x01(\x0e\x32$.com.databricks.command.CommandState\x12\x15\n\rerror_message\x18\x02 \x01(\t\"\xd6\x02\n\x12OpenSessionRequest\x12T\n\rconfiguration\x18\x01 \x03(\x0b\x32=.com.databricks.command.OpenSessionRequest.ConfigurationEntry\x12\x19\n\x11\x63lient_session_id\x18\x02 \x01(\x0c\x12\x46\n\x13session_info_fields\x18\x03 \x01(\x0b\x32).com.databricks.command.SessionInfoFields\x1a\x34\n\x12\x43onfigurationEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1aQ\n\x08Response\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x39\n\x0csession_info\x18\x02 \x01(\x0b\x32#.com.databricks.command.SessionInfo\"-\n\x13\x43loseSessionRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x1a\n\n\x08Response\"\xb2\x01\n\x15GetSessionInfoRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x46\n\x13session_info_fields\x18\x02 \x01(\x0b\x32).com.databricks.command.SessionInfoFields\x1a\x45\n\x08Response\x12\x39\n\x0csession_info\x18\x01 \x01(\x0b\x32#.com.databricks.command.SessionInfo\"\xdb\x03\n\x15\x45xecuteCommandRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x19\n\x11\x63lient_command_id\x18\x02 \x01(\x0c\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12T\n\x0c\x63onf_overlay\x18\x04 \x03(\x0b\x32>.com.databricks.command.ExecuteCommandRequest.ConfOverlayEntry\x12\x11\n\trow_limit\x18\x05 \x01(\x05\x12\x44\n\x0eresult_options\x18\x06 \x01(\x0b\x32,.com.databricks.command.CommandResultOptions\x1a\x32\n\x10\x43onfOverlayEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a\x9e\x01\n\x08Response\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12\x35\n\x06status\x18\x02 \x01(\x0b\x32%.com.databricks.command.CommandStatus\x12\x37\n\x07results\x18\x03 \x01(\x0b\x32&.com.databricks.command.CommandResults\x12\x0e\n\x06\x63losed\x18\x04 \x01(\x08\"h\n\x17GetCommandStatusRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x1a\x41\n\x08Response\x12\x35\n\x06status\x18\x01 \x01(\x0b\x32%.com.databricks.command.CommandStatus\"\xac\x01\n\x1a\x46\x65tchCommandResultsRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12=\n\x07options\x18\x02 \x01(\x0b\x32,.com.databricks.command.CommandResultOptions\x1a\x43\n\x08Response\x12\x37\n\x07results\x18\x01 \x01(\x0b\x32&.com.databricks.command.CommandResults\"-\n\x13\x43loseCommandRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x1a\n\n\x08Response*L\n\x0c\x43ommandState\x12\x0b\n\x07PENDING\x10\x00\x12\x0b\n\x07RUNNING\x10\x01\x12\x0b\n\x07SUCCESS\x10\x02\x12\n\n\x06\x43LOSED\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x32\xe4\x07\n\x11SqlCommandService\x12n\n\x0bOpenSession\x12*.com.databricks.command.OpenSessionRequest\x1a\x33.com.databricks.command.OpenSessionRequest.Response\x12q\n\x0c\x43loseSession\x12+.com.databricks.command.CloseSessionRequest\x1a\x34.com.databricks.command.CloseSessionRequest.Response\x12w\n\x0eGetSessionInfo\x12-.com.databricks.command.GetSessionInfoRequest\x1a\x36.com.databricks.command.GetSessionInfoRequest.Response\x12w\n\x0e\x45xecuteCommand\x12-.com.databricks.command.ExecuteCommandRequest\x1a\x36.com.databricks.command.ExecuteCommandRequest.Response\x12\x7f\n\x14StreamExecuteCommand\x12-.com.databricks.command.ExecuteCommandRequest\x1a\x36.com.databricks.command.ExecuteCommandRequest.Response0\x01\x12}\n\x10GetCommandStatus\x12/.com.databricks.command.GetCommandStatusRequest\x1a\x38.com.databricks.command.GetCommandStatusRequest.Response\x12\x86\x01\n\x13\x46\x65tchCommandResults\x12\x32.com.databricks.command.FetchCommandResultsRequest\x1a;.com.databricks.command.FetchCommandResultsRequest.Response\x12q\n\x0c\x43loseCommand\x12+.com.databricks.command.CloseCommandRequest\x1a\x34.com.databricks.command.CloseCommandRequest.ResponseB\x1b\n\x16\x63om.databricks.command\xa0\x01\x01'
+    b'\n\x19sql_command_service.proto\x12\x16\x63om.databricks.command\"\x95\x01\n\x11SessionInfoFields\x12\x13\n\x0bserver_name\x18\x01 \x01(\x08\x12\x15\n\rspark_version\x18\x02 \x01(\x08\x12\x1b\n\x13max_column_name_len\x18\x06 \x01(\x08\x12\x1b\n\x13max_schema_name_len\x18\x07 \x01(\x08\x12\x1a\n\x12max_table_name_len\x18\x08 \x01(\x08\"\x8f\x01\n\x0bSessionInfo\x12\x13\n\x0bserver_name\x18\x01 \x01(\t\x12\x15\n\rspark_version\x18\x02 \x01(\t\x12\x1b\n\x13max_column_name_len\x18\x06 \x01(\x05\x12\x1b\n\x13max_schema_name_len\x18\x07 \x01(\x05\x12\x1a\n\x12max_table_name_len\x18\x08 \x01(\x05\"G\n\x06\x43olumn\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0f\n\x07\x63omment\x18\x03 \x01(\t\x12\x10\n\x08position\x18\x04 \x01(\x05\">\n\x0bTableSchema\x12/\n\x07\x63olumns\x18\x01 \x03(\x0b\x32\x1e.com.databricks.command.Column\"l\n\x0eResultMetadata\x12\x33\n\x06schema\x18\x01 \x01(\x0b\x32#.com.databricks.command.TableSchema\x12\x10\n\x08num_rows\x18\x02 \x01(\x05\x12\x13\n\x0bnum_batches\x18\x03 \x01(\x05\"\x7f\n\x14\x43ommandResultOptions\x12\x14\n\x0c\x62\x61tch_offset\x18\x01 \x01(\x05\x12\x12\n\nrow_offset\x18\x02 \x01(\x05\x12\x10\n\x08max_rows\x18\x03 \x01(\x05\x12\x11\n\tmax_bytes\x18\x04 \x01(\x03\x12\x18\n\x10include_metadata\x18\x05 \x01(\x08\"\xad\x01\n\x0e\x43ommandResults\x12\x18\n\x10\x61rrow_ipc_stream\x18\x01 \x01(\x0c\x12\x18\n\x10start_row_offset\x18\x05 \x01(\x05\x12\x15\n\rhas_more_rows\x18\x06 \x01(\x08\x12\x38\n\x08metadata\x18\x07 \x01(\x0b\x32&.com.databricks.command.ResultMetadata\x12\x16\n\x0enum_valid_rows\x18\x08 \x01(\x05\"[\n\rCommandStatus\x12\x33\n\x05state\x18\x01 \x01(\x0e\x32$.com.databricks.command.CommandState\x12\x15\n\rerror_message\x18\x02 \x01(\t\"\xd6\x02\n\x12OpenSessionRequest\x12T\n\rconfiguration\x18\x01 \x03(\x0b\x32=.com.databricks.command.OpenSessionRequest.ConfigurationEntry\x12\x19\n\x11\x63lient_session_id\x18\x02 \x01(\x0c\x12\x46\n\x13session_info_fields\x18\x03 \x01(\x0b\x32).com.databricks.command.SessionInfoFields\x1a\x34\n\x12\x43onfigurationEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1aQ\n\x08Response\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x39\n\x0csession_info\x18\x02 \x01(\x0b\x32#.com.databricks.command.SessionInfo\"-\n\x13\x43loseSessionRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x1a\n\n\x08Response\"\xb2\x01\n\x15GetSessionInfoRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x46\n\x13session_info_fields\x18\x02 \x01(\x0b\x32).com.databricks.command.SessionInfoFields\x1a\x45\n\x08Response\x12\x39\n\x0csession_info\x18\x01 \x01(\x0b\x32#.com.databricks.command.SessionInfo\"\xdb\x03\n\x15\x45xecuteCommandRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x19\n\x11\x63lient_command_id\x18\x02 \x01(\x0c\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12T\n\x0c\x63onf_overlay\x18\x04 \x03(\x0b\x32>.com.databricks.command.ExecuteCommandRequest.ConfOverlayEntry\x12\x11\n\trow_limit\x18\x05 \x01(\x05\x12\x44\n\x0eresult_options\x18\x06 \x01(\x0b\x32,.com.databricks.command.CommandResultOptions\x1a\x32\n\x10\x43onfOverlayEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a\x9e\x01\n\x08Response\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12\x35\n\x06status\x18\x02 \x01(\x0b\x32%.com.databricks.command.CommandStatus\x12\x37\n\x07results\x18\x03 \x01(\x0b\x32&.com.databricks.command.CommandResults\x12\x0e\n\x06\x63losed\x18\x04 \x01(\x08\"h\n\x17GetCommandStatusRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x1a\x41\n\x08Response\x12\x35\n\x06status\x18\x01 \x01(\x0b\x32%.com.databricks.command.CommandStatus\"\xac\x01\n\x1a\x46\x65tchCommandResultsRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12=\n\x07options\x18\x02 \x01(\x0b\x32,.com.databricks.command.CommandResultOptions\x1a\x43\n\x08Response\x12\x37\n\x07results\x18\x01 \x01(\x0b\x32&.com.databricks.command.CommandResults\"-\n\x13\x43loseCommandRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x1a\n\n\x08Response*L\n\x0c\x43ommandState\x12\x0b\n\x07PENDING\x10\x00\x12\x0b\n\x07RUNNING\x10\x01\x12\x0b\n\x07SUCCESS\x10\x02\x12\n\n\x06\x43LOSED\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x32\xe4\x07\n\x11SqlCommandService\x12n\n\x0bOpenSession\x12*.com.databricks.command.OpenSessionRequest\x1a\x33.com.databricks.command.OpenSessionRequest.Response\x12q\n\x0c\x43loseSession\x12+.com.databricks.command.CloseSessionRequest\x1a\x34.com.databricks.command.CloseSessionRequest.Response\x12w\n\x0eGetSessionInfo\x12-.com.databricks.command.GetSessionInfoRequest\x1a\x36.com.databricks.command.GetSessionInfoRequest.Response\x12w\n\x0e\x45xecuteCommand\x12-.com.databricks.command.ExecuteCommandRequest\x1a\x36.com.databricks.command.ExecuteCommandRequest.Response\x12\x7f\n\x14StreamExecuteCommand\x12-.com.databricks.command.ExecuteCommandRequest\x1a\x36.com.databricks.command.ExecuteCommandRequest.Response0\x01\x12}\n\x10GetCommandStatus\x12/.com.databricks.command.GetCommandStatusRequest\x1a\x38.com.databricks.command.GetCommandStatusRequest.Response\x12\x86\x01\n\x13\x46\x65tchCommandResults\x12\x32.com.databricks.command.FetchCommandResultsRequest\x1a;.com.databricks.command.FetchCommandResultsRequest.Response\x12q\n\x0c\x43loseCommand\x12+.com.databricks.command.CloseCommandRequest\x1a\x34.com.databricks.command.CloseCommandRequest.ResponseB\x1b\n\x16\x63om.databricks.command\xa0\x01\x01'
 )
 
 _COMMANDSTATE = _descriptor.EnumDescriptor(
@@ -66,8 +66,8 @@ _COMMANDSTATE = _descriptor.EnumDescriptor(
     ],
     containing_type=None,
     serialized_options=None,
-    serialized_start=2381,
-    serialized_end=2457,
+    serialized_start=2375,
+    serialized_end=2451,
 )
 _sym_db.RegisterEnumDescriptor(_COMMANDSTATE)
 
@@ -699,8 +699,8 @@ _COMMANDRESULTS = _descriptor.Descriptor(
             file=DESCRIPTOR,
             create_key=_descriptor._internal_create_key),
         _descriptor.FieldDescriptor(
-            name='number_of_valid_rows',
-            full_name='com.databricks.command.CommandResults.number_of_valid_rows',
+            name='num_valid_rows',
+            full_name='com.databricks.command.CommandResults.num_valid_rows',
             index=4,
             number=8,
             type=5,
@@ -726,7 +726,7 @@ _COMMANDRESULTS = _descriptor.Descriptor(
     extension_ranges=[],
     oneofs=[],
     serialized_start=728,
-    serialized_end=907,
+    serialized_end=901,
 )
 
 _COMMANDSTATUS = _descriptor.Descriptor(
@@ -782,8 +782,8 @@ _COMMANDSTATUS = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=909,
-    serialized_end=1000,
+    serialized_start=903,
+    serialized_end=994,
 )
 
 _OPENSESSIONREQUEST_CONFIGURATIONENTRY = _descriptor.Descriptor(
@@ -839,8 +839,8 @@ _OPENSESSIONREQUEST_CONFIGURATIONENTRY = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1210,
-    serialized_end=1262,
+    serialized_start=1204,
+    serialized_end=1256,
 )
 
 _OPENSESSIONREQUEST_RESPONSE = _descriptor.Descriptor(
@@ -896,8 +896,8 @@ _OPENSESSIONREQUEST_RESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1264,
-    serialized_end=1345,
+    serialized_start=1258,
+    serialized_end=1339,
 )
 
 _OPENSESSIONREQUEST = _descriptor.Descriptor(
@@ -974,8 +974,8 @@ _OPENSESSIONREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1003,
-    serialized_end=1345,
+    serialized_start=997,
+    serialized_end=1339,
 )
 
 _CLOSESESSIONREQUEST_RESPONSE = _descriptor.Descriptor(
@@ -994,8 +994,8 @@ _CLOSESESSIONREQUEST_RESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1264,
-    serialized_end=1274,
+    serialized_start=1258,
+    serialized_end=1268,
 )
 
 _CLOSESESSIONREQUEST = _descriptor.Descriptor(
@@ -1035,8 +1035,8 @@ _CLOSESESSIONREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1347,
-    serialized_end=1392,
+    serialized_start=1341,
+    serialized_end=1386,
 )
 
 _GETSESSIONINFOREQUEST_RESPONSE = _descriptor.Descriptor(
@@ -1074,8 +1074,8 @@ _GETSESSIONINFOREQUEST_RESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1504,
-    serialized_end=1573,
+    serialized_start=1498,
+    serialized_end=1567,
 )
 
 _GETSESSIONINFOREQUEST = _descriptor.Descriptor(
@@ -1133,8 +1133,8 @@ _GETSESSIONINFOREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1395,
-    serialized_end=1573,
+    serialized_start=1389,
+    serialized_end=1567,
 )
 
 _EXECUTECOMMANDREQUEST_CONFOVERLAYENTRY = _descriptor.Descriptor(
@@ -1190,8 +1190,8 @@ _EXECUTECOMMANDREQUEST_CONFOVERLAYENTRY = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1840,
-    serialized_end=1890,
+    serialized_start=1834,
+    serialized_end=1884,
 )
 
 _EXECUTECOMMANDREQUEST_RESPONSE = _descriptor.Descriptor(
@@ -1283,8 +1283,8 @@ _EXECUTECOMMANDREQUEST_RESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1893,
-    serialized_end=2051,
+    serialized_start=1887,
+    serialized_end=2045,
 )
 
 _EXECUTECOMMANDREQUEST = _descriptor.Descriptor(
@@ -1415,8 +1415,8 @@ _EXECUTECOMMANDREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1576,
-    serialized_end=2051,
+    serialized_start=1570,
+    serialized_end=2045,
 )
 
 _GETCOMMANDSTATUSREQUEST_RESPONSE = _descriptor.Descriptor(
@@ -1454,8 +1454,8 @@ _GETCOMMANDSTATUSREQUEST_RESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2092,
-    serialized_end=2157,
+    serialized_start=2086,
+    serialized_end=2151,
 )
 
 _GETCOMMANDSTATUSREQUEST = _descriptor.Descriptor(
@@ -1495,8 +1495,8 @@ _GETCOMMANDSTATUSREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2053,
-    serialized_end=2157,
+    serialized_start=2047,
+    serialized_end=2151,
 )
 
 _FETCHCOMMANDRESULTSREQUEST_RESPONSE = _descriptor.Descriptor(
@@ -1534,8 +1534,8 @@ _FETCHCOMMANDRESULTSREQUEST_RESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2265,
-    serialized_end=2332,
+    serialized_start=2259,
+    serialized_end=2326,
 )
 
 _FETCHCOMMANDRESULTSREQUEST = _descriptor.Descriptor(
@@ -1593,8 +1593,8 @@ _FETCHCOMMANDRESULTSREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2160,
-    serialized_end=2332,
+    serialized_start=2154,
+    serialized_end=2326,
 )
 
 _CLOSECOMMANDREQUEST_RESPONSE = _descriptor.Descriptor(
@@ -1613,8 +1613,8 @@ _CLOSECOMMANDREQUEST_RESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1264,
-    serialized_end=1274,
+    serialized_start=1258,
+    serialized_end=1268,
 )
 
 _CLOSECOMMANDREQUEST = _descriptor.Descriptor(
@@ -1654,8 +1654,8 @@ _CLOSECOMMANDREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2334,
-    serialized_end=2379,
+    serialized_start=2328,
+    serialized_end=2373,
 )
 
 _TABLESCHEMA.fields_by_name['columns'].message_type = _COLUMN
@@ -1945,8 +1945,8 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
     index=0,
     serialized_options=None,
     create_key=_descriptor._internal_create_key,
-    serialized_start=2460,
-    serialized_end=3456,
+    serialized_start=2454,
+    serialized_end=3450,
     methods=[
         _descriptor.MethodDescriptor(
             name='OpenSession',
