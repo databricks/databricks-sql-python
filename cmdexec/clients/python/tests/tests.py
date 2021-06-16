@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch, MagicMock, Mock
 
 import cmdexec.clients.python.command_exec_client as command_exec_client
-import cmdexec.clients.python.sql_command_service_pb2 as command_pb2
+import cmdexec.clients.python.api.messages_pb2 as command_pb2
 from cmdexec.clients.python.errors import InterfaceError, DatabaseError, Error
 from cmdexec.clients.python.tests.test_fetches import FetchTests
 
