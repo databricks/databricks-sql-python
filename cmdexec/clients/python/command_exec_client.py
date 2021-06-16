@@ -5,8 +5,8 @@ from collections import deque
 import grpc
 import pyarrow
 
-import cmdexec.clients.python.sql_command_service_pb2 as command_pb2
-from cmdexec.clients.python.sql_command_service_pb2_grpc import SqlCommandServiceStub
+import cmdexec.clients.python.api.messages_pb2 as command_pb2
+from cmdexec.clients.python.api.sql_cmd_service_pb2_grpc import SqlCommandServiceStub
 from cmdexec.clients.python.errors import OperationalError, InterfaceError, DatabaseError, Error
 
 import time

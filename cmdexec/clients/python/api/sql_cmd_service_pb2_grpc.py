@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import cmdexec.clients.python.sql_command_service_pb2 as sql__command__service__pb2
+from cmdexec.clients.python.api import messages_pb2 as cmdexec_dot_api_dot_proto_dot_messages__pb2
 
 
 class SqlCommandServiceStub(object):
@@ -17,50 +17,53 @@ class SqlCommandServiceStub(object):
             channel: A grpc.Channel.
         """
         self.OpenSession = channel.unary_unary(
-            '/com.databricks.command.SqlCommandService/OpenSession',
-            request_serializer=sql__command__service__pb2.OpenSessionRequest.SerializeToString,
-            response_deserializer=sql__command__service__pb2.OpenSessionRequest.Response.FromString,
+            '/com.databricks.cmdexec.SqlCommandService/OpenSession',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.OpenSessionRequest.
+            SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.OpenSessionResponse.
+            FromString,
         )
         self.CloseSession = channel.unary_unary(
-            '/com.databricks.command.SqlCommandService/CloseSession',
-            request_serializer=sql__command__service__pb2.CloseSessionRequest.SerializeToString,
-            response_deserializer=sql__command__service__pb2.CloseSessionRequest.Response.FromString,
+            '/com.databricks.cmdexec.SqlCommandService/CloseSession',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseSessionRequest.
+            SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseSessionResponse.
+            FromString,
         )
         self.GetSessionInfo = channel.unary_unary(
-            '/com.databricks.command.SqlCommandService/GetSessionInfo',
-            request_serializer=sql__command__service__pb2.GetSessionInfoRequest.SerializeToString,
-            response_deserializer=sql__command__service__pb2.GetSessionInfoRequest.Response.
-            FromString,
+            '/com.databricks.cmdexec.SqlCommandService/GetSessionInfo',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.GetSessionInfoRequest.
+            SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            GetSessionInfoResponse.FromString,
         )
         self.ExecuteCommand = channel.unary_unary(
-            '/com.databricks.command.SqlCommandService/ExecuteCommand',
-            request_serializer=sql__command__service__pb2.ExecuteCommandRequest.SerializeToString,
-            response_deserializer=sql__command__service__pb2.ExecuteCommandRequest.Response.
-            FromString,
-        )
-        self.StreamExecuteCommand = channel.unary_stream(
-            '/com.databricks.command.SqlCommandService/StreamExecuteCommand',
-            request_serializer=sql__command__service__pb2.ExecuteCommandRequest.SerializeToString,
-            response_deserializer=sql__command__service__pb2.ExecuteCommandRequest.Response.
-            FromString,
+            '/com.databricks.cmdexec.SqlCommandService/ExecuteCommand',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.ExecuteCommandRequest.
+            SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            ExecuteCommandResponse.FromString,
         )
         self.GetCommandStatus = channel.unary_unary(
-            '/com.databricks.command.SqlCommandService/GetCommandStatus',
-            request_serializer=sql__command__service__pb2.GetCommandStatusRequest.SerializeToString,
-            response_deserializer=sql__command__service__pb2.GetCommandStatusRequest.Response.
-            FromString,
+            '/com.databricks.cmdexec.SqlCommandService/GetCommandStatus',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.GetCommandStatusRequest.
+            SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            GetCommandStatusResponse.FromString,
         )
         self.FetchCommandResults = channel.unary_unary(
-            '/com.databricks.command.SqlCommandService/FetchCommandResults',
-            request_serializer=sql__command__service__pb2.FetchCommandResultsRequest.
-            SerializeToString,
-            response_deserializer=sql__command__service__pb2.FetchCommandResultsRequest.Response.
-            FromString,
+            '/com.databricks.cmdexec.SqlCommandService/FetchCommandResults',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            FetchCommandResultsRequest.SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            FetchCommandResultsResponse.FromString,
         )
         self.CloseCommand = channel.unary_unary(
-            '/com.databricks.command.SqlCommandService/CloseCommand',
-            request_serializer=sql__command__service__pb2.CloseCommandRequest.SerializeToString,
-            response_deserializer=sql__command__service__pb2.CloseCommandRequest.Response.FromString,
+            '/com.databricks.cmdexec.SqlCommandService/CloseCommand',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseCommandRequest.
+            SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseCommandResponse.
+            FromString,
         )
 
 
@@ -104,19 +107,6 @@ class SqlCommandServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def StreamExecuteCommand(self, request, context):
-        """
-        Submits a new command to be executed asynchronously in the same way as ExecuteCommand,
-        but uses a gRPC stream response where the server pushes an update once command execution
-        is completed and results are available. The first response is sent as soon as the command
-        is submitted and contains the command ID. The second response is sent after the command
-        completes, and will contain the command status (SUCCESS or ERROR) along with the first
-        result set if available. The server will then close the connection
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def GetCommandStatus(self, request, context):
         """Retrieves the status of the requested command 
         """
@@ -146,55 +136,56 @@ def add_SqlCommandServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
         'OpenSession': grpc.unary_unary_rpc_method_handler(
             servicer.OpenSession,
-            request_deserializer=sql__command__service__pb2.OpenSessionRequest.FromString,
-            response_serializer=sql__command__service__pb2.OpenSessionRequest.Response.
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.OpenSessionRequest.
+            FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.OpenSessionResponse.
             SerializeToString,
         ),
         'CloseSession': grpc.unary_unary_rpc_method_handler(
             servicer.CloseSession,
-            request_deserializer=sql__command__service__pb2.CloseSessionRequest.FromString,
-            response_serializer=sql__command__service__pb2.CloseSessionRequest.Response.
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseSessionRequest.
+            FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseSessionResponse.
             SerializeToString,
         ),
         'GetSessionInfo': grpc.unary_unary_rpc_method_handler(
             servicer.GetSessionInfo,
-            request_deserializer=sql__command__service__pb2.GetSessionInfoRequest.FromString,
-            response_serializer=sql__command__service__pb2.GetSessionInfoRequest.Response.
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.GetSessionInfoRequest.
+            FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.GetSessionInfoResponse.
             SerializeToString,
         ),
         'ExecuteCommand': grpc.unary_unary_rpc_method_handler(
             servicer.ExecuteCommand,
-            request_deserializer=sql__command__service__pb2.ExecuteCommandRequest.FromString,
-            response_serializer=sql__command__service__pb2.ExecuteCommandRequest.Response.
-            SerializeToString,
-        ),
-        'StreamExecuteCommand': grpc.unary_stream_rpc_method_handler(
-            servicer.StreamExecuteCommand,
-            request_deserializer=sql__command__service__pb2.ExecuteCommandRequest.FromString,
-            response_serializer=sql__command__service__pb2.ExecuteCommandRequest.Response.
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.ExecuteCommandRequest.
+            FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.ExecuteCommandResponse.
             SerializeToString,
         ),
         'GetCommandStatus': grpc.unary_unary_rpc_method_handler(
             servicer.GetCommandStatus,
-            request_deserializer=sql__command__service__pb2.GetCommandStatusRequest.FromString,
-            response_serializer=sql__command__service__pb2.GetCommandStatusRequest.Response.
-            SerializeToString,
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            GetCommandStatusRequest.FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            GetCommandStatusResponse.SerializeToString,
         ),
         'FetchCommandResults': grpc.unary_unary_rpc_method_handler(
             servicer.FetchCommandResults,
-            request_deserializer=sql__command__service__pb2.FetchCommandResultsRequest.FromString,
-            response_serializer=sql__command__service__pb2.FetchCommandResultsRequest.Response.
-            SerializeToString,
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            FetchCommandResultsRequest.FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
+            FetchCommandResultsResponse.SerializeToString,
         ),
         'CloseCommand': grpc.unary_unary_rpc_method_handler(
             servicer.CloseCommand,
-            request_deserializer=sql__command__service__pb2.CloseCommandRequest.FromString,
-            response_serializer=sql__command__service__pb2.CloseCommandRequest.Response.
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseCommandRequest.
+            FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseCommandResponse.
             SerializeToString,
         ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-        'com.databricks.command.SqlCommandService', rpc_method_handlers)
+        'com.databricks.cmdexec.SqlCommandService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler, ))
 
 
@@ -216,9 +207,9 @@ class SqlCommandService(object):
                     timeout=None,
                     metadata=None):
         return grpc.experimental.unary_unary(
-            request, target, '/com.databricks.command.SqlCommandService/OpenSession',
-            sql__command__service__pb2.OpenSessionRequest.SerializeToString,
-            sql__command__service__pb2.OpenSessionRequest.Response.FromString, options,
+            request, target, '/com.databricks.cmdexec.SqlCommandService/OpenSession',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.OpenSessionRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.OpenSessionResponse.FromString, options,
             channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
             metadata)
 
@@ -234,9 +225,9 @@ class SqlCommandService(object):
                      timeout=None,
                      metadata=None):
         return grpc.experimental.unary_unary(
-            request, target, '/com.databricks.command.SqlCommandService/CloseSession',
-            sql__command__service__pb2.CloseSessionRequest.SerializeToString,
-            sql__command__service__pb2.CloseSessionRequest.Response.FromString, options,
+            request, target, '/com.databricks.cmdexec.SqlCommandService/CloseSession',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseSessionRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseSessionResponse.FromString, options,
             channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
             metadata)
 
@@ -252,9 +243,9 @@ class SqlCommandService(object):
                        timeout=None,
                        metadata=None):
         return grpc.experimental.unary_unary(
-            request, target, '/com.databricks.command.SqlCommandService/GetSessionInfo',
-            sql__command__service__pb2.GetSessionInfoRequest.SerializeToString,
-            sql__command__service__pb2.GetSessionInfoRequest.Response.FromString, options,
+            request, target, '/com.databricks.cmdexec.SqlCommandService/GetSessionInfo',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.GetSessionInfoRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.GetSessionInfoResponse.FromString, options,
             channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
             metadata)
 
@@ -270,27 +261,9 @@ class SqlCommandService(object):
                        timeout=None,
                        metadata=None):
         return grpc.experimental.unary_unary(
-            request, target, '/com.databricks.command.SqlCommandService/ExecuteCommand',
-            sql__command__service__pb2.ExecuteCommandRequest.SerializeToString,
-            sql__command__service__pb2.ExecuteCommandRequest.Response.FromString, options,
-            channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
-            metadata)
-
-    @staticmethod
-    def StreamExecuteCommand(request,
-                             target,
-                             options=(),
-                             channel_credentials=None,
-                             call_credentials=None,
-                             insecure=False,
-                             compression=None,
-                             wait_for_ready=None,
-                             timeout=None,
-                             metadata=None):
-        return grpc.experimental.unary_stream(
-            request, target, '/com.databricks.command.SqlCommandService/StreamExecuteCommand',
-            sql__command__service__pb2.ExecuteCommandRequest.SerializeToString,
-            sql__command__service__pb2.ExecuteCommandRequest.Response.FromString, options,
+            request, target, '/com.databricks.cmdexec.SqlCommandService/ExecuteCommand',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.ExecuteCommandRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.ExecuteCommandResponse.FromString, options,
             channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
             metadata)
 
@@ -306,11 +279,11 @@ class SqlCommandService(object):
                          timeout=None,
                          metadata=None):
         return grpc.experimental.unary_unary(
-            request, target, '/com.databricks.command.SqlCommandService/GetCommandStatus',
-            sql__command__service__pb2.GetCommandStatusRequest.SerializeToString,
-            sql__command__service__pb2.GetCommandStatusRequest.Response.FromString, options,
-            channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
-            metadata)
+            request, target, '/com.databricks.cmdexec.SqlCommandService/GetCommandStatus',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.GetCommandStatusRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.GetCommandStatusResponse.FromString,
+            options, channel_credentials, insecure, call_credentials, compression, wait_for_ready,
+            timeout, metadata)
 
     @staticmethod
     def FetchCommandResults(request,
@@ -324,11 +297,11 @@ class SqlCommandService(object):
                             timeout=None,
                             metadata=None):
         return grpc.experimental.unary_unary(
-            request, target, '/com.databricks.command.SqlCommandService/FetchCommandResults',
-            sql__command__service__pb2.FetchCommandResultsRequest.SerializeToString,
-            sql__command__service__pb2.FetchCommandResultsRequest.Response.FromString, options,
-            channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
-            metadata)
+            request, target, '/com.databricks.cmdexec.SqlCommandService/FetchCommandResults',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.FetchCommandResultsRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.FetchCommandResultsResponse.FromString,
+            options, channel_credentials, insecure, call_credentials, compression, wait_for_ready,
+            timeout, metadata)
 
     @staticmethod
     def CloseCommand(request,
@@ -342,8 +315,8 @@ class SqlCommandService(object):
                      timeout=None,
                      metadata=None):
         return grpc.experimental.unary_unary(
-            request, target, '/com.databricks.command.SqlCommandService/CloseCommand',
-            sql__command__service__pb2.CloseCommandRequest.SerializeToString,
-            sql__command__service__pb2.CloseCommandRequest.Response.FromString, options,
+            request, target, '/com.databricks.cmdexec.SqlCommandService/CloseCommand',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseCommandRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseCommandResponse.FromString, options,
             channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
             metadata)
