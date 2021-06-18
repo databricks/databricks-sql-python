@@ -42,6 +42,12 @@ class Connection:
         logger.info("Successfully opened session " + str(self.session_id.hex()))
         self._cursors = []
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     def cursor(self, buffer_size_rows=DEFAULT_BUFFER_SIZE_ROWS):
         if not self.open:
             raise Error("Cannot create cursor from closed connection")
@@ -68,6 +74,19 @@ class Cursor:
         self.active_result_set = None
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def __iter__(self):
+        if self.active_result_set:
+            for row in self.active_result_set:
+                yield row
+        else:
+            raise Error("There is no active result set")
 
     def _response_to_result_set(self, execute_command_response, status):
         command_id = execute_command_response.command_id
@@ -198,6 +217,14 @@ class ResultSet:
         else:
             # In this case, there are results waiting on the server so we fetch now for simplicity
             self._fill_results_buffer()
+
+    def __iter__(self):
+        while True:
+            row = self.fetchone()
+            if row:
+                yield row
+            else:
+                break
 
     def _fetch_and_deserialize_results(self):
         fetch_results_request = command_pb2.FetchCommandResultsRequest(

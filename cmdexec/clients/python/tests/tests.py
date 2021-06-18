@@ -176,6 +176,25 @@ class SimpleTests(unittest.TestCase):
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
 
+    def test_context_manager_closes_cursor(self):
+        mock_close = Mock()
+        with command_exec_client.Cursor(Mock()) as cursor:
+            cursor.close = mock_close
+        mock_close.assert_called_once_with()
+
+    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
+    def test_context_manager_closes_connection(self, mock_client_class):
+        instance = mock_client_class.return_value
+        mock_response = Mock()
+        mock_response.id = b'\x22'
+        instance.make_request.return_value = mock_response
+        good_connection_args = {"HOST": 1, "PORT": 1}
+        mock_close = Mock()
+
+        with command_exec_client.connect(**good_connection_args) as connection:
+            connection.close = mock_close
+        mock_close.assert_called_once_with()
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
