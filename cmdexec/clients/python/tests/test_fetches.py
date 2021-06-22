@@ -32,7 +32,7 @@ class FetchTests(unittest.TestCase):
     @staticmethod
     def make_arrow_queue(batch):
         table = FetchTests.make_arrow_table(batch)
-        queue = command_exec_client.ArrowQueue(table, len(batch))
+        queue = command_exec_client.ArrowQueue(table, len(batch), 0)
         return queue
 
     @staticmethod
@@ -45,7 +45,8 @@ class FetchTests(unittest.TestCase):
             None,
             True,
             arrow_ipc_stream=arrow_ipc_stream,
-            num_valid_rows=len(initial_results))
+            num_valid_rows=len(initial_results),
+            has_more_rows=False)
 
     @staticmethod
     def make_dummy_result_set_from_batch_list(batch_list):
@@ -59,7 +60,7 @@ class FetchTests(unittest.TestCase):
 
                 return results, batch_index < len(batch_list)
 
-        return SemiFakeResultSet(None, None, None, False)
+        return SemiFakeResultSet(None, None, None, False, False)
 
     def test_fetchmany_with_initial_results(self):
         # Fetch all in one go

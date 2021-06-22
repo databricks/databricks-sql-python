@@ -100,7 +100,8 @@ class SimpleTests(unittest.TestCase):
             command_pb2.SUCCESS,
             False,
             arrow_ipc_stream=Mock(),
-            num_valid_rows=0)
+            num_valid_rows=0,
+            has_more_rows=False)
         mock_connection.open = False
 
         result_set.close()
@@ -115,9 +116,10 @@ class SimpleTests(unittest.TestCase):
         mock_connection = Mock()
         mock_response = Mock()
         mock_response.id = b'\x22'
+        mock_response.results.start_row_offset = 0
         mock_connection.base_client.make_request.return_value = mock_response
-        result_set = command_exec_client.ResultSet(mock_connection, b'\x10', command_pb2.SUCCESS,
-                                                   False)
+        result_set = command_exec_client.ResultSet(
+            mock_connection, b'\x10', command_pb2.SUCCESS, False, has_more_rows=False)
         mock_connection.open = True
 
         result_set.close()
@@ -171,7 +173,15 @@ class SimpleTests(unittest.TestCase):
 
     @patch("pyarrow.ipc.open_stream")
     def test_negative_fetch_throws_exception(self, pyarrow_ipc_open_stream_mock):
-        result_set = command_exec_client.ResultSet(Mock(), b'\x22', command_pb2.SUCCESS, Mock())
+        mock_connection = Mock()
+        mock_response = Mock()
+        mock_response.id = b'\x22'
+        mock_response.results.start_row_offset = 0
+        mock_response.status.state = command_pb2.SUCCESS
+        mock_connection.base_client.make_request.return_value = mock_response
+
+        result_set = command_exec_client.ResultSet(
+            mock_connection, b'\x22', command_pb2.SUCCESS, Mock(), has_more_rows=False)
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
