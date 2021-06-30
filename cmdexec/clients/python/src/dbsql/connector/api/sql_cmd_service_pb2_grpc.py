@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from cmdexec.clients.python.api import messages_pb2 as cmdexec_dot_api_dot_proto_dot_messages__pb2
+from dbsql.connector.api import messages_pb2 as cmdexec_dot_api_dot_proto_dot_messages__pb2
 
 
 class SqlCommandServiceStub(object):

@@ -5,19 +5,15 @@ from collections import deque
 import grpc
 import pyarrow
 
-import cmdexec.clients.python.api.messages_pb2 as command_pb2
-from cmdexec.clients.python.api.sql_cmd_service_pb2_grpc import SqlCommandServiceStub
-from cmdexec.clients.python.errors import OperationalError, InterfaceError, DatabaseError, Error
+from .errors import OperationalError, InterfaceError, DatabaseError, Error
+from .api import messages_pb2
+from .api.sql_cmd_service_pb2_grpc import SqlCommandServiceStub
 
 import time
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
-
-
-def connect(**kwargs):
-    return Connection(**kwargs)
 
 
 class Connection:
@@ -29,7 +25,7 @@ class Connection:
             raise InterfaceError("Please include arguments HOST and PORT in kwargs for Connection")
 
         self.base_client = CmdExecBaseHttpClient(self.host, self.port, kwargs.get("metadata", []))
-        open_session_request = command_pb2.OpenSessionRequest(
+        open_session_request = messages_pb2.OpenSessionRequest(
             configuration={},
             client_session_id=None,
             session_info_fields=None,
@@ -57,7 +53,7 @@ class Connection:
         return cursor
 
     def close(self):
-        close_session_request = command_pb2.CloseSessionRequest(id=self.session_id)
+        close_session_request = messages_pb2.CloseSessionRequest(id=self.session_id)
         self.base_client.make_request(self.base_client.stub.CloseSession, close_session_request)
         self.open = False
 
@@ -112,14 +108,14 @@ class Cursor:
 
     def _check_response_for_error(self, resp, command_id):
         status = resp.status.state
-        if status == command_pb2.ERROR:
+        if status == messages_pb2.ERROR:
             raise DatabaseError(
                 "Command %s failed with error message %s" % (command_id, resp.status.error_message))
-        elif status == command_pb2.CLOSED:
+        elif status == messages_pb2.CLOSED:
             raise DatabaseError("Command %s closed before results could be fetched" % command_id)
 
     def _poll_for_state(self, command_id):
-        get_status_request = command_pb2.GetCommandStatusRequest(id=command_id)
+        get_status_request = messages_pb2.GetCommandStatusRequest(id=command_id)
 
         resp = self.connection.base_client.make_request(
             self.connection.base_client.stub.GetCommandStatus, get_status_request)
@@ -129,7 +125,7 @@ class Cursor:
 
     def _wait_until_command_done(self, command_id, initial_status):
         status = initial_status
-        while status in [command_pb2.PENDING, command_pb2.RUNNING]:
+        while status in [messages_pb2.PENDING, messages_pb2.RUNNING]:
             resp = self._poll_for_state(command_id)
             status = resp.status.state
             self._check_response_for_error(resp, command_id)
@@ -143,7 +139,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         # Execute the command
-        execute_command_request = command_pb2.ExecuteCommandRequest(
+        execute_command_request = messages_pb2.ExecuteCommandRequest(
             session_id=self.connection.session_id,
             client_command_id=None,
             command=operation,
@@ -209,7 +205,7 @@ class ResultSet:
         self.buffer_size_bytes = result_buffer_size_bytes
         self._row_index = 0
 
-        assert (self.status not in [command_pb2.PENDING, command_pb2.RUNNING])
+        assert (self.status not in [messages_pb2.PENDING, messages_pb2.RUNNING])
 
         if arrow_ipc_stream:
             # In the case we are passed in an initial result set, the server has taken the
@@ -229,9 +225,9 @@ class ResultSet:
                 break
 
     def _fetch_and_deserialize_results(self):
-        fetch_results_request = command_pb2.FetchCommandResultsRequest(
+        fetch_results_request = messages_pb2.FetchCommandResultsRequest(
             id=self.command_id,
-            options=command_pb2.CommandResultOptions(
+            options=messages_pb2.CommandResultOptions(
                 max_bytes=self.buffer_size_bytes,
                 row_offset=self._row_index,
                 include_metadata=True,
@@ -246,9 +242,9 @@ class ResultSet:
         return results, result_message.has_more_rows
 
     def _fill_results_buffer(self):
-        if self.status == command_pb2.CLOSED:
+        if self.status == messages_pb2.CLOSED:
             raise Error("Can't fetch results on closed command %s" % self.command_id)
-        elif self.status == command_pb2.ERROR:
+        elif self.status == messages_pb2.ERROR:
             raise DatabaseError("Command %s failed" % self.command_id)
         else:
             results, has_more_rows = self._fetch_and_deserialize_results()
@@ -329,14 +325,14 @@ class ResultSet:
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            if self.status != command_pb2.CLOSED and not self.has_been_closed_server_side \
+            if self.status != messages_pb2.CLOSED and not self.has_been_closed_server_side \
               and self.connection.open:
-                close_command_request = command_pb2.CloseCommandRequest(id=self.command_id)
+                close_command_request = messages_pb2.CloseCommandRequest(id=self.command_id)
                 self.connection.base_client.make_request(
                     self.connection.base_client.stub.CloseCommand, close_command_request)
         finally:
             self.has_been_closed_server_side = True
-            self.status = command_pb2.CLOSED
+            self.status = messages_pb2.CLOSED
 
 
 class ArrowQueue:

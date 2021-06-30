@@ -2,9 +2,11 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 
-import cmdexec.clients.python.command_exec_client as command_exec_client
-import cmdexec.clients.python.api.messages_pb2 as command_pb2
-from cmdexec.clients.python.errors import InterfaceError, DatabaseError, Error
+import dbsql.connector
+import dbsql.connector.client as client
+import dbsql.connector.api.messages_pb2 as command_pb2
+from dbsql.connector.errors import InterfaceError, DatabaseError, Error
+
 from cmdexec.clients.python.tests.test_fetches import FetchTests
 
 
@@ -14,6 +16,8 @@ class SimpleTests(unittest.TestCase):
     qa/test/cmdexec/python/suites/simple_connection_test.py for integration tests that
     interact with the server.
     """
+
+    PACKAGE_NAME = "dbsql.connector"
 
     def test_missing_params_throws_interface_exception(self):
         bad_connection_args = [
@@ -29,10 +33,10 @@ class SimpleTests(unittest.TestCase):
 
         for args in bad_connection_args:
             with self.assertRaises(InterfaceError) as ie:
-                command_exec_client.connect(**args)
+                dbsql.connector.connect(**args)
                 self.assertIn("HOST and PORT", ie.message)
 
-    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
+    @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value
         mock_response = Mock()
@@ -40,15 +44,15 @@ class SimpleTests(unittest.TestCase):
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
 
-        connection = command_exec_client.connect(**good_connection_args)
+        connection = dbsql.connector.connect(**good_connection_args)
         connection.close()
 
         # Check the close session request has an id of x22
         _, close_session_request = instance.make_request.call_args[0]
         self.assertEqual(close_session_request.id, mock_response.id)
 
-    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
-    @patch("cmdexec.clients.python.command_exec_client.ResultSet")
+    @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
+    @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_result_set_class, mock_client_class):
         # Test once with has_been_closed_server side, once without
         for closed in (True, False):
@@ -64,7 +68,7 @@ class SimpleTests(unittest.TestCase):
                 mock_result_set_class.return_value = mock_result_set
 
                 good_connection_args = {"HOST": 1, "PORT": 1}
-                connection = command_exec_client.connect(**good_connection_args)
+                connection = dbsql.connector.connect(**good_connection_args)
                 cursor = connection.cursor()
                 cursor.execute("SELECT 1;")
                 connection.close()
@@ -72,14 +76,14 @@ class SimpleTests(unittest.TestCase):
                 self.assertTrue(mock_result_set.has_been_closed_server_side)
                 mock_result_set.close.assert_called_once_with()
 
-    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
+    @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
         instance = mock_client_class.return_value
         mock_response = Mock()
         mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
-        connection = command_exec_client.connect(**good_connection_args)
+        connection = dbsql.connector.connect(**good_connection_args)
         self.assertTrue(connection.open)
         connection.close()
         self.assertFalse(connection.open)
@@ -94,7 +98,7 @@ class SimpleTests(unittest.TestCase):
         mock_response = Mock()
         mock_response.id = b'\x22'
         mock_connection.base_client.make_request.return_value = mock_response
-        result_set = command_exec_client.ResultSet(
+        result_set = client.ResultSet(
             mock_connection,
             b'\x10',
             command_pb2.SUCCESS,
@@ -118,7 +122,7 @@ class SimpleTests(unittest.TestCase):
         mock_response.id = b'\x22'
         mock_response.results.start_row_offset = 0
         mock_connection.base_client.make_request.return_value = mock_response
-        result_set = command_exec_client.ResultSet(
+        result_set = client.ResultSet(
             mock_connection, b'\x10', command_pb2.SUCCESS, False, has_more_rows=False)
         mock_connection.open = True
 
@@ -128,7 +132,7 @@ class SimpleTests(unittest.TestCase):
             mock_connection.base_client.stub.CloseCommand,
             command_pb2.CloseCommandRequest(id=b'\x10'))
 
-    @patch("cmdexec.clients.python.command_exec_client.ResultSet")
+    @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_executing_multiple_commands_uses_the_most_recent_command(self, mock_result_set_class):
         mock_client = Mock()
         mock_response = Mock()
@@ -141,7 +145,7 @@ class SimpleTests(unittest.TestCase):
         mock_result_sets = [Mock(), Mock()]
         mock_result_set_class.side_effect = mock_result_sets
 
-        cursor = command_exec_client.Cursor(mock_connection)
+        cursor = client.Cursor(mock_connection)
         cursor.execute("SELECT 1;")
         cursor.execute("SELECT 1;")
 
@@ -160,7 +164,7 @@ class SimpleTests(unittest.TestCase):
         mock_response.status.state = command_pb2.SUCCESS
         mock_connection.base_client.make_request.return_value = mock_response
 
-        cursor = command_exec_client.Cursor(mock_connection)
+        cursor = client.Cursor(mock_connection)
         cursor.close()
 
         with self.assertRaises(Error) as e:
@@ -180,7 +184,7 @@ class SimpleTests(unittest.TestCase):
         mock_response.status.state = command_pb2.SUCCESS
         mock_connection.base_client.make_request.return_value = mock_response
 
-        result_set = command_exec_client.ResultSet(
+        result_set = client.ResultSet(
             mock_connection, b'\x22', command_pb2.SUCCESS, Mock(), has_more_rows=False)
 
         with self.assertRaises(ValueError) as e:
@@ -188,11 +192,11 @@ class SimpleTests(unittest.TestCase):
 
     def test_context_manager_closes_cursor(self):
         mock_close = Mock()
-        with command_exec_client.Cursor(Mock()) as cursor:
+        with client.Cursor(Mock()) as cursor:
             cursor.close = mock_close
         mock_close.assert_called_once_with()
 
-    @patch("cmdexec.clients.python.command_exec_client.CmdExecBaseHttpClient")
+    @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     def test_context_manager_closes_connection(self, mock_client_class):
         instance = mock_client_class.return_value
         mock_response = Mock()
@@ -201,7 +205,7 @@ class SimpleTests(unittest.TestCase):
         good_connection_args = {"HOST": 1, "PORT": 1}
         mock_close = Mock()
 
-        with command_exec_client.connect(**good_connection_args) as connection:
+        with dbsql.connector.connect(**good_connection_args) as connection:
             connection.close = mock_close
         mock_close.assert_called_once_with()
 

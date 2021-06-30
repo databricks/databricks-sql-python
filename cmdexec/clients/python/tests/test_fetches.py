@@ -3,7 +3,7 @@ from collections import deque
 
 import pyarrow as pa
 
-import cmdexec.clients.python.command_exec_client as command_exec_client
+import dbsql.connector.client as client
 
 
 class FetchTests(unittest.TestCase):
@@ -32,14 +32,14 @@ class FetchTests(unittest.TestCase):
     @staticmethod
     def make_arrow_queue(batch):
         table = FetchTests.make_arrow_table(batch)
-        queue = command_exec_client.ArrowQueue(table, len(batch), 0)
+        queue = client.ArrowQueue(table, len(batch), 0)
         return queue
 
     @staticmethod
     def make_dummy_result_set_from_initial_results(initial_results):
         # If the initial results have been set, then we should never try and fetch more
         arrow_ipc_stream = FetchTests.make_arrow_ipc_stream(initial_results)
-        return command_exec_client.ResultSet(
+        return client.ResultSet(
             None,
             None,
             None,
@@ -52,7 +52,7 @@ class FetchTests(unittest.TestCase):
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
 
-        class SemiFakeResultSet(command_exec_client.ResultSet):
+        class SemiFakeResultSet(client.ResultSet):
             def _fetch_and_deserialize_results(self):
                 nonlocal batch_index
                 results = FetchTests.make_arrow_queue(batch_list[batch_index])
