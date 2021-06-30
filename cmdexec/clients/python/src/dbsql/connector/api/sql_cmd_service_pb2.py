@@ -10,16 +10,16 @@ from google.protobuf import symbol_database as _symbol_database
 
 _sym_db = _symbol_database.Default()
 
-from cmdexec.clients.python.api import messages_pb2 as cmdexec_dot_api_dot_proto_dot_messages__pb2
+from dbsql.connector.api import messages_pb2 as cmdexec_dot_api_dot_proto_dot_messages__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
     name='cmdexec/api/proto/sql_cmd_service.proto',
     package='com.databricks.cmdexec',
     syntax='proto2',
-    serialized_options=b'\n*com.databricks.cmdexec.sql_command_service\240\001\001',
+    serialized_options=b'\n\026com.databricks.cmdexec\240\001\001',
     create_key=_descriptor._internal_create_key,
     serialized_pb=
-    b'\n\'cmdexec/api/proto/sql_cmd_service.proto\x12\x16\x63om.databricks.cmdexec\x1a cmdexec/api/proto/messages.proto2\xaa\x06\n\x11SqlCommandService\x12\x66\n\x0bOpenSession\x12*.com.databricks.cmdexec.OpenSessionRequest\x1a+.com.databricks.cmdexec.OpenSessionResponse\x12i\n\x0c\x43loseSession\x12+.com.databricks.cmdexec.CloseSessionRequest\x1a,.com.databricks.cmdexec.CloseSessionResponse\x12o\n\x0eGetSessionInfo\x12-.com.databricks.cmdexec.GetSessionInfoRequest\x1a..com.databricks.cmdexec.GetSessionInfoResponse\x12o\n\x0e\x45xecuteCommand\x12-.com.databricks.cmdexec.ExecuteCommandRequest\x1a..com.databricks.cmdexec.ExecuteCommandResponse\x12u\n\x10GetCommandStatus\x12/.com.databricks.cmdexec.GetCommandStatusRequest\x1a\x30.com.databricks.cmdexec.GetCommandStatusResponse\x12~\n\x13\x46\x65tchCommandResults\x12\x32.com.databricks.cmdexec.FetchCommandResultsRequest\x1a\x33.com.databricks.cmdexec.FetchCommandResultsResponse\x12i\n\x0c\x43loseCommand\x12+.com.databricks.cmdexec.CloseCommandRequest\x1a,.com.databricks.cmdexec.CloseCommandResponseB/\n*com.databricks.cmdexec.sql_command_service\xa0\x01\x01',
+    b'\n\'cmdexec/api/proto/sql_cmd_service.proto\x12\x16\x63om.databricks.cmdexec\x1a cmdexec/api/proto/messages.proto2\xaa\x06\n\x11SqlCommandService\x12\x66\n\x0bOpenSession\x12*.com.databricks.cmdexec.OpenSessionRequest\x1a+.com.databricks.cmdexec.OpenSessionResponse\x12i\n\x0c\x43loseSession\x12+.com.databricks.cmdexec.CloseSessionRequest\x1a,.com.databricks.cmdexec.CloseSessionResponse\x12o\n\x0eGetSessionInfo\x12-.com.databricks.cmdexec.GetSessionInfoRequest\x1a..com.databricks.cmdexec.GetSessionInfoResponse\x12o\n\x0e\x45xecuteCommand\x12-.com.databricks.cmdexec.ExecuteCommandRequest\x1a..com.databricks.cmdexec.ExecuteCommandResponse\x12u\n\x10GetCommandStatus\x12/.com.databricks.cmdexec.GetCommandStatusRequest\x1a\x30.com.databricks.cmdexec.GetCommandStatusResponse\x12~\n\x13\x46\x65tchCommandResults\x12\x32.com.databricks.cmdexec.FetchCommandResultsRequest\x1a\x33.com.databricks.cmdexec.FetchCommandResultsResponse\x12i\n\x0c\x43loseCommand\x12+.com.databricks.cmdexec.CloseCommandRequest\x1a,.com.databricks.cmdexec.CloseCommandResponseB\x1b\n\x16\x63om.databricks.cmdexec\xa0\x01\x01',
     dependencies=[
         cmdexec_dot_api_dot_proto_dot_messages__pb2.DESCRIPTOR,
     ])
