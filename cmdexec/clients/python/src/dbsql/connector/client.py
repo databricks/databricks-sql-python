@@ -64,7 +64,6 @@ class Connection:
 class Cursor:
     def __init__(self, connection, result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
         self.connection = connection
-        self.description = None
         self.rowcount = -1
         self.arraysize = 1
         self.buffer_size_bytes = result_buffer_size_bytes
@@ -88,12 +87,15 @@ class Cursor:
     def _response_to_result_set(self, execute_command_response, status):
         command_id = execute_command_response.command_id
         arrow_results = execute_command_response.results.arrow_ipc_stream
+        schema_message = execute_command_response.results.metadata \
+                         and execute_command_response.results.metadata.schema
         has_been_closed_server_side = execute_command_response.closed
         has_more_rows = execute_command_response.results.has_more_rows
         num_valid_rows = execute_command_response.results.num_valid_rows
 
         return ResultSet(self.connection, command_id, status, has_been_closed_server_side,
-                         has_more_rows, arrow_results, num_valid_rows, self.buffer_size_bytes)
+                         has_more_rows, arrow_results, num_valid_rows, schema_message,
+                         self.buffer_size_bytes)
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -145,8 +147,10 @@ class Cursor:
             command=operation,
             conf_overlay=None,
             row_limit=None,
-            result_options=None,
-        )
+            result_options=messages_pb2.CommandResultOptions(
+                max_bytes=self.buffer_size_bytes,
+                include_metadata=True,
+            ))
 
         execute_command_response = self.connection.base_client.make_request(
             self.connection.base_client.stub.ExecuteCommand, execute_command_request)
@@ -186,6 +190,13 @@ class Cursor:
         if self.active_result_set:
             self._close_and_clear_active_result_set()
 
+    @property
+    def description(self):
+        if self.active_result_set:
+            return self.active_result_set.description
+        else:
+            return None
+
 
 class ResultSet:
     def __init__(self,
@@ -196,6 +207,7 @@ class ResultSet:
                  has_more_rows,
                  arrow_ipc_stream=None,
                  num_valid_rows=None,
+                 schema_message=None,
                  result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
         self.connection = connection
         self.command_id = command_id
@@ -204,14 +216,16 @@ class ResultSet:
         self.has_more_rows = has_more_rows
         self.buffer_size_bytes = result_buffer_size_bytes
         self._row_index = 0
+        self.description = None
 
         assert (self.status not in [messages_pb2.PENDING, messages_pb2.RUNNING])
 
         if arrow_ipc_stream:
-            # In the case we are passed in an initial result set, the server has taken the
-            # fast path and has no more rows to send
+            # In this case the server has taken the fast path and returned an initial batch of
+            # results
             self.results = ArrowQueue(
                 pyarrow.ipc.open_stream(arrow_ipc_stream).read_all(), num_valid_rows, 0)
+            self.description = self._get_schema_description(schema_message)
         else:
             # In this case, there are results waiting on the server so we fetch now for simplicity
             self._fill_results_buffer()
@@ -239,7 +253,8 @@ class ResultSet:
         arrow_table = pyarrow.ipc.open_stream(result_message.arrow_ipc_stream).read_all()
         results = ArrowQueue(arrow_table, num_valid_rows,
                              self._row_index - result_message.start_row_offset)
-        return results, result_message.has_more_rows
+        description = self._get_schema_description(result_message.metadata.schema)
+        return results, result_message.has_more_rows, description
 
     def _fill_results_buffer(self):
         if self.status == messages_pb2.CLOSED:
@@ -247,9 +262,10 @@ class ResultSet:
         elif self.status == messages_pb2.ERROR:
             raise DatabaseError("Command %s failed" % self.command_id)
         else:
-            results, has_more_rows = self._fetch_and_deserialize_results()
+            results, has_more_rows, description = self._fetch_and_deserialize_results()
             self.results = results
             self.has_more_rows = has_more_rows
+            self.description = description
 
     @staticmethod
     def _convert_arrow_table(table):
@@ -333,6 +349,21 @@ class ResultSet:
         finally:
             self.has_been_closed_server_side = True
             self.status = messages_pb2.CLOSED
+
+    @staticmethod
+    def _get_schema_description(table_schema_message):
+        """
+        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
+        """
+
+        def map_col_type(type_):
+            if type_.startswith('decimal'):
+                return 'decimal'
+            else:
+                return type_
+
+        return [(column.name, map_col_type(column.type), None, None, None, None, None)
+                for column in table_schema_message.columns]
 
 
 class ArrowQueue:

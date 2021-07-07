@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import MagicMock
 from collections import deque
 
 import pyarrow as pa
@@ -40,13 +41,14 @@ class FetchTests(unittest.TestCase):
         # If the initial results have been set, then we should never try and fetch more
         arrow_ipc_stream = FetchTests.make_arrow_ipc_stream(initial_results)
         return client.ResultSet(
-            None,
-            None,
-            None,
-            True,
+            connection=None,
+            command_id=None,
+            status=None,
+            has_been_closed_server_side=True,
+            has_more_rows=False,
             arrow_ipc_stream=arrow_ipc_stream,
             num_valid_rows=len(initial_results),
-            has_more_rows=False)
+            schema_message=MagicMock())
 
     @staticmethod
     def make_dummy_result_set_from_batch_list(batch_list):
@@ -58,7 +60,8 @@ class FetchTests(unittest.TestCase):
                 results = FetchTests.make_arrow_queue(batch_list[batch_index])
                 batch_index += 1
 
-                return results, batch_index < len(batch_list)
+                return results, batch_index < len(batch_list), \
+                       [('id', 'integer', None, None, None, None, None)]
 
         return SemiFakeResultSet(None, None, None, False, False)
 
