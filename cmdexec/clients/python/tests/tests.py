@@ -39,7 +39,7 @@ class SimpleTests(unittest.TestCase):
     @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
@@ -58,7 +58,7 @@ class SimpleTests(unittest.TestCase):
         for closed in (True, False):
             with self.subTest(closed=closed):
                 instance = mock_client_class.return_value
-                mock_response = Mock()
+                mock_response = MagicMock()
                 mock_response.id = b'\x22'
                 instance.make_request.return_value = mock_response
                 instance.stub.CloseCommand = Mock()
@@ -79,7 +79,7 @@ class SimpleTests(unittest.TestCase):
     @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
         instance = mock_client_class.return_value
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
@@ -95,17 +95,18 @@ class SimpleTests(unittest.TestCase):
     def test_closing_result_set_with_closed_connection_soft_closes_commands(
             self, pyarrow_ipc_open_stream):
         mock_connection = Mock()
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_response.id = b'\x22'
         mock_connection.base_client.make_request.return_value = mock_response
         result_set = client.ResultSet(
-            mock_connection,
-            b'\x10',
-            command_pb2.SUCCESS,
-            False,
+            connection=mock_connection,
+            command_id=b'\x10',
+            status=command_pb2.SUCCESS,
+            has_been_closed_server_side=False,
             arrow_ipc_stream=Mock(),
             num_valid_rows=0,
-            has_more_rows=False)
+            has_more_rows=False,
+            schema_message=MagicMock())
         mock_connection.open = False
 
         result_set.close()
@@ -118,7 +119,7 @@ class SimpleTests(unittest.TestCase):
     @patch("pyarrow.ipc.open_stream")
     def test_closing_result_set_hard_closes_commands(self, pyarrow_ipc_open_stream):
         mock_connection = Mock()
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_response.id = b'\x22'
         mock_response.results.start_row_offset = 0
         mock_connection.base_client.make_request.return_value = mock_response
@@ -135,7 +136,7 @@ class SimpleTests(unittest.TestCase):
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_executing_multiple_commands_uses_the_most_recent_command(self, mock_result_set_class):
         mock_client = Mock()
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_connection = Mock()
         mock_response.id = b'\x22'
         mock_response.status.state = command_pb2.SUCCESS
@@ -159,7 +160,7 @@ class SimpleTests(unittest.TestCase):
 
     def test_closed_cursor_doesnt_allow_operations(self):
         mock_connection = Mock()
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_response.id = b'\x22'
         mock_response.status.state = command_pb2.SUCCESS
         mock_connection.base_client.make_request.return_value = mock_response
@@ -178,7 +179,7 @@ class SimpleTests(unittest.TestCase):
     @patch("pyarrow.ipc.open_stream")
     def test_negative_fetch_throws_exception(self, pyarrow_ipc_open_stream_mock):
         mock_connection = Mock()
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_response.id = b'\x22'
         mock_response.results.start_row_offset = 0
         mock_response.status.state = command_pb2.SUCCESS
@@ -199,7 +200,7 @@ class SimpleTests(unittest.TestCase):
     @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     def test_context_manager_closes_connection(self, mock_client_class):
         instance = mock_client_class.return_value
-        mock_response = Mock()
+        mock_response = MagicMock()
         mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
