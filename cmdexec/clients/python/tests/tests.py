@@ -2,10 +2,10 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 
-import dbsql.connector
-import dbsql.connector.client as client
-import dbsql.connector.api.messages_pb2 as command_pb2
-from dbsql.connector.errors import InterfaceError, DatabaseError, Error
+import databricks.sql
+import databricks.sql.client as client
+import databricks.sql.api.messages_pb2 as command_pb2
+from databricks.sql.errors import InterfaceError, DatabaseError, Error
 
 from cmdexec.clients.python.tests.test_fetches import FetchTests
 
@@ -17,7 +17,7 @@ class SimpleTests(unittest.TestCase):
     interact with the server.
     """
 
-    PACKAGE_NAME = "dbsql.connector"
+    PACKAGE_NAME = "databricks.sql"
 
     def test_missing_params_throws_interface_exception(self):
         bad_connection_args = [
@@ -33,7 +33,7 @@ class SimpleTests(unittest.TestCase):
 
         for args in bad_connection_args:
             with self.assertRaises(InterfaceError) as ie:
-                dbsql.connector.connect(**args)
+                databricks.sql.connect(**args)
                 self.assertIn("HOST and PORT", ie.message)
 
     @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
@@ -44,7 +44,7 @@ class SimpleTests(unittest.TestCase):
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
 
-        connection = dbsql.connector.connect(**good_connection_args)
+        connection = databricks.sql.connect(**good_connection_args)
         connection.close()
 
         # Check the close session request has an id of x22
@@ -68,7 +68,7 @@ class SimpleTests(unittest.TestCase):
                 mock_result_set_class.return_value = mock_result_set
 
                 good_connection_args = {"HOST": 1, "PORT": 1}
-                connection = dbsql.connector.connect(**good_connection_args)
+                connection = databricks.sql.connect(**good_connection_args)
                 cursor = connection.cursor()
                 cursor.execute("SELECT 1;")
                 connection.close()
@@ -83,7 +83,7 @@ class SimpleTests(unittest.TestCase):
         mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
         good_connection_args = {"HOST": 1, "PORT": 1}
-        connection = dbsql.connector.connect(**good_connection_args)
+        connection = databricks.sql.connect(**good_connection_args)
         self.assertTrue(connection.open)
         connection.close()
         self.assertFalse(connection.open)
@@ -206,7 +206,7 @@ class SimpleTests(unittest.TestCase):
         good_connection_args = {"HOST": 1, "PORT": 1}
         mock_close = Mock()
 
-        with dbsql.connector.connect(**good_connection_args) as connection:
+        with databricks.sql.connect(**good_connection_args) as connection:
             connection.close = mock_close
         mock_close.assert_called_once_with()
 

@@ -4,7 +4,7 @@ from collections import deque
 
 import pyarrow as pa
 
-import dbsql.connector.client as client
+import databricks.sql.client as client
 
 
 class FetchTests(unittest.TestCase):
