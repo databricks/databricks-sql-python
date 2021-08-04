@@ -10,16 +10,16 @@ from google.protobuf import symbol_database as _symbol_database
 
 _sym_db = _symbol_database.Default()
 
-from dbsql.connector.api import messages_pb2 as cmdexec_dot_api_dot_proto_dot_messages__pb2
+from databricks.sql.api import messages_pb2 as cmdexec_dot_api_dot_proto_dot_messages__pb2
 
 DESCRIPTOR = _descriptor.FileDescriptor(
     name='cmdexec/api/proto/sql_cmd_service.proto',
-    package='com.databricks.cmdexec',
+    package='databricks.sql',
     syntax='proto2',
-    serialized_options=b'\n\026com.databricks.cmdexec\240\001\001',
+    serialized_options=b'\n\022com.databricks.sql\240\001\001',
     create_key=_descriptor._internal_create_key,
     serialized_pb=
-    b'\n\'cmdexec/api/proto/sql_cmd_service.proto\x12\x16\x63om.databricks.cmdexec\x1a cmdexec/api/proto/messages.proto2\xaa\x06\n\x11SqlCommandService\x12\x66\n\x0bOpenSession\x12*.com.databricks.cmdexec.OpenSessionRequest\x1a+.com.databricks.cmdexec.OpenSessionResponse\x12i\n\x0c\x43loseSession\x12+.com.databricks.cmdexec.CloseSessionRequest\x1a,.com.databricks.cmdexec.CloseSessionResponse\x12o\n\x0eGetSessionInfo\x12-.com.databricks.cmdexec.GetSessionInfoRequest\x1a..com.databricks.cmdexec.GetSessionInfoResponse\x12o\n\x0e\x45xecuteCommand\x12-.com.databricks.cmdexec.ExecuteCommandRequest\x1a..com.databricks.cmdexec.ExecuteCommandResponse\x12u\n\x10GetCommandStatus\x12/.com.databricks.cmdexec.GetCommandStatusRequest\x1a\x30.com.databricks.cmdexec.GetCommandStatusResponse\x12~\n\x13\x46\x65tchCommandResults\x12\x32.com.databricks.cmdexec.FetchCommandResultsRequest\x1a\x33.com.databricks.cmdexec.FetchCommandResultsResponse\x12i\n\x0c\x43loseCommand\x12+.com.databricks.cmdexec.CloseCommandRequest\x1a,.com.databricks.cmdexec.CloseCommandResponseB\x1b\n\x16\x63om.databricks.cmdexec\xa0\x01\x01',
+    b'\n\'cmdexec/api/proto/sql_cmd_service.proto\x12\x0e\x64\x61tabricks.sql\x1a cmdexec/api/proto/messages.proto2\xba\x05\n\x11SqlCommandService\x12V\n\x0bOpenSession\x12\".databricks.sql.OpenSessionRequest\x1a#.databricks.sql.OpenSessionResponse\x12Y\n\x0c\x43loseSession\x12#.databricks.sql.CloseSessionRequest\x1a$.databricks.sql.CloseSessionResponse\x12_\n\x0eGetSessionInfo\x12%.databricks.sql.GetSessionInfoRequest\x1a&.databricks.sql.GetSessionInfoResponse\x12_\n\x0e\x45xecuteCommand\x12%.databricks.sql.ExecuteCommandRequest\x1a&.databricks.sql.ExecuteCommandResponse\x12\x65\n\x10GetCommandStatus\x12\'.databricks.sql.GetCommandStatusRequest\x1a(.databricks.sql.GetCommandStatusResponse\x12n\n\x13\x46\x65tchCommandResults\x12*.databricks.sql.FetchCommandResultsRequest\x1a+.databricks.sql.FetchCommandResultsResponse\x12Y\n\x0c\x43loseCommand\x12#.databricks.sql.CloseCommandRequest\x1a$.databricks.sql.CloseCommandResponseB\x17\n\x12\x63om.databricks.sql\xa0\x01\x01',
     dependencies=[
         cmdexec_dot_api_dot_proto_dot_messages__pb2.DESCRIPTOR,
     ])
@@ -30,17 +30,17 @@ DESCRIPTOR._options = None
 
 _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
     name='SqlCommandService',
-    full_name='com.databricks.cmdexec.SqlCommandService',
+    full_name='databricks.sql.SqlCommandService',
     file=DESCRIPTOR,
     index=0,
     serialized_options=None,
     create_key=_descriptor._internal_create_key,
-    serialized_start=102,
-    serialized_end=912,
+    serialized_start=94,
+    serialized_end=792,
     methods=[
         _descriptor.MethodDescriptor(
             name='OpenSession',
-            full_name='com.databricks.cmdexec.SqlCommandService.OpenSession',
+            full_name='databricks.sql.SqlCommandService.OpenSession',
             index=0,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._OPENSESSIONREQUEST,
@@ -50,7 +50,7 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
         ),
         _descriptor.MethodDescriptor(
             name='CloseSession',
-            full_name='com.databricks.cmdexec.SqlCommandService.CloseSession',
+            full_name='databricks.sql.SqlCommandService.CloseSession',
             index=1,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._CLOSESESSIONREQUEST,
@@ -60,7 +60,7 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
         ),
         _descriptor.MethodDescriptor(
             name='GetSessionInfo',
-            full_name='com.databricks.cmdexec.SqlCommandService.GetSessionInfo',
+            full_name='databricks.sql.SqlCommandService.GetSessionInfo',
             index=2,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._GETSESSIONINFOREQUEST,
@@ -70,7 +70,7 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
         ),
         _descriptor.MethodDescriptor(
             name='ExecuteCommand',
-            full_name='com.databricks.cmdexec.SqlCommandService.ExecuteCommand',
+            full_name='databricks.sql.SqlCommandService.ExecuteCommand',
             index=3,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._EXECUTECOMMANDREQUEST,
@@ -80,7 +80,7 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
         ),
         _descriptor.MethodDescriptor(
             name='GetCommandStatus',
-            full_name='com.databricks.cmdexec.SqlCommandService.GetCommandStatus',
+            full_name='databricks.sql.SqlCommandService.GetCommandStatus',
             index=4,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._GETCOMMANDSTATUSREQUEST,
@@ -90,7 +90,7 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
         ),
         _descriptor.MethodDescriptor(
             name='FetchCommandResults',
-            full_name='com.databricks.cmdexec.SqlCommandService.FetchCommandResults',
+            full_name='databricks.sql.SqlCommandService.FetchCommandResults',
             index=5,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._FETCHCOMMANDRESULTSREQUEST,
@@ -100,7 +100,7 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
         ),
         _descriptor.MethodDescriptor(
             name='CloseCommand',
-            full_name='com.databricks.cmdexec.SqlCommandService.CloseCommand',
+            full_name='databricks.sql.SqlCommandService.CloseCommand',
             index=6,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._CLOSECOMMANDREQUEST,
