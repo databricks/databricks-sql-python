@@ -18,33 +18,21 @@ class SimpleTests(unittest.TestCase):
     """
 
     PACKAGE_NAME = "databricks.sql"
-
-    def test_missing_params_throws_interface_exception(self):
-        bad_connection_args = [
-            {
-                "HOST": 'host'
-            },
-            {
-                "host": 'host',
-                "PORT": 1
-            },
-            {},
-        ]
-
-        for args in bad_connection_args:
-            with self.assertRaises(InterfaceError) as ie:
-                databricks.sql.connect(**args)
-                self.assertIn("HOST and PORT", ie.message)
+    DUMMY_CONNECTION_ARGS = {
+        "server_hostname": "foo",
+        "http_path": None,
+        "access_token": "tok",
+        "_skip_routing_headers": True,
+    }
 
     @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value
         mock_response = MagicMock()
-        mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
-        good_connection_args = {"HOST": 1, "PORT": 1}
+        mock_response.id = b'\x22'
 
-        connection = databricks.sql.connect(**good_connection_args)
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         connection.close()
 
         # Check the close session request has an id of x22
@@ -67,8 +55,7 @@ class SimpleTests(unittest.TestCase):
                 mock_result_set = Mock()
                 mock_result_set_class.return_value = mock_result_set
 
-                good_connection_args = {"HOST": 1, "PORT": 1}
-                connection = databricks.sql.connect(**good_connection_args)
+                connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
                 cursor = connection.cursor()
                 cursor.execute("SELECT 1;")
                 connection.close()
@@ -82,8 +69,7 @@ class SimpleTests(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
-        good_connection_args = {"HOST": 1, "PORT": 1}
-        connection = databricks.sql.connect(**good_connection_args)
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         self.assertTrue(connection.open)
         connection.close()
         self.assertFalse(connection.open)
@@ -203,10 +189,9 @@ class SimpleTests(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
-        good_connection_args = {"HOST": 1, "PORT": 1}
         mock_close = Mock()
 
-        with databricks.sql.connect(**good_connection_args) as connection:
+        with databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS) as connection:
             connection.close = mock_close
         mock_close.assert_called_once_with()
 

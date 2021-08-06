@@ -1,15 +1,16 @@
+import base64
 import logging
+import re
+import time
 from typing import Dict, Tuple, List
-from collections import deque
 
 import grpc
 import pyarrow
 
-from .errors import OperationalError, InterfaceError, DatabaseError, Error
-from .api import messages_pb2
-from .api.sql_cmd_service_pb2_grpc import SqlCommandServiceStub
-
-import time
+from databricks.sql.errors import OperationalError, InterfaceError, DatabaseError, Error
+from databricks.sql.api import messages_pb2
+from databricks.sql.api.sql_cmd_service_pb2_grpc import SqlCommandServiceStub
+from databricks.sql import USER_AGENT_NAME, __version__
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +18,59 @@ DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
 
 
 class Connection:
-    def __init__(self, **kwargs):
-        try:
-            self.host = kwargs["HOST"]
-            self.port = kwargs["PORT"]
-        except KeyError:
-            raise InterfaceError("Please include arguments HOST and PORT in kwargs for Connection")
+    def __init__(self, server_hostname, http_path, access_token, metadata=None, **kwargs):
+        """Connect to a Databricks SQL endpoint or a Databricks cluster.
 
-        self.base_client = CmdExecBaseHttpClient(self.host, self.port, kwargs.get("metadata", []))
+       :param server_hostname: Databricks instance host name.
+       :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
+              or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
+       :param access_token: Http Bearer access token, e.g. Databricks Personal Access Token.
+       :param metadata: An optional list of (k, v) pairs that will be set as Http headers on every request
+       """
+
+        # Internal arguments in **kwargs:
+        # _user_agent_entry
+        #   Tag to add to User-Agent header. For use by partners.
+        # _username, _password
+        #   Username and password Basic authentication (no official support)
+        # _enable_ssl
+        #  Connect over HTTP instead of HTTPS
+        # _port
+        #  Which port to connect to
+        # _skip_routing_headers:
+        #  Don't set routing headers if set to True (for use when connecting directly to server)
+
+        self.host = server_hostname
+        self.port = kwargs.get("_port", 443)
+
+        if kwargs.get("_username") and kwargs.get("_password"):
+            auth_credentials = "{username}:{password}".format(
+                username=kwargs.get("_username"), password=kwargs.get("_password")).encode("UTF-8")
+            auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
+            authorization_header = "Basic {}".format(auth_credentials_base64)
+        elif access_token:
+            authorization_header = "Bearer {}".format(access_token)
+        else:
+            raise ValueError("No valid authentication settings.")
+
+        if not kwargs.get("_user_agent_entry"):
+            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
+        else:
+            useragent_header = "{}/{} ({})".format(USER_AGENT_NAME, __version__,
+                                                   kwargs.get("_user_agent_entry"))
+
+        base_headers = [("Authorization", authorization_header),
+                        ("X-Databricks-Sqlgateway-CommandService-Mode", "grpc-thrift"),
+                        ("User-Agent", useragent_header)]
+
+        if not kwargs.get("_skip_routing_headers"):
+            base_headers.append(self._http_path_to_routing_header(http_path))
+
+        self.base_client = CmdExecBaseHttpClient(
+            self.host,
+            self.port, (metadata or []) + base_headers,
+            enable_ssl=kwargs.get("_enable_ssl", True))
+
         open_session_request = messages_pb2.OpenSessionRequest(
             configuration={},
             client_session_id=None,
@@ -44,6 +90,18 @@ class Connection:
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+    def _http_path_to_routing_header(self, http_path):
+        cluster_re = r'/?sql/protocolv1/o/\d+/(\d+-\d+-[a-zA-Z0-9]+)'
+        endpoint_re = r'/?sql/.*/endpoints/([a-f0-9]+)'
+        cluster_id_match = re.search(cluster_re, http_path)
+        endpoint_re_match = re.search(endpoint_re, http_path)
+        if cluster_id_match:
+            return "X-Databricks-Cluster-Id", cluster_id_match.groups()[0]
+        elif endpoint_re_match:
+            return "X-Databricks-Sql-Endpoint-Id", endpoint_re_match.groups()[0]
+        else:
+            raise ValueError("Please provide a valid http_path")
+
     def cursor(self, buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
         if not self.open:
             raise Error("Cannot create cursor from closed connection")
@@ -62,10 +120,13 @@ class Connection:
 
 
 class Cursor:
-    def __init__(self, connection, result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
+    def __init__(self,
+                 connection,
+                 result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+                 arraysize=10000):
         self.connection = connection
         self.rowcount = -1
-        self.arraysize = 1
+        self.arraysize = arraysize
         self.buffer_size_bytes = result_buffer_size_bytes
         self.active_result_set = None
         # Note that Cursor closed => active result set closed, but not vice versa
@@ -148,6 +209,7 @@ class Cursor:
             conf_overlay=None,
             row_limit=None,
             result_options=messages_pb2.CommandResultOptions(
+                max_rows=self.arraysize,
                 max_bytes=self.buffer_size_bytes,
                 include_metadata=True,
             ))
@@ -208,7 +270,8 @@ class ResultSet:
                  arrow_ipc_stream=None,
                  num_valid_rows=None,
                  schema_message=None,
-                 result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
+                 result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+                 arraysize=10000):
         self.connection = connection
         self.command_id = command_id
         self.status = status
@@ -217,6 +280,7 @@ class ResultSet:
         self.buffer_size_bytes = result_buffer_size_bytes
         self._row_index = 0
         self.description = None
+        self.arraysize = arraysize
 
         assert (self.status not in [messages_pb2.PENDING, messages_pb2.RUNNING])
 
@@ -243,6 +307,7 @@ class ResultSet:
             id=self.command_id,
             options=messages_pb2.CommandResultOptions(
                 max_bytes=self.buffer_size_bytes,
+                max_rows=self.arraysize,
                 row_offset=self._row_index,
                 include_metadata=True,
             ))
@@ -392,11 +457,19 @@ class CmdExecBaseHttpClient:
     A thin wrapper around a gRPC channel that takes cares of headers etc.
     """
 
-    def __init__(self, host: str, port: int, http_headers: List[Tuple[str, str]]):
+    def __init__(self, host: str, port: int, http_headers: List[Tuple[str, str]], enable_ssl=True):
         self.host_url = host + ":" + str(port)
         self.http_headers = [(k.lower(), v) for (k, v) in http_headers]
-        self.channel = grpc.insecure_channel(
-            self.host_url, options=[('grpc.max_receive_message_length', -1)])
+        if enable_ssl:
+            self.channel = grpc.secure_channel(
+                self.host_url,
+                options=[('grpc.max_receive_message_length', -1)],
+                credentials=grpc.ssl_channel_credentials())
+        else:
+            self.channel = grpc.insecure_channel(
+                self.host_url,
+                options=[('grpc.max_receive_message_length', -1)],
+            )
         self.stub = SqlCommandServiceStub(self.channel)
 
     def make_request(self, method, request):

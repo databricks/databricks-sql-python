@@ -1,6 +1,3 @@
-from .client import Connection
-
-
 class _DBAPITypeObject(object):
     def __init__(self, *values):
         self.values = values
@@ -16,6 +13,10 @@ DATETIME = _DBAPITypeObject('timestamp')
 DATE = _DBAPITypeObject('date')
 ROWID = _DBAPITypeObject()
 
+__version__ = "1.0.0"
+USER_AGENT_NAME = "PyDatabricksSqlConnector"
+
 
 def connect(**kwargs):
+    from .client import Connection
     return Connection(**kwargs)
