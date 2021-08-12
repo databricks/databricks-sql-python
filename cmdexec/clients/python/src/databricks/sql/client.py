@@ -74,12 +74,11 @@ class Connection:
         open_session_request = messages_pb2.OpenSessionRequest(
             configuration={},
             client_session_id=None,
-            session_info_fields=None,
         )
 
         resp = self.base_client.make_request(self.base_client.stub.OpenSession,
                                              open_session_request)
-        self.session_id = resp.id
+        self.session_id = resp.session_id
         self.open = True
         logger.info("Successfully opened session " + str(self.session_id.hex()))
         self._cursors = []
@@ -111,7 +110,7 @@ class Connection:
         return cursor
 
     def close(self):
-        close_session_request = messages_pb2.CloseSessionRequest(id=self.session_id)
+        close_session_request = messages_pb2.CloseSessionRequest(session_id=self.session_id)
         self.base_client.make_request(self.base_client.stub.CloseSession, close_session_request)
         self.open = False
 
@@ -171,14 +170,14 @@ class Cursor:
 
     def _check_response_for_error(self, resp, command_id):
         status = resp.status.state
-        if status == messages_pb2.ERROR:
+        if status == messages_pb2.COMMAND_STATE_ERROR:
             raise DatabaseError(
                 "Command %s failed with error message %s" % (command_id, resp.status.error_message))
-        elif status == messages_pb2.CLOSED:
+        elif status == messages_pb2.COMMAND_STATE_CLOSED:
             raise DatabaseError("Command %s closed before results could be fetched" % command_id)
 
     def _poll_for_state(self, command_id):
-        get_status_request = messages_pb2.GetCommandStatusRequest(id=command_id)
+        get_status_request = messages_pb2.GetCommandStatusRequest(command_id=command_id)
 
         resp = self.connection.base_client.make_request(
             self.connection.base_client.stub.GetCommandStatus, get_status_request)
@@ -188,7 +187,7 @@ class Cursor:
 
     def _wait_until_command_done(self, command_id, initial_status):
         status = initial_status
-        while status in [messages_pb2.PENDING, messages_pb2.RUNNING]:
+        while status in [messages_pb2.COMMAND_STATE_PENDING, messages_pb2.COMMAND_STATE_RUNNING]:
             resp = self._poll_for_state(command_id)
             status = resp.status.state
             self._check_response_for_error(resp, command_id)
@@ -282,7 +281,9 @@ class ResultSet:
         self.description = None
         self.arraysize = arraysize
 
-        assert (self.status not in [messages_pb2.PENDING, messages_pb2.RUNNING])
+        assert (self.status not in [
+            messages_pb2.COMMAND_STATE_PENDING, messages_pb2.COMMAND_STATE_RUNNING
+        ])
 
         if arrow_ipc_stream:
             # In this case the server has taken the fast path and returned an initial batch of
@@ -304,7 +305,7 @@ class ResultSet:
 
     def _fetch_and_deserialize_results(self):
         fetch_results_request = messages_pb2.FetchCommandResultsRequest(
-            id=self.command_id,
+            command_id=self.command_id,
             options=messages_pb2.CommandResultOptions(
                 max_bytes=self.buffer_size_bytes,
                 max_rows=self.arraysize,
@@ -322,9 +323,9 @@ class ResultSet:
         return results, result_message.has_more_rows, description
 
     def _fill_results_buffer(self):
-        if self.status == messages_pb2.CLOSED:
+        if self.status == messages_pb2.COMMAND_STATE_CLOSED:
             raise Error("Can't fetch results on closed command %s" % self.command_id)
-        elif self.status == messages_pb2.ERROR:
+        elif self.status == messages_pb2.COMMAND_STATE_ERROR:
             raise DatabaseError("Command %s failed" % self.command_id)
         else:
             results, has_more_rows, description = self._fetch_and_deserialize_results()
@@ -406,14 +407,14 @@ class ResultSet:
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            if self.status != messages_pb2.CLOSED and not self.has_been_closed_server_side \
+            if self.status != messages_pb2.COMMAND_STATE_CLOSED and not self.has_been_closed_server_side \
               and self.connection.open:
-                close_command_request = messages_pb2.CloseCommandRequest(id=self.command_id)
+                close_command_request = messages_pb2.CloseCommandRequest(command_id=self.command_id)
                 self.connection.base_client.make_request(
                     self.connection.base_client.stub.CloseCommand, close_command_request)
         finally:
             self.has_been_closed_server_side = True
-            self.status = messages_pb2.CLOSED
+            self.status = messages_pb2.COMMAND_STATE_CLOSED
 
     @staticmethod
     def _get_schema_description(table_schema_message):
@@ -427,7 +428,7 @@ class ResultSet:
             else:
                 return type_
 
-        return [(column.name, map_col_type(column.type), None, None, None, None, None)
+        return [(column.name, map_col_type(column.datatype), None, None, None, None, None)
                 for column in table_schema_message.columns]
 
 
