@@ -18,7 +18,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
     serialized_options=b'\n\022com.databricks.sql\240\001\001',
     create_key=_descriptor._internal_create_key,
     serialized_pb=
-    b'\n cmdexec/api/proto/messages.proto\x12\x0e\x64\x61tabricks.sql\"+\n\rMapFieldEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x95\x01\n\x11SessionInfoFields\x12\x13\n\x0bserver_name\x18\x01 \x01(\x08\x12\x15\n\rspark_version\x18\x02 \x01(\x08\x12\x1b\n\x13max_column_name_len\x18\x06 \x01(\x08\x12\x1b\n\x13max_schema_name_len\x18\x07 \x01(\x08\x12\x1a\n\x12max_table_name_len\x18\x08 \x01(\x08\"\x8f\x01\n\x0bSessionInfo\x12\x13\n\x0bserver_name\x18\x01 \x01(\t\x12\x15\n\rspark_version\x18\x02 \x01(\t\x12\x1b\n\x13max_column_name_len\x18\x06 \x01(\x05\x12\x1b\n\x13max_schema_name_len\x18\x07 \x01(\x05\x12\x1a\n\x12max_table_name_len\x18\x08 \x01(\x05\"G\n\x06\x43olumn\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04type\x18\x02 \x01(\t\x12\x0f\n\x07\x63omment\x18\x03 \x01(\t\x12\x10\n\x08position\x18\x04 \x01(\x05\"6\n\x0bTableSchema\x12\'\n\x07\x63olumns\x18\x01 \x03(\x0b\x32\x16.databricks.sql.Column\"d\n\x0eResultMetadata\x12+\n\x06schema\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.TableSchema\x12\x10\n\x08num_rows\x18\x02 \x01(\x05\x12\x13\n\x0bnum_batches\x18\x03 \x01(\x05\"\x7f\n\x14\x43ommandResultOptions\x12\x14\n\x0c\x62\x61tch_offset\x18\x01 \x01(\x05\x12\x12\n\nrow_offset\x18\x02 \x01(\x05\x12\x10\n\x08max_rows\x18\x03 \x01(\x05\x12\x11\n\tmax_bytes\x18\x04 \x01(\x03\x12\x18\n\x10include_metadata\x18\x05 \x01(\x08\"\xa5\x01\n\x0e\x43ommandResults\x12\x18\n\x10\x61rrow_ipc_stream\x18\x01 \x01(\x0c\x12\x18\n\x10start_row_offset\x18\x05 \x01(\x05\x12\x15\n\rhas_more_rows\x18\x06 \x01(\x08\x12\x30\n\x08metadata\x18\x07 \x01(\x0b\x32\x1e.databricks.sql.ResultMetadata\x12\x16\n\x0enum_valid_rows\x18\x08 \x01(\x05\"S\n\rCommandStatus\x12+\n\x05state\x18\x01 \x01(\x0e\x32\x1c.databricks.sql.CommandState\x12\x15\n\rerror_message\x18\x02 \x01(\t\"\xa5\x01\n\x12OpenSessionRequest\x12\x34\n\rconfiguration\x18\x01 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x19\n\x11\x63lient_session_id\x18\x02 \x01(\x0c\x12>\n\x13session_info_fields\x18\x03 \x01(\x0b\x32!.databricks.sql.SessionInfoFields\"T\n\x13OpenSessionResponse\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x31\n\x0csession_info\x18\x02 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\"!\n\x13\x43loseSessionRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseSessionResponse\"c\n\x15GetSessionInfoRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12>\n\x13session_info_fields\x18\x02 \x01(\x0b\x32!.databricks.sql.SessionInfoFields\"K\n\x16GetSessionInfoResponse\x12\x31\n\x0csession_info\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\"\xdd\x01\n\x15\x45xecuteCommandRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x19\n\x11\x63lient_command_id\x18\x02 \x01(\x0c\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12\x33\n\x0c\x63onf_overlay\x18\x04 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x11\n\trow_limit\x18\x05 \x01(\x05\x12<\n\x0eresult_options\x18\x06 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\"\x9c\x01\n\x16\x45xecuteCommandResponse\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12-\n\x06status\x18\x02 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\x12/\n\x07results\x18\x03 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\x12\x0e\n\x06\x63losed\x18\x04 \x01(\x08\"%\n\x17GetCommandStatusRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\"I\n\x18GetCommandStatusResponse\x12-\n\x06status\x18\x01 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\"_\n\x1a\x46\x65tchCommandResultsRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\x12\x35\n\x07options\x18\x02 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\"N\n\x1b\x46\x65tchCommandResultsResponse\x12/\n\x07results\x18\x01 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\"!\n\x13\x43loseCommandRequest\x12\n\n\x02id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseCommandResponse*L\n\x0c\x43ommandState\x12\x0b\n\x07PENDING\x10\x00\x12\x0b\n\x07RUNNING\x10\x01\x12\x0b\n\x07SUCCESS\x10\x02\x12\n\n\x06\x43LOSED\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x42\x17\n\x12\x63om.databricks.sql\xa0\x01\x01'
+    b'\n cmdexec/api/proto/messages.proto\x12\x0e\x64\x61tabricks.sql\"+\n\rMapFieldEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x8f\x01\n\x0bSessionInfo\x12\x13\n\x0bserver_name\x18\x01 \x01(\t\x12\x15\n\rspark_version\x18\x02 \x01(\t\x12\x1b\n\x13max_column_name_len\x18\x03 \x01(\x05\x12\x1b\n\x13max_schema_name_len\x18\x04 \x01(\x05\x12\x1a\n\x12max_table_name_len\x18\x05 \x01(\x05\"K\n\x06\x43olumn\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x10\n\x08\x64\x61tatype\x18\x02 \x01(\t\x12\x0f\n\x07\x63omment\x18\x03 \x01(\t\x12\x10\n\x08position\x18\x04 \x01(\x05\"6\n\x0bTableSchema\x12\'\n\x07\x63olumns\x18\x01 \x03(\x0b\x32\x16.databricks.sql.Column\"X\n\x0eResultMetadata\x12+\n\x06schema\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.TableSchema\x12\x19\n\x11is_lz4_compressed\x18\x02 \x01(\x08\"i\n\x14\x43ommandResultOptions\x12\x12\n\nrow_offset\x18\x01 \x01(\x05\x12\x10\n\x08max_rows\x18\x02 \x01(\x05\x12\x11\n\tmax_bytes\x18\x03 \x01(\x03\x12\x18\n\x10include_metadata\x18\x04 \x01(\x08\"\xa5\x01\n\x0e\x43ommandResults\x12\x18\n\x10\x61rrow_ipc_stream\x18\x01 \x01(\x0c\x12\x18\n\x10start_row_offset\x18\x02 \x01(\x05\x12\x16\n\x0enum_valid_rows\x18\x03 \x01(\x05\x12\x15\n\rhas_more_rows\x18\x04 \x01(\x08\x12\x30\n\x08metadata\x18\x05 \x01(\x0b\x32\x1e.databricks.sql.ResultMetadata\"S\n\rCommandStatus\x12+\n\x05state\x18\x01 \x01(\x0e\x32\x1c.databricks.sql.CommandState\x12\x15\n\rerror_message\x18\x02 \x01(\t\"e\n\x12OpenSessionRequest\x12\x34\n\rconfiguration\x18\x01 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x19\n\x11\x63lient_session_id\x18\x02 \x01(\x0c\"\\\n\x13OpenSessionResponse\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x31\n\x0csession_info\x18\x02 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\")\n\x13\x43loseSessionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseSessionResponse\"+\n\x15GetSessionInfoRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\"K\n\x16GetSessionInfoResponse\x12\x31\n\x0csession_info\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\"\x80\x02\n\x15\x45xecuteCommandRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x19\n\x11\x63lient_command_id\x18\x02 \x01(\x0c\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12\x33\n\x0c\x63onf_overlay\x18\x04 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x11\n\trow_limit\x18\x05 \x01(\x05\x12<\n\x0eresult_options\x18\x06 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\x12!\n\x19\x63\x61n_decompress_lz4_result\x18\x07 \x01(\x08\"\x9c\x01\n\x16\x45xecuteCommandResponse\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12-\n\x06status\x18\x02 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\x12/\n\x07results\x18\x03 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\x12\x0e\n\x06\x63losed\x18\x04 \x01(\x08\"-\n\x17GetCommandStatusRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\"I\n\x18GetCommandStatusResponse\x12-\n\x06status\x18\x01 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\"g\n\x1a\x46\x65tchCommandResultsRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12\x35\n\x07options\x18\x02 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\"N\n\x1b\x46\x65tchCommandResultsResponse\x12/\n\x07results\x18\x01 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\")\n\x13\x43loseCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseCommandResponse*\xb1\x01\n\x0c\x43ommandState\x12\x1d\n\x19\x43OMMAND_STATE_UNSPECIFIED\x10\x00\x12\x19\n\x15\x43OMMAND_STATE_PENDING\x10\x01\x12\x19\n\x15\x43OMMAND_STATE_RUNNING\x10\x02\x12\x19\n\x15\x43OMMAND_STATE_SUCCESS\x10\x03\x12\x18\n\x14\x43OMMAND_STATE_CLOSED\x10\x04\x12\x17\n\x13\x43OMMAND_STATE_ERROR\x10\x05\x42\x17\n\x12\x63om.databricks.sql\xa0\x01\x01'
 )
 
 _COMMANDSTATE = _descriptor.EnumDescriptor(
@@ -29,54 +29,62 @@ _COMMANDSTATE = _descriptor.EnumDescriptor(
     create_key=_descriptor._internal_create_key,
     values=[
         _descriptor.EnumValueDescriptor(
-            name='PENDING',
+            name='COMMAND_STATE_UNSPECIFIED',
             index=0,
             number=0,
             serialized_options=None,
             type=None,
             create_key=_descriptor._internal_create_key),
         _descriptor.EnumValueDescriptor(
-            name='RUNNING',
+            name='COMMAND_STATE_PENDING',
             index=1,
             number=1,
             serialized_options=None,
             type=None,
             create_key=_descriptor._internal_create_key),
         _descriptor.EnumValueDescriptor(
-            name='SUCCESS',
+            name='COMMAND_STATE_RUNNING',
             index=2,
             number=2,
             serialized_options=None,
             type=None,
             create_key=_descriptor._internal_create_key),
         _descriptor.EnumValueDescriptor(
-            name='CLOSED',
+            name='COMMAND_STATE_SUCCESS',
             index=3,
             number=3,
             serialized_options=None,
             type=None,
             create_key=_descriptor._internal_create_key),
         _descriptor.EnumValueDescriptor(
-            name='ERROR',
+            name='COMMAND_STATE_CLOSED',
             index=4,
             number=4,
+            serialized_options=None,
+            type=None,
+            create_key=_descriptor._internal_create_key),
+        _descriptor.EnumValueDescriptor(
+            name='COMMAND_STATE_ERROR',
+            index=5,
+            number=5,
             serialized_options=None,
             type=None,
             create_key=_descriptor._internal_create_key),
     ],
     containing_type=None,
     serialized_options=None,
-    serialized_start=2232,
-    serialized_end=2308,
+    serialized_start=2005,
+    serialized_end=2182,
 )
 _sym_db.RegisterEnumDescriptor(_COMMANDSTATE)
 
 CommandState = enum_type_wrapper.EnumTypeWrapper(_COMMANDSTATE)
-PENDING = 0
-RUNNING = 1
-SUCCESS = 2
-CLOSED = 3
-ERROR = 4
+COMMAND_STATE_UNSPECIFIED = 0
+COMMAND_STATE_PENDING = 1
+COMMAND_STATE_RUNNING = 2
+COMMAND_STATE_SUCCESS = 3
+COMMAND_STATE_CLOSED = 4
+COMMAND_STATE_ERROR = 5
 
 _MAPFIELDENTRY = _descriptor.Descriptor(
     name='MapFieldEntry',
@@ -135,117 +143,6 @@ _MAPFIELDENTRY = _descriptor.Descriptor(
     serialized_end=95,
 )
 
-_SESSIONINFOFIELDS = _descriptor.Descriptor(
-    name='SessionInfoFields',
-    full_name='databricks.sql.SessionInfoFields',
-    filename=None,
-    file=DESCRIPTOR,
-    containing_type=None,
-    create_key=_descriptor._internal_create_key,
-    fields=[
-        _descriptor.FieldDescriptor(
-            name='server_name',
-            full_name='databricks.sql.SessionInfoFields.server_name',
-            index=0,
-            number=1,
-            type=8,
-            cpp_type=7,
-            label=1,
-            has_default_value=False,
-            default_value=False,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='spark_version',
-            full_name='databricks.sql.SessionInfoFields.spark_version',
-            index=1,
-            number=2,
-            type=8,
-            cpp_type=7,
-            label=1,
-            has_default_value=False,
-            default_value=False,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='max_column_name_len',
-            full_name='databricks.sql.SessionInfoFields.max_column_name_len',
-            index=2,
-            number=6,
-            type=8,
-            cpp_type=7,
-            label=1,
-            has_default_value=False,
-            default_value=False,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='max_schema_name_len',
-            full_name='databricks.sql.SessionInfoFields.max_schema_name_len',
-            index=3,
-            number=7,
-            type=8,
-            cpp_type=7,
-            label=1,
-            has_default_value=False,
-            default_value=False,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='max_table_name_len',
-            full_name='databricks.sql.SessionInfoFields.max_table_name_len',
-            index=4,
-            number=8,
-            type=8,
-            cpp_type=7,
-            label=1,
-            has_default_value=False,
-            default_value=False,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-    ],
-    extensions=[],
-    nested_types=[],
-    enum_types=[],
-    serialized_options=None,
-    is_extendable=False,
-    syntax='proto2',
-    extension_ranges=[],
-    oneofs=[],
-    serialized_start=98,
-    serialized_end=247,
-)
-
 _SESSIONINFO = _descriptor.Descriptor(
     name='SessionInfo',
     full_name='databricks.sql.SessionInfo',
@@ -294,7 +191,7 @@ _SESSIONINFO = _descriptor.Descriptor(
             name='max_column_name_len',
             full_name='databricks.sql.SessionInfo.max_column_name_len',
             index=2,
-            number=6,
+            number=3,
             type=5,
             cpp_type=1,
             label=1,
@@ -312,7 +209,7 @@ _SESSIONINFO = _descriptor.Descriptor(
             name='max_schema_name_len',
             full_name='databricks.sql.SessionInfo.max_schema_name_len',
             index=3,
-            number=7,
+            number=4,
             type=5,
             cpp_type=1,
             label=1,
@@ -330,7 +227,7 @@ _SESSIONINFO = _descriptor.Descriptor(
             name='max_table_name_len',
             full_name='databricks.sql.SessionInfo.max_table_name_len',
             index=4,
-            number=8,
+            number=5,
             type=5,
             cpp_type=1,
             label=1,
@@ -353,8 +250,8 @@ _SESSIONINFO = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=250,
-    serialized_end=393,
+    serialized_start=98,
+    serialized_end=241,
 )
 
 _COLUMN = _descriptor.Descriptor(
@@ -384,8 +281,8 @@ _COLUMN = _descriptor.Descriptor(
             file=DESCRIPTOR,
             create_key=_descriptor._internal_create_key),
         _descriptor.FieldDescriptor(
-            name='type',
-            full_name='databricks.sql.Column.type',
+            name='datatype',
+            full_name='databricks.sql.Column.datatype',
             index=1,
             number=2,
             type=9,
@@ -446,8 +343,8 @@ _COLUMN = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=395,
-    serialized_end=466,
+    serialized_start=243,
+    serialized_end=318,
 )
 
 _TABLESCHEMA = _descriptor.Descriptor(
@@ -485,8 +382,8 @@ _TABLESCHEMA = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=468,
-    serialized_end=522,
+    serialized_start=320,
+    serialized_end=374,
 )
 
 _RESULTMETADATA = _descriptor.Descriptor(
@@ -516,139 +413,10 @@ _RESULTMETADATA = _descriptor.Descriptor(
             file=DESCRIPTOR,
             create_key=_descriptor._internal_create_key),
         _descriptor.FieldDescriptor(
-            name='num_rows',
-            full_name='databricks.sql.ResultMetadata.num_rows',
+            name='is_lz4_compressed',
+            full_name='databricks.sql.ResultMetadata.is_lz4_compressed',
             index=1,
             number=2,
-            type=5,
-            cpp_type=1,
-            label=1,
-            has_default_value=False,
-            default_value=0,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='num_batches',
-            full_name='databricks.sql.ResultMetadata.num_batches',
-            index=2,
-            number=3,
-            type=5,
-            cpp_type=1,
-            label=1,
-            has_default_value=False,
-            default_value=0,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-    ],
-    extensions=[],
-    nested_types=[],
-    enum_types=[],
-    serialized_options=None,
-    is_extendable=False,
-    syntax='proto2',
-    extension_ranges=[],
-    oneofs=[],
-    serialized_start=524,
-    serialized_end=624,
-)
-
-_COMMANDRESULTOPTIONS = _descriptor.Descriptor(
-    name='CommandResultOptions',
-    full_name='databricks.sql.CommandResultOptions',
-    filename=None,
-    file=DESCRIPTOR,
-    containing_type=None,
-    create_key=_descriptor._internal_create_key,
-    fields=[
-        _descriptor.FieldDescriptor(
-            name='batch_offset',
-            full_name='databricks.sql.CommandResultOptions.batch_offset',
-            index=0,
-            number=1,
-            type=5,
-            cpp_type=1,
-            label=1,
-            has_default_value=False,
-            default_value=0,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='row_offset',
-            full_name='databricks.sql.CommandResultOptions.row_offset',
-            index=1,
-            number=2,
-            type=5,
-            cpp_type=1,
-            label=1,
-            has_default_value=False,
-            default_value=0,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='max_rows',
-            full_name='databricks.sql.CommandResultOptions.max_rows',
-            index=2,
-            number=3,
-            type=5,
-            cpp_type=1,
-            label=1,
-            has_default_value=False,
-            default_value=0,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='max_bytes',
-            full_name='databricks.sql.CommandResultOptions.max_bytes',
-            index=3,
-            number=4,
-            type=3,
-            cpp_type=2,
-            label=1,
-            has_default_value=False,
-            default_value=0,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='include_metadata',
-            full_name='databricks.sql.CommandResultOptions.include_metadata',
-            index=4,
-            number=5,
             type=8,
             cpp_type=7,
             label=1,
@@ -671,8 +439,101 @@ _COMMANDRESULTOPTIONS = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=626,
-    serialized_end=753,
+    serialized_start=376,
+    serialized_end=464,
+)
+
+_COMMANDRESULTOPTIONS = _descriptor.Descriptor(
+    name='CommandResultOptions',
+    full_name='databricks.sql.CommandResultOptions',
+    filename=None,
+    file=DESCRIPTOR,
+    containing_type=None,
+    create_key=_descriptor._internal_create_key,
+    fields=[
+        _descriptor.FieldDescriptor(
+            name='row_offset',
+            full_name='databricks.sql.CommandResultOptions.row_offset',
+            index=0,
+            number=1,
+            type=5,
+            cpp_type=1,
+            label=1,
+            has_default_value=False,
+            default_value=0,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            file=DESCRIPTOR,
+            create_key=_descriptor._internal_create_key),
+        _descriptor.FieldDescriptor(
+            name='max_rows',
+            full_name='databricks.sql.CommandResultOptions.max_rows',
+            index=1,
+            number=2,
+            type=5,
+            cpp_type=1,
+            label=1,
+            has_default_value=False,
+            default_value=0,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            file=DESCRIPTOR,
+            create_key=_descriptor._internal_create_key),
+        _descriptor.FieldDescriptor(
+            name='max_bytes',
+            full_name='databricks.sql.CommandResultOptions.max_bytes',
+            index=2,
+            number=3,
+            type=3,
+            cpp_type=2,
+            label=1,
+            has_default_value=False,
+            default_value=0,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            file=DESCRIPTOR,
+            create_key=_descriptor._internal_create_key),
+        _descriptor.FieldDescriptor(
+            name='include_metadata',
+            full_name='databricks.sql.CommandResultOptions.include_metadata',
+            index=3,
+            number=4,
+            type=8,
+            cpp_type=7,
+            label=1,
+            has_default_value=False,
+            default_value=False,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            file=DESCRIPTOR,
+            create_key=_descriptor._internal_create_key),
+    ],
+    extensions=[],
+    nested_types=[],
+    enum_types=[],
+    serialized_options=None,
+    is_extendable=False,
+    syntax='proto2',
+    extension_ranges=[],
+    oneofs=[],
+    serialized_start=466,
+    serialized_end=571,
 )
 
 _COMMANDRESULTS = _descriptor.Descriptor(
@@ -705,7 +566,25 @@ _COMMANDRESULTS = _descriptor.Descriptor(
             name='start_row_offset',
             full_name='databricks.sql.CommandResults.start_row_offset',
             index=1,
-            number=5,
+            number=2,
+            type=5,
+            cpp_type=1,
+            label=1,
+            has_default_value=False,
+            default_value=0,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            file=DESCRIPTOR,
+            create_key=_descriptor._internal_create_key),
+        _descriptor.FieldDescriptor(
+            name='num_valid_rows',
+            full_name='databricks.sql.CommandResults.num_valid_rows',
+            index=2,
+            number=3,
             type=5,
             cpp_type=1,
             label=1,
@@ -722,8 +601,8 @@ _COMMANDRESULTS = _descriptor.Descriptor(
         _descriptor.FieldDescriptor(
             name='has_more_rows',
             full_name='databricks.sql.CommandResults.has_more_rows',
-            index=2,
-            number=6,
+            index=3,
+            number=4,
             type=8,
             cpp_type=7,
             label=1,
@@ -740,31 +619,13 @@ _COMMANDRESULTS = _descriptor.Descriptor(
         _descriptor.FieldDescriptor(
             name='metadata',
             full_name='databricks.sql.CommandResults.metadata',
-            index=3,
-            number=7,
+            index=4,
+            number=5,
             type=11,
             cpp_type=10,
             label=1,
             has_default_value=False,
             default_value=None,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='num_valid_rows',
-            full_name='databricks.sql.CommandResults.num_valid_rows',
-            index=4,
-            number=8,
-            type=5,
-            cpp_type=1,
-            label=1,
-            has_default_value=False,
-            default_value=0,
             message_type=None,
             enum_type=None,
             containing_type=None,
@@ -782,8 +643,8 @@ _COMMANDRESULTS = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=756,
-    serialized_end=921,
+    serialized_start=574,
+    serialized_end=739,
 )
 
 _COMMANDSTATUS = _descriptor.Descriptor(
@@ -839,8 +700,8 @@ _COMMANDSTATUS = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=923,
-    serialized_end=1006,
+    serialized_start=741,
+    serialized_end=824,
 )
 
 _OPENSESSIONREQUEST = _descriptor.Descriptor(
@@ -887,24 +748,6 @@ _OPENSESSIONREQUEST = _descriptor.Descriptor(
             serialized_options=None,
             file=DESCRIPTOR,
             create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='session_info_fields',
-            full_name='databricks.sql.OpenSessionRequest.session_info_fields',
-            index=2,
-            number=3,
-            type=11,
-            cpp_type=10,
-            label=1,
-            has_default_value=False,
-            default_value=None,
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
     ],
     extensions=[],
     nested_types=[],
@@ -914,8 +757,8 @@ _OPENSESSIONREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1009,
-    serialized_end=1174,
+    serialized_start=826,
+    serialized_end=927,
 )
 
 _OPENSESSIONRESPONSE = _descriptor.Descriptor(
@@ -927,8 +770,8 @@ _OPENSESSIONRESPONSE = _descriptor.Descriptor(
     create_key=_descriptor._internal_create_key,
     fields=[
         _descriptor.FieldDescriptor(
-            name='id',
-            full_name='databricks.sql.OpenSessionResponse.id',
+            name='session_id',
+            full_name='databricks.sql.OpenSessionResponse.session_id',
             index=0,
             number=1,
             type=12,
@@ -971,8 +814,8 @@ _OPENSESSIONRESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1176,
-    serialized_end=1260,
+    serialized_start=929,
+    serialized_end=1021,
 )
 
 _CLOSESESSIONREQUEST = _descriptor.Descriptor(
@@ -984,8 +827,8 @@ _CLOSESESSIONREQUEST = _descriptor.Descriptor(
     create_key=_descriptor._internal_create_key,
     fields=[
         _descriptor.FieldDescriptor(
-            name='id',
-            full_name='databricks.sql.CloseSessionRequest.id',
+            name='session_id',
+            full_name='databricks.sql.CloseSessionRequest.session_id',
             index=0,
             number=1,
             type=12,
@@ -1010,8 +853,8 @@ _CLOSESESSIONREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1262,
-    serialized_end=1295,
+    serialized_start=1023,
+    serialized_end=1064,
 )
 
 _CLOSESESSIONRESPONSE = _descriptor.Descriptor(
@@ -1030,8 +873,8 @@ _CLOSESESSIONRESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1297,
-    serialized_end=1319,
+    serialized_start=1066,
+    serialized_end=1088,
 )
 
 _GETSESSIONINFOREQUEST = _descriptor.Descriptor(
@@ -1043,8 +886,8 @@ _GETSESSIONINFOREQUEST = _descriptor.Descriptor(
     create_key=_descriptor._internal_create_key,
     fields=[
         _descriptor.FieldDescriptor(
-            name='id',
-            full_name='databricks.sql.GetSessionInfoRequest.id',
+            name='session_id',
+            full_name='databricks.sql.GetSessionInfoRequest.session_id',
             index=0,
             number=1,
             type=12,
@@ -1052,24 +895,6 @@ _GETSESSIONINFOREQUEST = _descriptor.Descriptor(
             label=1,
             has_default_value=False,
             default_value=b"",
-            message_type=None,
-            enum_type=None,
-            containing_type=None,
-            is_extension=False,
-            extension_scope=None,
-            serialized_options=None,
-            file=DESCRIPTOR,
-            create_key=_descriptor._internal_create_key),
-        _descriptor.FieldDescriptor(
-            name='session_info_fields',
-            full_name='databricks.sql.GetSessionInfoRequest.session_info_fields',
-            index=1,
-            number=2,
-            type=11,
-            cpp_type=10,
-            label=1,
-            has_default_value=False,
-            default_value=None,
             message_type=None,
             enum_type=None,
             containing_type=None,
@@ -1087,8 +912,8 @@ _GETSESSIONINFOREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1321,
-    serialized_end=1420,
+    serialized_start=1090,
+    serialized_end=1133,
 )
 
 _GETSESSIONINFORESPONSE = _descriptor.Descriptor(
@@ -1126,8 +951,8 @@ _GETSESSIONINFORESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1422,
-    serialized_end=1497,
+    serialized_start=1135,
+    serialized_end=1210,
 )
 
 _EXECUTECOMMANDREQUEST = _descriptor.Descriptor(
@@ -1246,6 +1071,24 @@ _EXECUTECOMMANDREQUEST = _descriptor.Descriptor(
             serialized_options=None,
             file=DESCRIPTOR,
             create_key=_descriptor._internal_create_key),
+        _descriptor.FieldDescriptor(
+            name='can_decompress_lz4_result',
+            full_name='databricks.sql.ExecuteCommandRequest.can_decompress_lz4_result',
+            index=6,
+            number=7,
+            type=8,
+            cpp_type=7,
+            label=1,
+            has_default_value=False,
+            default_value=False,
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            file=DESCRIPTOR,
+            create_key=_descriptor._internal_create_key),
     ],
     extensions=[],
     nested_types=[],
@@ -1255,8 +1098,8 @@ _EXECUTECOMMANDREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1500,
-    serialized_end=1721,
+    serialized_start=1213,
+    serialized_end=1469,
 )
 
 _EXECUTECOMMANDRESPONSE = _descriptor.Descriptor(
@@ -1348,8 +1191,8 @@ _EXECUTECOMMANDRESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1724,
-    serialized_end=1880,
+    serialized_start=1472,
+    serialized_end=1628,
 )
 
 _GETCOMMANDSTATUSREQUEST = _descriptor.Descriptor(
@@ -1361,8 +1204,8 @@ _GETCOMMANDSTATUSREQUEST = _descriptor.Descriptor(
     create_key=_descriptor._internal_create_key,
     fields=[
         _descriptor.FieldDescriptor(
-            name='id',
-            full_name='databricks.sql.GetCommandStatusRequest.id',
+            name='command_id',
+            full_name='databricks.sql.GetCommandStatusRequest.command_id',
             index=0,
             number=1,
             type=12,
@@ -1387,8 +1230,8 @@ _GETCOMMANDSTATUSREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1882,
-    serialized_end=1919,
+    serialized_start=1630,
+    serialized_end=1675,
 )
 
 _GETCOMMANDSTATUSRESPONSE = _descriptor.Descriptor(
@@ -1426,8 +1269,8 @@ _GETCOMMANDSTATUSRESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1921,
-    serialized_end=1994,
+    serialized_start=1677,
+    serialized_end=1750,
 )
 
 _FETCHCOMMANDRESULTSREQUEST = _descriptor.Descriptor(
@@ -1439,8 +1282,8 @@ _FETCHCOMMANDRESULTSREQUEST = _descriptor.Descriptor(
     create_key=_descriptor._internal_create_key,
     fields=[
         _descriptor.FieldDescriptor(
-            name='id',
-            full_name='databricks.sql.FetchCommandResultsRequest.id',
+            name='command_id',
+            full_name='databricks.sql.FetchCommandResultsRequest.command_id',
             index=0,
             number=1,
             type=12,
@@ -1483,8 +1326,8 @@ _FETCHCOMMANDRESULTSREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1996,
-    serialized_end=2091,
+    serialized_start=1752,
+    serialized_end=1855,
 )
 
 _FETCHCOMMANDRESULTSRESPONSE = _descriptor.Descriptor(
@@ -1522,8 +1365,8 @@ _FETCHCOMMANDRESULTSRESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2093,
-    serialized_end=2171,
+    serialized_start=1857,
+    serialized_end=1935,
 )
 
 _CLOSECOMMANDREQUEST = _descriptor.Descriptor(
@@ -1535,8 +1378,8 @@ _CLOSECOMMANDREQUEST = _descriptor.Descriptor(
     create_key=_descriptor._internal_create_key,
     fields=[
         _descriptor.FieldDescriptor(
-            name='id',
-            full_name='databricks.sql.CloseCommandRequest.id',
+            name='command_id',
+            full_name='databricks.sql.CloseCommandRequest.command_id',
             index=0,
             number=1,
             type=12,
@@ -1561,8 +1404,8 @@ _CLOSECOMMANDREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2173,
-    serialized_end=2206,
+    serialized_start=1937,
+    serialized_end=1978,
 )
 
 _CLOSECOMMANDRESPONSE = _descriptor.Descriptor(
@@ -1581,8 +1424,8 @@ _CLOSECOMMANDRESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=2208,
-    serialized_end=2230,
+    serialized_start=1980,
+    serialized_end=2002,
 )
 
 _TABLESCHEMA.fields_by_name['columns'].message_type = _COLUMN
@@ -1590,9 +1433,7 @@ _RESULTMETADATA.fields_by_name['schema'].message_type = _TABLESCHEMA
 _COMMANDRESULTS.fields_by_name['metadata'].message_type = _RESULTMETADATA
 _COMMANDSTATUS.fields_by_name['state'].enum_type = _COMMANDSTATE
 _OPENSESSIONREQUEST.fields_by_name['configuration'].message_type = _MAPFIELDENTRY
-_OPENSESSIONREQUEST.fields_by_name['session_info_fields'].message_type = _SESSIONINFOFIELDS
 _OPENSESSIONRESPONSE.fields_by_name['session_info'].message_type = _SESSIONINFO
-_GETSESSIONINFOREQUEST.fields_by_name['session_info_fields'].message_type = _SESSIONINFOFIELDS
 _GETSESSIONINFORESPONSE.fields_by_name['session_info'].message_type = _SESSIONINFO
 _EXECUTECOMMANDREQUEST.fields_by_name['conf_overlay'].message_type = _MAPFIELDENTRY
 _EXECUTECOMMANDREQUEST.fields_by_name['result_options'].message_type = _COMMANDRESULTOPTIONS
@@ -1602,7 +1443,6 @@ _GETCOMMANDSTATUSRESPONSE.fields_by_name['status'].message_type = _COMMANDSTATUS
 _FETCHCOMMANDRESULTSREQUEST.fields_by_name['options'].message_type = _COMMANDRESULTOPTIONS
 _FETCHCOMMANDRESULTSRESPONSE.fields_by_name['results'].message_type = _COMMANDRESULTS
 DESCRIPTOR.message_types_by_name['MapFieldEntry'] = _MAPFIELDENTRY
-DESCRIPTOR.message_types_by_name['SessionInfoFields'] = _SESSIONINFOFIELDS
 DESCRIPTOR.message_types_by_name['SessionInfo'] = _SESSIONINFO
 DESCRIPTOR.message_types_by_name['Column'] = _COLUMN
 DESCRIPTOR.message_types_by_name['TableSchema'] = _TABLESCHEMA
@@ -1636,16 +1476,6 @@ MapFieldEntry = _reflection.GeneratedProtocolMessageType(
         # @@protoc_insertion_point(class_scope:databricks.sql.MapFieldEntry)
     })
 _sym_db.RegisterMessage(MapFieldEntry)
-
-SessionInfoFields = _reflection.GeneratedProtocolMessageType(
-    'SessionInfoFields',
-    (_message.Message, ),
-    {
-        'DESCRIPTOR': _SESSIONINFOFIELDS,
-        '__module__': 'cmdexec.api.proto.messages_pb2'
-        # @@protoc_insertion_point(class_scope:databricks.sql.SessionInfoFields)
-    })
-_sym_db.RegisterMessage(SessionInfoFields)
 
 SessionInfo = _reflection.GeneratedProtocolMessageType(
     'SessionInfo',

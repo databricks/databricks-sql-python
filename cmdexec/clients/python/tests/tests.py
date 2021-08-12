@@ -29,15 +29,15 @@ class SimpleTests(unittest.TestCase):
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value
         mock_response = MagicMock()
+        mock_response.session_id = b'\x22'
         instance.make_request.return_value = mock_response
-        mock_response.id = b'\x22'
 
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         connection.close()
 
         # Check the close session request has an id of x22
         _, close_session_request = instance.make_request.call_args[0]
-        self.assertEqual(close_session_request.id, mock_response.id)
+        self.assertEqual(close_session_request.session_id, mock_response.session_id)
 
     @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
@@ -47,10 +47,10 @@ class SimpleTests(unittest.TestCase):
             with self.subTest(closed=closed):
                 instance = mock_client_class.return_value
                 mock_response = MagicMock()
-                mock_response.id = b'\x22'
+                mock_response.session_id = b'\x22'
                 instance.make_request.return_value = mock_response
                 instance.stub.CloseCommand = Mock()
-                mock_response.status.state = command_pb2.SUCCESS
+                mock_response.status.state = command_pb2.COMMAND_STATE_SUCCESS
                 mock_response.closed = closed
                 mock_result_set = Mock()
                 mock_result_set_class.return_value = mock_result_set
@@ -67,7 +67,7 @@ class SimpleTests(unittest.TestCase):
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
         instance = mock_client_class.return_value
         mock_response = MagicMock()
-        mock_response.id = b'\x22'
+        mock_response.session_id = b'\x22'
         instance.make_request.return_value = mock_response
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         self.assertTrue(connection.open)
@@ -82,12 +82,11 @@ class SimpleTests(unittest.TestCase):
             self, pyarrow_ipc_open_stream):
         mock_connection = Mock()
         mock_response = MagicMock()
-        mock_response.id = b'\x22'
         mock_connection.base_client.make_request.return_value = mock_response
         result_set = client.ResultSet(
             connection=mock_connection,
             command_id=b'\x10',
-            status=command_pb2.SUCCESS,
+            status=command_pb2.COMMAND_STATE_SUCCESS,
             has_been_closed_server_side=False,
             arrow_ipc_stream=Mock(),
             num_valid_rows=0,
@@ -100,32 +99,30 @@ class SimpleTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             mock_connection.base_client.make_request.assert_called_with(
                 mock_connection.base_client.stub.CloseCommand,
-                command_pb2.CloseCommandRequest(id=b'\x10'))
+                command_pb2.CloseCommandRequest(command_id=b'\x10'))
 
     @patch("pyarrow.ipc.open_stream")
     def test_closing_result_set_hard_closes_commands(self, pyarrow_ipc_open_stream):
         mock_connection = Mock()
         mock_response = MagicMock()
-        mock_response.id = b'\x22'
         mock_response.results.start_row_offset = 0
         mock_connection.base_client.make_request.return_value = mock_response
         result_set = client.ResultSet(
-            mock_connection, b'\x10', command_pb2.SUCCESS, False, has_more_rows=False)
+            mock_connection, b'\x10', command_pb2.COMMAND_STATE_SUCCESS, False, has_more_rows=False)
         mock_connection.open = True
 
         result_set.close()
 
         mock_connection.base_client.make_request.assert_called_with(
             mock_connection.base_client.stub.CloseCommand,
-            command_pb2.CloseCommandRequest(id=b'\x10'))
+            command_pb2.CloseCommandRequest(command_id=b'\x10'))
 
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_executing_multiple_commands_uses_the_most_recent_command(self, mock_result_set_class):
         mock_client = Mock()
         mock_response = MagicMock()
         mock_connection = Mock()
-        mock_response.id = b'\x22'
-        mock_response.status.state = command_pb2.SUCCESS
+        mock_response.status.state = command_pb2.COMMAND_STATE_SUCCESS
         mock_client.make_request.return_value = mock_response
         mock_connection.session_id = b'\x33'
         mock_connection.base_client = mock_client
@@ -147,8 +144,7 @@ class SimpleTests(unittest.TestCase):
     def test_closed_cursor_doesnt_allow_operations(self):
         mock_connection = Mock()
         mock_response = MagicMock()
-        mock_response.id = b'\x22'
-        mock_response.status.state = command_pb2.SUCCESS
+        mock_response.status.state = command_pb2.COMMAND_STATE_SUCCESS
         mock_connection.base_client.make_request.return_value = mock_response
 
         cursor = client.Cursor(mock_connection)
@@ -166,13 +162,16 @@ class SimpleTests(unittest.TestCase):
     def test_negative_fetch_throws_exception(self, pyarrow_ipc_open_stream_mock):
         mock_connection = Mock()
         mock_response = MagicMock()
-        mock_response.id = b'\x22'
         mock_response.results.start_row_offset = 0
-        mock_response.status.state = command_pb2.SUCCESS
+        mock_response.status.state = command_pb2.COMMAND_STATE_SUCCESS
         mock_connection.base_client.make_request.return_value = mock_response
 
         result_set = client.ResultSet(
-            mock_connection, b'\x22', command_pb2.SUCCESS, Mock(), has_more_rows=False)
+            mock_connection,
+            b'\x22',
+            command_pb2.COMMAND_STATE_SUCCESS,
+            Mock(),
+            has_more_rows=False)
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
@@ -187,7 +186,6 @@ class SimpleTests(unittest.TestCase):
     def test_context_manager_closes_connection(self, mock_client_class):
         instance = mock_client_class.return_value
         mock_response = MagicMock()
-        mock_response.id = b'\x22'
         instance.make_request.return_value = mock_response
         mock_close = Mock()
 
