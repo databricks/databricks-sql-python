@@ -130,6 +130,7 @@ class Cursor:
         self.active_result_set = None
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
+        self.executing_command_id = None
 
     def __enter__(self):
         return self
@@ -218,10 +219,14 @@ class Cursor:
         initial_status = execute_command_response.status.state
         command_id = execute_command_response.command_id
 
-        self._check_response_for_error(execute_command_response, command_id)
-        final_status = self._wait_until_command_done(command_id, initial_status)
-        self.active_result_set = self._response_to_result_set(execute_command_response,
-                                                              final_status)
+        try:
+            self.executing_command_id = command_id
+            self._check_response_for_error(execute_command_response, command_id)
+            final_status = self._wait_until_command_done(command_id, initial_status)
+            self.active_result_set = self._response_to_result_set(execute_command_response,
+                                                                  final_status)
+        finally:
+            self.executing_command_id = None
 
         return self
 
@@ -245,6 +250,18 @@ class Cursor:
             return self.active_result_set.fetchmany(n_rows)
         else:
             raise Error("There is no active result set")
+
+    def cancel(self):
+        command_id = self.executing_command_id
+
+        if command_id != None:
+            logger.info("Canceling command %s" % command_id)
+            cancel_command_request = messages_pb2.CancelCommandRequest(command_id=command_id)
+
+            self.connection.base_client.make_request(self.connection.base_client.stub.CancelCommand,
+                                                     cancel_command_request)
+        else:
+            raise Error("There is no executing command to cancel")
 
     def close(self):
         self.open = False
@@ -335,9 +352,8 @@ class ResultSet:
 
     @staticmethod
     def _convert_arrow_table(table):
-        dict_repr = table.to_pydict()
-        n_rows, n_cols = table.shape
-        list_repr = [[col[i] for col in dict_repr.values()] for i in range(n_rows)]
+        n_rows, _ = table.shape
+        list_repr = [[col[i].as_py() for col in table.itercolumns()] for i in range(n_rows)]
         return list_repr
 
     def fetchmany_arrow(self, n_rows):

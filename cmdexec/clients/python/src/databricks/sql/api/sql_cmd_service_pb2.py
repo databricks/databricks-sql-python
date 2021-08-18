@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
     serialized_options=b'\n\022com.databricks.sql\240\001\001',
     create_key=_descriptor._internal_create_key,
     serialized_pb=
-    b'\n\'cmdexec/api/proto/sql_cmd_service.proto\x12\x0e\x64\x61tabricks.sql\x1a cmdexec/api/proto/messages.proto2\xba\x05\n\x11SqlCommandService\x12V\n\x0bOpenSession\x12\".databricks.sql.OpenSessionRequest\x1a#.databricks.sql.OpenSessionResponse\x12Y\n\x0c\x43loseSession\x12#.databricks.sql.CloseSessionRequest\x1a$.databricks.sql.CloseSessionResponse\x12_\n\x0eGetSessionInfo\x12%.databricks.sql.GetSessionInfoRequest\x1a&.databricks.sql.GetSessionInfoResponse\x12_\n\x0e\x45xecuteCommand\x12%.databricks.sql.ExecuteCommandRequest\x1a&.databricks.sql.ExecuteCommandResponse\x12\x65\n\x10GetCommandStatus\x12\'.databricks.sql.GetCommandStatusRequest\x1a(.databricks.sql.GetCommandStatusResponse\x12n\n\x13\x46\x65tchCommandResults\x12*.databricks.sql.FetchCommandResultsRequest\x1a+.databricks.sql.FetchCommandResultsResponse\x12Y\n\x0c\x43loseCommand\x12#.databricks.sql.CloseCommandRequest\x1a$.databricks.sql.CloseCommandResponseB\x17\n\x12\x63om.databricks.sql\xa0\x01\x01',
+    b'\n\'cmdexec/api/proto/sql_cmd_service.proto\x12\x0e\x64\x61tabricks.sql\x1a cmdexec/api/proto/messages.proto2\x98\x06\n\x11SqlCommandService\x12V\n\x0bOpenSession\x12\".databricks.sql.OpenSessionRequest\x1a#.databricks.sql.OpenSessionResponse\x12Y\n\x0c\x43loseSession\x12#.databricks.sql.CloseSessionRequest\x1a$.databricks.sql.CloseSessionResponse\x12_\n\x0eGetSessionInfo\x12%.databricks.sql.GetSessionInfoRequest\x1a&.databricks.sql.GetSessionInfoResponse\x12_\n\x0e\x45xecuteCommand\x12%.databricks.sql.ExecuteCommandRequest\x1a&.databricks.sql.ExecuteCommandResponse\x12\x65\n\x10GetCommandStatus\x12\'.databricks.sql.GetCommandStatusRequest\x1a(.databricks.sql.GetCommandStatusResponse\x12n\n\x13\x46\x65tchCommandResults\x12*.databricks.sql.FetchCommandResultsRequest\x1a+.databricks.sql.FetchCommandResultsResponse\x12\\\n\rCancelCommand\x12$.databricks.sql.CancelCommandRequest\x1a%.databricks.sql.CancelCommandResponse\x12Y\n\x0c\x43loseCommand\x12#.databricks.sql.CloseCommandRequest\x1a$.databricks.sql.CloseCommandResponseB\x17\n\x12\x63om.databricks.sql\xa0\x01\x01',
     dependencies=[
         cmdexec_dot_api_dot_proto_dot_messages__pb2.DESCRIPTOR,
     ])
@@ -36,7 +36,7 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
     serialized_options=None,
     create_key=_descriptor._internal_create_key,
     serialized_start=94,
-    serialized_end=792,
+    serialized_end=886,
     methods=[
         _descriptor.MethodDescriptor(
             name='OpenSession',
@@ -99,9 +99,19 @@ _SQLCOMMANDSERVICE = _descriptor.ServiceDescriptor(
             create_key=_descriptor._internal_create_key,
         ),
         _descriptor.MethodDescriptor(
+            name='CancelCommand',
+            full_name='databricks.sql.SqlCommandService.CancelCommand',
+            index=6,
+            containing_service=None,
+            input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._CANCELCOMMANDREQUEST,
+            output_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._CANCELCOMMANDRESPONSE,
+            serialized_options=None,
+            create_key=_descriptor._internal_create_key,
+        ),
+        _descriptor.MethodDescriptor(
             name='CloseCommand',
             full_name='databricks.sql.SqlCommandService.CloseCommand',
-            index=6,
+            index=7,
             containing_service=None,
             input_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._CLOSECOMMANDREQUEST,
             output_type=cmdexec_dot_api_dot_proto_dot_messages__pb2._CLOSECOMMANDRESPONSE,

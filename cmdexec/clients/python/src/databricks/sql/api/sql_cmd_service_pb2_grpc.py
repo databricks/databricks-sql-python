@@ -58,6 +58,13 @@ class SqlCommandServiceStub(object):
             response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
             FetchCommandResultsResponse.FromString,
         )
+        self.CancelCommand = channel.unary_unary(
+            '/databricks.sql.SqlCommandService/CancelCommand',
+            request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CancelCommandRequest.
+            SerializeToString,
+            response_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CancelCommandResponse.
+            FromString,
+        )
         self.CloseCommand = channel.unary_unary(
             '/databricks.sql.SqlCommandService/CloseCommand',
             request_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CloseCommandRequest.
@@ -124,6 +131,13 @@ class SqlCommandServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CancelCommand(self, request, context):
+        """Cancels the requested command 
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CloseCommand(self, request, context):
         """Closes the requested command, cancels active commands, and frees associated resources 
         """
@@ -175,6 +189,13 @@ def add_SqlCommandServiceServicer_to_server(servicer, server):
             FetchCommandResultsRequest.FromString,
             response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.
             FetchCommandResultsResponse.SerializeToString,
+        ),
+        'CancelCommand': grpc.unary_unary_rpc_method_handler(
+            servicer.CancelCommand,
+            request_deserializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CancelCommandRequest.
+            FromString,
+            response_serializer=cmdexec_dot_api_dot_proto_dot_messages__pb2.CancelCommandResponse.
+            SerializeToString,
         ),
         'CloseCommand': grpc.unary_unary_rpc_method_handler(
             servicer.CloseCommand,
@@ -302,6 +323,24 @@ class SqlCommandService(object):
             cmdexec_dot_api_dot_proto_dot_messages__pb2.FetchCommandResultsResponse.FromString,
             options, channel_credentials, insecure, call_credentials, compression, wait_for_ready,
             timeout, metadata)
+
+    @staticmethod
+    def CancelCommand(request,
+                      target,
+                      options=(),
+                      channel_credentials=None,
+                      call_credentials=None,
+                      insecure=False,
+                      compression=None,
+                      wait_for_ready=None,
+                      timeout=None,
+                      metadata=None):
+        return grpc.experimental.unary_unary(
+            request, target, '/databricks.sql.SqlCommandService/CancelCommand',
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.CancelCommandRequest.SerializeToString,
+            cmdexec_dot_api_dot_proto_dot_messages__pb2.CancelCommandResponse.FromString, options,
+            channel_credentials, insecure, call_credentials, compression, wait_for_ready, timeout,
+            metadata)
 
     @staticmethod
     def CloseCommand(request,
