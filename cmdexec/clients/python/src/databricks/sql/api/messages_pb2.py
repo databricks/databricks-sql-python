@@ -18,7 +18,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
     serialized_options=b'\n\022com.databricks.sql\240\001\001',
     create_key=_descriptor._internal_create_key,
     serialized_pb=
-    b'\n cmdexec/api/proto/messages.proto\x12\x0e\x64\x61tabricks.sql\"+\n\rMapFieldEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x8f\x01\n\x0bSessionInfo\x12\x13\n\x0bserver_name\x18\x01 \x01(\t\x12\x15\n\rspark_version\x18\x02 \x01(\t\x12\x1b\n\x13max_column_name_len\x18\x03 \x01(\x05\x12\x1b\n\x13max_schema_name_len\x18\x04 \x01(\x05\x12\x1a\n\x12max_table_name_len\x18\x05 \x01(\x05\"K\n\x06\x43olumn\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x10\n\x08\x64\x61tatype\x18\x02 \x01(\t\x12\x0f\n\x07\x63omment\x18\x03 \x01(\t\x12\x10\n\x08position\x18\x04 \x01(\x05\"6\n\x0bTableSchema\x12\'\n\x07\x63olumns\x18\x01 \x03(\x0b\x32\x16.databricks.sql.Column\"X\n\x0eResultMetadata\x12+\n\x06schema\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.TableSchema\x12\x19\n\x11is_lz4_compressed\x18\x02 \x01(\x08\"i\n\x14\x43ommandResultOptions\x12\x12\n\nrow_offset\x18\x01 \x01(\x05\x12\x10\n\x08max_rows\x18\x02 \x01(\x05\x12\x11\n\tmax_bytes\x18\x03 \x01(\x03\x12\x18\n\x10include_metadata\x18\x04 \x01(\x08\"\xa5\x01\n\x0e\x43ommandResults\x12\x18\n\x10\x61rrow_ipc_stream\x18\x01 \x01(\x0c\x12\x18\n\x10start_row_offset\x18\x02 \x01(\x05\x12\x16\n\x0enum_valid_rows\x18\x03 \x01(\x05\x12\x15\n\rhas_more_rows\x18\x04 \x01(\x08\x12\x30\n\x08metadata\x18\x05 \x01(\x0b\x32\x1e.databricks.sql.ResultMetadata\"S\n\rCommandStatus\x12+\n\x05state\x18\x01 \x01(\x0e\x32\x1c.databricks.sql.CommandState\x12\x15\n\rerror_message\x18\x02 \x01(\t\"e\n\x12OpenSessionRequest\x12\x34\n\rconfiguration\x18\x01 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x19\n\x11\x63lient_session_id\x18\x02 \x01(\x0c\"\\\n\x13OpenSessionResponse\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x31\n\x0csession_info\x18\x02 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\")\n\x13\x43loseSessionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseSessionResponse\"+\n\x15GetSessionInfoRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\"K\n\x16GetSessionInfoResponse\x12\x31\n\x0csession_info\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\"\x80\x02\n\x15\x45xecuteCommandRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x19\n\x11\x63lient_command_id\x18\x02 \x01(\x0c\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12\x33\n\x0c\x63onf_overlay\x18\x04 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x11\n\trow_limit\x18\x05 \x01(\x05\x12<\n\x0eresult_options\x18\x06 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\x12!\n\x19\x63\x61n_decompress_lz4_result\x18\x07 \x01(\x08\"\x9c\x01\n\x16\x45xecuteCommandResponse\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12-\n\x06status\x18\x02 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\x12/\n\x07results\x18\x03 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\x12\x0e\n\x06\x63losed\x18\x04 \x01(\x08\"-\n\x17GetCommandStatusRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\"I\n\x18GetCommandStatusResponse\x12-\n\x06status\x18\x01 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\"g\n\x1a\x46\x65tchCommandResultsRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12\x35\n\x07options\x18\x02 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\"N\n\x1b\x46\x65tchCommandResultsResponse\x12/\n\x07results\x18\x01 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\")\n\x13\x43loseCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseCommandResponse*\xb1\x01\n\x0c\x43ommandState\x12\x1d\n\x19\x43OMMAND_STATE_UNSPECIFIED\x10\x00\x12\x19\n\x15\x43OMMAND_STATE_PENDING\x10\x01\x12\x19\n\x15\x43OMMAND_STATE_RUNNING\x10\x02\x12\x19\n\x15\x43OMMAND_STATE_SUCCESS\x10\x03\x12\x18\n\x14\x43OMMAND_STATE_CLOSED\x10\x04\x12\x17\n\x13\x43OMMAND_STATE_ERROR\x10\x05\x42\x17\n\x12\x63om.databricks.sql\xa0\x01\x01'
+    b'\n cmdexec/api/proto/messages.proto\x12\x0e\x64\x61tabricks.sql\"+\n\rMapFieldEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x8f\x01\n\x0bSessionInfo\x12\x13\n\x0bserver_name\x18\x01 \x01(\t\x12\x15\n\rspark_version\x18\x02 \x01(\t\x12\x1b\n\x13max_column_name_len\x18\x03 \x01(\x05\x12\x1b\n\x13max_schema_name_len\x18\x04 \x01(\x05\x12\x1a\n\x12max_table_name_len\x18\x05 \x01(\x05\"K\n\x06\x43olumn\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x10\n\x08\x64\x61tatype\x18\x02 \x01(\t\x12\x0f\n\x07\x63omment\x18\x03 \x01(\t\x12\x10\n\x08position\x18\x04 \x01(\x05\"6\n\x0bTableSchema\x12\'\n\x07\x63olumns\x18\x01 \x03(\x0b\x32\x16.databricks.sql.Column\"X\n\x0eResultMetadata\x12+\n\x06schema\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.TableSchema\x12\x19\n\x11is_lz4_compressed\x18\x02 \x01(\x08\"i\n\x14\x43ommandResultOptions\x12\x12\n\nrow_offset\x18\x01 \x01(\x05\x12\x10\n\x08max_rows\x18\x02 \x01(\x05\x12\x11\n\tmax_bytes\x18\x03 \x01(\x03\x12\x18\n\x10include_metadata\x18\x04 \x01(\x08\"\xa5\x01\n\x0e\x43ommandResults\x12\x18\n\x10\x61rrow_ipc_stream\x18\x01 \x01(\x0c\x12\x18\n\x10start_row_offset\x18\x02 \x01(\x05\x12\x16\n\x0enum_valid_rows\x18\x03 \x01(\x05\x12\x15\n\rhas_more_rows\x18\x04 \x01(\x08\x12\x30\n\x08metadata\x18\x05 \x01(\x0b\x32\x1e.databricks.sql.ResultMetadata\"S\n\rCommandStatus\x12+\n\x05state\x18\x01 \x01(\x0e\x32\x1c.databricks.sql.CommandState\x12\x15\n\rerror_message\x18\x02 \x01(\t\"e\n\x12OpenSessionRequest\x12\x34\n\rconfiguration\x18\x01 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x19\n\x11\x63lient_session_id\x18\x02 \x01(\x0c\"\\\n\x13OpenSessionResponse\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x31\n\x0csession_info\x18\x02 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\")\n\x13\x43loseSessionRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseSessionResponse\"+\n\x15GetSessionInfoRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\"K\n\x16GetSessionInfoResponse\x12\x31\n\x0csession_info\x18\x01 \x01(\x0b\x32\x1b.databricks.sql.SessionInfo\"\x80\x02\n\x15\x45xecuteCommandRequest\x12\x12\n\nsession_id\x18\x01 \x01(\x0c\x12\x19\n\x11\x63lient_command_id\x18\x02 \x01(\x0c\x12\x0f\n\x07\x63ommand\x18\x03 \x01(\t\x12\x33\n\x0c\x63onf_overlay\x18\x04 \x03(\x0b\x32\x1d.databricks.sql.MapFieldEntry\x12\x11\n\trow_limit\x18\x05 \x01(\x05\x12<\n\x0eresult_options\x18\x06 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\x12!\n\x19\x63\x61n_decompress_lz4_result\x18\x07 \x01(\x08\"\x9c\x01\n\x16\x45xecuteCommandResponse\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12-\n\x06status\x18\x02 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\x12/\n\x07results\x18\x03 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\x12\x0e\n\x06\x63losed\x18\x04 \x01(\x08\"-\n\x17GetCommandStatusRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\"I\n\x18GetCommandStatusResponse\x12-\n\x06status\x18\x01 \x01(\x0b\x32\x1d.databricks.sql.CommandStatus\"g\n\x1a\x46\x65tchCommandResultsRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\x12\x35\n\x07options\x18\x02 \x01(\x0b\x32$.databricks.sql.CommandResultOptions\"N\n\x1b\x46\x65tchCommandResultsResponse\x12/\n\x07results\x18\x01 \x01(\x0b\x32\x1e.databricks.sql.CommandResults\"*\n\x14\x43\x61ncelCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\"\x17\n\x15\x43\x61ncelCommandResponse\")\n\x13\x43loseCommandRequest\x12\x12\n\ncommand_id\x18\x01 \x01(\x0c\"\x16\n\x14\x43loseCommandResponse*\xb1\x01\n\x0c\x43ommandState\x12\x1d\n\x19\x43OMMAND_STATE_UNSPECIFIED\x10\x00\x12\x19\n\x15\x43OMMAND_STATE_PENDING\x10\x01\x12\x19\n\x15\x43OMMAND_STATE_RUNNING\x10\x02\x12\x19\n\x15\x43OMMAND_STATE_SUCCESS\x10\x03\x12\x18\n\x14\x43OMMAND_STATE_CLOSED\x10\x04\x12\x17\n\x13\x43OMMAND_STATE_ERROR\x10\x05\x42\x17\n\x12\x63om.databricks.sql\xa0\x01\x01'
 )
 
 _COMMANDSTATE = _descriptor.EnumDescriptor(
@@ -73,8 +73,8 @@ _COMMANDSTATE = _descriptor.EnumDescriptor(
     ],
     containing_type=None,
     serialized_options=None,
-    serialized_start=2005,
-    serialized_end=2182,
+    serialized_start=2074,
+    serialized_end=2251,
 )
 _sym_db.RegisterEnumDescriptor(_COMMANDSTATE)
 
@@ -1369,6 +1369,65 @@ _FETCHCOMMANDRESULTSRESPONSE = _descriptor.Descriptor(
     serialized_end=1935,
 )
 
+_CANCELCOMMANDREQUEST = _descriptor.Descriptor(
+    name='CancelCommandRequest',
+    full_name='databricks.sql.CancelCommandRequest',
+    filename=None,
+    file=DESCRIPTOR,
+    containing_type=None,
+    create_key=_descriptor._internal_create_key,
+    fields=[
+        _descriptor.FieldDescriptor(
+            name='command_id',
+            full_name='databricks.sql.CancelCommandRequest.command_id',
+            index=0,
+            number=1,
+            type=12,
+            cpp_type=9,
+            label=1,
+            has_default_value=False,
+            default_value=b"",
+            message_type=None,
+            enum_type=None,
+            containing_type=None,
+            is_extension=False,
+            extension_scope=None,
+            serialized_options=None,
+            file=DESCRIPTOR,
+            create_key=_descriptor._internal_create_key),
+    ],
+    extensions=[],
+    nested_types=[],
+    enum_types=[],
+    serialized_options=None,
+    is_extendable=False,
+    syntax='proto2',
+    extension_ranges=[],
+    oneofs=[],
+    serialized_start=1937,
+    serialized_end=1979,
+)
+
+_CANCELCOMMANDRESPONSE = _descriptor.Descriptor(
+    name='CancelCommandResponse',
+    full_name='databricks.sql.CancelCommandResponse',
+    filename=None,
+    file=DESCRIPTOR,
+    containing_type=None,
+    create_key=_descriptor._internal_create_key,
+    fields=[],
+    extensions=[],
+    nested_types=[],
+    enum_types=[],
+    serialized_options=None,
+    is_extendable=False,
+    syntax='proto2',
+    extension_ranges=[],
+    oneofs=[],
+    serialized_start=1981,
+    serialized_end=2004,
+)
+
 _CLOSECOMMANDREQUEST = _descriptor.Descriptor(
     name='CloseCommandRequest',
     full_name='databricks.sql.CloseCommandRequest',
@@ -1404,8 +1463,8 @@ _CLOSECOMMANDREQUEST = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1937,
-    serialized_end=1978,
+    serialized_start=2006,
+    serialized_end=2047,
 )
 
 _CLOSECOMMANDRESPONSE = _descriptor.Descriptor(
@@ -1424,8 +1483,8 @@ _CLOSECOMMANDRESPONSE = _descriptor.Descriptor(
     syntax='proto2',
     extension_ranges=[],
     oneofs=[],
-    serialized_start=1980,
-    serialized_end=2002,
+    serialized_start=2049,
+    serialized_end=2071,
 )
 
 _TABLESCHEMA.fields_by_name['columns'].message_type = _COLUMN
@@ -1462,6 +1521,8 @@ DESCRIPTOR.message_types_by_name['GetCommandStatusRequest'] = _GETCOMMANDSTATUSR
 DESCRIPTOR.message_types_by_name['GetCommandStatusResponse'] = _GETCOMMANDSTATUSRESPONSE
 DESCRIPTOR.message_types_by_name['FetchCommandResultsRequest'] = _FETCHCOMMANDRESULTSREQUEST
 DESCRIPTOR.message_types_by_name['FetchCommandResultsResponse'] = _FETCHCOMMANDRESULTSRESPONSE
+DESCRIPTOR.message_types_by_name['CancelCommandRequest'] = _CANCELCOMMANDREQUEST
+DESCRIPTOR.message_types_by_name['CancelCommandResponse'] = _CANCELCOMMANDRESPONSE
 DESCRIPTOR.message_types_by_name['CloseCommandRequest'] = _CLOSECOMMANDREQUEST
 DESCRIPTOR.message_types_by_name['CloseCommandResponse'] = _CLOSECOMMANDRESPONSE
 DESCRIPTOR.enum_types_by_name['CommandState'] = _COMMANDSTATE
@@ -1666,6 +1727,26 @@ FetchCommandResultsResponse = _reflection.GeneratedProtocolMessageType(
         # @@protoc_insertion_point(class_scope:databricks.sql.FetchCommandResultsResponse)
     })
 _sym_db.RegisterMessage(FetchCommandResultsResponse)
+
+CancelCommandRequest = _reflection.GeneratedProtocolMessageType(
+    'CancelCommandRequest',
+    (_message.Message, ),
+    {
+        'DESCRIPTOR': _CANCELCOMMANDREQUEST,
+        '__module__': 'cmdexec.api.proto.messages_pb2'
+        # @@protoc_insertion_point(class_scope:databricks.sql.CancelCommandRequest)
+    })
+_sym_db.RegisterMessage(CancelCommandRequest)
+
+CancelCommandResponse = _reflection.GeneratedProtocolMessageType(
+    'CancelCommandResponse',
+    (_message.Message, ),
+    {
+        'DESCRIPTOR': _CANCELCOMMANDRESPONSE,
+        '__module__': 'cmdexec.api.proto.messages_pb2'
+        # @@protoc_insertion_point(class_scope:databricks.sql.CancelCommandResponse)
+    })
+_sym_db.RegisterMessage(CancelCommandResponse)
 
 CloseCommandRequest = _reflection.GeneratedProtocolMessageType(
     'CloseCommandRequest',
