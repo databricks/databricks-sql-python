@@ -1,4 +1,6 @@
 import base64
+import datetime
+from decimal import Decimal
 import logging
 import re
 import time
@@ -7,7 +9,7 @@ from typing import Dict, Tuple, List
 import grpc
 import pyarrow
 
-from databricks.sql.errors import OperationalError, InterfaceError, DatabaseError, Error
+from databricks.sql.errors import OperationalError, InterfaceError, DatabaseError, Error, DataError
 from databricks.sql.api import messages_pb2
 from databricks.sql.api.sql_cmd_service_pb2_grpc import SqlCommandServiceStub
 from databricks.sql import USER_AGENT_NAME, __version__
@@ -15,6 +17,11 @@ from databricks.sql import USER_AGENT_NAME, __version__
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
+DEFAULT_ARRAY_SIZE = 100000
+
+_TIMESTAMP_PATTERN = re.compile(r'(\d+-\d+-\d+ \d+:\d+:\d+(\.\d{,6})?)')
+
+TYPES_CONVERTER = {"decimal": Decimal}
 
 
 class Connection:
@@ -101,11 +108,13 @@ class Connection:
         else:
             raise ValueError("Please provide a valid http_path")
 
-    def cursor(self, buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
+    def cursor(self,
+               arraysize=DEFAULT_ARRAY_SIZE,
+               buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
         if not self.open:
             raise Error("Cannot create cursor from closed connection")
 
-        cursor = Cursor(self, buffer_size_bytes)
+        cursor = Cursor(self, arraysize=arraysize, result_buffer_size_bytes=buffer_size_bytes)
         self._cursors.append(cursor)
         return cursor
 
@@ -122,12 +131,12 @@ class Cursor:
     def __init__(self,
                  connection,
                  result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-                 arraysize=10000):
+                 arraysize=DEFAULT_ARRAY_SIZE):
         self.connection = connection
         self.rowcount = -1
-        self.arraysize = arraysize
         self.buffer_size_bytes = result_buffer_size_bytes
         self.active_result_set = None
+        self.arraysize = arraysize
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
         self.executing_command_id = None
@@ -351,9 +360,19 @@ class ResultSet:
             self.description = description
 
     @staticmethod
-    def _convert_arrow_table(table):
+    def parse_type(type_, value):
+        converter = TYPES_CONVERTER.get(type_)
+        if converter:
+            return converter(value)
+        else:
+            return value
+
+    def _convert_arrow_table(self, table):
         n_rows, _ = table.shape
-        list_repr = [[col[i].as_py() for col in table.itercolumns()] for i in range(n_rows)]
+        list_repr = [[
+            self.parse_type(self.description[col_index][1], col[row_index].as_py())
+            for col_index, col in enumerate(table.itercolumns())
+        ] for row_index in range(n_rows)]
         return list_repr
 
     def fetchmany_arrow(self, n_rows):
@@ -397,7 +416,6 @@ class ResultSet:
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
-        self._row_index += 1
         res = self._convert_arrow_table(self.fetchmany_arrow(1))
         if len(res) > 0:
             return res[0]
