@@ -1,3 +1,6 @@
+from databricks.sql.errors import *
+
+
 class _DBAPITypeObject(object):
     def __init__(self, *values):
         self.values = values
@@ -5,10 +8,14 @@ class _DBAPITypeObject(object):
     def __eq__(self, other):
         return other in self.values
 
+    def __repr__(self):
+        return "DBAPITypeObject(%s)" % self.values
+
 
 STRING = _DBAPITypeObject('string')
 BINARY = _DBAPITypeObject('binary')
-NUMBER = _DBAPITypeObject('boolean', 'byte', 'short', 'integer', 'long', 'double', 'decimal')
+NUMBER = _DBAPITypeObject('boolean', 'tinyint', 'smallint', 'int', 'bigint', 'float', 'double',
+                          'decimal')
 DATETIME = _DBAPITypeObject('timestamp')
 DATE = _DBAPITypeObject('date')
 ROWID = _DBAPITypeObject()

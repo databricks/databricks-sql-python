@@ -40,7 +40,7 @@ class FetchTests(unittest.TestCase):
     def make_dummy_result_set_from_initial_results(initial_results):
         # If the initial results have been set, then we should never try and fetch more
         arrow_ipc_stream = FetchTests.make_arrow_ipc_stream(initial_results)
-        return client.ResultSet(
+        rs = client.ResultSet(
             connection=None,
             command_id=None,
             status=None,
@@ -49,6 +49,9 @@ class FetchTests(unittest.TestCase):
             arrow_ipc_stream=arrow_ipc_stream,
             num_valid_rows=len(initial_results),
             schema_message=MagicMock())
+        num_cols = len(initial_results[0]) if initial_results else 0
+        rs.description = [('', 'integer', None, None, None, None, None) * num_cols]
+        return rs
 
     @staticmethod
     def make_dummy_result_set_from_batch_list(batch_list):
@@ -63,7 +66,10 @@ class FetchTests(unittest.TestCase):
                 return results, batch_index < len(batch_list), \
                        [('id', 'integer', None, None, None, None, None)]
 
-        return SemiFakeResultSet(None, None, None, False, False)
+        rs = SemiFakeResultSet(None, None, None, False, False)
+        num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
+        rs.description = [('', 'integer', None, None, None, None, None) * num_cols]
+        return rs
 
     def test_fetchmany_with_initial_results(self):
         # Fetch all in one go
