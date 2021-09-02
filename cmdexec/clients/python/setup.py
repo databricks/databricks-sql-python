@@ -8,7 +8,8 @@ setuptools.setup(
     install_requires=[
         "grpcio",  # TODO: Minimum versions
         "pyarrow",
-        "protobuf"
+        "protobuf",
+        "cryptography",
     ],
     author="Databricks",
 )

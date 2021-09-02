@@ -1,4 +1,7 @@
 import base64
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from cryptography.x509.oid import NameOID
 import datetime
 from decimal import Decimal
 import logging
@@ -46,6 +49,13 @@ class Connection:
         #  Which port to connect to
         # _skip_routing_headers:
         #  Don't set routing headers if set to True (for use when connecting directly to server)
+        # _tls_verify_hostname
+        #   Set to False (Boolean) to disable SSL hostname verification, but check certificate.
+        # _tls_trusted_ca_file
+        #   Set to the path of the file containing trusted CA certificates for server certificate
+        #   verification. If not provide, uses system truststore.
+        # _tls_client_cert_file, _tls_client_cert_key_file
+        #   Set client SSL certificate.
 
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
@@ -76,7 +86,11 @@ class Connection:
         self.base_client = CmdExecBaseHttpClient(
             self.host,
             self.port, (metadata or []) + base_headers,
-            enable_ssl=kwargs.get("_enable_ssl", True))
+            enable_ssl=kwargs.get("_enable_ssl", True),
+            root_ca_path=kwargs.get("_tls_trusted_ca_file"),
+            cert_chain_path=kwargs.get("_tls_client_cert_file"),
+            cert_key_path=kwargs.get("_tls_client_cert_key_file"),
+            verify_hostname=kwargs.get("_tls_verify_hostname", True))
 
         open_session_request = messages_pb2.OpenSessionRequest(
             configuration={},
@@ -492,14 +506,62 @@ class CmdExecBaseHttpClient:
     A thin wrapper around a gRPC channel that takes cares of headers etc.
     """
 
-    def __init__(self, host: str, port: int, http_headers: List[Tuple[str, str]], enable_ssl=True):
+    def __init__(self,
+                 host: str,
+                 port: int,
+                 http_headers: List[Tuple[str, str]],
+                 enable_ssl=True,
+                 root_ca_path=None,
+                 cert_chain_path=None,
+                 cert_key_path=None,
+                 verify_hostname=True):
         self.host_url = host + ":" + str(port)
-        self.http_headers = [(k.lower(), v) for (k, v) in http_headers]
+        self.http_headers = [(k.lower(), str(v)) for (k, v) in http_headers]
         if enable_ssl:
+            if root_ca_path:
+                try:
+                    with open(root_ca_path, 'rb') as f:
+                        root_ca = f.read()
+                except OSError as e:
+                    raise OperationalError(
+                        "Error while trying to read root SSL certificate %s:" % root_ca_path, e)
+            else:
+                root_ca = None
+
+            if cert_chain_path:
+                try:
+                    with open(cert_chain_path, 'rb') as f:
+                        cert_chain = f.read()
+                except OSError as e:
+                    raise OperationalError(
+                        "Error while trying to read SSL certificate chain %s:" % cert_chain, e)
+            else:
+                cert_chain = None
+
+            if cert_key_path:
+                try:
+                    with open(cert_chain_path, 'rb') as f:
+                        cert_key = f.read()
+                except OSError as e:
+                    raise OperationalError(
+                        "Error while trying to read SSL certificate key %s:" % cert_key_path, e)
+            else:
+                cert_key = None
+
+            if not verify_hostname and root_ca:
+                # gRPC doesn't have a flag that lets us completely disable the cn name check,
+                # so we just set the target name override so they match.
+                cert_info = x509.load_pem_x509_certificate(root_ca, default_backend())
+                cn = cert_info.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+                target_name_override_opt = [('grpc.ssl_target_name_override', cn)]
+            else:
+                target_name_override_opt = []
+
             self.channel = grpc.secure_channel(
                 self.host_url,
-                options=[('grpc.max_receive_message_length', -1)],
-                credentials=grpc.ssl_channel_credentials())
+                options=[('grpc.max_receive_message_length', -1)] + target_name_override_opt,
+                credentials=grpc.ssl_channel_credentials(
+                    root_certificates=root_ca, certificate_chain=cert_chain, private_key=cert_key))
         else:
             self.channel = grpc.insecure_channel(
                 self.host_url,
