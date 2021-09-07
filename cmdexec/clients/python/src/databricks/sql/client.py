@@ -24,7 +24,32 @@ DEFAULT_ARRAY_SIZE = 100000
 
 _TIMESTAMP_PATTERN = re.compile(r'(\d+-\d+-\d+ \d+:\d+:\d+(\.\d{,6})?)')
 
-TYPES_CONVERTER = {"decimal": Decimal}
+
+def _parse_timestamp(value):
+    if type(value) is datetime.datetime:
+        # The cmd exec server will return a datetime.datetime, so no further parsing is needed
+        return value
+    elif value:
+        match = _TIMESTAMP_PATTERN.match(value)
+        if match:
+            if match.group(2):
+                format = '%Y-%m-%d %H:%M:%S.%f'
+                # use the pattern to truncate the value
+                value = match.group()
+            else:
+                format = '%Y-%m-%d %H:%M:%S'
+            value = datetime.datetime.strptime(value, format)
+            return value
+        else:
+            raise Exception('Cannot convert "{}" into a datetime'.format(value))
+    else:
+        return None
+
+
+TYPES_CONVERTER = {
+    "decimal": Decimal,
+    "timestamp": _parse_timestamp,
+}
 
 
 class Connection:
@@ -56,6 +81,8 @@ class Connection:
         #   verification. If not provide, uses system truststore.
         # _tls_client_cert_file, _tls_client_cert_key_file
         #   Set client SSL certificate.
+        # _session_id
+        #   Specify the session id of the connection. For Redash use only.
 
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
@@ -94,7 +121,7 @@ class Connection:
 
         open_session_request = messages_pb2.OpenSessionRequest(
             configuration={},
-            client_session_id=None,
+            client_session_id=kwargs.get("_session_id"),
         )
 
         resp = self.base_client.make_request(self.base_client.stub.OpenSession,
