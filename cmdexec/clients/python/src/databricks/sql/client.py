@@ -255,7 +255,7 @@ class Cursor:
         execute_command_request = messages_pb2.ExecuteCommandRequest(
             session_id=self.connection.session_id,
             client_command_id=None,
-            command=operation,
+            sql_command=messages_pb2.SqlCommand(command=[operation]),
             conf_overlay=None,
             row_limit=None,
             result_options=messages_pb2.CommandResultOptions(

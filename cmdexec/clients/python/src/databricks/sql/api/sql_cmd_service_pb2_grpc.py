@@ -132,7 +132,9 @@ class SqlCommandServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def CancelCommand(self, request, context):
-        """Cancels the requested command 
+        """Cancels the requested command. If the command is already in a terminal state this is a no-op.
+        The operation is idempotent as long as the command is still available. If the command is not
+        available an exception is raised. Cancellation is synchronous.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
