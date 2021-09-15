@@ -250,19 +250,55 @@ class Cursor:
     def execute(self, operation, query_params=None, metadata=None):
         self._check_not_closed()
         self._close_and_clear_active_result_set()
+        return self._create_result_set_from_command(
+            sql_command=messages_pb2.SqlCommand(command=[operation]))
 
-        # Execute the command
+    def tables(self, catalog_name=None, schema_name=None, table_name=None, table_types=[]):
+        self._check_not_closed()
+        self._close_and_clear_active_result_set()
+
+        get_tables_command = messages_pb2.GetTablesCommand(
+            catalog_name=catalog_name,
+            schema_name=schema_name,
+            table_name=table_name,
+            table_types=table_types)
+
+        return self._create_result_set_from_command(get_tables_command=get_tables_command)
+
+    def columns(self, catalog_name=None, schema_name=None, table_name=None, column_name=None):
+        self._check_not_closed()
+        self._close_and_clear_active_result_set()
+
+        get_columns_command = messages_pb2.GetColumnsCommand(
+            catalog_name=catalog_name,
+            schema_name=schema_name,
+            table_name=table_name,
+            column_name=column_name)
+
+        return self._create_result_set_from_command(get_columns_command=get_columns_command)
+
+    def schemas(self, catalog_name=None, schema_name=None):
+        self._check_not_closed()
+        self._close_and_clear_active_result_set()
+
+        get_schemas_command = messages_pb2.GetSchemasCommand(
+            catalog_name=catalog_name, schema_name=schema_name)
+
+        return self._create_result_set_from_command(get_schemas_command=get_schemas_command)
+
+    def _create_result_set_from_command(self, **command_arg):
+        # Create execute command request
         execute_command_request = messages_pb2.ExecuteCommandRequest(
             session_id=self.connection.session_id,
             client_command_id=None,
-            sql_command=messages_pb2.SqlCommand(command=[operation]),
             conf_overlay=None,
             row_limit=None,
             result_options=messages_pb2.CommandResultOptions(
                 max_rows=self.arraysize,
                 max_bytes=self.buffer_size_bytes,
                 include_metadata=True,
-            ))
+            ),
+            **command_arg)
 
         execute_command_response = self.connection.base_client.make_request(
             self.connection.base_client.stub.ExecuteCommand, execute_command_request)
