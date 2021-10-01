@@ -7,7 +7,7 @@ from decimal import Decimal
 import logging
 import re
 import time
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional, Any
 
 import grpc
 import pyarrow
@@ -53,15 +53,21 @@ TYPES_CONVERTER = {
 
 
 class Connection:
-    def __init__(self, server_hostname, http_path, access_token, metadata=None, **kwargs):
-        """Connect to a Databricks SQL endpoint or a Databricks cluster.
+    def __init__(self,
+                 server_hostname: str,
+                 http_path: str,
+                 access_token: str,
+                 metadata: Optional[List[Tuple[str, str]]] = None,
+                 **kwargs) -> None:
+        """
+        Connect to a Databricks SQL endpoint or a Databricks cluster.
 
-       :param server_hostname: Databricks instance host name.
-       :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
+        :param server_hostname: Databricks instance host name.
+        :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
               or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
-       :param access_token: Http Bearer access token, e.g. Databricks Personal Access Token.
-       :param metadata: An optional list of (k, v) pairs that will be set as Http headers on every request
-       """
+        :param access_token: Http Bearer access token, e.g. Databricks Personal Access Token.
+        :param metadata: An optional list of (k, v) pairs that will be set as Http headers on every request
+        """
 
         # Internal arguments in **kwargs:
         # _user_agent_entry
@@ -129,7 +135,7 @@ class Connection:
         self.session_id = resp.session_id
         self.open = True
         logger.info("Successfully opened session " + str(self.session_id.hex()))
-        self._cursors = []
+        self._cursors = []  # type: List[Cursor]
 
     def __enter__(self):
         return self
@@ -137,7 +143,7 @@ class Connection:
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
-    def _http_path_to_routing_header(self, http_path):
+    def _http_path_to_routing_header(self, http_path: str) -> Tuple[str, str]:
         cluster_re = r'/?sql/protocolv1/o/\d+/(\d+-\d+-[a-zA-Z0-9]+)'
         endpoint_re = r'/?sql/.*/endpoints/([a-f0-9]+)'
         cluster_id_match = re.search(cluster_re, http_path)
@@ -150,8 +156,13 @@ class Connection:
             raise ValueError("Please provide a valid http_path")
 
     def cursor(self,
-               arraysize=DEFAULT_ARRAY_SIZE,
-               buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES):
+               arraysize: int = DEFAULT_ARRAY_SIZE,
+               buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES) -> "Cursor":
+        """
+        Return a new Cursor object using the connection.
+
+        Will throw an Error if the connection has been closed.
+        """
         if not self.open:
             raise Error("Cannot create cursor from closed connection")
 
@@ -159,7 +170,8 @@ class Connection:
         self._cursors.append(cursor)
         return cursor
 
-    def close(self):
+    def close(self) -> None:
+        """Close the underlying session and mark all associated cursors as closed."""
         close_session_request = messages_pb2.CloseSessionRequest(session_id=self.session_id)
         self.base_client.make_request(self.base_client.stub.CloseSession, close_session_request)
         self.open = False
@@ -170,9 +182,16 @@ class Connection:
 
 class Cursor:
     def __init__(self,
-                 connection,
-                 result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-                 arraysize=DEFAULT_ARRAY_SIZE):
+                 connection: Connection,
+                 result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+                 arraysize: int = DEFAULT_ARRAY_SIZE) -> None:
+        """
+        These objects represent a database cursor, which is used to manage the context of a fetch
+        operation.
+
+        Cursors are not isolated, i.e., any changes done to the database by a cursor are immediately
+        visible by other cursors or connections.
+        """
         self.connection = connection
         self.rowcount = -1
         self.buffer_size_bytes = result_buffer_size_bytes
@@ -203,9 +222,13 @@ class Cursor:
         has_been_closed_server_side = execute_command_response.closed
         has_more_rows = execute_command_response.results.has_more_rows
         num_valid_rows = execute_command_response.results.num_valid_rows
+        if arrow_results:
+            arrow_results_and_n_rows = (arrow_results, num_valid_rows)
+        else:
+            arrow_results_and_n_rows = None
 
         return ResultSet(self.connection, command_id, status, has_been_closed_server_side,
-                         has_more_rows, arrow_results, num_valid_rows, schema_message,
+                         has_more_rows, arrow_results_and_n_rows, schema_message,
                          self.buffer_size_bytes)
 
     def _close_and_clear_active_result_set(self):
@@ -247,13 +270,31 @@ class Cursor:
             time.sleep(0.1)
         return status
 
-    def execute(self, operation, query_params=None, metadata=None):
+    def execute(self,
+                operation: str,
+                query_params: Optional[Dict[str, str]] = None,
+                metadata: Optional[Dict[str, str]] = None) -> "Cursor":
+        """
+        Execute a query and wait for execution to complete.
+
+        :returns self
+        """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         return self._create_result_set_from_command(
             sql_command=messages_pb2.SqlCommand(command=[operation]))
 
-    def tables(self, catalog_name=None, schema_name=None, table_name=None, table_types=[]):
+    def tables(self,
+               catalog_name: Optional[str] = None,
+               schema_name: Optional[str] = None,
+               table_name: Optional[str] = None,
+               table_types: List[str] = []) -> "Cursor":
+        """
+        Get tables corresponding to the catalog_name, schema_name and table_name.
+
+        Names can contain % wildcards.
+        :returns self
+        """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
@@ -265,7 +306,17 @@ class Cursor:
 
         return self._create_result_set_from_command(get_tables_command=get_tables_command)
 
-    def columns(self, catalog_name=None, schema_name=None, table_name=None, column_name=None):
+    def columns(self,
+                catalog_name: Optional[str] = None,
+                schema_name: Optional[str] = None,
+                table_name: Optional[str] = None,
+                column_name: Optional[str] = None) -> "Cursor":
+        """
+        Get columns corresponding to the catalog_name, schema_name, table_name and column_name.
+
+        Names can contain % wildcards.
+        :returns self
+        """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
@@ -277,7 +328,14 @@ class Cursor:
 
         return self._create_result_set_from_command(get_columns_command=get_columns_command)
 
-    def schemas(self, catalog_name=None, schema_name=None):
+    def schemas(self, catalog_name: Optional[str] = None,
+                schema_name: Optional[str] = None) -> "Cursor":
+        """
+        Get columns corresponding to the catalog_name and schema_name.
+
+        Names can contain % wildcards.
+        :returns self
+        """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
@@ -316,31 +374,65 @@ class Cursor:
 
         return self
 
-    def fetchall(self):
+    def fetchall(self) -> List[Tuple]:
+        """
+        Fetch all (remaining) rows of a query result, returning them as a sequence of sequences.
+
+        A databricks.sql.errors.Error (or subclass) exception is raised if the previous call to
+        execute did not produce any result set or no call was issued yet.
+        """
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall()
         else:
             raise Error("There is no active result set")
 
-    def fetchone(self):
+    def fetchone(self) -> Tuple:
+        """
+        Fetch the next row of a query result set, returning a single sequence, or ``None`` when
+        no more data is available.
+
+        An databricks.sql.errors.Error (or subclass) exception is raised if the previous call to
+        execute did not produce any result set or no call was issued yet.
+        """
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchone()
         else:
             raise Error("There is no active result set")
 
-    def fetchmany(self, n_rows):
+    def fetchmany(self, n_rows: int) -> List[Tuple]:
+        """
+        Fetch the next set of rows of a query result, returning a sequence of sequences (e.g. a
+        list of tuples).
+
+        An empty sequence is returned when no more rows are available.
+
+        The number of rows to fetch per call is specified by the parameter n_rows. If it is not
+        given, the cursor's arraysize determines the number of rows to be fetched. The method
+        should try to fetch as many rows as indicated by the size parameter. If this is not
+        possible due to the specified number of rows not being available, fewer rows may be
+        returned.
+
+        A databricks.sql.errors.Error (or subclass) exception is raised if the previous call
+        to execute did not produce any result set or no call was issued yet.
+        """
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany(n_rows)
         else:
             raise Error("There is no active result set")
 
-    def cancel(self):
+    def cancel(self) -> None:
+        """
+        Cancel a running command.
+
+        The command should be closed to free resources from the server.
+        This method can be called from another thread.
+        """
         command_id = self.executing_command_id
 
-        if command_id != None:
+        if command_id is not None:
             logger.info("Canceling command %s" % command_id)
             cancel_command_request = messages_pb2.CancelCommandRequest(command_id=command_id)
 
@@ -349,13 +441,32 @@ class Cursor:
         else:
             raise Error("There is no executing command to cancel")
 
-    def close(self):
+    def close(self) -> None:
+        """Close cursor"""
         self.open = False
         if self.active_result_set:
             self._close_and_clear_active_result_set()
 
     @property
-    def description(self):
+    def description(self) -> Optional[List[Tuple]]:
+        """
+        This read-only attribute is a sequence of 7-item sequences.
+
+        Each of these sequences contains information describing one result column:
+
+        - name
+        - type_code
+        - display_size (None in current implementation)
+        - internal_size (None in current implementation)
+        - precision (None in current implementation)
+        - scale (None in current implementation)
+        - null_ok (always True in current implementation)
+
+        This attribute will be ``None`` for operations that do not return rows or if the cursor has
+        not had an operation invoked via the execute method yet.
+
+        The ``type_code`` can be interpreted by comparing it to the Type Objects.
+        """
         if self.active_result_set:
             return self.active_result_set.description
         else:
@@ -364,16 +475,31 @@ class Cursor:
 
 class ResultSet:
     def __init__(self,
-                 connection,
+                 connection: Connection,
                  command_id,
                  status,
-                 has_been_closed_server_side,
-                 has_more_rows,
-                 arrow_ipc_stream=None,
-                 num_valid_rows=None,
+                 has_been_closed_server_side: bool,
+                 has_more_rows: bool,
+                 arrow_ipc_stream_with_n_rows: Optional[Tuple[Any, int]] = None,
                  schema_message=None,
-                 result_buffer_size_bytes=DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-                 arraysize=10000):
+                 result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+                 arraysize: int = 10000):
+        """
+        A ResultSet manages the results of a single command.
+
+        :param connection: The parent connection that was used to execute this command
+        :param command_id: The id of the command
+        :param status: The status of the command
+        :param has_been_closed_server_side: True iff the command has been closed already by the
+        server (this is the case if the fast path was taken and all results returned)
+        :param has_more_rows: True iff there are more rows to fetch on the server
+        :param arrow_ipc_stream_with_n_rows: An optional (Arrow stream, int) pair. Returned if
+        the fast path was taken on the server. The int in the tuple is how many rows are actually
+        considered valid
+        :param schema_message: The gRPC message containing the schema
+        :param result_buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+        amount :param arraysize: The max number of rows to fetch at a time (PEP-249)
+        """
         self.connection = connection
         self.command_id = command_id
         self.status = status
@@ -388,9 +514,10 @@ class ResultSet:
             messages_pb2.COMMAND_STATE_PENDING, messages_pb2.COMMAND_STATE_RUNNING
         ])
 
-        if arrow_ipc_stream:
+        if arrow_ipc_stream_with_n_rows:
             # In this case the server has taken the fast path and returned an initial batch of
             # results
+            arrow_ipc_stream, num_valid_rows = arrow_ipc_stream_with_n_rows
             self.results = ArrowQueue(
                 pyarrow.ipc.open_stream(arrow_ipc_stream).read_all(), num_valid_rows, 0)
             self.description = self._get_schema_description(schema_message)
@@ -452,9 +579,10 @@ class ResultSet:
         ] for row_index in range(n_rows)]
         return list_repr
 
-    def fetchmany_arrow(self, n_rows):
+    def fetchmany_arrow(self, n_rows: int) -> pyarrow.Table:
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
+
         An empty sequence is returned when no more rows are available.
         """
         # TODO: Make efficient with less copying
@@ -473,10 +601,8 @@ class ResultSet:
 
         return results
 
-    def fetchall_arrow(self):
-        """
-         Fetch all (remaining) rows of a query result, returning them as a PyArrow table.
-        """
+    def fetchall_arrow(self) -> pyarrow.Table:
+        """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._row_index += results.num_rows
 
@@ -488,7 +614,7 @@ class ResultSet:
 
         return results
 
-    def fetchone(self):
+    def fetchone(self) -> Optional[Tuple]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
@@ -499,22 +625,25 @@ class ResultSet:
         else:
             return None
 
-    def fetchall(self):
+    def fetchall(self) -> List[Tuple]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of lists.
         """
         return self._convert_arrow_table(self.fetchall_arrow())
 
-    def fetchmany(self, n_rows):
+    def fetchmany(self, n_rows: int) -> List[Tuple]:
         """
         Fetch the next set of rows of a query result, returning a list of lists.
+
         An empty sequence is returned when no more rows are available.
         """
         return self._convert_arrow_table(self.fetchmany_arrow(n_rows))
 
-    def close(self):
+    def close(self) -> None:
         """
-        Close the cursor. If the connection has not been closed, and the cursor has not already
+        Close the cursor.
+
+        If the connection has not been closed, and the cursor has not already
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
@@ -544,70 +673,73 @@ class ResultSet:
 
 
 class ArrowQueue:
-    def __init__(self, arrow_table, n_valid_rows, start_row_index):
+    def __init__(self, arrow_table: pyarrow.Table, n_valid_rows: int, start_row_index: int):
+        """
+        A queue-like wrapper over an Arrow table
+
+        :param arrow_table: The Arrow table from which we want to take rows
+        :param n_valid_rows: The index of the last valid row in the table
+        :param start_row_index: The first row in the table we should start fetching from
+        """
         self.cur_row_index = start_row_index
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
 
-    def next_n_rows(self, num_rows):
-        """
-        Get upto the next n rows of the Arrow dataframe
-        """
+    def next_n_rows(self, num_rows: int) -> pyarrow.Table:
+        """Get upto the next n rows of the Arrow dataframe"""
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
         slice = self.arrow_table.slice(self.cur_row_index, length)
         self.cur_row_index += slice.num_rows
         return slice
 
-    def remaining_rows(self):
+    def remaining_rows(self) -> pyarrow.Table:
         slice = self.arrow_table.slice(self.cur_row_index, self.n_valid_rows - self.cur_row_index)
         self.cur_row_index += slice.num_rows
         return slice
 
 
 class CmdExecBaseHttpClient:
-    """
-    A thin wrapper around a gRPC channel that takes cares of headers etc.
-    """
+    """A thin wrapper around a gRPC channel that takes cares of headers etc."""
 
     def __init__(self,
                  host: str,
                  port: int,
                  http_headers: List[Tuple[str, str]],
-                 enable_ssl=True,
-                 root_ca_path=None,
-                 cert_chain_path=None,
-                 cert_key_path=None,
-                 verify_hostname=True):
+                 enable_ssl: bool = True,
+                 root_ca_path: Optional[str] = None,
+                 cert_chain_path: Optional[str] = None,
+                 cert_key_path: Optional[str] = None,
+                 verify_hostname: bool = True):
         self.host_url = host + ":" + str(port)
         self.http_headers = [(k.lower(), str(v)) for (k, v) in http_headers]
         if enable_ssl:
             if root_ca_path:
                 try:
                     with open(root_ca_path, 'rb') as f:
-                        root_ca = f.read()
+                        root_ca = f.read()  # type: Optional[bytes]
                 except OSError as e:
                     raise OperationalError(
-                        "Error while trying to read root SSL certificate %s:" % root_ca_path, e)
+                        "Error while trying to read root SSL certificate %r:" % root_ca_path, e)
             else:
                 root_ca = None
 
             if cert_chain_path:
                 try:
                     with open(cert_chain_path, 'rb') as f:
-                        cert_chain = f.read()
+                        cert_chain = f.read()  # type: Optional[bytes]
                 except OSError as e:
                     raise OperationalError(
-                        "Error while trying to read SSL certificate chain %s:" % cert_chain, e)
+                        "Error while trying to read SSL certificate chain %r:" % cert_chain, e)
             else:
                 cert_chain = None
 
             if cert_key_path:
                 try:
-                    with open(cert_chain_path, 'rb') as f:
-                        cert_key = f.read()
+                    with open(cert_key_path, 'rb') as f:
+                        cert_key = f.read()  # type: Optional[bytes]
                 except OSError as e:
                     raise OperationalError(
-                        "Error while trying to read SSL certificate key %s:" % cert_key_path, e)
+                        "Error while trying to read SSL certificate key %r:" % cert_key_path, e)
             else:
                 cert_key = None
 
