@@ -46,8 +46,7 @@ class FetchTests(unittest.TestCase):
             status=None,
             has_been_closed_server_side=True,
             has_more_rows=False,
-            arrow_ipc_stream=arrow_ipc_stream,
-            num_valid_rows=len(initial_results),
+            arrow_ipc_stream_with_n_rows=(arrow_ipc_stream, len(initial_results)),
             schema_message=MagicMock())
         num_cols = len(initial_results[0]) if initial_results else 0
         rs.description = [('', 'integer', None, None, None, None, None) * num_cols]

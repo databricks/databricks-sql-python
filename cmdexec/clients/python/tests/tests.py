@@ -88,8 +88,7 @@ class SimpleTests(unittest.TestCase):
             command_id=b'\x10',
             status=command_pb2.COMMAND_STATE_SUCCESS,
             has_been_closed_server_side=False,
-            arrow_ipc_stream=Mock(),
-            num_valid_rows=0,
+            arrow_ipc_stream_with_n_rows=(Mock(), 0),
             has_more_rows=False,
             schema_message=MagicMock())
         mock_connection.open = False
