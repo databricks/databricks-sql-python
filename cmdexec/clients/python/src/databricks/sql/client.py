@@ -74,6 +74,8 @@ class Connection:
         #   Tag to add to User-Agent header. For use by partners.
         # _username, _password
         #   Username and password Basic authentication (no official support)
+        # _use_cert_as_auth
+        #  Use a TLS cert instead of a token or username / password (internal use only)
         # _enable_ssl
         #  Connect over HTTP instead of HTTPS
         # _port
@@ -100,8 +102,8 @@ class Connection:
             authorization_header = "Basic {}".format(auth_credentials_base64)
         elif access_token:
             authorization_header = "Bearer {}".format(access_token)
-        else:
-            raise ValueError("No valid authentication settings.")
+        elif not (kwargs.get("_use_cert_as_auth") and kwargs.get("_tls_client_cert_file")):
+            raise ValueError("No valid authentication settings. Please provide an access token.")
 
         if not kwargs.get("_user_agent_entry"):
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
@@ -420,6 +422,20 @@ class Cursor:
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany(n_rows)
+        else:
+            raise Error("There is no active result set")
+
+    def fetchall_arrow(self):
+        self._check_not_closed()
+        if self.active_result_set:
+            return self.active_result_set.fetchall_arrow()
+        else:
+            raise Error("There is no active result set")
+
+    def fetchmany_arrow(self, n_rows):
+        self._check_not_closed()
+        if self.active_result_set:
+            return self.active_result_set.fetchmany_arrow(n_rows)
         else:
             raise Error("There is no active result set")
 
