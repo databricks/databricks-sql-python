@@ -40,6 +40,46 @@ class SimpleTests(unittest.TestCase):
         self.assertEqual(close_session_request.session_id, mock_response.session_id)
 
     @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
+    def test_auth_args(self, mock_client_class):
+        instance = mock_client_class.return_value
+        mock_response = MagicMock()
+        mock_response.session_id = b'\x22'
+        instance.make_request.return_value = mock_response
+
+        # Test that the following auth args work:
+        # token = foo,
+        # token = None, _username = foo, _password = bar
+        # token = None, _tls_client_cert_file = something, _use_cert_as_auth = True
+        connection_args = [
+            {
+                "server_hostname": "foo",
+                "http_path": None,
+                "access_token": "tok",
+                "_skip_routing_headers": True,
+            },
+            {
+                "server_hostname": "foo",
+                "http_path": None,
+                "_username": "foo",
+                "_password": "bar",
+                "access_token": None,
+                "_skip_routing_headers": True,
+            },
+            {
+                "server_hostname": "foo",
+                "http_path": None,
+                "_tls_client_cert_file": "something",
+                "_use_cert_as_auth": True,
+                "access_token": None,
+                "_skip_routing_headers": True,
+            },
+        ]
+
+        for args in connection_args:
+            connection = databricks.sql.connect(**args)
+            connection.close()
+
+    @patch("%s.client.CmdExecBaseHttpClient" % PACKAGE_NAME)
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_result_set_class, mock_client_class):
         # Test once with has_been_closed_server side, once without

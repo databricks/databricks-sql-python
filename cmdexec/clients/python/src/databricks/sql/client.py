@@ -95,13 +95,14 @@ class Connection:
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
 
+        authorization_header = []
         if kwargs.get("_username") and kwargs.get("_password"):
             auth_credentials = "{username}:{password}".format(
                 username=kwargs.get("_username"), password=kwargs.get("_password")).encode("UTF-8")
             auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
-            authorization_header = "Basic {}".format(auth_credentials_base64)
+            authorization_header = [("Authorization", "Basic {}".format(auth_credentials_base64))]
         elif access_token:
-            authorization_header = "Bearer {}".format(access_token)
+            authorization_header = [("Authorization", "Bearer {}".format(access_token))]
         elif not (kwargs.get("_use_cert_as_auth") and kwargs.get("_tls_client_cert_file")):
             raise ValueError("No valid authentication settings. Please provide an access token.")
 
@@ -111,9 +112,8 @@ class Connection:
             useragent_header = "{}/{} ({})".format(USER_AGENT_NAME, __version__,
                                                    kwargs.get("_user_agent_entry"))
 
-        base_headers = [("Authorization", authorization_header),
-                        ("X-Databricks-Sqlgateway-CommandService-Mode", "grpc-thrift"),
-                        ("User-Agent", useragent_header)]
+        base_headers = [("X-Databricks-Sqlgateway-CommandService-Mode", "grpc-thrift"),
+                        ("User-Agent", useragent_header)] + authorization_header
 
         if not kwargs.get("_skip_routing_headers"):
             base_headers.append(self._http_path_to_routing_header(http_path))
