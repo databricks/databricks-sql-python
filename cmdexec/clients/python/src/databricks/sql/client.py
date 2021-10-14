@@ -10,7 +10,6 @@ import time
 from typing import Dict, Tuple, List, Optional, Any
 
 import grpc
-import pandas
 import pyarrow
 
 from databricks.sql.errors import OperationalError, InterfaceError, DatabaseError, Error, DataError
@@ -27,9 +26,8 @@ _TIMESTAMP_PATTERN = re.compile(r'(\d+-\d+-\d+ \d+:\d+:\d+(\.\d{,6})?)')
 
 
 def _parse_timestamp(value):
-    if type(value) is datetime.datetime or type(value) is pandas.Timestamp:
-        # The cmd exec server will return a native datetime / timestamp, so no further parsing is
-        # needed
+    if type(value) is datetime.datetime:
+        # The cmd exec server will return a datetime.datetime, so no further parsing is needed
         return value
     elif value:
         match = _TIMESTAMP_PATTERN.match(value)
@@ -40,11 +38,18 @@ def _parse_timestamp(value):
                 value = match.group()
             else:
                 format = '%Y-%m-%d %H:%M:%S'
-            return pandas.to_datetime(datetime.datetime.strptime(value, format))
+            value = datetime.datetime.strptime(value, format)
+            return value
         else:
             raise Exception('Cannot convert "{}" into a datetime'.format(value))
     else:
         return None
+
+
+TYPES_CONVERTER = {
+    "decimal": Decimal,
+    "timestamp": _parse_timestamp,
+}
 
 
 class Connection:
@@ -574,19 +579,21 @@ class ResultSet:
             self.has_more_rows = has_more_rows
             self.description = description
 
+    @staticmethod
+    def parse_type(type_, value):
+        converter = TYPES_CONVERTER.get(type_)
+        if converter:
+            return converter(value)
+        else:
+            return value
+
     def _convert_arrow_table(self, table):
-        df = table.to_pandas()
-        for (i, col) in enumerate(df.columns):
-            # Check for 0 because .dt doesn't work on empty series
-            if self.description[i][1] == 'timestamp' and len(df) > 0:
-                # We store the dtype as object so we don't use the pandas datetime dtype but
-                # a native datetime.datetime
-                timestamp_col = df[col].apply(_parse_timestamp)
-                df[col] = pandas.Series(timestamp_col.dt.to_pydatetime(), dtype='object')
-            elif self.description[i][1] == 'decimal':
-                df[col] = pandas.Series(df[col].apply(Decimal), dtype='object')
-        # Replace NaNs with None to maintain backwards compatibility
-        return df.where(pandas.notnull(df), None).values.tolist()
+        n_rows, _ = table.shape
+        list_repr = [[
+            self.parse_type(self.description[col_index][1], col[row_index].as_py())
+            for col_index, col in enumerate(table.itercolumns())
+        ] for row_index in range(n_rows)]
+        return list_repr
 
     def fetchmany_arrow(self, n_rows: int) -> pyarrow.Table:
         """
