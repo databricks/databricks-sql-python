@@ -9,7 +9,7 @@ class _DBAPITypeObject(object):
         return other in self.values
 
     def __repr__(self):
-        return "DBAPITypeObject({values})".format(values=self.values)
+        return "DBAPITypeObject(%s)" % self.values
 
 
 STRING = _DBAPITypeObject('string')
