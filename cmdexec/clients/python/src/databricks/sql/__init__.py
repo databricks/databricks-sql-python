@@ -1,4 +1,4 @@
-from databricks.sql.errors import *
+from databricks.sql.exc import *
 
 
 class _DBAPITypeObject(object):
@@ -9,7 +9,7 @@ class _DBAPITypeObject(object):
         return other in self.values
 
     def __repr__(self):
-        return "DBAPITypeObject(%s)" % self.values
+        return "DBAPITypeObject({})".format(self.values)
 
 
 STRING = _DBAPITypeObject('string')
@@ -20,7 +20,7 @@ DATETIME = _DBAPITypeObject('timestamp')
 DATE = _DBAPITypeObject('date')
 ROWID = _DBAPITypeObject()
 
-__version__ = "1.0.0"
+__version__ = "2.0.0-rc1"
 USER_AGENT_NAME = "PyDatabricksSqlConnector"
 
 

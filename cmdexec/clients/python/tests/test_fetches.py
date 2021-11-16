@@ -1,10 +1,10 @@
 import unittest
-from unittest.mock import MagicMock
-from collections import deque
+from unittest.mock import Mock
 
 import pyarrow as pa
 
 import databricks.sql.client as client
+from databricks.sql.utils import ExecuteResponse, ArrowQueue
 
 
 class FetchTests(unittest.TestCase):
@@ -19,35 +19,30 @@ class FetchTests(unittest.TestCase):
         n_cols = len(batch[0]) if batch else 0
         schema = pa.schema({"col%s" % i: pa.uint32() for i in range(n_cols)})
         cols = [[batch[row][col] for row in range(len(batch))] for col in range(n_cols)]
-        return pa.Table.from_pydict(dict(zip(schema.names, cols)), schema=schema)
-
-    @staticmethod
-    def make_arrow_ipc_stream(batch):
-        table = FetchTests.make_arrow_table(batch)
-        sink = pa.BufferOutputStream()
-        writer = pa.ipc.new_stream(sink, table.schema)
-        writer.write_table(table)
-        writer.close()
-        return sink.getvalue()
+        return schema, pa.Table.from_pydict(dict(zip(schema.names, cols)), schema=schema)
 
     @staticmethod
     def make_arrow_queue(batch):
-        table = FetchTests.make_arrow_table(batch)
-        queue = client.ArrowQueue(table, len(batch), 0)
+        _, table = FetchTests.make_arrow_table(batch)
+        queue = ArrowQueue(table, len(batch), 0)
         return queue
 
     @staticmethod
     def make_dummy_result_set_from_initial_results(initial_results):
         # If the initial results have been set, then we should never try and fetch more
-        arrow_ipc_stream = FetchTests.make_arrow_ipc_stream(initial_results)
+        schema, arrow_table = FetchTests.make_arrow_table(initial_results)
+        arrow_queue = ArrowQueue(arrow_table, len(initial_results), 0)
         rs = client.ResultSet(
             connection=None,
-            command_id=None,
-            status=None,
-            has_been_closed_server_side=True,
-            has_more_rows=False,
-            arrow_ipc_stream_with_n_rows=(arrow_ipc_stream, len(initial_results)),
-            schema_message=MagicMock())
+            thrift_backend=None,
+            execute_response=ExecuteResponse(
+                status=None,
+                has_been_closed_server_side=True,
+                has_more_rows=False,
+                description=Mock(),
+                command_handle=None,
+                arrow_queue=arrow_queue,
+                arrow_schema=schema))
         num_cols = len(initial_results[0]) if initial_results else 0
         rs.description = [('', 'integer', None, None, None, None, None) * num_cols]
         return rs
@@ -56,18 +51,28 @@ class FetchTests(unittest.TestCase):
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
 
-        class SemiFakeResultSet(client.ResultSet):
-            def _fetch_and_deserialize_results(self):
-                nonlocal batch_index
-                results = FetchTests.make_arrow_queue(batch_list[batch_index])
-                batch_index += 1
+        def fetch_results(op_handle, max_rows, max_bytes, row_offset, arrow_schema):
+            nonlocal batch_index
+            results = FetchTests.make_arrow_queue(batch_list[batch_index])
+            batch_index += 1
 
-                return results, batch_index < len(batch_list), \
-                       [('id', 'integer', None, None, None, None, None)]
+            return results, batch_index < len(batch_list)
 
-        rs = SemiFakeResultSet(None, None, None, False, False)
+        mock_thrift_backend = Mock()
+        mock_thrift_backend.fetch_results = fetch_results
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
-        rs.description = [('', 'integer', None, None, None, None, None) * num_cols]
+
+        rs = client.ResultSet(
+            connection=None,
+            thrift_backend=mock_thrift_backend,
+            execute_response=ExecuteResponse(
+                status=None,
+                has_been_closed_server_side=False,
+                has_more_rows=True,
+                description=[('', 'integer', None, None, None, None, None) * num_cols],
+                command_handle=None,
+                arrow_queue=None,
+                arrow_schema=None))
         return rs
 
     def test_fetchmany_with_initial_results(self):

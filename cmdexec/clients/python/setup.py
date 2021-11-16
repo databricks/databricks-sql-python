@@ -5,11 +5,6 @@ setuptools.setup(
     version="0.0.0",
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
-    install_requires=[
-        "grpcio",  # TODO: Minimum versions
-        "pyarrow",
-        "protobuf",
-        "cryptography",
-    ],
+    install_requires=["pyarrow", 'thrift>=0.10.0'],
     author="Databricks",
 )
