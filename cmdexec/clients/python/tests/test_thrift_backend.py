@@ -43,8 +43,9 @@ class TestThriftBackend(unittest.TestCase):
         mock_response = Mock()
         mock_response.status.statusCode = ttypes.TStatusCode.ERROR_STATUS
         mock_method = lambda _: mock_response
+        thrift_backend = ThriftBackend("foo", 123, "bar", [])
         with self.assertRaises(DatabaseError):
-            ThriftBackend.make_request(mock_method, Mock())
+            thrift_backend.make_request(mock_method, Mock())
 
     def _make_type_desc(self, type):
         return ttypes.TTypeDesc(types=[ttypes.TTypeEntry(ttypes.TPrimitiveTypeEntry(type=type))])
@@ -174,22 +175,25 @@ class TestThriftBackend(unittest.TestCase):
 
     def test_make_request_checks_status_code(self):
         error_codes = [ttypes.TStatusCode.ERROR_STATUS, ttypes.TStatusCode.INVALID_HANDLE_STATUS]
+        thrift_backend = ThriftBackend("foo", 123, "bar", [])
+
         for code in error_codes:
             mock_error_response = Mock()
             mock_error_response.status.statusCode = code
             mock_error_response.status.errorMessage = "a detailed error message"
             with self.assertRaises(DatabaseError) as cm:
-                ThriftBackend.make_request(lambda _: mock_error_response, Mock())
+                thrift_backend.make_request(lambda _: mock_error_response, Mock())
             self.assertIn("a detailed error message", str(cm.exception))
 
         success_codes = [
             ttypes.TStatusCode.SUCCESS_STATUS, ttypes.TStatusCode.SUCCESS_WITH_INFO_STATUS,
             ttypes.TStatusCode.STILL_EXECUTING_STATUS
         ]
+
         for code in success_codes:
             mock_response = Mock()
             mock_response.status.statusCode = code
-            ThriftBackend.make_request(lambda _: mock_response, Mock())
+            thrift_backend.make_request(lambda _: mock_response, Mock())
 
     def test_handle_execute_response_checks_operation_state_in_direct_results(self):
         for resp_type in self.execute_response_types:
@@ -745,6 +749,74 @@ class TestThriftBackend(unittest.TestCase):
         thrift_backend._handle_execute_response(mock_resp, mock_cursor)
 
         self.assertEqual(mock_resp.operationHandle, mock_cursor.active_op_handle)
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    def test_make_request_wont_retry_if_headers_not_present(self, t_transport_class):
+        t_transport_instance = t_transport_class.return_value
+        t_transport_instance.code = 429
+        t_transport_instance.headers = {"foo": "bar"}
+        mock_method = Mock()
+        mock_method.side_effect = Exception("This method fails")
+
+        thrift_backend = ThriftBackend("foobar", 443, "path", [])
+
+        with self.assertRaises(OperationalError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
+
+        self.assertIn("This method fails", str(cm.exception))
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    def test_make_request_wont_retry_if_error_code_not_429_or_503(self, t_transport_class):
+        t_transport_instance = t_transport_class.return_value
+        t_transport_instance.code = 430
+        t_transport_instance.headers = {"Retry-After": "1"}
+        mock_method = Mock()
+        mock_method.side_effect = Exception("This method fails")
+
+        thrift_backend = ThriftBackend("foobar", 443, "path", [])
+
+        with self.assertRaises(OperationalError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
+
+        self.assertIn("This method fails", str(cm.exception))
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    def test_make_request_will_retry_max_number_of_retries_times_if_retryable(
+            self, t_transport_class):
+        t_transport_instance = t_transport_class.return_value
+        t_transport_instance.code = 429
+        t_transport_instance.headers = {"Retry-After": "0"}
+        mock_method = Mock()
+        mock_method.side_effect = Exception("This method fails")
+
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], _max_number_of_retries=13)
+
+        with self.assertRaises(OperationalError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
+
+        self.assertIn("This method fails", str(cm.exception))
+
+        self.assertEqual(mock_method.call_count, 13 + 1)
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    def test_make_request_will_read_X_Thriftserver_Error_Message_if_set(self, t_transport_class):
+        t_transport_instance = t_transport_class.return_value
+        t_transport_instance.code = 429
+        t_transport_instance.headers = {
+            "Retry-After": "0",
+            "X-Thriftserver-Error-Message": "message2"
+        }
+        mock_method = Mock()
+        mock_method.side_effect = Exception("This method fails")
+
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], _max_number_of_retries=13)
+
+        with self.assertRaises(OperationalError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
+
+        self.assertIn("message2", str(cm.exception))
+
+        self.assertEqual(mock_method.call_count, 13 + 1)
 
 
 if __name__ == '__main__':

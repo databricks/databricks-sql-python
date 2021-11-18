@@ -325,6 +325,12 @@ class ClientTests(unittest.TestCase):
         self.assertTrue(logger_instance.warning.called)
         self.assertFalse(mock_thrift_backend.cancel_command.called)
 
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_max_number_of_retries_passthrough(self, mock_client_class):
+        databricks.sql.connect(_max_number_of_retries=53, **self.DUMMY_CONNECTION_ARGS)
+
+        self.assertEqual(mock_client_class.call_args[1]["_max_number_of_retries"], 53)
+
 
 class ResultSetTests(unittest.TestCase):
     def test_parse_type_converts_decimal(self):

@@ -1,4 +1,6 @@
 import logging
+import time
+import threading
 from uuid import uuid4
 from ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED, create_default_context
 
@@ -20,6 +22,7 @@ class ThriftBackend:
     CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
     ERROR_OP_STATE = ttypes.TOperationState.ERROR_STATE
     BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
+    ERROR_MSG_HEADER = "X-Thriftserver-Error-Message"
 
     def __init__(self, server_hostname: str, port, http_path: str, http_headers, **kwargs):
         # Internal arguments in **kwargs:
@@ -39,6 +42,8 @@ class ThriftBackend:
         #   See https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain
         # _connection_uri
         #   Overrides server_hostname and http_path.
+        # _max_number_of_retries
+        #  The maximum number of times we should retry retryable requests (defaults to 25)
 
         port = port or 443
         if kwargs.get("_connection_uri"):
@@ -48,6 +53,8 @@ class ThriftBackend:
                 host=server_hostname, port=port, path=http_path.lstrip("/"))
         else:
             raise ValueError("No valid connection settings.")
+
+        self._max_number_of_retries = kwargs.get("_max_number_of_retries", 25)
 
         # Configure tls context
         ssl_context = create_default_context(cafile=kwargs.get("_tls_trusted_ca_file"))
@@ -85,21 +92,53 @@ class ThriftBackend:
             self._transport.close()
             raise
 
+        self._request_lock = threading.RLock()
+
     @staticmethod
     def _check_response_for_error(response):
         if response.status and response.status.statusCode in \
                 [ttypes.TStatusCode.ERROR_STATUS, ttypes.TStatusCode.INVALID_HANDLE_STATUS]:
             raise DatabaseError(response.status.errorMessage)
 
-    @staticmethod
-    def make_request(method, request):
+    def make_request(self, method, request, attempt_number=1):
         try:
+            # We have a lock here because .cancel can be called from a separate thread.
+            # We do not want threads to be simultaneously sharing the Thrift Transport
+            # because we use its state to determine retries
+            self._request_lock.acquire()
             response = method(request)
             logger.debug("Received response: {}".format(response))
             ThriftBackend._check_response_for_error(response)
             return response
-        except TException as error:
-            raise OperationalError("Error during Thrift request", error)
+        except Exception as error:
+            # _transport.code isn't necessarily set :(
+            code_and_headers_is_set = hasattr(self._transport, 'code') \
+                                      and hasattr(self._transport, 'headers')
+            # We only retry if a Retry-After header is set
+            if code_and_headers_is_set and self._transport.code in [503, 429] and \
+                    "Retry-After" in self._transport.headers and \
+                    attempt_number <= self._max_number_of_retries:
+                retry_time_seconds = int(self._transport.headers["Retry-After"])
+                if self.ERROR_MSG_HEADER in self._transport.headers:
+                    error_message = self._transport.headers[self.ERROR_MSG_HEADER]
+                else:
+                    error_message = str(error)
+                logger.warning("Received retryable error during {}. Request: {} Error: {}".format(
+                    method, request, error_message))
+                logger.warning("Retrying in {} seconds. This is attempt number {}".format(
+                    retry_time_seconds, attempt_number))
+                time.sleep(retry_time_seconds)
+                return self.make_request(method, request, attempt_number + 1)
+            else:
+                logger.error("Received error when issuing: {}".format(request))
+                if hasattr(self._transport, "headers") and \
+                   self.ERROR_MSG_HEADER in self._transport.headers:
+                    error_message = self._transport.headers[self.ERROR_MSG_HEADER]
+                    raise OperationalError("Error during Thrift request: {}".format(error_message))
+                else:
+                    raise OperationalError("Error during Thrift request", error)
+        finally:
+            self._request_lock.release()
 
     def _check_protocol_version(self, t_open_session_resp):
         protocol_version = t_open_session_resp.serverProtocolVersion
