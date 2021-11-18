@@ -86,6 +86,8 @@ class Connection:
         #   Set client SSL certificate.
         # _session_id
         #   Specify the session id of the connection. For Redash use only.
+        # _max_number_of_retries
+        #  The maximum number of times we should retry retriable requests (defaults to 25)
 
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
@@ -117,7 +119,8 @@ class Connection:
             _tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
             _tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
             _tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
-            _connection_uri=kwargs.get("_connection_uri"))
+            _connection_uri=kwargs.get("_connection_uri"),
+            _max_number_of_retries=kwargs.get("_max_number_of_retries", 25))
 
         self._session_handle = self.thrift_backend.open_session(
             session_id=kwargs.get("_session_id"))
