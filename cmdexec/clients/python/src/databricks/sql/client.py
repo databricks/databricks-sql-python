@@ -17,33 +17,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
 DEFAULT_ARRAY_SIZE = 100000
 
-_TIMESTAMP_PATTERN = re.compile(r'(\d+-\d+-\d+ \d+:\d+:\d+(\.\d{,6})?)')
-
-
-def _parse_timestamp(value):
-    if type(value) is datetime.datetime:
-        # The cmd exec server will return a datetime.datetime, so no further parsing is needed
-        return value
-    elif value:
-        match = _TIMESTAMP_PATTERN.match(value)
-        if match:
-            if match.group(2):
-                format = '%Y-%m-%d %H:%M:%S.%f'
-                # use the pattern to truncate the value
-                value = match.group()
-            else:
-                format = '%Y-%m-%d %H:%M:%S'
-            value = datetime.datetime.strptime(value, format)
-            return value
-        else:
-            raise Exception('Cannot convert "{}" into a datetime'.format(value))
-    else:
-        return None
-
-
 TYPES_CONVERTER = {
     "decimal": Decimal,
-    "timestamp": _parse_timestamp,
 }
 
 

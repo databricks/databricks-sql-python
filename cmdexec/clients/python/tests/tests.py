@@ -344,21 +344,6 @@ class ResultSetTests(unittest.TestCase):
                     self.assertEqual(type(res), type(None))
                     self.assertEqual(res, None)
 
-    def test_parse_type_converts_timestamp(self):
-        # Supported formats: %Y-%m-%d %H:%M:%S.%f and %Y-%m-%d %H:%M:%S
-        for input, output in [(None, None),
-                              ("2021-11-15 11:18:32.349293",
-                               datetime(2021, 11, 15, 11, 18, 32, 349293)),
-                              ("2021-11-15 11:18:32.3492931235",
-                               datetime(2021, 11, 15, 11, 18, 32, 349293)),
-                              ("2021-11-15 11:18:32.34", datetime(2021, 11, 15, 11, 18, 32,
-                                                                  340000)),
-                              ("2021-11-15 11:18:32", datetime(2021, 11, 15, 11, 18, 32))]:
-            with self.subTest(input=input, output=output):
-                res = client.ResultSet.parse_type("timestamp", input)
-                self.assertEqual(type(res), type(output))
-                self.assertEqual(res, output)
-
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])

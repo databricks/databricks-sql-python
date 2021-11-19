@@ -155,7 +155,13 @@ class ThriftBackend:
             open_session_req = ttypes.TOpenSessionReq(
                 sessionId=handle_identifier,
                 client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
-                client_protocol=None)
+                client_protocol=None,
+                configuration={
+                    # We want to receive proper Timestamp arrow types.
+                    # We set it also in confOverlay in TExecuteStatementReq on a per query basic,
+                    # but it doesn't hurt to also set for the whole session.
+                    "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
+                })
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_protocol_version(response)
             return response.sessionHandle
@@ -271,7 +277,7 @@ class ThriftBackend:
                     ttypes.TTypeId.FLOAT_TYPE: pyarrow.float32(),
                     ttypes.TTypeId.DOUBLE_TYPE: pyarrow.float64(),
                     ttypes.TTypeId.STRING_TYPE: pyarrow.string(),
-                    ttypes.TTypeId.TIMESTAMP_TYPE: pyarrow.string(),
+                    ttypes.TTypeId.TIMESTAMP_TYPE: pyarrow.timestamp('us', None),
                     ttypes.TTypeId.BINARY_TYPE: pyarrow.binary(),
                     ttypes.TTypeId.ARRAY_TYPE: pyarrow.string(),
                     ttypes.TTypeId.MAP_TYPE: pyarrow.string(),
@@ -383,7 +389,11 @@ class ThriftBackend:
             getDirectResults=ttypes.TSparkGetDirectResults(maxRows=max_rows, maxBytes=max_bytes),
             canReadArrowResult=True,
             canDecompressLZ4Result=False,
-            canDownloadResult=False)
+            canDownloadResult=False,
+            confOverlay={
+                # We want to receive proper Timestamp arrow types.
+                "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
+            })
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)
 
