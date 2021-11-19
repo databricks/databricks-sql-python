@@ -8,11 +8,6 @@ unit() {
 }
 
 integration() {
-  # This is just a temporary hack until we have done the full migration and can change the import
-  # names across the board
-  touch qa/__init__.py
-  touch qa/test/__init__.py
-  touch qa/test/bi/__init__.py
   python test_executor.py "$@"
 }
 
