@@ -1,3 +1,4 @@
+from decimal import Decimal
 import logging
 import time
 import threading
@@ -190,13 +191,32 @@ class ThriftBackend:
         )
         return self.make_request(self._client.GetOperationStatus, req)
 
-    def _create_arrow_table(self, t_row_set, schema):
+    def _create_arrow_table(self, t_row_set, arrow_schema, description):
         if t_row_set.columns is not None:
-            return ThriftBackend._convert_column_based_set_to_arrow_table(t_row_set.columns, schema)
-        if t_row_set.arrowBatches is not None:
-            return ThriftBackend._convert_arrow_based_set_to_arrow_table(
-                t_row_set.arrowBatches, schema)
-        raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
+            arrow_table, num_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+                t_row_set.columns, arrow_schema)
+        elif t_row_set.arrowBatches is not None:
+            arrow_table, num_rows = ThriftBackend._convert_arrow_based_set_to_arrow_table(
+                t_row_set.arrowBatches, arrow_schema)
+        else:
+            raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
+        return self._convert_decimals_in_arrow_table(arrow_table, description), num_rows
+
+    @staticmethod
+    def _convert_decimals_in_arrow_table(table, description):
+        for (i, col) in enumerate(table.itercolumns()):
+            if description[i][1] == 'decimal':
+                decimal_col = col.to_pandas().apply(lambda v: v if v is None else Decimal(v))
+                precision, scale = description[i][4], description[i][5]
+                assert scale is not None
+                assert precision is not None
+                # Spark limits decimal to a maximum scale of 38,
+                # so 128 is guaranteed to be big enough
+                dtype = pyarrow.decimal128(precision, scale)
+                col_data = pyarrow.array(decimal_col, type=dtype)
+                field = table.field(i).with_type(dtype)
+                table = table.set_column(i, field, col_data)
+        return table
 
     @staticmethod
     def _convert_arrow_based_set_to_arrow_table(arrow_batches, schema):
@@ -304,17 +324,32 @@ class ThriftBackend:
         return pyarrow.schema([convert_col(col) for col in t_table_schema.columns])
 
     @staticmethod
-    def _hive_schema_to_description(t_table_schema):
-        def clean_type(typeEntry):
-            if typeEntry.primitiveEntry:
-                name = ttypes.TTypeId._VALUES_TO_NAMES[typeEntry.primitiveEntry.type]
-                # Drop _TYPE suffix
-                return (name[:-5] if name.endswith("_TYPE") else name).lower()
-            else:
-                raise OperationalError("Thrift protocol error: t_type_entry not a primitiveEntry")
+    def _col_to_description(col):
+        type_entry = col.typeDesc.types[0]
 
-        return [(col.columnName, clean_type(col.typeDesc.types[0]), None, None, None, None, None)
-                for col in t_table_schema.columns]
+        if type_entry.primitiveEntry:
+            name = ttypes.TTypeId._VALUES_TO_NAMES[type_entry.primitiveEntry.type]
+            # Drop _TYPE suffix
+            cleaned_type = (name[:-5] if name.endswith("_TYPE") else name).lower()
+        else:
+            raise OperationalError("Thrift protocol error: t_type_entry not a primitiveEntry")
+
+        if type_entry.primitiveEntry.type == ttypes.TTypeId.DECIMAL_TYPE:
+            qualifiers = type_entry.primitiveEntry.typeQualifiers.qualifiers
+            if qualifiers and "precision" in qualifiers and "scale" in qualifiers:
+                precision, scale = qualifiers["precision"].i32Value, qualifiers["scale"].i32Value
+            else:
+                raise OperationalError(
+                    "Decimal type did not provide typeQualifier precision, scale in "
+                    "primitiveEntry {}".format(type_entry.primitiveEntry))
+        else:
+            precision, scale = None, None
+
+        return col.columnName, cleaned_type, None, None, precision, scale, None
+
+    @staticmethod
+    def _hive_schema_to_description(t_table_schema):
+        return [ThriftBackend._col_to_description(col) for col in t_table_schema.columns]
 
     def _results_message_to_execute_response(self, resp, operation_state):
         if resp.directResults and resp.directResults.resultSetMetadata:
@@ -341,7 +376,7 @@ class ThriftBackend:
             assert (direct_results.resultSet.results.startRowOffset == 0)
             assert (direct_results.resultSetMetadata)
             arrow_results, n_rows = self._create_arrow_table(direct_results.resultSet.results,
-                                                             arrow_schema)
+                                                             arrow_schema, description)
             arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
         else:
             arrow_queue_opt = None
@@ -477,7 +512,7 @@ class ThriftBackend:
 
         return self._results_message_to_execute_response(resp, final_operation_state)
 
-    def fetch_results(self, op_handle, max_rows, max_bytes, row_offset, arrow_schema):
+    def fetch_results(self, op_handle, max_rows, max_bytes, row_offset, arrow_schema, description):
         assert (op_handle is not None)
 
         req = ttypes.TFetchResultsReq(
@@ -493,7 +528,7 @@ class ThriftBackend:
         )
 
         resp = self.make_request(self._client.FetchResults, req)
-        arrow_results, n_rows = self._create_arrow_table(resp.results, arrow_schema)
+        arrow_results, n_rows = self._create_arrow_table(resp.results, arrow_schema, description)
         arrow_queue = ArrowQueue(arrow_results, n_rows, row_offset - resp.results.startRowOffset)
 
         return arrow_queue, resp.hasMoreRows

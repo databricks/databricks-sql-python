@@ -10,10 +10,10 @@ import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error
 
 from cmdexec.clients.python.tests.test_fetches import FetchTests
-from cmdexec.clients.python.tests.test_thrift_backend import TestThriftBackend
+from cmdexec.clients.python.tests.test_thrift_backend import ThriftBackendTestSuite
 
 
-class ClientTests(unittest.TestCase):
+class ClientTestSuite(unittest.TestCase):
     """
     Unit tests for isolated client behaviour. See
     qa/test/cmdexec/python/suites/simple_connection_test.py for integration tests that
@@ -332,23 +332,10 @@ class ClientTests(unittest.TestCase):
         self.assertEqual(mock_client_class.call_args[1]["_max_number_of_retries"], 53)
 
 
-class ResultSetTests(unittest.TestCase):
-    def test_parse_type_converts_decimal(self):
-        for input in [None, 0, "0", 5, "5", 2.33, "2.33"]:
-            with self.subTest(input=input):
-                res = client.ResultSet.parse_type("decimal", input)
-                if input != None:
-                    self.assertEqual(type(res), Decimal)
-                    self.assertEqual(res, Decimal(input))
-                else:
-                    self.assertEqual(type(res), type(None))
-                    self.assertEqual(res, None)
-
-
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
     loader = unittest.TestLoader()
-    test_classes = [ClientTests, ResultSetTests, FetchTests, TestThriftBackend]
+    test_classes = [ClientTestSuite, FetchTests, ThriftBackendTestSuite]
     suites_list = []
     for test_class in test_classes:
         suite = loader.loadTestsFromTestCase(test_class)
