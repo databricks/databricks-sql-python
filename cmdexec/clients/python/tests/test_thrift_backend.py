@@ -1,15 +1,17 @@
+from collections import OrderedDict
+from decimal import Decimal
+import itertools
 import unittest
 from unittest.mock import patch, MagicMock, Mock
-import itertools
+
 import pyarrow
 
 from databricks.sql.thrift_api.TCLIService import ttypes
-
 from databricks.sql import *
 from databricks.sql.thrift_backend import ThriftBackend
 
 
-class TestThriftBackend(unittest.TestCase):
+class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
 
     bad_status = ttypes.TStatus(
@@ -55,7 +57,7 @@ class TestThriftBackend(unittest.TestCase):
         thrift_backend._hive_schema_to_arrow_schema = Mock()
         thrift_backend._hive_schema_to_description = Mock()
         thrift_backend._create_arrow_table = MagicMock()
-        thrift_backend._create_arrow_table.return_value = (Mock(), Mock())
+        thrift_backend._create_arrow_table.return_value = (MagicMock(), Mock())
         return thrift_backend
 
     def test_hive_schema_to_arrow_schema_preserves_column_names(self):
@@ -171,6 +173,28 @@ class TestThriftBackend(unittest.TestCase):
             ("column 2", "boolean", None, None, None, None, None),
             ("column 2", "map", None, None, None, None, None),
             ("", "struct", None, None, None, None, None),
+        ])
+
+    def test_hive_schema_to_description_preserves_scale_and_precision(self):
+        columns = [
+            ttypes.TColumnDesc(
+                columnName="column 1",
+                typeDesc=ttypes.TTypeDesc(types=[
+                    ttypes.TTypeEntry(
+                        ttypes.TPrimitiveTypeEntry(
+                            type=ttypes.TTypeId.DECIMAL_TYPE,
+                            typeQualifiers=ttypes.TTypeQualifiers(
+                                qualifiers={
+                                    "precision": ttypes.TTypeQualifierValue(i32Value=10),
+                                    "scale": ttypes.TTypeQualifierValue(i32Value=100),
+                                })))
+                ])),
+        ]
+        t_table_schema = ttypes.TTableSchema(columns)
+
+        description = ThriftBackend._hive_schema_to_description(t_table_schema)
+        self.assertEqual(description, [
+            ("column 1", "decimal", None, None, 10, 100, None),
         ])
 
     def test_make_request_checks_status_code(self):
@@ -390,7 +414,7 @@ class TestThriftBackend(unittest.TestCase):
                                                           self.execute_response_types):
             with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
                 tcli_service_instance = tcli_service_class.return_value
-                results_mock = Mock()
+                results_mock = MagicMock()
                 results_mock.startRowOffset = 0
 
                 execute_resp = resp_type(
@@ -415,7 +439,8 @@ class TestThriftBackend(unittest.TestCase):
                 thrift_backend = self._make_fake_thrift_backend()
 
                 thrift_backend._handle_execute_response(execute_resp, Mock())
-                _, has_more_rows_resp = thrift_backend.fetch_results(Mock(), 1, 1, 0, Mock())
+                _, has_more_rows_resp = thrift_backend.fetch_results(Mock(), 1, 1, 0, Mock(),
+                                                                     Mock())
 
                 self.assertEqual(has_more_rows, has_more_rows_resp)
 
@@ -603,25 +628,27 @@ class TestThriftBackend(unittest.TestCase):
         t_row_set = ttypes.TRowSet()
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
         with self.assertRaises(OperationalError):
-            thrift_backend._create_arrow_table(t_row_set, None)
+            thrift_backend._create_arrow_table(t_row_set, None, Mock())
 
     @patch.object(ThriftBackend, "_convert_arrow_based_set_to_arrow_table")
     @patch.object(ThriftBackend, "_convert_column_based_set_to_arrow_table")
     def test_create_arrow_table_calls_correct_conversion_method(self, convert_col_mock,
                                                                 convert_arrow_mock):
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
+        convert_arrow_mock.return_value = (MagicMock(), Mock())
+        convert_col_mock.return_value = (MagicMock(), Mock())
 
         schema = Mock()
         cols = Mock()
         arrow_batches = Mock()
 
         t_col_set = ttypes.TRowSet(columns=cols)
-        thrift_backend._create_arrow_table(t_col_set, schema)
+        thrift_backend._create_arrow_table(t_col_set, schema, Mock())
         convert_arrow_mock.assert_not_called()
         convert_col_mock.assert_called_once_with(cols, schema)
 
         t_arrow_set = ttypes.TRowSet(arrowBatches=arrow_batches)
-        thrift_backend._create_arrow_table(t_arrow_set, schema)
+        thrift_backend._create_arrow_table(t_arrow_set, schema, Mock())
         convert_arrow_mock.assert_called_once_with(arrow_batches, schema)
         convert_col_mock.assert_called_once_with(cols, schema)
 
@@ -817,6 +844,60 @@ class TestThriftBackend(unittest.TestCase):
         self.assertIn("message2", str(cm.exception))
 
         self.assertEqual(mock_method.call_count, 13 + 1)
+
+    @staticmethod
+    def make_table_and_desc(height, n_decimal_cols, width, precision, scale, int_constant,
+                            decimal_constant):
+        int_col = [int_constant for _ in range(height)]
+        decimal_col = [decimal_constant for _ in range(height)]
+        data = OrderedDict({"col{}".format(i): int_col for i in range(width - n_decimal_cols)})
+        decimals = OrderedDict({"col_dec{}".format(i): decimal_col for i in range(n_decimal_cols)})
+        data.update(decimals)
+
+        int_desc = ([("", "int")] * (width - n_decimal_cols))
+        decimal_desc = ([("", "decimal", None, None, precision, scale, None)] * n_decimal_cols)
+        description = int_desc + decimal_desc
+
+        table = pyarrow.Table.from_pydict(data)
+        return table, description
+
+    def test_arrow_decimal_conversion(self):
+        # Broader tests in DecimalTestSuite
+        width = 10
+        int_constant = 12345
+        precision, scale = 10, 5
+        decimal_constant = "1.345"
+
+        for n_decimal_cols in [0, 1, 10]:
+            for height in [0, 1, 10]:
+                with self.subTest(n_decimal_cols=n_decimal_cols, height=height):
+                    table, description = self.make_table_and_desc(height, n_decimal_cols, width,
+                                                                  precision, scale, int_constant,
+                                                                  decimal_constant)
+                    decimal_converted_table = ThriftBackend._convert_decimals_in_arrow_table(
+                        table, description)
+
+                    for i in range(width):
+                        if height > 0:
+                            if i < width - n_decimal_cols:
+                                self.assertEqual(
+                                    decimal_converted_table.field(i).type, pyarrow.int64())
+                            else:
+                                self.assertEqual(
+                                    decimal_converted_table.field(i).type,
+                                    pyarrow.decimal128(precision=precision, scale=scale))
+
+                    int_col = [int_constant for _ in range(height)]
+                    decimal_col = [Decimal(decimal_constant) for _ in range(height)]
+                    expected_result = OrderedDict(
+                        {"col{}".format(i): int_col
+                         for i in range(width - n_decimal_cols)})
+                    decimals = OrderedDict(
+                        {"col_dec{}".format(i): decimal_col
+                         for i in range(n_decimal_cols)})
+                    expected_result.update(decimals)
+
+                    self.assertEqual(decimal_converted_table.to_pydict(), expected_result)
 
 
 if __name__ == '__main__':

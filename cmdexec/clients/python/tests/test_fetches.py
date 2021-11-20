@@ -51,7 +51,7 @@ class FetchTests(unittest.TestCase):
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
 
-        def fetch_results(op_handle, max_rows, max_bytes, row_offset, arrow_schema):
+        def fetch_results(op_handle, max_rows, max_bytes, row_offset, arrow_schema, description):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1

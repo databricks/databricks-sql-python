@@ -17,10 +17,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
 DEFAULT_ARRAY_SIZE = 100000
 
-TYPES_CONVERTER = {
-    "decimal": Decimal,
-}
-
 
 class Connection:
     def __init__(self,
@@ -440,7 +436,6 @@ class ResultSet:
         self.has_more_rows = execute_response.has_more_rows
         self.buffer_size_bytes = result_buffer_size_bytes
         self._row_index = 0
-        self.description = None
         self.arraysize = arraysize
         self.thrift_backend = thrift_backend
         self.description = execute_response.description
@@ -465,24 +460,14 @@ class ResultSet:
     def _fill_results_buffer(self):
         results, has_more_rows = self.thrift_backend.fetch_results(
             self.command_id, self.arraysize, self.buffer_size_bytes, self._row_index,
-            self._arrow_schema)
+            self._arrow_schema, self.description)
         self.results = results
         self.has_more_rows = has_more_rows
 
-    @staticmethod
-    def parse_type(type_, value):
-        converter = TYPES_CONVERTER.get(type_)
-        if converter:
-            return value if value is None else converter(value)
-        else:
-            return value
-
     def _convert_arrow_table(self, table):
         n_rows, _ = table.shape
-        list_repr = [[
-            self.parse_type(self.description[col_index][1], col[row_index].as_py())
-            for col_index, col in enumerate(table.itercolumns())
-        ] for row_index in range(n_rows)]
+        list_repr = [[col[row_index].as_py() for col in table.itercolumns()]
+                     for row_index in range(n_rows)]
         return list_repr
 
     def fetchmany_arrow(self, n_rows: int) -> pyarrow.Table:
