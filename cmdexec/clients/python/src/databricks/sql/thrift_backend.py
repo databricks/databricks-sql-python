@@ -43,8 +43,8 @@ class ThriftBackend:
         #   See https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain
         # _connection_uri
         #   Overrides server_hostname and http_path.
-        # _max_number_of_retries
-        #  The maximum number of times we should retry retryable requests (defaults to 25)
+        # _retry_stop_after_attempts_count
+        #  The maximum number of times we should retry retryable requests (defaults to 24)
 
         port = port or 443
         if kwargs.get("_connection_uri"):
@@ -55,7 +55,7 @@ class ThriftBackend:
         else:
             raise ValueError("No valid connection settings.")
 
-        self._max_number_of_retries = kwargs.get("_max_number_of_retries", 25)
+        self._retry_stop_after_attempts_count = kwargs.get("_retry_stop_after_attempts_count", 24)
 
         # Configure tls context
         ssl_context = create_default_context(cafile=kwargs.get("_tls_trusted_ca_file"))
@@ -101,6 +101,9 @@ class ThriftBackend:
                 [ttypes.TStatusCode.ERROR_STATUS, ttypes.TStatusCode.INVALID_HANDLE_STATUS]:
             raise DatabaseError(response.status.errorMessage)
 
+    # FUTURE: Consider moving to https://github.com/litl/backoff or
+    # https://github.com/jd/tenacity for retry logic. Otherwise, copy from
+    # v1 client.
     def make_request(self, method, request, attempt_number=1):
         try:
             # We have a lock here because .cancel can be called from a separate thread.
@@ -118,7 +121,7 @@ class ThriftBackend:
             # We only retry if a Retry-After header is set
             if code_and_headers_is_set and self._transport.code in [503, 429] and \
                     "Retry-After" in self._transport.headers and \
-                    attempt_number <= self._max_number_of_retries:
+                    attempt_number <= self._retry_stop_after_attempts_count - 1:
                 retry_time_seconds = int(self._transport.headers["Retry-After"])
                 if self.ERROR_MSG_HEADER in self._transport.headers:
                     error_message = self._transport.headers[self.ERROR_MSG_HEADER]
