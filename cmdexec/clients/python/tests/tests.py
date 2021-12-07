@@ -327,9 +327,9 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_max_number_of_retries_passthrough(self, mock_client_class):
-        databricks.sql.connect(_max_number_of_retries=53, **self.DUMMY_CONNECTION_ARGS)
+        databricks.sql.connect(_retry_stop_after_attempts_count=54, **self.DUMMY_CONNECTION_ARGS)
 
-        self.assertEqual(mock_client_class.call_args[1]["_max_number_of_retries"], 53)
+        self.assertEqual(mock_client_class.call_args[1]["_retry_stop_after_attempts_count"], 54)
 
 
 if __name__ == '__main__':

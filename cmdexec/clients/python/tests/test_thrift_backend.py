@@ -808,7 +808,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertIn("This method fails", str(cm.exception))
 
     @patch("thrift.transport.THttpClient.THttpClient")
-    def test_make_request_will_retry_max_number_of_retries_times_if_retryable(
+    def test_make_request_will_retry_stop_after_attempts_count_if_retryable(
             self, t_transport_class):
         t_transport_instance = t_transport_class.return_value
         t_transport_instance.code = 429
@@ -816,14 +816,15 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_method = Mock()
         mock_method.side_effect = Exception("This method fails")
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], _max_number_of_retries=13)
+        thrift_backend = ThriftBackend(
+            "foobar", 443, "path", [], _retry_stop_after_attempts_count=14)
 
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.make_request(mock_method, Mock())
 
         self.assertIn("This method fails", str(cm.exception))
 
-        self.assertEqual(mock_method.call_count, 13 + 1)
+        self.assertEqual(mock_method.call_count, 14)
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_make_request_will_read_X_Thriftserver_Error_Message_if_set(self, t_transport_class):
@@ -836,14 +837,15 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_method = Mock()
         mock_method.side_effect = Exception("This method fails")
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], _max_number_of_retries=13)
+        thrift_backend = ThriftBackend(
+            "foobar", 443, "path", [], _retry_stop_after_attempts_count=14)
 
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.make_request(mock_method, Mock())
 
         self.assertIn("message2", str(cm.exception))
 
-        self.assertEqual(mock_method.call_count, 13 + 1)
+        self.assertEqual(mock_method.call_count, 14)
 
     @staticmethod
     def make_table_and_desc(height, n_decimal_cols, width, precision, scale, int_constant,
