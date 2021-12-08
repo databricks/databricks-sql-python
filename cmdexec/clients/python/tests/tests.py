@@ -9,8 +9,8 @@ import databricks.sql
 import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error
 
-from cmdexec.clients.python.tests.test_fetches import FetchTests
-from cmdexec.clients.python.tests.test_thrift_backend import ThriftBackendTestSuite
+from test_fetches import FetchTests
+from test_thrift_backend import ThriftBackendTestSuite
 
 
 class ClientTestSuite(unittest.TestCase):

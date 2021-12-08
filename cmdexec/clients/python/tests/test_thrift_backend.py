@@ -3,6 +3,7 @@ from decimal import Decimal
 import itertools
 import unittest
 from unittest.mock import patch, MagicMock, Mock
+from ssl import CERT_NONE, CERT_REQUIRED
 
 import pyarrow
 
@@ -127,6 +128,52 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_headers_are_set(self, t_http_client_class):
         ThriftBackend("foo", 123, "bar", [("header", "value")])
         t_http_client_class.return_value.setCustomHeaders.assert_called_with({"header": "value"})
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    @patch("databricks.sql.thrift_backend.create_default_context")
+    def test_tls_cert_args_are_propagated(self, mock_create_default_context, t_http_client_class):
+        mock_cert_key_file = Mock()
+        mock_cert_key_password = Mock()
+        mock_trusted_ca_file = Mock()
+        mock_cert_file = Mock()
+
+        ThriftBackend(
+            "foo",
+            123,
+            "bar", [],
+            _tls_client_cert_file=mock_cert_file,
+            _tls_client_cert_key_file=mock_cert_key_file,
+            _tls_client_cert_key_password=mock_cert_key_password,
+            _tls_trusted_ca_file=mock_trusted_ca_file)
+
+        mock_create_default_context.assert_called_once_with(cafile=mock_trusted_ca_file)
+        mock_ssl_context = mock_create_default_context.return_value
+        mock_ssl_context.load_cert_chain.assert_called_once_with(
+            certfile=mock_cert_file, keyfile=mock_cert_key_file, password=mock_cert_key_password)
+        self.assertTrue(mock_ssl_context.check_hostname)
+        self.assertEqual(mock_ssl_context.verify_mode, CERT_REQUIRED)
+        self.assertEqual(t_http_client_class.call_args[1]["ssl_context"], mock_ssl_context)
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    @patch("databricks.sql.thrift_backend.create_default_context")
+    def test_tls_no_verify_is_respected(self, mock_create_default_context, t_http_client_class):
+        ThriftBackend("foo", 123, "bar", [], _tls_no_verify=True)
+
+        mock_ssl_context = mock_create_default_context.return_value
+        self.assertFalse(mock_ssl_context.check_hostname)
+        self.assertEqual(mock_ssl_context.verify_mode, CERT_NONE)
+        self.assertEqual(t_http_client_class.call_args[1]["ssl_context"], mock_ssl_context)
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    @patch("databricks.sql.thrift_backend.create_default_context")
+    def test_tls_verify_hostname_is_respected(self, mock_create_default_context,
+                                              t_http_client_class):
+        ThriftBackend("foo", 123, "bar", [], _tls_verify_hostname=False)
+
+        mock_ssl_context = mock_create_default_context.return_value
+        self.assertFalse(mock_ssl_context.check_hostname)
+        self.assertEqual(mock_ssl_context.verify_mode, CERT_REQUIRED)
+        self.assertEqual(t_http_client_class.call_args[1]["ssl_context"], mock_ssl_context)
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_port_and_host_are_respected(self, t_http_client_class):

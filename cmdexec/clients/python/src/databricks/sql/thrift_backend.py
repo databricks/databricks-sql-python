@@ -70,7 +70,7 @@ class ThriftBackend:
             ssl_context.verify_mode = CERT_REQUIRED
 
         tls_client_cert_file = kwargs.get("_tls_client_cert_file")
-        tls_client_cert_key_file = kwargs.get("__tls_client_cert_key_file")
+        tls_client_cert_key_file = kwargs.get("_tls_client_cert_key_file")
         tls_client_cert_key_password = kwargs.get("_tls_client_cert_key_password")
         if tls_client_cert_file:
             ssl_context.load_cert_chain(
