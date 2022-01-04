@@ -610,15 +610,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
 
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
-    def test_open_session_uses_user_provided_session_id(self, tcli_service_class):
-        tcli_service_instance = tcli_service_class.return_value
-        tcli_service_instance.OpenSession.return_value = self.open_session_resp
-
-        thrift_backend = ThriftBackend("foobar", 443, "path", [])
-        thrift_backend.open_session(0b111)
-        self.assertEqual(tcli_service_instance.OpenSession.call_args[0][0].sessionId.guid, 0b111)
-
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_open_session_user_provided_session_id_optional(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp

@@ -153,12 +153,10 @@ class ThriftBackend:
                                    "SPARK_CLI_SERVICE_PROTOCOL_V3, "
                                    "instead got: {}".format(protocol_version))
 
-    def open_session(self, session_id=None):
+    def open_session(self):
         try:
             self._transport.open()
-            handle_identifier = session_id and ttypes.THandleIdentifier(session_id, uuid4().bytes)
             open_session_req = ttypes.TOpenSessionReq(
-                sessionId=handle_identifier,
                 client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
                 client_protocol=None,
                 configuration={
