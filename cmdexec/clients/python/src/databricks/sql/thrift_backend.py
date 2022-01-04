@@ -110,8 +110,9 @@ class ThriftBackend:
             # We do not want threads to be simultaneously sharing the Thrift Transport
             # because we use its state to determine retries
             self._request_lock.acquire()
+            logger.warning("Sending request: {}".format(request))
             response = method(request)
-            logger.debug("Received response: {}".format(response))
+            logger.warning("Received response: {}".format(response))
             ThriftBackend._check_response_for_error(response)
             return response
         except Exception as error:

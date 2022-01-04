@@ -1,3 +1,4 @@
+import re
 import sys
 import unittest
 from unittest.mock import patch, MagicMock, Mock
@@ -330,6 +331,12 @@ class ClientTestSuite(unittest.TestCase):
         databricks.sql.connect(_retry_stop_after_attempts_count=54, **self.DUMMY_CONNECTION_ARGS)
 
         self.assertEqual(mock_client_class.call_args[1]["_retry_stop_after_attempts_count"], 54)
+
+    def test_version_is_canonical(self):
+        version = databricks.sql.__version__
+        canonical_version_re = r'^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)' \
+                               r'(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$'
+        self.assertIsNotNone(re.match(canonical_version_re, version))
 
 
 if __name__ == '__main__':
