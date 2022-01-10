@@ -1,5 +1,6 @@
 from decimal import Decimal
 import logging
+import math
 import time
 import threading
 from uuid import uuid4
@@ -14,16 +15,29 @@ from thrift.Thrift import TException
 
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
-from databricks.sql.utils import ArrowQueue, ExecuteResponse
+from databricks.sql.utils import ArrowQueue, ExecuteResponse, _bound, RequestErrorInfo, NoRetryReason
 
 logger = logging.getLogger(__name__)
+
+THRIFT_ERROR_MESSAGE_HEADER = "x-thriftserver-error-message"
+DATABRICKS_ERROR_OR_REDIRECT_HEADER = "x-databricks-error-or-redirect-message"
+DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
+
+# see Connection.__init__ for parameter descriptions.
+# - Min/Max avoids unsustainable configs (sane values are far more constrained)
+# - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
+_retry_policy = {                          # (type, default, min, max)
+    "_retry_delay_min":                     (float, 1, 0.1, 60),
+    "_retry_delay_max":                     (float, 60, 5, 3600),
+    "_retry_stop_after_attempts_count":     (int, 30, 1, 60),
+    "_retry_stop_after_attempts_duration":  (float, 900, 1, 86400),
+}
 
 
 class ThriftBackend:
     CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
     ERROR_OP_STATE = ttypes.TOperationState.ERROR_STATE
     BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
-    ERROR_MSG_HEADER = "X-Thriftserver-Error-Message"
 
     def __init__(self, server_hostname: str, port, http_path: str, http_headers, **kwargs):
         # Internal arguments in **kwargs:
@@ -43,8 +57,18 @@ class ThriftBackend:
         #   See https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain
         # _connection_uri
         #   Overrides server_hostname and http_path.
-        # _retry_stop_after_attempts_count
-        #  The maximum number of times we should retry retryable requests (defaults to 24)
+        # RETRY/ATTEMPT POLICY
+        # _retry_delay_min                      (default: 1)
+        # _retry_delay_max                      (default: 60)
+        #   {min,max} pre-retry delay bounds
+        # _retry_stop_after_attempts_count      (default: 30)
+        #   total max attempts during retry sequence
+        # _retry_stop_after_attempts_duration   (default: 900)
+        #   total max wait duration during retry sequence
+        #   (Note this will stop _before_ intentionally exceeding; thus if the
+        #   next calculated pre-retry delay would go past
+        #   _retry_stop_after_attempts_duration, stop now.)
+        #
 
         port = port or 443
         if kwargs.get("_connection_uri"):
@@ -55,7 +79,7 @@ class ThriftBackend:
         else:
             raise ValueError("No valid connection settings.")
 
-        self._retry_stop_after_attempts_count = kwargs.get("_retry_stop_after_attempts_count", 24)
+        self._initialize_retry_args(kwargs)
 
         # Configure tls context
         ssl_context = create_default_context(cafile=kwargs.get("_tls_trusted_ca_file"))
@@ -95,55 +119,156 @@ class ThriftBackend:
 
         self._request_lock = threading.RLock()
 
+    def _initialize_retry_args(self, kwargs):
+        # Configure retries & timing: use user-settings or defaults, and bound
+        # by policy. Log.warn when given param gets restricted.
+        for (key, (type_, default, min, max)) in _retry_policy.items():
+            given_or_default = type_(kwargs.get(key, default))
+            bound = _bound(min, max, given_or_default)
+            setattr(self, key, bound)
+            logger.debug('retry parameter: {} given_or_default {}'.format(key, given_or_default))
+            if bound != given_or_default:
+                logger.warn('Override out of policy retry parameter: ' +
+                            '{} given {}, restricted to {}'.format(key, given_or_default, bound))
+
+        # Fail on retry delay min > max; consider later adding fail on min > duration?
+        if self._retry_stop_after_attempts_count > 1 \
+                and self._retry_delay_min > self._retry_delay_max:
+            raise ValueError(
+                "Invalid configuration enables retries with retry delay min(={}) > max(={})".format(
+                    self._retry_delay_min, self._retry_delay_max))
+
     @staticmethod
     def _check_response_for_error(response):
         if response.status and response.status.statusCode in \
                 [ttypes.TStatusCode.ERROR_STATUS, ttypes.TStatusCode.INVALID_HANDLE_STATUS]:
             raise DatabaseError(response.status.errorMessage)
 
+    @staticmethod
+    def _extract_error_message_from_headers(headers):
+        err_msg = ""
+        if THRIFT_ERROR_MESSAGE_HEADER in headers:
+            err_msg = headers[THRIFT_ERROR_MESSAGE_HEADER]
+        if DATABRICKS_ERROR_OR_REDIRECT_HEADER in headers:
+            if err_msg:  # We don't expect both to be set, but log both here just in case
+                err_msg = "Thriftserver error: {}, Databricks error: {}".format(
+                    err_msg, headers[DATABRICKS_ERROR_OR_REDIRECT_HEADER])
+            else:
+                err_msg = headers[DATABRICKS_ERROR_OR_REDIRECT_HEADER]
+            if DATABRICKS_REASON_HEADER in headers:
+                err_msg += ": " + headers[DATABRICKS_REASON_HEADER]
+        return err_msg
+
+    def _handle_request_error(self, error_info, attempt, elapsed):
+        max_attempts = self._retry_stop_after_attempts_count
+        max_duration_s = self._retry_stop_after_attempts_duration
+
+        if error_info.retry_delay is not None and elapsed + error_info.retry_delay > max_duration_s:
+            no_retry_reason = NoRetryReason.OUT_OF_TIME
+        elif error_info.retry_delay is not None and attempt >= max_attempts:
+            no_retry_reason = NoRetryReason.OUT_OF_ATTEMPTS
+        elif error_info.retry_delay is None:
+            no_retry_reason = NoRetryReason.NOT_RETRYABLE
+        else:
+            no_retry_reason = None
+
+        full_error_info_str = error_info.full_info_logging_str(
+            no_retry_reason, attempt, max_attempts, elapsed, max_duration_s)
+
+        if no_retry_reason is not None:
+            user_friendly_error_message = error_info.user_friendly_error_message(
+                no_retry_reason, attempt, elapsed)
+            logger.info("{}: {}".format(user_friendly_error_message, full_error_info_str))
+
+            raise OperationalError(user_friendly_error_message, error_info.error)
+
+        logger.info("Retrying request after error in {} seconds: {}".format(
+            error_info.retry_delay, full_error_info_str))
+        time.sleep(error_info.retry_delay)
+
     # FUTURE: Consider moving to https://github.com/litl/backoff or
-    # https://github.com/jd/tenacity for retry logic. Otherwise, copy from
-    # v1 client.
-    def make_request(self, method, request, attempt_number=1):
-        try:
+    # https://github.com/jd/tenacity for retry logic.
+    def make_request(self, method, request):
+        """Execute given request, attempting retries when receiving HTTP 429/503.
+
+        For delay between attempts, honor the given Retry-After header, but with bounds.
+        Use lower bound of expontial-backoff based on _retry_delay_min,
+        and upper bound of _retry_delay_max.
+        Will stop retry attempts if total elapsed time + next retry delay would exceed
+        _retry_stop_after_attempts_duration.
+        """
+        # basic strategy: build range iterator rep'ing number of available
+        # retries. bounds can be computed from there. iterate over it with
+        # retries until success or final failure achieved.
+
+        t0 = time.time()
+
+        def get_elapsed():
+            return time.time() - t0
+
+        def extract_retry_delay(attempt):
+            # encapsulate retry checks, returns None || delay-in-secs
+            # Retry IFF 429/503 code + Retry-After header set
+            http_code = getattr(self._transport, "code", None)
+            retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
+            if http_code in [429, 503] and retry_after:
+                # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
+                delay = int(retry_after)
+                delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
+                delay = min(delay, self._retry_delay_max)
+                return delay
+            return None
+
+        def attempt_request(attempt):
+            # splits out lockable attempt, from delay & retry loop
+            # returns tuple: (method_return, delay_fn(), error, error_message)
+            # - non-None method_return -> success, return and be done
+            # - non-None retry_delay -> sleep delay before retry
+            # - error, error_message always set when available
+            try:
+                logger.debug("Sending request: {}".format(request))
+                response = method(request)
+                logger.debug("Received response: {}".format(response))
+                return response
+            except Exception as error:
+                retry_delay = extract_retry_delay(attempt)
+                error_message = ThriftBackend._extract_error_message_from_headers(
+                    getattr(self._transport, "headers", {}))
+                return RequestErrorInfo(
+                    error=error,
+                    error_message=error_message,
+                    retry_delay=retry_delay,
+                    http_code=getattr(self._transport, "code", None),
+                    method=method.__name__,
+                    request=request)
+
+        # The real work:
+        # - for each available attempt:
+        #       lock-and-attempt
+        #       return on success
+        #       if available: bounded delay and retry
+        #       if not: raise error
+        max_attempts = self._retry_stop_after_attempts_count
+
+        # use index-1 counting for logging/human consistency
+        for attempt in range(1, max_attempts + 1):
             # We have a lock here because .cancel can be called from a separate thread.
             # We do not want threads to be simultaneously sharing the Thrift Transport
             # because we use its state to determine retries
-            self._request_lock.acquire()
-            logger.warning("Sending request: {}".format(request))
-            response = method(request)
-            logger.warning("Received response: {}".format(response))
-            ThriftBackend._check_response_for_error(response)
-            return response
-        except Exception as error:
-            # _transport.code isn't necessarily set :(
-            code_and_headers_is_set = hasattr(self._transport, 'code') \
-                                      and hasattr(self._transport, 'headers')
-            # We only retry if a Retry-After header is set
-            if code_and_headers_is_set and self._transport.code in [503, 429] and \
-                    "Retry-After" in self._transport.headers and \
-                    attempt_number <= self._retry_stop_after_attempts_count - 1:
-                retry_time_seconds = int(self._transport.headers["Retry-After"])
-                if self.ERROR_MSG_HEADER in self._transport.headers:
-                    error_message = self._transport.headers[self.ERROR_MSG_HEADER]
-                else:
-                    error_message = str(error)
-                logger.warning("Received retryable error during {}. Request: {} Error: {}".format(
-                    method, request, error_message))
-                logger.warning("Retrying in {} seconds. This is attempt number {}".format(
-                    retry_time_seconds, attempt_number))
-                time.sleep(retry_time_seconds)
-                return self.make_request(method, request, attempt_number + 1)
-            else:
-                logger.error("Received error when issuing: {}".format(request))
-                if hasattr(self._transport, "headers") and \
-                   self.ERROR_MSG_HEADER in self._transport.headers:
-                    error_message = self._transport.headers[self.ERROR_MSG_HEADER]
-                    raise OperationalError("Error during Thrift request: {}".format(error_message))
-                else:
-                    raise OperationalError("Error during Thrift request", error)
-        finally:
-            self._request_lock.release()
+            with self._request_lock:
+                response_or_error_info = attempt_request(attempt)
+            elapsed = get_elapsed()
+
+            # conditions: success, non-retry-able, no-attempts-left, no-time-left, delay+retry
+            if not isinstance(response_or_error_info, RequestErrorInfo):
+                # log nothing here, presume that main request logging covers
+                response = response_or_error_info
+                ThriftBackend._check_response_for_error(response)
+                return response
+
+            error_info = response_or_error_info
+            # The error handler will either sleep or throw an exception
+            self._handle_request_error(error_info, attempt, elapsed)
 
     def _check_protocol_version(self, t_open_session_resp):
         protocol_version = t_open_session_resp.serverProtocolVersion

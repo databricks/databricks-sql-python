@@ -7,9 +7,19 @@ from ssl import CERT_NONE, CERT_REQUIRED
 
 import pyarrow
 
+import databricks.sql
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.thrift_backend import ThriftBackend
+
+
+def retry_policy_factory():
+    return {                          # (type, default, min, max)
+        "_retry_delay_min":                     (float, 1, None, None),
+        "_retry_delay_max":                     (float, 60, None, None),
+        "_retry_stop_after_attempts_count":     (int, 30, None, None),
+        "_retry_stop_after_attempts_duration":  (float, 900, None, None),
+    }
 
 
 class ThriftBackendTestSuite(unittest.TestCase):
@@ -45,7 +55,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_make_request_checks_thrift_status_code(self):
         mock_response = Mock()
         mock_response.status.statusCode = ttypes.TStatusCode.ERROR_STATUS
-        mock_method = lambda _: mock_response
+        mock_method = Mock()
+        mock_method.__name__ = "method name"
+        mock_method.return_value = mock_response
         thrift_backend = ThriftBackend("foo", 123, "bar", [])
         with self.assertRaises(DatabaseError):
             thrift_backend.make_request(mock_method, Mock())
@@ -821,6 +833,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         t_transport_instance.code = 429
         t_transport_instance.headers = {"foo": "bar"}
         mock_method = Mock()
+        mock_method.__name__ = "method name"
         mock_method.side_effect = Exception("This method fails")
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
@@ -836,6 +849,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         t_transport_instance.code = 430
         t_transport_instance.headers = {"Retry-After": "1"}
         mock_method = Mock()
+        mock_method.__name__ = "method name"
         mock_method.side_effect = Exception("This method fails")
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
@@ -846,44 +860,58 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertIn("This method fails", str(cm.exception))
 
     @patch("thrift.transport.THttpClient.THttpClient")
+    @patch("databricks.sql.thrift_backend._retry_policy", new_callable=retry_policy_factory)
     def test_make_request_will_retry_stop_after_attempts_count_if_retryable(
-            self, t_transport_class):
+            self, mock_retry_policy, t_transport_class):
         t_transport_instance = t_transport_class.return_value
         t_transport_instance.code = 429
         t_transport_instance.headers = {"Retry-After": "0"}
         mock_method = Mock()
+        mock_method.__name__ = "method name"
         mock_method.side_effect = Exception("This method fails")
 
         thrift_backend = ThriftBackend(
-            "foobar", 443, "path", [], _retry_stop_after_attempts_count=14)
+            "foobar",
+            443,
+            "path", [],
+            _retry_stop_after_attempts_count=14,
+            _retry_delay_max=0,
+            _retry_delay_min=0)
 
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.make_request(mock_method, Mock())
 
         self.assertIn("This method fails", str(cm.exception))
+        self.assertIn("After 14 retry attempts, retries are exhausted", str(cm.exception))
 
         self.assertEqual(mock_method.call_count, 14)
 
     @patch("thrift.transport.THttpClient.THttpClient")
-    def test_make_request_will_read_X_Thriftserver_Error_Message_if_set(self, t_transport_class):
+    def test_make_request_will_read_error_message_headers_if_set(self, t_transport_class):
         t_transport_instance = t_transport_class.return_value
-        t_transport_instance.code = 429
-        t_transport_instance.headers = {
-            "Retry-After": "0",
-            "X-Thriftserver-Error-Message": "message2"
-        }
         mock_method = Mock()
+        mock_method.__name__ = "method name"
         mock_method.side_effect = Exception("This method fails")
 
-        thrift_backend = ThriftBackend(
-            "foobar", 443, "path", [], _retry_stop_after_attempts_count=14)
+        thrift_backend = ThriftBackend("foobar", 443, "path", [])
 
-        with self.assertRaises(OperationalError) as cm:
-            thrift_backend.make_request(mock_method, Mock())
+        error_headers = [[("x-thriftserver-error-message", "thrift server error message")],
+                         [("x-databricks-error-or-redirect-message", "databricks error message")],
+                         [("x-databricks-error-or-redirect-message", "databricks error message"),
+                          ("x-databricks-reason-phrase", "databricks error reason")],
+                         [("x-thriftserver-error-message", "thrift server error message"),
+                          ("x-databricks-error-or-redirect-message", "databricks error message"),
+                          ("x-databricks-reason-phrase", "databricks error reason")],
+                         [("x-thriftserver-error-message", "thrift server error message"),
+                          ("x-databricks-error-or-redirect-message", "databricks error message")]]
 
-        self.assertIn("message2", str(cm.exception))
+        for headers in error_headers:
+            t_transport_instance.headers = dict(headers)
+            with self.assertRaises(OperationalError) as cm:
+                thrift_backend.make_request(mock_method, Mock())
 
-        self.assertEqual(mock_method.call_count, 14)
+            for header in headers:
+                self.assertIn(header[1], str(cm.exception))
 
     @staticmethod
     def make_table_and_desc(height, n_decimal_cols, width, precision, scale, int_constant,
@@ -938,6 +966,37 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     expected_result.update(decimals)
 
                     self.assertEqual(decimal_converted_table.to_pydict(), expected_result)
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    def test_retry_args_passthrough(self, mock_http_client):
+        retry_delay_args = {
+            "_retry_delay_min": 6,
+            "_retry_delay_max": 10,
+            "_retry_stop_after_attempts_count": 1,
+            "_retry_stop_after_attempts_duration": 100
+        }
+        backend = ThriftBackend("foobar", 443, "path", [], **retry_delay_args)
+        for (arg, val) in retry_delay_args.items():
+            self.assertEqual(getattr(backend, arg), val)
+
+    @patch("thrift.transport.THttpClient.THttpClient")
+    def test_retry_args_bounding(self, mock_http_client):
+        retry_delay_test_args_and_expected_values = {}
+        for (k, (_, _, min, max)) in databricks.sql.thrift_backend._retry_policy.items():
+            retry_delay_test_args_and_expected_values[k] = ((min - 1, min), (max + 1, max))
+
+        for i in range(2):
+            retry_delay_args = {
+                k: v[i][0]
+                for (k, v) in retry_delay_test_args_and_expected_values.items()
+            }
+            backend = ThriftBackend("foobar", 443, "path", [], **retry_delay_args)
+            retry_delay_expected_vals = {
+                k: v[i][1]
+                for (k, v) in retry_delay_test_args_and_expected_values.items()
+            }
+            for (arg, val) in retry_delay_expected_vals.items():
+                self.assertEqual(getattr(backend, arg), val)
 
 
 if __name__ == '__main__':

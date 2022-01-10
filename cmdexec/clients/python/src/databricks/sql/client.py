@@ -79,17 +79,8 @@ class Connection:
                                                    kwargs.get("_user_agent_entry"))
 
         base_headers = [("User-Agent", useragent_header)] + authorization_header
-        self.thrift_backend = ThriftBackend(
-            self.host,
-            self.port,
-            http_path, (metadata or []) + base_headers,
-            _tls_verify_hostname=kwargs.get("_tls_verify_hostname"),
-            _tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
-            _tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
-            _tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
-            _tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
-            _connection_uri=kwargs.get("_connection_uri"),
-            _retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count", 24))
+        self.thrift_backend = ThriftBackend(self.host, self.port, http_path,
+                                            (metadata or []) + base_headers, **kwargs)
 
         self._session_handle = self.thrift_backend.open_session()
         self.open = True
