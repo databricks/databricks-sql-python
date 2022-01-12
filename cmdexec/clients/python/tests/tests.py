@@ -12,6 +12,7 @@ from databricks.sql import InterfaceError, DatabaseError, Error
 
 from test_fetches import FetchTests
 from test_thrift_backend import ThriftBackendTestSuite
+from test_arrow_queue import ArrowQueueSuite
 
 
 class ClientTestSuite(unittest.TestCase):
@@ -342,7 +343,7 @@ class ClientTestSuite(unittest.TestCase):
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
     loader = unittest.TestLoader()
-    test_classes = [ClientTestSuite, FetchTests, ThriftBackendTestSuite]
+    test_classes = [ClientTestSuite, FetchTests, ThriftBackendTestSuite, ArrowQueueSuite]
     suites_list = []
     for test_class in test_classes:
         suite = loader.loadTestsFromTestCase(test_class)

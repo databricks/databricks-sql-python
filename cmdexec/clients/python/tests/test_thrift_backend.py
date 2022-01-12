@@ -498,10 +498,47 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 thrift_backend = self._make_fake_thrift_backend()
 
                 thrift_backend._handle_execute_response(execute_resp, Mock())
-                _, has_more_rows_resp = thrift_backend.fetch_results(Mock(), 1, 1, 0, Mock(),
-                                                                     Mock())
+                _, has_more_rows_resp = thrift_backend.fetch_results(
+                    op_handle=Mock(),
+                    max_rows=1,
+                    max_bytes=1,
+                    expected_row_start_offset=0,
+                    arrow_schema=Mock(),
+                    description=Mock())
 
                 self.assertEqual(has_more_rows, has_more_rows_resp)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_arrow_batches_row_count_are_respected(self, tcli_service_class):
+        # make some semi-real arrow batches and check the number of rows is correct in the queue
+        tcli_service_instance = tcli_service_class.return_value
+        t_fetch_results_resp = ttypes.TFetchResultsResp(
+            status=self.okay_status,
+            hasMoreRows=False,
+            results=ttypes.TRowSet(
+                startRowOffset=0,
+                rows=[],
+                arrowBatches=[
+                    ttypes.TSparkArrowBatch(batch=bytearray(), rowCount=15) for _ in range(10)
+                ]))
+        tcli_service_instance.FetchResults.return_value = t_fetch_results_resp
+        schema = pyarrow.schema([
+            pyarrow.field("column1", pyarrow.int32()),
+            pyarrow.field("column2", pyarrow.string()),
+            pyarrow.field("column3", pyarrow.float64()),
+            pyarrow.field("column3", pyarrow.binary())
+        ])
+
+        thrift_backend = ThriftBackend("foobar", 443, "path", [])
+        arrow_queue, has_more_results = thrift_backend.fetch_results(
+            op_handle=Mock(),
+            max_rows=1,
+            max_bytes=1,
+            expected_row_start_offset=0,
+            arrow_schema=schema,
+            description=MagicMock())
+
+        self.assertEqual(arrow_queue.n_valid_rows, 15 * 10)
 
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_execute_statement_calls_client_and_handle_execute_response(self, tcli_service_class):
