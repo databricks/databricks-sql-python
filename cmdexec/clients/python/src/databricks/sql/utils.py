@@ -5,7 +5,7 @@ import pyarrow
 
 
 class ArrowQueue:
-    def __init__(self, arrow_table: pyarrow.Table, n_valid_rows: int, start_row_index: int):
+    def __init__(self, arrow_table: pyarrow.Table, n_valid_rows: int, start_row_index: int = 0):
         """
         A queue-like wrapper over an Arrow table
 
@@ -20,6 +20,8 @@ class ArrowQueue:
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
         """Get upto the next n rows of the Arrow dataframe"""
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
+        # Note that the table.slice API is not the same as Python's slice
+        # The second argument should be length, not end index
         slice = self.arrow_table.slice(self.cur_row_index, length)
         self.cur_row_index += slice.num_rows
         return slice

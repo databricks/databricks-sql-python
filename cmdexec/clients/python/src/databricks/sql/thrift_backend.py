@@ -639,7 +639,8 @@ class ThriftBackend:
 
         return self._results_message_to_execute_response(resp, final_operation_state)
 
-    def fetch_results(self, op_handle, max_rows, max_bytes, row_offset, arrow_schema, description):
+    def fetch_results(self, op_handle, max_rows, max_bytes, expected_row_start_offset, arrow_schema,
+                      description):
         assert (op_handle is not None)
 
         req = ttypes.TFetchResultsReq(
@@ -651,12 +652,14 @@ class ThriftBackend:
             ),
             maxRows=max_rows,
             maxBytes=max_bytes,
-            startRowOffset=row_offset,
-        )
+            orientation=ttypes.TFetchOrientation.FETCH_NEXT)
 
         resp = self.make_request(self._client.FetchResults, req)
+        if resp.results.startRowOffset > expected_row_start_offset:
+            logger.warning("Expected results to start from {} but they instead start at {}".format(
+                expected_row_start_offset, resp.results.startRowOffset))
         arrow_results, n_rows = self._create_arrow_table(resp.results, arrow_schema, description)
-        arrow_queue = ArrowQueue(arrow_results, n_rows, row_offset - resp.results.startRowOffset)
+        arrow_queue = ArrowQueue(arrow_results, n_rows)
 
         return arrow_queue, resp.hasMoreRows
 

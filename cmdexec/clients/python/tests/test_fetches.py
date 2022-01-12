@@ -24,7 +24,7 @@ class FetchTests(unittest.TestCase):
     @staticmethod
     def make_arrow_queue(batch):
         _, table = FetchTests.make_arrow_table(batch)
-        queue = ArrowQueue(table, len(batch), 0)
+        queue = ArrowQueue(table, len(batch))
         return queue
 
     @staticmethod
@@ -51,7 +51,8 @@ class FetchTests(unittest.TestCase):
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
 
-        def fetch_results(op_handle, max_rows, max_bytes, row_offset, arrow_schema, description):
+        def fetch_results(op_handle, max_rows, max_bytes, expected_row_start_offset, arrow_schema,
+                          description):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1

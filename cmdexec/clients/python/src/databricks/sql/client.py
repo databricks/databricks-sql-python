@@ -423,11 +423,11 @@ class ResultSet:
         self.has_been_closed_server_side = execute_response.has_been_closed_server_side
         self.has_more_rows = execute_response.has_more_rows
         self.buffer_size_bytes = result_buffer_size_bytes
-        self._row_index = 0
         self.arraysize = arraysize
         self.thrift_backend = thrift_backend
         self.description = execute_response.description
         self._arrow_schema = execute_response.arrow_schema
+        self._next_row_index = 0
 
         if execute_response.arrow_queue:
             # In this case the server has taken the fast path and returned an initial batch of
@@ -447,8 +447,12 @@ class ResultSet:
 
     def _fill_results_buffer(self):
         results, has_more_rows = self.thrift_backend.fetch_results(
-            self.command_id, self.arraysize, self.buffer_size_bytes, self._row_index,
-            self._arrow_schema, self.description)
+            op_handle=self.command_id,
+            max_rows=self.arraysize,
+            max_bytes=self.buffer_size_bytes,
+            expected_row_start_offset=self._next_row_index,
+            arrow_schema=self._arrow_schema,
+            description=self.description)
         self.results = results
         self.has_more_rows = has_more_rows
 
@@ -468,27 +472,27 @@ class ResultSet:
             raise ValueError("n_rows argument for fetchmany is %s but must be >= 0", n_rows)
         results = self.results.next_n_rows(n_rows)
         n_remaining_rows = n_rows - results.num_rows
-        self._row_index += results.num_rows
+        self._next_row_index += results.num_rows
 
         while n_remaining_rows > 0 and not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
             results = pyarrow.concat_tables([results, partial_results])
             n_remaining_rows -= partial_results.num_rows
-            self._row_index += partial_results.num_rows
+            self._next_row_index += partial_results.num_rows
 
         return results
 
     def fetchall_arrow(self) -> pyarrow.Table:
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
-        self._row_index += results.num_rows
+        self._next_row_index += results.num_rows
 
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = pyarrow.concat_tables([results, partial_results])
-            self._row_index += partial_results.num_rows
+            self._next_row_index += partial_results.num_rows
 
         return results
 
