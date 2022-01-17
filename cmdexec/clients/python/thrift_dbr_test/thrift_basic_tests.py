@@ -5,8 +5,8 @@ from pythontesting.tests.common.test_spark_basictests import SparkBasicSuiteBase
 
 
 # Base classes are defined in runtime:sql/hive-thriftserver/pythontesting/
-# They are to be combined in the test-docker-image (//cmdexec/client/dbsql-test-image)
-class DBSQLBasicSuite(PyHiveThriftTestCase, SparkBasicSuiteBase):
+# They are to be combined in the test-docker-image (//cmdexec/client/pysql-test-image)
+class PySQLBasicSuite(PyHiveThriftTestCase, SparkBasicSuiteBase):
     error_type = databricks.sql.Error
 
 

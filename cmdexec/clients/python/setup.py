@@ -5,6 +5,6 @@ setuptools.setup(
     version="2.0.0-rc1",
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
-    install_requires=["pyarrow", 'thrift>=0.10.0', "pandas"],
+    install_requires=["pyarrow", 'thrift>=0.13.0', "pandas"],
     author="Databricks",
 )
