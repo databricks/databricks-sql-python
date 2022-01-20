@@ -339,6 +339,15 @@ class ClientTestSuite(unittest.TestCase):
                                r'(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$'
         self.assertIsNotNone(re.match(canonical_version_re, version))
 
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_configuration_passthrough(self, mock_client_class):
+        mock_session_config = Mock()
+        databricks.sql.connect(
+            session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS)
+
+        self.assertEqual(mock_client_class.return_value.open_session.call_args[0][0],
+                         mock_session_config)
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])

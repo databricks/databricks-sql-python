@@ -117,7 +117,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
             with self.assertRaises(OperationalError) as cm:
                 thrift_backend = self._make_fake_thrift_backend()
-                thrift_backend.open_session()
+                thrift_backend.open_session({})
 
             self.assertIn("expected server to use a protocol version", str(cm.exception))
 
@@ -134,7 +134,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 status=self.okay_status, serverProtocolVersion=protocol_version)
 
             thrift_backend = self._make_fake_thrift_backend()
-            thrift_backend.open_session()
+            thrift_backend.open_session({})
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_headers_are_set(self, t_http_client_class):
@@ -664,7 +664,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
-        thrift_backend.open_session()
+        thrift_backend.open_session({})
         self.assertEqual(len(tcli_service_instance.OpenSession.call_args_list), 1)
 
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
@@ -1034,6 +1034,36 @@ class ThriftBackendTestSuite(unittest.TestCase):
             }
             for (arg, val) in retry_delay_expected_vals.items():
                 self.assertEqual(getattr(backend, arg), val)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_configuration_passthrough(self, tcli_client_class):
+        tcli_service_instance = tcli_client_class.return_value
+        tcli_service_instance.OpenSession.return_value = self.open_session_resp
+        mock_config = {"foo": "bar", "baz": True, "42": 42}
+        expected_config = {
+            "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false",
+            "foo": "bar",
+            "baz": "True",
+            "42": "42"
+        }
+
+        backend = ThriftBackend("foobar", 443, "path", [])
+        backend.open_session(mock_config)
+
+        open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
+        self.assertEqual(open_session_req.configuration, expected_config)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_cant_set_timestamp_as_string_to_true(self, tcli_client_class):
+        tcli_service_instance = tcli_client_class.return_value
+        tcli_service_instance.OpenSession.return_value = self.open_session_resp
+        mock_config = {"spark.thriftserver.arrowBasedRowSet.timestampAsString": True}
+        backend = ThriftBackend("foobar", 443, "path", [])
+
+        with self.assertRaises(databricks.sql.Error) as cm:
+            backend.open_session(mock_config)
+
+        self.assertIn("timestampAsString cannot be changed", str(cm.exception))
 
 
 if __name__ == '__main__':
