@@ -23,6 +23,8 @@ THRIFT_ERROR_MESSAGE_HEADER = "x-thriftserver-error-message"
 DATABRICKS_ERROR_OR_REDIRECT_HEADER = "x-databricks-error-or-redirect-message"
 DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 
+TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
+
 # see Connection.__init__ for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
 # - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
@@ -278,18 +280,27 @@ class ThriftBackend:
                                    "SPARK_CLI_SERVICE_PROTOCOL_V3, "
                                    "instead got: {}".format(protocol_version))
 
-    def open_session(self):
+    def _check_session_configuration(self, session_configuration):
+        # This client expects timetampsAsString to be false, so we do not allow users to modify that
+        if session_configuration.get(TIMESTAMP_AS_STRING_CONFIG, "false").lower() != "false":
+            raise Error("Invalid session configuration: {} cannot be changed "
+                        "while using the Databricks SQL connector, it must be false not {}".format(
+                            TIMESTAMP_AS_STRING_CONFIG,
+                            session_configuration[TIMESTAMP_AS_STRING_CONFIG]))
+
+    def open_session(self, session_configuration):
         try:
             self._transport.open()
+            session_configuration = {k: str(v) for (k, v) in (session_configuration or {}).items()}
+            self._check_session_configuration(session_configuration)
+            # We want to receive proper Timestamp arrow types.
+            # We set it also in confOverlay in TExecuteStatementReq on a per query basic,
+            # but it doesn't hurt to also set for the whole session.
+            session_configuration[TIMESTAMP_AS_STRING_CONFIG] = "false"
             open_session_req = ttypes.TOpenSessionReq(
                 client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
                 client_protocol=None,
-                configuration={
-                    # We want to receive proper Timestamp arrow types.
-                    # We set it also in confOverlay in TExecuteStatementReq on a per query basic,
-                    # but it doesn't hurt to also set for the whole session.
-                    "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
-                })
+                configuration=session_configuration)
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_protocol_version(response)
             return response.sessionHandle
