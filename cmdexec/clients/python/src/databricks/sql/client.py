@@ -60,6 +60,9 @@ class Connection:
         #   Set client SSL certificate.
         # _retry_stop_after_attempts_count
         #  The maximum number of attempts during a request retry sequence (defaults to 24)
+        # _socket_timeout
+        #  The timeout in seconds for socket send, recv and connect operations. Defaults to None for
+        #  no timeout. Should be a positive float or integer.
 
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)

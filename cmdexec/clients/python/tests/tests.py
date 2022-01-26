@@ -333,6 +333,11 @@ class ClientTestSuite(unittest.TestCase):
 
         self.assertEqual(mock_client_class.call_args[1]["_retry_stop_after_attempts_count"], 54)
 
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_socket_timeout_passthrough(self, mock_client_class):
+        databricks.sql.connect(_socket_timeout=234, **self.DUMMY_CONNECTION_ARGS)
+        self.assertEqual(mock_client_class.call_args[1]["_socket_timeout"], 234)
+
     def test_version_is_canonical(self):
         version = databricks.sql.__version__
         canonical_version_re = r'^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)' \

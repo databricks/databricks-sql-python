@@ -71,6 +71,11 @@ class ThriftBackend:
         #   next calculated pre-retry delay would go past
         #   _retry_stop_after_attempts_duration, stop now.)
         #
+        # _retry_stop_after_attempts_count
+        #  The maximum number of times we should retry retryable requests (defaults to 24)
+        # _socket_timeout
+        #  The timeout in seconds for socket send, recv and connect operations. Defaults to None for
+        #  no timeout. Should be a positive float or integer.
 
         port = port or 443
         if kwargs.get("_connection_uri"):
@@ -108,6 +113,10 @@ class ThriftBackend:
             uri_or_host=uri,
             ssl_context=ssl_context,
         )
+
+        timeout = kwargs.get("_socket_timeout")
+        # setTimeout defaults to None (i.e. no timeout), and is expected in ms
+        self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
         self._transport.setCustomHeaders(dict(http_headers))
         protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(self._transport)
