@@ -20,7 +20,7 @@ DATETIME = _DBAPITypeObject('timestamp')
 DATE = _DBAPITypeObject('date')
 ROWID = _DBAPITypeObject()
 
-__version__ = "2.0.0rc1"
+__version__ = "2.0.0rc2"
 USER_AGENT_NAME = "PyDatabricksSqlConnector"
 
 
