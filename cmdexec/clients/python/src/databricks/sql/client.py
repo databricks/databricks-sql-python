@@ -10,7 +10,7 @@ import pyarrow
 from databricks.sql import USER_AGENT_NAME, __version__
 from databricks.sql import *
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import ExecuteResponse
+from databricks.sql.utils import ExecuteResponse, ParamEscaper
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,13 @@ class Connection:
         for cursor in self._cursors:
             cursor.close()
 
+    def commit(self):
+        """No-op because Databricks does not support transactions"""
+        pass
+
+    def rollback(self):
+        raise NotSupportedError("Transactions are not supported on Databricks")
+
 
 class Cursor:
     def __init__(self,
@@ -144,7 +151,7 @@ class Cursor:
         visible by other cursors or connections.
         """
         self.connection = connection
-        self.rowcount = -1
+        self.rowcount = -1  # Return -1 as this is not supported
         self.buffer_size_bytes = result_buffer_size_bytes
         self.active_result_set = None
         self.arraysize = arraysize
@@ -153,6 +160,8 @@ class Cursor:
         self.executing_command_id = None
         self.thrift_backend = thrift_backend
         self.active_op_handle = None
+        self.escaper = ParamEscaper()
+        self.lastrowid = None
 
     def __enter__(self):
         return self
@@ -178,32 +187,42 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
-    def execute(self,
-                operation: str,
-                query_params: Optional[Dict[str, str]] = None,
-                metadata: Optional[Dict[str, str]] = None) -> "Cursor":
+    def execute(self, operation: str, parameters: Optional[Dict[str, str]] = None) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
-
+        Parameters should be given in extended param format style: %(...)<s|d|f>.
+        For example:
+            operation = "SELECT * FROM %(table_name)s"
+            parameters = {"table_name": "my_table_name"}
+            Will result in the query "SELECT * FROM 'my_table_name' being sent to the server
         :returns self
         """
-        if query_params is None:
-            sql = operation
-        else:
-            # TODO(https://databricks.atlassian.net/browse/SC-88829) before public release
-            logger.error("query param substitution currently un-implemented")
-            sql = operation
+        if parameters is not None:
+            operation = operation % self.escaper.escape_args(parameters)
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
-            operation=sql,
+            operation=operation,
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self)
         self.active_result_set = ResultSet(self.connection, execute_response, self.thrift_backend,
                                            self.buffer_size_bytes, self.arraysize)
+        return self
+
+    def executemany(self, operation, seq_of_parameters):
+        """
+        Prepare a database operation (query or command) and then execute it against all parameter
+        sequences or mappings found in the sequence ``seq_of_parameters``.
+
+        Only the final result set is retained.
+
+        :returns self
+        """
+        for parameters in seq_of_parameters:
+            self.execute(operation, parameters)
         return self
 
     def catalogs(self) -> "Cursor":
@@ -327,7 +346,7 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def fetchmany(self, n_rows: int) -> List[Tuple]:
+    def fetchmany(self, size: int) -> List[Tuple]:
         """
         Fetch the next set of rows of a query result, returning a sequence of sequences (e.g. a
         list of tuples).
@@ -345,7 +364,7 @@ class Cursor:
         """
         self._check_not_closed()
         if self.active_result_set:
-            return self.active_result_set.fetchmany(n_rows)
+            return self.active_result_set.fetchmany(size)
         else:
             raise Error("There is no active result set")
 
@@ -356,10 +375,10 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def fetchmany_arrow(self, n_rows):
+    def fetchmany_arrow(self, size):
         self._check_not_closed()
         if self.active_result_set:
-            return self.active_result_set.fetchmany_arrow(n_rows)
+            return self.active_result_set.fetchmany_arrow(size)
         else:
             raise Error("There is no active result set")
 
@@ -406,6 +425,24 @@ class Cursor:
             return self.active_result_set.description
         else:
             return None
+
+    @property
+    def rownumber(self):
+        """This read-only attribute should provide the current 0-based index of the cursor in the
+        result set.
+
+        The index can be seen as index of the cursor in a sequence (the result set). The next fetch
+        operation will fetch the row indexed by ``rownumber`` in that sequence.
+        """
+        return self.active_result_set.rownumber if self.active_result_set else 0
+
+    def setinputsizes(self, sizes):
+        """Does nothing by default"""
+        pass
+
+    def setoutputsize(self, size, column=None):
+        """Does nothing by default"""
+        pass
 
 
 class ResultSet:
@@ -468,16 +505,20 @@ class ResultSet:
                      for row_index in range(n_rows)]
         return list_repr
 
-    def fetchmany_arrow(self, n_rows: int) -> pyarrow.Table:
+    @property
+    def rownumber(self):
+        return self._next_row_index
+
+    def fetchmany_arrow(self, size: int) -> pyarrow.Table:
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
 
         An empty sequence is returned when no more rows are available.
         """
-        if n_rows < 0:
-            raise ValueError("n_rows argument for fetchmany is %s but must be >= 0", n_rows)
-        results = self.results.next_n_rows(n_rows)
-        n_remaining_rows = n_rows - results.num_rows
+        if size < 0:
+            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+        results = self.results.next_n_rows(size)
+        n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
 
         while n_remaining_rows > 0 and not self.has_been_closed_server_side and self.has_more_rows:
@@ -519,13 +560,13 @@ class ResultSet:
         """
         return self._convert_arrow_table(self.fetchall_arrow())
 
-    def fetchmany(self, n_rows: int) -> List[Tuple]:
+    def fetchmany(self, size: int) -> List[Tuple]:
         """
         Fetch the next set of rows of a query result, returning a list of lists.
 
         An empty sequence is returned when no more rows are available.
         """
-        return self._convert_arrow_table(self.fetchmany_arrow(n_rows))
+        return self._convert_arrow_table(self.fetchmany_arrow(size))
 
     def close(self) -> None:
         """
