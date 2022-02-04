@@ -4,11 +4,11 @@ import unittest
 from unittest.mock import patch, MagicMock, Mock
 import itertools
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, date
 
 import databricks.sql
 import databricks.sql.client as client
-from databricks.sql import InterfaceError, DatabaseError, Error
+from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
 
 from test_fetches import FetchTests
 from test_thrift_backend import ThriftBackendTestSuite
@@ -352,6 +352,102 @@ class ClientTestSuite(unittest.TestCase):
 
         self.assertEqual(mock_client_class.return_value.open_session.call_args[0][0],
                          mock_session_config)
+
+    def test_execute_parameter_passhthrough(self):
+        mock_thrift_backend = Mock()
+        cursor = client.Cursor(Mock(), mock_thrift_backend)
+
+        tests = [("SELECT %(string_v)s", "SELECT 'foo_12345'", {
+            "string_v": "foo_12345"
+        }), ("SELECT %(x)s", "SELECT NULL", {
+            "x": None
+        }), ("SELECT %(int_value)d", "SELECT 48", {
+            "int_value": 48
+        }), ("SELECT %(float_value).2f", "SELECT 48.20", {
+            "float_value": 48.2
+        }), ("SELECT %(iter)s", "SELECT (1,2,3,4,5)", {
+            "iter": [1, 2, 3, 4, 5]
+        }),
+                 ("SELECT %(datetime)s", "SELECT '2022-02-01 10:23:00.000000'", {
+                     "datetime": datetime(2022, 2, 1, 10, 23)
+                 }), ("SELECT %(date)s", "SELECT '2022-02-01'", {
+                     "date": date(2022, 2, 1)
+                 })]
+
+        for query, expected_query, params in tests:
+            cursor.execute(query, parameters=params)
+            self.assertEqual(mock_thrift_backend.execute_command.call_args[1]["operation"],
+                             expected_query)
+
+    @patch("%s.client.ResultSet" % PACKAGE_NAME)
+    def test_executemany_parameter_passhthrough_and_uses_last_result_set(
+            self, mock_result_set_class):
+        # Create a new mock result set each time the class is instantiated
+        mock_result_set_instances = [Mock(), Mock(), Mock()]
+        mock_result_set_class.side_effect = mock_result_set_instances
+        mock_thrift_backend = Mock()
+        cursor = client.Cursor(Mock(), mock_thrift_backend)
+
+        params = [{"x": None}, {"x": "foo1"}, {"x": "bar2"}]
+        expected_queries = ["SELECT NULL", "SELECT 'foo1'", "SELECT 'bar2'"]
+
+        cursor.executemany("SELECT %(x)s", seq_of_parameters=params)
+
+        self.assertEqual(
+            len(mock_thrift_backend.execute_command.call_args_list), len(expected_queries),
+            "Expected execute_command to be called the same number of times as params were passed")
+
+        for expected_query, call_args in zip(expected_queries,
+                                             mock_thrift_backend.execute_command.call_args_list):
+            self.assertEqual(call_args[1]["operation"], expected_query)
+
+        self.assertEqual(
+            cursor.active_result_set, mock_result_set_instances[2],
+            "Expected the active result set to be the result set corresponding to the"
+            "last operation")
+
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_commit_a_noop(self, mock_thrift_backend_class):
+        c = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        c.commit()
+
+    def test_setinputsizes_a_noop(self):
+        cursor = client.Cursor(Mock(), Mock())
+        cursor.setinputsizes(1)
+
+    def test_setoutputsizes_a_noop(self):
+        cursor = client.Cursor(Mock(), Mock())
+        cursor.setoutputsize(1)
+
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_rollback_not_supported(self, mock_thrift_backend_class):
+        c = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        with self.assertRaises(NotSupportedError):
+            c.rollback()
+
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_row_number_respected(self, mock_thrift_backend_class):
+        def make_fake_row_slice(n_rows):
+            mock_slice = Mock()
+            mock_slice.num_rows = n_rows
+            return mock_slice
+
+        mock_thrift_backend = mock_thrift_backend_class.return_value
+        mock_aq = Mock()
+        mock_aq.next_n_rows.side_effect = make_fake_row_slice
+        mock_thrift_backend.execute_command.return_value.arrow_queue = mock_aq
+        mock_thrift_backend.fetch_results.return_value = (mock_aq, True)
+
+        cursor = client.Cursor(Mock(), mock_thrift_backend)
+        cursor.execute('foo')
+
+        self.assertEqual(cursor.rownumber, 0)
+        cursor.fetchmany_arrow(10)
+        self.assertEqual(cursor.rownumber, 10)
+        cursor.fetchmany_arrow(13)
+        self.assertEqual(cursor.rownumber, 23)
+        cursor.fetchmany_arrow(6)
+        self.assertEqual(cursor.rownumber, 29)
 
 
 if __name__ == '__main__':
