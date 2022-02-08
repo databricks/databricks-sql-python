@@ -117,7 +117,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
             with self.assertRaises(OperationalError) as cm:
                 thrift_backend = self._make_fake_thrift_backend()
-                thrift_backend.open_session({})
+                thrift_backend.open_session({}, None, None)
 
             self.assertIn("expected server to use a protocol version", str(cm.exception))
 
@@ -134,7 +134,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 status=self.okay_status, serverProtocolVersion=protocol_version)
 
             thrift_backend = self._make_fake_thrift_backend()
-            thrift_backend.open_session({})
+            thrift_backend.open_session({}, None, None)
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_headers_are_set(self, t_http_client_class):
@@ -673,7 +673,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
-        thrift_backend.open_session({})
+        thrift_backend.open_session({}, None, None)
         self.assertEqual(len(tcli_service_instance.OpenSession.call_args_list), 1)
 
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
@@ -1057,7 +1057,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         }
 
         backend = ThriftBackend("foobar", 443, "path", [])
-        backend.open_session(mock_config)
+        backend.open_session(mock_config, None, None)
 
         open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
         self.assertEqual(open_session_req.configuration, expected_config)
@@ -1070,9 +1070,91 @@ class ThriftBackendTestSuite(unittest.TestCase):
         backend = ThriftBackend("foobar", 443, "path", [])
 
         with self.assertRaises(databricks.sql.Error) as cm:
-            backend.open_session(mock_config)
+            backend.open_session(mock_config, None, None)
 
         self.assertIn("timestampAsString cannot be changed", str(cm.exception))
+
+    def _construct_open_session_with_namespace(self, can_use_multiple_cats, cat, schem):
+        return ttypes.TOpenSessionResp(
+            status=self.okay_status,
+            serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
+            canUseMultipleCatalogs=can_use_multiple_cats,
+            initialNamespace=ttypes.TNamespace(catalogName=cat, schemaName=schem))
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_initial_namespace_passthrough_to_open_session(self, tcli_client_class):
+        tcli_service_instance = tcli_client_class.return_value
+
+        backend = ThriftBackend("foobar", 443, "path", [])
+        initial_cat_schem_args = [("cat", None), (None, "schem"), ("cat", "schem")]
+
+        for cat, schem in initial_cat_schem_args:
+            with self.subTest(cat=cat, schem=schem):
+                tcli_service_instance.OpenSession.return_value = \
+                    self._construct_open_session_with_namespace(True, cat, schem)
+
+                backend.open_session({}, cat, schem)
+
+                open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
+                self.assertEqual(open_session_req.initialNamespace.catalogName, cat)
+                self.assertEqual(open_session_req.initialNamespace.schemaName, schem)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_can_use_multiple_catalogs_is_set_in_open_session_req(self, tcli_client_class):
+        tcli_service_instance = tcli_client_class.return_value
+        tcli_service_instance.OpenSession.return_value = self.open_session_resp
+
+        backend = ThriftBackend("foobar", 443, "path", [])
+        backend.open_session({}, None, None)
+
+        open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
+        self.assertTrue(open_session_req.canUseMultipleCatalogs)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_can_use_multiple_catalogs_is_false_fails_with_initial_catalog(self, tcli_client_class):
+        tcli_service_instance = tcli_client_class.return_value
+
+        backend = ThriftBackend("foobar", 443, "path", [])
+        # If the initial catalog is set, but server returns canUseMultipleCatalogs=False, we
+        # expect failure. If the initial catalog isn't set, then canUseMultipleCatalogs=False
+        # is fine
+        failing_ns_args = [("cat", None), ("cat", "schem")]
+        passing_ns_args = [(None, None), (None, "schem")]
+
+        for cat, schem in failing_ns_args:
+            tcli_service_instance.OpenSession.return_value = \
+                self._construct_open_session_with_namespace(False, cat, schem)
+
+            with self.assertRaises(InvalidServerResponseError) as cm:
+                backend.open_session({}, cat, schem)
+
+            self.assertIn("server does not support multiple catalogs", str(cm.exception),
+                          "incorrect error thrown for initial namespace {}".format((cat, schem)))
+
+        for cat, schem in passing_ns_args:
+            tcli_service_instance.OpenSession.return_value = \
+                self._construct_open_session_with_namespace(False, cat, schem)
+            backend.open_session({}, cat, schem)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_protocol_v3_fails_if_initial_namespace_set(self, tcli_client_class):
+        tcli_service_instance = tcli_client_class.return_value
+
+        tcli_service_instance.OpenSession.return_value = \
+            ttypes.TOpenSessionResp(
+                status=self.okay_status,
+                serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V3,
+                canUseMultipleCatalogs=True,
+                initialNamespace=ttypes.TNamespace(catalogName="cat", schemaName="schem")
+            )
+
+        backend = ThriftBackend("foobar", 443, "path", [])
+
+        with self.assertRaises(InvalidServerResponseError) as cm:
+            backend.open_session({}, "cat", "schem")
+
+        self.assertIn("Setting initial namespace not supported by the DBR version",
+                      str(cm.exception))
 
 
 if __name__ == '__main__':

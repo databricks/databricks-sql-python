@@ -353,7 +353,16 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(mock_client_class.return_value.open_session.call_args[0][0],
                          mock_session_config)
 
-    def test_execute_parameter_passhthrough(self):
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_initial_namespace_passthrough(self, mock_client_class):
+        mock_cat = Mock()
+        mock_schem = Mock()
+
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, catalog=mock_cat, schema=mock_schem)
+        self.assertEqual(mock_client_class.return_value.open_session.call_args[0][1], mock_cat)
+        self.assertEqual(mock_client_class.return_value.open_session.call_args[0][2], mock_schem)
+
+    def test_execute_parameter_passthrough(self):
         mock_thrift_backend = Mock()
         cursor = client.Cursor(Mock(), mock_thrift_backend)
 

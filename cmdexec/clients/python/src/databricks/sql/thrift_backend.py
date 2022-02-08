@@ -289,6 +289,22 @@ class ThriftBackend:
                                    "SPARK_CLI_SERVICE_PROTOCOL_V3, "
                                    "instead got: {}".format(protocol_version))
 
+    def _check_initial_namespace(self, catalog, schema, response):
+        if not (catalog or schema):
+            return
+
+        if response.serverProtocolVersion < \
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4:
+            raise InvalidServerResponseError(
+                "Setting initial namespace not supported by the DBR version, "
+                "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0.")
+
+        if catalog:
+            if not response.canUseMultipleCatalogs:
+                raise InvalidServerResponseError(
+                    "Unexpected response from server: Trying to set initial catalog to {}, " +
+                    "but server does not support multiple catalogs.".format(catalog))
+
     def _check_session_configuration(self, session_configuration):
         # This client expects timetampsAsString to be false, so we do not allow users to modify that
         if session_configuration.get(TIMESTAMP_AS_STRING_CONFIG, "false").lower() != "false":
@@ -297,7 +313,7 @@ class ThriftBackend:
                             TIMESTAMP_AS_STRING_CONFIG,
                             session_configuration[TIMESTAMP_AS_STRING_CONFIG]))
 
-    def open_session(self, session_configuration):
+    def open_session(self, session_configuration, catalog, schema):
         try:
             self._transport.open()
             session_configuration = {k: str(v) for (k, v) in (session_configuration or {}).items()}
@@ -306,11 +322,19 @@ class ThriftBackend:
             # We set it also in confOverlay in TExecuteStatementReq on a per query basic,
             # but it doesn't hurt to also set for the whole session.
             session_configuration[TIMESTAMP_AS_STRING_CONFIG] = "false"
+            if catalog or schema:
+                initial_namespace = ttypes.TNamespace(catalogName=catalog, schemaName=schema)
+            else:
+                initial_namespace = None
+
             open_session_req = ttypes.TOpenSessionReq(
                 client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
                 client_protocol=None,
+                initialNamespace=initial_namespace,
+                canUseMultipleCatalogs=True,
                 configuration=session_configuration)
             response = self.make_request(self._client.OpenSession, open_session_req)
+            self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
             return response.sessionHandle
         except:

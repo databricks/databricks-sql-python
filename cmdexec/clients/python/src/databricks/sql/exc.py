@@ -1,3 +1,4 @@
+### PEP-249 Mandated ###
 class Error(Exception):
     pass
 
@@ -35,4 +36,10 @@ class DataError(DatabaseError):
 
 
 class NotSupportedError(DatabaseError):
+    pass
+
+
+### Custom error classes ###
+class InvalidServerResponseError(OperationalError):
+    """ Thrown if the server does not set the initial namespace correctly"""
     pass
