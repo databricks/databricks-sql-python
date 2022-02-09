@@ -108,7 +108,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ttypes.TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V9,
             ttypes.TProtocolVersion.HIVE_CLI_SERVICE_PROTOCOL_V10,
             ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V1,
-            ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V2,
         ]
 
         for protocol_version in bad_protocol_versions:
@@ -125,8 +124,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_okay_protocol_versions_succeed(self, tcli_service_client_cass):
         t_http_client_instance = tcli_service_client_cass.return_value
         good_protocol_versions = [
+            ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V2,
             ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V3,
-            ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
+            ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4
         ]
 
         for protocol_version in good_protocol_versions:

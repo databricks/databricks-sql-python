@@ -284,9 +284,9 @@ class ThriftBackend:
     def _check_protocol_version(self, t_open_session_resp):
         protocol_version = t_open_session_resp.serverProtocolVersion
 
-        if protocol_version < ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V3:
+        if protocol_version < ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V2:
             raise OperationalError("Error: expected server to use a protocol version >= "
-                                   "SPARK_CLI_SERVICE_PROTOCOL_V3, "
+                                   "SPARK_CLI_SERVICE_PROTOCOL_V2, "
                                    "instead got: {}".format(protocol_version))
 
     def _check_initial_namespace(self, catalog, schema, response):
