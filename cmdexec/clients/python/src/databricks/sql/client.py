@@ -5,12 +5,14 @@ import logging
 import re
 from typing import Dict, Tuple, List, Optional, Any
 
+import pandas
 import pyarrow
 
 from databricks.sql import USER_AGENT_NAME, __version__
 from databricks.sql import *
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper
+from databricks.sql.types import Row
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +69,13 @@ class Connection:
         # _socket_timeout
         #  The timeout in seconds for socket send, recv and connect operations. Defaults to None for
         #  no timeout. Should be a positive float or integer.
+        # _disable_pandas
+        #  In case the deserialisation through pandas causes any issues, it can be disabled with
+        #  this flag.
 
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
+        self.disable_pandas = kwargs.get("_disable_pandas", False)
 
         authorization_header = []
         if kwargs.get("_username") and kwargs.get("_password"):
@@ -324,7 +330,7 @@ class Cursor:
                                            self.buffer_size_bytes, self.arraysize)
         return self
 
-    def fetchall(self) -> List[Tuple]:
+    def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a sequence of sequences.
 
@@ -337,7 +343,7 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def fetchone(self) -> Tuple:
+    def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence, or ``None`` when
         no more data is available.
@@ -351,7 +357,7 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def fetchmany(self, size: int) -> List[Tuple]:
+    def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a sequence of sequences (e.g. a
         list of tuples).
@@ -373,14 +379,14 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def fetchall_arrow(self):
+    def fetchall_arrow(self) -> pyarrow.Table:
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
             raise Error("There is no active result set")
 
-    def fetchmany_arrow(self, size):
+    def fetchmany_arrow(self, size) -> pyarrow.Table:
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
@@ -505,10 +511,43 @@ class ResultSet:
         self.has_more_rows = has_more_rows
 
     def _convert_arrow_table(self, table):
-        n_rows, _ = table.shape
-        list_repr = [[col[row_index].as_py() for col in table.itercolumns()]
-                     for row_index in range(n_rows)]
-        return list_repr
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+
+        if self.connection.disable_pandas is True:
+            return [ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())]
+
+        # Need to use nullable types, as otherwise type can change when there are missing values.
+        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+        dtype_mapping = {
+            pyarrow.int8(): pandas.Int8Dtype(),
+            pyarrow.int16(): pandas.Int16Dtype(),
+            pyarrow.int32(): pandas.Int32Dtype(),
+            pyarrow.int64(): pandas.Int64Dtype(),
+            pyarrow.uint8(): pandas.UInt8Dtype(),
+            pyarrow.uint16(): pandas.UInt16Dtype(),
+            pyarrow.uint32(): pandas.UInt32Dtype(),
+            pyarrow.uint64(): pandas.UInt64Dtype(),
+            pyarrow.bool_(): pandas.BooleanDtype(),
+            pyarrow.float32(): pandas.Float32Dtype(),
+            pyarrow.float64(): pandas.Float64Dtype(),
+            pyarrow.string(): pandas.StringDtype(),
+        }
+
+        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+        df = table_renamed.to_pandas(types_mapper=dtype_mapping.get)
+
+        for (i, col) in enumerate(df.columns):
+            # Check for 0 because .dt doesn't work on empty series
+            if self.description[i][1] == 'timestamp' and len(df) > 0:
+                # We store the dtype as object so we don't use the pandas datetime dtype but
+                # a native datetime.datetime
+                df[col] = pandas.Series(df[col].dt.to_pydatetime(), dtype='object')
+
+        res = df.to_numpy(na_value=None)
+        return [ResultRow(*v) for v in res]
 
     @property
     def rownumber(self):
@@ -548,7 +587,7 @@ class ResultSet:
 
         return results
 
-    def fetchone(self) -> Optional[Tuple]:
+    def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
@@ -559,15 +598,15 @@ class ResultSet:
         else:
             return None
 
-    def fetchall(self) -> List[Tuple]:
+    def fetchall(self) -> List[Row]:
         """
-        Fetch all (remaining) rows of a query result, returning them as a list of lists.
+        Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
         return self._convert_arrow_table(self.fetchall_arrow())
 
-    def fetchmany(self, size: int) -> List[Tuple]:
+    def fetchmany(self, size: int) -> List[Row]:
         """
-        Fetch the next set of rows of a query result, returning a list of lists.
+        Fetch the next set of rows of a query result, returning a list of rows.
 
         An empty sequence is returned when no more rows are available.
         """
