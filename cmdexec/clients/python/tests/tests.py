@@ -9,6 +9,7 @@ from datetime import datetime, date
 import databricks.sql
 import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
+from databricks.sql.types import Row
 
 from test_fetches import FetchTests
 from test_thrift_backend import ThriftBackendTestSuite
@@ -457,6 +458,54 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(cursor.rownumber, 23)
         cursor.fetchmany_arrow(6)
         self.assertEqual(cursor.rownumber, 29)
+
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_disable_pandas_respected(self, mock_thrift_backend_class):
+        mock_thrift_backend = mock_thrift_backend_class.return_value
+        mock_table = Mock()
+        mock_table.num_rows = 10
+        mock_table.itercolumns.return_value = []
+        mock_table.rename_columns.return_value = mock_table
+        mock_aq = Mock()
+        mock_aq.remaining_rows.return_value = mock_table
+        mock_thrift_backend.execute_command.return_value.arrow_queue = mock_aq
+        mock_thrift_backend.execute_command.return_value.has_been_closed_server_side = True
+        mock_con = Mock()
+        mock_con.disable_pandas = True
+
+        cursor = client.Cursor(mock_con, mock_thrift_backend)
+        cursor.execute('foo')
+        cursor.fetchall()
+
+        mock_table.itercolumns.assert_called_once_with()
+
+    def test_column_name_api(self):
+        ResultRow = Row("first_col", "second_col", "third_col")
+        data = [
+            ResultRow("val1", 321, 52.32),
+            ResultRow("val2", 2321, 252.32),
+        ]
+
+        expected_values = [["val1", 321, 52.32], ["val2", 2321, 252.32]]
+
+        for (row, expected) in zip(data, expected_values):
+            self.assertEqual(row.first_col, expected[0])
+            self.assertEqual(row.second_col, expected[1])
+            self.assertEqual(row.third_col, expected[2])
+
+            self.assertEqual(row["first_col"], expected[0])
+            self.assertEqual(row["second_col"], expected[1])
+            self.assertEqual(row["third_col"], expected[2])
+
+            self.assertEqual(row[0], expected[0])
+            self.assertEqual(row[1], expected[1])
+            self.assertEqual(row[2], expected[2])
+
+            self.assertEqual(row.asDict(), {
+                "first_col": expected[0],
+                "second_col": expected[1],
+                "third_col": expected[2]
+            })
 
 
 if __name__ == '__main__':
