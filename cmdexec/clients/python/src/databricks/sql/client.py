@@ -537,14 +537,8 @@ class ResultSet:
 
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(types_mapper=dtype_mapping.get)
-
-        for (i, col) in enumerate(df.columns):
-            # Check for 0 because .dt doesn't work on empty series
-            if self.description[i][1] == 'timestamp' and len(df) > 0:
-                # We store the dtype as object so we don't use the pandas datetime dtype but
-                # a native datetime.datetime
-                df[col] = pandas.Series(df[col].dt.to_pydatetime(), dtype='object')
+        df = table_renamed.to_pandas(
+            types_mapper=dtype_mapping.get, date_as_object=True, timestamp_as_object=True)
 
         res = df.to_numpy(na_value=None)
         return [ResultRow(*v) for v in res]
