@@ -75,26 +75,23 @@ class RequestErrorInfo(
         else:
             return None
 
-    def full_info_logging_str(self, no_retry_reason, attempt, max_attempts, elapsed, max_duration):
+    def full_info_logging_context(self, no_retry_reason, attempt, max_attempts, elapsed,
+                                  max_duration):
         log_base_data_dict = OrderedDict([
-            ("Method", self.method),
-            ("Session-id", self.request_session_id),
-            ("Query-id", self.request_query_id),
-            ("HTTP-code", self.http_code),
-            ("Error-message", self.error_message),
-            ("Original-exception", self.error),
+            ("method", self.method),
+            ("session-id", self.request_session_id),
+            ("query-id", self.request_query_id),
+            ("http-code", self.http_code),
+            ("error-message", self.error_message),
+            ("original-exception", str(self.error)),
         ])
 
-        if no_retry_reason is not None:
-            log_base_data_dict["No-retry-reason"] = no_retry_reason.value
-        else:
-            log_base_data_dict["Bounded-retry-delay"] = self.retry_delay
-            log_base_data_dict["Attempt"] = "{}/{}".format(attempt, max_attempts)
-            log_base_data_dict["Elapsed-seconds"] = "{}/{}".format(elapsed, max_duration)
+        log_base_data_dict["no-retry-reason"] = no_retry_reason and no_retry_reason.value
+        log_base_data_dict["bounded-retry-delay"] = self.retry_delay
+        log_base_data_dict["attempt"] = "{}/{}".format(attempt, max_attempts)
+        log_base_data_dict["elapsed-seconds"] = "{}/{}".format(elapsed, max_duration)
 
-        log_base = "; ".join(["{}: {}".format(k, v) for k, v in log_base_data_dict.items()])
-
-        return log_base
+        return log_base_data_dict
 
     def user_friendly_error_message(self, no_retry_reason, attempt, elapsed):
         # This should be kept at the level that is appropriate to return to a Redash user
@@ -102,14 +99,6 @@ class RequestErrorInfo(
         if self.error_message:
             user_friendly_error_message = "{}: {}".format(user_friendly_error_message,
                                                           self.error_message)
-
-        if no_retry_reason is NoRetryReason.OUT_OF_ATTEMPTS:
-            user_friendly_error_message = "{}: After {} retry attempts, retries are exhausted".format(
-                user_friendly_error_message, attempt)
-        elif no_retry_reason is NoRetryReason.OUT_OF_TIME:
-            user_friendly_error_message = "{}: After {} seconds, maximum retry duration will be exceeded".format(
-                user_friendly_error_message, elapsed)
-
         return user_friendly_error_message
 
 

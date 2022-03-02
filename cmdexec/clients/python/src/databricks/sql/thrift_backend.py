@@ -183,18 +183,20 @@ class ThriftBackend:
         else:
             no_retry_reason = None
 
-        full_error_info_str = error_info.full_info_logging_str(
+        full_error_info_context = error_info.full_info_logging_context(
             no_retry_reason, attempt, max_attempts, elapsed, max_duration_s)
 
         if no_retry_reason is not None:
             user_friendly_error_message = error_info.user_friendly_error_message(
                 no_retry_reason, attempt, elapsed)
-            logger.info("{}: {}".format(user_friendly_error_message, full_error_info_str))
+            network_request_error = RequestError(user_friendly_error_message,
+                                                 full_error_info_context, error_info.error)
+            logger.info(network_request_error.message_with_context())
 
-            raise OperationalError(user_friendly_error_message, error_info.error)
+            raise network_request_error
 
         logger.info("Retrying request after error in {} seconds: {}".format(
-            error_info.retry_delay, full_error_info_str))
+            error_info.retry_delay, full_error_info_context))
         time.sleep(error_info.retry_delay)
 
     # FUTURE: Consider moving to https://github.com/litl/backoff or
@@ -350,10 +352,22 @@ class ThriftBackend:
 
     def _check_command_not_in_error_or_closed_state(self, op_handle, get_operations_resp):
         if get_operations_resp.operationState == ttypes.TOperationState.ERROR_STATE:
-            raise DatabaseError(get_operations_resp.errorMessage)
+            if get_operations_resp.displayMessage:
+                raise ServerOperationError(
+                    get_operations_resp.displayMessage, {
+                        "operation-id": op_handle and op_handle.operationId.guid,
+                        "diagnostic-info": get_operations_resp.diagnosticInfo
+                    })
+            else:
+                raise ServerOperationError(get_operations_resp.errorMessage, {
+                    "operation-id": op_handle and op_handle.operationId.guid,
+                    "diagnostic-info": None
+                })
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
-            raise DatabaseError("Command {} unexpectedly closed server side".format(
-                op_handle and op_handle.operationId.guid))
+            raise DatabaseError(
+                "Command {} unexpectedly closed server side".format(op_handle and
+                                                                    op_handle.operationId.guid),
+                {"operation-id": op_handle and op_handle.operationId.guid})
 
     def _poll_for_status(self, op_handle):
         req = ttypes.TGetOperationStatusReq(

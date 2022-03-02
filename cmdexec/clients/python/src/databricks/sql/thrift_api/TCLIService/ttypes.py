@@ -33,6 +33,8 @@ class TProtocolVersion(object):
     SPARK_CLI_SERVICE_PROTOCOL_V2 = 42242
     SPARK_CLI_SERVICE_PROTOCOL_V3 = 42243
     SPARK_CLI_SERVICE_PROTOCOL_V4 = 42244
+    SPARK_CLI_SERVICE_PROTOCOL_V5 = 42245
+    SPARK_CLI_SERVICE_PROTOCOL_V6 = 42246
 
     _VALUES_TO_NAMES = {
         -7: "__HIVE_JDBC_WORKAROUND",
@@ -51,6 +53,8 @@ class TProtocolVersion(object):
         42242: "SPARK_CLI_SERVICE_PROTOCOL_V2",
         42243: "SPARK_CLI_SERVICE_PROTOCOL_V3",
         42244: "SPARK_CLI_SERVICE_PROTOCOL_V4",
+        42245: "SPARK_CLI_SERVICE_PROTOCOL_V5",
+        42246: "SPARK_CLI_SERVICE_PROTOCOL_V6",
     }
 
     _NAMES_TO_VALUES = {
@@ -70,6 +74,8 @@ class TProtocolVersion(object):
         "SPARK_CLI_SERVICE_PROTOCOL_V2": 42242,
         "SPARK_CLI_SERVICE_PROTOCOL_V3": 42243,
         "SPARK_CLI_SERVICE_PROTOCOL_V4": 42244,
+        "SPARK_CLI_SERVICE_PROTOCOL_V5": 42245,
+        "SPARK_CLI_SERVICE_PROTOCOL_V6": 42246,
     }
 
 
@@ -3173,6 +3179,63 @@ class TDBSqlTempView(object):
         return not (self == other)
 
 
+class TDBSqlSessionCapabilities(object):
+    """
+    Attributes:
+     - supportsMultipleCatalogs
+
+    """
+
+
+    def __init__(self, supportsMultipleCatalogs=None,):
+        self.supportsMultipleCatalogs = supportsMultipleCatalogs
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.BOOL:
+                    self.supportsMultipleCatalogs = iprot.readBool()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('TDBSqlSessionCapabilities')
+        if self.supportsMultipleCatalogs is not None:
+            oprot.writeFieldBegin('supportsMultipleCatalogs', TType.BOOL, 1)
+            oprot.writeBool(self.supportsMultipleCatalogs)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
 class TDBSqlSessionConf(object):
     """
     Attributes:
@@ -3180,15 +3243,17 @@ class TDBSqlSessionConf(object):
      - tempViews
      - currentDatabase
      - currentCatalog
+     - sessionCapabilities
 
     """
 
 
-    def __init__(self, confs=None, tempViews=None, currentDatabase=None, currentCatalog=None,):
+    def __init__(self, confs=None, tempViews=None, currentDatabase=None, currentCatalog=None, sessionCapabilities=None,):
         self.confs = confs
         self.tempViews = tempViews
         self.currentDatabase = currentDatabase
         self.currentCatalog = currentCatalog
+        self.sessionCapabilities = sessionCapabilities
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -3231,6 +3296,12 @@ class TDBSqlSessionConf(object):
                     self.currentCatalog = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
                 else:
                     iprot.skip(ftype)
+            elif fid == 5:
+                if ftype == TType.STRUCT:
+                    self.sessionCapabilities = TDBSqlSessionCapabilities()
+                    self.sessionCapabilities.read(iprot)
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -3263,6 +3334,10 @@ class TDBSqlSessionConf(object):
         if self.currentCatalog is not None:
             oprot.writeFieldBegin('currentCatalog', TType.STRING, 4)
             oprot.writeString(self.currentCatalog.encode('utf-8') if sys.version_info[0] == 2 else self.currentCatalog)
+            oprot.writeFieldEnd()
+        if self.sessionCapabilities is not None:
+            oprot.writeFieldBegin('sessionCapabilities', TType.STRUCT, 5)
+            self.sessionCapabilities.write(oprot)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -4591,6 +4666,96 @@ class TSparkDirectResults(object):
         return not (self == other)
 
 
+class TSparkArrowTypes(object):
+    """
+    Attributes:
+     - timestampAsArrow
+     - decimalAsArrow
+     - complexTypesAsArrow
+     - intervalTypesAsArrow
+
+    """
+
+
+    def __init__(self, timestampAsArrow=None, decimalAsArrow=None, complexTypesAsArrow=None, intervalTypesAsArrow=None,):
+        self.timestampAsArrow = timestampAsArrow
+        self.decimalAsArrow = decimalAsArrow
+        self.complexTypesAsArrow = complexTypesAsArrow
+        self.intervalTypesAsArrow = intervalTypesAsArrow
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.BOOL:
+                    self.timestampAsArrow = iprot.readBool()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.BOOL:
+                    self.decimalAsArrow = iprot.readBool()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.BOOL:
+                    self.complexTypesAsArrow = iprot.readBool()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 4:
+                if ftype == TType.BOOL:
+                    self.intervalTypesAsArrow = iprot.readBool()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('TSparkArrowTypes')
+        if self.timestampAsArrow is not None:
+            oprot.writeFieldBegin('timestampAsArrow', TType.BOOL, 1)
+            oprot.writeBool(self.timestampAsArrow)
+            oprot.writeFieldEnd()
+        if self.decimalAsArrow is not None:
+            oprot.writeFieldBegin('decimalAsArrow', TType.BOOL, 2)
+            oprot.writeBool(self.decimalAsArrow)
+            oprot.writeFieldEnd()
+        if self.complexTypesAsArrow is not None:
+            oprot.writeFieldBegin('complexTypesAsArrow', TType.BOOL, 3)
+            oprot.writeBool(self.complexTypesAsArrow)
+            oprot.writeFieldEnd()
+        if self.intervalTypesAsArrow is not None:
+            oprot.writeFieldBegin('intervalTypesAsArrow', TType.BOOL, 4)
+            oprot.writeBool(self.intervalTypesAsArrow)
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
 class TExecuteStatementReq(object):
     """
     Attributes:
@@ -4604,6 +4769,7 @@ class TExecuteStatementReq(object):
      - canDownloadResult
      - canDecompressLZ4Result
      - maxBytesPerFile
+     - useArrowNativeTypes
      - operationId
      - sessionConf
      - rejectHighCostQueries
@@ -4612,7 +4778,7 @@ class TExecuteStatementReq(object):
     """
 
 
-    def __init__(self, sessionHandle=None, statement=None, confOverlay=None, runAsync=False, getDirectResults=None, queryTimeout=0, canReadArrowResult=None, canDownloadResult=None, canDecompressLZ4Result=None, maxBytesPerFile=None, operationId=None, sessionConf=None, rejectHighCostQueries=None, estimatedCost=None,):
+    def __init__(self, sessionHandle=None, statement=None, confOverlay=None, runAsync=False, getDirectResults=None, queryTimeout=0, canReadArrowResult=None, canDownloadResult=None, canDecompressLZ4Result=None, maxBytesPerFile=None, useArrowNativeTypes=None, operationId=None, sessionConf=None, rejectHighCostQueries=None, estimatedCost=None,):
         self.sessionHandle = sessionHandle
         self.statement = statement
         self.confOverlay = confOverlay
@@ -4623,6 +4789,7 @@ class TExecuteStatementReq(object):
         self.canDownloadResult = canDownloadResult
         self.canDecompressLZ4Result = canDecompressLZ4Result
         self.maxBytesPerFile = maxBytesPerFile
+        self.useArrowNativeTypes = useArrowNativeTypes
         self.operationId = operationId
         self.sessionConf = sessionConf
         self.rejectHighCostQueries = rejectHighCostQueries
@@ -4693,6 +4860,12 @@ class TExecuteStatementReq(object):
             elif fid == 1285:
                 if ftype == TType.I64:
                     self.maxBytesPerFile = iprot.readI64()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1286:
+                if ftype == TType.STRUCT:
+                    self.useArrowNativeTypes = TSparkArrowTypes()
+                    self.useArrowNativeTypes.read(iprot)
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -4770,6 +4943,10 @@ class TExecuteStatementReq(object):
         if self.maxBytesPerFile is not None:
             oprot.writeFieldBegin('maxBytesPerFile', TType.I64, 1285)
             oprot.writeI64(self.maxBytesPerFile)
+            oprot.writeFieldEnd()
+        if self.useArrowNativeTypes is not None:
+            oprot.writeFieldBegin('useArrowNativeTypes', TType.STRUCT, 1286)
+            self.useArrowNativeTypes.write(oprot)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -4954,15 +5131,17 @@ class TGetTypeInfoReq(object):
     Attributes:
      - sessionHandle
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -4985,6 +5164,11 @@ class TGetTypeInfoReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -5016,6 +5200,10 @@ class TGetTypeInfoReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -5134,15 +5322,17 @@ class TGetCatalogsReq(object):
     Attributes:
      - sessionHandle
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -5165,6 +5355,11 @@ class TGetCatalogsReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -5196,6 +5391,10 @@ class TGetCatalogsReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -5316,17 +5515,19 @@ class TGetSchemasReq(object):
      - catalogName
      - schemaName
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.catalogName = catalogName
         self.schemaName = schemaName
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -5359,6 +5560,11 @@ class TGetSchemasReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -5398,6 +5604,10 @@ class TGetSchemasReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -5520,19 +5730,21 @@ class TGetTablesReq(object):
      - tableName
      - tableTypes
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, tableName=None, tableTypes=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, tableName=None, tableTypes=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.catalogName = catalogName
         self.schemaName = schemaName
         self.tableName = tableName
         self.tableTypes = tableTypes
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -5580,6 +5792,11 @@ class TGetTablesReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -5630,6 +5847,10 @@ class TGetTablesReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -5748,15 +5969,17 @@ class TGetTableTypesReq(object):
     Attributes:
      - sessionHandle
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -5779,6 +6002,11 @@ class TGetTableTypesReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -5810,6 +6038,10 @@ class TGetTableTypesReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -5932,19 +6164,21 @@ class TGetColumnsReq(object):
      - tableName
      - columnName
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, tableName=None, columnName=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, tableName=None, columnName=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.catalogName = catalogName
         self.schemaName = schemaName
         self.tableName = tableName
         self.columnName = columnName
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -5987,6 +6221,11 @@ class TGetColumnsReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -6034,6 +6273,10 @@ class TGetColumnsReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -6155,18 +6398,20 @@ class TGetFunctionsReq(object):
      - schemaName
      - functionName
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, functionName=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, functionName=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.catalogName = catalogName
         self.schemaName = schemaName
         self.functionName = functionName
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -6204,6 +6449,11 @@ class TGetFunctionsReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -6247,6 +6497,10 @@ class TGetFunctionsReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -6370,18 +6624,20 @@ class TGetPrimaryKeysReq(object):
      - schemaName
      - tableName
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, tableName=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, catalogName=None, schemaName=None, tableName=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.catalogName = catalogName
         self.schemaName = schemaName
         self.tableName = tableName
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -6419,6 +6675,11 @@ class TGetPrimaryKeysReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -6462,6 +6723,10 @@ class TGetPrimaryKeysReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -6586,13 +6851,14 @@ class TGetCrossReferenceReq(object):
      - foreignSchemaName
      - foreignTableName
      - getDirectResults
+     - runAsync
      - operationId
      - sessionConf
 
     """
 
 
-    def __init__(self, sessionHandle=None, parentCatalogName=None, parentSchemaName=None, parentTableName=None, foreignCatalogName=None, foreignSchemaName=None, foreignTableName=None, getDirectResults=None, operationId=None, sessionConf=None,):
+    def __init__(self, sessionHandle=None, parentCatalogName=None, parentSchemaName=None, parentTableName=None, foreignCatalogName=None, foreignSchemaName=None, foreignTableName=None, getDirectResults=None, runAsync=False, operationId=None, sessionConf=None,):
         self.sessionHandle = sessionHandle
         self.parentCatalogName = parentCatalogName
         self.parentSchemaName = parentSchemaName
@@ -6601,6 +6867,7 @@ class TGetCrossReferenceReq(object):
         self.foreignSchemaName = foreignSchemaName
         self.foreignTableName = foreignTableName
         self.getDirectResults = getDirectResults
+        self.runAsync = runAsync
         self.operationId = operationId
         self.sessionConf = sessionConf
 
@@ -6653,6 +6920,11 @@ class TGetCrossReferenceReq(object):
                 if ftype == TType.STRUCT:
                     self.getDirectResults = TSparkGetDirectResults()
                     self.getDirectResults.read(iprot)
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.BOOL:
+                    self.runAsync = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             elif fid == 3329:
@@ -6708,6 +6980,10 @@ class TGetCrossReferenceReq(object):
         if self.getDirectResults is not None:
             oprot.writeFieldBegin('getDirectResults', TType.STRUCT, 1281)
             self.getDirectResults.write(oprot)
+            oprot.writeFieldEnd()
+        if self.runAsync is not None:
+            oprot.writeFieldBegin('runAsync', TType.BOOL, 1282)
+            oprot.writeBool(self.runAsync)
             oprot.writeFieldEnd()
         if self.operationId is not None:
             oprot.writeFieldBegin('operationId', TType.STRUCT, 3329)
@@ -6899,18 +7175,24 @@ class TGetOperationStatusResp(object):
      - operationState
      - sqlState
      - errorCode
-     - errorMessage
+     - errorMessage: The long-form error message. This is deprecated in DBR,
+    however servers expecting to serve to Simba drivers should be careful
+    to keep returning this as these drivers still depend on it.
+
+    Clients should avoid using this field and prefer displayMessage and diagnosticInfo if given.
      - taskStatus
      - operationStarted
      - operationCompleted
      - hasResultSet
      - progressUpdateResponse
      - numModifiedRows
+     - displayMessage
+     - diagnosticInfo
 
     """
 
 
-    def __init__(self, status=None, operationState=None, sqlState=None, errorCode=None, errorMessage=None, taskStatus=None, operationStarted=None, operationCompleted=None, hasResultSet=None, progressUpdateResponse=None, numModifiedRows=None,):
+    def __init__(self, status=None, operationState=None, sqlState=None, errorCode=None, errorMessage=None, taskStatus=None, operationStarted=None, operationCompleted=None, hasResultSet=None, progressUpdateResponse=None, numModifiedRows=None, displayMessage=None, diagnosticInfo=None,):
         self.status = status
         self.operationState = operationState
         self.sqlState = sqlState
@@ -6922,6 +7204,8 @@ class TGetOperationStatusResp(object):
         self.hasResultSet = hasResultSet
         self.progressUpdateResponse = progressUpdateResponse
         self.numModifiedRows = numModifiedRows
+        self.displayMessage = displayMessage
+        self.diagnosticInfo = diagnosticInfo
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -6989,6 +7273,16 @@ class TGetOperationStatusResp(object):
                     self.numModifiedRows = iprot.readI64()
                 else:
                     iprot.skip(ftype)
+            elif fid == 1281:
+                if ftype == TType.STRING:
+                    self.displayMessage = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 1282:
+                if ftype == TType.STRING:
+                    self.diagnosticInfo = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -7042,6 +7336,14 @@ class TGetOperationStatusResp(object):
         if self.numModifiedRows is not None:
             oprot.writeFieldBegin('numModifiedRows', TType.I64, 11)
             oprot.writeI64(self.numModifiedRows)
+            oprot.writeFieldEnd()
+        if self.displayMessage is not None:
+            oprot.writeFieldBegin('displayMessage', TType.STRING, 1281)
+            oprot.writeString(self.displayMessage.encode('utf-8') if sys.version_info[0] == 2 else self.displayMessage)
+            oprot.writeFieldEnd()
+        if self.diagnosticInfo is not None:
+            oprot.writeFieldBegin('diagnosticInfo', TType.STRING, 1282)
+            oprot.writeString(self.diagnosticInfo.encode('utf-8') if sys.version_info[0] == 2 else self.diagnosticInfo)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -7370,15 +7672,17 @@ class TGetResultSetMetadataResp(object):
      - schema
      - resultFormat
      - lz4Compressed
+     - arrowSchema
 
     """
 
 
-    def __init__(self, status=None, schema=None, resultFormat=None, lz4Compressed=None,):
+    def __init__(self, status=None, schema=None, resultFormat=None, lz4Compressed=None, arrowSchema=None,):
         self.status = status
         self.schema = schema
         self.resultFormat = resultFormat
         self.lz4Compressed = lz4Compressed
+        self.arrowSchema = arrowSchema
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -7411,6 +7715,11 @@ class TGetResultSetMetadataResp(object):
                     self.lz4Compressed = iprot.readBool()
                 else:
                     iprot.skip(ftype)
+            elif fid == 1283:
+                if ftype == TType.STRING:
+                    self.arrowSchema = iprot.readBinary()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -7436,6 +7745,10 @@ class TGetResultSetMetadataResp(object):
         if self.lz4Compressed is not None:
             oprot.writeFieldBegin('lz4Compressed', TType.BOOL, 1282)
             oprot.writeBool(self.lz4Compressed)
+            oprot.writeFieldEnd()
+        if self.arrowSchema is not None:
+            oprot.writeFieldBegin('arrowSchema', TType.STRING, 1283)
+            oprot.writeBinary(self.arrowSchema)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -7463,20 +7776,22 @@ class TFetchResultsReq(object):
      - operationHandle
      - orientation
      - maxRows
+     - fetchType
      - maxBytes
      - startRowOffset
-     - fetchType
+     - includeResultSetMetadata
 
     """
 
 
-    def __init__(self, operationHandle=None, orientation=0, maxRows=None, maxBytes=None, startRowOffset=None, fetchType=0,):
+    def __init__(self, operationHandle=None, orientation=0, maxRows=None, fetchType=0, maxBytes=None, startRowOffset=None, includeResultSetMetadata=None,):
         self.operationHandle = operationHandle
         self.orientation = orientation
         self.maxRows = maxRows
+        self.fetchType = fetchType
         self.maxBytes = maxBytes
         self.startRowOffset = startRowOffset
-        self.fetchType = fetchType
+        self.includeResultSetMetadata = includeResultSetMetadata
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -7503,6 +7818,11 @@ class TFetchResultsReq(object):
                     self.maxRows = iprot.readI64()
                 else:
                     iprot.skip(ftype)
+            elif fid == 4:
+                if ftype == TType.I16:
+                    self.fetchType = iprot.readI16()
+                else:
+                    iprot.skip(ftype)
             elif fid == 1281:
                 if ftype == TType.I64:
                     self.maxBytes = iprot.readI64()
@@ -7513,9 +7833,9 @@ class TFetchResultsReq(object):
                     self.startRowOffset = iprot.readI64()
                 else:
                     iprot.skip(ftype)
-            elif fid == 4:
-                if ftype == TType.I16:
-                    self.fetchType = iprot.readI16()
+            elif fid == 1283:
+                if ftype == TType.BOOL:
+                    self.includeResultSetMetadata = iprot.readBool()
                 else:
                     iprot.skip(ftype)
             else:
@@ -7552,6 +7872,10 @@ class TFetchResultsReq(object):
             oprot.writeFieldBegin('startRowOffset', TType.I64, 1282)
             oprot.writeI64(self.startRowOffset)
             oprot.writeFieldEnd()
+        if self.includeResultSetMetadata is not None:
+            oprot.writeFieldBegin('includeResultSetMetadata', TType.BOOL, 1283)
+            oprot.writeBool(self.includeResultSetMetadata)
+            oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
 
@@ -7582,14 +7906,16 @@ class TFetchResultsResp(object):
      - status
      - hasMoreRows
      - results
+     - resultSetMetadata
 
     """
 
 
-    def __init__(self, status=None, hasMoreRows=None, results=None,):
+    def __init__(self, status=None, hasMoreRows=None, results=None, resultSetMetadata=None,):
         self.status = status
         self.hasMoreRows = hasMoreRows
         self.results = results
+        self.resultSetMetadata = resultSetMetadata
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -7617,6 +7943,12 @@ class TFetchResultsResp(object):
                     self.results.read(iprot)
                 else:
                     iprot.skip(ftype)
+            elif fid == 1281:
+                if ftype == TType.STRUCT:
+                    self.resultSetMetadata = TGetResultSetMetadataResp()
+                    self.resultSetMetadata.read(iprot)
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
@@ -7638,6 +7970,10 @@ class TFetchResultsResp(object):
         if self.results is not None:
             oprot.writeFieldBegin('results', TType.STRUCT, 3)
             self.results.write(oprot)
+            oprot.writeFieldEnd()
+        if self.resultSetMetadata is not None:
+            oprot.writeFieldBegin('resultSetMetadata', TType.STRUCT, 1281)
+            self.resultSetMetadata.write(oprot)
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()
@@ -9755,6 +10091,11 @@ TDBSqlTempView.thrift_spec = (
     (3, TType.MAP, 'properties', (TType.STRING, 'UTF8', TType.STRING, 'UTF8', False), None, ),  # 3
     (4, TType.STRING, 'viewSchema', 'UTF8', None, ),  # 4
 )
+all_structs.append(TDBSqlSessionCapabilities)
+TDBSqlSessionCapabilities.thrift_spec = (
+    None,  # 0
+    (1, TType.BOOL, 'supportsMultipleCatalogs', None, None, ),  # 1
+)
 all_structs.append(TDBSqlSessionConf)
 TDBSqlSessionConf.thrift_spec = (
     None,  # 0
@@ -9762,6 +10103,7 @@ TDBSqlSessionConf.thrift_spec = (
     (2, TType.LIST, 'tempViews', (TType.STRUCT, [TDBSqlTempView, None], False), None, ),  # 2
     (3, TType.STRING, 'currentDatabase', 'UTF8', None, ),  # 3
     (4, TType.STRING, 'currentCatalog', 'UTF8', None, ),  # 4
+    (5, TType.STRUCT, 'sessionCapabilities', [TDBSqlSessionCapabilities, None], None, ),  # 5
 )
 all_structs.append(TStatus)
 TStatus.thrift_spec = (
@@ -21120,6 +21462,14 @@ TSparkDirectResults.thrift_spec = (
     (3, TType.STRUCT, 'resultSet', [TFetchResultsResp, None], None, ),  # 3
     (4, TType.STRUCT, 'closeOperation', [TCloseOperationResp, None], None, ),  # 4
 )
+all_structs.append(TSparkArrowTypes)
+TSparkArrowTypes.thrift_spec = (
+    None,  # 0
+    (1, TType.BOOL, 'timestampAsArrow', None, None, ),  # 1
+    (2, TType.BOOL, 'decimalAsArrow', None, None, ),  # 2
+    (3, TType.BOOL, 'complexTypesAsArrow', None, None, ),  # 3
+    (4, TType.BOOL, 'intervalTypesAsArrow', None, None, ),  # 4
+)
 all_structs.append(TExecuteStatementReq)
 TExecuteStatementReq.thrift_spec = (
     None,  # 0
@@ -22408,7 +22758,7 @@ TExecuteStatementReq.thrift_spec = (
     (1283, TType.BOOL, 'canDownloadResult', None, None, ),  # 1283
     (1284, TType.BOOL, 'canDecompressLZ4Result', None, None, ),  # 1284
     (1285, TType.I64, 'maxBytesPerFile', None, None, ),  # 1285
-    None,  # 1286
+    (1286, TType.STRUCT, 'useArrowNativeTypes', [TSparkArrowTypes, None], None, ),  # 1286
     None,  # 1287
     None,  # 1288
     None,  # 1289
@@ -29077,7 +29427,7 @@ TGetTypeInfoReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -33696,7 +34046,7 @@ TGetCatalogsReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -38315,7 +38665,7 @@ TGetSchemasReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -42934,7 +43284,7 @@ TGetTablesReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -47553,7 +47903,7 @@ TGetTableTypesReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -52172,7 +52522,7 @@ TGetColumnsReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -56791,7 +57141,7 @@ TGetFunctionsReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -61410,7 +61760,7 @@ TGetPrimaryKeysReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -66029,7 +66379,7 @@ TGetCrossReferenceReq.thrift_spec = (
     None,  # 1279
     None,  # 1280
     (1281, TType.STRUCT, 'getDirectResults', [TSparkGetDirectResults, None], None, ),  # 1281
-    None,  # 1282
+    (1282, TType.BOOL, 'runAsync', None, False, ),  # 1282
     None,  # 1283
     None,  # 1284
     None,  # 1285
@@ -69384,6 +69734,1277 @@ TGetOperationStatusResp.thrift_spec = (
     (9, TType.BOOL, 'hasResultSet', None, None, ),  # 9
     (10, TType.STRUCT, 'progressUpdateResponse', [TProgressUpdateResp, None], None, ),  # 10
     (11, TType.I64, 'numModifiedRows', None, None, ),  # 11
+    None,  # 12
+    None,  # 13
+    None,  # 14
+    None,  # 15
+    None,  # 16
+    None,  # 17
+    None,  # 18
+    None,  # 19
+    None,  # 20
+    None,  # 21
+    None,  # 22
+    None,  # 23
+    None,  # 24
+    None,  # 25
+    None,  # 26
+    None,  # 27
+    None,  # 28
+    None,  # 29
+    None,  # 30
+    None,  # 31
+    None,  # 32
+    None,  # 33
+    None,  # 34
+    None,  # 35
+    None,  # 36
+    None,  # 37
+    None,  # 38
+    None,  # 39
+    None,  # 40
+    None,  # 41
+    None,  # 42
+    None,  # 43
+    None,  # 44
+    None,  # 45
+    None,  # 46
+    None,  # 47
+    None,  # 48
+    None,  # 49
+    None,  # 50
+    None,  # 51
+    None,  # 52
+    None,  # 53
+    None,  # 54
+    None,  # 55
+    None,  # 56
+    None,  # 57
+    None,  # 58
+    None,  # 59
+    None,  # 60
+    None,  # 61
+    None,  # 62
+    None,  # 63
+    None,  # 64
+    None,  # 65
+    None,  # 66
+    None,  # 67
+    None,  # 68
+    None,  # 69
+    None,  # 70
+    None,  # 71
+    None,  # 72
+    None,  # 73
+    None,  # 74
+    None,  # 75
+    None,  # 76
+    None,  # 77
+    None,  # 78
+    None,  # 79
+    None,  # 80
+    None,  # 81
+    None,  # 82
+    None,  # 83
+    None,  # 84
+    None,  # 85
+    None,  # 86
+    None,  # 87
+    None,  # 88
+    None,  # 89
+    None,  # 90
+    None,  # 91
+    None,  # 92
+    None,  # 93
+    None,  # 94
+    None,  # 95
+    None,  # 96
+    None,  # 97
+    None,  # 98
+    None,  # 99
+    None,  # 100
+    None,  # 101
+    None,  # 102
+    None,  # 103
+    None,  # 104
+    None,  # 105
+    None,  # 106
+    None,  # 107
+    None,  # 108
+    None,  # 109
+    None,  # 110
+    None,  # 111
+    None,  # 112
+    None,  # 113
+    None,  # 114
+    None,  # 115
+    None,  # 116
+    None,  # 117
+    None,  # 118
+    None,  # 119
+    None,  # 120
+    None,  # 121
+    None,  # 122
+    None,  # 123
+    None,  # 124
+    None,  # 125
+    None,  # 126
+    None,  # 127
+    None,  # 128
+    None,  # 129
+    None,  # 130
+    None,  # 131
+    None,  # 132
+    None,  # 133
+    None,  # 134
+    None,  # 135
+    None,  # 136
+    None,  # 137
+    None,  # 138
+    None,  # 139
+    None,  # 140
+    None,  # 141
+    None,  # 142
+    None,  # 143
+    None,  # 144
+    None,  # 145
+    None,  # 146
+    None,  # 147
+    None,  # 148
+    None,  # 149
+    None,  # 150
+    None,  # 151
+    None,  # 152
+    None,  # 153
+    None,  # 154
+    None,  # 155
+    None,  # 156
+    None,  # 157
+    None,  # 158
+    None,  # 159
+    None,  # 160
+    None,  # 161
+    None,  # 162
+    None,  # 163
+    None,  # 164
+    None,  # 165
+    None,  # 166
+    None,  # 167
+    None,  # 168
+    None,  # 169
+    None,  # 170
+    None,  # 171
+    None,  # 172
+    None,  # 173
+    None,  # 174
+    None,  # 175
+    None,  # 176
+    None,  # 177
+    None,  # 178
+    None,  # 179
+    None,  # 180
+    None,  # 181
+    None,  # 182
+    None,  # 183
+    None,  # 184
+    None,  # 185
+    None,  # 186
+    None,  # 187
+    None,  # 188
+    None,  # 189
+    None,  # 190
+    None,  # 191
+    None,  # 192
+    None,  # 193
+    None,  # 194
+    None,  # 195
+    None,  # 196
+    None,  # 197
+    None,  # 198
+    None,  # 199
+    None,  # 200
+    None,  # 201
+    None,  # 202
+    None,  # 203
+    None,  # 204
+    None,  # 205
+    None,  # 206
+    None,  # 207
+    None,  # 208
+    None,  # 209
+    None,  # 210
+    None,  # 211
+    None,  # 212
+    None,  # 213
+    None,  # 214
+    None,  # 215
+    None,  # 216
+    None,  # 217
+    None,  # 218
+    None,  # 219
+    None,  # 220
+    None,  # 221
+    None,  # 222
+    None,  # 223
+    None,  # 224
+    None,  # 225
+    None,  # 226
+    None,  # 227
+    None,  # 228
+    None,  # 229
+    None,  # 230
+    None,  # 231
+    None,  # 232
+    None,  # 233
+    None,  # 234
+    None,  # 235
+    None,  # 236
+    None,  # 237
+    None,  # 238
+    None,  # 239
+    None,  # 240
+    None,  # 241
+    None,  # 242
+    None,  # 243
+    None,  # 244
+    None,  # 245
+    None,  # 246
+    None,  # 247
+    None,  # 248
+    None,  # 249
+    None,  # 250
+    None,  # 251
+    None,  # 252
+    None,  # 253
+    None,  # 254
+    None,  # 255
+    None,  # 256
+    None,  # 257
+    None,  # 258
+    None,  # 259
+    None,  # 260
+    None,  # 261
+    None,  # 262
+    None,  # 263
+    None,  # 264
+    None,  # 265
+    None,  # 266
+    None,  # 267
+    None,  # 268
+    None,  # 269
+    None,  # 270
+    None,  # 271
+    None,  # 272
+    None,  # 273
+    None,  # 274
+    None,  # 275
+    None,  # 276
+    None,  # 277
+    None,  # 278
+    None,  # 279
+    None,  # 280
+    None,  # 281
+    None,  # 282
+    None,  # 283
+    None,  # 284
+    None,  # 285
+    None,  # 286
+    None,  # 287
+    None,  # 288
+    None,  # 289
+    None,  # 290
+    None,  # 291
+    None,  # 292
+    None,  # 293
+    None,  # 294
+    None,  # 295
+    None,  # 296
+    None,  # 297
+    None,  # 298
+    None,  # 299
+    None,  # 300
+    None,  # 301
+    None,  # 302
+    None,  # 303
+    None,  # 304
+    None,  # 305
+    None,  # 306
+    None,  # 307
+    None,  # 308
+    None,  # 309
+    None,  # 310
+    None,  # 311
+    None,  # 312
+    None,  # 313
+    None,  # 314
+    None,  # 315
+    None,  # 316
+    None,  # 317
+    None,  # 318
+    None,  # 319
+    None,  # 320
+    None,  # 321
+    None,  # 322
+    None,  # 323
+    None,  # 324
+    None,  # 325
+    None,  # 326
+    None,  # 327
+    None,  # 328
+    None,  # 329
+    None,  # 330
+    None,  # 331
+    None,  # 332
+    None,  # 333
+    None,  # 334
+    None,  # 335
+    None,  # 336
+    None,  # 337
+    None,  # 338
+    None,  # 339
+    None,  # 340
+    None,  # 341
+    None,  # 342
+    None,  # 343
+    None,  # 344
+    None,  # 345
+    None,  # 346
+    None,  # 347
+    None,  # 348
+    None,  # 349
+    None,  # 350
+    None,  # 351
+    None,  # 352
+    None,  # 353
+    None,  # 354
+    None,  # 355
+    None,  # 356
+    None,  # 357
+    None,  # 358
+    None,  # 359
+    None,  # 360
+    None,  # 361
+    None,  # 362
+    None,  # 363
+    None,  # 364
+    None,  # 365
+    None,  # 366
+    None,  # 367
+    None,  # 368
+    None,  # 369
+    None,  # 370
+    None,  # 371
+    None,  # 372
+    None,  # 373
+    None,  # 374
+    None,  # 375
+    None,  # 376
+    None,  # 377
+    None,  # 378
+    None,  # 379
+    None,  # 380
+    None,  # 381
+    None,  # 382
+    None,  # 383
+    None,  # 384
+    None,  # 385
+    None,  # 386
+    None,  # 387
+    None,  # 388
+    None,  # 389
+    None,  # 390
+    None,  # 391
+    None,  # 392
+    None,  # 393
+    None,  # 394
+    None,  # 395
+    None,  # 396
+    None,  # 397
+    None,  # 398
+    None,  # 399
+    None,  # 400
+    None,  # 401
+    None,  # 402
+    None,  # 403
+    None,  # 404
+    None,  # 405
+    None,  # 406
+    None,  # 407
+    None,  # 408
+    None,  # 409
+    None,  # 410
+    None,  # 411
+    None,  # 412
+    None,  # 413
+    None,  # 414
+    None,  # 415
+    None,  # 416
+    None,  # 417
+    None,  # 418
+    None,  # 419
+    None,  # 420
+    None,  # 421
+    None,  # 422
+    None,  # 423
+    None,  # 424
+    None,  # 425
+    None,  # 426
+    None,  # 427
+    None,  # 428
+    None,  # 429
+    None,  # 430
+    None,  # 431
+    None,  # 432
+    None,  # 433
+    None,  # 434
+    None,  # 435
+    None,  # 436
+    None,  # 437
+    None,  # 438
+    None,  # 439
+    None,  # 440
+    None,  # 441
+    None,  # 442
+    None,  # 443
+    None,  # 444
+    None,  # 445
+    None,  # 446
+    None,  # 447
+    None,  # 448
+    None,  # 449
+    None,  # 450
+    None,  # 451
+    None,  # 452
+    None,  # 453
+    None,  # 454
+    None,  # 455
+    None,  # 456
+    None,  # 457
+    None,  # 458
+    None,  # 459
+    None,  # 460
+    None,  # 461
+    None,  # 462
+    None,  # 463
+    None,  # 464
+    None,  # 465
+    None,  # 466
+    None,  # 467
+    None,  # 468
+    None,  # 469
+    None,  # 470
+    None,  # 471
+    None,  # 472
+    None,  # 473
+    None,  # 474
+    None,  # 475
+    None,  # 476
+    None,  # 477
+    None,  # 478
+    None,  # 479
+    None,  # 480
+    None,  # 481
+    None,  # 482
+    None,  # 483
+    None,  # 484
+    None,  # 485
+    None,  # 486
+    None,  # 487
+    None,  # 488
+    None,  # 489
+    None,  # 490
+    None,  # 491
+    None,  # 492
+    None,  # 493
+    None,  # 494
+    None,  # 495
+    None,  # 496
+    None,  # 497
+    None,  # 498
+    None,  # 499
+    None,  # 500
+    None,  # 501
+    None,  # 502
+    None,  # 503
+    None,  # 504
+    None,  # 505
+    None,  # 506
+    None,  # 507
+    None,  # 508
+    None,  # 509
+    None,  # 510
+    None,  # 511
+    None,  # 512
+    None,  # 513
+    None,  # 514
+    None,  # 515
+    None,  # 516
+    None,  # 517
+    None,  # 518
+    None,  # 519
+    None,  # 520
+    None,  # 521
+    None,  # 522
+    None,  # 523
+    None,  # 524
+    None,  # 525
+    None,  # 526
+    None,  # 527
+    None,  # 528
+    None,  # 529
+    None,  # 530
+    None,  # 531
+    None,  # 532
+    None,  # 533
+    None,  # 534
+    None,  # 535
+    None,  # 536
+    None,  # 537
+    None,  # 538
+    None,  # 539
+    None,  # 540
+    None,  # 541
+    None,  # 542
+    None,  # 543
+    None,  # 544
+    None,  # 545
+    None,  # 546
+    None,  # 547
+    None,  # 548
+    None,  # 549
+    None,  # 550
+    None,  # 551
+    None,  # 552
+    None,  # 553
+    None,  # 554
+    None,  # 555
+    None,  # 556
+    None,  # 557
+    None,  # 558
+    None,  # 559
+    None,  # 560
+    None,  # 561
+    None,  # 562
+    None,  # 563
+    None,  # 564
+    None,  # 565
+    None,  # 566
+    None,  # 567
+    None,  # 568
+    None,  # 569
+    None,  # 570
+    None,  # 571
+    None,  # 572
+    None,  # 573
+    None,  # 574
+    None,  # 575
+    None,  # 576
+    None,  # 577
+    None,  # 578
+    None,  # 579
+    None,  # 580
+    None,  # 581
+    None,  # 582
+    None,  # 583
+    None,  # 584
+    None,  # 585
+    None,  # 586
+    None,  # 587
+    None,  # 588
+    None,  # 589
+    None,  # 590
+    None,  # 591
+    None,  # 592
+    None,  # 593
+    None,  # 594
+    None,  # 595
+    None,  # 596
+    None,  # 597
+    None,  # 598
+    None,  # 599
+    None,  # 600
+    None,  # 601
+    None,  # 602
+    None,  # 603
+    None,  # 604
+    None,  # 605
+    None,  # 606
+    None,  # 607
+    None,  # 608
+    None,  # 609
+    None,  # 610
+    None,  # 611
+    None,  # 612
+    None,  # 613
+    None,  # 614
+    None,  # 615
+    None,  # 616
+    None,  # 617
+    None,  # 618
+    None,  # 619
+    None,  # 620
+    None,  # 621
+    None,  # 622
+    None,  # 623
+    None,  # 624
+    None,  # 625
+    None,  # 626
+    None,  # 627
+    None,  # 628
+    None,  # 629
+    None,  # 630
+    None,  # 631
+    None,  # 632
+    None,  # 633
+    None,  # 634
+    None,  # 635
+    None,  # 636
+    None,  # 637
+    None,  # 638
+    None,  # 639
+    None,  # 640
+    None,  # 641
+    None,  # 642
+    None,  # 643
+    None,  # 644
+    None,  # 645
+    None,  # 646
+    None,  # 647
+    None,  # 648
+    None,  # 649
+    None,  # 650
+    None,  # 651
+    None,  # 652
+    None,  # 653
+    None,  # 654
+    None,  # 655
+    None,  # 656
+    None,  # 657
+    None,  # 658
+    None,  # 659
+    None,  # 660
+    None,  # 661
+    None,  # 662
+    None,  # 663
+    None,  # 664
+    None,  # 665
+    None,  # 666
+    None,  # 667
+    None,  # 668
+    None,  # 669
+    None,  # 670
+    None,  # 671
+    None,  # 672
+    None,  # 673
+    None,  # 674
+    None,  # 675
+    None,  # 676
+    None,  # 677
+    None,  # 678
+    None,  # 679
+    None,  # 680
+    None,  # 681
+    None,  # 682
+    None,  # 683
+    None,  # 684
+    None,  # 685
+    None,  # 686
+    None,  # 687
+    None,  # 688
+    None,  # 689
+    None,  # 690
+    None,  # 691
+    None,  # 692
+    None,  # 693
+    None,  # 694
+    None,  # 695
+    None,  # 696
+    None,  # 697
+    None,  # 698
+    None,  # 699
+    None,  # 700
+    None,  # 701
+    None,  # 702
+    None,  # 703
+    None,  # 704
+    None,  # 705
+    None,  # 706
+    None,  # 707
+    None,  # 708
+    None,  # 709
+    None,  # 710
+    None,  # 711
+    None,  # 712
+    None,  # 713
+    None,  # 714
+    None,  # 715
+    None,  # 716
+    None,  # 717
+    None,  # 718
+    None,  # 719
+    None,  # 720
+    None,  # 721
+    None,  # 722
+    None,  # 723
+    None,  # 724
+    None,  # 725
+    None,  # 726
+    None,  # 727
+    None,  # 728
+    None,  # 729
+    None,  # 730
+    None,  # 731
+    None,  # 732
+    None,  # 733
+    None,  # 734
+    None,  # 735
+    None,  # 736
+    None,  # 737
+    None,  # 738
+    None,  # 739
+    None,  # 740
+    None,  # 741
+    None,  # 742
+    None,  # 743
+    None,  # 744
+    None,  # 745
+    None,  # 746
+    None,  # 747
+    None,  # 748
+    None,  # 749
+    None,  # 750
+    None,  # 751
+    None,  # 752
+    None,  # 753
+    None,  # 754
+    None,  # 755
+    None,  # 756
+    None,  # 757
+    None,  # 758
+    None,  # 759
+    None,  # 760
+    None,  # 761
+    None,  # 762
+    None,  # 763
+    None,  # 764
+    None,  # 765
+    None,  # 766
+    None,  # 767
+    None,  # 768
+    None,  # 769
+    None,  # 770
+    None,  # 771
+    None,  # 772
+    None,  # 773
+    None,  # 774
+    None,  # 775
+    None,  # 776
+    None,  # 777
+    None,  # 778
+    None,  # 779
+    None,  # 780
+    None,  # 781
+    None,  # 782
+    None,  # 783
+    None,  # 784
+    None,  # 785
+    None,  # 786
+    None,  # 787
+    None,  # 788
+    None,  # 789
+    None,  # 790
+    None,  # 791
+    None,  # 792
+    None,  # 793
+    None,  # 794
+    None,  # 795
+    None,  # 796
+    None,  # 797
+    None,  # 798
+    None,  # 799
+    None,  # 800
+    None,  # 801
+    None,  # 802
+    None,  # 803
+    None,  # 804
+    None,  # 805
+    None,  # 806
+    None,  # 807
+    None,  # 808
+    None,  # 809
+    None,  # 810
+    None,  # 811
+    None,  # 812
+    None,  # 813
+    None,  # 814
+    None,  # 815
+    None,  # 816
+    None,  # 817
+    None,  # 818
+    None,  # 819
+    None,  # 820
+    None,  # 821
+    None,  # 822
+    None,  # 823
+    None,  # 824
+    None,  # 825
+    None,  # 826
+    None,  # 827
+    None,  # 828
+    None,  # 829
+    None,  # 830
+    None,  # 831
+    None,  # 832
+    None,  # 833
+    None,  # 834
+    None,  # 835
+    None,  # 836
+    None,  # 837
+    None,  # 838
+    None,  # 839
+    None,  # 840
+    None,  # 841
+    None,  # 842
+    None,  # 843
+    None,  # 844
+    None,  # 845
+    None,  # 846
+    None,  # 847
+    None,  # 848
+    None,  # 849
+    None,  # 850
+    None,  # 851
+    None,  # 852
+    None,  # 853
+    None,  # 854
+    None,  # 855
+    None,  # 856
+    None,  # 857
+    None,  # 858
+    None,  # 859
+    None,  # 860
+    None,  # 861
+    None,  # 862
+    None,  # 863
+    None,  # 864
+    None,  # 865
+    None,  # 866
+    None,  # 867
+    None,  # 868
+    None,  # 869
+    None,  # 870
+    None,  # 871
+    None,  # 872
+    None,  # 873
+    None,  # 874
+    None,  # 875
+    None,  # 876
+    None,  # 877
+    None,  # 878
+    None,  # 879
+    None,  # 880
+    None,  # 881
+    None,  # 882
+    None,  # 883
+    None,  # 884
+    None,  # 885
+    None,  # 886
+    None,  # 887
+    None,  # 888
+    None,  # 889
+    None,  # 890
+    None,  # 891
+    None,  # 892
+    None,  # 893
+    None,  # 894
+    None,  # 895
+    None,  # 896
+    None,  # 897
+    None,  # 898
+    None,  # 899
+    None,  # 900
+    None,  # 901
+    None,  # 902
+    None,  # 903
+    None,  # 904
+    None,  # 905
+    None,  # 906
+    None,  # 907
+    None,  # 908
+    None,  # 909
+    None,  # 910
+    None,  # 911
+    None,  # 912
+    None,  # 913
+    None,  # 914
+    None,  # 915
+    None,  # 916
+    None,  # 917
+    None,  # 918
+    None,  # 919
+    None,  # 920
+    None,  # 921
+    None,  # 922
+    None,  # 923
+    None,  # 924
+    None,  # 925
+    None,  # 926
+    None,  # 927
+    None,  # 928
+    None,  # 929
+    None,  # 930
+    None,  # 931
+    None,  # 932
+    None,  # 933
+    None,  # 934
+    None,  # 935
+    None,  # 936
+    None,  # 937
+    None,  # 938
+    None,  # 939
+    None,  # 940
+    None,  # 941
+    None,  # 942
+    None,  # 943
+    None,  # 944
+    None,  # 945
+    None,  # 946
+    None,  # 947
+    None,  # 948
+    None,  # 949
+    None,  # 950
+    None,  # 951
+    None,  # 952
+    None,  # 953
+    None,  # 954
+    None,  # 955
+    None,  # 956
+    None,  # 957
+    None,  # 958
+    None,  # 959
+    None,  # 960
+    None,  # 961
+    None,  # 962
+    None,  # 963
+    None,  # 964
+    None,  # 965
+    None,  # 966
+    None,  # 967
+    None,  # 968
+    None,  # 969
+    None,  # 970
+    None,  # 971
+    None,  # 972
+    None,  # 973
+    None,  # 974
+    None,  # 975
+    None,  # 976
+    None,  # 977
+    None,  # 978
+    None,  # 979
+    None,  # 980
+    None,  # 981
+    None,  # 982
+    None,  # 983
+    None,  # 984
+    None,  # 985
+    None,  # 986
+    None,  # 987
+    None,  # 988
+    None,  # 989
+    None,  # 990
+    None,  # 991
+    None,  # 992
+    None,  # 993
+    None,  # 994
+    None,  # 995
+    None,  # 996
+    None,  # 997
+    None,  # 998
+    None,  # 999
+    None,  # 1000
+    None,  # 1001
+    None,  # 1002
+    None,  # 1003
+    None,  # 1004
+    None,  # 1005
+    None,  # 1006
+    None,  # 1007
+    None,  # 1008
+    None,  # 1009
+    None,  # 1010
+    None,  # 1011
+    None,  # 1012
+    None,  # 1013
+    None,  # 1014
+    None,  # 1015
+    None,  # 1016
+    None,  # 1017
+    None,  # 1018
+    None,  # 1019
+    None,  # 1020
+    None,  # 1021
+    None,  # 1022
+    None,  # 1023
+    None,  # 1024
+    None,  # 1025
+    None,  # 1026
+    None,  # 1027
+    None,  # 1028
+    None,  # 1029
+    None,  # 1030
+    None,  # 1031
+    None,  # 1032
+    None,  # 1033
+    None,  # 1034
+    None,  # 1035
+    None,  # 1036
+    None,  # 1037
+    None,  # 1038
+    None,  # 1039
+    None,  # 1040
+    None,  # 1041
+    None,  # 1042
+    None,  # 1043
+    None,  # 1044
+    None,  # 1045
+    None,  # 1046
+    None,  # 1047
+    None,  # 1048
+    None,  # 1049
+    None,  # 1050
+    None,  # 1051
+    None,  # 1052
+    None,  # 1053
+    None,  # 1054
+    None,  # 1055
+    None,  # 1056
+    None,  # 1057
+    None,  # 1058
+    None,  # 1059
+    None,  # 1060
+    None,  # 1061
+    None,  # 1062
+    None,  # 1063
+    None,  # 1064
+    None,  # 1065
+    None,  # 1066
+    None,  # 1067
+    None,  # 1068
+    None,  # 1069
+    None,  # 1070
+    None,  # 1071
+    None,  # 1072
+    None,  # 1073
+    None,  # 1074
+    None,  # 1075
+    None,  # 1076
+    None,  # 1077
+    None,  # 1078
+    None,  # 1079
+    None,  # 1080
+    None,  # 1081
+    None,  # 1082
+    None,  # 1083
+    None,  # 1084
+    None,  # 1085
+    None,  # 1086
+    None,  # 1087
+    None,  # 1088
+    None,  # 1089
+    None,  # 1090
+    None,  # 1091
+    None,  # 1092
+    None,  # 1093
+    None,  # 1094
+    None,  # 1095
+    None,  # 1096
+    None,  # 1097
+    None,  # 1098
+    None,  # 1099
+    None,  # 1100
+    None,  # 1101
+    None,  # 1102
+    None,  # 1103
+    None,  # 1104
+    None,  # 1105
+    None,  # 1106
+    None,  # 1107
+    None,  # 1108
+    None,  # 1109
+    None,  # 1110
+    None,  # 1111
+    None,  # 1112
+    None,  # 1113
+    None,  # 1114
+    None,  # 1115
+    None,  # 1116
+    None,  # 1117
+    None,  # 1118
+    None,  # 1119
+    None,  # 1120
+    None,  # 1121
+    None,  # 1122
+    None,  # 1123
+    None,  # 1124
+    None,  # 1125
+    None,  # 1126
+    None,  # 1127
+    None,  # 1128
+    None,  # 1129
+    None,  # 1130
+    None,  # 1131
+    None,  # 1132
+    None,  # 1133
+    None,  # 1134
+    None,  # 1135
+    None,  # 1136
+    None,  # 1137
+    None,  # 1138
+    None,  # 1139
+    None,  # 1140
+    None,  # 1141
+    None,  # 1142
+    None,  # 1143
+    None,  # 1144
+    None,  # 1145
+    None,  # 1146
+    None,  # 1147
+    None,  # 1148
+    None,  # 1149
+    None,  # 1150
+    None,  # 1151
+    None,  # 1152
+    None,  # 1153
+    None,  # 1154
+    None,  # 1155
+    None,  # 1156
+    None,  # 1157
+    None,  # 1158
+    None,  # 1159
+    None,  # 1160
+    None,  # 1161
+    None,  # 1162
+    None,  # 1163
+    None,  # 1164
+    None,  # 1165
+    None,  # 1166
+    None,  # 1167
+    None,  # 1168
+    None,  # 1169
+    None,  # 1170
+    None,  # 1171
+    None,  # 1172
+    None,  # 1173
+    None,  # 1174
+    None,  # 1175
+    None,  # 1176
+    None,  # 1177
+    None,  # 1178
+    None,  # 1179
+    None,  # 1180
+    None,  # 1181
+    None,  # 1182
+    None,  # 1183
+    None,  # 1184
+    None,  # 1185
+    None,  # 1186
+    None,  # 1187
+    None,  # 1188
+    None,  # 1189
+    None,  # 1190
+    None,  # 1191
+    None,  # 1192
+    None,  # 1193
+    None,  # 1194
+    None,  # 1195
+    None,  # 1196
+    None,  # 1197
+    None,  # 1198
+    None,  # 1199
+    None,  # 1200
+    None,  # 1201
+    None,  # 1202
+    None,  # 1203
+    None,  # 1204
+    None,  # 1205
+    None,  # 1206
+    None,  # 1207
+    None,  # 1208
+    None,  # 1209
+    None,  # 1210
+    None,  # 1211
+    None,  # 1212
+    None,  # 1213
+    None,  # 1214
+    None,  # 1215
+    None,  # 1216
+    None,  # 1217
+    None,  # 1218
+    None,  # 1219
+    None,  # 1220
+    None,  # 1221
+    None,  # 1222
+    None,  # 1223
+    None,  # 1224
+    None,  # 1225
+    None,  # 1226
+    None,  # 1227
+    None,  # 1228
+    None,  # 1229
+    None,  # 1230
+    None,  # 1231
+    None,  # 1232
+    None,  # 1233
+    None,  # 1234
+    None,  # 1235
+    None,  # 1236
+    None,  # 1237
+    None,  # 1238
+    None,  # 1239
+    None,  # 1240
+    None,  # 1241
+    None,  # 1242
+    None,  # 1243
+    None,  # 1244
+    None,  # 1245
+    None,  # 1246
+    None,  # 1247
+    None,  # 1248
+    None,  # 1249
+    None,  # 1250
+    None,  # 1251
+    None,  # 1252
+    None,  # 1253
+    None,  # 1254
+    None,  # 1255
+    None,  # 1256
+    None,  # 1257
+    None,  # 1258
+    None,  # 1259
+    None,  # 1260
+    None,  # 1261
+    None,  # 1262
+    None,  # 1263
+    None,  # 1264
+    None,  # 1265
+    None,  # 1266
+    None,  # 1267
+    None,  # 1268
+    None,  # 1269
+    None,  # 1270
+    None,  # 1271
+    None,  # 1272
+    None,  # 1273
+    None,  # 1274
+    None,  # 1275
+    None,  # 1276
+    None,  # 1277
+    None,  # 1278
+    None,  # 1279
+    None,  # 1280
+    (1281, TType.STRING, 'displayMessage', 'UTF8', None, ),  # 1281
+    (1282, TType.STRING, 'diagnosticInfo', 'UTF8', None, ),  # 1282
 )
 all_structs.append(TCancelOperationReq)
 TCancelOperationReq.thrift_spec = (
@@ -70695,6 +72316,7 @@ TGetResultSetMetadataResp.thrift_spec = (
     None,  # 1280
     (1281, TType.I32, 'resultFormat', None, None, ),  # 1281
     (1282, TType.BOOL, 'lz4Compressed', None, None, ),  # 1282
+    (1283, TType.STRING, 'arrowSchema', 'BINARY', None, ),  # 1283
 )
 all_structs.append(TFetchResultsReq)
 TFetchResultsReq.thrift_spec = (
@@ -71981,6 +73603,7 @@ TFetchResultsReq.thrift_spec = (
     None,  # 1280
     (1281, TType.I64, 'maxBytes', None, None, ),  # 1281
     (1282, TType.I64, 'startRowOffset', None, None, ),  # 1282
+    (1283, TType.BOOL, 'includeResultSetMetadata', None, None, ),  # 1283
 )
 all_structs.append(TFetchResultsResp)
 TFetchResultsResp.thrift_spec = (
@@ -71988,6 +73611,1284 @@ TFetchResultsResp.thrift_spec = (
     (1, TType.STRUCT, 'status', [TStatus, None], None, ),  # 1
     (2, TType.BOOL, 'hasMoreRows', None, None, ),  # 2
     (3, TType.STRUCT, 'results', [TRowSet, None], None, ),  # 3
+    None,  # 4
+    None,  # 5
+    None,  # 6
+    None,  # 7
+    None,  # 8
+    None,  # 9
+    None,  # 10
+    None,  # 11
+    None,  # 12
+    None,  # 13
+    None,  # 14
+    None,  # 15
+    None,  # 16
+    None,  # 17
+    None,  # 18
+    None,  # 19
+    None,  # 20
+    None,  # 21
+    None,  # 22
+    None,  # 23
+    None,  # 24
+    None,  # 25
+    None,  # 26
+    None,  # 27
+    None,  # 28
+    None,  # 29
+    None,  # 30
+    None,  # 31
+    None,  # 32
+    None,  # 33
+    None,  # 34
+    None,  # 35
+    None,  # 36
+    None,  # 37
+    None,  # 38
+    None,  # 39
+    None,  # 40
+    None,  # 41
+    None,  # 42
+    None,  # 43
+    None,  # 44
+    None,  # 45
+    None,  # 46
+    None,  # 47
+    None,  # 48
+    None,  # 49
+    None,  # 50
+    None,  # 51
+    None,  # 52
+    None,  # 53
+    None,  # 54
+    None,  # 55
+    None,  # 56
+    None,  # 57
+    None,  # 58
+    None,  # 59
+    None,  # 60
+    None,  # 61
+    None,  # 62
+    None,  # 63
+    None,  # 64
+    None,  # 65
+    None,  # 66
+    None,  # 67
+    None,  # 68
+    None,  # 69
+    None,  # 70
+    None,  # 71
+    None,  # 72
+    None,  # 73
+    None,  # 74
+    None,  # 75
+    None,  # 76
+    None,  # 77
+    None,  # 78
+    None,  # 79
+    None,  # 80
+    None,  # 81
+    None,  # 82
+    None,  # 83
+    None,  # 84
+    None,  # 85
+    None,  # 86
+    None,  # 87
+    None,  # 88
+    None,  # 89
+    None,  # 90
+    None,  # 91
+    None,  # 92
+    None,  # 93
+    None,  # 94
+    None,  # 95
+    None,  # 96
+    None,  # 97
+    None,  # 98
+    None,  # 99
+    None,  # 100
+    None,  # 101
+    None,  # 102
+    None,  # 103
+    None,  # 104
+    None,  # 105
+    None,  # 106
+    None,  # 107
+    None,  # 108
+    None,  # 109
+    None,  # 110
+    None,  # 111
+    None,  # 112
+    None,  # 113
+    None,  # 114
+    None,  # 115
+    None,  # 116
+    None,  # 117
+    None,  # 118
+    None,  # 119
+    None,  # 120
+    None,  # 121
+    None,  # 122
+    None,  # 123
+    None,  # 124
+    None,  # 125
+    None,  # 126
+    None,  # 127
+    None,  # 128
+    None,  # 129
+    None,  # 130
+    None,  # 131
+    None,  # 132
+    None,  # 133
+    None,  # 134
+    None,  # 135
+    None,  # 136
+    None,  # 137
+    None,  # 138
+    None,  # 139
+    None,  # 140
+    None,  # 141
+    None,  # 142
+    None,  # 143
+    None,  # 144
+    None,  # 145
+    None,  # 146
+    None,  # 147
+    None,  # 148
+    None,  # 149
+    None,  # 150
+    None,  # 151
+    None,  # 152
+    None,  # 153
+    None,  # 154
+    None,  # 155
+    None,  # 156
+    None,  # 157
+    None,  # 158
+    None,  # 159
+    None,  # 160
+    None,  # 161
+    None,  # 162
+    None,  # 163
+    None,  # 164
+    None,  # 165
+    None,  # 166
+    None,  # 167
+    None,  # 168
+    None,  # 169
+    None,  # 170
+    None,  # 171
+    None,  # 172
+    None,  # 173
+    None,  # 174
+    None,  # 175
+    None,  # 176
+    None,  # 177
+    None,  # 178
+    None,  # 179
+    None,  # 180
+    None,  # 181
+    None,  # 182
+    None,  # 183
+    None,  # 184
+    None,  # 185
+    None,  # 186
+    None,  # 187
+    None,  # 188
+    None,  # 189
+    None,  # 190
+    None,  # 191
+    None,  # 192
+    None,  # 193
+    None,  # 194
+    None,  # 195
+    None,  # 196
+    None,  # 197
+    None,  # 198
+    None,  # 199
+    None,  # 200
+    None,  # 201
+    None,  # 202
+    None,  # 203
+    None,  # 204
+    None,  # 205
+    None,  # 206
+    None,  # 207
+    None,  # 208
+    None,  # 209
+    None,  # 210
+    None,  # 211
+    None,  # 212
+    None,  # 213
+    None,  # 214
+    None,  # 215
+    None,  # 216
+    None,  # 217
+    None,  # 218
+    None,  # 219
+    None,  # 220
+    None,  # 221
+    None,  # 222
+    None,  # 223
+    None,  # 224
+    None,  # 225
+    None,  # 226
+    None,  # 227
+    None,  # 228
+    None,  # 229
+    None,  # 230
+    None,  # 231
+    None,  # 232
+    None,  # 233
+    None,  # 234
+    None,  # 235
+    None,  # 236
+    None,  # 237
+    None,  # 238
+    None,  # 239
+    None,  # 240
+    None,  # 241
+    None,  # 242
+    None,  # 243
+    None,  # 244
+    None,  # 245
+    None,  # 246
+    None,  # 247
+    None,  # 248
+    None,  # 249
+    None,  # 250
+    None,  # 251
+    None,  # 252
+    None,  # 253
+    None,  # 254
+    None,  # 255
+    None,  # 256
+    None,  # 257
+    None,  # 258
+    None,  # 259
+    None,  # 260
+    None,  # 261
+    None,  # 262
+    None,  # 263
+    None,  # 264
+    None,  # 265
+    None,  # 266
+    None,  # 267
+    None,  # 268
+    None,  # 269
+    None,  # 270
+    None,  # 271
+    None,  # 272
+    None,  # 273
+    None,  # 274
+    None,  # 275
+    None,  # 276
+    None,  # 277
+    None,  # 278
+    None,  # 279
+    None,  # 280
+    None,  # 281
+    None,  # 282
+    None,  # 283
+    None,  # 284
+    None,  # 285
+    None,  # 286
+    None,  # 287
+    None,  # 288
+    None,  # 289
+    None,  # 290
+    None,  # 291
+    None,  # 292
+    None,  # 293
+    None,  # 294
+    None,  # 295
+    None,  # 296
+    None,  # 297
+    None,  # 298
+    None,  # 299
+    None,  # 300
+    None,  # 301
+    None,  # 302
+    None,  # 303
+    None,  # 304
+    None,  # 305
+    None,  # 306
+    None,  # 307
+    None,  # 308
+    None,  # 309
+    None,  # 310
+    None,  # 311
+    None,  # 312
+    None,  # 313
+    None,  # 314
+    None,  # 315
+    None,  # 316
+    None,  # 317
+    None,  # 318
+    None,  # 319
+    None,  # 320
+    None,  # 321
+    None,  # 322
+    None,  # 323
+    None,  # 324
+    None,  # 325
+    None,  # 326
+    None,  # 327
+    None,  # 328
+    None,  # 329
+    None,  # 330
+    None,  # 331
+    None,  # 332
+    None,  # 333
+    None,  # 334
+    None,  # 335
+    None,  # 336
+    None,  # 337
+    None,  # 338
+    None,  # 339
+    None,  # 340
+    None,  # 341
+    None,  # 342
+    None,  # 343
+    None,  # 344
+    None,  # 345
+    None,  # 346
+    None,  # 347
+    None,  # 348
+    None,  # 349
+    None,  # 350
+    None,  # 351
+    None,  # 352
+    None,  # 353
+    None,  # 354
+    None,  # 355
+    None,  # 356
+    None,  # 357
+    None,  # 358
+    None,  # 359
+    None,  # 360
+    None,  # 361
+    None,  # 362
+    None,  # 363
+    None,  # 364
+    None,  # 365
+    None,  # 366
+    None,  # 367
+    None,  # 368
+    None,  # 369
+    None,  # 370
+    None,  # 371
+    None,  # 372
+    None,  # 373
+    None,  # 374
+    None,  # 375
+    None,  # 376
+    None,  # 377
+    None,  # 378
+    None,  # 379
+    None,  # 380
+    None,  # 381
+    None,  # 382
+    None,  # 383
+    None,  # 384
+    None,  # 385
+    None,  # 386
+    None,  # 387
+    None,  # 388
+    None,  # 389
+    None,  # 390
+    None,  # 391
+    None,  # 392
+    None,  # 393
+    None,  # 394
+    None,  # 395
+    None,  # 396
+    None,  # 397
+    None,  # 398
+    None,  # 399
+    None,  # 400
+    None,  # 401
+    None,  # 402
+    None,  # 403
+    None,  # 404
+    None,  # 405
+    None,  # 406
+    None,  # 407
+    None,  # 408
+    None,  # 409
+    None,  # 410
+    None,  # 411
+    None,  # 412
+    None,  # 413
+    None,  # 414
+    None,  # 415
+    None,  # 416
+    None,  # 417
+    None,  # 418
+    None,  # 419
+    None,  # 420
+    None,  # 421
+    None,  # 422
+    None,  # 423
+    None,  # 424
+    None,  # 425
+    None,  # 426
+    None,  # 427
+    None,  # 428
+    None,  # 429
+    None,  # 430
+    None,  # 431
+    None,  # 432
+    None,  # 433
+    None,  # 434
+    None,  # 435
+    None,  # 436
+    None,  # 437
+    None,  # 438
+    None,  # 439
+    None,  # 440
+    None,  # 441
+    None,  # 442
+    None,  # 443
+    None,  # 444
+    None,  # 445
+    None,  # 446
+    None,  # 447
+    None,  # 448
+    None,  # 449
+    None,  # 450
+    None,  # 451
+    None,  # 452
+    None,  # 453
+    None,  # 454
+    None,  # 455
+    None,  # 456
+    None,  # 457
+    None,  # 458
+    None,  # 459
+    None,  # 460
+    None,  # 461
+    None,  # 462
+    None,  # 463
+    None,  # 464
+    None,  # 465
+    None,  # 466
+    None,  # 467
+    None,  # 468
+    None,  # 469
+    None,  # 470
+    None,  # 471
+    None,  # 472
+    None,  # 473
+    None,  # 474
+    None,  # 475
+    None,  # 476
+    None,  # 477
+    None,  # 478
+    None,  # 479
+    None,  # 480
+    None,  # 481
+    None,  # 482
+    None,  # 483
+    None,  # 484
+    None,  # 485
+    None,  # 486
+    None,  # 487
+    None,  # 488
+    None,  # 489
+    None,  # 490
+    None,  # 491
+    None,  # 492
+    None,  # 493
+    None,  # 494
+    None,  # 495
+    None,  # 496
+    None,  # 497
+    None,  # 498
+    None,  # 499
+    None,  # 500
+    None,  # 501
+    None,  # 502
+    None,  # 503
+    None,  # 504
+    None,  # 505
+    None,  # 506
+    None,  # 507
+    None,  # 508
+    None,  # 509
+    None,  # 510
+    None,  # 511
+    None,  # 512
+    None,  # 513
+    None,  # 514
+    None,  # 515
+    None,  # 516
+    None,  # 517
+    None,  # 518
+    None,  # 519
+    None,  # 520
+    None,  # 521
+    None,  # 522
+    None,  # 523
+    None,  # 524
+    None,  # 525
+    None,  # 526
+    None,  # 527
+    None,  # 528
+    None,  # 529
+    None,  # 530
+    None,  # 531
+    None,  # 532
+    None,  # 533
+    None,  # 534
+    None,  # 535
+    None,  # 536
+    None,  # 537
+    None,  # 538
+    None,  # 539
+    None,  # 540
+    None,  # 541
+    None,  # 542
+    None,  # 543
+    None,  # 544
+    None,  # 545
+    None,  # 546
+    None,  # 547
+    None,  # 548
+    None,  # 549
+    None,  # 550
+    None,  # 551
+    None,  # 552
+    None,  # 553
+    None,  # 554
+    None,  # 555
+    None,  # 556
+    None,  # 557
+    None,  # 558
+    None,  # 559
+    None,  # 560
+    None,  # 561
+    None,  # 562
+    None,  # 563
+    None,  # 564
+    None,  # 565
+    None,  # 566
+    None,  # 567
+    None,  # 568
+    None,  # 569
+    None,  # 570
+    None,  # 571
+    None,  # 572
+    None,  # 573
+    None,  # 574
+    None,  # 575
+    None,  # 576
+    None,  # 577
+    None,  # 578
+    None,  # 579
+    None,  # 580
+    None,  # 581
+    None,  # 582
+    None,  # 583
+    None,  # 584
+    None,  # 585
+    None,  # 586
+    None,  # 587
+    None,  # 588
+    None,  # 589
+    None,  # 590
+    None,  # 591
+    None,  # 592
+    None,  # 593
+    None,  # 594
+    None,  # 595
+    None,  # 596
+    None,  # 597
+    None,  # 598
+    None,  # 599
+    None,  # 600
+    None,  # 601
+    None,  # 602
+    None,  # 603
+    None,  # 604
+    None,  # 605
+    None,  # 606
+    None,  # 607
+    None,  # 608
+    None,  # 609
+    None,  # 610
+    None,  # 611
+    None,  # 612
+    None,  # 613
+    None,  # 614
+    None,  # 615
+    None,  # 616
+    None,  # 617
+    None,  # 618
+    None,  # 619
+    None,  # 620
+    None,  # 621
+    None,  # 622
+    None,  # 623
+    None,  # 624
+    None,  # 625
+    None,  # 626
+    None,  # 627
+    None,  # 628
+    None,  # 629
+    None,  # 630
+    None,  # 631
+    None,  # 632
+    None,  # 633
+    None,  # 634
+    None,  # 635
+    None,  # 636
+    None,  # 637
+    None,  # 638
+    None,  # 639
+    None,  # 640
+    None,  # 641
+    None,  # 642
+    None,  # 643
+    None,  # 644
+    None,  # 645
+    None,  # 646
+    None,  # 647
+    None,  # 648
+    None,  # 649
+    None,  # 650
+    None,  # 651
+    None,  # 652
+    None,  # 653
+    None,  # 654
+    None,  # 655
+    None,  # 656
+    None,  # 657
+    None,  # 658
+    None,  # 659
+    None,  # 660
+    None,  # 661
+    None,  # 662
+    None,  # 663
+    None,  # 664
+    None,  # 665
+    None,  # 666
+    None,  # 667
+    None,  # 668
+    None,  # 669
+    None,  # 670
+    None,  # 671
+    None,  # 672
+    None,  # 673
+    None,  # 674
+    None,  # 675
+    None,  # 676
+    None,  # 677
+    None,  # 678
+    None,  # 679
+    None,  # 680
+    None,  # 681
+    None,  # 682
+    None,  # 683
+    None,  # 684
+    None,  # 685
+    None,  # 686
+    None,  # 687
+    None,  # 688
+    None,  # 689
+    None,  # 690
+    None,  # 691
+    None,  # 692
+    None,  # 693
+    None,  # 694
+    None,  # 695
+    None,  # 696
+    None,  # 697
+    None,  # 698
+    None,  # 699
+    None,  # 700
+    None,  # 701
+    None,  # 702
+    None,  # 703
+    None,  # 704
+    None,  # 705
+    None,  # 706
+    None,  # 707
+    None,  # 708
+    None,  # 709
+    None,  # 710
+    None,  # 711
+    None,  # 712
+    None,  # 713
+    None,  # 714
+    None,  # 715
+    None,  # 716
+    None,  # 717
+    None,  # 718
+    None,  # 719
+    None,  # 720
+    None,  # 721
+    None,  # 722
+    None,  # 723
+    None,  # 724
+    None,  # 725
+    None,  # 726
+    None,  # 727
+    None,  # 728
+    None,  # 729
+    None,  # 730
+    None,  # 731
+    None,  # 732
+    None,  # 733
+    None,  # 734
+    None,  # 735
+    None,  # 736
+    None,  # 737
+    None,  # 738
+    None,  # 739
+    None,  # 740
+    None,  # 741
+    None,  # 742
+    None,  # 743
+    None,  # 744
+    None,  # 745
+    None,  # 746
+    None,  # 747
+    None,  # 748
+    None,  # 749
+    None,  # 750
+    None,  # 751
+    None,  # 752
+    None,  # 753
+    None,  # 754
+    None,  # 755
+    None,  # 756
+    None,  # 757
+    None,  # 758
+    None,  # 759
+    None,  # 760
+    None,  # 761
+    None,  # 762
+    None,  # 763
+    None,  # 764
+    None,  # 765
+    None,  # 766
+    None,  # 767
+    None,  # 768
+    None,  # 769
+    None,  # 770
+    None,  # 771
+    None,  # 772
+    None,  # 773
+    None,  # 774
+    None,  # 775
+    None,  # 776
+    None,  # 777
+    None,  # 778
+    None,  # 779
+    None,  # 780
+    None,  # 781
+    None,  # 782
+    None,  # 783
+    None,  # 784
+    None,  # 785
+    None,  # 786
+    None,  # 787
+    None,  # 788
+    None,  # 789
+    None,  # 790
+    None,  # 791
+    None,  # 792
+    None,  # 793
+    None,  # 794
+    None,  # 795
+    None,  # 796
+    None,  # 797
+    None,  # 798
+    None,  # 799
+    None,  # 800
+    None,  # 801
+    None,  # 802
+    None,  # 803
+    None,  # 804
+    None,  # 805
+    None,  # 806
+    None,  # 807
+    None,  # 808
+    None,  # 809
+    None,  # 810
+    None,  # 811
+    None,  # 812
+    None,  # 813
+    None,  # 814
+    None,  # 815
+    None,  # 816
+    None,  # 817
+    None,  # 818
+    None,  # 819
+    None,  # 820
+    None,  # 821
+    None,  # 822
+    None,  # 823
+    None,  # 824
+    None,  # 825
+    None,  # 826
+    None,  # 827
+    None,  # 828
+    None,  # 829
+    None,  # 830
+    None,  # 831
+    None,  # 832
+    None,  # 833
+    None,  # 834
+    None,  # 835
+    None,  # 836
+    None,  # 837
+    None,  # 838
+    None,  # 839
+    None,  # 840
+    None,  # 841
+    None,  # 842
+    None,  # 843
+    None,  # 844
+    None,  # 845
+    None,  # 846
+    None,  # 847
+    None,  # 848
+    None,  # 849
+    None,  # 850
+    None,  # 851
+    None,  # 852
+    None,  # 853
+    None,  # 854
+    None,  # 855
+    None,  # 856
+    None,  # 857
+    None,  # 858
+    None,  # 859
+    None,  # 860
+    None,  # 861
+    None,  # 862
+    None,  # 863
+    None,  # 864
+    None,  # 865
+    None,  # 866
+    None,  # 867
+    None,  # 868
+    None,  # 869
+    None,  # 870
+    None,  # 871
+    None,  # 872
+    None,  # 873
+    None,  # 874
+    None,  # 875
+    None,  # 876
+    None,  # 877
+    None,  # 878
+    None,  # 879
+    None,  # 880
+    None,  # 881
+    None,  # 882
+    None,  # 883
+    None,  # 884
+    None,  # 885
+    None,  # 886
+    None,  # 887
+    None,  # 888
+    None,  # 889
+    None,  # 890
+    None,  # 891
+    None,  # 892
+    None,  # 893
+    None,  # 894
+    None,  # 895
+    None,  # 896
+    None,  # 897
+    None,  # 898
+    None,  # 899
+    None,  # 900
+    None,  # 901
+    None,  # 902
+    None,  # 903
+    None,  # 904
+    None,  # 905
+    None,  # 906
+    None,  # 907
+    None,  # 908
+    None,  # 909
+    None,  # 910
+    None,  # 911
+    None,  # 912
+    None,  # 913
+    None,  # 914
+    None,  # 915
+    None,  # 916
+    None,  # 917
+    None,  # 918
+    None,  # 919
+    None,  # 920
+    None,  # 921
+    None,  # 922
+    None,  # 923
+    None,  # 924
+    None,  # 925
+    None,  # 926
+    None,  # 927
+    None,  # 928
+    None,  # 929
+    None,  # 930
+    None,  # 931
+    None,  # 932
+    None,  # 933
+    None,  # 934
+    None,  # 935
+    None,  # 936
+    None,  # 937
+    None,  # 938
+    None,  # 939
+    None,  # 940
+    None,  # 941
+    None,  # 942
+    None,  # 943
+    None,  # 944
+    None,  # 945
+    None,  # 946
+    None,  # 947
+    None,  # 948
+    None,  # 949
+    None,  # 950
+    None,  # 951
+    None,  # 952
+    None,  # 953
+    None,  # 954
+    None,  # 955
+    None,  # 956
+    None,  # 957
+    None,  # 958
+    None,  # 959
+    None,  # 960
+    None,  # 961
+    None,  # 962
+    None,  # 963
+    None,  # 964
+    None,  # 965
+    None,  # 966
+    None,  # 967
+    None,  # 968
+    None,  # 969
+    None,  # 970
+    None,  # 971
+    None,  # 972
+    None,  # 973
+    None,  # 974
+    None,  # 975
+    None,  # 976
+    None,  # 977
+    None,  # 978
+    None,  # 979
+    None,  # 980
+    None,  # 981
+    None,  # 982
+    None,  # 983
+    None,  # 984
+    None,  # 985
+    None,  # 986
+    None,  # 987
+    None,  # 988
+    None,  # 989
+    None,  # 990
+    None,  # 991
+    None,  # 992
+    None,  # 993
+    None,  # 994
+    None,  # 995
+    None,  # 996
+    None,  # 997
+    None,  # 998
+    None,  # 999
+    None,  # 1000
+    None,  # 1001
+    None,  # 1002
+    None,  # 1003
+    None,  # 1004
+    None,  # 1005
+    None,  # 1006
+    None,  # 1007
+    None,  # 1008
+    None,  # 1009
+    None,  # 1010
+    None,  # 1011
+    None,  # 1012
+    None,  # 1013
+    None,  # 1014
+    None,  # 1015
+    None,  # 1016
+    None,  # 1017
+    None,  # 1018
+    None,  # 1019
+    None,  # 1020
+    None,  # 1021
+    None,  # 1022
+    None,  # 1023
+    None,  # 1024
+    None,  # 1025
+    None,  # 1026
+    None,  # 1027
+    None,  # 1028
+    None,  # 1029
+    None,  # 1030
+    None,  # 1031
+    None,  # 1032
+    None,  # 1033
+    None,  # 1034
+    None,  # 1035
+    None,  # 1036
+    None,  # 1037
+    None,  # 1038
+    None,  # 1039
+    None,  # 1040
+    None,  # 1041
+    None,  # 1042
+    None,  # 1043
+    None,  # 1044
+    None,  # 1045
+    None,  # 1046
+    None,  # 1047
+    None,  # 1048
+    None,  # 1049
+    None,  # 1050
+    None,  # 1051
+    None,  # 1052
+    None,  # 1053
+    None,  # 1054
+    None,  # 1055
+    None,  # 1056
+    None,  # 1057
+    None,  # 1058
+    None,  # 1059
+    None,  # 1060
+    None,  # 1061
+    None,  # 1062
+    None,  # 1063
+    None,  # 1064
+    None,  # 1065
+    None,  # 1066
+    None,  # 1067
+    None,  # 1068
+    None,  # 1069
+    None,  # 1070
+    None,  # 1071
+    None,  # 1072
+    None,  # 1073
+    None,  # 1074
+    None,  # 1075
+    None,  # 1076
+    None,  # 1077
+    None,  # 1078
+    None,  # 1079
+    None,  # 1080
+    None,  # 1081
+    None,  # 1082
+    None,  # 1083
+    None,  # 1084
+    None,  # 1085
+    None,  # 1086
+    None,  # 1087
+    None,  # 1088
+    None,  # 1089
+    None,  # 1090
+    None,  # 1091
+    None,  # 1092
+    None,  # 1093
+    None,  # 1094
+    None,  # 1095
+    None,  # 1096
+    None,  # 1097
+    None,  # 1098
+    None,  # 1099
+    None,  # 1100
+    None,  # 1101
+    None,  # 1102
+    None,  # 1103
+    None,  # 1104
+    None,  # 1105
+    None,  # 1106
+    None,  # 1107
+    None,  # 1108
+    None,  # 1109
+    None,  # 1110
+    None,  # 1111
+    None,  # 1112
+    None,  # 1113
+    None,  # 1114
+    None,  # 1115
+    None,  # 1116
+    None,  # 1117
+    None,  # 1118
+    None,  # 1119
+    None,  # 1120
+    None,  # 1121
+    None,  # 1122
+    None,  # 1123
+    None,  # 1124
+    None,  # 1125
+    None,  # 1126
+    None,  # 1127
+    None,  # 1128
+    None,  # 1129
+    None,  # 1130
+    None,  # 1131
+    None,  # 1132
+    None,  # 1133
+    None,  # 1134
+    None,  # 1135
+    None,  # 1136
+    None,  # 1137
+    None,  # 1138
+    None,  # 1139
+    None,  # 1140
+    None,  # 1141
+    None,  # 1142
+    None,  # 1143
+    None,  # 1144
+    None,  # 1145
+    None,  # 1146
+    None,  # 1147
+    None,  # 1148
+    None,  # 1149
+    None,  # 1150
+    None,  # 1151
+    None,  # 1152
+    None,  # 1153
+    None,  # 1154
+    None,  # 1155
+    None,  # 1156
+    None,  # 1157
+    None,  # 1158
+    None,  # 1159
+    None,  # 1160
+    None,  # 1161
+    None,  # 1162
+    None,  # 1163
+    None,  # 1164
+    None,  # 1165
+    None,  # 1166
+    None,  # 1167
+    None,  # 1168
+    None,  # 1169
+    None,  # 1170
+    None,  # 1171
+    None,  # 1172
+    None,  # 1173
+    None,  # 1174
+    None,  # 1175
+    None,  # 1176
+    None,  # 1177
+    None,  # 1178
+    None,  # 1179
+    None,  # 1180
+    None,  # 1181
+    None,  # 1182
+    None,  # 1183
+    None,  # 1184
+    None,  # 1185
+    None,  # 1186
+    None,  # 1187
+    None,  # 1188
+    None,  # 1189
+    None,  # 1190
+    None,  # 1191
+    None,  # 1192
+    None,  # 1193
+    None,  # 1194
+    None,  # 1195
+    None,  # 1196
+    None,  # 1197
+    None,  # 1198
+    None,  # 1199
+    None,  # 1200
+    None,  # 1201
+    None,  # 1202
+    None,  # 1203
+    None,  # 1204
+    None,  # 1205
+    None,  # 1206
+    None,  # 1207
+    None,  # 1208
+    None,  # 1209
+    None,  # 1210
+    None,  # 1211
+    None,  # 1212
+    None,  # 1213
+    None,  # 1214
+    None,  # 1215
+    None,  # 1216
+    None,  # 1217
+    None,  # 1218
+    None,  # 1219
+    None,  # 1220
+    None,  # 1221
+    None,  # 1222
+    None,  # 1223
+    None,  # 1224
+    None,  # 1225
+    None,  # 1226
+    None,  # 1227
+    None,  # 1228
+    None,  # 1229
+    None,  # 1230
+    None,  # 1231
+    None,  # 1232
+    None,  # 1233
+    None,  # 1234
+    None,  # 1235
+    None,  # 1236
+    None,  # 1237
+    None,  # 1238
+    None,  # 1239
+    None,  # 1240
+    None,  # 1241
+    None,  # 1242
+    None,  # 1243
+    None,  # 1244
+    None,  # 1245
+    None,  # 1246
+    None,  # 1247
+    None,  # 1248
+    None,  # 1249
+    None,  # 1250
+    None,  # 1251
+    None,  # 1252
+    None,  # 1253
+    None,  # 1254
+    None,  # 1255
+    None,  # 1256
+    None,  # 1257
+    None,  # 1258
+    None,  # 1259
+    None,  # 1260
+    None,  # 1261
+    None,  # 1262
+    None,  # 1263
+    None,  # 1264
+    None,  # 1265
+    None,  # 1266
+    None,  # 1267
+    None,  # 1268
+    None,  # 1269
+    None,  # 1270
+    None,  # 1271
+    None,  # 1272
+    None,  # 1273
+    None,  # 1274
+    None,  # 1275
+    None,  # 1276
+    None,  # 1277
+    None,  # 1278
+    None,  # 1279
+    None,  # 1280
+    (1281, TType.STRUCT, 'resultSetMetadata', [TGetResultSetMetadataResp, None], None, ),  # 1281
 )
 all_structs.append(TGetDelegationTokenReq)
 TGetDelegationTokenReq.thrift_spec = (

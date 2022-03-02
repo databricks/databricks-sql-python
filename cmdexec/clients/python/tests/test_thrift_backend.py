@@ -335,6 +335,61 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 if op_state_resp.errorMessage:
                     self.assertIn(op_state_resp.errorMessage, str(cm.exception))
 
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_get_status_uses_display_message_if_available(self, tcli_service_class):
+        tcli_service_instance = tcli_service_class.return_value
+
+        display_message = "simple message"
+        diagnostic_info = "diagnostic info"
+        t_get_operation_status_resp = ttypes.TGetOperationStatusResp(
+            status=self.okay_status,
+            operationState=ttypes.TOperationState.ERROR_STATE,
+            errorMessage="foo",
+            displayMessage=display_message,
+            diagnosticInfo=diagnostic_info)
+
+        t_execute_resp = ttypes.TExecuteStatementResp(
+            status=self.okay_status, directResults=None, operationHandle=self.operation_handle)
+        tcli_service_instance.GetOperationStatus.return_value = t_get_operation_status_resp
+        tcli_service_instance.ExecuteStatement.return_value = t_execute_resp
+
+        thrift_backend = ThriftBackend("foobar", 443, "path", [])
+        with self.assertRaises(DatabaseError) as cm:
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+
+        self.assertEqual(display_message, str(cm.exception))
+        self.assertIn(diagnostic_info, str(cm.exception.message_with_context()))
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_direct_results_uses_display_message_if_available(self, tcli_service_class):
+        tcli_service_instance = tcli_service_class.return_value
+
+        display_message = "simple message"
+        diagnostic_info = "diagnostic info"
+        t_get_operation_status_resp = ttypes.TGetOperationStatusResp(
+            status=self.okay_status,
+            operationState=ttypes.TOperationState.ERROR_STATE,
+            errorMessage="foo",
+            displayMessage=display_message,
+            diagnosticInfo=diagnostic_info)
+
+        t_execute_resp = ttypes.TExecuteStatementResp(
+            status=self.okay_status,
+            directResults=ttypes.TSparkDirectResults(
+                operationStatus=t_get_operation_status_resp,
+                resultSetMetadata=None,
+                resultSet=None,
+                closeOperation=None))
+
+        tcli_service_instance.ExecuteStatement.return_value = t_execute_resp
+
+        thrift_backend = ThriftBackend("foobar", 443, "path", [])
+        with self.assertRaises(DatabaseError) as cm:
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+
+        self.assertEqual(display_message, str(cm.exception))
+        self.assertIn(diagnostic_info, str(cm.exception.message_with_context()))
+
     def test_handle_execute_response_checks_direct_results_for_error_statuses(self):
         for resp_type in self.execute_response_types:
             resp_1 = resp_type(
@@ -887,7 +942,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.make_request(mock_method, Mock())
 
-        self.assertIn("This method fails", str(cm.exception))
+        self.assertIn("This method fails", str(cm.exception.message_with_context()))
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_make_request_wont_retry_if_error_code_not_429_or_503(self, t_transport_class):
@@ -903,7 +958,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.make_request(mock_method, Mock())
 
-        self.assertIn("This method fails", str(cm.exception))
+        self.assertIn("This method fails", str(cm.exception.message_with_context()))
 
     @patch("thrift.transport.THttpClient.THttpClient")
     @patch("databricks.sql.thrift_backend._retry_policy", new_callable=retry_policy_factory)
@@ -927,8 +982,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.make_request(mock_method, Mock())
 
-        self.assertIn("This method fails", str(cm.exception))
-        self.assertIn("After 14 retry attempts, retries are exhausted", str(cm.exception))
+        self.assertIn("This method fails", cm.exception.message_with_context())
+        self.assertIn("14/14", cm.exception.message_with_context())
 
         self.assertEqual(mock_method.call_count, 14)
 
