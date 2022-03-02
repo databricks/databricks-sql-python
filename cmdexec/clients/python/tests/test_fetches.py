@@ -42,7 +42,7 @@ class FetchTests(unittest.TestCase):
                 description=Mock(),
                 command_handle=None,
                 arrow_queue=arrow_queue,
-                arrow_schema=schema))
+                arrow_schema_bytes=schema.serialize().to_pybytes()))
         num_cols = len(initial_results[0]) if initial_results else 0
         rs.description = [(f'col{col_id}', 'integer', None, None, None, None, None)
                           for col_id in range(num_cols)]
@@ -52,8 +52,8 @@ class FetchTests(unittest.TestCase):
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
 
-        def fetch_results(op_handle, max_rows, max_bytes, expected_row_start_offset, arrow_schema,
-                          description):
+        def fetch_results(op_handle, max_rows, max_bytes, expected_row_start_offset,
+                          arrow_schema_bytes, description):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1
@@ -75,7 +75,7 @@ class FetchTests(unittest.TestCase):
                              for col_id in range(num_cols)],
                 command_handle=None,
                 arrow_queue=None,
-                arrow_schema=None))
+                arrow_schema_bytes=None))
         return rs
 
     def assertEqualRowValues(self, actual, expected):
