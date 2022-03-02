@@ -330,7 +330,7 @@ class ThriftBackend:
                 initial_namespace = None
 
             open_session_req = ttypes.TOpenSessionReq(
-                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
+                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V5,
                 client_protocol=None,
                 initialNamespace=initial_namespace,
                 canUseMultipleCatalogs=True,
@@ -376,13 +376,13 @@ class ThriftBackend:
         )
         return self.make_request(self._client.GetOperationStatus, req)
 
-    def _create_arrow_table(self, t_row_set, arrow_schema, description):
+    def _create_arrow_table(self, t_row_set, schema_bytes, description):
         if t_row_set.columns is not None:
             arrow_table, num_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
-                t_row_set.columns, arrow_schema)
+                t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
             arrow_table, num_rows = ThriftBackend._convert_arrow_based_set_to_arrow_table(
-                t_row_set.arrowBatches, arrow_schema)
+                t_row_set.arrowBatches, schema_bytes)
         else:
             raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
         return self._convert_decimals_in_arrow_table(arrow_table, description), num_rows
@@ -404,9 +404,8 @@ class ThriftBackend:
         return table
 
     @staticmethod
-    def _convert_arrow_based_set_to_arrow_table(arrow_batches, schema):
+    def _convert_arrow_based_set_to_arrow_table(arrow_batches, schema_bytes):
         ba = bytearray()
-        schema_bytes = schema.serialize().to_pybytes()
         ba += schema_bytes
         n_rows = 0
         for arrow_batch in arrow_batches:
@@ -416,13 +415,13 @@ class ThriftBackend:
         return arrow_table, n_rows
 
     @staticmethod
-    def _convert_column_based_set_to_arrow_table(columns, schema):
+    def _convert_column_based_set_to_arrow_table(columns, description):
         arrow_table = pyarrow.Table.from_arrays(
             [ThriftBackend._convert_column_to_arrow_array(c) for c in columns],
             # Only use the column names from the schema, the types are determined by the
             # physical types used in column based set, as they can differ from the
             # mapping used in _hive_schema_to_arrow_schema.
-            names=[c.name for c in schema])
+            names=[c[0] for c in description])
         return arrow_table, arrow_table.num_rows
 
     @staticmethod
@@ -555,13 +554,14 @@ class ThriftBackend:
         has_more_rows = (not direct_results) or (not direct_results.resultSet) \
                         or direct_results.resultSet.hasMoreRows
         description = self._hive_schema_to_description(t_result_set_metadata_resp.schema)
-        arrow_schema = self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+        schema_bytes = (t_result_set_metadata_resp.arrowSchema or self._hive_schema_to_arrow_schema(
+            t_result_set_metadata_resp.schema).serialize().to_pybytes())
 
         if direct_results and direct_results.resultSet:
             assert (direct_results.resultSet.results.startRowOffset == 0)
             assert (direct_results.resultSetMetadata)
             arrow_results, n_rows = self._create_arrow_table(direct_results.resultSet.results,
-                                                             arrow_schema, description)
+                                                             schema_bytes, description)
             arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
         else:
             arrow_queue_opt = None
@@ -572,7 +572,7 @@ class ThriftBackend:
             has_more_rows=has_more_rows,
             command_handle=resp.operationHandle,
             description=description,
-            arrow_schema=arrow_schema)
+            arrow_schema_bytes=schema_bytes)
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
         if initial_operation_status_resp:
@@ -697,8 +697,8 @@ class ThriftBackend:
 
         return self._results_message_to_execute_response(resp, final_operation_state)
 
-    def fetch_results(self, op_handle, max_rows, max_bytes, expected_row_start_offset, arrow_schema,
-                      description):
+    def fetch_results(self, op_handle, max_rows, max_bytes, expected_row_start_offset,
+                      arrow_schema_bytes, description):
         assert (op_handle is not None)
 
         req = ttypes.TFetchResultsReq(
@@ -716,7 +716,8 @@ class ThriftBackend:
         if resp.results.startRowOffset > expected_row_start_offset:
             logger.warning("Expected results to start from {} but they instead start at {}".format(
                 expected_row_start_offset, resp.results.startRowOffset))
-        arrow_results, n_rows = self._create_arrow_table(resp.results, arrow_schema, description)
+        arrow_results, n_rows = self._create_arrow_table(resp.results, arrow_schema_bytes,
+                                                         description)
         arrow_queue = ArrowQueue(arrow_results, n_rows)
 
         return arrow_queue, resp.hasMoreRows

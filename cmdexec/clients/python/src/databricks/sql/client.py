@@ -480,7 +480,7 @@ class ResultSet:
         self.arraysize = arraysize
         self.thrift_backend = thrift_backend
         self.description = execute_response.description
-        self._arrow_schema = execute_response.arrow_schema
+        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
 
         if execute_response.arrow_queue:
@@ -505,7 +505,7 @@ class ResultSet:
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             expected_row_start_offset=self._next_row_index,
-            arrow_schema=self._arrow_schema,
+            arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description)
         self.results = results
         self.has_more_rows = has_more_rows

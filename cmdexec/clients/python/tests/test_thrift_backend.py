@@ -498,6 +498,54 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 )
 
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_use_arrow_schema_if_available(self, tcli_service_class):
+        tcli_service_instance = tcli_service_class.return_value
+        arrow_schema_mock = MagicMock(name="Arrow schema mock")
+        hive_schema_mock = MagicMock(name="Hive schema mock")
+
+        t_get_result_set_metadata_resp = ttypes.TGetResultSetMetadataResp(
+            status=self.okay_status,
+            resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
+            schema=hive_schema_mock,
+            arrowSchema=arrow_schema_mock)
+
+        t_execute_resp = ttypes.TExecuteStatementResp(
+            status=self.okay_status,
+            directResults=None,
+            operationHandle=self.operation_handle,
+        )
+
+        tcli_service_instance.GetResultSetMetadata.return_value = t_get_result_set_metadata_resp
+        thrift_backend = self._make_fake_thrift_backend()
+        execute_response = thrift_backend._handle_execute_response(t_execute_resp, Mock())
+
+        self.assertEqual(execute_response.arrow_schema_bytes, arrow_schema_mock)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    def test_fall_back_to_hive_schema_if_no_arrow_schema(self, tcli_service_class):
+        tcli_service_instance = tcli_service_class.return_value
+        hive_schema_mock = MagicMock(name="Hive schema mock")
+
+        hive_schema_req = ttypes.TGetResultSetMetadataResp(
+            status=self.okay_status,
+            resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
+            arrowSchema=None,
+            schema=hive_schema_mock)
+
+        t_execute_resp = ttypes.TExecuteStatementResp(
+            status=self.okay_status,
+            directResults=None,
+            operationHandle=self.operation_handle,
+        )
+
+        tcli_service_instance.GetResultSetMetadata.return_value = hive_schema_req
+        thrift_backend = self._make_fake_thrift_backend()
+        thrift_backend._handle_execute_response(t_execute_resp, Mock())
+
+        self.assertEqual(hive_schema_mock,
+                         thrift_backend._hive_schema_to_arrow_schema.call_args[0][0])
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_handle_execute_response_reads_has_more_rows_in_direct_results(
             self, tcli_service_class):
         for has_more_rows, resp_type in itertools.product([True, False],
@@ -567,7 +615,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     max_rows=1,
                     max_bytes=1,
                     expected_row_start_offset=0,
-                    arrow_schema=Mock(),
+                    arrow_schema_bytes=Mock(),
                     description=Mock())
 
                 self.assertEqual(has_more_rows, has_more_rows_resp)
@@ -591,7 +639,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             pyarrow.field("column2", pyarrow.string()),
             pyarrow.field("column3", pyarrow.float64()),
             pyarrow.field("column3", pyarrow.binary())
-        ])
+        ]).serialize().to_pybytes()
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
         arrow_queue, has_more_results = thrift_backend.fetch_results(
@@ -599,7 +647,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             max_rows=1,
             max_bytes=1,
             expected_row_start_offset=0,
-            arrow_schema=schema,
+            arrow_schema_bytes=schema,
             description=MagicMock())
 
         self.assertEqual(arrow_queue.n_valid_rows, 15 * 10)
@@ -792,24 +840,21 @@ class ThriftBackendTestSuite(unittest.TestCase):
         schema = Mock()
         cols = Mock()
         arrow_batches = Mock()
+        description = Mock()
 
         t_col_set = ttypes.TRowSet(columns=cols)
-        thrift_backend._create_arrow_table(t_col_set, schema, Mock())
+        thrift_backend._create_arrow_table(t_col_set, schema, description)
         convert_arrow_mock.assert_not_called()
-        convert_col_mock.assert_called_once_with(cols, schema)
+        convert_col_mock.assert_called_once_with(cols, description)
 
         t_arrow_set = ttypes.TRowSet(arrowBatches=arrow_batches)
         thrift_backend._create_arrow_table(t_arrow_set, schema, Mock())
         convert_arrow_mock.assert_called_once_with(arrow_batches, schema)
-        convert_col_mock.assert_called_once_with(cols, schema)
 
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):
-        schema = pyarrow.schema([
-            pyarrow.field("column1", pyarrow.int32()),
-            pyarrow.field("column2", pyarrow.string()),
-            pyarrow.field("column3", pyarrow.float64()),
-            pyarrow.field("column3", pyarrow.binary())
-        ])
+        # Deliberately duplicate the column name to check that dups work
+        field_names = ["column1", "column2", "column3", "column3"]
+        description = [(name, ) for name in field_names]
 
         t_cols = [
             ttypes.TColumn(i32Val=ttypes.TI32Column(values=[1, 2, 3], nulls=bytes(1))),
@@ -820,7 +865,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 binaryVal=ttypes.TBinaryColumn(values=[b'\x11', b'\x22', b'\x33'], nulls=bytes(1)))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(t_cols, schema)
+        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+            t_cols, description)
         self.assertEqual(n_rows, 3)
 
         # Check schema, column names and types
@@ -841,12 +887,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(arrow_table.column(3).to_pylist(), [b'\x11', b'\x22', b'\x33'])
 
     def test_convert_column_based_set_to_arrow_table_with_nulls(self):
-        schema = pyarrow.schema([
-            pyarrow.field("column1", pyarrow.int32()),
-            pyarrow.field("column2", pyarrow.string()),
-            pyarrow.field("column3", pyarrow.float64()),
-            pyarrow.field("column3", pyarrow.binary())
-        ])
+        field_names = ["column1", "column2", "column3", "column3"]
+        description = [(name, ) for name in field_names]
 
         t_cols = [
             ttypes.TColumn(i32Val=ttypes.TI32Column(values=[1, 2, 3], nulls=bytes([1]))),
@@ -859,7 +901,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     values=[b'\x11', b'\x22', b'\x33'], nulls=bytes([3])))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(t_cols, schema)
+        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+            t_cols, description)
         self.assertEqual(n_rows, 3)
 
         # Check data
@@ -869,12 +912,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(arrow_table.column(3).to_pylist(), [None, None, b'\x33'])
 
     def test_convert_column_based_set_to_arrow_table_uses_types_from_col_set(self):
-        schema = pyarrow.schema([
-            pyarrow.field("column1", pyarrow.string()),
-            pyarrow.field("column2", pyarrow.string()),
-            pyarrow.field("column3", pyarrow.string()),
-            pyarrow.field("column3", pyarrow.string())
-        ])
+        field_names = ["column1", "column2", "column3", "column3"]
+        description = [(name, ) for name in field_names]
 
         t_cols = [
             ttypes.TColumn(i32Val=ttypes.TI32Column(values=[1, 2, 3], nulls=bytes(1))),
@@ -885,7 +924,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 binaryVal=ttypes.TBinaryColumn(values=[b'\x11', b'\x22', b'\x33'], nulls=bytes(1)))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(t_cols, schema)
+        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+            t_cols, description)
         self.assertEqual(n_rows, 3)
 
         # Check schema, column names and types

@@ -35,7 +35,7 @@ class ArrowQueue:
 
 ExecuteResponse = namedtuple(
     'ExecuteResponse', 'status has_been_closed_server_side has_more_rows description '
-    'command_handle arrow_queue arrow_schema')
+    'command_handle arrow_queue arrow_schema_bytes')
 
 
 def _bound(min_x, max_x, x):
