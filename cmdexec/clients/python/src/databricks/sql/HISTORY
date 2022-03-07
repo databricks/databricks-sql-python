@@ -1,3 +1,8 @@
+v2.0.0b1 - March 4, 2022
+- Fix packaging issue (dependencies were not being installed properly)
+- Fetching timestamp results will now return aware instead of naive timestamps
+- The client will now default to using simplified error messages
+
 v2.0.0b - February 8, 2022
 - Initial beta release of V2. V2 is an internal re-write of large parts of the connector to use Databricks edge features. All public APIs from V1 remain.
 - Added Unity Catalog support (pass catalog and / or  schema key word args to the .connect method to select initial schema and catalog)
