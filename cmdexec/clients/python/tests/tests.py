@@ -1,3 +1,4 @@
+import gc
 import re
 import sys
 import unittest
@@ -506,6 +507,34 @@ class ClientTestSuite(unittest.TestCase):
                 "second_col": expected[1],
                 "third_col": expected[2]
             })
+
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_finalizer_closes_abandoned_connection(self, mock_client_class):
+        instance = mock_client_class.return_value
+        instance.open_session.return_value = b'\x22'
+
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+
+        # not strictly necessary as the refcount is 0, but just to be sure
+        gc.collect()
+
+        # Check the close session request has an id of x22
+        close_session_id = instance.close_session.call_args[0][0]
+        self.assertEqual(close_session_id, b'\x22')
+
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    def test_cursor_keeps_connection_alive(self, mock_client_class):
+        instance = mock_client_class.return_value
+        instance.open_session.return_value = b'\x22'
+
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        cursor = connection.cursor()
+        del connection
+
+        gc.collect()
+
+        self.assertEqual(instance.close_session.call_count, 0)
+        cursor.close()
 
 
 if __name__ == '__main__':

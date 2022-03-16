@@ -110,6 +110,12 @@ class Connection:
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+    def __del__(self):
+        if self.open:
+            logger.debug("Closing unclosed connection for session "
+                         "{}".format(self.get_session_id()))
+            self._close(close_cursors=False)
+
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
 
@@ -134,11 +140,15 @@ class Connection:
 
     def close(self) -> None:
         """Close the underlying session and mark all associated cursors as closed."""
+        self._close()
+
+    def _close(self, close_cursors=True) -> None:
         self.thrift_backend.close_session(self._session_handle)
         self.open = False
 
-        for cursor in self._cursors:
-            cursor.close()
+        if close_cursors:
+            for cursor in self._cursors:
+                cursor.close()
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
