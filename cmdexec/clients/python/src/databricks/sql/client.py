@@ -295,8 +295,6 @@ class Cursor:
         Names can contain % wildcards.
         :returns self
         """
-        if table_types is None:
-            table_types = []
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 

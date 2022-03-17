@@ -653,8 +653,6 @@ class ThriftBackend:
                    schema_name=None,
                    table_name=None,
                    table_types=None):
-        if table_types is None:
-            table_types = []
         assert (session_handle is not None)
 
         req = ttypes.TGetTablesReq(
