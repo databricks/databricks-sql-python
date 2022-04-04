@@ -1,4 +1,5 @@
-from collections import namedtuple, OrderedDict, Iterable
+from collections import namedtuple, OrderedDict
+from collections.abc import Iterable
 import datetime
 from enum import Enum
 
