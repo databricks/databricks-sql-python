@@ -1,3 +1,7 @@
+v2.0.b2 - April 4, 2022
+- Change import of collections.Iterable to collections.abc.Iterable to make the library compatible with Python 3.10
+- Fixed bug with .tables method so that .tables works as expected with Unity-Catalog enabled endpoints
+
 v2.0.0b1 - March 4, 2022
 - Fix packaging issue (dependencies were not being installed properly)
 - Fetching timestamp results will now return aware instead of naive timestamps
