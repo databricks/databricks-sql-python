@@ -72,6 +72,15 @@ class Connection:
         # _disable_pandas
         #  In case the deserialisation through pandas causes any issues, it can be disabled with
         #  this flag.
+        # _use_arrow_native_complex_types
+        # DBR will return native Arrow types for structs, arrays and maps instead of Arrow strings
+        # (True by default)
+        # _use_arrow_native_decimals
+        # Databricks runtime will return native Arrow types for decimals instead of Arrow strings
+        # (True by default)
+        # _use_arrow_native_timestamps
+        # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
+        # (True by default)
 
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
