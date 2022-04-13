@@ -87,6 +87,9 @@ class ThriftBackend:
             raise ValueError("No valid connection settings.")
 
         self._initialize_retry_args(kwargs)
+        self._use_arrow_native_complex_types = kwargs.get("_use_arrow_native_complex_types", True)
+        self._use_arrow_native_decimals = kwargs.get("_use_arrow_native_decimals", True)
+        self._use_arrow_native_timestamps = kwargs.get("_use_arrow_native_timestamps", True)
 
         # Configure tls context
         ssl_context = create_default_context(cafile=kwargs.get("_tls_trusted_ca_file"))
@@ -602,6 +605,13 @@ class ThriftBackend:
     def execute_command(self, operation, session_handle, max_rows, max_bytes, cursor):
         assert (session_handle is not None)
 
+        spark_arrow_types = ttypes.TSparkArrowTypes(
+            timestampAsArrow=self._use_arrow_native_timestamps,
+            decimalAsArrow=self._use_arrow_native_decimals,
+            complexTypesAsArrow=self._use_arrow_native_complex_types,
+            # TODO: The current Arrow type used for intervals can not be deserialised in PyArrow
+            # DBR should be changed to use month_day_nano_interval
+            intervalTypesAsArrow=False)
         req = ttypes.TExecuteStatementReq(
             sessionHandle=session_handle,
             statement=operation,
@@ -613,7 +623,8 @@ class ThriftBackend:
             confOverlay={
                 # We want to receive proper Timestamp arrow types.
                 "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
-            })
+            },
+            useArrowNativeTypes=spark_arrow_types)
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)
 

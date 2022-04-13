@@ -1251,6 +1251,35 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertIn("Setting initial namespace not supported by the DBR version",
                       str(cm.exception))
 
+    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.ThriftBackend._handle_execute_response")
+    def test_execute_command_sets_complex_type_fields_correctly(self, mock_handle_execute_response,
+                                                                tcli_service_class):
+        tcli_service_instance = tcli_service_class.return_value
+        # Iterate through each possible combination of native types (True, False and unset)
+        for (complex, timestamp, decimals) in itertools.product(
+            [True, False, None], [True, False, None], [True, False, None]):
+            complex_arg_types = {}
+            if complex is not None:
+                complex_arg_types["_use_arrow_native_complex_types"] = complex
+            if timestamp is not None:
+                complex_arg_types["_use_arrow_native_timestamps"] = timestamp
+            if decimals is not None:
+                complex_arg_types["_use_arrow_native_decimals"] = decimals
+
+            thrift_backend = ThriftBackend("foobar", 443, "path", [], **complex_arg_types)
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+
+            t_execute_statement_req = tcli_service_instance.ExecuteStatement.call_args[0][0]
+            # If the value is unset, the native type should default to True
+            self.assertEqual(t_execute_statement_req.useArrowNativeTypes.timestampAsArrow,
+                             complex_arg_types.get("_use_arrow_native_timestamps", True))
+            self.assertEqual(t_execute_statement_req.useArrowNativeTypes.decimalAsArrow,
+                             complex_arg_types.get("_use_arrow_native_decimals", True))
+            self.assertEqual(t_execute_statement_req.useArrowNativeTypes.complexTypesAsArrow,
+                             complex_arg_types.get("_use_arrow_native_complex_types", True))
+            self.assertFalse(t_execute_statement_req.useArrowNativeTypes.intervalTypesAsArrow)
+
 
 if __name__ == '__main__':
     unittest.main()
