@@ -2,6 +2,7 @@ v2.0.0 - April 19, 2022
 - Initial stable release of V2
 - Added better support for complex types, so that in Databricks runtime 10.3+, Arrays, Maps and Structs will get 
   deserialized as lists, lists of tuples and dicts, respectively.
+- Changed the name of the metadata arg to http_headers
 
 v2.0.b2 - April 4, 2022
 - Change import of collections.Iterable to collections.abc.Iterable to make the library compatible with Python 3.10

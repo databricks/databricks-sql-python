@@ -25,7 +25,7 @@ class Connection:
                  server_hostname: str,
                  http_path: str,
                  access_token: str,
-                 metadata: Optional[List[Tuple[str, str]]] = None,
+                 http_headers: Optional[List[Tuple[str, str]]] = None,
                  session_configuration: Dict[str, Any] = None,
                  catalog: Optional[str] = None,
                  schema: Optional[str] = None,
@@ -37,7 +37,7 @@ class Connection:
         :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
               or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
         :param access_token: Http Bearer access token, e.g. Databricks Personal Access Token.
-        :param metadata: An optional list of (k, v) pairs that will be set as Http headers on every request
+        :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
         :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None. 
                Execute the SQL command `SET -v` to get a full list of available commands.
         :param catalog: An optional initial catalog to use. Requires DBR version 9.0+
@@ -105,7 +105,7 @@ class Connection:
 
         base_headers = [("User-Agent", useragent_header)] + authorization_header
         self.thrift_backend = ThriftBackend(self.host, self.port, http_path,
-                                            (metadata or []) + base_headers, **kwargs)
+                                            (http_headers or []) + base_headers, **kwargs)
 
         self._session_handle = self.thrift_backend.open_session(session_configuration, catalog,
                                                                 schema)
