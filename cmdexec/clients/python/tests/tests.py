@@ -79,12 +79,12 @@ class ClientTestSuite(unittest.TestCase):
             connection.close()
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
-    def test_metadata_passthrough(self, mock_client_class):
-        metadata = [("foo", "bar")]
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, metadata=metadata)
+    def test_http_header_passthrough(self, mock_client_class):
+        http_headers = [("foo", "bar")]
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, http_headers=http_headers)
 
-        http_headers = mock_client_class.call_args[0][3]
-        self.assertIn(("foo", "bar"), http_headers)
+        call_args = mock_client_class.call_args[0][3]
+        self.assertIn(("foo", "bar"), call_args)
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_authtoken_passthrough(self, mock_client_class):
