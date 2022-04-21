@@ -1,3 +1,6 @@
+v2.0.1 - April 21, 2022
+- Fixed Pandas dependency in setup.cfg to be >= 1.2.0
+
 v2.0.0 - April 19, 2022
 - Initial stable release of V2
 - Added better support for complex types, so that in Databricks runtime 10.3+, Arrays, Maps and Structs will get 
