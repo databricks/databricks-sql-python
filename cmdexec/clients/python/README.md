@@ -1,6 +1,6 @@
 # Databricks SQL Connector for Python
 
-**Status: Private preview**
+**Status: Generally Available**
 
 Documentation can be found here: [Databricks SQL Connector for Python](https://docs.databricks.com/dev-tools/python-sql-connector.html).
 
