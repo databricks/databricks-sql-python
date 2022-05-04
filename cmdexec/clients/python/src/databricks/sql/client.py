@@ -10,6 +10,7 @@ import pyarrow
 
 from databricks.sql import USER_AGENT_NAME, __version__
 from databricks.sql import *
+from databricks.sql.exc import OperationalError
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper
 from databricks.sql.types import Row
@@ -123,7 +124,11 @@ class Connection:
         if self.open:
             logger.debug("Closing unclosed connection for session "
                          "{}".format(self.get_session_id()))
-            self._close(close_cursors=False)
+            try:
+                self._close(close_cursors=False)
+            except OperationalError as e:
+                # Close on best-effort basis.
+                logger.debug("Couldn't close unclosed connection: {}".format(e.message))
 
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
