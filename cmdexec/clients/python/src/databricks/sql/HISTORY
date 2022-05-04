@@ -1,3 +1,6 @@
+v2.0.2 - May 4, 2022
+- Better exception handling in automatic connection close
+
 v2.0.1 - April 21, 2022
 - Fixed Pandas dependency in setup.cfg to be >= 1.2.0
 
