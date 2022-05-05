@@ -83,6 +83,7 @@ class Connection:
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
 
+        self.open = False
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
