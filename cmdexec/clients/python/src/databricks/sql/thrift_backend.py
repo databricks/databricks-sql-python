@@ -308,7 +308,7 @@ class ThriftBackend:
             if not response.canUseMultipleCatalogs:
                 raise InvalidServerResponseError(
                     "Unexpected response from server: Trying to set initial catalog to {}, " +
-                    "but server does not support multiple catalogs.".format(catalog))
+                    "but server does not support multiple catalogs.".format(catalog)) # type: ignore
 
     def _check_session_configuration(self, session_configuration):
         # This client expects timetampsAsString to be false, so we do not allow users to modify that

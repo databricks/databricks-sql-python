@@ -189,7 +189,7 @@ class Cursor:
         self.connection = connection
         self.rowcount = -1  # Return -1 as this is not supported
         self.buffer_size_bytes = result_buffer_size_bytes
-        self.active_result_set = None
+        self.active_result_set[ResultSet, None] = None
         self.arraysize = arraysize
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
