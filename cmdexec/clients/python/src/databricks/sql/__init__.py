@@ -3,9 +3,9 @@ import datetime
 from databricks.sql.exc import *
 
 # PEP 249 module globals
-apilevel = '2.0'
+apilevel = "2.0"
 threadsafety = 1  # Threads may share the module, but not connections.
-paramstyle = 'pyformat'  # Python extended format codes, e.g. ...WHERE name=%(name)s
+paramstyle = "pyformat"  # Python extended format codes, e.g. ...WHERE name=%(name)s
 
 
 class DBAPITypeObject(object):
@@ -19,12 +19,13 @@ class DBAPITypeObject(object):
         return "DBAPITypeObject({})".format(self.values)
 
 
-STRING = DBAPITypeObject('string')
-BINARY = DBAPITypeObject('binary')
-NUMBER = DBAPITypeObject('boolean', 'tinyint', 'smallint', 'int', 'bigint', 'float', 'double',
-                         'decimal')
-DATETIME = DBAPITypeObject('timestamp')
-DATE = DBAPITypeObject('date')
+STRING = DBAPITypeObject("string")
+BINARY = DBAPITypeObject("binary")
+NUMBER = DBAPITypeObject(
+    "boolean", "tinyint", "smallint", "int", "bigint", "float", "double", "decimal"
+)
+DATETIME = DBAPITypeObject("timestamp")
+DATE = DBAPITypeObject("date")
 ROWID = DBAPITypeObject()
 
 __version__ = "2.0.2"
@@ -45,4 +46,5 @@ def TimestampFromTicks(ticks):
 
 def connect(server_hostname, http_path, access_token, **kwargs):
     from .client import Connection
+
     return Connection(server_hostname, http_path, access_token, **kwargs)

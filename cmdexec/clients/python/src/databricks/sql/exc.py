@@ -62,6 +62,7 @@ class NotSupportedError(DatabaseError):
 ### Custom error classes ###
 class InvalidServerResponseError(OperationalError):
     """Thrown if the server does not set the initial namespace correctly"""
+
     pass
 
 
@@ -72,6 +73,7 @@ class ServerOperationError(DatabaseError):
     "diagnostic-info": The full Spark stack trace (if available)
     "operation-id": The Thrift ID of the operation
     """
+
     pass
 
 
@@ -89,4 +91,5 @@ class RequestError(OperationalError):
     "attempt": current retry number / maximum number of retries
     "elapsed-seconds": time that has elapsed since first attempting the RPC request
     """
+
     pass
