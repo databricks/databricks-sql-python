@@ -22,15 +22,17 @@ DEFAULT_ARRAY_SIZE = 100000
 
 
 class Connection:
-    def __init__(self,
-                 server_hostname: str,
-                 http_path: str,
-                 access_token: str,
-                 http_headers: Optional[List[Tuple[str, str]]] = None,
-                 session_configuration: Dict[str, Any] = None,
-                 catalog: Optional[str] = None,
-                 schema: Optional[str] = None,
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        server_hostname: str,
+        http_path: str,
+        access_token: str,
+        http_headers: Optional[List[Tuple[str, str]]] = None,
+        session_configuration: Dict[str, Any] = None,
+        catalog: Optional[str] = None,
+        schema: Optional[str] = None,
+        **kwargs
+    ) -> None:
         """
         Connect to a Databricks SQL endpoint or a Databricks cluster.
 
@@ -39,7 +41,7 @@ class Connection:
               or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
         :param access_token: Http Bearer access token, e.g. Databricks Personal Access Token.
         :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
-        :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None. 
+        :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None.
                Execute the SQL command `SET -v` to get a full list of available commands.
         :param catalog: An optional initial catalog to use. Requires DBR version 9.0+
         :param schema: An optional initial schema to use. Requires DBR version 9.0+
@@ -91,26 +93,42 @@ class Connection:
         authorization_header = []
         if kwargs.get("_username") and kwargs.get("_password"):
             auth_credentials = "{username}:{password}".format(
-                username=kwargs.get("_username"), password=kwargs.get("_password")).encode("UTF-8")
-            auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
-            authorization_header = [("Authorization", "Basic {}".format(auth_credentials_base64))]
+                username=kwargs.get("_username"), password=kwargs.get("_password")
+            ).encode("UTF-8")
+            auth_credentials_base64 = base64.standard_b64encode(
+                auth_credentials
+            ).decode("UTF-8")
+            authorization_header = [
+                ("Authorization", "Basic {}".format(auth_credentials_base64))
+            ]
         elif access_token:
             authorization_header = [("Authorization", "Bearer {}".format(access_token))]
-        elif not (kwargs.get("_use_cert_as_auth") and kwargs.get("_tls_client_cert_file")):
-            raise ValueError("No valid authentication settings. Please provide an access token.")
+        elif not (
+            kwargs.get("_use_cert_as_auth") and kwargs.get("_tls_client_cert_file")
+        ):
+            raise ValueError(
+                "No valid authentication settings. Please provide an access token."
+            )
 
         if not kwargs.get("_user_agent_entry"):
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
         else:
-            useragent_header = "{}/{} ({})".format(USER_AGENT_NAME, __version__,
-                                                   kwargs.get("_user_agent_entry"))
+            useragent_header = "{}/{} ({})".format(
+                USER_AGENT_NAME, __version__, kwargs.get("_user_agent_entry")
+            )
 
         base_headers = [("User-Agent", useragent_header)] + authorization_header
-        self.thrift_backend = ThriftBackend(self.host, self.port, http_path,
-                                            (http_headers or []) + base_headers, **kwargs)
+        self.thrift_backend = ThriftBackend(
+            self.host,
+            self.port,
+            http_path,
+            (http_headers or []) + base_headers,
+            **kwargs
+        )
 
-        self._session_handle = self.thrift_backend.open_session(session_configuration, catalog,
-                                                                schema)
+        self._session_handle = self.thrift_backend.open_session(
+            session_configuration, catalog, schema
+        )
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id()))
         self._cursors = []  # type: List[Cursor]
@@ -123,8 +141,10 @@ class Connection:
 
     def __del__(self):
         if self.open:
-            logger.debug("Closing unclosed connection for session "
-                         "{}".format(self.get_session_id()))
+            logger.debug(
+                "Closing unclosed connection for session "
+                "{}".format(self.get_session_id())
+            )
             try:
                 self._close(close_cursors=False)
             except OperationalError as e:
@@ -134,9 +154,11 @@ class Connection:
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
 
-    def cursor(self,
-               arraysize: int = DEFAULT_ARRAY_SIZE,
-               buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES) -> "Cursor":
+    def cursor(
+        self,
+        arraysize: int = DEFAULT_ARRAY_SIZE,
+        buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+    ) -> "Cursor":
         """
         Return a new Cursor object using the connection.
 
@@ -149,7 +171,8 @@ class Connection:
             self,
             self.thrift_backend,
             arraysize=arraysize,
-            result_buffer_size_bytes=buffer_size_bytes)
+            result_buffer_size_bytes=buffer_size_bytes,
+        )
         self._cursors.append(cursor)
         return cursor
 
@@ -174,11 +197,13 @@ class Connection:
 
 
 class Cursor:
-    def __init__(self,
-                 connection: Connection,
-                 thrift_backend: ThriftBackend,
-                 result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-                 arraysize: int = DEFAULT_ARRAY_SIZE) -> None:
+    def __init__(
+        self,
+        connection: Connection,
+        thrift_backend: ThriftBackend,
+        result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+        arraysize: int = DEFAULT_ARRAY_SIZE,
+    ) -> None:
         """
         These objects represent a database cursor, which is used to manage the context of a fetch
         operation.
@@ -189,7 +214,7 @@ class Cursor:
         self.connection = connection
         self.rowcount = -1  # Return -1 as this is not supported
         self.buffer_size_bytes = result_buffer_size_bytes
-        self.active_result_set = None
+        self.active_result_set[ResultSet, None] = None
         self.arraysize = arraysize
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
@@ -223,7 +248,9 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
-    def execute(self, operation: str, parameters: Optional[Dict[str, str]] = None) -> "Cursor":
+    def execute(
+        self, operation: str, parameters: Optional[Dict[str, str]] = None
+    ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
         Parameters should be given in extended param format style: %(...)<s|d|f>.
@@ -243,9 +270,15 @@ class Cursor:
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
-            cursor=self)
-        self.active_result_set = ResultSet(self.connection, execute_response, self.thrift_backend,
-                                           self.buffer_size_bytes, self.arraysize)
+            cursor=self,
+        )
+        self.active_result_set = ResultSet(
+            self.connection,
+            execute_response,
+            self.thrift_backend,
+            self.buffer_size_bytes,
+            self.arraysize,
+        )
         return self
 
     def executemany(self, operation, seq_of_parameters):
@@ -273,13 +306,20 @@ class Cursor:
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
-            cursor=self)
-        self.active_result_set = ResultSet(self.connection, execute_response, self.thrift_backend,
-                                           self.buffer_size_bytes, self.arraysize)
+            cursor=self,
+        )
+        self.active_result_set = ResultSet(
+            self.connection,
+            execute_response,
+            self.thrift_backend,
+            self.buffer_size_bytes,
+            self.arraysize,
+        )
         return self
 
-    def schemas(self, catalog_name: Optional[str] = None,
-                schema_name: Optional[str] = None) -> "Cursor":
+    def schemas(
+        self, catalog_name: Optional[str] = None, schema_name: Optional[str] = None
+    ) -> "Cursor":
         """
         Get schemas corresponding to the catalog_name and schema_name.
 
@@ -294,16 +334,24 @@ class Cursor:
             max_bytes=self.buffer_size_bytes,
             cursor=self,
             catalog_name=catalog_name,
-            schema_name=schema_name)
-        self.active_result_set = ResultSet(self.connection, execute_response, self.thrift_backend,
-                                           self.buffer_size_bytes, self.arraysize)
+            schema_name=schema_name,
+        )
+        self.active_result_set = ResultSet(
+            self.connection,
+            execute_response,
+            self.thrift_backend,
+            self.buffer_size_bytes,
+            self.arraysize,
+        )
         return self
 
-    def tables(self,
-               catalog_name: Optional[str] = None,
-               schema_name: Optional[str] = None,
-               table_name: Optional[str] = None,
-               table_types: List[str] = None) -> "Cursor":
+    def tables(
+        self,
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        table_types: List[str] = None,
+    ) -> "Cursor":
         """
         Get tables corresponding to the catalog_name, schema_name and table_name.
 
@@ -321,16 +369,24 @@ class Cursor:
             catalog_name=catalog_name,
             schema_name=schema_name,
             table_name=table_name,
-            table_types=table_types)
-        self.active_result_set = ResultSet(self.connection, execute_response, self.thrift_backend,
-                                           self.buffer_size_bytes, self.arraysize)
+            table_types=table_types,
+        )
+        self.active_result_set = ResultSet(
+            self.connection,
+            execute_response,
+            self.thrift_backend,
+            self.buffer_size_bytes,
+            self.arraysize,
+        )
         return self
 
-    def columns(self,
-                catalog_name: Optional[str] = None,
-                schema_name: Optional[str] = None,
-                table_name: Optional[str] = None,
-                column_name: Optional[str] = None) -> "Cursor":
+    def columns(
+        self,
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        column_name: Optional[str] = None,
+    ) -> "Cursor":
         """
         Get columns corresponding to the catalog_name, schema_name, table_name and column_name.
 
@@ -348,9 +404,15 @@ class Cursor:
             catalog_name=catalog_name,
             schema_name=schema_name,
             table_name=table_name,
-            column_name=column_name)
-        self.active_result_set = ResultSet(self.connection, execute_response, self.thrift_backend,
-                                           self.buffer_size_bytes, self.arraysize)
+            column_name=column_name,
+        )
+        self.active_result_set = ResultSet(
+            self.connection,
+            execute_response,
+            self.thrift_backend,
+            self.buffer_size_bytes,
+            self.arraysize,
+        )
         return self
 
     def fetchall(self) -> List[Row]:
@@ -426,8 +488,10 @@ class Cursor:
         if self.active_op_handle is not None:
             self.thrift_backend.cancel_command(self.active_op_handle)
         else:
-            logger.warning("Attempting to cancel a command, but there is no "
-                           "currently executing command")
+            logger.warning(
+                "Attempting to cancel a command, but there is no "
+                "currently executing command"
+            )
 
     def close(self) -> None:
         """Close cursor"""
@@ -480,12 +544,14 @@ class Cursor:
 
 
 class ResultSet:
-    def __init__(self,
-                 connection: Connection,
-                 execute_response: ExecuteResponse,
-                 thrift_backend: ThriftBackend,
-                 result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-                 arraysize: int = 10000):
+    def __init__(
+        self,
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        thrift_backend: ThriftBackend,
+        result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+        arraysize: int = 10000,
+    ):
         """
         A ResultSet manages the results of a single command.
 
@@ -529,7 +595,8 @@ class ResultSet:
             max_bytes=self.buffer_size_bytes,
             expected_row_start_offset=self._next_row_index,
             arrow_schema_bytes=self._arrow_schema_bytes,
-            description=self.description)
+            description=self.description,
+        )
         self.results = results
         self.has_more_rows = has_more_rows
 
@@ -538,7 +605,9 @@ class ResultSet:
         ResultRow = Row(*column_names)
 
         if self.connection.disable_pandas is True:
-            return [ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())]
+            return [
+                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
+            ]
 
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
@@ -561,7 +630,10 @@ class ResultSet:
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
         df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get, date_as_object=True, timestamp_as_object=True)
+            types_mapper=dtype_mapping.get,
+            date_as_object=True,
+            timestamp_as_object=True,
+        )
 
         res = df.to_numpy(na_value=None)
         return [ResultRow(*v) for v in res]
@@ -582,7 +654,11 @@ class ResultSet:
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
 
-        while n_remaining_rows > 0 and not self.has_been_closed_server_side and self.has_more_rows:
+        while (
+            n_remaining_rows > 0
+            and not self.has_been_closed_server_side
+            and self.has_more_rows
+        ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
             results = pyarrow.concat_tables([results, partial_results])
@@ -637,8 +713,11 @@ class ResultSet:
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            if self.op_state != self.thrift_backend.CLOSED_OP_STATE and not self.has_been_closed_server_side \
-              and self.connection.open:
+            if (
+                self.op_state != self.thrift_backend.CLOSED_OP_STATE
+                and not self.has_been_closed_server_side
+                and self.connection.open
+            ):
                 self.thrift_backend.close_command(self.command_id)
         finally:
             self.has_been_closed_server_side = True
@@ -651,10 +730,12 @@ class ResultSet:
         """
 
         def map_col_type(type_):
-            if type_.startswith('decimal'):
-                return 'decimal'
+            if type_.startswith("decimal"):
+                return "decimal"
             else:
                 return type_
 
-        return [(column.name, map_col_type(column.datatype), None, None, None, None, None)
-                for column in table_schema_message.columns]
+        return [
+            (column.name, map_col_type(column.datatype), None, None, None, None, None)
+            for column in table_schema_message.columns
+        ]
