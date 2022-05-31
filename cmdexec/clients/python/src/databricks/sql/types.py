@@ -16,7 +16,7 @@
 #
 # Row class was taken from Apache Spark pyspark.
 
-from typing import (Any, Dict, List, Optional, Tuple, Union)
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 class Row(tuple):
@@ -137,8 +137,10 @@ class Row(tuple):
     def __call__(self, *args: Any) -> "Row":
         """create new Row object"""
         if len(args) > len(self):
-            raise ValueError("Can not create Row with fields %s, expected %d values "
-                             "but got %s" % (self, len(self), args))
+            raise ValueError(
+                "Can not create Row with fields %s, expected %d values "
+                "but got %s" % (self, len(self), args)
+            )
         return _create_row(self, args)
 
     def __getitem__(self, item: Any) -> Any:
@@ -172,7 +174,9 @@ class Row(tuple):
             raise RuntimeError("Row is read-only")
         self.__dict__[key] = value
 
-    def __reduce__(self, ) -> Union[str, Tuple[Any, ...]]:
+    def __reduce__(
+        self,
+    ) -> Union[str, Tuple[Any, ...]]:
         """Returns a tuple so Python knows how to pickle Row."""
         if hasattr(self, "__fields__"):
             return (_create_row, (self.__fields__, tuple(self)))
@@ -182,14 +186,16 @@ class Row(tuple):
     def __repr__(self) -> str:
         """Printable representation of Row used in Python REPL."""
         if hasattr(self, "__fields__"):
-            return "Row(%s)" % ", ".join("%s=%r" % (k, v)
-                                         for k, v in zip(self.__fields__, tuple(self)))
+            return "Row(%s)" % ", ".join(
+                "%s=%r" % (k, v) for k, v in zip(self.__fields__, tuple(self))
+            )
         else:
             return "<Row(%s)>" % ", ".join("%r" % field for field in self)
 
 
-def _create_row(fields: Union["Row", List[str]],
-                values: Union[Tuple[Any, ...], List[Any]]) -> "Row":
+def _create_row(
+    fields: Union["Row", List[str]], values: Union[Tuple[Any, ...], List[Any]]
+) -> "Row":
     row = Row(*values)
     row.__fields__ = fields
     return row
