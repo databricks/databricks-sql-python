@@ -19,9 +19,7 @@ from test_arrow_queue import ArrowQueueSuite
 
 class ClientTestSuite(unittest.TestCase):
     """
-    Unit tests for isolated client behaviour. See
-    qa/test/cmdexec/python/suites/simple_connection_test.py for integration tests that
-    interact with the server.
+    Unit tests for isolated client behaviour.
     """
 
     PACKAGE_NAME = "databricks.sql"
