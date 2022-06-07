@@ -3,7 +3,7 @@ import datetime
 from decimal import Decimal
 import logging
 import re
-from typing import Dict, Tuple, List, Optional, Any
+from typing import Dict, Tuple, List, Optional, Any, Union
 
 import pandas
 import pyarrow
@@ -214,7 +214,7 @@ class Cursor:
         self.connection = connection
         self.rowcount = -1  # Return -1 as this is not supported
         self.buffer_size_bytes = result_buffer_size_bytes
-        self.active_result_set[ResultSet, None] = None
+        self.active_result_set: Union[ResultSet, None] = None
         self.arraysize = arraysize
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
