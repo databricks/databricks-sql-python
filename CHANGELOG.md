@@ -23,6 +23,8 @@ v2.0.0b - February 8, 2022
 - Initial beta release of V2. V2 is an internal re-write of large parts of the connector to use Databricks edge features. All public APIs from V1 remain.
 - Added Unity Catalog support (pass catalog and / or  schema key word args to the .connect method to select initial schema and catalog)
 
+**Note**: The code for versions prior to `v2.0.0b` is not contained in this repository.
+
 v1.0.0 - January 20, 2022
 - Add operations for retrieving metadata
 - Add the ability to access columns by name on result rows
