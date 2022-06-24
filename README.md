@@ -1,8 +1,8 @@
 # Databricks SQL Connector for Python
 
-The Databricks SQL Connector for Python allows you to develop Python applications that connect to Databricks clusters and SQL warehouses. It is a Thrift-based client with no dependencies on ODBC or JDBC. And it conforms to the [Python DB API 2.0 specification](https://www.python.org/dev/peps/pep-0249/).
+The Databricks SQL Connector for Python allows you to develop Python applications that connect to Databricks clusters and SQL warehouses. It is a Thrift-based client with no dependencies on ODBC or JDBC. It conforms to the [Python DB API 2.0 specification](https://www.python.org/dev/peps/pep-0249/).
 
-The initial public release (`v1.0`) was a very lightly modified version of [PyHive](https://pypi.org/project/PyHive/). The `v2.0` release was a complete from scratch re-write, with the same public API. Since `v2.0`, it uses Arrow as the data-exchange format. `v2.0` also supports APIs to directly fetch Arrow tables. Arrow tables are wrapped in the `ArrowQueue` class to provide a natural API to get several rows at a time.
+This connector uses Arrow as the data-exchange format, and supports APIs to directly fetch Arrow tables. Arrow tables are wrapped in the `ArrowQueue` class to provide a natural API to get several rows at a time.
 
 You are welcome to file an issue here for general use cases. You can also contact Databricks Support [here](help.databricks.com).
 
