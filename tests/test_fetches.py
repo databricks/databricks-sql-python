@@ -9,9 +9,7 @@ from databricks.sql.utils import ExecuteResponse, ArrowQueue
 
 class FetchTests(unittest.TestCase):
     """
-    Unit tests for checking the fetch logic. See
-    qa/test/cmdexec/python/suites/simple_connection_test.py for integration tests that
-    interact with the server.
+    Unit tests for checking the fetch logic.
     """
 
     @staticmethod
