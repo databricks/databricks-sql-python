@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pyarrow as pa
 import uuid
 import time
+import pytest
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
@@ -39,6 +40,7 @@ class FetchBenchmarkTests(unittest.TestCase):
                           for col_id in range(arrow_table.num_columns)]
         return rs
 
+    @pytest.mark.skip(reason="Test has not been updated for latest connector API (June 2022)")
     def test_benchmark_fetchall(self):
         print("preparing dummy arrow table")
         arrow_table = FetchBenchmarkTests.make_arrow_table(10, 25000)
