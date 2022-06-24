@@ -1,14 +1,17 @@
 # Databricks SQL Connector for Python
 
-**Status: Generally Available**
+The Databricks SQL Connector for Python allows you to develop Python applications that connect to Databricks clusters and SQL warehouses. It is a Thrift-based client with no dependencies on ODBC or JDBC. It conforms to the [Python DB API 2.0 specification](https://www.python.org/dev/peps/pep-0249/).
 
-Documentation can be found here: [Databricks SQL Connector for Python](https://docs.databricks.com/dev-tools/python-sql-connector.html).
+This connector uses Arrow as the data-exchange format, and supports APIs to directly fetch Arrow tables. Arrow tables are wrapped in the `ArrowQueue` class to provide a natural API to get several rows at a time.
 
-## About
+You are welcome to file an issue here for general use cases. You can also contact Databricks Support [here](help.databricks.com).
 
-The Databricks SQL Connector is a Python library that allows you to use Python code to run
-SQL commands on Databricks clusters and Databricks SQL endpoints.
-This library follows [PEP 249 -- Python Database API Specification v2.0](https://www.python.org/dev/peps/pep-0249/).
+# Documentation
+
+For the latest documentation, see
+
+- [Databricks](https://docs.databricks.com/dev-tools/python-sql-connector.html)
+- [Azure Databricks](https://docs.microsoft.com/en-us/azure/databricks/dev-tools/python-sql-connector)
 
 ## Quickstart
 
@@ -16,7 +19,7 @@ Install the library with `pip install databricks-sql-connector`
 
 Example usage:
 
-```
+```python
 from databricks import sql
 
 connection = sql.connect(
@@ -40,5 +43,3 @@ Where:
 - `<http-path>` is the HTTP Path either to a Databricks SQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef),
    or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
 - `<personal-access-token>` is a HTTP Bearer access token, e.g. a Databricks Personal Access Token.
-
-For more information, see [Databricks documentation](https://docs.databricks.com/dev-tools/python-sql-connector.html).
