@@ -9,7 +9,11 @@ This connector uses Arrow as the data-exchange format, and supports APIs to dire
 
 You are welcome to file an issue here for general use cases. You can also contact Databricks Support [here](help.databricks.com).
 
-# Documentation
+## Requirements
+
+Python 3.7 or above is required.
+
+## Documentation
 
 For the latest documentation, see
 
