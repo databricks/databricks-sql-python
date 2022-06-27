@@ -23,9 +23,10 @@ Example usage:
 from databricks import sql
 
 connection = sql.connect(
-  server_hostname='<server-hostname>',
-  http_path='<http-path>',
-  access_token='<personal-access-token>')
+  server_hostname='********.databricks.com',
+  http_path='/sql/1.0/endpoints/****************',
+  access_token='dapi********************************')
+
 
 cursor = connection.cursor()
 
@@ -38,11 +39,12 @@ cursor.close()
 connection.close()
 ```
 
-Where:
-- `<server-hostname>` is the Databricks instance host name.
-- `<http-path>` is the HTTP Path either to a Databricks SQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef),
-   or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
-- `<personal-access-token>` is a HTTP Bearer access token, e.g. a Databricks Personal Access Token.
+In the above example:
+- `server-hostname` is the Databricks instance host name.
+- `http-path` is the HTTP Path either to a Databricks SQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef),
+or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
+- `personal-access-token` is the Databricks Personal Access Token for the account that will execute commands and queries
+
 
 ## Contributing
 
