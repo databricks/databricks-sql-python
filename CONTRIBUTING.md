@@ -11,7 +11,7 @@ This project uses [Poetry](https://python-poetry.org/) for dependency management
 
 ### Unit Tests
 
-We use [Pytest]([url](https://docs.pytest.org/en/7.1.x/)) as our test runner. Invoke it with `poetry run pytest`, all other arguments are passed directly to `pytest`.
+We use [Pytest](https://docs.pytest.org/en/7.1.x/) as our test runner. Invoke it with `poetry run pytest`, all other arguments are passed directly to `pytest`.
 
 #### All tests
 ```bash
