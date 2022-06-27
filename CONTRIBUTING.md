@@ -11,15 +11,23 @@ This project uses [Poetry](https://python-poetry.org/) for dependency management
 
 ### Unit Tests
 
+We use [Pytest]([url](https://docs.pytest.org/en/7.1.x/)) as our test runner. Invoke it with `poetry run pytest`, all other arguments are passed directly to `pytest`.
+
 #### All tests
 ```bash
 poetry run pytest tests
 ```
 
-#### Specific tests
+#### Only a specific test file
 
 ```bash
-poetry run pytest tests/path/to/test.py
+poetry run pytest tests/tests.py
+```
+
+#### Only a specific method
+
+```bash
+poetry run pytest tests/tests.py::ClientTestSuite::test_closing_connection_closes_commands
 ```
 
 ### Code formatting
