@@ -1,51 +1,31 @@
-v2.0.2 - May 4, 2022
+# Release History
+
+## 2.x.x (Unreleased)
+
+- Reorganised code to use Poetry for dependency management.
+## 2.0.2 (2022-05-4)
 - Better exception handling in automatic connection close
 
-v2.0.1 - April 21, 2022
+## 2.0.1 (2022-04-21)
 - Fixed Pandas dependency in setup.cfg to be >= 1.2.0
 
-v2.0.0 - April 19, 2022
+## 2.0.0 (2022-04-19)
 - Initial stable release of V2
 - Added better support for complex types, so that in Databricks runtime 10.3+, Arrays, Maps and Structs will get 
   deserialized as lists, lists of tuples and dicts, respectively.
 - Changed the name of the metadata arg to http_headers
 
-v2.0.b2 - April 4, 2022
+## 2.0.b2 (2022-04-4)
 - Change import of collections.Iterable to collections.abc.Iterable to make the library compatible with Python 3.10
 - Fixed bug with .tables method so that .tables works as expected with Unity-Catalog enabled endpoints
 
-v2.0.0b1 - March 4, 2022
+## 2.0.0b1 (2022-03-4)
 - Fix packaging issue (dependencies were not being installed properly)
 - Fetching timestamp results will now return aware instead of naive timestamps
 - The client will now default to using simplified error messages
 
-v2.0.0b - February 8, 2022
+## 2.0.0b (2022-02-8)
 - Initial beta release of V2. V2 is an internal re-write of large parts of the connector to use Databricks edge features. All public APIs from V1 remain.
 - Added Unity Catalog support (pass catalog and / or  schema key word args to the .connect method to select initial schema and catalog)
 
 **Note**: The code for versions prior to `v2.0.0b` is not contained in this repository.
-
-v1.0.0 - January 20, 2022
-- Add operations for retrieving metadata
-- Add the ability to access columns by name on result rows
-- Add the ability to provide configuration settings on connect
-
-v0.9.4 - January 10, 2022
-- Improved logging and error messages.
-
-v0.9.3 - December 8, 2021
-- Add retries for 429 and 503 HTTP responses.
-
-v0.9.2 - December 2, 2021
-- (Bug fix) Increased Thrift requirement from 0.10.0 to 0.13.0 as 0.10.0 was in fact incompatible
-- (Bug fix) Fixed error message after query execution failed - SQLSTATE and Error message were misplaced
-
-v0.9.1 - Sept 1, 2021
-- Public Preview release, Experimental tag removed
-- minor updates in internal build/packaging
-- no functional changes
-
-v0.9.0 - Aug 4, 2021
-- initial (Experimental) release of pyhive-forked connector
-- Python DBAPI 2.0 (PEP-0249), thrift based
-- see docs for more info: https://docs.databricks.com/dev-tools/python-sql-connector.html
