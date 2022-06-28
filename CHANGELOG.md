@@ -30,4 +30,30 @@
 
 ---
 
-**Note**: The code for versions prior to `v2.0.0b` is not contained in this repository.
+**Note**: The code for versions prior to `v2.0.0b` is not contained in this repository. The below entries are included for reference only.
+
+---
+## 1.0.0 (2022-01-20)
+- Add operations for retrieving metadata
+- Add the ability to access columns by name on result rows
+- Add the ability to provide configuration settings on connect
+
+## 0.9.4 (2022-01-10)
+- Improved logging and error messages.
+
+## 0.9.3 (2021-12-08)
+- Add retries for 429 and 503 HTTP responses.
+
+## 0.9.2 (2021-12-02)
+- (Bug fix) Increased Thrift requirement from 0.10.0 to 0.13.0 as 0.10.0 was in fact incompatible
+- (Bug fix) Fixed error message after query execution failed -SQLSTATE and Error message were misplaced
+
+## 0.9.1 (2021-09-01)
+- Public Preview release, Experimental tag removed
+- minor updates in internal build/packaging
+- no functional changes
+
+## 0.9.0 (2021-08-04)
+- initial (Experimental) release of pyhive-forked connector
+- Python DBAPI 2.0 (PEP-0249), thrift based
+- see docs for more info: https://docs.databricks.com/dev-tools/python-sql-connector.html
