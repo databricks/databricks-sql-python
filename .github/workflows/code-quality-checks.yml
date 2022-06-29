@@ -1,7 +1,7 @@
 name: Code Quality Checks
 on: [push]
 jobs:
-  run-tests:
+  run-unit-tests:
     runs-on: ubuntu-latest
     steps:
       #----------------------------------------------
@@ -48,7 +48,7 @@ jobs:
       #              run test suite
       #----------------------------------------------
       - name: Run tests
-        run: poetry run pytest tests/
+        run: poetry run python -m pytest tests/unit
   check-linting:
     runs-on: ubuntu-latest
     steps:
