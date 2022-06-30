@@ -9,25 +9,50 @@ This project uses [Poetry](https://python-poetry.org/) for dependency management
 1. Clone this respository
 2. Run `poetry install` 
 
-### Unit Tests
+### Run tests
 
-We use [Pytest](https://docs.pytest.org/en/7.1.x/) as our test runner. Invoke it with `poetry run pytest`, all other arguments are passed directly to `pytest`.
+We use [Pytest](https://docs.pytest.org/en/7.1.x/) as our test runner. Invoke it with `poetry run python -m pytest`, all other arguments are passed directly to `pytest`.
 
-#### All tests
+#### Unit tests
+
+Unit tests do not require a Databricks account.
+
 ```bash
-poetry run pytest tests
+poetry run python -m pytest tests/unit
 ```
-
 #### Only a specific test file
 
 ```bash
-poetry run pytest tests/tests.py
+poetry run python -m pytest tests/unit/tests.py
 ```
 
 #### Only a specific method
 
 ```bash
-poetry run pytest tests/tests.py::ClientTestSuite::test_closing_connection_closes_commands
+poetry run python -m pytest tests/unit/tests.py::ClientTestSuite::test_closing_connection_closes_commands
+```
+
+#### e2e Tests
+
+End-to-end tests require a Databricks account. Before you can run them, you must set connection details for a Databricks SQL endpoint in your environment:
+
+```bash
+export host=""
+export http_path=""
+export access_token=""
+```
+
+There are several e2e test suites available:
+- `PySQLCoreTestSuite`
+- `PySQLLargeQueriesSuite`
+- `PySQLRetryTestSuite.HTTP503Suite` **[disabled]**
+- `PySQLRetryTestSuite.HTTP429Suite` **[disabled]**
+- `PySQLUnityCatalogTestSuite` **[disabled]**
+
+To execute the core test suite:
+
+```bash
+poetry run python -m pytest tests/e2e/driver_tests.py::PySQLCoreTestSuite
 ```
 
 ### Code formatting
