@@ -43,7 +43,6 @@ class PySQLTestCase(TestCase):
     def __init__(self, method_name):
         super().__init__(method_name)
         # If running in local mode, just use environment variables for params.
-        # If running as a DUST test, `test_executor.py` will set the arguments var directly
         self.arguments = os.environ if get_args_from_env else {}
         self.arraysize = 1000
 
@@ -439,7 +438,7 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
         with self.cursor({}) as cursor:
             query = "create temporary view f as select * from range(10)"
             cursor.execute(query)
-            # TODO(https://databricks.atlassian.net/browse/SC-89407) assert on a result
+            # TODO assert on a result
             # once what is being returned has stabilised
 
     @skipIf(pysql_has_version('<', '2'), 'requires pysql v2')
