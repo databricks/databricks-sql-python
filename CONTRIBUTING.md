@@ -9,25 +9,27 @@ This project uses [Poetry](https://python-poetry.org/) for dependency management
 1. Clone this respository
 2. Run `poetry install` 
 
-### Unit Tests
+### Run tests
 
-We use [Pytest](https://docs.pytest.org/en/7.1.x/) as our test runner. Invoke it with `poetry run pytest`, all other arguments are passed directly to `pytest`.
+We use [Pytest](https://docs.pytest.org/en/7.1.x/) as our test runner. Invoke it with `poetry run python -m pytest`, all other arguments are passed directly to `pytest`.
 
-#### All tests
+#### Unit tests
+
+Unit tests do not require a Databricks account.
+
 ```bash
-poetry run pytest tests
+poetry run python -m pytest tests/unit
 ```
-
 #### Only a specific test file
 
 ```bash
-poetry run pytest tests/tests.py
+poetry run python -m pytest tests/unit/tests.py
 ```
 
 #### Only a specific method
 
 ```bash
-poetry run pytest tests/tests.py::ClientTestSuite::test_closing_connection_closes_commands
+poetry run python -m pytest tests/unit/tests.py::ClientTestSuite::test_closing_connection_closes_commands
 ```
 
 ### Code formatting
@@ -35,7 +37,7 @@ poetry run pytest tests/tests.py::ClientTestSuite::test_closing_connection_close
 This project uses [Black](https://pypi.org/project/black/).
 
 ```
-poetry run black src
+poetry run python -m black src
 ```
 ## Pull Request Process
 
