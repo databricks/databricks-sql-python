@@ -1,19 +1,15 @@
-import base64
-import datetime
-from decimal import Decimal
-import logging
-import re
 from typing import Dict, Tuple, List, Optional, Any, Union
 
 import pandas
 import pyarrow
 
-from databricks.sql import USER_AGENT_NAME, __version__
+from databricks.sql import __version__
 from databricks.sql import *
 from databricks.sql.exc import OperationalError
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper
 from databricks.sql.types import Row
+from databricks.sql.auth.auth import get_python_sql_connector_authenticator
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +22,6 @@ class Connection:
         self,
         server_hostname: str,
         http_path: str,
-        access_token: str,
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
@@ -90,25 +85,7 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
 
-        authorization_header = []
-        if kwargs.get("_username") and kwargs.get("_password"):
-            auth_credentials = "{username}:{password}".format(
-                username=kwargs.get("_username"), password=kwargs.get("_password")
-            ).encode("UTF-8")
-            auth_credentials_base64 = base64.standard_b64encode(
-                auth_credentials
-            ).decode("UTF-8")
-            authorization_header = [
-                ("Authorization", "Basic {}".format(auth_credentials_base64))
-            ]
-        elif access_token:
-            authorization_header = [("Authorization", "Bearer {}".format(access_token))]
-        elif not (
-            kwargs.get("_use_cert_as_auth") and kwargs.get("_tls_client_cert_file")
-        ):
-            raise ValueError(
-                "No valid authentication settings. Please provide an access token."
-            )
+        authenticator = get_python_sql_connector_authenticator(server_hostname, **kwargs)
 
         if not kwargs.get("_user_agent_entry"):
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
@@ -117,11 +94,13 @@ class Connection:
                 USER_AGENT_NAME, __version__, kwargs.get("_user_agent_entry")
             )
 
-        base_headers = [("User-Agent", useragent_header)] + authorization_header
+        base_headers = [("User-Agent", useragent_header)]
+
         self.thrift_backend = ThriftBackend(
             self.host,
             self.port,
             http_path,
+            authenticator,
             (http_headers or []) + base_headers,
             **kwargs
         )

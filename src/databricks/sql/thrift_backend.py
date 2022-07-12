@@ -1,18 +1,17 @@
 from decimal import Decimal
-import logging
 import math
 import time
 import threading
-from uuid import uuid4
-from ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED, create_default_context
+from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 
 import pyarrow
 import thrift.transport.THttpClient
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
 import thrift.transport.TTransport
-from thrift.Thrift import TException
 
+from databricks.sql.auth.thrift_http_client import THttpClient
+from databricks.sql.auth.authenticators import Authenticator
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
 from databricks.sql.utils import (
@@ -48,7 +47,7 @@ class ThriftBackend:
     BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
     def __init__(
-        self, server_hostname: str, port, http_path: str, http_headers, **kwargs
+        self, server_hostname: str, port, http_path: str, authenticator: Authenticator, http_headers, **kwargs
     ):
         # Internal arguments in **kwargs:
         # _user_agent_entry
@@ -126,7 +125,10 @@ class ThriftBackend:
                 password=tls_client_cert_key_password,
             )
 
-        self._transport = thrift.transport.THttpClient.THttpClient(
+        self._authenticator = authenticator
+
+        self._transport = THttpClient(
+            authenticator=self._authenticator,
             uri_or_host=uri,
             ssl_context=ssl_context,
         )
