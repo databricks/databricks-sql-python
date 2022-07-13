@@ -53,7 +53,9 @@ class BasicAuthenticator(Authenticator):
         request_headers['Authorization'] = self.__authorization_header_value
 
 
-class OAuthAuthenticator(Authenticator):
+# Private API: this is an evolving interface and it will change in the future.
+# Please must not depend on it in your applications.
+class DatabricksOAuthAuthenticator(Authenticator):
     # TODO: moderakh the refresh_token is only kept in memory. not saved on disk
     # hence if application restarts the user may need to re-authenticate
     # I will add support for this outside of the scope of current PR.
