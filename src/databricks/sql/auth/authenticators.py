@@ -30,6 +30,8 @@ class Authenticator:
         pass
 
 
+# Private API: this is an evolving interface and it will change in the future.
+# Please must not depend on it in your applications.
 class AccessTokenAuthenticator(Authenticator):
     def __init__(self, access_token):
         self.__authorization_header_value = "Bearer {}".format(access_token)
