@@ -147,6 +147,7 @@ class DatabricksDialect(default.DefaultDialect):
             access_token=kwargs['access_token'],
             schema='default'
         )
+        # TODO: look up correct index for TABLE_SCHEM
         TABLE_SCHEM = 2
         with connection.cursor() as cur:
             data = cur.schemas(catalog_name='%').fetchall()
