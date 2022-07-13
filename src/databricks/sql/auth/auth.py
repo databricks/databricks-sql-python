@@ -1,4 +1,3 @@
-# Databricks CLI
 # Copyright 2022 Databricks, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"), except
@@ -21,6 +20,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import List
 from enum import Enum
 from databricks.sql.auth.authenticators import Authenticator, \
     AccessTokenAuthenticator, UserPassAuthenticator, OAuthAuthenticator
@@ -39,7 +39,7 @@ class ClientContext:
                  password: str = None,
                  token: str = None,
                  auth_type: str = None,
-                 oauth_scopes: str = None,
+                 oauth_scopes: List[str] = None,
                  oauth_client_id: str = None,
                  use_cert_as_auth: str = None,
                  tls_client_cert_file: str = None):
@@ -55,6 +55,10 @@ class ClientContext:
 
 
 class SqlConnectorClientContext(ClientContext):
+    OAUTH_SCOPES = ["sql", "offline_access"]
+    # TODO: moderakh to be changed once registered on the service side
+    OAUTH_CLIENT_ID = "databricks-cli"
+
     def __init__(self,
                  hostname: str,
                  username: str = None,
@@ -63,9 +67,9 @@ class SqlConnectorClientContext(ClientContext):
                  auth_type: str = None,
                  use_cert_as_auth: str = None,
                  tls_client_cert_file: str = None):
-        super().__init__(oauth_scopes="sql offline_access",
+        super().__init__(oauth_scopes=SqlConnectorClientContext.OAUTH_SCOPES,
                          # to be changed once registered on the service side
-                         oauth_client_id="databricks-cli",
+                         oauth_client_id=SqlConnectorClientContext.OAUTH_CLIENT_ID,
                          hostname=hostname,
                          username=username,
                          password=password,

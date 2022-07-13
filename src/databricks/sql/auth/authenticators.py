@@ -1,4 +1,3 @@
-# Databricks CLI
 # Copyright 2022 Databricks, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"), except
@@ -56,8 +55,8 @@ class OAuthAuthenticator(Authenticator):
     # I will add support for this outside of the scope of current PR.
     def __init__(self, hostname, client_id, scopes):
         self._hostname = self._normalize_host_name(hostname=hostname)
-        self._scope = scopes
-        access_token, refresh_token = get_tokens(hostname=self._hostname, client_id=client_id, scope=self._scope)
+        self._scopes_as_str = ''.join(scopes)
+        access_token, refresh_token = get_tokens(hostname=self._hostname, client_id=client_id, scope=self._scopes_as_str)
         self._access_token = access_token
         self._refresh_token = refresh_token
 
