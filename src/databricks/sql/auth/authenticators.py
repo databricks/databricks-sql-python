@@ -40,7 +40,9 @@ class AccessTokenAuthenticator(Authenticator):
         request_headers['Authorization'] = self.__authorization_header_value
 
 
-class UserPassAuthenticator(Authenticator):
+# Private API: this is an evolving interface and it will change in the future.
+# Please must not depend on it in your applications.
+class BasicAuthenticator(Authenticator):
     def __init__(self, username, password):
         auth_credentials = "{username}:{password}".format(username, password).encode("UTF-8")
         auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
