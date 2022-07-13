@@ -25,14 +25,16 @@ from databricks.sql.auth.oauth import get_tokens, check_and_refresh_access_token
 import base64
 
 
-class Authenticator:
+# Private API: this is an evolving interface and it will change in the future.
+# Please must not depend on it in your applications.
+class CredentialsProvider:
     def add_auth_token(self, request_headers):
         pass
 
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class AccessTokenAuthenticator(Authenticator):
+class AccessTokenAuthProvider(CredentialsProvider):
     def __init__(self, access_token):
         self.__authorization_header_value = "Bearer {}".format(access_token)
 
@@ -42,7 +44,7 @@ class AccessTokenAuthenticator(Authenticator):
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class BasicAuthenticator(Authenticator):
+class BasicAuthProvider(CredentialsProvider):
     def __init__(self, username, password):
         auth_credentials = "{username}:{password}".format(username, password).encode("UTF-8")
         auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
@@ -55,7 +57,7 @@ class BasicAuthenticator(Authenticator):
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class DatabricksOAuthAuthenticator(Authenticator):
+class DatabricksOAuthProvider(CredentialsProvider):
     # TODO: moderakh the refresh_token is only kept in memory. not saved on disk
     # hence if application restarts the user may need to re-authenticate
     # I will add support for this outside of the scope of current PR.

@@ -22,8 +22,8 @@
 
 from typing import List
 from enum import Enum
-from databricks.sql.auth.authenticators import Authenticator, \
-    AccessTokenAuthenticator, UserPassAuthenticator, OAuthAuthenticator
+from databricks.sql.auth.authenticators import CredentialsProvider, \
+    AccessTokenAuthProvider, BasicAuthProvider, DatabricksOAuthProvider
 
 
 class AuthType(Enum):
@@ -81,14 +81,14 @@ class SqlConnectorClientContext(ClientContext):
 
 def get_authenticator(cfg: ClientContext):
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
-        return OAuthAuthenticator(cfg.hostname, cfg.oauth_client_id, cfg.oauth_scopes)
+        return DatabricksOAuthProvider(cfg.hostname, cfg.oauth_client_id, cfg.oauth_scopes)
     elif cfg.token is not None:
-        return AccessTokenAuthenticator(cfg.token)
+        return AccessTokenAuthProvider(cfg.token)
     elif cfg.username is not None and cfg.password is not None:
-        return UserPassAuthenticator(cfg.username, cfg.password)
+        return BasicAuthProvider(cfg.username, cfg.password)
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
         # no op authenticator. authentication is performed using ssl certificate outside of headers
-        return Authenticator()
+        return CredentialsProvider()
     else:
         raise RuntimeError("No valid authentication settings!")
 

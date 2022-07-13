@@ -11,7 +11,7 @@ import thrift.transport.TSocket
 import thrift.transport.TTransport
 
 from databricks.sql.auth.thrift_http_client import THttpClient
-from databricks.sql.auth.authenticators import Authenticator
+from databricks.sql.auth.authenticators import CredentialsProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
 from databricks.sql.utils import (
@@ -47,7 +47,7 @@ class ThriftBackend:
     BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
     def __init__(
-        self, server_hostname: str, port, http_path: str, authenticator: Authenticator, http_headers, **kwargs
+        self, server_hostname: str, port, http_path: str, authenticator: CredentialsProvider, http_headers, **kwargs
     ):
         # Internal arguments in **kwargs:
         # _user_agent_entry
