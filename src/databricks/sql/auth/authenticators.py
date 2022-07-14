@@ -58,12 +58,13 @@ class BasicAuthProvider(CredentialsProvider):
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 class DatabricksOAuthProvider(CredentialsProvider):
+    SCOPE_DELIM = ' '
     # TODO: moderakh the refresh_token is only kept in memory. not saved on disk
     # hence if application restarts the user may need to re-authenticate
     # I will add support for this outside of the scope of current PR.
     def __init__(self, hostname, client_id, scopes):
         self._hostname = self._normalize_host_name(hostname=hostname)
-        self._scopes_as_str = ''.join(scopes)
+        self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
         access_token, refresh_token = get_tokens(hostname=self._hostname, client_id=client_id, scope=self._scopes_as_str)
         self._access_token = access_token
         self._refresh_token = refresh_token

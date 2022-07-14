@@ -29,7 +29,7 @@ import webbrowser
 
 from datetime import datetime, timedelta, tzinfo
 
-import click
+import logging
 
 import jwt
 from jwt import PyJWTError
@@ -40,12 +40,13 @@ from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 import requests
 from requests.exceptions import RequestException
 
-from databricks_cli.utils import error_and_quit
 
 try:
     from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 except ImportError:
     from http.server import BaseHTTPRequestHandler, HTTPServer
+
+logger = logging.getLogger(__name__)
 
 
 # This could use 'import secrets' in Python 3
@@ -88,22 +89,26 @@ def fetch_well_known_config(idp_url):
     known_config_url = "{idp_url}/.well-known/oauth-authorization-server".format(idp_url=idp_url)
     try:
         response = requests.request(method="GET", url=known_config_url)
-    except RequestException:
-        error_and_quit("Unable to fetch OAuth configuration from {idp_url}.\n"
-                       "Verify it is a valid workspace URL and that OAuth is "
-                       "enabled on this account.".format(idp_url=idp_url))
+    except RequestException as e:
+        logger.error("Unable to fetch OAuth configuration from {idp_url}.\n"
+                     "Verify it is a valid workspace URL and that OAuth is "
+                     "enabled on this account.".format(idp_url=idp_url))
+        raise e
 
     if response.status_code != 200:
-        error_and_quit("Received status {status} OAuth configuration from "
-                       "{idp_url}.\n Verify it is a valid workspace URL and "
-                       "that OAuth is enabled on this account."
-                       .format(status=response.status_code, idp_url=idp_url))
+        msg = ("Received status {status} OAuth configuration from "
+               "{idp_url}.\n Verify it is a valid workspace URL and "
+               "that OAuth is enabled on this account."
+               .format(status=response.status_code, idp_url=idp_url))
+        logger.error(msg)
+        raise RuntimeError(msg)
     try:
         return json.loads(response.text)
-    except json.decoder.JSONDecodeError:
-        error_and_quit("Unable to decode OAuth configuration from {idp_url}.\n"
-                       "Verify it is a valid workspace URL and that OAuth is "
-                       "enabled on this account.".format(idp_url=idp_url))
+    except json.decoder.JSONDecodeError as e:
+        logger.error("Unable to decode OAuth configuration from {idp_url}.\n"
+                     "Verify it is a valid workspace URL and that OAuth is "
+                     "enabled on this account.".format(idp_url=idp_url))
+        raise e
 
 
 def get_idp_url(host):
@@ -171,17 +176,19 @@ def get_authorization_code(client, auth_url, redirect_url, scope, state, challen
         state=state,
         code_challenge=challenge,
         code_challenge_method="S256")
-    click.echo("Opening {uri}".format(uri=auth_req_uri))
+    logger.info("Opening {uri}".format(uri=auth_req_uri))
 
     with HTTPServer(("", port), SingleRequestHandler) as httpd:
         webbrowser.open_new(auth_req_uri)
-        click.echo("Listening for OAuth authorization callback at {uri}"
+        logger.info("Listening for OAuth authorization callback at {uri}"
                    .format(uri=redirect_url))
         httpd.handle_request()
 
     if not global_request_path:
-        error_and_quit("No path parameters were returned to the callback at {uri}"
-                       .format(uri=redirect_url))
+        msg = ("No path parameters were returned to the callback at {uri}"
+               .format(uri=redirect_url))
+        logger.error(msg)
+        raise RuntimeError(msg)
     # This is a kludge because the parsing library expects https callbacks
     # We should probably set it up using https
     full_redirect_url = "https://localhost:{port}/{path}".format(
@@ -189,8 +196,9 @@ def get_authorization_code(client, auth_url, redirect_url, scope, state, challen
     try:
         authorization_code_response = \
             client.parse_request_uri_response(full_redirect_url, state=state)
-    except OAuth2Error as err:
-        error_and_quit("OAuth Token Request error {error}".format(error=err.description))
+    except OAuth2Error as e:
+        logger.error("OAuth Token Request error {error}".format(error=err.description))
+        raise e
     return authorization_code_response
 
 
@@ -237,19 +245,22 @@ def check_and_refresh_access_token(hostname, access_token, refresh_token):
         # an unnecessary signature verification.
         decoded = jwt.decode(access_token, options={"verify_signature": False})
         expiration_time = datetime.fromtimestamp(decoded['exp'], tz=UTC)
-    except PyJWTError as err:
-        error_and_quit(err)
+    except PyJWTError as e:
+        logger.error(e)
+        raise e
 
     if expiration_time > now:
         # The access token is fine. Just return it.
         return access_token, refresh_token, False
 
     if not refresh_token:
-        error_and_quit("OAuth access token expired on {expiration_time}."
-                       .format(expiration_time=expiration_time))
+        msg = ("OAuth access token expired on {expiration_time}."
+               .format(expiration_time=expiration_time))
+        logger.error(msg)
+        raise RuntimeError(msg)
 
     # Try to refresh using the refresh token
-    click.echo("Attempting to refresh OAuth access token that expired on {expiration_time}"
+    logger.debug("Attempting to refresh OAuth access token that expired on {expiration_time}"
                .format(expiration_time=expiration_time))
     oauth_response = send_refresh_token_request(hostname, refresh_token)
     fresh_access_token, fresh_refresh_token = get_tokens_from_response(oauth_response)
@@ -275,8 +286,10 @@ def get_tokens(hostname, client_id, scope=None):
             state,
             challenge,
             REDIRECT_PORT)
-    except OAuth2Error as err:
-        error_and_quit("OAuth Authorization Error: {error}".format(error=err.description))
+    except OAuth2Error as e:
+        msg = "OAuth Authorization Error: {error}".format(error=e.description)
+        logger.error(msg)
+        raise e
 
     token_request_url = oauth_config["token_endpoint"]
     code = auth_response['code']
