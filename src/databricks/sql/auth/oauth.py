@@ -82,40 +82,39 @@ def get_client(client_id):
 
 
 def get_redirect_url(port=REDIRECT_PORT):
-    return "http://localhost:{port}".format(port=port)
+    return f"http://localhost:{port}"
 
 
 def fetch_well_known_config(idp_url):
-    known_config_url = "{idp_url}/.well-known/oauth-authorization-server".format(idp_url=idp_url)
+    known_config_url = f"{idp_url}/.well-known/oauth-authorization-server"
     try:
-        response = requests.request(method="GET", url=known_config_url)
+        response = requests.get(url=known_config_url)
     except RequestException as e:
-        logger.error("Unable to fetch OAuth configuration from {idp_url}.\n"
+        logger.error(f"Unable to fetch OAuth configuration from {idp_url}.\n"
                      "Verify it is a valid workspace URL and that OAuth is "
-                     "enabled on this account.".format(idp_url=idp_url))
+                     "enabled on this account.")
         raise e
 
     if response.status_code != 200:
-        msg = ("Received status {status} OAuth configuration from "
-               "{idp_url}.\n Verify it is a valid workspace URL and "
+        msg = (f"Received status {response.status_code} OAuth configuration from "
+               f"{idp_url}.\n Verify it is a valid workspace URL and "
                "that OAuth is enabled on this account."
-               .format(status=response.status_code, idp_url=idp_url))
+               )
         logger.error(msg)
         raise RuntimeError(msg)
     try:
         return json.loads(response.text)
     except json.decoder.JSONDecodeError as e:
-        logger.error("Unable to decode OAuth configuration from {idp_url}.\n"
+        logger.error(f"Unable to decode OAuth configuration from {idp_url}.\n"
                      "Verify it is a valid workspace URL and that OAuth is "
-                     "enabled on this account.".format(idp_url=idp_url))
+                     "enabled on this account.")
         raise e
 
 
 def get_idp_url(host):
     maybe_scheme = "https://" if not host.startswith("https://") else ""
     maybe_trailing_slash = "/" if not host.endswith("/") else ""
-    return "{scheme}{host}{trailing}{path}".format(
-        scheme=maybe_scheme, host=host, trailing=maybe_trailing_slash, path=OIDC_REDIRECTOR_PATH)
+    return f"{maybe_scheme}{host}{maybe_trailing_slash}{OIDC_REDIRECTOR_PATH}"
 
 
 def get_challenge(verifier_string=token_urlsafe(32)):
@@ -176,35 +175,32 @@ def get_authorization_code(client, auth_url, redirect_url, scope, state, challen
         state=state,
         code_challenge=challenge,
         code_challenge_method="S256")
-    logger.info("Opening {uri}".format(uri=auth_req_uri))
+    logger.info(f"Opening {auth_req_uri}")
 
     with HTTPServer(("", port), SingleRequestHandler) as httpd:
         webbrowser.open_new(auth_req_uri)
-        logger.info("Listening for OAuth authorization callback at {uri}"
-                   .format(uri=redirect_url))
+        logger.info(f"Listening for OAuth authorization callback at {redirect_url}")
         httpd.handle_request()
 
     if not global_request_path:
-        msg = ("No path parameters were returned to the callback at {uri}"
-               .format(uri=redirect_url))
+        msg = f"No path parameters were returned to the callback at {redirect_url}"
         logger.error(msg)
         raise RuntimeError(msg)
     # This is a kludge because the parsing library expects https callbacks
     # We should probably set it up using https
-    full_redirect_url = "https://localhost:{port}/{path}".format(
-        port=port, path=global_request_path)
+    full_redirect_url = f"https://localhost:{port}/{global_request_path}"
     try:
         authorization_code_response = \
             client.parse_request_uri_response(full_redirect_url, state=state)
     except OAuth2Error as e:
-        logger.error("OAuth Token Request error {error}".format(error=err.description))
+        logger.error(f"OAuth Token Request error {e.description}")
         raise e
     return authorization_code_response
 
 
 def send_auth_code_token_request(client, token_request_url, redirect_url, code, verifier):
     token_request_body = client.prepare_request_body(code=code, redirect_uri=redirect_url)
-    data = "{body}&code_verifier={verifier}".format(body=token_request_body, verifier=verifier)
+    data = f"{token_request_body}&code_verifier={verifier}"
     return send_token_request(token_request_url, data)
 
 
@@ -213,7 +209,7 @@ def send_token_request(token_request_url, data):
         "Accept": "application/json",
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    response = requests.request(method="POST", url=token_request_url, data=data, headers=headers)
+    response = requests.post(url=token_request_url, data=data, headers=headers)
     oauth_response = json.loads(response.text)
     return oauth_response
 
@@ -254,14 +250,12 @@ def check_and_refresh_access_token(hostname, access_token, refresh_token):
         return access_token, refresh_token, False
 
     if not refresh_token:
-        msg = ("OAuth access token expired on {expiration_time}."
-               .format(expiration_time=expiration_time))
+        msg = f"OAuth access token expired on {expiration_time}."
         logger.error(msg)
         raise RuntimeError(msg)
 
     # Try to refresh using the refresh token
-    logger.debug("Attempting to refresh OAuth access token that expired on {expiration_time}"
-               .format(expiration_time=expiration_time))
+    logger.debug(f"Attempting to refresh OAuth access token that expired on {expiration_time}")
     oauth_response = send_refresh_token_request(hostname, refresh_token)
     fresh_access_token, fresh_refresh_token = get_tokens_from_response(oauth_response)
     return fresh_access_token, fresh_refresh_token, True
@@ -272,7 +266,7 @@ def get_tokens(hostname, client_id, scope=None):
     oauth_config = fetch_well_known_config(idp_url)
     # We are going to override oauth_config["authorization_endpoint"] use the
     # /oidc redirector on the hostname, which may inject additional parameters.
-    auth_url = "{}oidc/v1/authorize".format(hostname)
+    auth_url = f"{hostname}oidc/v1/authorize"
     state = token_urlsafe(16)
     (verifier, challenge) = get_challenge()
     client = get_client(client_id)
@@ -287,7 +281,7 @@ def get_tokens(hostname, client_id, scope=None):
             challenge,
             REDIRECT_PORT)
     except OAuth2Error as e:
-        msg = "OAuth Authorization Error: {error}".format(error=e.description)
+        msg = f"OAuth Authorization Error: {e.description}"
         logger.error(msg)
         raise e
 
