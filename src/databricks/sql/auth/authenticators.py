@@ -46,7 +46,7 @@ class AccessTokenAuthProvider(CredentialsProvider):
 # Please must not depend on it in your applications.
 class BasicAuthProvider(CredentialsProvider):
     def __init__(self, username, password):
-        auth_credentials = "{username}:{password}".format(username, password).encode("UTF-8")
+        auth_credentials = "{username}:{password}".format(username=username, password=password).encode("UTF-8")
         auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
 
         self.__authorization_header_value = "Basic {}".format(auth_credentials_base64)
@@ -80,6 +80,3 @@ class DatabricksOAuthProvider(CredentialsProvider):
         maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
         return "{scheme}{host}{trailing}".format(
             scheme=maybe_scheme, host=hostname, trailing=maybe_trailing_slash)
-
-
-
