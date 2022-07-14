@@ -79,7 +79,7 @@ class SqlConnectorClientContext(ClientContext):
                          tls_client_cert_file=tls_client_cert_file)
 
 
-def get_authenticator(cfg: ClientContext):
+def get_auth_provider(cfg: ClientContext):
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
         return DatabricksOAuthProvider(cfg.hostname, cfg.oauth_client_id, cfg.oauth_scopes)
     elif cfg.token is not None:
@@ -93,7 +93,7 @@ def get_authenticator(cfg: ClientContext):
         raise RuntimeError("No valid authentication settings!")
 
 
-def get_python_sql_connector_authenticator(hostname: str, **kwargs):
+def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
 
     cfg = SqlConnectorClientContext(hostname=hostname,
                                     auth_type=kwargs.get("auth_type"),
@@ -102,6 +102,6 @@ def get_python_sql_connector_authenticator(hostname: str, **kwargs):
                                     password=kwargs.get("_password"),
                                     use_cert_as_auth=kwargs.get("_use_cert_as_auth"),
                                     tls_client_cert_file=kwargs.get("_tls_client_cert_file"))
-    return get_authenticator(cfg)
+    return get_auth_provider(cfg)
 
 

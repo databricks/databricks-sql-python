@@ -9,7 +9,7 @@ from databricks.sql.exc import OperationalError
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper
 from databricks.sql.types import Row
-from databricks.sql.auth.auth import get_python_sql_connector_authenticator
+from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
 
-        authenticator = get_python_sql_connector_authenticator(server_hostname, **kwargs)
+        authenticator = get_python_sql_connector_auth_provider(server_hostname, **kwargs)
 
         if not kwargs.get("_user_agent_entry"):
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
