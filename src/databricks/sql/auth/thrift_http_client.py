@@ -39,7 +39,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
     def flush(self):
         # TODO retry behaviour
-        # TODO locking for multiple concurrent refresh token
         headers = dict(self._headers)
         self.__auth_provider.add_headers(headers)
         self._headers = headers
