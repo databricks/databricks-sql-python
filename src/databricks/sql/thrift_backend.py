@@ -31,6 +31,8 @@ DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 
 TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
 
+DEFAULT_RETRY_DELAY_AFTER = 5
+
 # see Connection.__init__ for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
 # - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
@@ -260,18 +262,36 @@ class ThriftBackend:
         def get_elapsed():
             return time.time() - t0
 
+        def make_bounded_delay(attempt: int, delay: int):
+            """Bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]"""
+            delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
+            delay = min(delay, self._retry_delay_max)
+            return delay
+
         def extract_retry_delay(attempt):
-            # encapsulate retry checks, returns None || delay-in-secs
-            # Retry IFF 429/503 code + Retry-After header set
+            """Returns Retry-After header contents IFF 429/503 code + Retry-After header set"""
             http_code = getattr(self._transport, "code", None)
             retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
             if http_code in [429, 503] and retry_after:
-                # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
-                delay = int(retry_after)
-                delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
-                delay = min(delay, self._retry_delay_max)
-                return delay
+                return make_bounded_delay(attempt, int(retry_after))
             return None
+
+        def get_retry_delay(attempt):
+            """Encapsulate retry checks. Returns None || delay-in-secs
+
+            Retry if
+              - 429/503 code + Retry-After header set
+              - method is GetOperationStatus
+
+            Retry-After header is always used if present. If not present but method is GetOperationStatus
+            the DEFAULT_RETRY_DELAY_AFTER is used. This catches connection timeouts during GetOperationStatus.
+            """
+
+            header_delay = extract_retry_delay(attempt)
+            if method.__name__ == "GetOperationStatus" and not header_delay:
+                return make_bounded_delay(attempt, DEFAULT_RETRY_DELAY_AFTER)
+
+            return header_delay
 
         def attempt_request(attempt):
             # splits out lockable attempt, from delay & retry loop
@@ -285,7 +305,7 @@ class ThriftBackend:
                 logger.debug("Received response: {}".format(response))
                 return response
             except Exception as error:
-                retry_delay = extract_retry_delay(attempt)
+                retry_delay = get_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
