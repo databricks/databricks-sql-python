@@ -85,7 +85,7 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
 
-        authenticator = get_python_sql_connector_auth_provider(server_hostname, **kwargs)
+        auth_provider = get_python_sql_connector_auth_provider(server_hostname, **kwargs)
 
         if not kwargs.get("_user_agent_entry"):
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
@@ -100,7 +100,7 @@ class Connection:
             self.host,
             self.port,
             http_path,
-            authenticator,
+            auth_provider,
             (http_headers or []) + base_headers,
             **kwargs
         )

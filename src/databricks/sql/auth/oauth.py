@@ -159,8 +159,7 @@ class SingleRequestHandler(BaseHTTPRequestHandler):
 
 
 def get_authorization_code(client, auth_url, redirect_url, scope, state, challenge, port):
-    #pylint: disable=unused-variable
-    (auth_req_uri, headers, body) = client.prepare_authorization_request(
+    (auth_req_uri, _, _) = client.prepare_authorization_request(
         authorization_url=auth_url,
         redirect_url=redirect_url,
         scope=scope,
