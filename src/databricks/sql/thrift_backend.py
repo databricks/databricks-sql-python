@@ -47,7 +47,7 @@ class ThriftBackend:
     BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
     def __init__(
-        self, server_hostname: str, port, http_path: str, authenticator: CredentialsProvider, http_headers, **kwargs
+        self, server_hostname: str, port, http_path: str, auth_provider: CredentialsProvider, http_headers, **kwargs
     ):
         # Internal arguments in **kwargs:
         # _user_agent_entry
@@ -125,10 +125,10 @@ class ThriftBackend:
                 password=tls_client_cert_key_password,
             )
 
-        self._authenticator = authenticator
+        self._auth_provider = auth_provider
 
         self._transport = THttpClient(
-            authenticator=self._authenticator,
+            auth_provider=self._auth_provider,
             uri_or_host=uri,
             ssl_context=ssl_context,
         )

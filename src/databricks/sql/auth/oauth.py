@@ -25,13 +25,10 @@ import base64
 import hashlib
 import os
 import webbrowser
-
+import json
 from datetime import datetime, timedelta, tzinfo
 
 import logging
-
-import jwt
-from jwt import PyJWTError
 
 import oauthlib.oauth2
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
@@ -233,9 +230,9 @@ def check_and_refresh_access_token(hostname, access_token, refresh_token):
         # If it has been tampered with, it will be rejected on the server side.
         # This avoids having to fetch the public key from the issuer and perform
         # an unnecessary signature verification.
-        decoded = jwt.decode(access_token, options={"verify_signature": False})
+        decoded = json.loads(base64.standard_b64decode(access_token.split(".")[1]))
         expiration_time = datetime.fromtimestamp(decoded["exp"], tz=UTC)
-    except PyJWTError as e:
+    except Exception as e:
         logger.error(e)
         raise e
 

@@ -231,20 +231,6 @@ python-versions = ">=3.6"
 numpy = ">=1.16.6"
 
 [[package]]
-name = "pyjwt"
-version = "2.4.0"
-description = "JSON Web Token implementation in Python"
-category = "main"
-optional = false
-python-versions = ">=3.6"
-
-[package.extras]
-crypto = ["cryptography (>=3.3.1)"]
-dev = ["sphinx", "sphinx-rtd-theme", "zope.interface", "cryptography (>=3.3.1)", "pytest (>=6.0.0,<7.0.0)", "coverage[toml] (==5.0.4)", "mypy", "pre-commit"]
-docs = ["sphinx", "sphinx-rtd-theme", "zope.interface"]
-tests = ["pytest (>=6.0.0,<7.0.0)", "coverage[toml] (==5.0.4)"]
-
-[[package]]
 name = "pyparsing"
 version = "3.0.9"
 description = "pyparsing module - Classes and methods to define and execute parsing grammars"
@@ -359,7 +345,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7.1"
-content-hash = "eecff275015f002e123d81343378de753ae80f33e2a3bd34ea2ad11dbbffeec3"
+content-hash = "282be1d6681fbcbe624d24eff5a4375ad05deeb80b86ac06e99dd5cfd8e71ee7"
 
 [metadata.files]
 atomicwrites = []
@@ -404,7 +390,6 @@ platformdirs = []
 pluggy = []
 py = []
 pyarrow = []
-pyjwt = []
 pyparsing = []
 pytest = []
 python-dateutil = [

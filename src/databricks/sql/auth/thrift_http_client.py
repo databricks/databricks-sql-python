@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
 
-    def __init__(self, authenticator, uri_or_host, port=None, path=None, cafile=None, cert_file=None, key_file=None, ssl_context=None):
+    def __init__(self, auth_provider, uri_or_host, port=None, path=None, cafile=None, cert_file=None, key_file=None, ssl_context=None):
         super().__init__(uri_or_host, port, path, cafile, cert_file, key_file, ssl_context)
-        self.__authenticator = authenticator
+        self.__auth_provider = auth_provider
 
     def setCustomHeaders(self, headers):
         self._headers = headers
@@ -40,8 +40,8 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
     def flush(self):
         # TODO retry behaviour
         # TODO locking for multiple concurrent refresh token
-        req = {}
-        self.__authenticator.add_auth_token(req)
-        self._headers['Authorization'] = req['Authorization']
+        headers = dict(self._headers)
+        self.__auth_provider.add_auth_token(headers)
+        self._headers = headers
         self.setCustomHeaders(self._headers)
         super().flush()
