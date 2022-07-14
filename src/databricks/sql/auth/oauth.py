@@ -23,7 +23,6 @@
 
 import base64
 import hashlib
-import json
 import os
 import webbrowser
 
@@ -77,10 +76,6 @@ REDIRECT_PORT = 8020
 UTC = UTCTimeZone()
 
 
-def get_client(client_id):
-    return oauthlib.oauth2.WebApplicationClient(client_id)
-
-
 def get_redirect_url(port=REDIRECT_PORT):
     return f"http://localhost:{port}"
 
@@ -103,8 +98,8 @@ def fetch_well_known_config(idp_url):
         logger.error(msg)
         raise RuntimeError(msg)
     try:
-        return json.loads(response.text)
-    except json.decoder.JSONDecodeError as e:
+        return response.json()
+    except requests.exceptions.JSONDecodeError as e:
         logger.error(f"Unable to decode OAuth configuration from {idp_url}.\n"
                      "Verify it is a valid workspace URL and that OAuth is "
                      "enabled on this account.")
@@ -210,15 +205,14 @@ def send_token_request(token_request_url, data):
         "Content-Type": "application/x-www-form-urlencoded"
     }
     response = requests.post(url=token_request_url, data=data, headers=headers)
-    oauth_response = json.loads(response.text)
-    return oauth_response
+    return response.json()
 
 
 def send_refresh_token_request(hostname, client_id, refresh_token):
     idp_url = get_idp_url(hostname)
     oauth_config = fetch_well_known_config(idp_url)
     token_request_url = oauth_config["token_endpoint"]
-    client = get_client(client_id=client_id)
+    client = oauthlib.oauth2.WebApplicationClient(client_id)
     token_request_body = client.prepare_refresh_body(
         refresh_token=refresh_token, client_id=client.client_id)
     return send_token_request(token_request_url, token_request_body)
@@ -269,7 +263,7 @@ def get_tokens(hostname, client_id, scope=None):
     auth_url = f"{hostname}oidc/v1/authorize"
     state = token_urlsafe(16)
     (verifier, challenge) = get_challenge()
-    client = get_client(client_id)
+    client = oauthlib.oauth2.WebApplicationClient(client_id)
     redirect_url = get_redirect_url()
     try:
         auth_response = get_authorization_code(
