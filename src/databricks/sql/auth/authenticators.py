@@ -28,7 +28,7 @@ import base64
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 class CredentialsProvider:
-    def add_auth_token(self, request_headers):
+    def add_headers(self, request_headers):
         pass
 
 
@@ -38,7 +38,7 @@ class AccessTokenAuthProvider(CredentialsProvider):
     def __init__(self, access_token):
         self.__authorization_header_value = "Bearer {}".format(access_token)
 
-    def add_auth_token(self, request_headers):
+    def add_headers(self, request_headers):
         request_headers['Authorization'] = self.__authorization_header_value
 
 
@@ -51,7 +51,7 @@ class BasicAuthProvider(CredentialsProvider):
 
         self.__authorization_header_value = "Basic {}".format(auth_credentials_base64)
 
-    def add_auth_token(self, request_headers):
+    def add_headers(self, request_headers):
         request_headers['Authorization'] = self.__authorization_header_value
 
 
@@ -69,7 +69,7 @@ class DatabricksOAuthProvider(CredentialsProvider):
         self._access_token = access_token
         self._refresh_token = refresh_token
 
-    def add_auth_token(self, request_headers):
+    def add_headers(self, request_headers):
         check_and_refresh_access_token(hostname=self._hostname,
                                        access_token=self._access_token,
                                        refresh_token=self._refresh_token)

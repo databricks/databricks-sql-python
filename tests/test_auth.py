@@ -33,7 +33,7 @@ class Auth(unittest.TestCase):
         auth = AccessTokenAuthProvider(access_token=access_token)
 
         http_request = {'myKey': 'myVal'}
-        auth.add_auth_token(http_request)
+        auth.add_headers(http_request)
         self.assertEqual(http_request['Authorization'], 'Bearer aBc2')
         self.assertEqual(len(http_request.keys()), 2)
         self.assertEqual(http_request['myKey'], 'myVal')
@@ -44,7 +44,7 @@ class Auth(unittest.TestCase):
         auth = BasicAuthProvider(username=username, password=password)
 
         http_request = {'myKey': 'myVal'}
-        auth.add_auth_token(http_request)
+        auth.add_headers(http_request)
 
         self.assertEqual(http_request['Authorization'], 'Basic bW9kZXJha2g6RWxldmF0ZSBEYXRhYnJpY2tzIDEyMyEhIQ==')
         self.assertEqual(len(http_request.keys()), 2)
@@ -54,7 +54,7 @@ class Auth(unittest.TestCase):
         auth = CredentialsProvider()
 
         http_request = {'myKey': 'myVal'}
-        auth.add_auth_token(http_request)
+        auth.add_headers(http_request)
 
         self.assertEqual(len(http_request.keys()), 1)
         self.assertEqual(http_request['myKey'], 'myVal')
@@ -66,7 +66,7 @@ class Auth(unittest.TestCase):
         self.assertTrue(type(auth_provider).__name__, "AccessTokenAuthProvider")
 
         headers = {}
-        auth_provider.add_auth_token(headers)
+        auth_provider.add_headers(headers)
         self.assertEqual(headers['Authorization'], 'Bearer dpi123')
 
     def test_get_python_sql_connector_auth_provider_username_password(self):
@@ -78,7 +78,7 @@ class Auth(unittest.TestCase):
         self.assertTrue(type(auth_provider).__name__, "BasicAuthProvider")
 
         headers = {}
-        auth_provider.add_auth_token(headers)
+        auth_provider.add_headers(headers)
         self.assertEqual(headers['Authorization'], 'Basic bW9kZXJha2g6RWxldmF0ZSBEYXRhYnJpY2tzIDEyMyEhIQ==')
 
     def test_get_python_sql_connector_auth_provider_noop(self):
