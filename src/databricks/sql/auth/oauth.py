@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 # This could use 'import secrets' in Python 3
 def token_urlsafe(nbytes=32):
     tok = os.urandom(nbytes)
-    return base64.urlsafe_b64encode(tok).rstrip(b'=').decode('ascii')
+    return base64.urlsafe_b64encode(tok).rstrip(b"=").decode("ascii")
 
 
 # This could be datetime.timezone.utc in Python 3
@@ -119,8 +119,8 @@ def get_idp_url(host):
 
 
 def get_challenge(verifier_string=token_urlsafe(32)):
-    digest = hashlib.sha256(verifier_string.encode('UTF-8')).digest()
-    challenge_string = base64.urlsafe_b64encode(digest).decode("UTF-8").replace('=', '')
+    digest = hashlib.sha256(verifier_string.encode("UTF-8")).digest()
+    challenge_string = base64.urlsafe_b64encode(digest).decode("UTF-8").replace("=", "")
     return verifier_string, challenge_string
 
 
@@ -221,7 +221,7 @@ def send_token_request(token_request_url, data):
 def send_refresh_token_request(hostname, client_id, refresh_token):
     idp_url = get_idp_url(hostname)
     oauth_config = fetch_well_known_config(idp_url)
-    token_request_url = oauth_config['token_endpoint']
+    token_request_url = oauth_config["token_endpoint"]
     client = get_client(client_id=client_id)
     token_request_body = client.prepare_refresh_body(
         refresh_token=refresh_token, client_id=client.client_id)
@@ -229,8 +229,8 @@ def send_refresh_token_request(hostname, client_id, refresh_token):
 
 
 def get_tokens_from_response(oauth_response):
-    access_token = oauth_response['access_token']
-    refresh_token = oauth_response['refresh_token'] if 'refresh_token' in oauth_response else None
+    access_token = oauth_response["access_token"]
+    refresh_token = oauth_response["refresh_token"] if "refresh_token" in oauth_response else None
     return access_token, refresh_token
 
 
@@ -244,7 +244,7 @@ def check_and_refresh_access_token(hostname, access_token, refresh_token):
         # This avoids having to fetch the public key from the issuer and perform
         # an unnecessary signature verification.
         decoded = jwt.decode(access_token, options={"verify_signature": False})
-        expiration_time = datetime.fromtimestamp(decoded['exp'], tz=UTC)
+        expiration_time = datetime.fromtimestamp(decoded["exp"], tz=UTC)
     except PyJWTError as e:
         logger.error(e)
         raise e
@@ -292,7 +292,7 @@ def get_tokens(hostname, client_id, scope=None):
         raise e
 
     token_request_url = oauth_config["token_endpoint"]
-    code = auth_response['code']
+    code = auth_response["code"]
     oauth_response = \
         send_auth_code_token_request(client, token_request_url, redirect_url, code, verifier)
     return get_tokens_from_response(oauth_response)
