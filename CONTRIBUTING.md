@@ -45,9 +45,9 @@ export access_token=""
 There are several e2e test suites available:
 - `PySQLCoreTestSuite`
 - `PySQLLargeQueriesSuite`
-- `PySQLRetryTestSuite.HTTP503Suite` **[disabled]**
-- `PySQLRetryTestSuite.HTTP429Suite` **[disabled]**
-- `PySQLUnityCatalogTestSuite` **[disabled]**
+- `PySQLRetryTestSuite.HTTP503Suite` **[not documented]**
+- `PySQLRetryTestSuite.HTTP429Suite` **[not documented]**
+- `PySQLUnityCatalogTestSuite` **[not documented]**
 
 To execute the core test suite:
 
@@ -55,13 +55,17 @@ To execute the core test suite:
 poetry run python -m pytest tests/e2e/driver_tests.py::PySQLCoreTestSuite
 ```
 
+The suites marked `[not documented]` require additional configuration of the local environment. A Databricks team member will 
 ### Code formatting
 
 This project uses [Black](https://pypi.org/project/black/).
 
 ```
-poetry run black src
+# Remove the --check flag write changes to files
+poetry run python3 -m black src --check
 ```
+
+To simplify reviews you can format your changes in a separate commit.
 ## Pull Request Process
 
 1. Update the [CHANGELOG.md](README.md) or similar documentation with details of changes you wish to make, if applicable.
