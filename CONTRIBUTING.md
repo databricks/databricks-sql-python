@@ -55,7 +55,7 @@ To execute the core test suite:
 poetry run python -m pytest tests/e2e/driver_tests.py::PySQLCoreTestSuite
 ```
 
-The suites marked `[not documented]` require additional configuration of the local environment. A Databricks team member will 
+The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 ### Code formatting
 
 This project uses [Black](https://pypi.org/project/black/).
