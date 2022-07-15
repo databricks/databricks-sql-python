@@ -61,9 +61,10 @@ The suites marked `[not documented]` require additional configuration which will
 This project uses [Black](https://pypi.org/project/black/).
 
 ```
-# Remove the --check flag write changes to files
 poetry run python3 -m black src --check
 ```
+
+Remove the `--check` flag to write reformatted files to disk.
 
 To simplify reviews you can format your changes in a separate commit.
 ## Pull Request Process
