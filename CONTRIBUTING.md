@@ -1,8 +1,8 @@
+# Contributing Guide
+
 We happily welcome contributions to the `databricks-sql-connector` package. We use [GitHub Issues](https://github.com/databricks/databricks-sql-python/issues) to track community reported issues and [GitHub Pull Requests](https://github.com/databricks/databricks-sql-python/pulls) for accepting changes.
 
 Contributions are licensed on a license-in/license-out basis.
-
-# Contributing Guide
 
 ## Communication
 Before starting work on a major feature, please reach out to us via GitHub, Slack, email, etc. We will make sure no one else is already working on it and ask you to open a GitHub issue.
