@@ -46,10 +46,10 @@ class AccessTokenAuthProvider(CredentialsProvider):
 # Please must not depend on it in your applications.
 class BasicAuthProvider(CredentialsProvider):
     def __init__(self, username, password):
-        auth_credentials = "{username}:{password}".format(username=username, password=password).encode("UTF-8")
+        auth_credentials = f"{username}:{password}".encode("UTF-8")
         auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
 
-        self.__authorization_header_value = "Basic {}".format(auth_credentials_base64)
+        self.__authorization_header_value = f"Basic {auth_credentials_base64}"
 
     def add_headers(self, request_headers):
         request_headers['Authorization'] = self.__authorization_header_value
@@ -73,11 +73,10 @@ class DatabricksOAuthProvider(CredentialsProvider):
         check_and_refresh_access_token(hostname=self._hostname,
                                        access_token=self._access_token,
                                        refresh_token=self._refresh_token)
-        request_headers['Authorization'] = "Bearer {}".format(self._access_token)
+        request_headers['Authorization'] = f"Bearer {self._access_token}"
 
     @staticmethod
     def _normalize_host_name(hostname):
         maybe_scheme = "https://" if not hostname.startswith("https://") else ""
         maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
-        return "{scheme}{host}{trailing}".format(
-            scheme=maybe_scheme, host=hostname, trailing=maybe_trailing_slash)
+        return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
