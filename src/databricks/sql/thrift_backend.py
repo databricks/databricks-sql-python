@@ -15,6 +15,9 @@ from thrift.Thrift import TException
 
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
+from databricks.sql.thrift_api.TCLIService.TCLIService import (
+    Client as TCLIServiceClient,
+)
 from databricks.sql.utils import (
     ArrowQueue,
     ExecuteResponse,
@@ -288,7 +291,10 @@ class ThriftBackend:
             """
 
             header_delay = extract_retry_delay(attempt)
-            if method.__name__ == "GetOperationStatus" and not header_delay:
+            if (
+                method.__name__ == TCLIServiceClient.GetOperationStatus.__name__
+                and not header_delay
+            ):
                 return make_bounded_delay(attempt, DEFAULT_RETRY_DELAY_AFTER)
 
             return header_delay
