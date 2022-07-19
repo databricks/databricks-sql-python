@@ -18,11 +18,11 @@ full:
 		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
 
 reflection:
-	$(PYTEST) $(SUITE_PATH)/test_query.py::ReflectionTest \
+	$(PYTEST) $(SUITE_PATH)/$(SUITE)::ReflectionTest \
 		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
 
 simple:
-	$(PYTEST) $(SUITE_PATH)/test_query.py::SimpleTest \
+	$(PYTEST) $(SUITE_PATH)/$(SUITE)::SimpleTest \
 		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
 
 # clean up after failed SimpleTest run  
