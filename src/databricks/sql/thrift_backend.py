@@ -15,6 +15,9 @@ from thrift.Thrift import TException
 
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
+from databricks.sql.thrift_api.TCLIService.TCLIService import (
+    Client as TCLIServiceClient,
+)
 from databricks.sql.utils import (
     ArrowQueue,
     ExecuteResponse,
@@ -39,6 +42,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
+    "_retry_delay_default": (float, 5, None, None)
 }
 
 
@@ -78,7 +82,8 @@ class ThriftBackend:
         #   (Note this will stop _before_ intentionally exceeding; thus if the
         #   next calculated pre-retry delay would go past
         #   _retry_stop_after_attempts_duration, stop now.)
-        #
+        #_retry_delay_default                   (default: 5)
+        #   used when Retry-After is not specified by the server
         # _retry_stop_after_attempts_count
         #  The maximum number of times we should retry retryable requests (defaults to 24)
         # _socket_timeout
@@ -260,18 +265,39 @@ class ThriftBackend:
         def get_elapsed():
             return time.time() - t0
 
+        def make_bounded_delay(attempt: int, delay: int):
+            """Bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]"""
+            delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
+            delay = min(delay, self._retry_delay_max)
+            return delay
+
         def extract_retry_delay(attempt):
-            # encapsulate retry checks, returns None || delay-in-secs
-            # Retry IFF 429/503 code + Retry-After header set
+            """Returns Retry-After header contents IFF 429/503 code + Retry-After header set"""
             http_code = getattr(self._transport, "code", None)
             retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
             if http_code in [429, 503] and retry_after:
-                # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
-                delay = int(retry_after)
-                delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
-                delay = min(delay, self._retry_delay_max)
-                return delay
+                return make_bounded_delay(attempt, int(retry_after))
             return None
+
+        def get_retry_delay(attempt):
+            """Encapsulate retry checks. Returns None || delay-in-secs
+
+            Retry if
+              - 429/503 code + Retry-After header set
+              - method is GetOperationStatus
+
+            Retry-After header is always used if present. If not present but method is GetOperationStatus
+            the retry policy default delay is used. This catches connection timeouts during GetOperationStatus.
+            """
+
+            header_delay = extract_retry_delay(attempt)
+            if (
+                method.__name__ == TCLIServiceClient.GetOperationStatus.__name__
+                and not header_delay
+            ):
+                return make_bounded_delay(attempt, self._retry_delay_default)
+
+            return header_delay
 
         def attempt_request(attempt):
             # splits out lockable attempt, from delay & retry loop
@@ -285,7 +311,7 @@ class ThriftBackend:
                 logger.debug("Received response: {}".format(response))
                 return response
             except Exception as error:
-                retry_delay = extract_retry_delay(attempt)
+                retry_delay = get_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
