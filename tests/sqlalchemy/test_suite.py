@@ -78,6 +78,7 @@ class ReflectionTest(fixtures.TablesTest, ComparesTables):
 
         self.assert_tables_equal(all_num_types, reflected_types)
 
+        # TODO: this drop_all isn't working
         meta.drop_all(connection)
 
 
@@ -120,6 +121,7 @@ class SimpleTest(fixtures.TablesTest, ComparesTables, AssertsExecutionResults):
             Column("f_boolean", BOOLEAN),
             test_needs_acid=False,
         )
+        # TODO: why is the cleanup of this table not happening?
 
     def test_select_type_byte(self, connection):
         simpletest_num = self.tables.simpletest_num

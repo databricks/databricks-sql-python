@@ -12,10 +12,10 @@ create:
 	$(DBSCLI) -e create-table.sql
 
 describe: 
-	$(DBSCLI) -e describe-table.sql
+	$(DBSCLI) -e "DESCRIBE george_chow_dbtest.sample_numtypes;"
 	
 select: 
-	$(DBSCLI) -e select-table.sql
+	$(DBSCLI) -e "SELECT * FROM george_chow_dbtest.sample_numtypes LIMIT 10;"
 	
 drop:
-	echo y | $(DBSCLI) -e drop-table.sql
+	echo y | $(DBSCLI) -e "DROP TABLE IF EXISTS george_chow_dbtest.sample_numtypes;"

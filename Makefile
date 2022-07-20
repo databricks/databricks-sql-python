@@ -25,11 +25,11 @@ simple:
 	$(PYTEST) $(SUITE_PATH)/$(SUITE)::SimpleTest \
 		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
 
-# clean up after failed SimpleTest run  
+# clean up after SimpleTest run  
 drop_simpletest:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS simpletest_num;"
 
-# TODO: if needs be
+# clean up after ReflectionTest run  
 drop_reflectiontest:
-	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS reflectiontest;"
+	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS reflectiontest_all_num_types;"
 
