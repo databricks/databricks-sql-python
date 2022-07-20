@@ -19,6 +19,7 @@ def retry_policy_factory():
         "_retry_delay_max":                     (float, 60, None, None),
         "_retry_stop_after_attempts_count":     (int, 30, None, None),
         "_retry_stop_after_attempts_duration":  (float, 900, None, None),
+        "_retry_delay_default":                 (float, 1, None, None)
     }
 
 
@@ -995,8 +996,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
             443,
             "path", [],
             _retry_stop_after_attempts_count=2,
-            _retry_delay_max=0,
-            _retry_delay_min=0)
+            _retry_delay_max=4,
+            _retry_delay_min=0,
+            _retry_delay_default=3)
 
         with self.assertRaises(RequestError) as cm:
             thrift_backend.make_request(client.GetOperationStatus, req)

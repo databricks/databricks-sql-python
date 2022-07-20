@@ -34,8 +34,6 @@ DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 
 TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
 
-DEFAULT_RETRY_DELAY_AFTER = 5
-
 # see Connection.__init__ for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
 # - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
@@ -44,6 +42,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
+    "_retry_delay_default": (float, 5, 1, 60)
 }
 
 
@@ -83,7 +82,8 @@ class ThriftBackend:
         #   (Note this will stop _before_ intentionally exceeding; thus if the
         #   next calculated pre-retry delay would go past
         #   _retry_stop_after_attempts_duration, stop now.)
-        #
+        #_retry_delay_default                   (default: 5)
+        #   used when Retry-After is not specified by the server
         # _retry_stop_after_attempts_count
         #  The maximum number of times we should retry retryable requests (defaults to 24)
         # _socket_timeout
@@ -287,7 +287,7 @@ class ThriftBackend:
               - method is GetOperationStatus
 
             Retry-After header is always used if present. If not present but method is GetOperationStatus
-            the DEFAULT_RETRY_DELAY_AFTER is used. This catches connection timeouts during GetOperationStatus.
+            the retry policy default delay is used. This catches connection timeouts during GetOperationStatus.
             """
 
             header_delay = extract_retry_delay(attempt)
@@ -295,7 +295,7 @@ class ThriftBackend:
                 method.__name__ == TCLIServiceClient.GetOperationStatus.__name__
                 and not header_delay
             ):
-                return make_bounded_delay(attempt, DEFAULT_RETRY_DELAY_AFTER)
+                return make_bounded_delay(attempt, self._retry_delay_default)
 
             return header_delay
 
