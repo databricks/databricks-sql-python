@@ -970,41 +970,43 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(mock_resp.operationHandle, mock_cursor.active_op_handle)
 
     @patch("thrift.transport.THttpClient.THttpClient")
+    @patch("databricks.sql.thrift_api.TCLIService.TCLIService.Client.GetOperationStatus")
     @patch("databricks.sql.thrift_backend._retry_policy", new_callable=retry_policy_factory)
     def test_make_request_will_retry_GetOperationStatus(
-            self, mock_retry_policy, t_transport_class):
+            self, mock_retry_policy, mock_GetOperationStatus, t_transport_class):
        
         import thrift
-        from databricks.sql.thrift_api.TCLIService import TCLIService
+        from databricks.sql.thrift_api.TCLIService.TCLIService import Client
         from databricks.sql.exc import RequestError
         from databricks.sql.utils import NoRetryReason
 
-        t_transport_instance = t_transport_class.return_value
-        t_transport_instance.code = 200
-        t_transport_instance.headers = {"foo": "bar"}
+        mock_GetOperationStatus.__name__ = "GetOperationStatus"
+        mock_GetOperationStatus.side_effect = Exception("Connection timed out!")
 
         protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(t_transport_class)
-        client = TCLIService.Client(protocol)
+        client = Client(protocol)
 
         req = ttypes.TGetOperationStatusReq(
             operationHandle=self.operation_handle,
             getProgressUpdate=False,
         )
         
+        EXPECTED_RETRIES = 2
+
         thrift_backend = ThriftBackend(
             "foobar",
             443,
             "path", [],
-            _retry_stop_after_attempts_count=2,
-            _retry_delay_max=4,
+            _retry_stop_after_attempts_count=EXPECTED_RETRIES,
+            _retry_delay_max=6,
             _retry_delay_min=0,
-            _retry_delay_default=3)
+            _retry_delay_default=0.1)
 
         with self.assertRaises(RequestError) as cm:
             thrift_backend.make_request(client.GetOperationStatus, req)
 
         self.assertEqual(NoRetryReason.OUT_OF_ATTEMPTS.value, cm.exception.context["no-retry-reason"])
-        self.assertEqual('2/2', cm.exception.context["attempt"])
+        self.assertEqual(f'{EXPECTED_RETRIES}/{EXPECTED_RETRIES}', cm.exception.context["attempt"])
     
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_make_request_wont_retry_if_headers_not_present(self, t_transport_class):
