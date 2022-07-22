@@ -1,5 +1,7 @@
 import datetime
+import os
 
+from sqlalchemy.dialects.mysql.types import TINYINT, DOUBLE # borrow MySQL's impls
 from sqlalchemy import BIGINT
 from sqlalchemy import BOOLEAN
 from sqlalchemy import DATE
@@ -52,8 +54,12 @@ from sqlalchemy.testing.schema import Table
 from sqlalchemy.testing.util import resolve_lambda
 
 
+# provide a way to break in
+debugbreakpoint = os.getenv("DATABRICKS_DIALECT_DEBUG") or False
+
 
 class ReflectionTest(fixtures.TablesTest, ComparesTables):
+
     def test_numtypes(self, metadata, connection):
         meta = metadata
 
@@ -61,10 +67,13 @@ class ReflectionTest(fixtures.TablesTest, ComparesTables):
         all_num_types = Table(
             "reflectiontest_all_num_types",
             meta,
+            # the types below represent dialect-specific implementations that handles serialization 
+            Column("f_byte", TINYINT),
             Column("f_short", SMALLINT),
             Column("f_int", INT),
             Column("f_long", BIGINT),
             Column("f_float", FLOAT),
+            Column("f_double", DOUBLE),
             Column("f_decimal", DECIMAL(9,3)),
             Column("f_boolean", BOOLEAN),
         )
@@ -83,20 +92,23 @@ class ReflectionTest(fixtures.TablesTest, ComparesTables):
 
 
     # TODO: not working yet
-    def off_test_strtypes(self, metadata, connection):
+    def test_strtypes(self, metadata, connection):
         meta = metadata
 
-        all_num_types = Table(
-            "all_str_types",
+        all_str_types = Table(
+            "reflectiontest_all_str_types",
             meta,
             Column("f_string", String),
+            Column("f_date", DATE),
+            Column("f_timestamp", TIMESTAMP),
+            # Column("f_interval", Interval),
         )
 
         meta.create_all(connection)
 
         meta2 = MetaData()
         reflected_types = Table(
-            "all_str_types", meta2, autoload_with=connection
+            "reflectiontest_all_str_types", meta2, autoload_with=connection
         )
 
         self.assert_tables_equal(all_str_types, reflected_types)
@@ -112,16 +124,27 @@ class SimpleTest(fixtures.TablesTest, ComparesTables, AssertsExecutionResults):
         Table(
             "simpletest_num",
             metadata,
-            Column("f_byte", INT),
+            Column("f_byte", TINYINT),
             Column("f_short", SMALLINT),
             Column("f_int", INT),
             Column("f_long", BIGINT),
             Column("f_float", FLOAT),
+            Column("f_double", DOUBLE),
             Column("f_decimal", DECIMAL),
             Column("f_boolean", BOOLEAN),
             test_needs_acid=False,
         )
-        # TODO: why is the cleanup of this table not happening?
+
+        Table(
+            "simpletest_str",
+            metadata,
+            Column("f_string", String),
+            Column("f_date", DATE),
+            Column("f_timestamp", TIMESTAMP),
+            test_needs_acid=False,
+        )
+
+        # TODO: why are the cleanup of these tables not happening?
 
     def test_select_type_byte(self, connection):
         simpletest_num = self.tables.simpletest_num
@@ -129,9 +152,33 @@ class SimpleTest(fixtures.TablesTest, ComparesTables, AssertsExecutionResults):
 
         connection.execute(stmt)
 
-    def test_select_type_inttype(self, connection):
+    def test_select_type_smallint(self, connection):
+        simpletest_num = self.tables.simpletest_num
+        stmt = select([simpletest_num.c.f_short])
+
+        connection.execute(stmt)
+
+    def test_select_type_int(self, connection):
         simpletest_num = self.tables.simpletest_num
         stmt = select([simpletest_num.c.f_int])
+
+        connection.execute(stmt)
+
+    def test_select_type_bigint(self, connection):
+        simpletest_num = self.tables.simpletest_num
+        stmt = select([simpletest_num.c.f_long])
+
+        connection.execute(stmt)
+
+    def test_select_type_float(self, connection):
+        simpletest_num = self.tables.simpletest_num
+        stmt = select([simpletest_num.c.f_float])
+
+        connection.execute(stmt)
+
+    def test_select_type_double(self, connection):
+        simpletest_num = self.tables.simpletest_num
+        stmt = select([simpletest_num.c.f_double])
 
         connection.execute(stmt)
 
@@ -139,5 +186,12 @@ class SimpleTest(fixtures.TablesTest, ComparesTables, AssertsExecutionResults):
     def test_select_star_with_limit(self, connection):
         simpletest_num = self.tables.simpletest_num
         stmt = select([simpletest_num.c.f_byte]).limit(10)
+
+        connection.execute(stmt)
+
+
+    def test_select_type_string(self, connection):
+        t = self.tables.simpletest_str
+        stmt = select([t.c.f_string]).limit(10)
 
         connection.execute(stmt)

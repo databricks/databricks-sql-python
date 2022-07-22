@@ -1,4 +1,4 @@
-# sample-app-reflection
+# sample-app-reflection.py
 #
 # Program to demonstrate use of reflection instead of explicit declaration
 #
