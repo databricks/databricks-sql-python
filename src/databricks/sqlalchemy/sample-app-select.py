@@ -18,16 +18,19 @@ http_path       = os.getenv("DATABRICKS_HTTP_PATH")
 access_token    = os.getenv("DATABRICKS_TOKEN")
 default_schema  = os.getenv("DATABRICKS_SCHEMA")
 
+# provide a way to break in
+debugbreakpoint = os.getenv("DATABRICKS_DIALECT_DEBUG") or False
+
 # use echo=True for verbose log
 engine = create_engine(f"databricks+thrift://token:{access_token}@{server_hostname}/{default_schema}?http_path={http_path}", echo=False, future=True)
 
 metadata_obj = MetaData()
 
 # NB: sample_numtypes is a pre-created/populated table 
-t1 = "sample_numtypes"
+numtypes = "sample_numtypes"
 
-numtypes = Table(
-    t1,
+t1 = Table(
+    numtypes,
     metadata_obj,
     Column('f_byte', TINYINT),
     Column('f_short', SMALLINT),
@@ -40,10 +43,10 @@ numtypes = Table(
 )
 
 # SELECT * FROM t WHERE f_byte = -125
-stmt = select(numtypes).where(numtypes.c.f_byte == -125)
+stmt = select(t1).where(t1.c.f_byte == -125)
 print(f"Attempting to execute: {stmt}\n")
 
-print(f"Rows from table {t1}")
+print(f"Rows from table {numtypes}")
 
 with engine.connect() as conn:
     for row in conn.execute(stmt):
@@ -51,19 +54,23 @@ with engine.connect() as conn:
 
 
 # NB: sample_strtypes is a pre-created/populated table 
-t2 = "sample_strtypes"
+strtypes = "sample_strtypes"
 
 with engine.connect() as conn:
-    strtypes = Table(
-        t2,
+    t2 = Table(
+        strtypes,
         metadata_obj,
         autoload_with=conn
     )
 
     # SELECT * FROM t
-    stmt = select(strtypes)
+    stmt = select(t2)
     print(f"Attempting to execute: {stmt}\n")
 
-    print(f"Rows from table {t2}")
+    print(f"Rows from table {strtypes}")
+    if debugbreakpoint:
+        breakpoint()        
     for row in conn.execute(stmt):
+        if debugbreakpoint:
+            breakpoint()        
         print(row)

@@ -1,9 +1,22 @@
+#
+# Clearinghouse for initiating adhoc PyTest runs to test the Databricks SQLAlchemy dialect
+#
+# NB: At present, the database fixtures aren't being cleaned up after each run.
+#     Use the clean pseudo-targets to remove these after your run.
+#
+# NB2: the target system (the parameter to --dburi) is specified via environment variables.
+#     See env.template.
+
+
 DBSCLI=dbsqlcli 
 PYTEST=poetry run python3 -m pytest 
 
 SUITE_PATH=tests/sqlalchemy
 
 SUITE=test_suite.py
+
+.PHONY=all clean showtables full reflection simple str num drop_simpletest drop_reflectiontest
+
 
 all: full
 

@@ -32,14 +32,18 @@ CREATE TABLE sample_strtypes
  (
 	f_string     STRING,
 	f_date       DATE,
-	f_timestamp  TIMESTAMP,
-	f_interval   INTERVAL DAY TO SECOND
+	f_timestamp  TIMESTAMP
  );
+	-- f_interval   INTERVAL DAY TO SECOND
 
 INSERT INTO sample_strtypes VALUES
- ( 'Everest', '1953-05-29', '1953-05-29T11:30', '3 0:0:0' ),
- ( 'Mariana Trench', '1960-01-23', '1960-01-23T13:06', '0 5:00:00' ),
- ( 'Moon landing', '1969-07-20', '1969-07-20T20:17', '0 21:36:0' );
+ ( 'Everest', '1953-05-29', '1953-05-29T11:30' ),
+ ( 'Mariana Trench', '1960-01-23', '1960-01-23T13:06' ),
+ ( 'Moon landing', '1969-07-20', '1969-07-20T20:17' );
+
+--  ( 'Everest', '1953-05-29', '1953-05-29T11:30', '3 0:0:0' ),
+--  ( 'Mariana Trench', '1960-01-23', '1960-01-23T13:06', '0 5:00:00' ),
+--  ( 'Moon landing', '1969-07-20', '1969-07-20T20:17', '0 21:36:0' );
 
 SELECT * FROM sample_strtypes;
 

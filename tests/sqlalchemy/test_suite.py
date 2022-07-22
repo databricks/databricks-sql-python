@@ -1,7 +1,9 @@
 import datetime
 import os
 
+# TODO: fold them into our package 
 from sqlalchemy.dialects.mysql.types import TINYINT, DOUBLE # borrow MySQL's impls
+
 from sqlalchemy import BIGINT
 from sqlalchemy import BOOLEAN
 from sqlalchemy import DATE
@@ -146,52 +148,61 @@ class SimpleTest(fixtures.TablesTest, ComparesTables, AssertsExecutionResults):
 
         # TODO: why are the cleanup of these tables not happening?
 
+    # simpletest_num
+
     def test_select_type_byte(self, connection):
-        simpletest_num = self.tables.simpletest_num
-        stmt = select([simpletest_num.c.f_byte])
+        t = self.tables.simpletest_num
+        stmt = select([t.c.f_byte])
 
         connection.execute(stmt)
 
     def test_select_type_smallint(self, connection):
-        simpletest_num = self.tables.simpletest_num
-        stmt = select([simpletest_num.c.f_short])
+        t = self.tables.simpletest_num
+        stmt = select([t.c.f_short])
 
         connection.execute(stmt)
 
     def test_select_type_int(self, connection):
-        simpletest_num = self.tables.simpletest_num
-        stmt = select([simpletest_num.c.f_int])
+        t = self.tables.simpletest_num
+        stmt = select([t.c.f_int])
 
         connection.execute(stmt)
 
     def test_select_type_bigint(self, connection):
-        simpletest_num = self.tables.simpletest_num
-        stmt = select([simpletest_num.c.f_long])
+        t = self.tables.simpletest_num
+        stmt = select([t.c.f_long])
 
         connection.execute(stmt)
 
     def test_select_type_float(self, connection):
-        simpletest_num = self.tables.simpletest_num
-        stmt = select([simpletest_num.c.f_float])
+        t = self.tables.simpletest_num
+        stmt = select([t.c.f_float])
 
         connection.execute(stmt)
 
     def test_select_type_double(self, connection):
-        simpletest_num = self.tables.simpletest_num
-        stmt = select([simpletest_num.c.f_double])
+        t = self.tables.simpletest_num
+        stmt = select([t.c.f_double])
 
         connection.execute(stmt)
 
 
-    def test_select_star_with_limit(self, connection):
-        simpletest_num = self.tables.simpletest_num
-        stmt = select([simpletest_num.c.f_byte]).limit(10)
-
-        connection.execute(stmt)
-
+    # simpletest_str
 
     def test_select_type_string(self, connection):
         t = self.tables.simpletest_str
         stmt = select([t.c.f_string]).limit(10)
+
+        connection.execute(stmt)
+
+    def test_select_type_date(self, connection):
+        t = self.tables.simpletest_str
+        stmt = select([t.c.f_date]).limit(10)
+
+        connection.execute(stmt)
+
+    def test_select_type_timestamp(self, connection):
+        t = self.tables.simpletest_str
+        stmt = select([t.c.f_timestamp]).limit(10)
 
         connection.execute(stmt)

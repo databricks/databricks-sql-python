@@ -3,16 +3,13 @@ import os
 from databricks import sql
 from databricks import sql as dbsql
 
-# cribbing from Hive
-from pyhive.sqlalchemy_hive import HiveExecutionContext, HiveIdentifierPreparer, HiveCompiler, HiveTypeCompiler
-from pyhive.sqlalchemy_hive import HiveDate, HiveTimestamp
-
 import re
 
 from sqlalchemy import types
 
+# we leverage MySQL's implementation of TINYINT and DOUBLE
 from sqlalchemy.types import Integer, BigInteger, SmallInteger, Float, DECIMAL, Boolean;
-from sqlalchemy.types import String;
+from sqlalchemy.types import String, DATE, TIMESTAMP;
 
 from sqlalchemy import util
 from sqlalchemy import exc
@@ -23,8 +20,73 @@ from sqlalchemy.sql import compiler
 from typing import AnyStr
 
 
-# provide a way to break in
+# provide a way to debug 
 debugbreakpoint = os.getenv("DATABRICKS_DIALECT_DEBUG") or False
+
+
+# styled after HiveStringTypeBase; removed process_bind_param(self, value, dialect)
+class DatabricksStringTypeBase(types.TypeDecorator):
+    impl = types.String
+
+# styled after HiveDate
+class DatabricksDate(DatabricksStringTypeBase):
+    """Translates date strings to date objects"""
+    impl = types.DATE
+
+    def process_result_value(self, value, dialect):
+        if debugbreakpoint:
+            breakpoint()
+        return processors.str_to_date(value)
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if debugbreakpoint:
+                breakpoint()
+
+            if isinstance(value, datetime.datetime):
+                return value.date()
+            elif isinstance(value, datetime.date):
+                return value
+            elif value is not None:
+                return parse(value).date()
+            else:
+                return None
+
+        return process
+
+    def adapt(self, impltype, **kwargs):
+        if debugbreakpoint:
+            breakpoint()
+        return self.impl
+
+# styled after HiveeTimestamp
+class DatabricksTimestamp(DatabricksStringTypeBase):
+    """Translates timestamp strings to datetime objects"""
+    impl = types.TIMESTAMP
+
+    def process_result_value(self, value, dialect):
+        if debugbreakpoint:
+            breakpoint()
+        return processors.str_to_datetime(value)
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if debugbreakpoint:
+                breakpoint()
+
+            if isinstance(value, datetime.datetime):
+                return value
+            elif value is not None:
+                return parse(value)
+            else:
+                return None
+
+        return process
+
+    def adapt(self, impltype, **kwargs):
+        if debugbreakpoint:
+            breakpoint()
+        return self.impl
 
 
 class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
@@ -49,10 +111,12 @@ class DatabricksExecutionContext(default.DefaultExecutionContext):
     pass
 
 
+#
+# this class provides visitors that emit the dialect-specific keywords for SQLAlchemy's SQL AST
+#
 class DatabricksTypeCompiler(compiler.GenericTypeCompiler):
     # ref: https://spark.apache.org/docs/latest/sql-ref-datatypes.html
 
-    # TODO: we are leveraging MySQL's impl
     def visit_TINYINT(self, type_):
         return 'TINYINT'
 
@@ -65,11 +129,9 @@ class DatabricksTypeCompiler(compiler.GenericTypeCompiler):
     def visit_BIGINT(self, type_, **kw):
         return "BIGINT"
 
-
     def visit_FLOAT(self, type_, **kw):
         return "FLOAT"
 
-    # TODO: we are leveraging MySQL's impl
     def visit_DOUBLE(self, type_, **kw):
         return "DOUBLE"
 
@@ -90,10 +152,6 @@ class DatabricksTypeCompiler(compiler.GenericTypeCompiler):
     def visit_TIMESTAMP(self, type_, **kw):
         return "TIMESTAMP"
 
-    def visit_DATETIME(self, type_, **kw):
-        # TODO: incomplete?
-        return "INTERVAL"
-
     def visit_BOOLEAN(self, type_, **kw):
         return "BOOLEAN"
 
@@ -111,42 +169,43 @@ class DatabricksCompiler(compiler.SQLCompiler):
 
 
 
-# This lookup table is by DATA_TYPE and is rather nice since Decimal can be detected directly.
-# However, as DATA_TYPE is rather obtuse... and potentially risky going forward, we switched to use COLUMN_TYPE_NAME instead (the table below)
+# The following lookup table is by DATA_TYPE and is rather nice since Decimal can be detected directly.
+# However, as DATA_TYPE is rather obtuse...  going forward, we switched to use COLUMN_TYPE_NAME instead (the table below)
 # _type_map = {
-#     -6: types.Integer,     # tiny_int
-#     5: types.Integer,      # small_int
-#     4: types.Integer,      # int
-#     -5: types.BigInteger,  # big_int
+#     -6: types.Integer,        # tiny_int
+#     5: types.Integer,         # small_int
+#     4: types.Integer,         # int
+#     -5: types.BigInteger,     # big_int
 #     6: types.Float, 
 #     3: types.DECIMAL,  
 #     16: types.Boolean,
 #     12: types.String,
-#     91: HiveDate,          # date
-#     93: HiveTimestamp,     # timestamp
-#     # TODO: interval
+#     91: DatabricksDate,       # date
+#     93: DatabricksTimestamp,  # timestamp
+#     1111: interval
 # }
 
 
 # This lookup is by TYPE_NAME which is easier to maintain and likely safer in the long term. 
-# NB: Decimal is explicitly excluded here as an occurence's TYPE_NAME includes its precision and scale
+# NB: Decimal is explicitly excluded here as each occurence's TYPE_NAME includes the occurence's precision and scale
 #     See/refer to COLUMN_TYPE_DECIMAL below.
 
+# this map SQL types onto Python representation; note the deliberate omission of Decimal!
 _type_map = {
-    'TINYINT': types.Integer,    # tiny_int
-    'SMALLINT': types.Integer,   # small_int
-    'INT': types.Integer,        # int
-    'BIGINT': types.BigInteger,  # big_int
+    'TINYINT': types.Integer,                  # tiny_int
+    'SMALLINT': types.Integer,                 # small_int
+    'INT': types.Integer,                      # int
+    'BIGINT': types.BigInteger,                # big_int
     'FLOAT': types.Float, 
-    'DOUBLE': types.Float,       # double fits into a Python float
+    'DOUBLE': types.Float,                     # double fits into a Python float
     'BOOLEAN': types.Boolean,
     'STRING': types.String,
-    'DATE': HiveDate,            # date
-    'TIMESTAMP': HiveTimestamp,  # timestamp
-    # TODO: interval
+    'DATE': types.DATE,                        # date
+    'TIMESTAMP': types.TIMESTAMP,              # timestamp
 }
 # this is used to match decimal's DATA_TYPE; it will map to types.DECIMAL
 COLUMN_TYPE_DECIMAL=3
+# COLUMN_TYPE_INTERVAL=1111
 
 
 class DatabricksDialect(default.DefaultDialect):
@@ -193,9 +252,7 @@ class DatabricksDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    # def initialize(self, connection) -> None:
-    #     super().initialize(connection)
-
+    # TODO: uninvoked code to date
     def get_schema_names(self, connection, **kwargs):
         # conn = dbsql.connect(
         #     server_hostname=kwargs['server_hostname'],
@@ -225,7 +282,6 @@ class DatabricksDialect(default.DefaultDialect):
 
         return _tables
 
-
     def get_columns(self, connection, table_name, schema=None, **kwargs):
         # Example row
         # Row(TABLE_CAT='hive_metastore', TABLE_SCHEM='george_chow_dbtest', TABLE_NAME='all_types', COLUMN_NAME='f_byte', DATA_TYPE=4, 
@@ -234,8 +290,8 @@ class DatabricksDialect(default.DefaultDialect):
         #       CHAR_OCTET_LENGTH=None, ORDINAL_POSITION=0, IS_NULLABLE='YES', SCOPE_CATALOG=None, SCOPE_SCHEMA=None, 
         #       SCOPE_TABLE=None, SOURCE_DATA_TYPE=None, IS_AUTO_INCREMENT='NO')
         COLUMN_NAME=3
-        COLUMN_TYPE_NAME=5 
         COLUMN_TYPE=4 
+        COLUMN_TYPE_NAME=5 
         COLUMN_NULLABLE=17
         COLUMN_COMMENT=11
         COLUMN_AUTOINCREMENT=22
@@ -250,29 +306,26 @@ class DatabricksDialect(default.DefaultDialect):
                 # if debugbreakpoint:
                 #     breakpoint()
 
-                # filled-in according to interfaces.py's class ReflectedColumn(TypedDict):
                 try:
                     if (i[COLUMN_TYPE] != COLUMN_TYPE_DECIMAL):
                         coltype = _type_map[i[COLUMN_TYPE_NAME]]
                     else:
-                        # special processing needed as DECIMAL's COLUMN_TYPE includes the precision/scale of this occurrence
-                        coltype = types.DECIMAL;
-
-                    # coltype = _type_map[i[COLUMN_TYPE]]
+                        coltype = types.DECIMAL
                 except KeyError:
                     util.warn(f"Did not recognize type '{i[COLUMN_TYPE_NAME]}'({i[COLUMN_TYPE]}) of column '{i[COLUMN_NAME]}'")
                     coltype = types.NullType
 
                 try:
-                    nullable = i[COLUMN_NULLABLE] == 'YES';
+                    nullable = i[COLUMN_NULLABLE] == 'YES'
                 except KeyError:
                     nullable = True;
 
                 try:
-                    autoincrement = i[COLUMN_AUTOINCREMENT] == 'YES';
+                    autoincrement = i[COLUMN_AUTOINCREMENT] == 'YES'
                 except KeyError:
-                    autoincrement = False;
+                    autoincrement = False
 
+                # filled-in according to interfaces.py's class ReflectedColumn(TypedDict):
                 result.append({
                     'name': i[COLUMN_NAME],
                     'type': coltype,
@@ -284,10 +337,6 @@ class DatabricksDialect(default.DefaultDialect):
         return result
 
     
-    def get_view_names(self, connection, schema=None, **kwargs):
-        # no views at present
-        return []
-
     def has_table(
         self,
         connection,
@@ -306,6 +355,10 @@ class DatabricksDialect(default.DefaultDialect):
         except exc.NoSuchTableError:
             return False
 
+    def get_view_names(self, connection, schema=None, **kwargs):
+        # Spark has no views
+        return []
+
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
         # Spark has no foreign keys
         return []
@@ -315,9 +368,9 @@ class DatabricksDialect(default.DefaultDialect):
         return []
 
     def get_indexes(self, connection, table_name, schema=None, **kwargs):
-        # TODO: treat partitions as indices
+        # TODO: expose partition columns as indices?
         return []
 
     def do_rollback(self, dbapi_connection) -> None:
-        # Spark/Delta transaction only covers single-table updates... to simplify things, just skip this for now.
+        # Spark/Delta transaction only support single-table updates... to simplify things, just skip this for now.
         pass

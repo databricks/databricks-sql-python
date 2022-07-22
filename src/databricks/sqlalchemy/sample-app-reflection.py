@@ -24,12 +24,12 @@ with create_engine(f"databricks+thrift://token:{access_token}@{server_hostname}/
     tableName = "sample_numtypes"
 
     # use reflection here to discover the schema dynamically
-    numtypes = Table(
+    t = Table(
         "sample_numtypes", metadata_obj, autoload_with=conn
     )
 
     # SELECT * FROM t WHERE f_byte = -125
-    stmt = select(numtypes).where(numtypes.c.f_byte == -125)
+    stmt = select(t).where(t.c.f_byte == -125)
     print(f"Attempting to execute: {stmt}\n")
 
     print(f"Rows from table {tableName}")

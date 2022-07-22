@@ -1,5 +1,19 @@
+#
+# Temporary(?) home for sample apps to guide development of the Databricks SQLAlchemy dialect
+#
+# NB: This really ought to be using the standard Golden tables. For the while, there are a number
+#     of pre-defined tables that is created. 
+#
+# NB2: the target system is specified via environment variables. The sample apps looks this up at run-time.
+#     See env.template.
+# 
+
 DBSCLI=dbsqlcli
 PY=poetry run python3
+
+.PHONY=sample1 sample2 sample3 clean \
+	create create-reseq create-extra create-db drop-db \
+	showtables describe select drop
 
 sample1: 
 	$(PY) sample-app-select.py
@@ -7,11 +21,13 @@ sample1:
 sample2:
 	$(PY) sample-app-reflection.py
 
+sample3:
+	$(PY) sample-app-insert.py
+
 clean: drop
 
-# caution: create table in the correct schema!
+# caution: create your table in the correct schema!
 create: 
-	# $(DBSCLI) -e create-table-sa.sql
 	$(DBSCLI) -e create-table.sql
 
 create-reseq: 
