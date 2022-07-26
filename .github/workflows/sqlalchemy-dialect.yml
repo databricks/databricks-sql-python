@@ -4,6 +4,7 @@ on:
     paths:
       - src/databricks/sqlalchemy
       - tests/sqlalchemy
+      - .github/workflows/sqlalchemy-dialect.yml
 jobs:
   run-tests:
     runs-on: ubuntu-latest
