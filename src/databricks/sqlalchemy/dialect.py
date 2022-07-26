@@ -34,15 +34,10 @@ class DatabricksDate(DatabricksStringTypeBase):
     impl = types.DATE
 
     def process_result_value(self, value, dialect):
-        if debugbreakpoint:
-            breakpoint()
         return processors.str_to_date(value)
 
     def result_processor(self, dialect, coltype):
         def process(value):
-            if debugbreakpoint:
-                breakpoint()
-
             if isinstance(value, datetime.datetime):
                 return value.date()
             elif isinstance(value, datetime.date):
@@ -55,8 +50,6 @@ class DatabricksDate(DatabricksStringTypeBase):
         return process
 
     def adapt(self, impltype, **kwargs):
-        if debugbreakpoint:
-            breakpoint()
         return self.impl
 
 # styled after HiveeTimestamp
@@ -65,15 +58,10 @@ class DatabricksTimestamp(DatabricksStringTypeBase):
     impl = types.TIMESTAMP
 
     def process_result_value(self, value, dialect):
-        if debugbreakpoint:
-            breakpoint()
         return processors.str_to_datetime(value)
 
     def result_processor(self, dialect, coltype):
         def process(value):
-            if debugbreakpoint:
-                breakpoint()
-
             if isinstance(value, datetime.datetime):
                 return value
             elif value is not None:
@@ -84,8 +72,6 @@ class DatabricksTimestamp(DatabricksStringTypeBase):
         return process
 
     def adapt(self, impltype, **kwargs):
-        if debugbreakpoint:
-            breakpoint()
         return self.impl
 
 
@@ -101,6 +87,31 @@ class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
             initial_quote='`',
         )
 
+    @util.preload_module("sqlalchemy.sql.naming")
+    def format_constraint(self, constraint, _alembic_quote=True):
+        if debugbreakpoint:
+            breakpoint()
+
+        naming = util.preloaded.sql_naming
+
+        if constraint.name is elements._NONE_NAME:
+            name = naming._constraint_name_for_table(
+                constraint, constraint.table
+            )
+
+            if name is None:
+                return None
+        else:
+            name = constraint.name
+
+        if constraint.__visit_name__ == "index":
+            return self.truncate_and_render_index_name(
+                name, _alembic_quote=_alembic_quote
+            )
+        else:
+            return self.truncate_and_render_constraint_name(
+                name, _alembic_quote=_alembic_quote
+            )
 
 class DatabricksExecutionContext(default.DefaultExecutionContext):
     # There doesn't seem to be any override of DefaultExecutionContext required
@@ -146,8 +157,22 @@ class DatabricksTypeCompiler(compiler.GenericTypeCompiler):
                 "scale": type_.scale,
             }
 
+    def visit_NUMERIC(self, type_, **kw):
+        if type_.precision is None:
+            return "DECIMAL"
+        elif type_.scale is None:
+            return "DECIMAL(%(precision)s)" % {"precision": type_.precision}
+        else:
+            return "DECIMAL(%(precision)s, %(scale)s)" % {
+                "precision": type_.precision,
+                "scale": type_.scale,
+            }
+
     def visit_DATE(self, type_, **kw):
         return "DATE"
+
+    def visit_DATETIME(self, type_, **kw):
+        return "TIMESTAMP"
 
     def visit_TIMESTAMP(self, type_, **kw):
         return "TIMESTAMP"
@@ -164,9 +189,25 @@ class DatabricksTypeCompiler(compiler.GenericTypeCompiler):
 
 
 class DatabricksCompiler(compiler.SQLCompiler):
-    # stub
     pass
 
+
+class DatabricksDDLCompiler(compiler.DDLCompiler):
+
+    # Spark has no primary key support so ignore whatever constraint there is
+    def visit_primary_key_constraint(self, constraint, **kw):
+        return ""
+
+    def visit_foreign_key_constraint(self, constraint, **kw):
+        return ""
+
+    # stripped down from DDLCompiler::get_column_specification
+    # def get_column_specification(self, column, **kwargs):
+    #     colspec = (
+    #         self.preparer.format_column(column)
+    #         + " "
+    #         )
+    #     return colspec
 
 
 # The following lookup table is by DATA_TYPE and is rather nice since Decimal can be detected directly.
@@ -217,6 +258,7 @@ class DatabricksDialect(default.DefaultDialect):
     preparer = DatabricksIdentifierPreparer
     execution_ctx_cls = DatabricksExecutionContext
     statement_compiler = DatabricksCompiler
+    ddl_compiler = DatabricksDDLCompiler
     type_compiler = DatabricksTypeCompiler
 
     # the following attributes are cribbed from HiveDialect:
