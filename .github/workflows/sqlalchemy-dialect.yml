@@ -10,15 +10,6 @@ jobs:
     steps:
       
       #----------------------------------------------
-      #       import secrets from the Github env
-      #----------------------------------------------
-      env:
-        DATABRICKS_SERVER_HOSTNAME: ${{ secrets.ENVSEC_DATABRICKS_SERVER_HOSTNAME }}
-        DATABRICKS_HTTP_PATH: ${{ secrets.ENVSEC_DATABRICKS_HTTP_PATH }}
-        DATABRICKS_TOKEN: ${{ secrets.ENVSEC_DATABRICKS_TOKEN }}
-        DATABRICKS_SCHEMA: ${{ secrets.ENVSEC_DATABRICKS_SCHEMA }}
-
-      #----------------------------------------------
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
@@ -62,6 +53,15 @@ jobs:
       #              run test suite
       #----------------------------------------------
       - name: Run tests
+        #----------------------------------------------
+        #       import secrets from the Github env
+        #----------------------------------------------
+        env:
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.ENVSEC_DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.ENVSEC_DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.ENVSEC_DATABRICKS_TOKEN }}
+          DATABRICKS_SCHEMA: ${{ secrets.ENVSEC_DATABRICKS_SCHEMA }}
+
         run: poetry run pytest tests/sqlalchemy/test_full_sa.py::IntegerTest --dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
 
   # check-linting:
