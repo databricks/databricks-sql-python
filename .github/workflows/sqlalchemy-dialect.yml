@@ -1,0 +1,163 @@
+name: SQLAlchemy dialect test
+on: 
+  push:
+    paths:
+      - src/databricks/sqlalchemy
+      - tests/sqlalchemy
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      
+      #----------------------------------------------
+      #       import secrets from the Github env
+      #----------------------------------------------
+      env:
+        DATABRICKS_SERVER_HOSTNAME: ${{ secrets.ENVSEC_DATABRICKS_SERVER_HOSTNAME }}
+        DATABRICKS_HTTP_PATH: ${{ secrets.ENVSEC_DATABRICKS_HTTP_PATH }}
+        DATABRICKS_TOKEN: ${{ secrets.ENVSEC_DATABRICKS_TOKEN }}
+        DATABRICKS_SCHEMA: ${{ secrets.ENVSEC_DATABRICKS_SCHEMA }}
+
+      #----------------------------------------------
+      #       check-out repo and set-up python
+      #----------------------------------------------
+      - name: Check out repository
+        uses: actions/checkout@v2
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+      #----------------------------------------------
+      #  -----  install & configure poetry  -----
+      #----------------------------------------------
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      #----------------------------------------------
+      #       load cached venv if cache exists
+      #----------------------------------------------
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v2
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+      #----------------------------------------------
+      # install dependencies if cache does not exist
+      #----------------------------------------------
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+      #----------------------------------------------
+      # install your root project, if required
+      #----------------------------------------------
+      - name: Install library
+        run: poetry install --no-interaction
+      #----------------------------------------------
+      #              run test suite
+      #----------------------------------------------
+      - name: Run tests
+        run: poetry run pytest tests/sqlalchemy/test_full_sa.py::IntegerTest --dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
+
+  # check-linting:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     #----------------------------------------------
+  #     #       check-out repo and set-up python
+  #     #----------------------------------------------
+  #     - name: Check out repository
+  #       uses: actions/checkout@v2
+  #     - name: Set up python
+  #       id: setup-python
+  #       uses: actions/setup-python@v2
+  #       with:
+  #         python-version: 3.7
+  #     #----------------------------------------------
+  #     #  -----  install & configure poetry  -----
+  #     #----------------------------------------------
+  #     - name: Install Poetry
+  #       uses: snok/install-poetry@v1
+  #       with:
+  #         virtualenvs-create: true
+  #         virtualenvs-in-project: true
+  #         installer-parallel: true
+
+  #     #----------------------------------------------
+  #     #       load cached venv if cache exists
+  #     #----------------------------------------------
+  #     - name: Load cached venv
+  #       id: cached-poetry-dependencies
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: .venv
+  #         key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+  #     #----------------------------------------------
+  #     # install dependencies if cache does not exist
+  #     #----------------------------------------------
+  #     - name: Install dependencies
+  #       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+  #       run: poetry install --no-interaction --no-root
+  #     #----------------------------------------------
+  #     # install your root project, if required
+  #     #----------------------------------------------
+  #     - name: Install library
+  #       run: poetry install --no-interaction
+  #     #----------------------------------------------
+  #     #              black the code
+  #     #----------------------------------------------
+  #     - name: Black
+  #       run: poetry run black --check src
+
+  # check-types:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     #----------------------------------------------
+  #     #       check-out repo and set-up python
+  #     #----------------------------------------------
+  #     - name: Check out repository
+  #       uses: actions/checkout@v2
+  #     - name: Set up python
+  #       id: setup-python
+  #       uses: actions/setup-python@v2
+  #       with:
+  #         python-version: 3.7
+  #     #----------------------------------------------
+  #     #  -----  install & configure poetry  -----
+  #     #----------------------------------------------
+  #     - name: Install Poetry
+  #       uses: snok/install-poetry@v1
+  #       with:
+  #         virtualenvs-create: true
+  #         virtualenvs-in-project: true
+  #         installer-parallel: true
+
+  #     #----------------------------------------------
+  #     #       load cached venv if cache exists
+  #     #----------------------------------------------
+  #     - name: Load cached venv
+  #       id: cached-poetry-dependencies
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: .venv
+  #         key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+  #     #----------------------------------------------
+  #     # install dependencies if cache does not exist
+  #     #----------------------------------------------
+  #     - name: Install dependencies
+  #       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+  #       run: poetry install --no-interaction --no-root
+  #     #----------------------------------------------
+  #     # install your root project, if required
+  #     #----------------------------------------------
+  #     - name: Install library
+  #       run: poetry install --no-interaction
+  #     #----------------------------------------------
+  #     #              black the code
+  #     #----------------------------------------------
+  #     - name: Mypy
+  #       run: poetry run mypy src
