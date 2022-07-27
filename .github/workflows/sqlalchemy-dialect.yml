@@ -73,9 +73,9 @@ jobs:
           DATABRICKS_SCHEMA: ${{ secrets.REPOSEC_DATABRICKS_SCHEMA }}
 
         run: |
-          echo y | dbsqlcli --hostname $DATABRICKS_SERVER_HOSTNAME --http-path $DATABRICKS_HTTP_PATH --access-token $DATABRICKS_TOKEN -e "USE $DATABRICKS_SCHEMA; DROP TABLE IF EXISTS t; DROP TABLE IF EXISTS tabletest; DROP TABLE IF EXISTS integer_test;"
+          echo y | dbsqlcli --hostname $DATABRICKS_SERVER_HOSTNAME --http-path $DATABRICKS_HTTP_PATH --access-token $DATABRICKS_TOKEN -e "USE $DATABRICKS_SCHEMA; DROP TABLE IF EXISTS t; DROP TABLE IF EXISTS tabletest; DROP TABLE IF EXISTS integer_table;"
           poetry run pytest tests/sqlalchemy/test_full_sa.py::IntegerTest --dburi "databricks+thrift://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME/$DATABRICKS_SCHEMA?http_path=$DATABRICKS_HTTP_PATH"
-          echo y | dbsqlcli --hostname $DATABRICKS_SERVER_HOSTNAME --http-path $DATABRICKS_HTTP_PATH --access-token $DATABRICKS_TOKEN -e "USE $DATABRICKS_SCHEMA; DROP TABLE IF EXISTS t; DROP TABLE IF EXISTS tabletest; DROP TABLE IF EXISTS integer_test;"
+          echo y | dbsqlcli --hostname $DATABRICKS_SERVER_HOSTNAME --http-path $DATABRICKS_HTTP_PATH --access-token $DATABRICKS_TOKEN -e "USE $DATABRICKS_SCHEMA; DROP TABLE IF EXISTS t; DROP TABLE IF EXISTS tabletest; DROP TABLE IF EXISTS integer_table;"
 
   # check-linting:
   #   runs-on: ubuntu-latest
