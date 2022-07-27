@@ -1,6 +1,8 @@
 name: SQLAlchemy dialect test
 on: 
   push:
+    branches:
+      - sqlalchemy-dev
     paths:
       - Makefile
       - src/databricks/sqlalchemy
