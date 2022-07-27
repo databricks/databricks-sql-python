@@ -63,7 +63,7 @@ jobs:
           DATABRICKS_TOKEN: ${{ secrets.ENVSEC_DATABRICKS_TOKEN }}
           DATABRICKS_SCHEMA: ${{ secrets.ENVSEC_DATABRICKS_SCHEMA }}
 
-        run: poetry run pytest tests/sqlalchemy/test_full_sa.py::IntegerTest --dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
+        run: poetry run pytest tests/sqlalchemy/test_full_sa.py::IntegerTest --dburi "databricks+thrift://token:$DATABRICKS_TOKEN@$DATABRICKS_SERVER_HOSTNAME/$DATABRICKS_SCHEMA?http_path=$DATABRICKS_HTTP_PATH"
 
   # check-linting:
   #   runs-on: ubuntu-latest
