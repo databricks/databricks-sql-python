@@ -105,31 +105,46 @@ drop_reflectiontest:
 
 # clean up after SQLAlchemy test suite
 
-drop_booleantest:
-	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS boolean_table;"
+drop_booleantest: drop_boolean_table
 
-drop_datetest:
-drop_datetimetest:
-	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS date_table;"
+drop_datetest: drop_date_table
 
+drop_datetimetest: drop_date_table
 
-drop_integertest:
-drop_numerictest:
+drop_integertest: drop_t drop_tabletest
+
+drop_numerictest: drop_t drop_tabletest
+
+drop_stringtest: drop_t drop_boolean_table
+
+drop_tableddl: drop__test_table drop_test_table
+
+drop_jointest: drop_a drop_b 
+
+	
+drop_t:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS t;"
+
+drop_tabletest:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS tabletest;"
 
-
-drop_stringtest:
+drop_boolean_table:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS boolean_table;"
-	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS t;"
 
-drop_tableddl:
+drop__test_table:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS _test_table;"
+
+drop_test_table:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS test_table;"
 
-drop_jointest:
+drop_a:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS a;"
+
+drop_b:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS b;"
+
+drop_date_table:
+	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS date_table;"
 
 
 # these two schemas are baked into SQLAlchemy's test suite
