@@ -24,8 +24,10 @@ jobs:
       #----------------------------------------------
       #  -----  install databricks-sql-cli  -----
       #----------------------------------------------
-      - name: Install databricks-sql-cli
-        run: python -m pip install databricks-sql-cli
+      - name: Install databricks-sql-cli & initalize dbsqlclirc
+        run: |
+          python -m pip install databricks-sql-cli
+          dbsqlcli
 
       #----------------------------------------------
       #  -----  install & configure poetry  -----
