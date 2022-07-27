@@ -2,6 +2,7 @@ name: SQLAlchemy dialect test
 on: 
   push:
     paths:
+      - Makefile
       - src/databricks/sqlalchemy
       - tests/sqlalchemy
       - .github/workflows/sqlalchemy-dialect.yml
