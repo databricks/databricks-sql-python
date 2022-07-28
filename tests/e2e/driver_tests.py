@@ -7,7 +7,7 @@ import os
 import sys
 import threading
 import time
-from unittest import loader, skipIf, skipUnless, TestCase
+from unittest import loader, skipIf, skipUnless, TestCase, mock
 from uuid import uuid4
 
 import numpy as np
@@ -359,6 +359,42 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
             # We should be able to execute a new command on the cursor
             cursor.execute("SELECT * FROM range(3)")
             self.assertEqual(len(cursor.fetchall()), 3)
+
+    def test_retry_after_connection_timeout(self):
+        
+        import socket
+        from databricks.sql.thrift_api.TCLIService import ttypes
+
+        ATTEMPTS_TO_TRY = 2
+        
+        with self.cursor({}) as cursor:
+            cursor.execute("SELECT id FROM RANGE(10)")
+            op_handle = cursor.active_op_handle
+            thrift_backend = cursor.thrift_backend
+        
+
+        thrift_backend._retry_stop_after_attempts_count = ATTEMPTS_TO_TRY
+        req = ttypes.TGetOperationStatusReq(
+            operationHandle=op_handle,
+            getProgressUpdate=False,
+        )
+
+        
+        with self.assertRaises(OperationalError) as cm:
+            with mock.patch("socket.create_connection") as mock_create_connection:
+                mock_create_connection.side_effect = OSError("[Errno 110]: Connection timed out")
+                thrift_backend.make_request(thrift_backend._client.GetOperationStatus, req)
+
+            self.assertIn("{0}/{0}".format(ATTEMPTS_TO_TRY), cm.exception.message_with_context())
+
+        with self.assertRaises(OperationalError) as cm:
+            with mock.patch("socket.create_connection") as mock_create_connection:
+                mock_create_connection.side_effect = socket.timeout
+                thrift_backend.make_request(thrift_backend._client.GetOperationStatus, req)
+
+            self.assertIn("{0}/{0}".format(ATTEMPTS_TO_TRY), cm.exception.message_with_context())
+
+
 
     @skipIf(pysql_has_version('<', '2'), 'requires pysql v2')
     def test_can_execute_command_after_failure(self):

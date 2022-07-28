@@ -985,6 +985,49 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertIn("This method fails", str(cm.exception.message_with_context()))
 
     @patch("thrift.transport.THttpClient.THttpClient")
+    def test_will_retry_on_connection_timeout(self, t_transport_class):
+
+        import socket
+
+        mock_method = Mock()
+        mock_method.__name__ = "method name"
+        mock_method.side_effect = socket.timeout
+
+        thrift_backend = ThriftBackend(
+            "foobar",
+            443,
+            "path",
+            [],
+            _retry_stop_after_attempts_count=2,
+            _retry_delay_max=5,
+            _retry_delay_min=0,
+        )
+
+        with self.assertRaises(OperationalError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
+
+            self.assertIn("2/2", cm.exception.message_with_context())
+
+            mock_method = Mock()
+            mock_method.__name__ = "method name"
+            mock_method.side_effect = OSError("[Errno 110] Connection timed out")
+
+            thrift_backend = ThriftBackend(
+                "foobar",
+                443,
+                "path",
+                [],
+                _retry_stop_after_attempts_count=2,
+                _retry_delay_max=5,
+                _retry_delay_min=0,
+            )
+
+            with self.assertRaises(OperationalError) as cm:
+                thrift_backend.make_request(mock_method, Mock())
+
+                self.assertIn("2/2", cm.exception.message_with_context())
+
+    @patch("thrift.transport.THttpClient.THttpClient")
     def test_make_request_wont_retry_if_error_code_not_429_or_503(self, t_transport_class):
         t_transport_instance = t_transport_class.return_value
         t_transport_instance.code = 430
