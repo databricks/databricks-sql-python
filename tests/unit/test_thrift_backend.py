@@ -1018,6 +1018,31 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 self.assertIn("2/2", cm.exception.message_with_context())
 
     @patch("thrift.transport.THttpClient.THttpClient")
+    def test_will_not_retry_on_non_timeout_oserror(self, t_transport_class):
+
+        
+
+        mock_method = Mock()
+        mock_method.__name__ = "method name"
+        mock_method.side_effect = OSError("I am not a timeout error")
+
+        thrift_backend = ThriftBackend(
+            "foobar",
+            443,
+            "path",
+            [],
+            _retry_stop_after_attempts_count=2,
+            _retry_delay_default=0.25
+        )
+
+        with self.assertRaises(OperationalError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
+
+        self.assertIn("I am not a timeout error", str(cm.exception.message_with_context()))
+        self.assertIn("1/2", cm.exception.message_with_context())
+
+
+    @patch("thrift.transport.THttpClient.THttpClient")
     def test_make_request_wont_retry_if_error_code_not_429_or_503(self, t_transport_class):
         t_transport_instance = t_transport_class.return_value
         t_transport_instance.code = 430

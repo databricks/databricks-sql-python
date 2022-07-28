@@ -290,8 +290,17 @@ class ThriftBackend:
                 response = method(request)
                 logger.debug("Received response: {}".format(response))
                 return response
-            except (socket.timeout, OSError) as err:
+            except socket.timeout as err:
+                # socket.timeout means the connection was timed out by the socket package
                 retry_delay = self._retry_delay_default
+                error_message = str(err)
+                error = err
+            except OSError as err:
+                # OSError 110 means the connection was timed out by the operating system
+                if "Errno 110" in str(err):
+                    retry_delay = self._retry_delay_default
+                else:
+                    retry_delay = None
                 error_message = str(err)
                 error = err
             except Exception as err:
