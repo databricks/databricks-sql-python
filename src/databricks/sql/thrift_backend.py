@@ -40,7 +40,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
-    "_retry_delay_default": (float, 5, 1, 60)
+    "_retry_delay_default": (float, 5, 1, 60),
 }
 
 
@@ -81,7 +81,7 @@ class ThriftBackend:
         #   next calculated pre-retry delay would go past
         #   _retry_stop_after_attempts_duration, stop now.)
         #
-        #_retry_delay_default                   (default: 5)
+        # _retry_delay_default                   (default: 5)
         #   used when Retry-After is not specified by the server
         # _retry_stop_after_attempts_count
         #  The maximum number of times we should retry retryable requests (defaults to 24)
