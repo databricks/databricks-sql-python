@@ -40,6 +40,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
+    "_retry_delay_default": (float, 5, None, None)
 }
 
 
@@ -80,6 +81,8 @@ class ThriftBackend:
         #   next calculated pre-retry delay would go past
         #   _retry_stop_after_attempts_duration, stop now.)
         #
+        #_retry_delay_default                   (default: 5)
+        #   used when Retry-After is not specified by the server
         # _retry_stop_after_attempts_count
         #  The maximum number of times we should retry retryable requests (defaults to 24)
         # _socket_timeout
@@ -288,7 +291,7 @@ class ThriftBackend:
                 logger.debug("Received response: {}".format(response))
                 return response
             except (socket.timeout, OSError) as err:
-                retry_delay = 5
+                retry_delay = self._retry_delay_default
                 error_message = str(err)
                 error = err
             except Exception as err:
