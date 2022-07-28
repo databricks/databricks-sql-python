@@ -40,7 +40,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
-    "_retry_delay_default": (float, 5, None, None)
+    "_retry_delay_default": (float, 5, 1, 60)
 }
 
 

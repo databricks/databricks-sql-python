@@ -19,6 +19,7 @@ def retry_policy_factory():
         "_retry_delay_max":                     (float, 60, None, None),
         "_retry_stop_after_attempts_count":     (int, 30, None, None),
         "_retry_stop_after_attempts_duration":  (float, 900, None, None),
+        "_retry_delay_default":                 (float, 5, 0, 10),
     }
 
 
