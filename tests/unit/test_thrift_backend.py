@@ -999,8 +999,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             "path",
             [],
             _retry_stop_after_attempts_count=2,
-            _retry_delay_max=5,
-            _retry_delay_min=0,
+            _retry_delay_default=0.25
         )
 
         with self.assertRaises(OperationalError) as cm:
@@ -1011,16 +1010,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             mock_method = Mock()
             mock_method.__name__ = "method name"
             mock_method.side_effect = OSError("[Errno 110] Connection timed out")
-
-            thrift_backend = ThriftBackend(
-                "foobar",
-                443,
-                "path",
-                [],
-                _retry_stop_after_attempts_count=2,
-                _retry_delay_max=5,
-                _retry_delay_min=0,
-            )
 
             with self.assertRaises(OperationalError) as cm:
                 thrift_backend.make_request(mock_method, Mock())
