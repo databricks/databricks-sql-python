@@ -1008,14 +1008,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
             self.assertIn("2/2", cm.exception.message_with_context())
 
-            mock_method = Mock()
-            mock_method.__name__ = "method name"
-            mock_method.side_effect = OSError("[Errno 110] Connection timed out")
+        mock_method = Mock()
+        mock_method.__name__ = "method name"
+        mock_method.side_effect = OSError("[Errno 110] Connection timed out")
 
-            with self.assertRaises(OperationalError) as cm:
-                thrift_backend.make_request(mock_method, Mock())
+        with self.assertRaises(OperationalError) as cm:
+            thrift_backend.make_request(mock_method, Mock())
 
-                self.assertIn("2/2", cm.exception.message_with_context())
+            self.assertIn("2/2", cm.exception.message_with_context())
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_will_not_retry_on_non_timeout_oserror(self, t_transport_class):
