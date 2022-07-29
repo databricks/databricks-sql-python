@@ -18,6 +18,8 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `Thanks for your contribution! To satisfy the DCO policy in our [contributing guide](CONTRIBUTING.md)
-              every commit message must include a sign-off. You can retroactively apply this sign-off with an interactive rebase.`
+              body: `Thanks for your contribution! To satisfy the DCO policy in our \
+              [contributing guide](https://github.com/databricks/databricks-sql-python/blob/main/CONTRIBUTING.md) \
+              every commit message must include a sign-off. One or more of your commits is missing this sign-off message. \
+              You can retroactively apply this sign-off with an interactive rebase.`
             })
