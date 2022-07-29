@@ -247,7 +247,7 @@ class ThriftBackend:
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
     def make_request(self, method, request):
-        """Execute given request, attempting retries when receiving HTTP 429/503.
+        """Execute given request, attempting retries when TCP connection fils or when receiving HTTP 429/503.
 
         For delay between attempts, honor the given Retry-After header, but with bounds.
         Use lower bound of expontial-backoff based on _retry_delay_min,
@@ -265,8 +265,12 @@ class ThriftBackend:
             return time.time() - t0
 
         def extract_retry_delay(attempt):
-            # encapsulate retry checks, returns None || delay-in-secs
-            # Retry IFF 429/503 code + Retry-After header set
+            """
+            Encapsulate retry checks based on HTTP headers. Returns None || delay-in-secs
+
+            Retry IFF 429/503 code + Retry-After header set
+            """
+
             http_code = getattr(self._transport, "code", None)
             retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
             if http_code in [429, 503] and retry_after:
