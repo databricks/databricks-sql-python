@@ -289,6 +289,9 @@ class ThriftBackend:
             # - error, error_message always set when available
 
             error = None
+
+            # If retry_delay is None the request is treated as non-retryable
+            retry_delay = None
             try:
                 logger.debug("Sending request: {}".format(request))
                 response = method(request)
@@ -303,8 +306,6 @@ class ThriftBackend:
                 # OSError 110 means the connection was timed out by the operating system
                 if "Errno 110" in str(err):
                     retry_delay = self._retry_delay_default
-                else:
-                    retry_delay = None
                 error_message = str(err)
                 error = err
             except Exception as err:
