@@ -1,0 +1,25 @@
+name: DCO Check
+
+on: [pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for DCO
+        id: dco-check
+        uses: tisonkun/actions-dco@v1.1
+      - name: Comment about DCO status
+        uses: actions/github-script@v6
+        if: ${{ failure() }}
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `Thanks for your contribution! To satisfy the DCO policy in our \
+              [contributing guide](https://github.com/databricks/databricks-sql-python/blob/main/CONTRIBUTING.md) \
+              every commit message must include a sign-off message. One or more of your commits is missing this message. \
+              You can reword previous commit messages with an interactive rebase (\`git rebase -i main\`).`
+            })
