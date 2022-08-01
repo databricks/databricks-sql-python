@@ -11,7 +11,7 @@ You are welcome to file an issue here for general use cases. You can also contac
 
 ## Requirements
 
-Python 3.7 or above is required.
+A development machine running Python >=3.7, <3.10.
 
 ## Documentation
 
