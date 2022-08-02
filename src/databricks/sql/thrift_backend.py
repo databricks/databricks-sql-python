@@ -15,6 +15,9 @@ from thrift.Thrift import TException
 
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
+from databricks.sql.thrift_api.TCLIService.TCLIService import (
+    Client as TCLIServiceClient,
+)
 from databricks.sql.utils import (
     ArrowQueue,
     ExecuteResponse,
@@ -39,6 +42,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
+    "_retry_delay_default": (float, 5, 1, 60)
 }
 
 
@@ -71,6 +75,8 @@ class ThriftBackend:
         # _retry_delay_min                      (default: 1)
         # _retry_delay_max                      (default: 60)
         #   {min,max} pre-retry delay bounds
+        # _retry_delay_default                   (default: 5)
+        #   Only used when GetOperationStatus fails due to a TCP/OS Error. 
         # _retry_stop_after_attempts_count      (default: 30)
         #   total max attempts during retry sequence
         # _retry_stop_after_attempts_duration   (default: 900)
@@ -291,6 +297,13 @@ class ThriftBackend:
                 response = method(request)
                 logger.debug("Received response: {}".format(response))
                 return response
+            except OSError as err:
+                error = err
+                error_message = str(err)
+
+                gos_name = TCLIServiceClient.GetOperationStatus.__name__
+                if method.__name__ == gos_name:
+                    retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
             except Exception as err:
                 error = err
                 retry_delay = extract_retry_delay(attempt)
