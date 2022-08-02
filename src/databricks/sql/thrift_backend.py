@@ -5,7 +5,7 @@ import time
 import threading
 from uuid import uuid4
 from ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED, create_default_context
-import socket
+import socket, types
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -298,12 +298,34 @@ class ThriftBackend:
                 logger.debug("Received response: {}".format(response))
                 return response
             except socket.timeout as err:
-                # socket.timeout means the connection was timed out by the socket package
-                retry_delay = self._retry_delay_default
+                # We only retry for socket.timeout if the operation that timed out was a connection request
+                # Otherwise idempotency is not guaranteed because something may have been transmitted to the server
+                
+                def _dig_through_traceback(tb: types.TracebackType, mod, meth):
+                    """Recursively search the traceback stack to see if mod.meth raised the exception
+                    """
+                    _mod, _meth = mod, meth
+                    tb_meth = tb.tb_frame.f_code.co_name
+                    tb_mod = tb.tb_frame.f_code.co_filename.split("/")[-1].replace(".py", "")
+
+                    if tb_meth == _meth and _mod == tb_mod:
+                        return True
+                    elif tb.tb_next is None:
+                        return False
+
+                    return _dig_through_traceback(tb.tb_next, mod, meth)
+
+                tb = err.__traceback__
+                failed_during_socket_connect = _dig_through_traceback(tb, "socket", "create_connection")
+                failed_during_http_open = _dig_through_traceback(tb, "client", "connect") 
+                
+                if failed_during_socket_connect and failed_during_http_open:
+                    retry_delay = self._retry_delay_default
+
                 error_message = str(err)
                 error = err
             except OSError as err:
-                # OSError 110 means the connection was timed out by the operating system
+                # OSError 110 means EHOSTUNREACHABLE, which means the connection was timed out by the operating system
                 if "Errno 110" in str(err):
                     retry_delay = self._retry_delay_default
                 error_message = str(err)

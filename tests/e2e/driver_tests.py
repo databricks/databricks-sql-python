@@ -361,36 +361,60 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
             self.assertEqual(len(cursor.fetchall()), 3)
 
     def test_retry_after_connection_timeout(self):
+        # We only retry a request that failed because of a socket timeout in this case
+        # when the timeout occurred while trying to connect with the thrift server.
+        # In this situation, we know that a command was not sent to the server because
+        # no connection was made.
         
         import socket
+        from unittest.mock import Mock
         from databricks.sql.thrift_api.TCLIService import ttypes
 
-        ATTEMPTS_TO_TRY = 2
-        
-        with self.cursor({}) as cursor:
-            cursor.execute("SELECT id FROM RANGE(10)")
-            op_handle = cursor.active_op_handle
-            thrift_backend = cursor.thrift_backend
-        
+       # First let's check the non-retry behavior
+       # Given the client has successfully connected to the server already
+       # When a socket.timeout exception is raised
+       # Then the request is not retried
+        with self.assertRaises(OperationalError) as cm:
+            
+            # No mocks at this point. If calling self.cursor() succeeds
+            # that means there is an open / working connection to thrift server.
+            with self.cursor({}) as cursor:
 
-        thrift_backend._retry_stop_after_attempts_count = ATTEMPTS_TO_TRY
-        req = ttypes.TGetOperationStatusReq(
-            operationHandle=op_handle,
-            getProgressUpdate=False,
-        )
+                # Next apply a patch to the transport which raises a socket.timeout
+                # whenever any data is sent over the wire
+                with mock.patch("http.client.HTTPConnection.send") as mock_send:
+                    mock_send.side_effect = socket.timeout
+                    cursor.execute("I AM A VERY DANGEROUS, NOT IDEMPOTENT QUERY!!!")
+            self.assertIn("non-retryable error", cm.exception.message_with_context())
+
+
+        # Second, let's check whether a request is retried if it fails during
+        # the connection attempt, instead of the send attempt.
+        
+        ATTEMPTS_TO_TRY = 2
+
+        # This is a normal query execution
+        # with self.cursor({}) as cursor:
+        #     thrift_backend = cursor.thrift_backend
 
         
         with self.assertRaises(OperationalError) as cm:
-            with mock.patch("socket.create_connection") as mock_create_connection:
-                mock_create_connection.side_effect = OSError("[Errno 110]: Connection timed out")
-                thrift_backend.make_request(thrift_backend._client.GetOperationStatus, req)
+            with mock.patch("socket.socket.connect") as mock_connect:
+                mock_connect.side_effect = OSError("[Errno 110]: Connection timed out")
+                with self.cursor() as cursor:
+                    # Connection will fail
+                    cursor.execute("SOME RANDOM STATEMENT")
+                    pass
 
             self.assertIn("{0}/{0}".format(ATTEMPTS_TO_TRY), cm.exception.message_with_context())
 
         with self.assertRaises(OperationalError) as cm:
-            with mock.patch("socket.create_connection") as mock_create_connection:
-                mock_create_connection.side_effect = socket.timeout
-                thrift_backend.make_request(thrift_backend._client.GetOperationStatus, req)
+            with mock.patch("socket.socket.connect") as mock_connect:
+                mock_connect.side_effect = socket.timeout
+                with self.cursor() as cursor:
+                    # Connection will fail
+                    cursor.execute("SOME RANDOM STATEMENT")
+                    pass
 
             self.assertIn("{0}/{0}".format(ATTEMPTS_TO_TRY), cm.exception.message_with_context())
 
