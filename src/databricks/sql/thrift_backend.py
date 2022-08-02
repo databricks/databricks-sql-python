@@ -260,6 +260,14 @@ class ThriftBackend:
         def get_elapsed():
             return time.time() - t0
 
+        def bound_retry_delay(attempt, proposed_delay):
+            """bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
+            """
+            delay = int(proposed_delay)
+            delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
+            delay = min(delay, self._retry_delay_max)
+            return delay
+
         def extract_retry_delay(attempt):
             # encapsulate retry checks, returns None || delay-in-secs
             # Retry IFF 429/503 code + Retry-After header set
@@ -267,10 +275,7 @@ class ThriftBackend:
             retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
             if http_code in [429, 503] and retry_after:
                 # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
-                delay = int(retry_after)
-                delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
-                delay = min(delay, self._retry_delay_max)
-                return delay
+                return bound_retry_delay(attempt, int(retry_after))
             return None
 
         def attempt_request(attempt):
