@@ -284,24 +284,27 @@ class ThriftBackend:
             # - non-None method_return -> success, return and be done
             # - non-None retry_delay -> sleep delay before retry
             # - error, error_message always set when available
+            
+            error, error_message, retry_delay = None, None, None
             try:
                 logger.debug("Sending request: {}".format(request))
                 response = method(request)
                 logger.debug("Received response: {}".format(response))
                 return response
-            except Exception as error:
+            except Exception as err:
+                error = err
                 retry_delay = extract_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
-                return RequestErrorInfo(
-                    error=error,
-                    error_message=error_message,
-                    retry_delay=retry_delay,
-                    http_code=getattr(self._transport, "code", None),
-                    method=method.__name__,
-                    request=request,
-                )
+            return RequestErrorInfo(
+                error=error,
+                error_message=error_message,
+                retry_delay=retry_delay,
+                http_code=getattr(self._transport, "code", None),
+                method=method.__name__,
+                request=request,
+            )
 
         # The real work:
         # - for each available attempt:
