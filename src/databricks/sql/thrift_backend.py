@@ -1,4 +1,5 @@
 from decimal import Decimal
+import errno
 import logging
 import math
 import time
@@ -304,6 +305,27 @@ class ThriftBackend:
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
                     retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
+
+                    # fmt: off
+                    # The built-in errno package encapsulates OSError codes, which are OS-specific.
+                    # log.info for errors we believe are not unusual or unexpected. log.warn for
+                    # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
+                                            # | Debian | Darwin |
+                    info_errs = [           # |--------|--------|         
+                        errno.ESHUTDOWN,    # |   32   |   32   |
+                        errno.EAFNOSUPPORT, # |   97   |   47   |
+                        errno.ECONNRESET,   # |   104  |   54   |
+                        errno.ETIMEDOUT,    # |   110  |   60   |
+                    ]
+
+                    # fmt: on
+                    log_string = (
+                        f"{gos_name} failed with code {err.errno} and will attempt to retry"
+                    )
+                    if err.errno in info_errs:
+                        logger.info(log_string)
+                    else:
+                        logger.warning(log_string)
             except Exception as err:
                 error = err
                 retry_delay = extract_retry_delay(attempt)

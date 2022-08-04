@@ -975,13 +975,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_make_request_will_retry_GetOperationStatus(
             self, mock_retry_policy, mock_GetOperationStatus, t_transport_class):
        
-        import thrift
+        import thrift, errno
         from databricks.sql.thrift_api.TCLIService.TCLIService import Client
         from databricks.sql.exc import RequestError
         from databricks.sql.utils import NoRetryReason
 
-        mock_GetOperationStatus.__name__ = "GetOperationStatus"
-        mock_GetOperationStatus.side_effect = TimeoutError(110)
+        this_gos_name = "GetOperationStatus"
+        mock_GetOperationStatus.__name__ = this_gos_name
+        mock_GetOperationStatus.side_effect = OSError(errno.ETIMEDOUT, "Connection timed out")
 
         protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(t_transport_class)
         client = Client(protocol)
@@ -998,13 +999,30 @@ class ThriftBackendTestSuite(unittest.TestCase):
             443,
             "path", [],
             _retry_stop_after_attempts_count=EXPECTED_RETRIES,
-            _retry_delay_default=0.1)
+            _retry_delay_default=1)
+
 
         with self.assertRaises(RequestError) as cm:
             thrift_backend.make_request(client.GetOperationStatus, req)
 
         self.assertEqual(NoRetryReason.OUT_OF_ATTEMPTS.value, cm.exception.context["no-retry-reason"])
-        self.assertEqual(f'{EXPECTED_RETRIES}/{EXPECTED_RETRIES}', cm.exception.context["attempt"])    
+        self.assertEqual(f'{EXPECTED_RETRIES}/{EXPECTED_RETRIES}', cm.exception.context["attempt"])
+
+        # Unusual OSError code
+        mock_GetOperationStatus.side_effect = OSError(errno.EEXIST, "File does not exist")  
+
+        with self.assertLogs("databricks.sql.thrift_backend", level=logging.WARNING) as cm:
+            with self.assertRaises(RequestError):
+                thrift_backend.make_request(client.GetOperationStatus, req)
+
+        # There should be two warning log messages: one for each retry
+        self.assertEqual(len(cm.output), EXPECTED_RETRIES)
+        
+        # The warnings should be identical
+        self.assertEqual(cm.output[1], cm.output[0])
+        
+        # The warnings should include this text
+        self.assertIn(f"{this_gos_name} failed with code {errno.EEXIST} and will attempt to retry", cm.output[0])
     
     
     @patch("thrift.transport.THttpClient.THttpClient")
