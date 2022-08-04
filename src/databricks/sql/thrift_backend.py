@@ -320,9 +320,7 @@ class ThriftBackend:
                     ]
 
                     # fmt: on
-                    log_string = (
-                        f"{gos_name} failed with code {err.errno} and will attempt to retry"
-                    )
+                    log_string = f"{gos_name} failed with code {err.errno} and will attempt to retry"
                     if err.errno in info_errs:
                         logger.info(log_string)
                     else:
