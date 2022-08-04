@@ -165,7 +165,7 @@ class ThriftBackend:
                 "retry parameter: {} given_or_default {}".format(key, given_or_default)
             )
             if bound != given_or_default:
-                logger.warn(
+                logger.warning(
                     "Override out of policy retry parameter: "
                     + "{} given {}, restricted to {}".format(
                         key, given_or_default, bound
