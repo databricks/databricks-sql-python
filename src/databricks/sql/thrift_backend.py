@@ -5,7 +5,6 @@ import time
 import threading
 from uuid import uuid4
 from ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED, create_default_context
-import socket, types
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -40,7 +39,6 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
-    "_retry_delay_default": (float, 5, 1, 60),
 }
 
 
@@ -81,8 +79,6 @@ class ThriftBackend:
         #   next calculated pre-retry delay would go past
         #   _retry_stop_after_attempts_duration, stop now.)
         #
-        # _retry_delay_default                   (default: 5)
-        #   used when Retry-After is not specified by the server
         # _retry_stop_after_attempts_count
         #  The maximum number of times we should retry retryable requests (defaults to 24)
         # _socket_timeout
@@ -247,7 +243,7 @@ class ThriftBackend:
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
     def make_request(self, method, request):
-        """Execute given request, attempting retries when TCP connection fils or when receiving HTTP 429/503.
+        """Execute given request, attempting retries when receiving HTTP 429/503.
 
         For delay between attempts, honor the given Retry-After header, but with bounds.
         Use lower bound of expontial-backoff based on _retry_delay_min,
@@ -265,12 +261,8 @@ class ThriftBackend:
             return time.time() - t0
 
         def extract_retry_delay(attempt):
-            """
-            Encapsulate retry checks based on HTTP headers. Returns None || delay-in-secs
-
-            Retry IFF 429/503 code + Retry-After header set
-            """
-
+            # encapsulate retry checks, returns None || delay-in-secs
+            # Retry IFF 429/503 code + Retry-After header set
             http_code = getattr(self._transport, "code", None)
             retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
             if http_code in [429, 503] and retry_after:
@@ -287,63 +279,24 @@ class ThriftBackend:
             # - non-None method_return -> success, return and be done
             # - non-None retry_delay -> sleep delay before retry
             # - error, error_message always set when available
-
-            error = None
-
-            # If retry_delay is None the request is treated as non-retryable
-            retry_delay = None
             try:
                 logger.debug("Sending request: {}".format(request))
                 response = method(request)
                 logger.debug("Received response: {}".format(response))
                 return response
-            except socket.timeout as err:
-                # We only retry for socket.timeout if the operation that timed out was a connection request
-                # Otherwise idempotency is not guaranteed because something may have been transmitted to the server
-                
-                def _dig_through_traceback(tb: types.TracebackType, mod, meth):
-                    """Recursively search the traceback stack to see if mod.meth raised the exception
-                    """
-                    _mod, _meth = mod, meth
-                    tb_meth = tb.tb_frame.f_code.co_name
-                    tb_mod = tb.tb_frame.f_code.co_filename.split("/")[-1].replace(".py", "")
-
-                    if tb_meth == _meth and _mod == tb_mod:
-                        return True
-                    elif tb.tb_next is None:
-                        return False
-
-                    return _dig_through_traceback(tb.tb_next, mod, meth)
-
-                tb = err.__traceback__
-                failed_during_socket_connect = _dig_through_traceback(tb, "socket", "create_connection")
-                failed_during_http_open = _dig_through_traceback(tb, "client", "connect") 
-                
-                if failed_during_socket_connect and failed_during_http_open:
-                    retry_delay = self._retry_delay_default
-
-                error_message = str(err)
-                error = err
-            except OSError as err:
-                # OSError 110 means EHOSTUNREACHABLE, which means the connection was timed out by the operating system
-                if "Errno 110" in str(err):
-                    retry_delay = self._retry_delay_default
-                error_message = str(err)
-                error = err
-            except Exception as err:
+            except Exception as error:
                 retry_delay = extract_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
-                error = err
-            return RequestErrorInfo(
-                error=error,
-                error_message=error_message,
-                retry_delay=retry_delay,
-                http_code=getattr(self._transport, "code", None),
-                method=method.__name__,
-                request=request,
-            )
+                return RequestErrorInfo(
+                    error=error,
+                    error_message=error_message,
+                    retry_delay=retry_delay,
+                    http_code=getattr(self._transport, "code", None),
+                    method=method.__name__,
+                    request=request,
+                )
 
         # The real work:
         # - for each available attempt:

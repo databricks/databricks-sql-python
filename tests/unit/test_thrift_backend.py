@@ -19,7 +19,6 @@ def retry_policy_factory():
         "_retry_delay_max":                     (float, 60, None, None),
         "_retry_stop_after_attempts_count":     (int, 30, None, None),
         "_retry_stop_after_attempts_duration":  (float, 900, None, None),
-        "_retry_delay_default":                 (float, 5, 0, 10),
     }
 
 
@@ -984,63 +983,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             thrift_backend.make_request(mock_method, Mock())
 
         self.assertIn("This method fails", str(cm.exception.message_with_context()))
-
-    @patch("thrift.transport.THttpClient.THttpClient")
-    def test_will_retry_on_connection_timeout(self, t_transport_class):
-
-        import socket
-
-        mock_method = Mock()
-        mock_method.__name__ = "method name"
-        mock_method.side_effect = socket.timeout
-
-        thrift_backend = ThriftBackend(
-            "foobar",
-            443,
-            "path",
-            [],
-            _retry_stop_after_attempts_count=2,
-            _retry_delay_default=0.25
-        )
-
-        with self.assertRaises(OperationalError) as cm:
-            thrift_backend.make_request(mock_method, Mock())
-
-            self.assertIn("2/2", cm.exception.message_with_context())
-
-        mock_method = Mock()
-        mock_method.__name__ = "method name"
-        mock_method.side_effect = OSError("[Errno 110] Connection timed out")
-
-        with self.assertRaises(OperationalError) as cm:
-            thrift_backend.make_request(mock_method, Mock())
-
-            self.assertIn("2/2", cm.exception.message_with_context())
-
-    @patch("thrift.transport.THttpClient.THttpClient")
-    def test_will_not_retry_on_non_timeout_oserror(self, t_transport_class):
-
-        
-
-        mock_method = Mock()
-        mock_method.__name__ = "method name"
-        mock_method.side_effect = OSError("I am not a timeout error")
-
-        thrift_backend = ThriftBackend(
-            "foobar",
-            443,
-            "path",
-            [],
-            _retry_stop_after_attempts_count=2,
-            _retry_delay_default=0.25
-        )
-
-        with self.assertRaises(OperationalError) as cm:
-            thrift_backend.make_request(mock_method, Mock())
-
-        self.assertIn("I am not a timeout error", str(cm.exception.message_with_context()))
-        self.assertIn("1/2", cm.exception.message_with_context())
-
 
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_make_request_wont_retry_if_error_code_not_429_or_503(self, t_transport_class):
