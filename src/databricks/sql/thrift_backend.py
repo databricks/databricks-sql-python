@@ -43,7 +43,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
-    "_retry_delay_default": (float, 5, 1, 60)
+    "_retry_delay_default": (float, 5, 1, 60),
 }
 
 
@@ -77,7 +77,7 @@ class ThriftBackend:
         # _retry_delay_max                      (default: 60)
         #   {min,max} pre-retry delay bounds
         # _retry_delay_default                   (default: 5)
-        #   Only used when GetOperationStatus fails due to a TCP/OS Error. 
+        #   Only used when GetOperationStatus fails due to a TCP/OS Error.
         # _retry_stop_after_attempts_count      (default: 30)
         #   total max attempts during retry sequence
         # _retry_stop_after_attempts_duration   (default: 900)
@@ -270,8 +270,7 @@ class ThriftBackend:
             return time.time() - t0
 
         def bound_retry_delay(attempt, proposed_delay):
-            """bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
-            """
+            """bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]"""
             delay = int(proposed_delay)
             delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
             delay = min(delay, self._retry_delay_max)
@@ -293,7 +292,7 @@ class ThriftBackend:
             # - non-None method_return -> success, return and be done
             # - non-None retry_delay -> sleep delay before retry
             # - error, error_message always set when available
-            
+
             error, error_message, retry_delay = None, None, None
             try:
                 logger.debug("Sending request: {}".format(request))
