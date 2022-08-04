@@ -33,6 +33,11 @@ class DatabricksDate(DatabricksStringTypeBase):
     """Translates date strings to date objects"""
     impl = types.DATE
 
+    # ref: https://docs.sqlalchemy.org/en/14/core/custom_types.html
+    def process_bind_param(self, value, dialect):
+        # handle string
+        return "PREFIX:" + value
+
     def process_result_value(self, value, dialect):
         return processors.str_to_date(value)
 
@@ -201,14 +206,121 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
     def visit_foreign_key_constraint(self, constraint, **kw):
         return ""
 
-    # stripped down from DDLCompiler::get_column_specification
-    # def get_column_specification(self, column, **kwargs):
-    #     colspec = (
-    #         self.preparer.format_column(column)
-    #         + " "
-    #         )
-    #     return colspec
+    def visit_unique_constraint(self, constraint, **kw):
+        return ""
 
+    # def visit_create_table(self, create, **kw):
+    #     # if debugbreakpoint:
+    #     #     breakpoint()
+
+    #     table = create.element
+    #     preparer = self.preparer
+
+    #     text = "\nCREATE "
+    #     if table._prefixes:
+    #         text += " ".join(table._prefixes) + " "
+
+    #     text += "TABLE "
+    #     if create.if_not_exists:
+    #         text += "IF NOT EXISTS "
+
+    #     text += preparer.format_table(table) + " "
+
+    #     create_table_suffix = self.create_table_suffix(table)
+    #     if create_table_suffix:
+    #         text += create_table_suffix + " "
+
+    #     text += "("
+
+    #     separator = "\n"
+
+    #     # if only one primary key, specify it along with the column
+    #     first_pk = False
+    #     for create_column in create.columns:
+    #         column = create_column.element
+    #         try:
+    #             processed = self.process(
+    #                 create_column, first_pk=column.primary_key and not first_pk
+    #             )
+    #             if processed is not None:
+    #                 text += separator
+    #                 separator = ", \n"
+    #                 text += "\t" + processed
+    #             if column.primary_key:
+    #                 first_pk = True
+    #         except exc.CompileError as ce:
+    #             raise exc.CompileError(
+    #                 "(in table '%s', column '%s'): %s"
+    #                 % (table.description, column.name, ce.args[0])
+    #             ) from ce
+
+    #     const = self.create_table_constraints(
+    #         table,
+    #         _include_foreign_key_constraints=create.include_foreign_key_constraints,  # noqa
+    #     )
+    #     if const:
+    #         text += separator + "\t" + const
+
+    #     text += "\n)%s\n\n" % self.post_create_table(table)
+    #     return text
+
+    # def visit_create_column(self, create, first_pk=False, **kw):
+    #     # if debugbreakpoint:
+    #     #     breakpoint()
+
+    #     column = create.element
+
+    #     if column.system:
+    #         return None
+
+    #     text = self.get_column_specification(column, first_pk=first_pk)
+    #     const = " ".join(
+    #         self.process(constraint) for constraint in column.constraints
+    #     )
+    #     if const:
+    #         text += " " + const
+
+    #     return text
+
+    # def create_table_constraints(
+    #     self, table, _include_foreign_key_constraints=None, **kw
+    # ):
+    #     if debugbreakpoint:
+    #         breakpoint()
+
+    #     # On some DB order is significant: visit PK first, then the
+    #     # other constraints (engine.ReflectionTest.testbasic failed on FB2)
+    #     constraints = []
+    #     if table.primary_key:
+    #         constraints.append(table.primary_key)
+
+    #     all_fkcs = table.foreign_key_constraints
+    #     if _include_foreign_key_constraints is not None:
+    #         omit_fkcs = all_fkcs.difference(_include_foreign_key_constraints)
+    #     else:
+    #         omit_fkcs = set()
+
+    #     constraints.extend(
+    #         [
+    #             c
+    #             for c in table._sorted_constraints
+    #             if c is not table.primary_key and c not in omit_fkcs
+    #         ]
+    #     )
+
+    #     return ", \n\t".join(
+    #         p
+    #         for p in (
+    #             self.process(constraint)
+    #             for constraint in constraints
+    #             if (constraint._should_create_for_compiler(self))
+    #             and (
+    #                 not self.dialect.supports_alter
+    #                 or not getattr(constraint, "use_alter", False)
+    #             )
+    #         )
+    #         if p is not None
+    #     )
 
 # The following lookup table is by DATA_TYPE and is rather nice since Decimal can be detected directly.
 # However, as DATA_TYPE is rather obtuse...  going forward, we switched to use COLUMN_TYPE_NAME instead (the table below)

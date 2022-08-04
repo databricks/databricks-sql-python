@@ -15,6 +15,9 @@ SUITE_PATH=tests/sqlalchemy
 
 SUITE=test_suite.py
 
+REQ=--requirements src.databricks.sqlalchemy.requirements:Requirements
+DBURI=--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
+
 .PHONY=all clean showtables full reflection simple str num drop_simpletest drop_reflectiontest
 
 
@@ -30,68 +33,69 @@ showtables:
 
 full:
 	$(PYTEST) $(SUITE_PATH) \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" \
+		$(DBURI) \
 		--log-file=~/.pytestlogs/full.log
 
-sa-bool: drop_booleantest
+sa-bool: drop_booleantest drop_t
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::BooleanTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-date: drop_datetest
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::DateTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-dt: drop_datetimetest
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::DateTimeTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-int: drop_integertest
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::IntegerTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-num: drop_numerictest
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::NumericTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-str: drop_stringtest
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::StringTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-ddl: drop_tableddl
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::TableDDLTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(REQ) \
+		$(DBURI) 
 
 sa-ddl1: drop_tableddl
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::TableDDLTest:test_create_table \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-ddl2: drop_tableddl
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::TableDDLTest:test_create_table_schema \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-ddl3: drop_tableddl
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::TableDDLTest:test_drop_table \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 sa-join: drop_jointest
 	$(PYTEST) $(SUITE_PATH)/test_full_sa.py::JoinTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)" 
+		$(DBURI) 
 
 reflection:
 	$(PYTEST) $(SUITE_PATH)/$(SUITE)::ReflectionTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
+		$(DBURI) 
 
 num:
 	$(PYTEST) $(SUITE_PATH)/$(SUITE)::ReflectionTest::test_numtypes \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
+		$(DBURI) 
 
 str:
 	$(PYTEST) $(SUITE_PATH)/$(SUITE)::ReflectionTest::test_strtypes \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
+		$(DBURI) 
 
 simple:
 	$(PYTEST) $(SUITE_PATH)/$(SUITE)::SimpleTest \
-		--dburi "databricks+thrift://token:$(DATABRICKS_TOKEN)@$(DATABRICKS_SERVER_HOSTNAME)/$(DATABRICKS_SCHEMA)?http_path=$(DATABRICKS_HTTP_PATH)"
+		$(DBURI) 
 
 # clean up after SimpleTest run  
 drop_simpletest:
@@ -111,7 +115,7 @@ drop_datetest: drop_date_table
 
 drop_datetimetest: drop_date_table
 
-drop_integertest: drop_t drop_tabletest
+drop_integertest: drop_t drop_tabletest drop_integer_table
 
 drop_numerictest: drop_t drop_tabletest
 
@@ -121,7 +125,7 @@ drop_tableddl: drop__test_table drop_test_table
 
 drop_jointest: drop_a drop_b 
 
-	
+
 drop_t:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS t;"
 
@@ -145,6 +149,9 @@ drop_b:
 
 drop_date_table:
 	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS date_table;"
+
+drop_integer_table:
+	echo y | $(DBSCLI) -e "USE $(DATABRICKS_SCHEMA); DROP TABLE IF EXISTS integer_table;"
 
 
 # these two schemas are baked into SQLAlchemy's test suite
