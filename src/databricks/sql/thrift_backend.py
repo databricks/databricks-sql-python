@@ -250,7 +250,9 @@ class ThriftBackend:
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
     def make_request(self, method, request):
-        """Execute given request, attempting retries when receiving HTTP 429/503.
+        """Execute given request, attempting retries when
+            1. Receiving HTTP 429/503 from server
+            2. OSError is raised during a GetOperationStatus
 
         For delay between attempts, honor the given Retry-After header, but with bounds.
         Use lower bound of expontial-backoff based on _retry_delay_min,
