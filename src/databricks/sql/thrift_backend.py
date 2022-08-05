@@ -1,4 +1,7 @@
 from decimal import Decimal
+
+import errno
+import logging
 import math
 import time
 import threading
@@ -14,6 +17,9 @@ from databricks.sql.auth.thrift_http_client import THttpClient
 from databricks.sql.auth.authenticators import CredentialsProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
+from databricks.sql.thrift_api.TCLIService.TCLIService import (
+    Client as TCLIServiceClient,
+)
 from databricks.sql.utils import (
     ArrowQueue,
     ExecuteResponse,
@@ -38,6 +44,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
+    "_retry_delay_default": (float, 5, 1, 60),
 }
 
 
@@ -70,6 +77,8 @@ class ThriftBackend:
         # _retry_delay_min                      (default: 1)
         # _retry_delay_max                      (default: 60)
         #   {min,max} pre-retry delay bounds
+        # _retry_delay_default                   (default: 5)
+        #   Only used when GetOperationStatus fails due to a TCP/OS Error.
         # _retry_stop_after_attempts_count      (default: 30)
         #   total max attempts during retry sequence
         # _retry_stop_after_attempts_duration   (default: 900)
@@ -160,7 +169,7 @@ class ThriftBackend:
                 "retry parameter: {} given_or_default {}".format(key, given_or_default)
             )
             if bound != given_or_default:
-                logger.warn(
+                logger.warning(
                     "Override out of policy retry parameter: "
                     + "{} given {}, restricted to {}".format(
                         key, given_or_default, bound
@@ -245,7 +254,9 @@ class ThriftBackend:
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
     def make_request(self, method, request):
-        """Execute given request, attempting retries when receiving HTTP 429/503.
+        """Execute given request, attempting retries when
+            1. Receiving HTTP 429/503 from server
+            2. OSError is raised during a GetOperationStatus
 
         For delay between attempts, honor the given Retry-After header, but with bounds.
         Use lower bound of expontial-backoff based on _retry_delay_min,
@@ -262,6 +273,13 @@ class ThriftBackend:
         def get_elapsed():
             return time.time() - t0
 
+        def bound_retry_delay(attempt, proposed_delay):
+            """bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]"""
+            delay = int(proposed_delay)
+            delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
+            delay = min(delay, self._retry_delay_max)
+            return delay
+
         def extract_retry_delay(attempt):
             # encapsulate retry checks, returns None || delay-in-secs
             # Retry IFF 429/503 code + Retry-After header set
@@ -269,10 +287,7 @@ class ThriftBackend:
             retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
             if http_code in [429, 503] and retry_after:
                 # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
-                delay = int(retry_after)
-                delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
-                delay = min(delay, self._retry_delay_max)
-                return delay
+                return bound_retry_delay(attempt, int(retry_after))
             return None
 
         def attempt_request(attempt):
@@ -281,24 +296,57 @@ class ThriftBackend:
             # - non-None method_return -> success, return and be done
             # - non-None retry_delay -> sleep delay before retry
             # - error, error_message always set when available
+
+            error, error_message, retry_delay = None, None, None
             try:
                 logger.debug("Sending request: {}".format(request))
                 response = method(request)
                 logger.debug("Received response: {}".format(response))
                 return response
-            except Exception as error:
+            except OSError as err:
+                error = err
+                error_message = str(err)
+
+                gos_name = TCLIServiceClient.GetOperationStatus.__name__
+                if method.__name__ == gos_name:
+                    retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
+
+                    # fmt: off
+                    # The built-in errno package encapsulates OSError codes, which are OS-specific.
+                    # log.info for errors we believe are not unusual or unexpected. log.warn for
+                    # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
+                    #
+                    # I manually tested this retry behaviour using mitmweb and confirmed that 
+                    # GetOperationStatus requests are retried when I forced network connection
+                    # interruptions / timeouts / reconnects. See #24 for more info.
+                                            # | Debian | Darwin |
+                    info_errs = [           # |--------|--------|         
+                        errno.ESHUTDOWN,    # |   32   |   32   |
+                        errno.EAFNOSUPPORT, # |   97   |   47   |
+                        errno.ECONNRESET,   # |   104  |   54   |
+                        errno.ETIMEDOUT,    # |   110  |   60   |
+                    ]
+
+                    # fmt: on
+                    log_string = f"{gos_name} failed with code {err.errno} and will attempt to retry"
+                    if err.errno in info_errs:
+                        logger.info(log_string)
+                    else:
+                        logger.warning(log_string)
+            except Exception as err:
+                error = err
                 retry_delay = extract_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
-                return RequestErrorInfo(
-                    error=error,
-                    error_message=error_message,
-                    retry_delay=retry_delay,
-                    http_code=getattr(self._transport, "code", None),
-                    method=method.__name__,
-                    request=request,
-                )
+            return RequestErrorInfo(
+                error=error,
+                error_message=error_message,
+                retry_delay=retry_delay,
+                http_code=getattr(self._transport, "code", None),
+                method=method.__name__,
+                request=request,
+            )
 
         # The real work:
         # - for each available attempt:
