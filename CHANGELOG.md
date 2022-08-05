@@ -1,7 +1,10 @@
 # Release History
 
-## 2.x.x (Unreleased)
+## 2.0.x (Unreleased)
 
+## 2.0.3 (2022-08-05)
+
+- Add retry logic for `GetOperationStatus` requests that fail with an `OSError`
 - Reorganised code to use Poetry for dependency management.
 ## 2.0.2 (2022-05-04)
 - Better exception handling in automatic connection close
