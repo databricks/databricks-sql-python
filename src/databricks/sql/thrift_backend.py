@@ -311,6 +311,10 @@ class ThriftBackend:
                     # The built-in errno package encapsulates OSError codes, which are OS-specific.
                     # log.info for errors we believe are not unusual or unexpected. log.warn for
                     # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
+                    #
+                    # I manually tested this retry behaviour using mitmweb and confirmed that 
+                    # GetOperationStatus requests are retried when I forced network connection
+                    # interruptions / timeouts / reconnects. See #24 for more info.
                                             # | Debian | Darwin |
                     info_errs = [           # |--------|--------|         
                         errno.ESHUTDOWN,    # |   32   |   32   |
