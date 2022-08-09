@@ -18,6 +18,9 @@ PyHive = "^0.6.5"
 [tool.poetry.plugins."sqlalchemy.dialects"]
 "databricks.thrift" = "databricks.sqlalchemy:DatabricksDialect"
 
+[tool.poetry.plugins."sqlalchemy.dialects"]
+"databricks.thrift" = "databricks.sqlalchemy:DatabricksDialect"
+
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
 mypy = "^0.950"

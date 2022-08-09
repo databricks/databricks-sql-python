@@ -16,24 +16,3 @@ class Requirements(SuiteRequirements):
     def two_phase_transactions(self):
         # Databricks SQL doesn't support transactions
         return exclusions.closed()
-
-    @property
-    def table_ddl_if_exists(self):
-        """target platform supports IF NOT EXISTS / IF EXISTS for tables."""
-
-        return exclusions.open()
-
-    @property
-    def foreign_keys(self):
-        # Databricks SQL doesn't support foreign keys
-        return exclusions.closed()
-
-    @property
-    def self_referential_foreign_keys(self):
-
-        return exclusions.closed()
-
-    @property
-    def foreign_key_ddl(self):
-        
-        return exclusions.closed()
