@@ -78,7 +78,8 @@ def test_create_and_drop_table(db_engine):
         sqlalchemy.Column("f_int", sqlalchemy.types.Integer),
         sqlalchemy.Column("f_long", sqlalchemy.types.BigInteger),
         sqlalchemy.Column("f_float", sqlalchemy.types.Float),
-        sqlalchemy.Column("f_decimal", sqlalchemy.types.DECIMAL),
+        sqlalchemy.Column("f_decimal_def", sqlalchemy.types.DECIMAL),
+        sqlalchemy.Column("f_decimal_spec", sqlalchemy.types.DECIMAL(precision=10, scale=2)),
         sqlalchemy.Column("f_boolean", sqlalchemy.types.BOOLEAN),
         sqlalchemy.Column("f_str", sqlalchemy.types.String),
     )
