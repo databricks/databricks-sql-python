@@ -3,17 +3,20 @@ on: [push]
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9, "3.10"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@v2
-      - name: Set up python
+      - name: Set up python ${{ matrix.python-version }}
         id: setup-python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.7
+          python-version: ${{ matrix.python-version }}
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
@@ -51,17 +54,20 @@ jobs:
         run: poetry run python -m pytest tests/unit
   check-linting:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9, "3.10"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@v2
-      - name: Set up python
+      - name: Set up python ${{ matrix.python-version }}
         id: setup-python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.7
+          python-version: ${{ matrix.python-version }}
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
@@ -100,17 +106,20 @@ jobs:
 
   check-types:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9, "3.10"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@v2
-      - name: Set up python
+      - name: Set up python ${{ matrix.python-version }}
         id: setup-python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.7
+          python-version: ${{ matrix.python-version }}
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
