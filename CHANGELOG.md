@@ -2,6 +2,11 @@
 
 ## 2.0.x (Unreleased)
 
+## 2.0.4 (2022-08-17)
+
+- Add support for Python 3.10
+- Add unit test matrix for supported Python versions
+
 ## 2.0.3 (2022-08-05)
 
 - Add retry logic for `GetOperationStatus` requests that fail with an `OSError`
