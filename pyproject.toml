@@ -9,7 +9,7 @@ packages = [{include = "databricks", from = "src"}]
 include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
-python = "^3.7.1"
+python = ">3.7.1,<3.10"
 thrift = "^0.13.0"
 pyarrow = "^5.0.0"
 pandas = "^1.3.0"
