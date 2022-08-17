@@ -7,6 +7,8 @@
 - Add support for Python 3.10
 - Add unit test matrix for supported Python versions
 
+Huge thanks to @dbaxa for contributing this change!
+
 ## 2.0.3 (2022-08-05)
 
 - Add retry logic for `GetOperationStatus` requests that fail with an `OSError`
