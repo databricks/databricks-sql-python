@@ -19,6 +19,10 @@ pytest = "^7.1.2"
 mypy = "^0.950"
 black = "^22.3.0"
 
+[tool.poetry.urls]
+"Homepage" = "https://github.com/databricks/databricks-sql-python"
+"Bug Tracker" = "https://github.com/databricks/databricks-sql-python/issues"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
