@@ -544,6 +544,32 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
                 decimal_type = arrow_df.field(0).type
                 self.assertTrue(pyarrow.types.is_decimal(decimal_type))
 
+    def test_close_connection_closes_cursors(self):
+
+        from databricks.sql.thrift_api.TCLIService import ttypes
+
+        with self.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT id, id `id2`, id `id3` FROM RANGE(1000000) order by RANDOM()')
+            ars = cursor.active_result_set
+
+            # We must manually run this check because thrift_backend always forces `has_been_closed_server_side` to True
+
+            # Cursor op state should be open before connection is closed
+            status_request = ttypes.TGetOperationStatusReq(operationHandle=ars.command_id, getProgressUpdate=False)
+            op_status_at_server = ars.thrift_backend._client.GetOperationStatus(status_request)
+            assert op_status_at_server.operationState != ttypes.TOperationState.CLOSED_STATE
+
+            conn.close()
+            
+            # When connection closes, any cursor operations should no longer exist at the server
+            with self.assertRaises(thrift.Thrift.TApplicationException) as cm:
+                op_status_at_server = ars.thrift_backend._client.GetOperationStatus(status_request)
+                if hasattr(cm, "exception"):
+                    assert "RESOURCE_DOES_NOT_EXIST" in cm.exception.message
+
+
+
 
 # use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep
 # the 429/503 subsuites separate since they execute under different circumstances.
