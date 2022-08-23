@@ -2,6 +2,11 @@
 
 ## 2.0.x (Unreleased)
 
+## 2.0.5 (2022-08-23)
+
+- Fix: closing a connection now closes any open cursors from that connection at the server
+- Other: Add project links to pyproject.toml (helpful for visitors from PyPi)
+
 ## 2.0.4 (2022-08-17)
 
 - Add support for Python 3.10
