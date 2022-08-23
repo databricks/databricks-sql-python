@@ -161,12 +161,11 @@ class Connection:
         self._close()
 
     def _close(self, close_cursors=True) -> None:
-        self.thrift_backend.close_session(self._session_handle)
-        self.open = False
-
         if close_cursors:
             for cursor in self._cursors:
                 cursor.close()
+        self.thrift_backend.close_session(self._session_handle)
+        self.open = False
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
