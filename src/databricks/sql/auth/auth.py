@@ -77,7 +77,7 @@ OAUTH_SCOPES = ["sql", "offline_access"]
 OAUTH_CLIENT_ID = "databricks-cli"
 
 
-def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAuthPersistence, **kwargs):
+def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAuthPersistence = None, **kwargs):
     cfg = ClientContext(hostname=hostname,
                         auth_type=kwargs.get("auth_type"),
                         access_token=kwargs.get("access_token"),
