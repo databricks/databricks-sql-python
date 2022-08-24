@@ -220,7 +220,7 @@ def get_tokens_from_response(oauth_response):
     return access_token, refresh_token
 
 
-def check_and_refresh_access_token(hostname, access_token, refresh_token):
+def check_and_refresh_access_token(hostname, client_id, access_token, refresh_token):
     now = datetime.now(tz=UTC)
     # If we can't decode an expiration time, this will be expired by default.
     expiration_time = now
@@ -246,7 +246,7 @@ def check_and_refresh_access_token(hostname, access_token, refresh_token):
 
     # Try to refresh using the refresh token
     logger.debug(f"Attempting to refresh OAuth access token that expired on {expiration_time}")
-    oauth_response = send_refresh_token_request(hostname, refresh_token)
+    oauth_response = send_refresh_token_request(hostname, client_id, refresh_token)
     fresh_access_token, fresh_refresh_token = get_tokens_from_response(oauth_response)
     return fresh_access_token, fresh_refresh_token, True
 

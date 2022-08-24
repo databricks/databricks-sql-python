@@ -27,6 +27,9 @@ import base64
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
+from databricks.sql.experimental.oauth_persistence import OAuthToken
+
+
 class CredentialsProvider:
     def add_headers(self, request_headers):
         pass
@@ -59,18 +62,17 @@ class BasicAuthProvider(CredentialsProvider):
 # Please must not depend on it in your applications.
 class DatabricksOAuthProvider(CredentialsProvider):
     SCOPE_DELIM = ' '
-    # TODO: moderakh the refresh_token is only kept in memory. not saved on disk
-    # hence if application restarts the user may need to re-authenticate
-    # I will add support for this outside of the scope of current PR.
-    def __init__(self, hostname, client_id, scopes):
+
+    def __init__(self, hostname, oauth_persistence, client_id, scopes):
         self._hostname = self._normalize_host_name(hostname=hostname)
         self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
-        access_token, refresh_token = get_tokens(hostname=self._hostname, client_id=client_id, scope=self._scopes_as_str)
-        self._access_token = access_token
-        self._refresh_token = refresh_token
+        self._oauth_persistence = oauth_persistence
+        self._client_id = client_id
+        self._get_tokens()
 
     def add_headers(self, request_headers):
         check_and_refresh_access_token(hostname=self._hostname,
+                                       client_id=self._client_id,
                                        access_token=self._access_token,
                                        refresh_token=self._refresh_token)
         request_headers['Authorization'] = f"Bearer {self._access_token}"
@@ -80,3 +82,35 @@ class DatabricksOAuthProvider(CredentialsProvider):
         maybe_scheme = "https://" if not hostname.startswith("https://") else ""
         maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
         return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
+
+    def _get_tokens(self):
+        if self._oauth_persistence:
+            token = self._oauth_persistence.read()
+            if token:
+                self._access_token = token.get_access_token()
+                self._refresh_token = token.get_refresh_token()
+                self._update_token_if_expired()
+            else:
+                (access_token, refresh_token) = get_tokens(hostname=self._hostname,
+                                                           client_id=self._client_id,
+                                                           scope=self._scopes_as_str)
+                self._access_token = access_token
+                self._refresh_token = refresh_token
+                self._oauth_persistence.persist(OAuthToken(access_token, refresh_token))
+
+    def _update_token_if_expired(self):
+        (fresh_access_token, fresh_refresh_token, is_refreshed) = check_and_refresh_access_token(
+            hostname=self._hostname,
+            client_id=self._client_id,
+            access_token=self._access_token,
+            refresh_token=self._refresh_token)
+
+        if not is_refreshed:
+            return
+        else:
+            self._access_token = fresh_access_token
+            self._refresh_token = fresh_refresh_token
+
+            if self._oauth_persistence:
+                token = OAuthToken(self._access_token, self._refresh_token)
+                self._oauth_persistence.persist(token)

@@ -10,7 +10,7 @@ from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
-
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
@@ -22,6 +22,7 @@ class Connection:
         self,
         server_hostname: str,
         http_path: str,
+        oauth_persistence: OAuthPersistence = None,
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
@@ -85,7 +86,7 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
 
-        auth_provider = get_python_sql_connector_auth_provider(server_hostname, **kwargs)
+        auth_provider = get_python_sql_connector_auth_provider(server_hostname, oauth_persistence, **kwargs)
 
         if not kwargs.get("_user_agent_entry"):
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)

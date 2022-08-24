@@ -24,6 +24,7 @@ from typing import List
 from enum import Enum
 from databricks.sql.auth.authenticators import CredentialsProvider, \
     AccessTokenAuthProvider, BasicAuthProvider, DatabricksOAuthProvider
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 
 class AuthType(Enum):
@@ -42,7 +43,9 @@ class ClientContext:
                  oauth_scopes: List[str] = None,
                  oauth_client_id: str = None,
                  use_cert_as_auth: str = None,
-                 tls_client_cert_file: str = None):
+                 tls_client_cert_file: str = None,
+                 oauth_persistence=None
+                 ):
         self.hostname = hostname
         self.username = username
         self.password = password
@@ -52,11 +55,12 @@ class ClientContext:
         self.oauth_client_id = oauth_client_id
         self.use_cert_as_auth = use_cert_as_auth
         self.tls_client_cert_file = tls_client_cert_file
+        self.oauth_persistence = oauth_persistence
 
 
 def get_auth_provider(cfg: ClientContext):
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
-        return DatabricksOAuthProvider(cfg.hostname, cfg.oauth_client_id, cfg.oauth_scopes)
+        return DatabricksOAuthProvider(cfg.hostname, cfg.oauth_persistence, cfg.oauth_client_id, cfg.oauth_scopes)
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
     elif cfg.username is not None and cfg.password is not None:
@@ -73,7 +77,7 @@ OAUTH_SCOPES = ["sql", "offline_access"]
 OAUTH_CLIENT_ID = "databricks-cli"
 
 
-def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
+def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAuthPersistence, **kwargs):
     cfg = ClientContext(hostname=hostname,
                         auth_type=kwargs.get("auth_type"),
                         access_token=kwargs.get("access_token"),
@@ -82,7 +86,8 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
                         use_cert_as_auth=kwargs.get("_use_cert_as_auth"),
                         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
                         oauth_scopes=OAUTH_SCOPES,
-                        oauth_client_id=OAUTH_CLIENT_ID)
+                        oauth_client_id=OAUTH_CLIENT_ID,
+                        oauth_persistence=oauth_persistence)
     return get_auth_provider(cfg)
 
 
