@@ -2,6 +2,14 @@ name: DCO Check
 
 on: [pull_request]
 
+require:
+  members: false
+
+allowRemediationCommits:
+  individual: true
+  thirdParty: true
+
+
 jobs:
   check:
     runs-on: ubuntu-latest
