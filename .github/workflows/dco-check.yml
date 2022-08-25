@@ -9,7 +9,6 @@ allowRemediationCommits:
   individual: true
   thirdParty: true
 
-
 jobs:
   check:
     runs-on: ubuntu-latest
