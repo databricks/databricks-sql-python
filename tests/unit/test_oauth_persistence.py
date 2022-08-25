@@ -52,4 +52,4 @@ class OAuthPersistenceTests(unittest.TestCase):
 
             self.assertEqual(new_token, None)
 
-    # TODO moderakh add test for file with invalid format
+    # TODO moderakh add test for file with invalid format (should return None)
