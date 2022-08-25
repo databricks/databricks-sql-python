@@ -37,6 +37,7 @@ from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 import requests
 from requests.exceptions import RequestException
 
+from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
 
 try:
     from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
@@ -98,49 +99,6 @@ def get_challenge(verifier_string=token_urlsafe(32)):
     return verifier_string, challenge_string
 
 
-# This is a janky global that is used to store the path of the single request the HTTP server
-# will receive.
-global_request_path = None
-
-
-def set_request_path(path):
-    global global_request_path
-    global_request_path = path
-
-
-class SingleRequestHandler(BaseHTTPRequestHandler):
-    RESPONSE_BODY = """<html>
-<head>
-  <title>Close this Tab</title>
-  <style>
-    body {
-      font-family: "Barlow", Helvetica, Arial, sans-serif;
-      padding: 20px;
-      background-color: #f3f3f3;
-    }
-  </style>
-</head>
-<body>
-  <h1>Please close this tab.</h1>
-  <p>
-    The Databricks Python Sql Connector received a response. You may close this tab.
-  </p>
-</body>
-</html>""".encode("utf-8")
-
-    def do_GET(self):  # nopep8
-        self.send_response(200, "Success")
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(self.RESPONSE_BODY)
-        set_request_path(self.path)
-
-    def log_message(self, format, *args):
-        #pylint: disable=redefined-builtin
-        #pylint: disable=unused-argument
-        return
-
-
 def get_authorization_code(client, auth_url, redirect_url, scope, state, challenge, port):
     (auth_req_uri, _, _) = client.prepare_authorization_request(
         authorization_url=auth_url,
@@ -151,18 +109,20 @@ def get_authorization_code(client, auth_url, redirect_url, scope, state, challen
         code_challenge_method="S256")
     logger.info(f"Opening {auth_req_uri}")
 
-    with HTTPServer(("", port), SingleRequestHandler) as httpd:
+    handler = OAuthHttpSingleRequestHandler("Databricks Sql Connector")
+
+    with HTTPServer(("", port), handler) as httpd:
         webbrowser.open_new(auth_req_uri)
         logger.info(f"Listening for OAuth authorization callback at {redirect_url}")
         httpd.handle_request()
 
-    if not global_request_path:
+    if not handler.request_path:
         msg = f"No path parameters were returned to the callback at {redirect_url}"
         logger.error(msg)
         raise RuntimeError(msg)
     # This is a kludge because the parsing library expects https callbacks
     # We should probably set it up using https
-    full_redirect_url = f"https://localhost:{port}/{global_request_path}"
+    full_redirect_url = f"https://localhost:{port}/{handler.request_path}"
     try:
         authorization_code_response = \
             client.parse_request_uri_response(full_redirect_url, state=state)
