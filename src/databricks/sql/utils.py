@@ -172,3 +172,4 @@ class ParamEscaper:
             return self.escape_datetime(item, self._DATE_FORMAT)
         else:
             raise exc.ProgrammingError("Unsupported object {}".format(item))
+
