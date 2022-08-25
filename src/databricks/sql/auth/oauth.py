@@ -26,7 +26,8 @@ import hashlib
 import os
 import webbrowser
 import json
-from datetime import datetime, timedelta, tzinfo
+import secrets
+from datetime import datetime, timedelta, tzinfo, timezone
 
 import logging
 
@@ -45,32 +46,14 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-# This could use 'import secrets' in Python 3
 def token_urlsafe(nbytes=32):
-    tok = os.urandom(nbytes)
-    return base64.urlsafe_b64encode(tok).rstrip(b"=").decode("ascii")
-
-
-# This could be datetime.timezone.utc in Python 3
-class UTCTimeZone(tzinfo):
-    """UTC"""
-    def utcoffset(self, dt):
-        #pylint: disable=unused-argument
-        return timedelta(0)
-
-    def tzname(self, dt):
-        #pylint: disable=unused-argument
-        return "UTC"
-
-    def dst(self, dt):
-        #pylint: disable=unused-argument
-        return timedelta(0)
+    return secrets.token_urlsafe(nbytes)
 
 
 # Some constant values
 OIDC_REDIRECTOR_PATH = "oidc"
 REDIRECT_PORT = 8020
-UTC = UTCTimeZone()
+UTC = timezone.utc
 
 
 def get_redirect_url(port=REDIRECT_PORT):

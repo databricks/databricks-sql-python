@@ -43,4 +43,4 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.__auth_provider.add_headers(headers)
         self._headers = headers
         self.setCustomHeaders(self._headers)
-        super().flush() 
+        super().flush()
