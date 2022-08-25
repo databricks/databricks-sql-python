@@ -20,6 +20,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+from typing import TypedDict, List
 
 from databricks.sql.auth.oauth import get_tokens, check_and_refresh_access_token
 import base64
@@ -27,34 +28,34 @@ import base64
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-from databricks.sql.experimental.oauth_persistence import OAuthToken
+from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
 
 
 class CredentialsProvider:
-    def add_headers(self, request_headers):
+    def add_headers(self, request_headers: TypedDict):
         pass
 
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 class AccessTokenAuthProvider(CredentialsProvider):
-    def __init__(self, access_token):
+    def __init__(self, access_token: str):
         self.__authorization_header_value = "Bearer {}".format(access_token)
 
-    def add_headers(self, request_headers):
+    def add_headers(self, request_headers: TypedDict):
         request_headers['Authorization'] = self.__authorization_header_value
 
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 class BasicAuthProvider(CredentialsProvider):
-    def __init__(self, username, password):
+    def __init__(self, username: str, password: str):
         auth_credentials = f"{username}:{password}".encode("UTF-8")
         auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
 
         self.__authorization_header_value = f"Basic {auth_credentials_base64}"
 
-    def add_headers(self, request_headers):
+    def add_headers(self, request_headers: TypedDict):
         request_headers['Authorization'] = self.__authorization_header_value
 
 
@@ -63,7 +64,7 @@ class BasicAuthProvider(CredentialsProvider):
 class DatabricksOAuthProvider(CredentialsProvider):
     SCOPE_DELIM = ' '
 
-    def __init__(self, hostname, oauth_persistence, client_id, scopes):
+    def __init__(self, hostname: str, oauth_persistence: OAuthPersistence, client_id: str, scopes: List[str]):
         try:
             self._hostname = self._normalize_host_name(hostname=hostname)
             self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
@@ -76,12 +77,12 @@ class DatabricksOAuthProvider(CredentialsProvider):
             logging.error(f"unexpected error", e, exc_info=True)
             raise e
 
-    def add_headers(self, request_headers):
+    def add_headers(self, request_headers: TypedDict):
         self._update_token_if_expired()
         request_headers['Authorization'] = f"Bearer {self._access_token}"
 
     @staticmethod
-    def _normalize_host_name(hostname):
+    def _normalize_host_name(hostname: str):
         maybe_scheme = "https://" if not hostname.startswith("https://") else ""
         maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
         return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
