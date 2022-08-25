@@ -229,7 +229,10 @@ def check_and_refresh_access_token(hostname, client_id, access_token, refresh_to
         # If it has been tampered with, it will be rejected on the server side.
         # This avoids having to fetch the public key from the issuer and perform
         # an unnecessary signature verification.
-        decoded = json.loads(base64.standard_b64decode(access_token.split(".")[1]))
+        access_token_payload = access_token.split(".")[1]
+        # add padding
+        access_token_payload = access_token_payload + '=' * (-len(access_token_payload) % 4)
+        decoded = json.loads(base64.standard_b64decode(access_token_payload))
         expiration_time = datetime.fromtimestamp(decoded["exp"], tz=UTC)
     except Exception as e:
         logger.error(e)

@@ -19,7 +19,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import logging
 
 from databricks.sql.auth.oauth import get_tokens, check_and_refresh_access_token
 import base64
@@ -64,17 +64,20 @@ class DatabricksOAuthProvider(CredentialsProvider):
     SCOPE_DELIM = ' '
 
     def __init__(self, hostname, oauth_persistence, client_id, scopes):
-        self._hostname = self._normalize_host_name(hostname=hostname)
-        self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
-        self._oauth_persistence = oauth_persistence
-        self._client_id = client_id
-        self._get_tokens()
+        try:
+            self._hostname = self._normalize_host_name(hostname=hostname)
+            self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
+            self._oauth_persistence = oauth_persistence
+            self._client_id = client_id
+            self._access_token = None
+            self._refresh_token = None
+            self._initial_get_token()
+        except Exception as e:
+            logging.error(f"unexpected error", e, exc_info=True)
+            raise e
 
     def add_headers(self, request_headers):
-        check_and_refresh_access_token(hostname=self._hostname,
-                                       client_id=self._client_id,
-                                       access_token=self._access_token,
-                                       refresh_token=self._refresh_token)
+        self._update_token_if_expired()
         request_headers['Authorization'] = f"Bearer {self._access_token}"
 
     @staticmethod
@@ -83,12 +86,16 @@ class DatabricksOAuthProvider(CredentialsProvider):
         maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
         return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
 
-    def _get_tokens(self):
-        if self._oauth_persistence:
-            token = self._oauth_persistence.read()
-            if token:
-                self._access_token = token.get_access_token()
-                self._refresh_token = token.get_refresh_token()
+    def _initial_get_token(self):
+        try:
+            if self._access_token is None or self._refresh_token is None:
+                if self._oauth_persistence:
+                    token = self._oauth_persistence.read()
+                    if token:
+                        self._access_token = token.get_access_token()
+                        self._refresh_token = token.get_refresh_token()
+
+            if self._access_token and self._refresh_token:
                 self._update_token_if_expired()
             else:
                 (access_token, refresh_token) = get_tokens(hostname=self._hostname,
@@ -97,20 +104,26 @@ class DatabricksOAuthProvider(CredentialsProvider):
                 self._access_token = access_token
                 self._refresh_token = refresh_token
                 self._oauth_persistence.persist(OAuthToken(access_token, refresh_token))
+        except Exception as e:
+            logging.error(f"unexpected error in oauth initialization", e, exc_info=True)
+            raise e
 
     def _update_token_if_expired(self):
-        (fresh_access_token, fresh_refresh_token, is_refreshed) = check_and_refresh_access_token(
-            hostname=self._hostname,
-            client_id=self._client_id,
-            access_token=self._access_token,
-            refresh_token=self._refresh_token)
+        try:
+            (fresh_access_token, fresh_refresh_token, is_refreshed) = check_and_refresh_access_token(
+                hostname=self._hostname,
+                client_id=self._client_id,
+                access_token=self._access_token,
+                refresh_token=self._refresh_token)
+            if not is_refreshed:
+                return
+            else:
+                self._access_token = fresh_access_token
+                self._refresh_token = fresh_refresh_token
 
-        if not is_refreshed:
-            return
-        else:
-            self._access_token = fresh_access_token
-            self._refresh_token = fresh_refresh_token
-
-            if self._oauth_persistence:
-                token = OAuthToken(self._access_token, self._refresh_token)
-                self._oauth_persistence.persist(token)
+                if self._oauth_persistence:
+                    token = OAuthToken(self._access_token, self._refresh_token)
+                    self._oauth_persistence.persist(token)
+        except Exception as e:
+            logging.error(f"unexpected error in oauth token update", e, exc_info=True)
+            raise e
