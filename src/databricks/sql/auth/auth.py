@@ -76,7 +76,7 @@ def get_auth_provider(cfg: ClientContext):
 
 OAUTH_SCOPES = ["sql", "offline_access"]
 # TODO: moderakh to be changed once registered on the service side
-OAUTH_CLIENT_ID = "databricks-cli"
+OAUTH_CLIENT_ID = "databricks-sql-python"
 OAUTH_REDIRECT_PORT_RANGE = range(8020, 8025)
 
 def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAuthPersistence = None, **kwargs):

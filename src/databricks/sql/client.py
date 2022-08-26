@@ -101,8 +101,8 @@ class Connection:
             self.host,
             self.port,
             http_path,
-            auth_provider,
             (http_headers or []) + base_headers,
+            auth_provider,
             **kwargs
         )
 
