@@ -42,6 +42,7 @@ class ClientContext:
                  auth_type: str = None,
                  oauth_scopes: List[str] = None,
                  oauth_client_id: str = None,
+                 oauth_redirect_port_range: List[int] = None,
                  use_cert_as_auth: str = None,
                  tls_client_cert_file: str = None,
                  oauth_persistence=None
@@ -53,6 +54,7 @@ class ClientContext:
         self.auth_type = auth_type
         self.oauth_scopes = oauth_scopes
         self.oauth_client_id = oauth_client_id
+        self.oauth_redirect_port_range = oauth_redirect_port_range
         self.use_cert_as_auth = use_cert_as_auth
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
@@ -60,7 +62,7 @@ class ClientContext:
 
 def get_auth_provider(cfg: ClientContext):
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
-        return DatabricksOAuthProvider(cfg.hostname, cfg.oauth_persistence, cfg.oauth_client_id, cfg.oauth_scopes)
+        return DatabricksOAuthProvider(cfg.hostname, cfg.oauth_persistence, cfg.oauth_redirect_port_range, cfg.oauth_client_id, cfg.oauth_scopes)
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
     elif cfg.username is not None and cfg.password is not None:
@@ -75,7 +77,7 @@ def get_auth_provider(cfg: ClientContext):
 OAUTH_SCOPES = ["sql", "offline_access"]
 # TODO: moderakh to be changed once registered on the service side
 OAUTH_CLIENT_ID = "databricks-cli"
-
+OAUTH_REDIRECT_PORT_RANGE = range(8020, 8025)
 
 def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAuthPersistence = None, **kwargs):
     cfg = ClientContext(hostname=hostname,
@@ -87,6 +89,7 @@ def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAu
                         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
                         oauth_scopes=OAUTH_SCOPES,
                         oauth_client_id=OAUTH_CLIENT_ID,
+                        oauth_redirect_port_range=OAUTH_REDIRECT_PORT_RANGE,
                         oauth_persistence=oauth_persistence)
     return get_auth_provider(cfg)
 
