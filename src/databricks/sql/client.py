@@ -7,7 +7,7 @@ from databricks.sql import __version__
 from databricks.sql import *
 from databricks.sql.exc import OperationalError
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import ExecuteResponse, ParamEscaper
+from databricks.sql.utils import ExecuteResponse, ParamEscaper, inject_parameters
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -309,7 +309,9 @@ class Cursor:
         :returns self
         """
         if parameters is not None:
-            operation = operation % self.escaper.escape_args(parameters)
+            operation = inject_parameters(
+                operation, self.escaper.escape_args(parameters)
+            )
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
