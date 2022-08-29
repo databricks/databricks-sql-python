@@ -7,8 +7,8 @@ class OAuthToken:
     def __init__(self, access_token, refresh_token):
         self._access_token = access_token
         self._refresh_token = refresh_token
-
-    def get_access_token(self) -> str:
+    @property
+    def access_token(self) -> str:
         return self._access_token
 
     def get_refresh_token(self) -> str:
