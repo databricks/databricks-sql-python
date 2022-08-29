@@ -37,6 +37,6 @@ class OAuthHttpSingleRequestHandler(BaseHTTPRequestHandler):
         self.request_path = self.path
 
     def log_message(self, format, *args):
-        #pylint: disable=redefined-builtin
-        #pylint: disable=unused-argument
+        # pylint: disable=redefined-builtin
+        # pylint: disable=unused-argument
         return

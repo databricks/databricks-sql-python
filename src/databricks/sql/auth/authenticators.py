@@ -1,10 +1,8 @@
+import base64
 import logging
 from typing import Dict, List
 
 from databricks.sql.auth.oauth import OAuthManager
-import base64
-
-
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
@@ -43,7 +41,8 @@ class BasicAuthProvider(CredentialsProvider):
 class DatabricksOAuthProvider(CredentialsProvider):
     SCOPE_DELIM = ' '
 
-    def __init__(self, hostname: str, oauth_persistence: OAuthPersistence, redirect_port_range: List[int], client_id: str, scopes: List[str]):
+    def __init__(self, hostname: str, oauth_persistence: OAuthPersistence, redirect_port_range: List[int],
+                 client_id: str, scopes: List[str]):
         try:
             self.oauth_manager = OAuthManager(port_range=redirect_port_range, client_id=client_id)
             self._hostname = self._normalize_host_name(hostname=hostname)

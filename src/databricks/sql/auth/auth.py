@@ -1,5 +1,6 @@
-from typing import List
 from enum import Enum
+from typing import List
+
 from databricks.sql.auth.authenticators import CredentialsProvider, \
     AccessTokenAuthProvider, BasicAuthProvider, DatabricksOAuthProvider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -40,7 +41,11 @@ class ClientContext:
 
 def get_auth_provider(cfg: ClientContext):
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
-        return DatabricksOAuthProvider(cfg.hostname, cfg.oauth_persistence, cfg.oauth_redirect_port_range, cfg.oauth_client_id, cfg.oauth_scopes)
+        return DatabricksOAuthProvider(cfg.hostname,
+                                       cfg.oauth_persistence,
+                                       cfg.oauth_redirect_port_range,
+                                       cfg.oauth_client_id,
+                                       cfg.oauth_scopes)
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
     elif cfg.username is not None and cfg.password is not None:
@@ -54,7 +59,7 @@ def get_auth_provider(cfg: ClientContext):
 
 PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
 PYSQL_OAUTH_CLIENT_ID = "databricks-sql-python"
-PYSQL_OAUTH_REDIRECT_PORT_RANGE = range(8020, 8025)
+PYSQL_OAUTH_REDIRECT_PORT_RANGE = list(range(8020, 8025))
 
 
 def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAuthPersistence = None, **kwargs):
@@ -70,5 +75,3 @@ def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAu
                         oauth_redirect_port_range=PYSQL_OAUTH_REDIRECT_PORT_RANGE,
                         oauth_persistence=oauth_persistence)
     return get_auth_provider(cfg)
-
-

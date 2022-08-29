@@ -1,17 +1,16 @@
 import base64
 import hashlib
-import webbrowser
 import json
+import logging
 import secrets
+import webbrowser
 from datetime import datetime, timezone
 from http.server import HTTPServer
-import logging
+from typing import List
 
 import oauthlib.oauth2
-from oauthlib.oauth2.rfc6749.errors import OAuth2Error
-from typing import Dict, List
-
 import requests
+from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from requests.exceptions import RequestException
 
 from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
