@@ -74,10 +74,10 @@ def get_auth_provider(cfg: ClientContext):
         raise RuntimeError("No valid authentication settings!")
 
 
-OAUTH_SCOPES = ["sql", "offline_access"]
-# TODO: moderakh to be changed once registered on the service side
-OAUTH_CLIENT_ID = "databricks-sql-python"
-OAUTH_REDIRECT_PORT_RANGE = range(8020, 8025)
+PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
+PYSQL_OAUTH_CLIENT_ID = "databricks-sql-python"
+PYSQL_OAUTH_REDIRECT_PORT_RANGE = range(8020, 8025)
+
 
 def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAuthPersistence = None, **kwargs):
     cfg = ClientContext(hostname=hostname,
@@ -87,9 +87,9 @@ def get_python_sql_connector_auth_provider(hostname: str, oauth_persistence: OAu
                         password=kwargs.get("_password"),
                         use_cert_as_auth=kwargs.get("_use_cert_as_auth"),
                         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
-                        oauth_scopes=OAUTH_SCOPES,
-                        oauth_client_id=OAUTH_CLIENT_ID,
-                        oauth_redirect_port_range=OAUTH_REDIRECT_PORT_RANGE,
+                        oauth_scopes=PYSQL_OAUTH_SCOPES,
+                        oauth_client_id=PYSQL_OAUTH_CLIENT_ID,
+                        oauth_redirect_port_range=PYSQL_OAUTH_REDIRECT_PORT_RANGE,
                         oauth_persistence=oauth_persistence)
     return get_auth_provider(cfg)
 

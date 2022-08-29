@@ -42,8 +42,6 @@ from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
 logger = logging.getLogger(__name__)
 
 
-# Some constant values
-
 class OAuthManager:
     OIDC_REDIRECTOR_PATH = "oidc"
 
