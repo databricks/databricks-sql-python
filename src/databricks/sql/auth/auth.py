@@ -41,6 +41,10 @@ class ClientContext:
 
 def get_auth_provider(cfg: ClientContext):
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
+        assert cfg.oauth_redirect_port_range is not None
+        assert cfg.oauth_client_id is not None
+        assert cfg.oauth_scopes is not None
+
         return DatabricksOAuthProvider(cfg.hostname,
                                        cfg.oauth_persistence,
                                        cfg.oauth_redirect_port_range,

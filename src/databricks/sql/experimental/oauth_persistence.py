@@ -1,5 +1,7 @@
 import logging
 import json
+from typing import Optional
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +23,7 @@ class OAuthPersistence:
     def persist(self, oauth_token: OAuthToken):
         pass
 
-    def read(self) -> OAuthToken:
+    def read(self) -> Optional[OAuthToken]:
         pass
 
 
@@ -46,7 +48,7 @@ class DevOnlyFilePersistence(OAuthPersistence):
         with open(self._file_path, "w") as outfile:
             outfile.write(json_object)
 
-    def read(self) -> OAuthToken:
+    def read(self) -> Optional[OAuthToken]:
         # TODO: validate the
         try:
             with open(self._file_path, "r") as infile:

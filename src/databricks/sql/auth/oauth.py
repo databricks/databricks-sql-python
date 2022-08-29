@@ -203,6 +203,7 @@ class OAuthManager:
             logger.error(msg)
             raise e
 
+        assert self.redirect_port is not None
         redirect_url = OAuthManager.__get_redirect_url(self.redirect_port)
 
         token_request_url = oauth_config["token_endpoint"]
