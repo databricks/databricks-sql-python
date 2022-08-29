@@ -41,8 +41,8 @@ class OAuthPersistenceTests(unittest.TestCase):
             persistence_manager.persist(token)
             new_token = persistence_manager.read()
 
-            self.assertEqual(new_token.get_access_token(), access_token)
-            self.assertEqual(new_token.get_refresh_token(), refresh_token)
+            self.assertEqual(new_token.access_token, access_token)
+            self.assertEqual(new_token.refresh_token, refresh_token)
 
     def test_DevOnlyFilePersistence_file_does_not_exist(self):
         with tempfile.TemporaryDirectory() as tempdir:

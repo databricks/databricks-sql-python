@@ -7,11 +7,13 @@ class OAuthToken:
     def __init__(self, access_token, refresh_token):
         self._access_token = access_token
         self._refresh_token = refresh_token
+
     @property
     def access_token(self) -> str:
         return self._access_token
 
-    def get_refresh_token(self) -> str:
+    @property
+    def refresh_token(self) -> str:
         return self._refresh_token
 
 
@@ -34,8 +36,8 @@ class DevOnlyFilePersistence(OAuthPersistence):
 
         # Data to be written
         dictionary = {
-            "refresh_token": token.get_refresh_token(),
-            "access_token": token.get_access_token()
+            "refresh_token": token.refresh_token,
+            "access_token": token.access_token
         }
 
         # Serializing json
