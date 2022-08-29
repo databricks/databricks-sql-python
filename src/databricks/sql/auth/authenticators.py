@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List
 
 from databricks.sql.auth.oauth import OAuthManager
+
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
@@ -20,7 +21,7 @@ class AccessTokenAuthProvider(CredentialsProvider):
         self.__authorization_header_value = "Bearer {}".format(access_token)
 
     def add_headers(self, request_headers: Dict[str, str]):
-        request_headers['Authorization'] = self.__authorization_header_value
+        request_headers["Authorization"] = self.__authorization_header_value
 
 
 # Private API: this is an evolving interface and it will change in the future.
@@ -28,23 +29,33 @@ class AccessTokenAuthProvider(CredentialsProvider):
 class BasicAuthProvider(CredentialsProvider):
     def __init__(self, username: str, password: str):
         auth_credentials = f"{username}:{password}".encode("UTF-8")
-        auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode("UTF-8")
+        auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode(
+            "UTF-8"
+        )
 
         self.__authorization_header_value = f"Basic {auth_credentials_base64}"
 
     def add_headers(self, request_headers: Dict[str, str]):
-        request_headers['Authorization'] = self.__authorization_header_value
+        request_headers["Authorization"] = self.__authorization_header_value
 
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 class DatabricksOAuthProvider(CredentialsProvider):
-    SCOPE_DELIM = ' '
+    SCOPE_DELIM = " "
 
-    def __init__(self, hostname: str, oauth_persistence: OAuthPersistence, redirect_port_range: List[int],
-                 client_id: str, scopes: List[str]):
+    def __init__(
+        self,
+        hostname: str,
+        oauth_persistence: OAuthPersistence,
+        redirect_port_range: List[int],
+        client_id: str,
+        scopes: List[str],
+    ):
         try:
-            self.oauth_manager = OAuthManager(port_range=redirect_port_range, client_id=client_id)
+            self.oauth_manager = OAuthManager(
+                port_range=redirect_port_range, client_id=client_id
+            )
             self._hostname = self._normalize_host_name(hostname=hostname)
             self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
             self._oauth_persistence = oauth_persistence
@@ -58,7 +69,7 @@ class DatabricksOAuthProvider(CredentialsProvider):
 
     def add_headers(self, request_headers: Dict[str, str]):
         self._update_token_if_expired()
-        request_headers['Authorization'] = f"Bearer {self._access_token}"
+        request_headers["Authorization"] = f"Bearer {self._access_token}"
 
     @staticmethod
     def _normalize_host_name(hostname: str):
@@ -79,8 +90,8 @@ class DatabricksOAuthProvider(CredentialsProvider):
                 self._update_token_if_expired()
             else:
                 (access_token, refresh_token) = self.oauth_manager.get_tokens(
-                    hostname=self._hostname,
-                    scope=self._scopes_as_str)
+                    hostname=self._hostname, scope=self._scopes_as_str
+                )
                 self._access_token = access_token
                 self._refresh_token = refresh_token
                 self._oauth_persistence.persist(OAuthToken(access_token, refresh_token))
@@ -90,10 +101,15 @@ class DatabricksOAuthProvider(CredentialsProvider):
 
     def _update_token_if_expired(self):
         try:
-            (fresh_access_token, fresh_refresh_token, is_refreshed) = self.oauth_manager.check_and_refresh_access_token(
+            (
+                fresh_access_token,
+                fresh_refresh_token,
+                is_refreshed,
+            ) = self.oauth_manager.check_and_refresh_access_token(
                 hostname=self._hostname,
                 access_token=self._access_token,
-                refresh_token=self._refresh_token)
+                refresh_token=self._refresh_token,
+            )
             if not is_refreshed:
                 return
             else:

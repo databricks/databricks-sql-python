@@ -22,7 +22,9 @@ class OAuthHttpSingleRequestHandler(BaseHTTPRequestHandler):
 </html>"""
 
     def __init__(self, tool_name):
-        self.response_body = self.RESPONSE_BODY_TEMPLATE.replace("{!!!PLACE_HOLDER!!!}", tool_name).encode("utf-8")
+        self.response_body = self.RESPONSE_BODY_TEMPLATE.replace(
+            "{!!!PLACE_HOLDER!!!}", tool_name
+        ).encode("utf-8")
         self.request_path = None
 
     def __call__(self, *args, **kwargs):

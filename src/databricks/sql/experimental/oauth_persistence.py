@@ -29,7 +29,6 @@ class OAuthPersistence:
 
 # Note this is only intended to be used for development
 class DevOnlyFilePersistence(OAuthPersistence):
-
     def __init__(self, file_path):
         self._file_path = file_path
 
@@ -39,7 +38,7 @@ class DevOnlyFilePersistence(OAuthPersistence):
         # Data to be written
         dictionary = {
             "refresh_token": token.refresh_token,
-            "access_token": token.access_token
+            "access_token": token.access_token,
         }
 
         # Serializing json
@@ -55,6 +54,8 @@ class DevOnlyFilePersistence(OAuthPersistence):
                 json_as_string = infile.read()
 
                 token_as_json = json.loads(json_as_string)
-                return OAuthToken(token_as_json['access_token'], token_as_json['refresh_token'])
+                return OAuthToken(
+                    token_as_json["access_token"], token_as_json["refresh_token"]
+                )
         except Exception as e:
             return None

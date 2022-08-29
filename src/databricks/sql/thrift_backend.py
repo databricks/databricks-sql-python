@@ -54,7 +54,13 @@ class ThriftBackend:
     BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
     def __init__(
-        self, server_hostname: str, port, http_path: str, http_headers, auth_provider: CredentialsProvider, **kwargs
+        self,
+        server_hostname: str,
+        port,
+        http_path: str,
+        http_headers,
+        auth_provider: CredentialsProvider,
+        **kwargs,
     ):
         # Internal arguments in **kwargs:
         # _user_agent_entry
