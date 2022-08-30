@@ -73,9 +73,7 @@ PYSQL_OAUTH_CLIENT_ID = "databricks-sql-python"
 PYSQL_OAUTH_REDIRECT_PORT_RANGE = list(range(8020, 8025))
 
 
-def get_python_sql_connector_auth_provider(
-    hostname: str, oauth_persistence: OAuthPersistence = None, **kwargs
-):
+def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
     cfg = ClientContext(
         hostname=hostname,
         auth_type=kwargs.get("auth_type"),
@@ -87,6 +85,6 @@ def get_python_sql_connector_auth_provider(
         oauth_scopes=PYSQL_OAUTH_SCOPES,
         oauth_client_id=PYSQL_OAUTH_CLIENT_ID,
         oauth_redirect_port_range=PYSQL_OAUTH_REDIRECT_PORT_RANGE,
-        oauth_persistence=oauth_persistence,
+        oauth_persistence=kwargs.get("experimental_oauth_persistence"),
     )
     return get_auth_provider(cfg)
