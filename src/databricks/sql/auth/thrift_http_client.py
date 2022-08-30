@@ -1,7 +1,7 @@
 import logging
 from typing import Dict
 
-import thrift.transport.THttpClient
+import thrift
 
 logger = logging.getLogger(__name__)
 
