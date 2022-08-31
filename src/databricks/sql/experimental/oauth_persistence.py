@@ -48,7 +48,6 @@ class DevOnlyFilePersistence(OAuthPersistence):
             outfile.write(json_object)
 
     def read(self) -> Optional[OAuthToken]:
-        # TODO: validate the
         try:
             with open(self._file_path, "r") as infile:
                 json_as_string = infile.read()
