@@ -56,7 +56,7 @@ class DatabricksOAuthProvider(CredentialsProvider):
             self.oauth_manager = OAuthManager(
                 port_range=redirect_port_range, client_id=client_id
             )
-            self._hostname = self._normalize_host_name(hostname=hostname)
+            self._hostname = hostname
             self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
             self._oauth_persistence = oauth_persistence
             self._client_id = client_id
@@ -70,12 +70,6 @@ class DatabricksOAuthProvider(CredentialsProvider):
     def add_headers(self, request_headers: Dict[str, str]):
         self._update_token_if_expired()
         request_headers["Authorization"] = f"Bearer {self._access_token}"
-
-    @staticmethod
-    def _normalize_host_name(hostname: str):
-        maybe_scheme = "https://" if not hostname.startswith("https://") else ""
-        maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
-        return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
 
     def _initial_get_token(self):
         try:

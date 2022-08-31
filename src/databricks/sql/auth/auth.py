@@ -73,9 +73,15 @@ PYSQL_OAUTH_CLIENT_ID = "databricks-sql-python"
 PYSQL_OAUTH_REDIRECT_PORT_RANGE = list(range(8020, 8025))
 
 
+def normalize_host_name(hostname: str):
+    maybe_scheme = "https://" if not hostname.startswith("https://") else ""
+    maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
+    return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
+
+
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
     cfg = ClientContext(
-        hostname=hostname,
+        hostname=normalize_host_name(hostname),
         auth_type=kwargs.get("auth_type"),
         access_token=kwargs.get("access_token"),
         username=kwargs.get("_username"),
