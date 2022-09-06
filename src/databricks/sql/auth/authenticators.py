@@ -75,7 +75,7 @@ class DatabricksOAuthProvider(CredentialsProvider):
         try:
             if self._access_token is None or self._refresh_token is None:
                 if self._oauth_persistence:
-                    token = self._oauth_persistence.read()
+                    token = self._oauth_persistence.read(self._hostname)
                     if token:
                         self._access_token = token.access_token
                         self._refresh_token = token.refresh_token
@@ -88,7 +88,7 @@ class DatabricksOAuthProvider(CredentialsProvider):
                 )
                 self._access_token = access_token
                 self._refresh_token = refresh_token
-                self._oauth_persistence.persist(OAuthToken(access_token, refresh_token))
+                self._oauth_persistence.persist(self._hostname, OAuthToken(access_token, refresh_token))
         except Exception as e:
             logging.error(f"unexpected error in oauth initialization", e, exc_info=True)
             raise e
@@ -112,7 +112,7 @@ class DatabricksOAuthProvider(CredentialsProvider):
 
                 if self._oauth_persistence:
                     token = OAuthToken(self._access_token, self._refresh_token)
-                    self._oauth_persistence.persist(token)
+                    self._oauth_persistence.persist(self._hostname, token)
         except Exception as e:
             logging.error(f"unexpected error in oauth token update", e, exc_info=True)
             raise e
