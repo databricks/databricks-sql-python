@@ -23,6 +23,7 @@ class Connection:
         self,
         server_hostname: str,
         http_path: str,
+        access_token: Optional[str] = None,
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
@@ -36,14 +37,7 @@ class Connection:
             :param server_hostname: Databricks instance host name.
             :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
                 or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
-            :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
-            :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None.
-                Execute the SQL command `SET -v` to get a full list of available commands.
-            :param catalog: An optional initial catalog to use. Requires DBR version 9.0+
-            :param schema: An optional initial schema to use. Requires DBR version 9.0+
-
-        Other Parameters:
-            access_token: `str`, optional
+            :param access_token: `str`, optional
                 Http Bearer access token, e.g. Databricks Personal Access Token.
                 Unless if you use auth_type=`databricks-oauth` you need to pass `access_token.
                 Examples:
@@ -52,7 +46,13 @@ class Connection:
                             http_path='sql/protocolv1/o/6789/12abc567',
                             access_token='dabpi12345678'
                          )
+            :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
+            :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None.
+                Execute the SQL command `SET -v` to get a full list of available commands.
+            :param catalog: An optional initial catalog to use. Requires DBR version 9.0+
+            :param schema: An optional initial schema to use. Requires DBR version 9.0+
 
+        Other Parameters:
             auth_type: `str`, optional
                 `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
                 This is currently in private preview for Databricks accounts on AWS.
@@ -68,7 +68,6 @@ class Connection:
                 Note this is beta (private preview)
 
                 For persisting the oauth token in a prod environment you should subclass and implement OAuthPersistence
-
 
                 from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken
                 class MyCustomImplementation(OAuthPersistence):
@@ -144,6 +143,10 @@ class Connection:
         # _use_arrow_native_timestamps
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
+
+        if access_token:
+            access_token_kv = {"access_token": access_token}
+            kwargs = {**kwargs, **access_token_kv}
 
         self.open = False
         self.host = server_hostname

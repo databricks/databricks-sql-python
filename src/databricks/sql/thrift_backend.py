@@ -217,6 +217,12 @@ class ThriftBackend:
                 err_msg = headers[DATABRICKS_ERROR_OR_REDIRECT_HEADER]
             if DATABRICKS_REASON_HEADER in headers:
                 err_msg += ": " + headers[DATABRICKS_REASON_HEADER]
+
+        if not err_msg:
+            # if authentication token is invalid we need this branch
+            if DATABRICKS_REASON_HEADER in headers:
+                err_msg += ": " + headers[DATABRICKS_REASON_HEADER]
+
         return err_msg
 
     def _handle_request_error(self, error_info, attempt, elapsed):
