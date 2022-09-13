@@ -4,6 +4,7 @@ import logging
 import math
 import time
 import threading
+import lz4.frame
 from uuid import uuid4
 from ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED, create_default_context
 
@@ -435,7 +436,7 @@ class ThriftBackend:
                 initial_namespace = None
 
             open_session_req = ttypes.TOpenSessionReq(
-                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V5,
+                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V6,
                 client_protocol=None,
                 initialNamespace=initial_namespace,
                 canUseMultipleCatalogs=True,
@@ -491,7 +492,9 @@ class ThriftBackend:
         )
         return self.make_request(self._client.GetOperationStatus, req)
 
-    def _create_arrow_table(self, t_row_set, schema_bytes, description):
+    def _create_arrow_table(
+        self, t_row_set, are_arrow_results_compressed, schema_bytes, description
+    ):
         if t_row_set.columns is not None:
             (
                 arrow_table,
@@ -504,7 +507,7 @@ class ThriftBackend:
                 arrow_table,
                 num_rows,
             ) = ThriftBackend._convert_arrow_based_set_to_arrow_table(
-                t_row_set.arrowBatches, schema_bytes
+                t_row_set.arrowBatches, are_arrow_results_compressed, schema_bytes
             )
         else:
             raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
@@ -529,13 +532,18 @@ class ThriftBackend:
         return table
 
     @staticmethod
-    def _convert_arrow_based_set_to_arrow_table(arrow_batches, schema_bytes):
+    def _convert_arrow_based_set_to_arrow_table(
+        arrow_batches, are_arrow_results_compressed, schema_bytes
+    ):
         ba = bytearray()
         ba += schema_bytes
         n_rows = 0
         for arrow_batch in arrow_batches:
             n_rows += arrow_batch.rowCount
-            ba += arrow_batch.batch
+            if are_arrow_results_compressed:
+                ba += lz4.frame.decompress(arrow_batch.batch)
+            else:
+                ba += arrow_batch.batch
         arrow_table = pyarrow.ipc.open_stream(ba).read_all()
         return arrow_table, n_rows
 
@@ -710,11 +718,19 @@ class ThriftBackend:
             .to_pybytes()
         )
 
+        are_arrow_results_compressed = (
+            t_result_set_metadata_resp and t_result_set_metadata_resp.lz4Compressed
+        )
+
         if direct_results and direct_results.resultSet:
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
+
             arrow_results, n_rows = self._create_arrow_table(
-                direct_results.resultSet.results, schema_bytes, description
+                direct_results.resultSet.results,
+                are_arrow_results_compressed,
+                schema_bytes,
+                description,
             )
             arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
         else:
@@ -786,7 +802,7 @@ class ThriftBackend:
                 maxRows=max_rows, maxBytes=max_bytes
             ),
             canReadArrowResult=True,
-            canDecompressLZ4Result=False,
+            canDecompressLZ4Result=True,
             canDownloadResult=False,
             confOverlay={
                 # We want to receive proper Timestamp arrow types.
@@ -925,7 +941,7 @@ class ThriftBackend:
                 )
             )
         arrow_results, n_rows = self._create_arrow_table(
-            resp.results, arrow_schema_bytes, description
+            resp.results, are_arrow_results_compressed, arrow_schema_bytes, description
         )
         arrow_queue = ArrowQueue(arrow_results, n_rows)
 
