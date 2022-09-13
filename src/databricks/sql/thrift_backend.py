@@ -717,11 +717,9 @@ class ThriftBackend:
             .serialize()
             .to_pybytes()
         )
-
         are_arrow_results_compressed = (
             t_result_set_metadata_resp and t_result_set_metadata_resp.lz4Compressed
         )
-
         if direct_results and direct_results.resultSet:
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
@@ -940,6 +938,9 @@ class ThriftBackend:
                     expected_row_start_offset, resp.results.startRowOffset
                 )
             )
+        are_arrow_results_compressed = (
+            resp.resultSetMetadata and resp.resultSetMetadata.lz4Compressed
+        )
         arrow_results, n_rows = self._create_arrow_table(
             resp.results, are_arrow_results_compressed, arrow_schema_bytes, description
         )
