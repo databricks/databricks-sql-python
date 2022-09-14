@@ -80,6 +80,7 @@ class LargeQueriesMixin:
         scale0 = 10000
         scale_factor = 1
         with self.cursor() as cursor:
+            cursor.execute("SET use_cached_result=false")
             while duration < min_duration:
                 self.assertLess(scale_factor, 512, msg="Detected infinite loop")
                 start = time.time()

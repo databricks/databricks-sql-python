@@ -945,6 +945,7 @@ class ThriftBackend:
             maxRows=max_rows,
             maxBytes=max_bytes,
             orientation=ttypes.TFetchOrientation.FETCH_NEXT,
+            includeResultSetMetadata=True
         )
 
         resp = self.make_request(self._client.FetchResults, req)
