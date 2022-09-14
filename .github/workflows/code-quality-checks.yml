@@ -154,4 +154,4 @@ jobs:
       #              black the code
       #----------------------------------------------
       - name: Mypy
-        run: poetry run mypy src
+        run: poetry run mypy --install-types --non-interactive src
