@@ -17,8 +17,8 @@ class OAuthPersistenceTests(unittest.TestCase):
             access_token = "abc#$%%^&^*&*()()_=-/"
             refresh_token = "#$%%^^&**()+)_gter243]xyz"
             token = OAuthToken(access_token=access_token, refresh_token=refresh_token)
-            persistence_manager.persist(token)
-            new_token = persistence_manager.read()
+            persistence_manager.persist("https://randomserver", token)
+            new_token = persistence_manager.read("https://randomserver")
 
             self.assertEqual(new_token.access_token, access_token)
             self.assertEqual(new_token.refresh_token, refresh_token)
@@ -27,7 +27,7 @@ class OAuthPersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             test_json_file_path = os.path.join(tempdir, 'test.json')
             persistence_manager = DevOnlyFilePersistence(test_json_file_path)
-            new_token = persistence_manager.read()
+            new_token = persistence_manager.read("https://randomserver")
 
             self.assertEqual(new_token, None)
 

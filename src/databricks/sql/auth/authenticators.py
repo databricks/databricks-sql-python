@@ -88,7 +88,9 @@ class DatabricksOAuthProvider(AuthProvider):
                 )
                 self._access_token = access_token
                 self._refresh_token = refresh_token
-                self._oauth_persistence.persist(self._hostname, OAuthToken(access_token, refresh_token))
+                self._oauth_persistence.persist(
+                    self._hostname, OAuthToken(access_token, refresh_token)
+                )
         except Exception as e:
             logging.error(f"unexpected error in oauth initialization", e, exc_info=True)
             raise e

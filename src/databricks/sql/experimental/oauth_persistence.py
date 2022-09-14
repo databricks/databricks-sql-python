@@ -39,7 +39,7 @@ class DevOnlyFilePersistence(OAuthPersistence):
         dictionary = {
             "refresh_token": token.refresh_token,
             "access_token": token.access_token,
-            "hostname": hostname
+            "hostname": hostname,
         }
 
         # Serializing json
@@ -56,9 +56,11 @@ class DevOnlyFilePersistence(OAuthPersistence):
                 token_as_json = json.loads(json_as_string)
                 hostname_in_token = token_as_json["hostname"]
                 if hostname != hostname_in_token:
-                    msg = f"token was persisted for host {hostname_in_token} does not match {hostname} " \
-                          f"This is a dev only persistence and it only supports a single Databricks hostname." \
-                          f"\n manually delete {self._file_path} file and restart this process"
+                    msg = (
+                        f"token was persisted for host {hostname_in_token} does not match {hostname} "
+                        f"This is a dev only persistence and it only supports a single Databricks hostname."
+                        f"\n manually delete {self._file_path} file and restart this process"
+                    )
                     logger.error(msg)
                     raise Exception(msg)
                 return OAuthToken(

@@ -46,4 +46,5 @@ def TimestampFromTicks(ticks):
 
 def connect(server_hostname, http_path, access_token=None, **kwargs):
     from .client import Connection
+
     return Connection(server_hostname, http_path, access_token, **kwargs)
