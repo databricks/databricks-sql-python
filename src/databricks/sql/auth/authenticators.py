@@ -9,14 +9,14 @@ from databricks.sql.auth.oauth import OAuthManager
 from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
 
 
-class CredentialsProvider:
+class AuthProvider:
     def add_headers(self, request_headers: Dict[str, str]):
         pass
 
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class AccessTokenAuthProvider(CredentialsProvider):
+class AccessTokenAuthProvider(AuthProvider):
     def __init__(self, access_token: str):
         self.__authorization_header_value = "Bearer {}".format(access_token)
 
@@ -26,7 +26,7 @@ class AccessTokenAuthProvider(CredentialsProvider):
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class BasicAuthProvider(CredentialsProvider):
+class BasicAuthProvider(AuthProvider):
     def __init__(self, username: str, password: str):
         auth_credentials = f"{username}:{password}".encode("UTF-8")
         auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode(
@@ -41,7 +41,7 @@ class BasicAuthProvider(CredentialsProvider):
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class DatabricksOAuthProvider(CredentialsProvider):
+class DatabricksOAuthProvider(AuthProvider):
     SCOPE_DELIM = " "
 
     def __init__(

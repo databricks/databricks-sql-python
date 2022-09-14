@@ -13,7 +13,7 @@ import thrift.transport.TSocket
 import thrift.transport.TTransport
 
 import databricks.sql.auth.thrift_http_client
-from databricks.sql.auth.authenticators import CredentialsProvider
+from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
 from databricks.sql.thrift_api.TCLIService.TCLIService import (
@@ -59,7 +59,7 @@ class ThriftBackend:
         port,
         http_path: str,
         http_headers,
-        auth_provider: CredentialsProvider,
+        auth_provider: AuthProvider,
         **kwargs,
     ):
         # Internal arguments in **kwargs:

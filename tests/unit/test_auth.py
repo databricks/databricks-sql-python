@@ -1,6 +1,6 @@
 import unittest
 
-from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, CredentialsProvider
+from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 
 
@@ -29,7 +29,7 @@ class Auth(unittest.TestCase):
         self.assertEqual(http_request['myKey'], 'myVal')
 
     def test_noop_auth_provider(self):
-        auth = CredentialsProvider()
+        auth = AuthProvider()
 
         http_request = {'myKey': 'myVal'}
         auth.add_headers(http_request)

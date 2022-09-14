@@ -56,7 +56,7 @@ class Connection:
             auth_type: `str`, optional
                 `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
                 This is currently in private preview for Databricks accounts on AWS.
-                This is a beta feature and supports User to Machine OAuth authentication for Databricks on AWS with
+                This supports User to Machine OAuth authentication for Databricks on AWS with
                 any IDP configured. This is only for interactive python applications and open a browser window.
                 Note this is beta (private preview)
 

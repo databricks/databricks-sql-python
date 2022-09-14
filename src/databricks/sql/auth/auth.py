@@ -2,7 +2,7 @@ from enum import Enum
 from typing import List
 
 from databricks.sql.auth.authenticators import (
-    CredentialsProvider,
+    AuthProvider,
     AccessTokenAuthProvider,
     BasicAuthProvider,
     DatabricksOAuthProvider,
@@ -63,7 +63,7 @@ def get_auth_provider(cfg: ClientContext):
         return BasicAuthProvider(cfg.username, cfg.password)
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
         # no op authenticator. authentication is performed using ssl certificate outside of headers
-        return CredentialsProvider()
+        return AuthProvider()
     else:
         raise RuntimeError("No valid authentication settings!")
 
