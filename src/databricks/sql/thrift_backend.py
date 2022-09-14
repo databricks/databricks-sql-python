@@ -5,21 +5,22 @@ import math
 import time
 import threading
 import lz4.frame
-from uuid import uuid4
-from ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED, create_default_context
+from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 
 import pyarrow
 import thrift.transport.THttpClient
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
 import thrift.transport.TTransport
-from thrift.Thrift import TException
 
+import databricks.sql.auth.thrift_http_client
+from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
 from databricks.sql.thrift_api.TCLIService.TCLIService import (
     Client as TCLIServiceClient,
 )
+
 from databricks.sql.utils import (
     ArrowQueue,
     ExecuteResponse,
@@ -54,7 +55,13 @@ class ThriftBackend:
     BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
     def __init__(
-        self, server_hostname: str, port, http_path: str, http_headers, **kwargs
+        self,
+        server_hostname: str,
+        port,
+        http_path: str,
+        http_headers,
+        auth_provider: AuthProvider,
+        **kwargs,
     ):
         # Internal arguments in **kwargs:
         # _user_agent_entry
@@ -134,7 +141,10 @@ class ThriftBackend:
                 password=tls_client_cert_key_password,
             )
 
-        self._transport = thrift.transport.THttpClient.THttpClient(
+        self._auth_provider = auth_provider
+
+        self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
+            auth_provider=self._auth_provider,
             uri_or_host=uri,
             ssl_context=ssl_context,
         )
@@ -208,6 +218,12 @@ class ThriftBackend:
                 err_msg = headers[DATABRICKS_ERROR_OR_REDIRECT_HEADER]
             if DATABRICKS_REASON_HEADER in headers:
                 err_msg += ": " + headers[DATABRICKS_REASON_HEADER]
+
+        if not err_msg:
+            # if authentication token is invalid we need this branch
+            if DATABRICKS_REASON_HEADER in headers:
+                err_msg += ": " + headers[DATABRICKS_REASON_HEADER]
+
         return err_msg
 
     def _handle_request_error(self, error_info, attempt, elapsed):
