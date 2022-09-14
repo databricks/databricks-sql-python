@@ -828,7 +828,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         t_row_set = ttypes.TRowSet()
         thrift_backend = ThriftBackend("foobar", 443, "path", [])
         with self.assertRaises(OperationalError):
-            thrift_backend._create_arrow_table(t_row_set, None, Mock())
+            thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
     @patch.object(ThriftBackend, "_convert_arrow_based_set_to_arrow_table")
     @patch.object(ThriftBackend, "_convert_column_based_set_to_arrow_table")
@@ -841,16 +841,17 @@ class ThriftBackendTestSuite(unittest.TestCase):
         schema = Mock()
         cols = Mock()
         arrow_batches = Mock()
+        are_arrow_results_compressed = Mock()
         description = Mock()
 
         t_col_set = ttypes.TRowSet(columns=cols)
-        thrift_backend._create_arrow_table(t_col_set, schema, description)
+        thrift_backend._create_arrow_table(t_col_set, are_arrow_results_compressed, schema, description)
         convert_arrow_mock.assert_not_called()
         convert_col_mock.assert_called_once_with(cols, description)
 
         t_arrow_set = ttypes.TRowSet(arrowBatches=arrow_batches)
-        thrift_backend._create_arrow_table(t_arrow_set, schema, Mock())
-        convert_arrow_mock.assert_called_once_with(arrow_batches, schema)
+        thrift_backend._create_arrow_table(t_arrow_set, are_arrow_results_compressed, schema, Mock())
+        convert_arrow_mock.assert_called_once_with(arrow_batches, are_arrow_results_compressed, schema)
 
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):
         # Deliberately duplicate the column name to check that dups work
