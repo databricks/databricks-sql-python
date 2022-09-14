@@ -44,7 +44,7 @@ def TimestampFromTicks(ticks):
     return Timestamp(*time.localtime(ticks)[:6])
 
 
-def connect(server_hostname, http_path, access_token, **kwargs):
+def connect(server_hostname, http_path, access_token=None, **kwargs):
     from .client import Connection
 
     return Connection(server_hostname, http_path, access_token, **kwargs)

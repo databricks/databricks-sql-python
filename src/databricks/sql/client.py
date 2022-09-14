@@ -1,19 +1,16 @@
-import base64
-import datetime
-from decimal import Decimal
-import logging
-import re
 from typing import Dict, Tuple, List, Optional, Any, Union
 
 import pandas
 import pyarrow
 
-from databricks.sql import USER_AGENT_NAME, __version__
+from databricks.sql import __version__
 from databricks.sql import *
 from databricks.sql.exc import OperationalError
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper
 from databricks.sql.types import Row
+from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +23,7 @@ class Connection:
         self,
         server_hostname: str,
         http_path: str,
-        access_token: str,
+        access_token: Optional[str] = None,
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
@@ -36,15 +33,77 @@ class Connection:
         """
         Connect to a Databricks SQL endpoint or a Databricks cluster.
 
-        :param server_hostname: Databricks instance host name.
-        :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
-              or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
-        :param access_token: Http Bearer access token, e.g. Databricks Personal Access Token.
-        :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
-        :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None.
-               Execute the SQL command `SET -v` to get a full list of available commands.
-        :param catalog: An optional initial catalog to use. Requires DBR version 9.0+
-        :param schema: An optional initial schema to use. Requires DBR version 9.0+
+        Parameters:
+            :param server_hostname: Databricks instance host name.
+            :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
+                or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
+            :param access_token: `str`, optional
+                Http Bearer access token, e.g. Databricks Personal Access Token.
+                Unless if you use auth_type=`databricks-oauth` you need to pass `access_token.
+                Examples:
+                         connection = sql.connect(
+                            server_hostname='dbc-12345.staging.cloud.databricks.com',
+                            http_path='sql/protocolv1/o/6789/12abc567',
+                            access_token='dabpi12345678'
+                         )
+            :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
+            :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None.
+                Execute the SQL command `SET -v` to get a full list of available commands.
+            :param catalog: An optional initial catalog to use. Requires DBR version 9.0+
+            :param schema: An optional initial schema to use. Requires DBR version 9.0+
+
+        Other Parameters:
+            auth_type: `str`, optional
+                `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
+                This is currently in private preview for Databricks accounts on AWS.
+                This supports User to Machine OAuth authentication for Databricks on AWS with
+                any IDP configured. This is only for interactive python applications and open a browser window.
+                Note this is beta (private preview)
+
+            experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
+                This has to be a class implementing `OAuthPersistence`.
+                When `auth_type` is set to `databricks-oauth` without persisting the oauth token in a persistence storage
+                the oauth tokens will only be maintained in memory and if the python process restarts the end user
+                will have to login again.
+                Note this is beta (private preview)
+
+                For persisting the oauth token in a prod environment you should subclass and implement OAuthPersistence
+
+                from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken
+                class MyCustomImplementation(OAuthPersistence):
+                    def __init__(self, file_path):
+                        self._file_path = file_path
+
+                    def persist(self, token: OAuthToken):
+                        # implement this method to persist token.refresh_token and token.access_token
+
+                    def read(self) -> Optional[OAuthToken]:
+                        # implement this method to return an instance of the persisted token
+
+
+                    connection = sql.connect(
+                        server_hostname='dbc-12345.staging.cloud.databricks.com',
+                        http_path='sql/protocolv1/o/6789/12abc567',
+                        auth_type="databricks-oauth",
+                        experimental_oauth_persistence=MyCustomImplementation()
+                    )
+
+                For development purpose you can use the existing `DevOnlyFilePersistence` which stores the
+                raw oauth token in the provided file path. Please note this is only for development and for prod you should provide your
+                own implementation of OAuthPersistence.
+
+                Examples:
+                        # for development only
+                        from databricks.sql.experimental.oauth_persistence import DevOnlyFilePersistence
+
+                        connection = sql.connect(
+                            server_hostname='dbc-12345.staging.cloud.databricks.com',
+                            http_path='sql/protocolv1/o/6789/12abc567',
+                            auth_type="databricks-oauth",
+                            experimental_oauth_persistence=DevOnlyFilePersistence("~/dev-oauth.json")
+                        )
+
+
         """
 
         # Internal arguments in **kwargs:
@@ -85,30 +144,18 @@ class Connection:
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
 
+        if access_token:
+            access_token_kv = {"access_token": access_token}
+            kwargs = {**kwargs, **access_token_kv}
+
         self.open = False
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
 
-        authorization_header = []
-        if kwargs.get("_username") and kwargs.get("_password"):
-            auth_credentials = "{username}:{password}".format(
-                username=kwargs.get("_username"), password=kwargs.get("_password")
-            ).encode("UTF-8")
-            auth_credentials_base64 = base64.standard_b64encode(
-                auth_credentials
-            ).decode("UTF-8")
-            authorization_header = [
-                ("Authorization", "Basic {}".format(auth_credentials_base64))
-            ]
-        elif access_token:
-            authorization_header = [("Authorization", "Bearer {}".format(access_token))]
-        elif not (
-            kwargs.get("_use_cert_as_auth") and kwargs.get("_tls_client_cert_file")
-        ):
-            raise ValueError(
-                "No valid authentication settings. Please provide an access token."
-            )
+        auth_provider = get_python_sql_connector_auth_provider(
+            server_hostname, **kwargs
+        )
 
         if not kwargs.get("_user_agent_entry"):
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
@@ -117,12 +164,14 @@ class Connection:
                 USER_AGENT_NAME, __version__, kwargs.get("_user_agent_entry")
             )
 
-        base_headers = [("User-Agent", useragent_header)] + authorization_header
+        base_headers = [("User-Agent", useragent_header)]
+
         self.thrift_backend = ThriftBackend(
             self.host,
             self.port,
             http_path,
             (http_headers or []) + base_headers,
+            auth_provider,
             **kwargs
         )
 
