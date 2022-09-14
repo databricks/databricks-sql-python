@@ -184,6 +184,14 @@ optional = false
 python-versions = ">=3.6"
 
 [[package]]
+name = "lz4"
+version = "4.0.2"
+description = "LZ4 Bindings for Python"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[[package]]
 name = "mypy"
 version = "0.950"
 description = "Optional static typing for Python"
