@@ -845,17 +845,17 @@ class ThriftBackendTestSuite(unittest.TestCase):
         schema = Mock()
         cols = Mock()
         arrow_batches = Mock()
-        are_arrow_results_compressed = Mock()
+        lz4_compressed = Mock()
         description = Mock()
 
         t_col_set = ttypes.TRowSet(columns=cols)
-        thrift_backend._create_arrow_table(t_col_set, are_arrow_results_compressed, schema, description)
+        thrift_backend._create_arrow_table(t_col_set, lz4_compressed, schema, description)
         convert_arrow_mock.assert_not_called()
         convert_col_mock.assert_called_once_with(cols, description)
 
         t_arrow_set = ttypes.TRowSet(arrowBatches=arrow_batches)
-        thrift_backend._create_arrow_table(t_arrow_set, are_arrow_results_compressed, schema, Mock())
-        convert_arrow_mock.assert_called_once_with(arrow_batches, are_arrow_results_compressed, schema)
+        thrift_backend._create_arrow_table(t_arrow_set, lz4_compressed, schema, Mock())
+        convert_arrow_mock.assert_called_once_with(arrow_batches, lz4_compressed, schema)
 
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):
         # Deliberately duplicate the column name to check that dups work
