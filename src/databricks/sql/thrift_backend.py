@@ -508,9 +508,7 @@ class ThriftBackend:
         )
         return self.make_request(self._client.GetOperationStatus, req)
 
-    def _create_arrow_table(
-        self, t_row_set, are_arrow_results_compressed, schema_bytes, description
-    ):
+    def _create_arrow_table(self, t_row_set, lz4_compressed, schema_bytes, description):
         if t_row_set.columns is not None:
             (
                 arrow_table,
@@ -523,7 +521,7 @@ class ThriftBackend:
                 arrow_table,
                 num_rows,
             ) = ThriftBackend._convert_arrow_based_set_to_arrow_table(
-                t_row_set.arrowBatches, are_arrow_results_compressed, schema_bytes
+                t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
             raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
@@ -549,14 +547,14 @@ class ThriftBackend:
 
     @staticmethod
     def _convert_arrow_based_set_to_arrow_table(
-        arrow_batches, are_arrow_results_compressed, schema_bytes
+        arrow_batches, lz4_compressed, schema_bytes
     ):
         ba = bytearray()
         ba += schema_bytes
         n_rows = 0
         for arrow_batch in arrow_batches:
             n_rows += arrow_batch.rowCount
-            if are_arrow_results_compressed:
+            if lz4_compressed:
                 ba += lz4.frame.decompress(arrow_batch.batch)
             else:
                 ba += arrow_batch.batch
@@ -716,7 +714,6 @@ class ThriftBackend:
                     ]
                 )
             )
-
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
         has_more_rows = (
@@ -733,7 +730,7 @@ class ThriftBackend:
             .serialize()
             .to_pybytes()
         )
-        are_arrow_results_compressed = (
+        lz4_compressed = (
             t_result_set_metadata_resp and t_result_set_metadata_resp.lz4Compressed
         )
         if direct_results and direct_results.resultSet:
@@ -742,7 +739,7 @@ class ThriftBackend:
 
             arrow_results, n_rows = self._create_arrow_table(
                 direct_results.resultSet.results,
-                are_arrow_results_compressed,
+                lz4_compressed,
                 schema_bytes,
                 description,
             )
@@ -754,6 +751,7 @@ class ThriftBackend:
             status=operation_state,
             has_been_closed_server_side=has_been_closed_server_side,
             has_more_rows=has_more_rows,
+            lz4_compressed=lz4_compressed,
             command_handle=resp.operationHandle,
             description=description,
             arrow_schema_bytes=schema_bytes,
@@ -930,6 +928,7 @@ class ThriftBackend:
         max_rows,
         max_bytes,
         expected_row_start_offset,
+        lz4_compressed,
         arrow_schema_bytes,
         description,
     ):
@@ -945,7 +944,6 @@ class ThriftBackend:
             maxRows=max_rows,
             maxBytes=max_bytes,
             orientation=ttypes.TFetchOrientation.FETCH_NEXT,
-            includeResultSetMetadata=True,
         )
 
         resp = self.make_request(self._client.FetchResults, req)
@@ -955,11 +953,8 @@ class ThriftBackend:
                     expected_row_start_offset, resp.results.startRowOffset
                 )
             )
-        are_arrow_results_compressed = (
-            resp.resultSetMetadata and resp.resultSetMetadata.lz4Compressed
-        )
         arrow_results, n_rows = self._create_arrow_table(
-            resp.results, are_arrow_results_compressed, arrow_schema_bytes, description
+            resp.results, lz4_compressed, arrow_schema_bytes, description
         )
         arrow_queue = ArrowQueue(arrow_results, n_rows)
 

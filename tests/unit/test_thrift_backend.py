@@ -618,6 +618,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     max_rows=1,
                     max_bytes=1,
                     expected_row_start_offset=0,
+                    lz4_compressed=False,
                     arrow_schema_bytes=Mock(),
                     description=Mock())
 
@@ -650,6 +651,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             max_rows=1,
             max_bytes=1,
             expected_row_start_offset=0,
+            lz4_compressed=False,
             arrow_schema_bytes=schema,
             description=MagicMock())
 
