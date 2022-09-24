@@ -552,11 +552,13 @@ class ThriftBackend:
         ba = bytearray()
         ba += schema_bytes
         n_rows = 0
-        for arrow_batch in arrow_batches:
-            n_rows += arrow_batch.rowCount
-            if lz4_compressed:
+        if lz4_compressed:
+            for arrow_batch in arrow_batches:
+                n_rows += arrow_batch.rowCount
                 ba += lz4.frame.decompress(arrow_batch.batch)
-            else:
+        else:
+            for arrow_batch in arrow_batches:
+                n_rows += arrow_batch.rowCount
                 ba += arrow_batch.batch
         arrow_table = pyarrow.ipc.open_stream(ba).read_all()
         return arrow_table, n_rows
@@ -795,7 +797,7 @@ class ThriftBackend:
                     t_spark_direct_results.closeOperation
                 )
 
-    def execute_command(self, operation, session_handle, max_rows, max_bytes, cursor):
+    def execute_command(self, operation, session_handle, max_rows, max_bytes, use_lz4_compression, cursor):
         assert session_handle is not None
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
@@ -814,7 +816,7 @@ class ThriftBackend:
                 maxRows=max_rows, maxBytes=max_bytes
             ),
             canReadArrowResult=True,
-            canDecompressLZ4Result=True,
+            canDecompressLZ4Result=use_lz4_compression,
             canDownloadResult=False,
             confOverlay={
                 # We want to receive proper Timestamp arrow types.

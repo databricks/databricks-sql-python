@@ -297,7 +297,7 @@ class Cursor:
             raise Error("Attempting operation on closed cursor")
 
     def execute(
-        self, operation: str, parameters: Optional[Dict[str, str]] = None
+        self, operation: str, parameters: Optional[Dict[str, str]] = None, use_lz4_compression: bool = True
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -318,6 +318,7 @@ class Cursor:
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
+            use_lz4_compression=use_lz4_compression,
             cursor=self,
         )
         self.active_result_set = ResultSet(

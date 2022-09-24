@@ -358,7 +358,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
         with self.assertRaises(DatabaseError) as cm:
-            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
 
         self.assertEqual(display_message, str(cm.exception))
         self.assertIn(diagnostic_info, str(cm.exception.message_with_context()))
@@ -388,7 +388,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
         with self.assertRaises(DatabaseError) as cm:
-            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
 
         self.assertEqual(display_message, str(cm.exception))
         self.assertIn(diagnostic_info, str(cm.exception.message_with_context()))
@@ -666,7 +666,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        thrift_backend.execute_command("foo", Mock(), 100, 200, cursor_mock)
+        thrift_backend.execute_command("foo", Mock(), 100, 200, Mock(), cursor_mock)
         # Check call to client
         req = tcli_service_instance.ExecuteStatement.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
@@ -825,7 +825,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend = self._make_fake_thrift_backend()
 
         with self.assertRaises(OperationalError) as cm:
-            thrift_backend.execute_command("foo", Mock(), 100, 100, Mock())
+            thrift_backend.execute_command("foo", Mock(), 100, 100, Mock(), Mock())
         self.assertIn("Expected results to be in Arrow or column based format", str(cm.exception))
 
     def test_create_arrow_table_raises_error_for_unsupported_type(self):
@@ -1332,7 +1332,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 complex_arg_types["_use_arrow_native_decimals"] = decimals
 
             thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), **complex_arg_types)
-            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
 
             t_execute_statement_req = tcli_service_instance.ExecuteStatement.call_args[0][0]
             # If the value is unset, the native type should default to True
