@@ -857,6 +857,25 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._create_arrow_table(t_arrow_set, lz4_compressed, schema, Mock())
         convert_arrow_mock.assert_called_once_with(arrow_batches, lz4_compressed, schema)
 
+    @patch("lz4.frame.decompress")
+    @patch("pyarrow.ipc.open_stream")
+    def test_convert_arrow_based_set_to_arrow_table(self, open_stream_mock, lz4_decompress_mock):
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        
+        lz4_decompress_mock.return_value = bytearray('Testing','utf-8')
+
+        schema = pyarrow.schema([
+            pyarrow.field("column1", pyarrow.int32()),
+        ]).serialize().to_pybytes()
+        
+        arrow_batches = [ttypes.TSparkArrowBatch(batch=bytearray('Testing','utf-8'), rowCount=1) for _ in range(10)]
+        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
+        lz4_decompress_mock.assert_not_called()
+
+        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
+        lz4_decompress_mock.assert_called()
+        
+
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):
         # Deliberately duplicate the column name to check that dups work
         field_names = ["column1", "column2", "column3", "column3"]

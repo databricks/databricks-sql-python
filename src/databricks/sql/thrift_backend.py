@@ -797,7 +797,9 @@ class ThriftBackend:
                     t_spark_direct_results.closeOperation
                 )
 
-    def execute_command(self, operation, session_handle, max_rows, max_bytes, use_lz4_compression, cursor):
+    def execute_command(
+        self, operation, session_handle, max_rows, max_bytes, lz4_compression, cursor
+    ):
         assert session_handle is not None
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
@@ -816,7 +818,7 @@ class ThriftBackend:
                 maxRows=max_rows, maxBytes=max_bytes
             ),
             canReadArrowResult=True,
-            canDecompressLZ4Result=use_lz4_compression,
+            canDecompressLZ4Result=lz4_compression,
             canDownloadResult=False,
             confOverlay={
                 # We want to receive proper Timestamp arrow types.

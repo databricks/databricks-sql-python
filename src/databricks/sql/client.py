@@ -1,4 +1,5 @@
 from typing import Dict, Tuple, List, Optional, Any, Union
+from xmlrpc.client import boolean
 
 import pandas
 import pyarrow
@@ -251,6 +252,7 @@ class Cursor:
         thrift_backend: ThriftBackend,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = DEFAULT_ARRAY_SIZE,
+        lz4_compression: bool = True,
     ) -> None:
         """
         These objects represent a database cursor, which is used to manage the context of a fetch
@@ -264,6 +266,7 @@ class Cursor:
         self.buffer_size_bytes = result_buffer_size_bytes
         self.active_result_set: Union[ResultSet, None] = None
         self.arraysize = arraysize
+        self.lz4_compression: bool = lz4_compression
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
         self.executing_command_id = None
@@ -297,7 +300,7 @@ class Cursor:
             raise Error("Attempting operation on closed cursor")
 
     def execute(
-        self, operation: str, parameters: Optional[Dict[str, str]] = None, use_lz4_compression: bool = True
+        self, operation: str, parameters: Optional[Dict[str, str]] = None
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -318,7 +321,7 @@ class Cursor:
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
-            use_lz4_compression=use_lz4_compression,
+            lz4_compression=self.lz4_compression,
             cursor=self,
         )
         self.active_result_set = ResultSet(
@@ -590,6 +593,9 @@ class Cursor:
     def setoutputsize(self, size, column=None):
         """Does nothing by default"""
         pass
+
+    def setLZ4Compression(self, lz4_compression):
+        self.lz4_compression = lz4_compression
 
 
 class ResultSet:
