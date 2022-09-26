@@ -208,7 +208,7 @@ class Connection:
         self,
         arraysize: int = DEFAULT_ARRAY_SIZE,
         buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-        lz4_compression: bool = True
+        lz4_compression: bool = True,
     ) -> "Cursor":
         """
         Return a new Cursor object using the connection.
@@ -223,7 +223,7 @@ class Connection:
             self.thrift_backend,
             arraysize=arraysize,
             result_buffer_size_bytes=buffer_size_bytes,
-            lz4_compression=lz4_compression
+            lz4_compression=lz4_compression,
         )
         self._cursors.append(cursor)
         return cursor
@@ -254,7 +254,7 @@ class Cursor:
         thrift_backend: ThriftBackend,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = DEFAULT_ARRAY_SIZE,
-        lz4_compression: bool = True
+        lz4_compression: bool = True,
     ) -> None:
         """
         These objects represent a database cursor, which is used to manage the context of a fetch
