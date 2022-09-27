@@ -1375,7 +1375,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
             thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), **complex_arg_types)
             thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
-
             t_execute_statement_req = tcli_service_instance.ExecuteStatement.call_args[0][0]
             # If the value is unset, the native type should default to True
             self.assertEqual(t_execute_statement_req.useArrowNativeTypes.timestampAsArrow,
