@@ -510,6 +510,20 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
                 self.assertEqual(arrow_result_table.field(0).type, ts_type)
                 self.assertEqual(arrow_result_value, expected.timestamp() * 1000000)
 
+    @skipUnless(pysql_supports_arrow(), 'arrow test needs arrow support')
+    def test_can_flip_compression(self):
+        with self.cursor() as cursor:
+            cursor.execute("SELECT array(1,2,3,4)")
+            cursor.fetchall()
+            lz4_compressed = cursor.active_result_set.lz4_compressed
+            #The endpoint should support compression
+            self.assertEqual(lz4_compressed, True)
+            cursor.setLZ4Compression(False)
+            cursor.execute("SELECT array(1,2,3,4)")
+            cursor.fetchall()
+            lz4_compressed = cursor.active_result_set.lz4_compressed
+            self.assertEqual(lz4_compressed, False)
+
     def _should_have_native_complex_types(self):
         return pysql_has_version(">=", 2) and is_thrift_v5_plus(self.arguments)
 

@@ -309,6 +309,29 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     thrift_backend._handle_execute_response(t_execute_resp, Mock())
                 self.assertIn("some information about the error", str(cm.exception))
 
+    def test_handle_execute_response_sets_compression_in_direct_results(self):
+        for resp_type in self.execute_response_types:
+            lz4Compressed=Mock()
+            resultSet=MagicMock()
+            resultSet.results.startRowOffset = 0
+            t_execute_resp = resp_type(
+                status=Mock(),
+                operationHandle=Mock(),
+                directResults=ttypes.TSparkDirectResults(
+                    operationStatus= Mock(),
+                    resultSetMetadata=ttypes.TGetResultSetMetadataResp(
+                        status=self.okay_status,
+                        resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
+                        schema=MagicMock(),
+                        arrowSchema=MagicMock(),
+                        lz4Compressed=lz4Compressed),
+                    resultSet=resultSet,
+                    closeOperation=None))
+            thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+
+            execute_response = thrift_backend._handle_execute_response(t_execute_resp, Mock())
+            self.assertEqual(execute_response.lz4_compressed, lz4Compressed)
+
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_handle_execute_response_checks_operation_state_in_polls(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
