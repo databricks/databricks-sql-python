@@ -518,7 +518,7 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
             lz4_compressed = cursor.active_result_set.lz4_compressed
             #The endpoint should support compression
             self.assertEqual(lz4_compressed, True)
-            cursor.setLZ4Compression(False)
+            cursor.connection.lz4_compression=False
             cursor.execute("SELECT array(1,2,3,4)")
             cursor.fetchall()
             lz4_compressed = cursor.active_result_set.lz4_compressed

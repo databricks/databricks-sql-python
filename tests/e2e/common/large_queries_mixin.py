@@ -50,12 +50,14 @@ class LargeQueriesMixin:
         self.arraysize = 1000
         with self.cursor() as cursor:
             for lz4_compression in [False, True]:
-                cursor.setLZ4Compression(lz4_compression)
+                cursor.connection.lz4_compression=lz4_compression
                 uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
                 cursor.execute("SELECT id, {uuids} FROM RANGE({rows})".format(uuids=uuids, rows=rows))
+                self.assertEqual(lz4_compression, cursor.active_result_set.lz4_compressed)
                 for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
                     self.assertEqual(row[0], row_id)  # Verify no rows are dropped in the middle.
                     self.assertEqual(len(row[1]), 36)
+
 
     def test_query_with_large_narrow_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
@@ -67,11 +69,9 @@ class LargeQueriesMixin:
         # This is used by PyHive tests to determine the buffer size
         self.arraysize = 10000000
         with self.cursor() as cursor:
-            for lz4_compression in [False, True]:
-                cursor.setLZ4Compression(lz4_compression)
-                cursor.execute("SELECT * FROM RANGE({rows})".format(rows=rows))
-                for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
-                    self.assertEqual(row[0], row_id)
+            cursor.execute("SELECT * FROM RANGE({rows})".format(rows=rows))
+            for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
+                self.assertEqual(row[0], row_id)
 
     def test_long_running_query(self):
         """ Incrementally increase query size until it takes at least 5 minutes,
@@ -84,23 +84,21 @@ class LargeQueriesMixin:
         scale0 = 10000
         scale_factor = 1
         with self.cursor() as cursor:
-            for lz4_compression in [False, True]:
-                cursor.setLZ4Compression(lz4_compression)
-                while duration < min_duration:
-                    self.assertLess(scale_factor, 512, msg="Detected infinite loop")
-                    start = time.time()
+            while duration < min_duration:
+                self.assertLess(scale_factor, 512, msg="Detected infinite loop")
+                start = time.time()
 
-                    cursor.execute("""SELECT count(*)
-                            FROM RANGE({scale}) x
-                            JOIN RANGE({scale0}) y
-                            ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%" 
-                            """.format(scale=scale_factor * scale0, scale0=scale0))
+                cursor.execute("""SELECT count(*)
+                        FROM RANGE({scale}) x
+                        JOIN RANGE({scale0}) y
+                        ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%" 
+                        """.format(scale=scale_factor * scale0, scale0=scale0))
 
-                    n, = cursor.fetchone()
-                    self.assertEqual(n, 0)
+                n, = cursor.fetchone()
+                self.assertEqual(n, 0)
 
-                    duration = time.time() - start
-                    current_fraction = duration / min_duration
-                    print('Took {} s with scale factor={}'.format(duration, scale_factor))
-                    # Extrapolate linearly to reach 5 min and add 50% padding to push over the limit
-                    scale_factor = math.ceil(1.5 * scale_factor / current_fraction)
+                duration = time.time() - start
+                current_fraction = duration / min_duration
+                print('Took {} s with scale factor={}'.format(duration, scale_factor))
+                # Extrapolate linearly to reach 5 min and add 50% padding to push over the limit
+                scale_factor = math.ceil(1.5 * scale_factor / current_fraction)
