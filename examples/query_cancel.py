@@ -1,7 +1,9 @@
 from databricks import sql
 import os, threading, time
 
-# The current operation of a cursor may be cancelled by calling its `.cancel()` method as shown in the example below.
+"""
+The current operation of a cursor may be cancelled by calling its `.cancel()` method as shown in the example below.
+"""
 
 with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
                  http_path       = os.getenv("DATABRICKS_HTTP_PATH"),
