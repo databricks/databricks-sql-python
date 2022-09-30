@@ -19,8 +19,8 @@ shows which methods you may implement.
 
 For this example, the DevOnlyFilePersistence class is provided. Do not use this in production.
 
-Bring Your Own Identity Provider is in public preview. You can monitor these two links to find out
-when it will become generally available:
+Bring Your Own Identity Provider is in public preview. The API may change prior to becoming GA. 
+You can monitor these two links to find out when it will become generally available:
 
   1. https://docs.databricks.com/administration-guide/account-settings-e2/single-sign-on.html 
   2. https://docs.databricks.com/dev-tools/python-sql-connector.html
