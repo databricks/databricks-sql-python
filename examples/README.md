@@ -6,6 +6,9 @@ We provide example scripts so you can see the connector in action for basic usag
     - DATABRICKS_HTTP_PATH
     - DATABRICKS_TOKEN
 
+Follow the quick start in our [README](../README.md) to install `databricks-sql-connector` and see
+how to find the hostname, http path, and access token. Note that for the OAuth examples below a 
+personal access token is not needed.
 # Table of Contents
 
 - **`query_execute.py`** connects to the `samples` database of your default catalog, runs a small query, and prints the result to screen.
