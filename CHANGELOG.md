@@ -1,6 +1,11 @@
 # Release History
 
-## 2.0.x (Unreleased)
+## 2.1.x (Unreleased)
+
+## 2.1.0 (2022-09-30)
+
+- Introduce experimental OAuth support while Bring Your Own IDP is in Public Preview on AWS
+- Add functional examples
 
 ## 2.0.5 (2022-08-23)
 
