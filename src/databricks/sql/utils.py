@@ -144,7 +144,7 @@ class ParamEscaper:
         if isinstance(item, bytes):
             item = item.decode("utf-8")
         # This is good enough when backslashes are literal, newlines are just followed, and the way
-        # to escape a single quote is to put precede it with 2 backslashes.
+        # to escape a single quote is to precede it with 2 backslashes.
         # (i.e. only special character is single quote)
         return "'{}'".format(item.replace("'", "\\'"))
 
