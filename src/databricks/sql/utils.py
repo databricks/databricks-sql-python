@@ -146,7 +146,7 @@ class ParamEscaper:
         # This is good enough when backslashes are literal, newlines are just followed, and the way
         # to escape a single quote is to put two single quotes.
         # (i.e. only special character is single quote)
-        return "'{}'".format(item.replace("'", "\'"))
+        return "'{}'".format(item.replace("'", "\\'"))
 
     def escape_sequence(self, item):
         l = map(str, map(self.escape_item, item))
