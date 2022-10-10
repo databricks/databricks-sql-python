@@ -38,7 +38,7 @@ class TestIndividualFormatters(object):
 
       # Testing for the presence of these characters: '"/\😂
 
-      assert pe.escape_string("his name was 'robert palmer'") == "'his name was \'robert palmer\''"
+      assert pe.escape_string("his name was 'robert palmer'") == r"'his name was \'robert palmer\''"
 
       # These two tests represent the same user input in the several ways it can be written in Python
       # Each argument to `escape_string` evaluates to the same bytes. But Python lets us write it differently.
@@ -46,19 +46,31 @@ class TestIndividualFormatters(object):
       assert pe.escape_string('his name was "robert palmer"') == "'his name was \"robert palmer\"'"
       assert pe.escape_string('his name was {}'.format('"robert palmer"')) == "'his name was \"robert palmer\"'"
 
-      assert pe.escape_string("his name was robert / palmer") == "'his name was robert / palmer'"
+      assert pe.escape_string("his name was robert / palmer") == r"'his name was robert / palmer'"
 
       # If you need to include a single backslash, use an r-string to prevent Python from raising a
       # DeprecationWarning for an invalid escape sequence
-      assert pe.escape_string(r"his name was robert \/ palmer") == "'his name was robert \\/ palmer'"
-      assert pe.escape_string("his name was robert \\ palmer") == "'his name was robert \\ palmer'"
-      assert pe.escape_string("his name was robert \\\\ palmer") == "'his name was robert \\\\ palmer'"
+      assert pe.escape_string("his name was robert \\/ palmer") == r"'his name was robert \\/ palmer'"
+      assert pe.escape_string("his name was robert \\ palmer") == r"'his name was robert \\ palmer'"
+      assert pe.escape_string("his name was robert \\\\ palmer") == r"'his name was robert \\\\ palmer'"
 
-      assert pe.escape_string("his name was robert palmer 😂") == "'his name was robert palmer 😂'"
+      assert pe.escape_string("his name was robert palmer 😂") == r"'his name was robert palmer 😂'"
 
       # Adding the test from PR #56 to prove escape behaviour
 
-      assert pe.escape_string("you're") == "'you\'re'"
+      assert pe.escape_string("you're") == r"'you\'re'"
+
+      # Adding this test from #51 to prove escape behaviour when the target string involves repeated SQL escape chars
+      assert pe.escape_string("cat\\'s meow") == r"'cat\\\'s meow'"
+
+      # Tests from the docs: https://docs.databricks.com/sql/language-manual/data-types/string-type.html
+
+      assert pe.escape_string('Spark') == "'Spark'"
+      assert pe.escape_string("O'Connell") == r"'O\'Connell'"
+      assert pe.escape_string("Some\\nText") == r"'Some\\nText'"
+      assert pe.escape_string("Some\\\\nText") == r"'Some\\\\nText'"
+      assert pe.escape_string("서울시") == "'서울시'"
+      assert pe.escape_string("\\\\") == r"'\\\\'"
 
     def test_escape_date_time(self):
         INPUT = datetime(1991,8,3,21,55)
