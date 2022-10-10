@@ -24,11 +24,13 @@ class TestIndividualFormatters(object):
 
         assert pe.escape_string("golly bob howdy") == "'golly bob howdy'"
 
-    def test_escape_string_that_includes_quotes(self):
-        # Databricks queries support just one special character: a single quote mark
-        # These are escaped by doubling: 
+    def test_escape_string_that_includes_single_quotes(self):
         # e.g. INPUT: his name was 'robert palmer'
         # e.g. OUTPUT: 'his name was ''robert palmer'''
+
+        assert pe.escape_string("his name was 'robert palmer'") == "'his name was ''robert palmer'''"
+
+    def test_escape_string_that_includes_special_characters(self):
 
         assert pe.escape_string("his name was 'robert palmer'") == "'his name was ''robert palmer'''"
 
