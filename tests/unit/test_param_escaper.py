@@ -24,15 +24,41 @@ class TestIndividualFormatters(object):
 
         assert pe.escape_string("golly bob howdy") == "'golly bob howdy'"
 
-    def test_escape_string_that_includes_single_quotes(self):
-        # e.g. INPUT: his name was 'robert palmer'
-        # e.g. OUTPUT: 'his name was ''robert palmer'''
-
-        assert pe.escape_string("his name was 'robert palmer'") == "'his name was ''robert palmer'''"
-
     def test_escape_string_that_includes_special_characters(self):
+      """Tests for how special characters are treated.
 
-        assert pe.escape_string("his name was 'robert palmer'") == "'his name was ''robert palmer'''"
+      When passed a string, the `escape_string` method wraps it in single quotes
+      and escapes any special characters with a back stroke (\)
+
+      Example:
+
+      IN : his name was 'robert palmer'
+      OUT: 'his name was \'robert palmer\''
+      """
+
+      # Testing for the presence of these characters: '"/\😂
+
+      assert pe.escape_string("his name was 'robert palmer'") == "'his name was \'robert palmer\''"
+
+      # These two tests represent the same user input in the several ways it can be written in Python
+      # Each argument to `escape_string` evaluates to the same bytes. But Python lets us write it differently.
+      assert pe.escape_string("his name was \"robert palmer\"") == "'his name was \"robert palmer\"'"
+      assert pe.escape_string('his name was "robert palmer"') == "'his name was \"robert palmer\"'"
+      assert pe.escape_string('his name was {}'.format('"robert palmer"')) == "'his name was \"robert palmer\"'"
+
+      assert pe.escape_string("his name was robert / palmer") == "'his name was robert / palmer'"
+
+      # If you need to include a single backslash, use an r-string to prevent Python from raising a
+      # DeprecationWarning for an invalid escape sequence
+      assert pe.escape_string(r"his name was robert \/ palmer") == "'his name was robert \\/ palmer'"
+      assert pe.escape_string("his name was robert \\ palmer") == "'his name was robert \\ palmer'"
+      assert pe.escape_string("his name was robert \\\\ palmer") == "'his name was robert \\\\ palmer'"
+
+      assert pe.escape_string("his name was robert palmer 😂") == "'his name was robert palmer 😂'"
+
+      # Adding the test from PR #56 to prove escape behaviour
+
+      assert pe.escape_string("you're") == "'you\'re'"
 
     def test_escape_date_time(self):
         INPUT = datetime(1991,8,3,21,55)
