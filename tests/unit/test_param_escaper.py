@@ -40,7 +40,7 @@ class TestIndividualFormatters(object):
 
       assert pe.escape_string("his name was 'robert palmer'") == r"'his name was \'robert palmer\''"
 
-      # These two tests represent the same user input in the several ways it can be written in Python
+      # These tests represent the same user input in the several ways it can be written in Python
       # Each argument to `escape_string` evaluates to the same bytes. But Python lets us write it differently.
       assert pe.escape_string("his name was \"robert palmer\"") == "'his name was \"robert palmer\"'"
       assert pe.escape_string('his name was "robert palmer"') == "'his name was \"robert palmer\"'"
