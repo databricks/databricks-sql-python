@@ -1,5 +1,4 @@
 from typing import Dict, Tuple, List, Optional, Any, Union
-from xmlrpc.client import boolean
 
 import pandas
 import pyarrow

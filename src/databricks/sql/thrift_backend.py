@@ -732,9 +732,7 @@ class ThriftBackend:
             .serialize()
             .to_pybytes()
         )
-        lz4_compressed = (
-            t_result_set_metadata_resp and t_result_set_metadata_resp.lz4Compressed
-        )
+        lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         if direct_results and direct_results.resultSet:
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
