@@ -49,11 +49,15 @@ class LargeQueriesMixin:
         # This is used by PyHive tests to determine the buffer size
         self.arraysize = 1000
         with self.cursor() as cursor:
-            uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
-            cursor.execute("SELECT id, {uuids} FROM RANGE({rows})".format(uuids=uuids, rows=rows))
-            for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
-                self.assertEqual(row[0], row_id)  # Verify no rows are dropped in the middle.
-                self.assertEqual(len(row[1]), 36)
+            for lz4_compression in [False, True]:
+                cursor.connection.lz4_compression=lz4_compression
+                uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
+                cursor.execute("SELECT id, {uuids} FROM RANGE({rows})".format(uuids=uuids, rows=rows))
+                self.assertEqual(lz4_compression, cursor.active_result_set.lz4_compressed)
+                for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
+                    self.assertEqual(row[0], row_id)  # Verify no rows are dropped in the middle.
+                    self.assertEqual(len(row[1]), 36)
+
 
     def test_query_with_large_narrow_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
@@ -85,10 +89,10 @@ class LargeQueriesMixin:
                 start = time.time()
 
                 cursor.execute("""SELECT count(*)
-                         FROM RANGE({scale}) x
-                         JOIN RANGE({scale0}) y
-                         ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%" 
-                         """.format(scale=scale_factor * scale0, scale0=scale0))
+                        FROM RANGE({scale}) x
+                        JOIN RANGE({scale0}) y
+                        ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%" 
+                        """.format(scale=scale_factor * scale0, scale0=scale0))
 
                 n, = cursor.fetchone()
                 self.assertEqual(n, 0)
