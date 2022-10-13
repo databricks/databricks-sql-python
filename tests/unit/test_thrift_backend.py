@@ -309,6 +309,29 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     thrift_backend._handle_execute_response(t_execute_resp, Mock())
                 self.assertIn("some information about the error", str(cm.exception))
 
+    def test_handle_execute_response_sets_compression_in_direct_results(self):
+        for resp_type in self.execute_response_types:
+            lz4Compressed=Mock()
+            resultSet=MagicMock()
+            resultSet.results.startRowOffset = 0
+            t_execute_resp = resp_type(
+                status=Mock(),
+                operationHandle=Mock(),
+                directResults=ttypes.TSparkDirectResults(
+                    operationStatus= Mock(),
+                    resultSetMetadata=ttypes.TGetResultSetMetadataResp(
+                        status=self.okay_status,
+                        resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET,
+                        schema=MagicMock(),
+                        arrowSchema=MagicMock(),
+                        lz4Compressed=lz4Compressed),
+                    resultSet=resultSet,
+                    closeOperation=None))
+            thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+
+            execute_response = thrift_backend._handle_execute_response(t_execute_resp, Mock())
+            self.assertEqual(execute_response.lz4_compressed, lz4Compressed)
+
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_handle_execute_response_checks_operation_state_in_polls(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
@@ -358,7 +381,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
         with self.assertRaises(DatabaseError) as cm:
-            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
 
         self.assertEqual(display_message, str(cm.exception))
         self.assertIn(diagnostic_info, str(cm.exception.message_with_context()))
@@ -388,7 +411,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
         with self.assertRaises(DatabaseError) as cm:
-            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
 
         self.assertEqual(display_message, str(cm.exception))
         self.assertIn(diagnostic_info, str(cm.exception.message_with_context()))
@@ -618,6 +641,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     max_rows=1,
                     max_bytes=1,
                     expected_row_start_offset=0,
+                    lz4_compressed=False,
                     arrow_schema_bytes=Mock(),
                     description=Mock())
 
@@ -650,6 +674,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             max_rows=1,
             max_bytes=1,
             expected_row_start_offset=0,
+            lz4_compressed=False,
             arrow_schema_bytes=schema,
             description=MagicMock())
 
@@ -664,7 +689,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        thrift_backend.execute_command("foo", Mock(), 100, 200, cursor_mock)
+        thrift_backend.execute_command("foo", Mock(), 100, 200, Mock(), cursor_mock)
         # Check call to client
         req = tcli_service_instance.ExecuteStatement.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
@@ -823,14 +848,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend = self._make_fake_thrift_backend()
 
         with self.assertRaises(OperationalError) as cm:
-            thrift_backend.execute_command("foo", Mock(), 100, 100, Mock())
+            thrift_backend.execute_command("foo", Mock(), 100, 100, Mock(), Mock())
         self.assertIn("Expected results to be in Arrow or column based format", str(cm.exception))
 
     def test_create_arrow_table_raises_error_for_unsupported_type(self):
         t_row_set = ttypes.TRowSet()
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
         with self.assertRaises(OperationalError):
-            thrift_backend._create_arrow_table(t_row_set, None, Mock())
+            thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
     @patch.object(ThriftBackend, "_convert_arrow_based_set_to_arrow_table")
     @patch.object(ThriftBackend, "_convert_column_based_set_to_arrow_table")
@@ -843,16 +868,36 @@ class ThriftBackendTestSuite(unittest.TestCase):
         schema = Mock()
         cols = Mock()
         arrow_batches = Mock()
+        lz4_compressed = Mock()
         description = Mock()
 
         t_col_set = ttypes.TRowSet(columns=cols)
-        thrift_backend._create_arrow_table(t_col_set, schema, description)
+        thrift_backend._create_arrow_table(t_col_set, lz4_compressed, schema, description)
         convert_arrow_mock.assert_not_called()
         convert_col_mock.assert_called_once_with(cols, description)
 
         t_arrow_set = ttypes.TRowSet(arrowBatches=arrow_batches)
-        thrift_backend._create_arrow_table(t_arrow_set, schema, Mock())
-        convert_arrow_mock.assert_called_once_with(arrow_batches, schema)
+        thrift_backend._create_arrow_table(t_arrow_set, lz4_compressed, schema, Mock())
+        convert_arrow_mock.assert_called_once_with(arrow_batches, lz4_compressed, schema)
+
+    @patch("lz4.frame.decompress")
+    @patch("pyarrow.ipc.open_stream")
+    def test_convert_arrow_based_set_to_arrow_table(self, open_stream_mock, lz4_decompress_mock):
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        
+        lz4_decompress_mock.return_value = bytearray('Testing','utf-8')
+
+        schema = pyarrow.schema([
+            pyarrow.field("column1", pyarrow.int32()),
+        ]).serialize().to_pybytes()
+        
+        arrow_batches = [ttypes.TSparkArrowBatch(batch=bytearray('Testing','utf-8'), rowCount=1) for _ in range(10)]
+        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
+        lz4_decompress_mock.assert_not_called()
+
+        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
+        lz4_decompress_mock.assert_called()
+        
 
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):
         # Deliberately duplicate the column name to check that dups work
@@ -1329,8 +1374,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 complex_arg_types["_use_arrow_native_decimals"] = decimals
 
             thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), **complex_arg_types)
-            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock())
-
+            thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
             t_execute_statement_req = tcli_service_instance.ExecuteStatement.call_args[0][0]
             # If the value is unset, the native type should default to True
             self.assertEqual(t_execute_statement_req.useArrowNativeTypes.timestampAsArrow,

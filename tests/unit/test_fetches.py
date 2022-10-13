@@ -38,6 +38,7 @@ class FetchTests(unittest.TestCase):
                 has_been_closed_server_side=True,
                 has_more_rows=False,
                 description=Mock(),
+                lz4_compressed=Mock(),
                 command_handle=None,
                 arrow_queue=arrow_queue,
                 arrow_schema_bytes=schema.serialize().to_pybytes()))
@@ -50,7 +51,7 @@ class FetchTests(unittest.TestCase):
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
 
-        def fetch_results(op_handle, max_rows, max_bytes, expected_row_start_offset,
+        def fetch_results(op_handle, max_rows, max_bytes, expected_row_start_offset, lz4_compressed,
                           arrow_schema_bytes, description):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
@@ -71,6 +72,7 @@ class FetchTests(unittest.TestCase):
                 has_more_rows=True,
                 description=[(f'col{col_id}', 'integer', None, None, None, None, None)
                              for col_id in range(num_cols)],
+                lz4_compressed=Mock(),
                 command_handle=None,
                 arrow_queue=None,
                 arrow_schema_bytes=None))

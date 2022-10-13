@@ -40,7 +40,7 @@ class ArrowQueue:
 
 ExecuteResponse = namedtuple(
     "ExecuteResponse",
-    "status has_been_closed_server_side has_more_rows description "
+    "status has_been_closed_server_side has_more_rows description lz4_compressed "
     "command_handle arrow_queue arrow_schema_bytes",
 )
 
