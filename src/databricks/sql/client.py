@@ -152,6 +152,7 @@ class Connection:
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
+        self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
 
         auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
@@ -318,6 +319,7 @@ class Cursor:
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
+            lz4_compression=self.connection.lz4_compression,
             cursor=self,
         )
         self.active_result_set = ResultSet(
@@ -614,6 +616,7 @@ class ResultSet:
         self.has_been_closed_server_side = execute_response.has_been_closed_server_side
         self.has_more_rows = execute_response.has_more_rows
         self.buffer_size_bytes = result_buffer_size_bytes
+        self.lz4_compressed = execute_response.lz4_compressed
         self.arraysize = arraysize
         self.thrift_backend = thrift_backend
         self.description = execute_response.description
@@ -642,6 +645,7 @@ class ResultSet:
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             expected_row_start_offset=self._next_row_index,
+            lz4_compressed=self.lz4_compressed,
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
         )
