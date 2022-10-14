@@ -2,7 +2,7 @@ from collections import namedtuple, OrderedDict
 from collections.abc import Iterable
 import datetime
 from enum import Enum
-
+from typing import Dict
 import pyarrow
 
 
@@ -146,7 +146,7 @@ class ParamEscaper:
         # This is good enough when backslashes are literal, newlines are just followed, and the way
         # to escape a single quote is to put two single quotes.
         # (i.e. only special character is single quote)
-        return "'{}'".format(item.replace("'", "''"))
+        return "'{}'".format(item.replace("\\", "\\\\").replace("'", "\\'"))
 
     def escape_sequence(self, item):
         l = map(str, map(self.escape_item, item))
@@ -172,3 +172,7 @@ class ParamEscaper:
             return self.escape_datetime(item, self._DATE_FORMAT)
         else:
             raise exc.ProgrammingError("Unsupported object {}".format(item))
+
+
+def inject_parameters(operation: str, parameters: Dict[str, str]):
+    return operation % parameters

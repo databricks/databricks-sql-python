@@ -288,6 +288,20 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
                 for table in table_names:
                     cursor.execute('DROP TABLE IF EXISTS {}'.format(table))
 
+    def test_escape_single_quotes(self):
+        with self.cursor({}) as cursor:
+            table_name = 'table_{uuid}'.format(uuid=str(uuid4()).replace('-', '_'))
+            # Test escape syntax directly
+            cursor.execute("CREATE TABLE IF NOT EXISTS {} AS (SELECT 'you\\'re' AS col_1)".format(table_name))
+            cursor.execute("SELECT * FROM {} WHERE col_1 LIKE 'you\\'re'".format(table_name))
+            rows = cursor.fetchall()
+            assert rows[0]["col_1"] == "you're"
+
+            # Test escape syntax in parameter
+            cursor.execute("SELECT * FROM {} WHERE {}.col_1 LIKE %(var)s".format(table_name, table_name), parameters={"var": "you're"})
+            rows = cursor.fetchall()
+            assert rows[0]["col_1"] == "you're"
+
     def test_get_schemas(self):
         with self.cursor({}) as cursor:
             database_name = 'db_{uuid}'.format(uuid=str(uuid4()).replace('-', '_'))
