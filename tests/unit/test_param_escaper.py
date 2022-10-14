@@ -74,13 +74,15 @@ class TestIndividualFormatters(object):
 
     def test_escape_date_time(self):
         INPUT = datetime(1991,8,3,21,55)
-        OUTPUT = "1991-08-03 21:55:00"
-        assert pe.escape_datetime(INPUT, OUTPUT)
+        FORMAT = "%Y-%m-%d %H:%M:%S"
+        OUTPUT = "'1991-08-03 21:55:00'"
+        assert pe.escape_datetime(INPUT, FORMAT) == OUTPUT
 
     def test_escape_date(self):
         INPUT = date(1991,8,3)
-        OUTPUT = "1991-08-03"
-        assert pe.escape_datetime(INPUT, OUTPUT)
+        FORMAT = "%Y-%m-%d"
+        OUTPUT = "'1991-08-03'"
+        assert pe.escape_datetime(INPUT, FORMAT) == OUTPUT
 
     def test_escape_sequence_integer(self):
         assert pe.escape_sequence([1,2,3,4]) == "(1,2,3,4)"
