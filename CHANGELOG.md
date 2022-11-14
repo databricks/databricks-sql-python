@@ -2,6 +2,11 @@
 
 ## 2.1.x (Unreleased)
 
+## 2.1.1 (2022-11-14)
+
+- Bump thrift version to address https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13949
+- Add support for lz4 compression
+
 ## 2.1.0 (2022-09-30)
 
 - Introduce experimental OAuth support while Bring Your Own IDP is in Public Preview on AWS
