@@ -2,7 +2,7 @@
 
 ## 2.1.x (Unreleased)
 
-## 2.1.1 (2022-11-14)
+## 2.2.0 (2022-11-15)
 
 - Bump thrift version to address https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13949
 - Add support for lz4 compression
