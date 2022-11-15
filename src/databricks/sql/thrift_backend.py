@@ -452,7 +452,7 @@ class ThriftBackend:
                 initial_namespace = None
 
             open_session_req = ttypes.TOpenSessionReq(
-                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V6,
+                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
                 client_protocol=None,
                 initialNamespace=initial_namespace,
                 canUseMultipleCatalogs=True,
