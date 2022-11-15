@@ -325,12 +325,10 @@ class Cursor:
             url=presigned_url,
             data=raw_data
         )
-
+        
+        logger.debug("Attempting staging operation: {} - {}".format(operation, local_file))
         # Call the function
         resp = req_func(**rq_func_args)
-
-        
-
 
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None
