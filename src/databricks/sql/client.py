@@ -2,6 +2,7 @@ from typing import Dict, Tuple, List, Optional, Any, Union
 
 import pandas
 import pyarrow
+import requests
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -297,6 +298,40 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
+    def _handle_staging_operation(self):
+        """Make HTTP request using instructions provided by server
+        """
+
+        row = self.active_result_set.fetchone()
+
+        # TODO: Handle headers. What format will gateway send? json? plaintext?
+        operation, presigned_url, local_file, headers = row.operation, row.presignedUrl, row.localFile, None
+
+        operation_map = {
+              "GET"    : requests.get,
+              "PUT"    : requests.put,
+              "REMOVE" : requests.delete
+        }
+
+        req_func = operation_map[operation]
+
+        if local_file:
+            raw_data = open(local_file, 'rb')
+        else:
+            raw_data = None
+            
+
+        rq_func_args = dict(
+            url=presigned_url,
+            data=raw_data
+        )
+
+        # Call the function
+        resp = req_func(**rq_func_args)
+
+        
+
+
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None
     ) -> "Cursor":
@@ -331,6 +366,10 @@ class Cursor:
             self.buffer_size_bytes,
             self.arraysize,
         )
+
+        if execute_response.is_staging_operation:
+            self._handle_staging_operation()
+
         return self
 
     def executemany(self, operation, seq_of_parameters):
