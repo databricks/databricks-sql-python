@@ -299,41 +299,51 @@ class Cursor:
             raise Error("Attempting operation on closed cursor")
 
     def _handle_staging_operation(self):
-        """Make HTTP request using instructions provided by server
-        """
+        """Make HTTP request using instructions provided by server"""
 
         row = self.active_result_set.fetchone()
 
         # TODO: Handle headers. What format will gateway send? json? plaintext?
-        operation, presigned_url, local_file, headers = row.operation, row.presignedUrl, row.localFile, None
+        operation, presigned_url, local_file, headers = (
+            row.operation,
+            row.presignedUrl,
+            row.localFile,
+            None,
+        )
 
         operation_map = {
-              "PUT"    : requests.put,
+            "PUT": requests.put,
         }
 
         if operation not in operation_map:
-            raise Error("Operation {} is not supported. Supported operations are {}".format(operation, ",".join(operation_map.keys())))
+            raise Error(
+                "Operation {} is not supported. Supported operations are {}".format(
+                    operation, ",".join(operation_map.keys())
+                )
+            )
 
         req_func = operation_map[operation]
 
         if local_file:
-            raw_data = open(local_file, 'rb')
+            raw_data = open(local_file, "rb")
         else:
             raw_data = None
 
+        rq_func_args = dict(url=presigned_url, data=raw_data)
 
-        rq_func_args = dict(
-            url=presigned_url,
-            data=raw_data
+        logger.debug(
+            "Attempting staging operation: {} - {}".format(operation, local_file)
         )
-        
-        logger.debug("Attempting staging operation: {} - {}".format(operation, local_file))
-        
+
         # Call the function
         resp = req_func(**rq_func_args)
 
         if resp.status_code != 200:
-            raise Error("Staging operation over HTTP was unsuccessful: {}-{}".format(resp.status_code, resp.text))
+            raise Error(
+                "Staging operation over HTTP was unsuccessful: {}-{}".format(
+                    resp.status_code, resp.text
+                )
+            )
 
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None
