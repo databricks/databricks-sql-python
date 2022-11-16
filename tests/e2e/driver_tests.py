@@ -640,6 +640,9 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
 
     staging_ingestion_user = os.getenv("staging_ingestion_user")
 
+    if staging_ingestion_user is None:
+        raise ValueError("To run these tests you must designate a `staging_ingestion_user` environment variable. This will the user associated with the personal access token.")
+
     def test_staging_ingestion_put(self):
 
         fh, temp_path =  tempfile.mkstemp()
