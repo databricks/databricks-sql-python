@@ -41,7 +41,8 @@ class FetchTests(unittest.TestCase):
                 lz4_compressed=Mock(),
                 command_handle=None,
                 arrow_queue=arrow_queue,
-                arrow_schema_bytes=schema.serialize().to_pybytes()))
+                arrow_schema_bytes=schema.serialize().to_pybytes(),
+                is_staging_operation=False))
         num_cols = len(initial_results[0]) if initial_results else 0
         rs.description = [(f'col{col_id}', 'integer', None, None, None, None, None)
                           for col_id in range(num_cols)]
@@ -75,7 +76,8 @@ class FetchTests(unittest.TestCase):
                 lz4_compressed=Mock(),
                 command_handle=None,
                 arrow_queue=None,
-                arrow_schema_bytes=None))
+                arrow_schema_bytes=None,
+                is_staging_operation=False))
         return rs
 
     def assertEqualRowValues(self, actual, expected):
