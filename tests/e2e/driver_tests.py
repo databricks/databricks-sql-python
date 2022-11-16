@@ -5,6 +5,7 @@ import io
 import logging
 import os
 import sys
+import tempfile
 import threading
 import time
 from unittest import loader, skipIf, skipUnless, TestCase
@@ -14,6 +15,7 @@ import numpy as np
 import pyarrow
 import pytz
 import thrift
+import pytest
 
 import databricks.sql as sql
 from databricks.sql import STRING, BINARY, NUMBER, DATETIME, DATE, DatabaseError, Error, OperationalError
@@ -629,6 +631,50 @@ class PySQLUnityCatalogTestSuite(PySQLTestCase):
             self.assertEqual(cursor.fetchone()[0], self.arguments["catA"])
             cursor.execute("select current_database()")
             self.assertEqual(cursor.fetchone()[0], table_name)
+
+class PySQLStagingIngestionTestSuite(PySQLTestCase):
+    """Simple namespace for ingestion tests. These should be run against DBR >13.x
+    
+    In addition to connection credentials (host, path, token) this suite requires an env var
+    named staging_ingestion_user"""
+
+    staging_ingestion_user = os.getenv("staging_ingestion_user")
+
+    def test_staging_ingestion_put(self):
+
+        fh, temp_path =  tempfile.mkstemp()
+
+        with open(fh, 'wb') as fp:
+            fp.write("hello world!".encode("utf-8"))
+
+        with self.connection() as conn:
+            cursor = conn.cursor()
+            query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+            cursor.execute(query)
+
+        os.remove(temp_path)
+
+    def test_staging_ingestion_get(self):
+
+        fh, temp_path =  tempfile.mkstemp()
+
+        with self.connection() as conn:
+            cursor = conn.cursor()
+            query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
+            with pytest.raises(Error):
+                cursor.execute(query)
+
+        os.remove(temp_path)
+
+    def test_staging_ingestion_delete(self):
+
+        # Test stub to be completed when we implement DELETE. We need to guarantee this file exists before we attempt to remove it.
+
+        with self.connection() as conn:
+            cursor = conn.cursor()
+            query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv''"
+            with pytest.raises(Error):
+                cursor.execute(query)
 
 
 def main(cli_args):

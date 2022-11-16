@@ -308,10 +308,11 @@ class Cursor:
         operation, presigned_url, local_file, headers = row.operation, row.presignedUrl, row.localFile, None
 
         operation_map = {
-              "GET"    : requests.get,
               "PUT"    : requests.put,
-              "REMOVE" : requests.delete
         }
+
+        if operation not in operation_map:
+            raise Error("Operation {} is not supported. Supported operations are {}".format(operation, ",".join(operation_map.keys())))
 
         req_func = operation_map[operation]
 
@@ -319,7 +320,7 @@ class Cursor:
             raw_data = open(local_file, 'rb')
         else:
             raw_data = None
-            
+
 
         rq_func_args = dict(
             url=presigned_url,
@@ -327,8 +328,12 @@ class Cursor:
         )
         
         logger.debug("Attempting staging operation: {} - {}".format(operation, local_file))
+        
         # Call the function
         resp = req_func(**rq_func_args)
+
+        if resp.status_code != 200:
+            raise Error("Staging operation over HTTP was unsuccessful: {}-{}".format(resp.status_code, resp.text))
 
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None

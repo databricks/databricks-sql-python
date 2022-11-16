@@ -112,6 +112,7 @@ export access_token=""
 There are several e2e test suites available:
 - `PySQLCoreTestSuite`
 - `PySQLLargeQueriesSuite`
+- `PySQLStagingIngestionTestSuite`
 - `PySQLRetryTestSuite.HTTP503Suite` **[not documented]**
 - `PySQLRetryTestSuite.HTTP429Suite` **[not documented]**
 - `PySQLUnityCatalogTestSuite` **[not documented]**
@@ -121,6 +122,12 @@ To execute the core test suite:
 ```bash
 poetry run python -m pytest tests/e2e/driver_tests.py::PySQLCoreTestSuite
 ```
+
+The `PySQLCoreTestSuite` namespace contains tests for all of the connector's basic features and behaviours. This is the default namespace where tests should be written unless they require specially configured clusters or take an especially long-time to execute by design.
+
+The `PySQLLargeQueriesSuite` namespace contains long-running query tests and is kept separate. In general, if the `PySQLCoreTestSuite` passes then these tests will as well.
+
+The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR version > 13.x which supports staging ingestion commands.
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 ### Code formatting
