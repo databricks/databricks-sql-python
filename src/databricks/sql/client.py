@@ -313,6 +313,7 @@ class Cursor:
 
         operation_map = {
             "PUT": requests.put,
+            "GET": requests.get,
         }
 
         if operation not in operation_map:
@@ -344,6 +345,10 @@ class Cursor:
                     resp.status_code, resp.text
                 )
             )
+
+        if operation == "GET":
+            with open(local_file, "wb") as fp:
+                fp.write(resp.content)
 
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None

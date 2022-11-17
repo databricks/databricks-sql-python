@@ -643,31 +643,37 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
     if staging_ingestion_user is None:
         raise ValueError("To run these tests you must designate a `staging_ingestion_user` environment variable. This will the user associated with the personal access token.")
 
-    def test_staging_ingestion_put(self):
+    def test_staging_ingestion_put_and_get(self):
 
         fh, temp_path =  tempfile.mkstemp()
 
+        original_text = "hello world!".encode("utf-8")
+
         with open(fh, 'wb') as fp:
-            fp.write("hello world!".encode("utf-8"))
+            fp.write(original_text)
 
         with self.connection() as conn:
             cursor = conn.cursor()
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
             cursor.execute(query)
 
-        os.remove(temp_path)
+        # TODO: What is the acceptance test for a successful staging operation?
+        # For now, let's GET the file back and compare it to the original
 
-    def test_staging_ingestion_get(self):
-
-        fh, temp_path =  tempfile.mkstemp()
+        new_fh, new_temp_path = tempfile.mkstemp()
 
         with self.connection() as conn:
             cursor = conn.cursor()
-            query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
-            with pytest.raises(Error):
-                cursor.execute(query)
+            query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+            cursor.execute(query)
 
+        with open(new_fh, 'rb') as fp:
+            fetched_text = fp.read()
+
+        assert fetched_text == original_text
+        
         os.remove(temp_path)
+        os.remove(new_temp_path)
 
     def test_staging_ingestion_delete(self):
 
