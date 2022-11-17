@@ -12,9 +12,9 @@ import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
 from databricks.sql.types import Row
 
-from test_fetches import FetchTests
-from test_thrift_backend import ThriftBackendTestSuite
-from test_arrow_queue import ArrowQueueSuite
+from tests.unit.test_fetches import FetchTests
+from tests.unit.test_thrift_backend import ThriftBackendTestSuite
+from tests.unit.test_arrow_queue import ArrowQueueSuite
 
 
 class ClientTestSuite(unittest.TestCase):
