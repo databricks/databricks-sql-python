@@ -534,6 +534,21 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(instance.close_session.call_count, 0)
         cursor.close()
 
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    @patch("%s.client.Cursor._handle_staging_operation" % PACKAGE_NAME)
+    @patch("%s.utils.ExecuteResponse" % PACKAGE_NAME)
+    def test_staging_operation_response_is_handled(self, mock_client_class, mock_handle_staging_operation, mock_execute_response):
+        # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
+
+        mock_execute_response.is_staging_operation = True
+        
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        cursor = connection.cursor()
+        cursor.execute("Text of some staging operation command;")
+        connection.close()
+
+        mock_handle_staging_operation.assert_called_once_with()
+
 
 if __name__ == '__main__':
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
