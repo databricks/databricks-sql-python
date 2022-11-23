@@ -343,12 +343,22 @@ class Cursor:
         with open(local_file, "rb") as fh:
             r = requests.put(url=presigned_url, data=fh, headers=headers)
 
-        OK = requests.codes.ok
-        CREATED = requests.codes.created
+        # fmt: off
+        # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
+            
+        OK = requests.codes.ok                  # 200
+        CREATED = requests.codes.created        # 201
+        ACCEPTED = requests.codes.accepted      # 202
+        NO_CONTENT = requests.codes.no_content  # 204
 
-        if r.status_code not in [OK, CREATED]:
+        # fmt: on
+
+        if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
             raise Error(f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}")
         
+        if r.status_code == ACCEPTED:
+            logger.debug(f"Response code {ACCEPTED} from server indicates ingestion command was accepted " +
+                "but not yet applied on the server. It's possible this command may fail later.")
         
 
     def _handle_staging_get(self, operation:str, local_file:str, presigned_url:str, headers:dict=None):
@@ -357,12 +367,12 @@ class Cursor:
         Raise an exception if request fails. Returns no data.
         """
 
-        OK = requests.codes.ok
-
         with open(local_file, "wb") as fp:
             r = requests.get(url=presigned_url, headers=headers)
 
-            if r.status_code != OK:
+            # response.ok verifies the status code is not between 400-600.
+            # Any 2xx or 3xx will evaluate r.ok == True
+            if r.ok:
                 raise Error(f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}")
                 
             fp.write(r.content)
