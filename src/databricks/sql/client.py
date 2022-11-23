@@ -310,12 +310,12 @@ class Cursor:
         handler_args = {
             "operation": row.operation,
             "presigned_url": row.presignedUrl,
-            "local_file": row.localFile,
+            "local_file": getattr(row, "localFile", None),
             "headers": json.loads(row.headers or "{}"),
         }
 
         logger.debug(
-            f"Attempting staging operation indicated by server: {row.operation} - {row.localFile}"
+            f"Attempting staging operation indicated by server: {row.operation} - {getattr(row, 'localFile', '')}"
         )
 
         # TODO: Create a retry loop here to re-attempt if the request times out or fails
@@ -392,7 +392,13 @@ class Cursor:
         self, operation: str, presigned_url: str, headers: dict = None
     ):
         """Make an HTTP DELETE request to the presigned_url"""
-        raise Error("Remove is not yet implemented")
+
+        r = requests.delete(url=presigned_url, headers=headers)
+
+        if not r.ok:
+            raise Error(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            )
 
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None
