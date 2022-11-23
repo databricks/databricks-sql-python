@@ -643,7 +643,11 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
     if staging_ingestion_user is None:
         raise ValueError("To run these tests you must designate a `staging_ingestion_user` environment variable. This will the user associated with the personal access token.")
 
-    def test_staging_ingestion_put_and_get(self):
+    def test_staging_ingestion_life_cycle(self):
+        """PUT a file into the staging location
+           GET the file from the staging location
+           REMOVE the file from the staging location
+        """
 
         fh, temp_path =  tempfile.mkstemp()
 
@@ -672,18 +676,17 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
 
         assert fetched_text == original_text
         
+        remove_query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv''"
+
+
+        # Should raise an exception because REMOVE is not yet implemented
+        with pytest.raises(Error):
+            with self.connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(remove_query)
+            
         os.remove(temp_path)
         os.remove(new_temp_path)
-
-    def test_staging_ingestion_delete(self):
-
-        # Test stub to be completed when we implement DELETE. We need to guarantee this file exists before we attempt to remove it.
-
-        with self.connection() as conn:
-            cursor = conn.cursor()
-            query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv''"
-            with pytest.raises(Error):
-                cursor.execute(query)
 
 
 def main(cli_args):

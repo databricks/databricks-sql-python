@@ -389,9 +389,10 @@ class Cursor:
             fp.write(r.content)
 
     def _handle_staging_remove(
-        self, operation, presigned_url, local_file, headers=None
+        self, operation: str, presigned_url: str, headers: dict = None
     ):
-        pass
+        """Make an HTTP DELETE request to the presigned_url"""
+        raise Error("Remove is not yet implemented")
 
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None
