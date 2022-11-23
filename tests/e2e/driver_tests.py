@@ -634,26 +634,30 @@ class PySQLUnityCatalogTestSuite(PySQLTestCase):
 
 class PySQLStagingIngestionTestSuite(PySQLTestCase):
     """Simple namespace for ingestion tests. These should be run against DBR >13.x
-    
+
     In addition to connection credentials (host, path, token) this suite requires an env var
     named staging_ingestion_user"""
 
     staging_ingestion_user = os.getenv("staging_ingestion_user")
 
     if staging_ingestion_user is None:
-        raise ValueError("To run these tests you must designate a `staging_ingestion_user` environment variable. This will the user associated with the personal access token.")
+        raise ValueError(
+            "To run these tests you must designate a `staging_ingestion_user` environment variable. This will the user associated with the personal access token."
+        )
 
     def test_staging_ingestion_life_cycle(self):
         """PUT a file into the staging location
-           GET the file from the staging location
-           REMOVE the file from the staging location
+        GET the file from the staging location
+        REMOVE the file from the staging location
         """
 
-        fh, temp_path =  tempfile.mkstemp()
+        # PUT should succeed
+
+        fh, temp_path = tempfile.mkstemp()
 
         original_text = "hello world!".encode("utf-8")
 
-        with open(fh, 'wb') as fp:
+        with open(fh, "wb") as fp:
             fp.write(original_text)
 
         with self.connection() as conn:
@@ -661,8 +665,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
             cursor.execute(query)
 
-        # TODO: What is the acceptance test for a successful staging operation?
-        # For now, let's GET the file back and compare it to the original
+        # GET should succeed
 
         new_fh, new_temp_path = tempfile.mkstemp()
 
@@ -671,17 +674,29 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
             query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
 
-        with open(new_fh, 'rb') as fp:
+        with open(new_fh, "rb") as fp:
             fetched_text = fp.read()
 
         assert fetched_text == original_text
-        
-        remove_query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
+
+        # REMOVE should succeed
+
+        remove_query = (
+            f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
+        )
 
         with self.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
-            
+
+        # GET after REMOVE should fail
+
+        with pytest.raises(Error):
+            with self.connection() as conn:
+                cursor = conn.cursor()
+                query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+                cursor.execute(query)
+
         os.remove(temp_path)
         os.remove(new_temp_path)
 
