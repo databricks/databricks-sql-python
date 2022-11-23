@@ -16,6 +16,10 @@ pyarrow = "^9.0.0"
 lz4 = "^4.0.2"
 requests=">2.18.1"
 oauthlib=">=3.1.0"
+numpy = [
+    {version = "1.21.1", python = ">=3.7,<3.8"},
+    {version = "1.23.4", python = ">=3.8"}
+]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
