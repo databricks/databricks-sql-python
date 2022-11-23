@@ -678,12 +678,9 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         
         remove_query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
 
-
-        # Should raise an exception because REMOVE is not yet implemented
-        with pytest.raises(Error):
-            with self.connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(remove_query)
+        with self.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(remove_query)
             
         os.remove(temp_path)
         os.remove(new_temp_path)
