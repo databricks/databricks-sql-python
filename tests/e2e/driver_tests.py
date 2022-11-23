@@ -676,7 +676,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
 
         assert fetched_text == original_text
         
-        remove_query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv''"
+        remove_query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
 
 
         # Should raise an exception because REMOVE is not yet implemented
