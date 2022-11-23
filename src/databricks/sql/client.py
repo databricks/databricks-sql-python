@@ -308,7 +308,6 @@ class Cursor:
         # TODO: Experiment with DBR sending real headers.
         # The specification says headers will be in JSON format but the current null value is actually an empty list []
         handler_args = {
-            "operation": row.operation,
             "presigned_url": row.presignedUrl,
             "local_file": getattr(row, "localFile", None),
             "headers": json.loads(row.headers or "{}"),
