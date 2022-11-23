@@ -4,6 +4,7 @@ import pandas
 import pyarrow
 import requests
 import json
+import os
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -301,14 +302,22 @@ class Cursor:
 
     def _handle_staging_operation(self, uploads_base_path: str):
         """Fetch the HTTP request instruction from a staging ingestion command
-        and call the designated handler."""
+        and call the designated handler.
+        
+        Raise an exception if localFile is specified by the server but the localFile
+        is not descended from uploads_base_path.
+        """
 
         if uploads_base_path is None:
             raise Error(
                 "You must provide an uploads_base_path when initialising a connection to perform ingestion commands"
             )
-
+        
         row = self.active_result_set.fetchone()
+
+        if getattr(row, "localFile", None):
+            if os.path.commonpath([row.localFile, uploads_base_path]) != uploads_base_path:
+                raise Error("Local file operations are restricted to paths within the configured uploads_base_path")
 
         # TODO: Experiment with DBR sending real headers.
         # The specification says headers will be in JSON format but the current null value is actually an empty list []

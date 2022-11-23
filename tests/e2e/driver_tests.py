@@ -667,29 +667,31 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
             cursor.execute(query)
 
-            # GET should succeed
+        # GET should succeed
 
-            new_fh, new_temp_path = tempfile.mkstemp()
+        new_fh, new_temp_path = tempfile.mkstemp()
 
+        with self.connection(extra_params={"uploads_base_path": new_temp_path}) as conn:
             cursor = conn.cursor()
             query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
 
-            with open(new_fh, "rb") as fp:
-                fetched_text = fp.read()
+        with open(new_fh, "rb") as fp:
+            fetched_text = fp.read()
 
-            assert fetched_text == original_text
+        assert fetched_text == original_text
 
-            # REMOVE should succeed
+        # REMOVE should succeed
 
-            remove_query = (
-                f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
-            )
+        remove_query = (
+            f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
+        )
 
+        with self.connection(extra_params={"uploads_base_path": "/"}) as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
 
-            # GET after REMOVE should fail
+        # GET after REMOVE should fail
 
             with pytest.raises(Error):
                 cursor = conn.cursor()
@@ -714,6 +716,27 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
 
         with pytest.raises(Error):
             with self.connection() as conn:
+                cursor = conn.cursor()
+                query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                cursor.execute(query)
+
+    def test_staging_ingestion_put_fails_if_localFile_not_in_uploads_base_path(self):
+
+
+        fh, temp_path = tempfile.mkstemp()
+
+        original_text = "hello world!".encode("utf-8")
+
+        with open(fh, "wb") as fp:
+            fp.write(original_text)
+
+        base_path, filename = os.path.split(temp_path)
+
+        # Add junk to base_path
+        base_path = os.path.join(base_path, "temp")
+
+        with pytest.raises(Error):
+            with self.connection(extra_params={"uploads_base_path": base_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
