@@ -127,7 +127,7 @@ The `PySQLCoreTestSuite` namespace contains tests for all of the connector's bas
 
 The `PySQLLargeQueriesSuite` namespace contains long-running query tests and is kept separate. In general, if the `PySQLCoreTestSuite` passes then these tests will as well.
 
-The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR version > 13.x which supports staging ingestion commands.
+The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR version > 12.x which supports staging ingestion commands.
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 ### Code formatting
