@@ -661,7 +661,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         with open(fh, "wb") as fp:
             fp.write(original_text)
 
-        with self.connection() as conn:
+        with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
             cursor = conn.cursor()
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
             cursor.execute(query)
@@ -700,6 +700,25 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
 
         os.remove(temp_path)
         os.remove(new_temp_path)
+
+
+    def test_staging_ingestion_put_fails_without_uploadsbasepath(self):
+        """PUT operations are not supported unless the connection was built with
+        a parameter called uploads_base_path
+        """
+
+        fh, temp_path = tempfile.mkstemp()
+
+        original_text = "hello world!".encode("utf-8")
+
+        with open(fh, "wb") as fp:
+            fp.write(original_text)
+
+        with pytest.raises(Error):
+            with self.connection() as conn:
+                cursor = conn.cursor()
+                query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                cursor.execute(query)
 
 
 def main(cli_args):
