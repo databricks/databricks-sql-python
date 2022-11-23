@@ -372,7 +372,7 @@ class Cursor:
 
             # response.ok verifies the status code is not between 400-600.
             # Any 2xx or 3xx will evaluate r.ok == True
-            if r.ok:
+            if not r.ok:
                 raise Error(f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}")
                 
             fp.write(r.content)
