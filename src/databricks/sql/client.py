@@ -3,6 +3,7 @@ from typing import Dict, Tuple, List, Optional, Any, Union
 import pandas
 import pyarrow
 import requests
+import json
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -299,57 +300,79 @@ class Cursor:
             raise Error("Attempting operation on closed cursor")
 
     def _handle_staging_operation(self):
-        """Make HTTP request using instructions provided by server"""
+        """Fetch the HTTP request instruction from a staging ingestion command
+        and call the designated handler."""
 
         row = self.active_result_set.fetchone()
 
-        # TODO: Handle headers. What format will gateway send? json? plaintext?
-        operation, presigned_url, local_file, headers = (
-            row.operation,
-            row.presignedUrl,
-            row.localFile,
-            None,
-        )
 
-        operation_map = {
-            "PUT": requests.put,
-            "GET": requests.get,
+        # TODO: Experiment with DBR sending real headers.
+        # The specification says headers will be in JSON format but the current null value is actually an empty list []
+        handler_args = {
+            "operation": row.operation,
+            "presigned_url": row.presignedUrl,
+            "local_file": row.localFile,
+            "headers": json.loads(row.headers or "{}")
         }
+        
+        logger.debug(f"Attempting staging operation indicated by server: {row.operation} - {row.localFile}")
 
-        if operation not in operation_map:
-            raise Error(
-                "Operation {} is not supported. Supported operations are {}".format(
-                    operation, ",".join(operation_map.keys())
-                )
-            )
+        # TODO: Create a retry loop here to re-attempt if the request times out or fails
+        if row.operation == "GET":
+            return self._handle_staging_get(**handler_args)
+        elif row.operation == "PUT":
+            return self._handle_staging_put(**handler_args)
+        elif row.operation == "REMOVE":
+            # Local file isn't needed to remove a remote resource
+            handler_args.pop("local_file")
+            return self._handle_staging_remove(**handler_args)
+        else: 
+            raise Error(f"Operation {row.operation} is not supported. " +
+                    "Supported operations are GET, PUT, and REMOVE")
 
-        req_func = operation_map[operation]
 
-        if local_file:
-            raw_data = open(local_file, "rb")
-        else:
-            raw_data = None
+    def _handle_staging_put(self, operation:str, presigned_url:str, local_file:str, headers:dict=None):
+        """Make an HTTP PUT request
 
-        rq_func_args = dict(url=presigned_url, data=raw_data)
+        Raise an exception if request fails. Returns no data.
+        """
 
-        logger.debug(
-            "Attempting staging operation: {} - {}".format(operation, local_file)
-        )
+        if local_file is None:
+            raise Error("Cannot perform PUT without specifying a local_file")
 
-        # Call the function
-        resp = req_func(**rq_func_args)
+        with open(local_file, "rb") as fh:
+            r = requests.put(url=presigned_url, data=fh, headers=headers)
 
-        if resp.status_code != 200:
-            raise Error(
-                "Staging operation over HTTP was unsuccessful: {}-{}".format(
-                    resp.status_code, resp.text
-                )
-            )
+        OK = requests.codes.ok
+        CREATED = requests.codes.created
 
-        if operation == "GET":
-            with open(local_file, "wb") as fp:
-                fp.write(resp.content)
+        if r.status_code not in [OK, CREATED]:
+            raise Error(f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}")
+        
+        
 
+    def _handle_staging_get(self, operation:str, local_file:str, presigned_url:str, headers:dict=None):
+        """Make an HTTP GET request, create a local file with the received data
+
+        Raise an exception if request fails. Returns no data.
+        """
+
+        OK = requests.codes.ok
+
+        with open(local_file, "wb") as fp:
+            r = requests.get(url=presigned_url, headers=headers)
+
+            if r.status_code != OK:
+                raise Error(f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}")
+                
+            fp.write(r.content)
+        
+        
+
+    def _handle_staging_remove(self, operation, presigned_url, local_file, headers=None):
+        pass
+
+    
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None
     ) -> "Cursor":
