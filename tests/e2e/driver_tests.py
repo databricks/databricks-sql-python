@@ -633,7 +633,7 @@ class PySQLUnityCatalogTestSuite(PySQLTestCase):
             self.assertEqual(cursor.fetchone()[0], table_name)
 
 class PySQLStagingIngestionTestSuite(PySQLTestCase):
-    """Simple namespace for ingestion tests. These should be run against DBR >13.x
+    """Simple namespace for ingestion tests. These should be run against DBR >12.x
 
     In addition to connection credentials (host, path, token) this suite requires an env var
     named staging_ingestion_user"""
@@ -649,6 +649,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         """PUT a file into the staging location
         GET the file from the staging location
         REMOVE the file from the staging location
+        Try to GET the file again expecting to raise an exception
         """
 
         # PUT should succeed
