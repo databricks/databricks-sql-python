@@ -662,38 +662,36 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
             fp.write(original_text)
 
         with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+
             cursor = conn.cursor()
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
             cursor.execute(query)
 
-        # GET should succeed
+            # GET should succeed
 
-        new_fh, new_temp_path = tempfile.mkstemp()
+            new_fh, new_temp_path = tempfile.mkstemp()
 
-        with self.connection() as conn:
             cursor = conn.cursor()
             query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
 
-        with open(new_fh, "rb") as fp:
-            fetched_text = fp.read()
+            with open(new_fh, "rb") as fp:
+                fetched_text = fp.read()
 
-        assert fetched_text == original_text
+            assert fetched_text == original_text
 
-        # REMOVE should succeed
+            # REMOVE should succeed
 
-        remove_query = (
-            f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
-        )
+            remove_query = (
+                f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
+            )
 
-        with self.connection() as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
 
-        # GET after REMOVE should fail
+            # GET after REMOVE should fail
 
-        with pytest.raises(Error):
-            with self.connection() as conn:
+            with pytest.raises(Error):
                 cursor = conn.cursor()
                 query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
                 cursor.execute(query)

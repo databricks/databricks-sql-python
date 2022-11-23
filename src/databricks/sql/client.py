@@ -299,9 +299,14 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
-    def _handle_staging_operation(self):
+    def _handle_staging_operation(self, uploads_base_path: str):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler."""
+
+        if uploads_base_path is None:
+            raise Error(
+                "You must provide an uploads_base_path when initialising a connection to perform ingestion commands"
+            )
 
         row = self.active_result_set.fetchone()
 
@@ -433,7 +438,9 @@ class Cursor:
         )
 
         if execute_response.is_staging_operation:
-            self._handle_staging_operation()
+            self._handle_staging_operation(
+                uploads_base_path=self.thrift_backend.uploads_base_path
+            )
 
         return self
 
