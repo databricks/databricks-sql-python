@@ -334,7 +334,7 @@ class Cursor:
             )
 
     def _handle_staging_put(
-        self, operation: str, presigned_url: str, local_file: str, headers: dict = None
+        self, presigned_url: str, local_file: str, headers: dict = None
     ):
         """Make an HTTP PUT request
 
@@ -369,7 +369,7 @@ class Cursor:
             )
 
     def _handle_staging_get(
-        self, operation: str, local_file: str, presigned_url: str, headers: dict = None
+        self, local_file: str, presigned_url: str, headers: dict = None
     ):
         """Make an HTTP GET request, create a local file with the received data
 
@@ -388,9 +388,7 @@ class Cursor:
 
             fp.write(r.content)
 
-    def _handle_staging_remove(
-        self, operation: str, presigned_url: str, headers: dict = None
-    ):
+    def _handle_staging_remove(self, presigned_url: str, headers: dict = None):
         """Make an HTTP DELETE request to the presigned_url"""
 
         r = requests.delete(url=presigned_url, headers=headers)
