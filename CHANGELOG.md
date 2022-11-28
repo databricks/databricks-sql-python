@@ -2,6 +2,10 @@
 
 ## 2.1.x (Unreleased)
 
+## 2.2.1 (2022-11-29)
+
+- Add support for Python 3.11
+
 ## 2.2.0 (2022-11-15)
 
 - Bump thrift version to address https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13949
