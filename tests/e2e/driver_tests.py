@@ -844,6 +844,16 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(self):
+        uploads_base_path = "/var/www/html"
+        target_file = ""
+
+        with pytest.raises(Error, match="EMPTY_LOCAL_FILE_IN_STAGING_ACCESS_QUERY"):
+            with self.connection(extra_params={"uploads_base_path": uploads_base_path}) as conn:
+                cursor = conn.cursor()
+                query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                cursor.execute(query)
+
 
 
 def main(cli_args):
