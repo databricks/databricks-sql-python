@@ -781,6 +781,52 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         # Clean up after ourselves
         perform_remove()
         
+    def test_staging_ingestion_fails_to_modify_another_staging_user(self):
+        """The server should only allow modification of the staging_ingestion_user's files
+        """
+
+        some_other_user = "mary.poppins@databricks.com"
+
+        fh, temp_path = tempfile.mkstemp()
+
+        original_text = "hello world!".encode("utf-8")
+
+        with open(fh, "wb") as fp:
+            fp.write(original_text)
+
+        def perform_put():
+            with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+                cursor = conn.cursor()
+                query = f"PUT '{temp_path}' INTO 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv' OVERWRITE"
+                cursor.execute(query)
+
+        def perform_remove():
+            remove_query = (
+                f"REMOVE 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv'"
+            )
+
+            with self.connection(extra_params={"uploads_base_path": "/"}) as conn:
+                cursor = conn.cursor()
+                cursor.execute(remove_query)
+
+        def perform_get():
+            with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+                cursor = conn.cursor()
+                query = f"GET 'stage://tmp/{some_other_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
+                cursor.execute(query)
+
+        # PUT should fail with permissions error
+        with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
+            perform_put()
+
+        # REMOVE should fail with permissions error
+        with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
+            perform_remove()
+
+        # GET should fail with permissions error
+        with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
+            perform_get()
+
     def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_uploads_base_path(self):
         """
         This test confirms that uploads_base_path and target_file are resolved into absolute paths.
