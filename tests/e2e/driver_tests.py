@@ -741,6 +741,46 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    def test_staging_ingestion_put_fails_if_file_exists_and_overwrite_not_set(self):
+        """PUT a file into the staging location twice. First command should succeed. Second should fail.
+        """
+
+        fh, temp_path = tempfile.mkstemp()
+
+        original_text = "hello world!".encode("utf-8")
+
+        with open(fh, "wb") as fp:
+            fp.write(original_text)
+
+        def perform_put():
+            with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+                cursor = conn.cursor()
+                query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/12/15/file1.csv'"
+                cursor.execute(query)
+
+        def perform_remove():
+            remove_query = (
+                f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/12/15/file1.csv'"
+            )
+
+            with self.connection(extra_params={"uploads_base_path": "/"}) as conn:
+                cursor = conn.cursor()
+                cursor.execute(remove_query)
+
+
+        # Make sure file does not exist
+        perform_remove()
+
+        # Put the file
+        perform_put()
+
+        # Try to put it again
+        with pytest.raises(sql.exc.ServerOperationError, match="FILE_IN_STAGING_PATH_ALREADY_EXISTS"):
+            perform_put()
+
+        # Clean up after ourselves
+        perform_remove()
+        
     def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_uploads_base_path(self):
         """
         This test confirms that uploads_base_path and target_file are resolved into absolute paths.
