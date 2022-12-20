@@ -389,6 +389,9 @@ class Cursor:
         Raise an exception if request fails. Returns no data.
         """
 
+        if local_file is None:
+            raise Error("Cannot perform GET without specifying a local_file")
+
         with open(local_file, "wb") as fp:
             r = requests.get(url=presigned_url, headers=headers)
 
