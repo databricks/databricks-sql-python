@@ -392,16 +392,16 @@ class Cursor:
         if local_file is None:
             raise Error("Cannot perform GET without specifying a local_file")
 
+        r = requests.get(url=presigned_url, headers=headers)
+
+        # response.ok verifies the status code is not between 400-600.
+        # Any 2xx or 3xx will evaluate r.ok == True
+        if not r.ok:
+            raise Error(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            )
+
         with open(local_file, "wb") as fp:
-            r = requests.get(url=presigned_url, headers=headers)
-
-            # response.ok verifies the status code is not between 400-600.
-            # Any 2xx or 3xx will evaluate r.ok == True
-            if not r.ok:
-                raise Error(
-                    f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
-                )
-
             fp.write(r.content)
 
     def _handle_staging_remove(self, presigned_url: str, headers: dict = None):
