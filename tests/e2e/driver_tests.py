@@ -741,6 +741,24 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_uploads_base_path(self):
+        """
+        This test confirms that uploads_base_path and target_file are resolved into absolute paths.
+        """
+
+        # If these two paths are not resolved absolutely, they appear to share a common path of /var/www/html
+        # after resolution their common path is only /var/www which should raise an exception
+        # Because the common path must always be equal to uploads_base_path
+        uploads_base_path = "/var/www/html"
+        target_file = "/var/www/html/../html1/not_allowed.html"
+
+        with pytest.raises(Error):
+            with self.connection(extra_params={"uploads_base_path": uploads_base_path}) as conn:
+                cursor = conn.cursor()
+                query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                cursor.execute(query)
+
+
 
 def main(cli_args):
     global get_args_from_env

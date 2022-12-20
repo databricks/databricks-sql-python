@@ -312,18 +312,23 @@ class Cursor:
             raise Error(
                 "You must provide an uploads_base_path when initialising a connection to perform ingestion commands"
             )
-        
+
         row = self.active_result_set.fetchone()
 
+        # Must set to None in cases where server response does not include localFile
+        abs_localFile = None
+
         if getattr(row, "localFile", None):
-            if os.path.commonpath([row.localFile, uploads_base_path]) != uploads_base_path:
+            abs_localFile = os.path.abspath(row.localFile)
+            abs_uploads_base_path = os.path.abspath(uploads_base_path)
+            if os.path.commonpath([abs_localFile, abs_uploads_base_path]) != abs_uploads_base_path:
                 raise Error("Local file operations are restricted to paths within the configured uploads_base_path")
 
         # TODO: Experiment with DBR sending real headers.
         # The specification says headers will be in JSON format but the current null value is actually an empty list []
         handler_args = {
             "presigned_url": row.presignedUrl,
-            "local_file": getattr(row, "localFile", None),
+            "local_file": abs_localFile,
             "headers": json.loads(row.headers or "{}"),
         }
 
