@@ -735,7 +735,6 @@ class ThriftBackend:
             .to_pybytes()
         )
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
-        # TODO: will this fail if metadata doesn't include `isStagingOperation`?
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         if direct_results and direct_results.resultSet:
             assert direct_results.resultSet.results.startRowOffset == 0
