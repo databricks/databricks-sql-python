@@ -19,7 +19,7 @@ and deleted with a REMOVE command:
     REMOVE 'stage://tmp/some.user@databricks.com/salesdata/september.csv'
 
 Ingestion queries are passed to cursor.execute() like any other query. For GET and PUT commands, a local file
-will be read or written. For security, this local file must be contained within, or descended from, the
+will be read or written. For security, this local file must be contained within, or descended from, an
 uploads_base_path of the connection.
 
 Additionally, the connection can only manipulate files within the cloud storage location of the authenticated user.
@@ -29,6 +29,8 @@ To run this script:
 1. Set the INGESTION_USER constant to the account email address of the authenticated user
 2. Set the FILEPATH constant to the path of a file that will be uploaded (this example assumes its a CSV file)
 3. Run this file
+
+Note: uploads_base_path can be either a Pathlike object or a list of Pathlike objects.
 """
 
 INGESTION_USER = "some.user@example.com"

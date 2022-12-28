@@ -864,6 +864,45 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
                 query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    def test_staging_ingestion_supports_multiple_uploadsbasepath_values(self):
+        """uploads_base_path may be either a path-like object or a list of path-like objects.
+
+        This test confirms that two configured base paths:
+        1 - doesn't raise an exception
+        2 - allows uploads from both paths
+        3 - doesn't allow uploads from a third path
+        """
+
+        def generate_file_and_path_and_queries():
+            """
+                1. Makes a temp file with some contents.
+                2. Write a query to PUT it into a staging location
+                3. Write a query to REMOVE it from that location (for cleanup)
+            """
+            fh, temp_path = tempfile.mkstemp()
+            with open(fh, "wb") as fp:
+                original_text = "hello world!".encode("utf-8")
+                fp.write(original_text)
+            put_query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/{id(temp_path)}.csv' OVERWRITE"
+            remove_query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/{id(temp_path)}.csv'"
+            return fh, temp_path, put_query, remove_query
+
+        fh1, temp_path1, put_query1, remove_query1 = generate_file_and_path_and_queries()
+        fh2, temp_path2, put_query2, remove_query2 = generate_file_and_path_and_queries()
+        fh3, temp_path3, put_query3, remove_query3 = generate_file_and_path_and_queries()
+
+        with self.connection(extra_params={"uploads_base_path": [temp_path1, temp_path2]}) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(put_query1)
+            cursor.execute(put_query2)
+            
+            with pytest.raises(Error, match="Local file operations are restricted to paths within the configured uploads_base_path"):
+                cursor.execute(put_query3)
+
+            # Then clean up the files we made
+            cursor.execute(remove_query1)
+            cursor.execute(remove_query2)
 
 
 def main(cli_args):

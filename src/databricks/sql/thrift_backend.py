@@ -6,6 +6,7 @@ import time
 import threading
 import lz4.frame
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
+from typing import List, Union
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -61,7 +62,7 @@ class ThriftBackend:
         http_path: str,
         http_headers,
         auth_provider: AuthProvider,
-        uploads_base_path: str = None,
+        uploads_base_path: Union[str, List] = None,
         **kwargs,
     ):
         # Internal arguments in **kwargs:

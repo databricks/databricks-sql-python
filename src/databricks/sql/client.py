@@ -300,29 +300,47 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
-    def _handle_staging_operation(self, uploads_base_path: str):
+    def _handle_staging_operation(self, uploads_base_path: Union[List, str]):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler.
-        
+
         Raise an exception if localFile is specified by the server but the localFile
         is not descended from uploads_base_path.
         """
 
-        if uploads_base_path is None:
+        if isinstance(uploads_base_path, type(str())):
+            _uploads_base_paths = [uploads_base_path]
+        elif isinstance(uploads_base_path, type(list())):
+            _uploads_base_paths = uploads_base_path
+        else:
             raise Error(
-                "You must provide an uploads_base_path when initialising a connection to perform ingestion commands"
+                "You must provide at least one uploads_base_path when initialising a connection to perform ingestion commands"
             )
+
+        abs_uploads_base_paths = [os.path.abspath(i) for i in _uploads_base_paths]
 
         row = self.active_result_set.fetchone()
 
         # Must set to None in cases where server response does not include localFile
         abs_localFile = None
 
+        # Default to not allow staging operations
+        allow_operation = False
         if getattr(row, "localFile", None):
             abs_localFile = os.path.abspath(row.localFile)
-            abs_uploads_base_path = os.path.abspath(uploads_base_path)
-            if os.path.commonpath([abs_localFile, abs_uploads_base_path]) != abs_uploads_base_path:
-                raise Error("Local file operations are restricted to paths within the configured uploads_base_path")
+            for abs_uploads_base_path in abs_uploads_base_paths:
+                # If the indicated local file matches at least one allowed base path, allow the operation
+                if (
+                    os.path.commonpath([abs_localFile, abs_uploads_base_path])
+                    == abs_uploads_base_path
+                ):
+                    allow_operation = True
+                else:
+                    continue
+            if not allow_operation:
+                raise Error(
+                    "Local file operations are restricted to paths within the configured uploads_base_path"
+                )
 
         # TODO: Experiment with DBR sending real headers.
         # The specification says headers will be in JSON format but the current null value is actually an empty list []
