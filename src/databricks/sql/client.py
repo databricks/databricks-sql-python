@@ -60,6 +60,13 @@ class Connection:
                 any IDP configured. This is only for interactive python applications and open a browser window.
                 Note this is beta (private preview)
 
+            oauth_client_id: `str`, optional
+                custom oauth client_id. If not specified, it will use the built-in client_id of databricks-sql-python.
+
+            oauth_redirect_port: `int`, optional
+                port of the oauth redirect uri (localhost). This is required when custom oauth client_id
+                `oauth_client_id` is set
+
             experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
                 This has to be a class implementing `OAuthPersistence`.
                 When `auth_type` is set to `databricks-oauth` without persisting the oauth token in a persistence storage
