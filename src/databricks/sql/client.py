@@ -300,24 +300,24 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
-    def _handle_staging_operation(self, uploads_base_path: Union[List, str]):
+    def _handle_staging_operation(self, staging_allowed_local_path: Union[List, str]):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler.
 
         Raise an exception if localFile is specified by the server but the localFile
-        is not descended from uploads_base_path.
+        is not descended from staging_allowed_local_path.
         """
 
-        if isinstance(uploads_base_path, type(str())):
-            _uploads_base_paths = [uploads_base_path]
-        elif isinstance(uploads_base_path, type(list())):
-            _uploads_base_paths = uploads_base_path
+        if isinstance(staging_allowed_local_path, type(str())):
+            _staging_allowed_local_paths = [staging_allowed_local_path]
+        elif isinstance(staging_allowed_local_path, type(list())):
+            _staging_allowed_local_paths = staging_allowed_local_path
         else:
             raise Error(
-                "You must provide at least one uploads_base_path when initialising a connection to perform ingestion commands"
+                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands"
             )
 
-        abs_uploads_base_paths = [os.path.abspath(i) for i in _uploads_base_paths]
+        abs_staging_allowed_local_paths = [os.path.abspath(i) for i in _staging_allowed_local_paths]
 
         row = self.active_result_set.fetchone()
 
@@ -328,18 +328,18 @@ class Cursor:
         allow_operation = False
         if getattr(row, "localFile", None):
             abs_localFile = os.path.abspath(row.localFile)
-            for abs_uploads_base_path in abs_uploads_base_paths:
+            for abs_staging_allowed_local_path in abs_staging_allowed_local_paths:
                 # If the indicated local file matches at least one allowed base path, allow the operation
                 if (
-                    os.path.commonpath([abs_localFile, abs_uploads_base_path])
-                    == abs_uploads_base_path
+                    os.path.commonpath([abs_localFile, abs_staging_allowed_local_path])
+                    == abs_staging_allowed_local_path
                 ):
                     allow_operation = True
                 else:
                     continue
             if not allow_operation:
                 raise Error(
-                    "Local file operations are restricted to paths within the configured uploads_base_path"
+                    "Local file operations are restricted to paths within the configured staging_allowed_local_path"
                 )
 
         # TODO: Experiment with DBR sending real headers.
@@ -474,7 +474,7 @@ class Cursor:
 
         if execute_response.is_staging_operation:
             self._handle_staging_operation(
-                uploads_base_path=self.thrift_backend.uploads_base_path
+                staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
             )
 
         return self

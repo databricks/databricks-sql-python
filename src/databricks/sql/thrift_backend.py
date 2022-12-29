@@ -62,7 +62,7 @@ class ThriftBackend:
         http_path: str,
         http_headers,
         auth_provider: AuthProvider,
-        uploads_base_path: Union[str, List] = None,
+        staging_allowed_local_path: Union[str, List] = None,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
@@ -112,7 +112,7 @@ class ThriftBackend:
         else:
             raise ValueError("No valid connection settings.")
 
-        self.uploads_base_path = uploads_base_path
+        self.staging_allowed_local_path = staging_allowed_local_path
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True

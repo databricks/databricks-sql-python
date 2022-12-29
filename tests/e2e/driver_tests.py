@@ -661,7 +661,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         with open(fh, "wb") as fp:
             fp.write(original_text)
 
-        with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+        with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
 
             cursor = conn.cursor()
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
@@ -671,7 +671,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
 
         new_fh, new_temp_path = tempfile.mkstemp()
 
-        with self.connection(extra_params={"uploads_base_path": new_temp_path}) as conn:
+        with self.connection(extra_params={"staging_allowed_local_path": new_temp_path}) as conn:
             cursor = conn.cursor()
             query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
@@ -687,7 +687,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
             f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
         )
 
-        with self.connection(extra_params={"uploads_base_path": "/"}) as conn:
+        with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
 
@@ -702,9 +702,9 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         os.remove(new_temp_path)
 
 
-    def test_staging_ingestion_put_fails_without_uploadsbasepath(self):
+    def test_staging_ingestion_put_fails_without_staging_allowed_local_path(self):
         """PUT operations are not supported unless the connection was built with
-        a parameter called uploads_base_path
+        a parameter called staging_allowed_local_path
         """
 
         fh, temp_path = tempfile.mkstemp()
@@ -720,7 +720,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_put_fails_if_localFile_not_in_uploads_base_path(self):
+    def test_staging_ingestion_put_fails_if_localFile_not_in_staging_allowed_local_path(self):
 
 
         fh, temp_path = tempfile.mkstemp()
@@ -736,7 +736,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         base_path = os.path.join(base_path, "temp")
 
         with pytest.raises(Error):
-            with self.connection(extra_params={"uploads_base_path": base_path}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": base_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
@@ -753,7 +753,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
             fp.write(original_text)
 
         def perform_put():
-            with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/12/15/file1.csv'"
                 cursor.execute(query)
@@ -763,7 +763,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
                 f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/12/15/file1.csv'"
             )
 
-            with self.connection(extra_params={"uploads_base_path": "/"}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
                 cursor = conn.cursor()
                 cursor.execute(remove_query)
 
@@ -795,7 +795,7 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
             fp.write(original_text)
 
         def perform_put():
-            with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
@@ -805,12 +805,12 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
                 f"REMOVE 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv'"
             )
 
-            with self.connection(extra_params={"uploads_base_path": "/"}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
                 cursor = conn.cursor()
                 cursor.execute(remove_query)
 
         def perform_get():
-            with self.connection(extra_params={"uploads_base_path": temp_path}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
                 cursor = conn.cursor()
                 query = f"GET 'stage://tmp/{some_other_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
                 cursor.execute(query)
@@ -827,45 +827,45 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
             perform_get()
 
-    def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_uploads_base_path(self):
+    def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(self):
         """
-        This test confirms that uploads_base_path and target_file are resolved into absolute paths.
+        This test confirms that staging_allowed_local_path and target_file are resolved into absolute paths.
         """
 
         # If these two paths are not resolved absolutely, they appear to share a common path of /var/www/html
         # after resolution their common path is only /var/www which should raise an exception
-        # Because the common path must always be equal to uploads_base_path
-        uploads_base_path = "/var/www/html"
+        # Because the common path must always be equal to staging_allowed_local_path
+        staging_allowed_local_path = "/var/www/html"
         target_file = "/var/www/html/../html1/not_allowed.html"
 
         with pytest.raises(Error):
-            with self.connection(extra_params={"uploads_base_path": uploads_base_path}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(self):
-        uploads_base_path = "/var/www/html"
+        staging_allowed_local_path = "/var/www/html"
         target_file = ""
 
         with pytest.raises(Error, match="EMPTY_LOCAL_FILE_IN_STAGING_ACCESS_QUERY"):
-            with self.connection(extra_params={"uploads_base_path": uploads_base_path}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_invalid_staging_path_fails_at_server(self):
-        uploads_base_path = "/var/www/html"
+        staging_allowed_local_path = "/var/www/html"
         target_file = "index.html"
 
         with pytest.raises(Error, match="INVALID_STAGING_PATH_IN_STAGING_ACCESS_QUERY"):
-            with self.connection(extra_params={"uploads_base_path": uploads_base_path}) as conn:
+            with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_supports_multiple_uploadsbasepath_values(self):
-        """uploads_base_path may be either a path-like object or a list of path-like objects.
+    def test_staging_ingestion_supports_multiple_staging_allowed_local_path_values(self):
+        """staging_allowed_local_path may be either a path-like object or a list of path-like objects.
 
         This test confirms that two configured base paths:
         1 - doesn't raise an exception
@@ -891,13 +891,13 @@ class PySQLStagingIngestionTestSuite(PySQLTestCase):
         fh2, temp_path2, put_query2, remove_query2 = generate_file_and_path_and_queries()
         fh3, temp_path3, put_query3, remove_query3 = generate_file_and_path_and_queries()
 
-        with self.connection(extra_params={"uploads_base_path": [temp_path1, temp_path2]}) as conn:
+        with self.connection(extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}) as conn:
             cursor = conn.cursor()
 
             cursor.execute(put_query1)
             cursor.execute(put_query2)
             
-            with pytest.raises(Error, match="Local file operations are restricted to paths within the configured uploads_base_path"):
+            with pytest.raises(Error, match="Local file operations are restricted to paths within the configured staging_allowed_local_path"):
                 cursor.execute(put_query3)
 
             # Then clean up the files we made

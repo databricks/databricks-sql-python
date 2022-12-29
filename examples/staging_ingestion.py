@@ -3,7 +3,7 @@ import os
 
 """
 Databricks experimentally supports data ingestion of local files via a cloud staging location.
-Ingestion commands will work on DBR >12. And you must include an uploads_base_path kwarg when
+Ingestion commands will work on DBR >12. And you must include a staging_allowed_local_path kwarg when
 calling sql.connect().
 
 Use databricks-sql-connector to PUT files into the staging location where Databricks can access them:
@@ -19,8 +19,8 @@ and deleted with a REMOVE command:
     REMOVE 'stage://tmp/some.user@databricks.com/salesdata/september.csv'
 
 Ingestion queries are passed to cursor.execute() like any other query. For GET and PUT commands, a local file
-will be read or written. For security, this local file must be contained within, or descended from, an
-uploads_base_path of the connection.
+will be read or written. For security, this local file must be contained within, or descended from, a
+staging_allowed_local_path of the connection.
 
 Additionally, the connection can only manipulate files within the cloud storage location of the authenticated user.
 
@@ -30,7 +30,7 @@ To run this script:
 2. Set the FILEPATH constant to the path of a file that will be uploaded (this example assumes its a CSV file)
 3. Run this file
 
-Note: uploads_base_path can be either a Pathlike object or a list of Pathlike objects.
+Note: staging_allowed_local_path can be either a Pathlike object or a list of Pathlike objects.
 """
 
 INGESTION_USER = "some.user@example.com"
@@ -47,14 +47,14 @@ if not os.path.exists(_complete_path):
         "You need to set FILEPATH in this script to a file that actually exists."
     )
 
-# Set uploads_base_path equal to the directory that contains FILEPATH
-uploads_base_path = os.path.split(_complete_path)[0]
+# Set staging_allowed_local_path equal to the directory that contains FILEPATH
+staging_allowed_local_path = os.path.split(_complete_path)[0]
 
 with sql.connect(
     server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
-    uploads_base_path=uploads_base_path,
+    staging_allowed_local_path=staging_allowed_local_path,
 ) as connection:
 
     with connection.cursor() as cursor:
@@ -70,7 +70,7 @@ with sql.connect(
         temp_fp = os.path.realpath("temp.csv")
 
         # Here's a sample GET query. Note that `temp_fp` must also be contained within, or descended from,
-        # the uploads_base_path.
+        # the staging_allowed_local_path.
         query = (
             f"GET 'stage://tmp/{INGESTION_USER}/pysql_examples/demo.csv' TO '{temp_fp}'"
         )
