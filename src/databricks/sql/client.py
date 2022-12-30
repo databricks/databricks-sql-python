@@ -300,7 +300,9 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
-    def _handle_staging_operation(self, staging_allowed_local_path: Union[None, str, List[str]]):
+    def _handle_staging_operation(
+        self, staging_allowed_local_path: Union[None, str, List[str]]
+    ):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler.
 
@@ -317,7 +319,9 @@ class Cursor:
                 "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands"
             )
 
-        abs_staging_allowed_local_paths = [os.path.abspath(i) for i in _staging_allowed_local_paths]
+        abs_staging_allowed_local_paths = [
+            os.path.abspath(i) for i in _staging_allowed_local_paths
+        ]
 
         assert self.active_result_set is not None
         row = self.active_result_set.fetchone()
