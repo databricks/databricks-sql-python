@@ -36,3 +36,4 @@ To run all of these examples you can clone the entire repository to your disk. O
 - **`persistent_oauth.py`** shows a more advanced example of authenticating by OAuth while Bring Your Own IDP is in public preview. In this case, it shows how to use a sublcass of `OAuthPersistence` to reuse an OAuth token across script executions.
 - **`set_user_agent.py`** shows how to customize the user agent header used for Thrift commands. In
 this example the string `ExamplePartnerTag` will be added to the the user agent on every request.
+- **`staging_ingestion.py`** shows how the connector handles Databricks' experimental staging ingestion commands `GET`, `PUT`, and `REMOVE`.
