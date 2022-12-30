@@ -62,7 +62,7 @@ class ThriftBackend:
         http_path: str,
         http_headers,
         auth_provider: AuthProvider,
-        staging_allowed_local_path: Union[str, List] = None,
+        staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
