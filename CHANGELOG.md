@@ -1,8 +1,8 @@
 # Release History
 
-## 2.1.x (Unreleased)
+## 2.2.x (Unreleased)
 
-## 2.2.2 (2022-12-30)
+## 2.2.2 (2023-01-03)
 
 - Support custom oauth client id and redirect port 
 - Fix: Add none check on _oauth_persistence in DatabricksOAuthProvider
