@@ -1,6 +1,20 @@
 # Release History
 
-## 2.1.x (Unreleased)
+## 2.2.x (Unreleased)
+
+## 2.2.2 (2023-01-03)
+
+- Support custom oauth client id and redirect port 
+- Fix: Add none check on _oauth_persistence in DatabricksOAuthProvider
+
+## 2.2.1 (2022-11-29)
+
+- Add support for Python 3.11
+
+## 2.2.0 (2022-11-15)
+
+- Bump thrift version to address https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13949
+- Add support for lz4 compression
 
 ## 2.1.0 (2022-09-30)
 
