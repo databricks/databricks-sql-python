@@ -2,6 +2,9 @@ from typing import Dict, Tuple, List, Optional, Any, Union
 
 import pandas
 import pyarrow
+import requests
+import json
+import os
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -28,7 +31,7 @@ class Connection:
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         """
         Connect to a Databricks SQL endpoint or a Databricks cluster.
@@ -180,7 +183,7 @@ class Connection:
             http_path,
             (http_headers or []) + base_headers,
             auth_provider,
-            **kwargs
+            **kwargs,
         )
 
         self._session_handle = self.thrift_backend.open_session(
@@ -304,6 +307,149 @@ class Cursor:
         if not self.open:
             raise Error("Attempting operation on closed cursor")
 
+    def _handle_staging_operation(
+        self, staging_allowed_local_path: Union[None, str, List[str]]
+    ):
+        """Fetch the HTTP request instruction from a staging ingestion command
+        and call the designated handler.
+
+        Raise an exception if localFile is specified by the server but the localFile
+        is not descended from staging_allowed_local_path.
+        """
+
+        if isinstance(staging_allowed_local_path, type(str())):
+            _staging_allowed_local_paths = [staging_allowed_local_path]
+        elif isinstance(staging_allowed_local_path, type(list())):
+            _staging_allowed_local_paths = staging_allowed_local_path
+        else:
+            raise Error(
+                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands"
+            )
+
+        abs_staging_allowed_local_paths = [
+            os.path.abspath(i) for i in _staging_allowed_local_paths
+        ]
+
+        assert self.active_result_set is not None
+        row = self.active_result_set.fetchone()
+        assert row is not None
+
+        # Must set to None in cases where server response does not include localFile
+        abs_localFile = None
+
+        # Default to not allow staging operations
+        allow_operation = False
+        if getattr(row, "localFile", None):
+            abs_localFile = os.path.abspath(row.localFile)
+            for abs_staging_allowed_local_path in abs_staging_allowed_local_paths:
+                # If the indicated local file matches at least one allowed base path, allow the operation
+                if (
+                    os.path.commonpath([abs_localFile, abs_staging_allowed_local_path])
+                    == abs_staging_allowed_local_path
+                ):
+                    allow_operation = True
+                else:
+                    continue
+            if not allow_operation:
+                raise Error(
+                    "Local file operations are restricted to paths within the configured staging_allowed_local_path"
+                )
+
+        # TODO: Experiment with DBR sending real headers.
+        # The specification says headers will be in JSON format but the current null value is actually an empty list []
+        handler_args = {
+            "presigned_url": row.presignedUrl,
+            "local_file": abs_localFile,
+            "headers": json.loads(row.headers or "{}"),
+        }
+
+        logger.debug(
+            f"Attempting staging operation indicated by server: {row.operation} - {getattr(row, 'localFile', '')}"
+        )
+
+        # TODO: Create a retry loop here to re-attempt if the request times out or fails
+        if row.operation == "GET":
+            return self._handle_staging_get(**handler_args)
+        elif row.operation == "PUT":
+            return self._handle_staging_put(**handler_args)
+        elif row.operation == "REMOVE":
+            # Local file isn't needed to remove a remote resource
+            handler_args.pop("local_file")
+            return self._handle_staging_remove(**handler_args)
+        else:
+            raise Error(
+                f"Operation {row.operation} is not supported. "
+                + "Supported operations are GET, PUT, and REMOVE"
+            )
+
+    def _handle_staging_put(
+        self, presigned_url: str, local_file: str, headers: dict = None
+    ):
+        """Make an HTTP PUT request
+
+        Raise an exception if request fails. Returns no data.
+        """
+
+        if local_file is None:
+            raise Error("Cannot perform PUT without specifying a local_file")
+
+        with open(local_file, "rb") as fh:
+            r = requests.put(url=presigned_url, data=fh, headers=headers)
+
+        # fmt: off
+        # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
+            
+        OK = requests.codes.ok                  # 200
+        CREATED = requests.codes.created        # 201
+        ACCEPTED = requests.codes.accepted      # 202
+        NO_CONTENT = requests.codes.no_content  # 204
+
+        # fmt: on
+
+        if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+            raise Error(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            )
+
+        if r.status_code == ACCEPTED:
+            logger.debug(
+                f"Response code {ACCEPTED} from server indicates ingestion command was accepted "
+                + "but not yet applied on the server. It's possible this command may fail later."
+            )
+
+    def _handle_staging_get(
+        self, local_file: str, presigned_url: str, headers: dict = None
+    ):
+        """Make an HTTP GET request, create a local file with the received data
+
+        Raise an exception if request fails. Returns no data.
+        """
+
+        if local_file is None:
+            raise Error("Cannot perform GET without specifying a local_file")
+
+        r = requests.get(url=presigned_url, headers=headers)
+
+        # response.ok verifies the status code is not between 400-600.
+        # Any 2xx or 3xx will evaluate r.ok == True
+        if not r.ok:
+            raise Error(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            )
+
+        with open(local_file, "wb") as fp:
+            fp.write(r.content)
+
+    def _handle_staging_remove(self, presigned_url: str, headers: dict = None):
+        """Make an HTTP DELETE request to the presigned_url"""
+
+        r = requests.delete(url=presigned_url, headers=headers)
+
+        if not r.ok:
+            raise Error(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            )
+
     def execute(
         self, operation: str, parameters: Optional[Dict[str, str]] = None
     ) -> "Cursor":
@@ -338,6 +484,12 @@ class Cursor:
             self.buffer_size_bytes,
             self.arraysize,
         )
+
+        if execute_response.is_staging_operation:
+            self._handle_staging_operation(
+                staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
+            )
+
         return self
 
     def executemany(self, operation, seq_of_parameters):
