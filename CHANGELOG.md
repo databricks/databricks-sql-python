@@ -1,6 +1,10 @@
 # Release History
 
-## 2.2.x (Unreleased)
+## 2.3.x (Unreleased)
+
+## 2.3.0 (2023-01-10)
+
+- Support staging ingestion commands for DBR 12+
 
 ## 2.2.2 (2023-01-03)
 
