@@ -6,6 +6,7 @@ import time
 import threading
 import lz4.frame
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
+from typing import List, Union
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -61,6 +62,7 @@ class ThriftBackend:
         http_path: str,
         http_headers,
         auth_provider: AuthProvider,
+        staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
@@ -110,6 +112,7 @@ class ThriftBackend:
         else:
             raise ValueError("No valid connection settings.")
 
+        self.staging_allowed_local_path = staging_allowed_local_path
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
@@ -452,7 +455,7 @@ class ThriftBackend:
                 initial_namespace = None
 
             open_session_req = ttypes.TOpenSessionReq(
-                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V6,
+                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
                 client_protocol=None,
                 initialNamespace=initial_namespace,
                 canUseMultipleCatalogs=True,
@@ -733,6 +736,7 @@ class ThriftBackend:
             .to_pybytes()
         )
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
+        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         if direct_results and direct_results.resultSet:
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
@@ -752,6 +756,7 @@ class ThriftBackend:
             has_been_closed_server_side=has_been_closed_server_side,
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
+            is_staging_operation=is_staging_operation,
             command_handle=resp.operationHandle,
             description=description,
             arrow_schema_bytes=schema_bytes,
