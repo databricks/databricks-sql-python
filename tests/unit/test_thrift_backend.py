@@ -143,6 +143,21 @@ class ThriftBackendTestSuite(unittest.TestCase):
         ThriftBackend("foo", 123, "bar", [("header", "value")], auth_provider=AuthProvider())
         t_http_client_class.return_value.setCustomHeaders.assert_called_with({"header": "value"})
 
+    def test_proxy_headers_are_set(self):
+
+        from databricks.sql.auth.thrift_http_client import THttpClient
+        from urllib.parse import urlparse
+
+        fake_proxy_spec = "https://someuser:somepassword@8.8.8.8:12340"
+        parsed_proxy = urlparse(fake_proxy_spec)
+        
+        try:
+            result = THttpClient.basic_proxy_auth_header(parsed_proxy)
+        except TypeError as e:
+            assert False
+
+        assert isinstance(result, type(str()))
+
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch("databricks.sql.thrift_backend.create_default_context")
     def test_tls_cert_args_are_propagated(self, mock_create_default_context, t_http_client_class):
