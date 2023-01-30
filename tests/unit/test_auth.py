@@ -1,7 +1,24 @@
 import unittest
+import pytest
+from typing import Optional
+from unittest.mock import patch
 
-from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider
+from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider, DatabricksOAuthProvider
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.oauth import OAuthManager
+from databricks.sql.auth.endpoint import OAuthEndpointsAzure, OAuthEndpointsAws, CloudType
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken
+
+
+class OAuthPersistenceCache(OAuthPersistence):
+    def __init__(self):
+        self.tokens = {}
+
+    def persist(self, hostname: str, oauth_token: OAuthToken):
+        self.tokens[hostname] = oauth_token
+
+    def read(self, hostname: str) -> Optional[OAuthToken]:
+        return self.tokens.get(hostname)
 
 
 class Auth(unittest.TestCase):
@@ -36,6 +53,39 @@ class Auth(unittest.TestCase):
 
         self.assertEqual(len(http_request.keys()), 1)
         self.assertEqual(http_request['myKey'], 'myVal')
+
+    @patch.object(OAuthManager, "check_and_refresh_access_token")
+    @patch.object(OAuthManager, "get_tokens")
+    def test_oauth_auth_provider(self, mock_get_tokens, mock_check_and_refresh):
+        client_id = "mock-id"
+        scopes = ["offline_access", "sql"]
+        access_token = "mock_token"
+        refresh_token = "mock_refresh_token"
+        mock_get_tokens.return_value = (access_token, refresh_token)
+        mock_check_and_refresh.return_value = (access_token, refresh_token, False)
+
+        params = [(CloudType.AWS, "foo.cloud.databricks.com", OAuthEndpointsAws, "offline_access sql"),
+                  (CloudType.AZURE, "foo.1.azuredatabricks.net", OAuthEndpointsAzure,
+                   f"{OAuthEndpointsAzure.SCOPE_USER_IMPERSONATION} offline_access")]
+
+        for cloud_type, host, expected_endpoint_type, expected_scopes in params:
+            with self.subTest(cloud_type.value):
+                oauth_persistence = OAuthPersistenceCache()
+                auth_provider = DatabricksOAuthProvider(hostname=host,
+                                                        oauth_persistence=oauth_persistence,
+                                                        redirect_port_range=[8020],
+                                                        client_id=client_id,
+                                                        scopes=scopes)
+
+                self.assertIsInstance(auth_provider.oauth_manager.idp_endpoint, expected_endpoint_type)
+                self.assertEqual(auth_provider.oauth_manager.port_range, [8020])
+                self.assertEqual(auth_provider.oauth_manager.client_id, client_id)
+                self.assertEqual(oauth_persistence.read(host).refresh_token, refresh_token)
+                mock_get_tokens.assert_called_with(hostname=host, scope=expected_scopes)
+
+                headers = {}
+                auth_provider.add_headers(headers)
+                self.assertEqual(headers['Authorization'], f"Bearer {access_token}")
 
     def test_get_python_sql_connector_auth_provider_access_token(self):
         hostname = "moderakh-test.cloud.databricks.com"
