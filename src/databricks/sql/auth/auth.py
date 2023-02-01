@@ -7,6 +7,7 @@ from databricks.sql.auth.authenticators import (
     BasicAuthProvider,
     DatabricksOAuthProvider,
 )
+from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 
@@ -70,6 +71,7 @@ def get_auth_provider(cfg: ClientContext):
 
 PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
 PYSQL_OAUTH_CLIENT_ID = "databricks-sql-python"
+PYSQL_OAUTH_CLIENT_ID_AZURE = "a743d78c-536a-4ffc-b110-edfb231e90dc"
 PYSQL_OAUTH_REDIRECT_PORT_RANGE = list(range(8020, 8025))
 
 
@@ -77,6 +79,14 @@ def normalize_host_name(hostname: str):
     maybe_scheme = "https://" if not hostname.startswith("https://") else ""
     maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
     return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
+
+
+def get_client_id(hostname: str):
+    return (
+        PYSQL_OAUTH_CLIENT_ID
+        if infer_cloud_from_host(hostname) == CloudType.AWS
+        else PYSQL_OAUTH_CLIENT_ID_AZURE
+    )
 
 
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
@@ -89,7 +99,7 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         use_cert_as_auth=kwargs.get("_use_cert_as_auth"),
         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
         oauth_scopes=PYSQL_OAUTH_SCOPES,
-        oauth_client_id=kwargs.get("oauth_client_id") or PYSQL_OAUTH_CLIENT_ID,
+        oauth_client_id=kwargs.get("oauth_client_id") or get_client_id(hostname),
         oauth_redirect_port_range=[kwargs["oauth_redirect_port"]]
         if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
         else PYSQL_OAUTH_REDIRECT_PORT_RANGE,
