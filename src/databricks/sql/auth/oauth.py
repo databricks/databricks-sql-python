@@ -14,14 +14,17 @@ from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from requests.exceptions import RequestException
 
 from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
-from databricks.sql.auth.endpoint import OAuthEndpoints
+from databricks.sql.auth.endpoint import OAuthEndpointCollection
 
 logger = logging.getLogger(__name__)
 
 
 class OAuthManager:
     def __init__(
-        self, port_range: List[int], client_id: str, idp_endpoint: OAuthEndpoints
+        self,
+        port_range: List[int],
+        client_id: str,
+        idp_endpoint: OAuthEndpointCollection,
     ):
         self.port_range = port_range
         self.client_id = client_id
@@ -37,7 +40,7 @@ class OAuthManager:
         return f"http://localhost:{redirect_port}"
 
     def __fetch_well_known_config(self, hostname: str):
-        known_config_url = self.idp_endpoint.get_openid_config_endpoint(hostname)
+        known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
 
         try:
             response = requests.get(url=known_config_url)
@@ -213,7 +216,7 @@ class OAuthManager:
         oauth_config = self.__fetch_well_known_config(hostname)
         # We are going to override oauth_config["authorization_endpoint"] use the
         # /oidc redirector on the hostname, which may inject additional parameters.
-        auth_url = self.idp_endpoint.get_authorization_endpoint(hostname)
+        auth_url = self.idp_endpoint.get_authorization_url(hostname)
 
         state = OAuthManager.__token_urlsafe(16)
         (verifier, challenge) = OAuthManager.__get_challenge()

@@ -4,17 +4,15 @@ import pytest
 
 from unittest.mock import patch
 
-from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType, get_oauth_endpoints, OAuthEndpointsAzure
+from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType, get_oauth_endpoints, AzureOAuthEndpointCollection
 
 aws_host = "foo-bar.cloud.databricks.com"
 azure_host = "foo-bar.1.azuredatabricks.net"
-gcp_host = "foo-bar.gcp.databricks.com"
 
 
 class EndpointTest(unittest.TestCase):
     def test_infer_cloud_from_host(self):
-        param_list = [(CloudType.AWS, aws_host), (CloudType.AZURE, azure_host), (CloudType.GCP, gcp_host),
-                      (None, "foo.example.com")]
+        param_list = [(CloudType.AWS, aws_host), (CloudType.AZURE, azure_host), (None, "foo.example.com")]
 
         for expected_type, host in param_list:
             with self.subTest(expected_type or "None", expected_type=expected_type):
@@ -37,15 +35,15 @@ class EndpointTest(unittest.TestCase):
                           azure_host,
                           f"https://{azure_host}/oidc/oauth2/v2.0/authorize",
                           "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
-                          [OAuthEndpointsAzure.SCOPE_USER_IMPERSONATION, "offline_access"],
-                          [OAuthEndpointsAzure.SCOPE_USER_IMPERSONATION]
+                          [AzureOAuthEndpointCollection.SCOPE_USER_IMPERSONATION, "offline_access"],
+                          [AzureOAuthEndpointCollection.SCOPE_USER_IMPERSONATION]
                       )]
 
         for cloud_type, host, expected_auth_url, expected_config_url, expected_scopes, expected_scope2 in param_list:
             with self.subTest(cloud_type):
                 endpoint = get_oauth_endpoints(cloud_type)
-                self.assertEqual(endpoint.get_authorization_endpoint(host), expected_auth_url)
-                self.assertEqual(endpoint.get_openid_config_endpoint(host), expected_config_url)
+                self.assertEqual(endpoint.get_authorization_url(host), expected_auth_url)
+                self.assertEqual(endpoint.get_openid_config_url(host), expected_config_url)
                 self.assertEqual(endpoint.get_scopes_mapping(scopes), expected_scopes)
                 self.assertEqual(endpoint.get_scopes_mapping(scopes2), expected_scope2)
 

@@ -6,19 +6,8 @@ from unittest.mock import patch
 from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider, DatabricksOAuthProvider
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.auth.oauth import OAuthManager
-from databricks.sql.auth.endpoint import OAuthEndpointsAzure, OAuthEndpointsAws, CloudType
-from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken
-
-
-class OAuthPersistenceCache(OAuthPersistence):
-    def __init__(self):
-        self.tokens = {}
-
-    def persist(self, hostname: str, oauth_token: OAuthToken):
-        self.tokens[hostname] = oauth_token
-
-    def read(self, hostname: str) -> Optional[OAuthToken]:
-        return self.tokens.get(hostname)
+from databricks.sql.auth.endpoint import AzureOAuthEndpointCollection, AwsOAuthEndpointCollection, CloudType
+from databricks.sql.experimental.oauth_persistence import OAuthPersistenceCache
 
 
 class Auth(unittest.TestCase):
@@ -64,9 +53,9 @@ class Auth(unittest.TestCase):
         mock_get_tokens.return_value = (access_token, refresh_token)
         mock_check_and_refresh.return_value = (access_token, refresh_token, False)
 
-        params = [(CloudType.AWS, "foo.cloud.databricks.com", OAuthEndpointsAws, "offline_access sql"),
-                  (CloudType.AZURE, "foo.1.azuredatabricks.net", OAuthEndpointsAzure,
-                   f"{OAuthEndpointsAzure.SCOPE_USER_IMPERSONATION} offline_access")]
+        params = [(CloudType.AWS, "foo.cloud.databricks.com", AwsOAuthEndpointCollection, "offline_access sql"),
+                  (CloudType.AZURE, "foo.1.azuredatabricks.net", AzureOAuthEndpointCollection,
+                   f"{AzureOAuthEndpointCollection.SCOPE_USER_IMPERSONATION} offline_access")]
 
         for cloud_type, host, expected_endpoint_type, expected_scopes in params:
             with self.subTest(cloud_type.value):
