@@ -71,7 +71,7 @@ def get_auth_provider(cfg: ClientContext):
 
 PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
 PYSQL_OAUTH_CLIENT_ID = "databricks-sql-python"
-PYSQL_OAUTH_CLIENT_ID_AZURE = "a743d78c-536a-4ffc-b110-edfb231e90dc"
+PYSQL_OAUTH_AZURE_EXPERIMENTAL_CLIENT_ID = "a743d78c-536a-4ffc-b110-edfb231e90dc"
 PYSQL_OAUTH_REDIRECT_PORT_RANGE = list(range(8020, 8025))
 
 
@@ -85,7 +85,7 @@ def get_client_id(hostname: str):
     return (
         PYSQL_OAUTH_CLIENT_ID
         if infer_cloud_from_host(hostname) == CloudType.AWS
-        else PYSQL_OAUTH_CLIENT_ID_AZURE
+        else PYSQL_OAUTH_AZURE_EXPERIMENTAL_CLIENT_ID
     )
 
 

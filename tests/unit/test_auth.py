@@ -55,7 +55,7 @@ class Auth(unittest.TestCase):
 
         params = [(CloudType.AWS, "foo.cloud.databricks.com", AwsOAuthEndpointCollection, "offline_access sql"),
                   (CloudType.AZURE, "foo.1.azuredatabricks.net", AzureOAuthEndpointCollection,
-                   f"{AzureOAuthEndpointCollection.SCOPE_USER_IMPERSONATION} offline_access")]
+                   f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_TENANT_ID}/user_impersonation offline_access")]
 
         for cloud_type, host, expected_endpoint_type, expected_scopes in params:
             with self.subTest(cloud_type.value):

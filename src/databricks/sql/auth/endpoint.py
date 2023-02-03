@@ -23,14 +23,22 @@ class CloudType(Enum):
     AZURE = "azure"
 
 
+DATABRICKS_AWS_DOMAINS = [".cloud.databricks.com", ".dev.databricks.com"]
+DATABRICKS_AZURE_DOMAINS = [
+    ".azuredatabricks.net",
+    ".databricks.azure.cn",
+    ".databricks.azure.us",
+]
+
+
 # Infer cloud type from Databricks SQL instance hostname
 def infer_cloud_from_host(hostname: str) -> Optional[CloudType]:
     # normalize
     host = hostname.lower().replace("https://", "").split("/")[0]
 
-    if host.endswith(".azuredatabricks.net"):
+    if any(e for e in DATABRICKS_AZURE_DOMAINS if host.endswith(e)):
         return CloudType.AZURE
-    elif host.endswith("cloud.databricks.com") or host.endswith("dev.databricks.com"):
+    elif any(e for e in DATABRICKS_AWS_DOMAINS if host.endswith(e)):
         return CloudType.AWS
     else:
         return None
@@ -59,15 +67,15 @@ class OAuthEndpointCollection(ABC):
 
 
 class AzureOAuthEndpointCollection(OAuthEndpointCollection):
-    SCOPE_USER_IMPERSONATION = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/user_impersonation"
+    DATATRICKS_AZURE_TENANT_ID = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
 
     def get_scopes_mapping(self, scopes: List[str]) -> List[str]:
         # There is no corresponding scopes in Azure, instead, access control will be delegated to Databricks
-        # To support scope in dev, it can also be set in the environment variable DATABRICKS_AZURE_SCOPE
-        azure_scope = (
-            os.getenv("DATABRICKS_AZURE_SCOPE")
-            or AzureOAuthEndpointCollection.SCOPE_USER_IMPERSONATION
+        tenant_id = os.getenv(
+            "DATABRICKS_AZURE_TENANT_ID",
+            AzureOAuthEndpointCollection.DATATRICKS_AZURE_TENANT_ID,
         )
+        azure_scope = f"{tenant_id}/user_impersonation"
         mapped_scopes = [azure_scope]
         if OAuthScope.OFFLINE_ACCESS in scopes:
             mapped_scopes.append(OAuthScope.OFFLINE_ACCESS)

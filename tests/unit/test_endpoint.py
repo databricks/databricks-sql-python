@@ -4,7 +4,8 @@ import pytest
 
 from unittest.mock import patch
 
-from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType, get_oauth_endpoints, AzureOAuthEndpointCollection
+from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType, get_oauth_endpoints, \
+    AzureOAuthEndpointCollection
 
 aws_host = "foo-bar.cloud.databricks.com"
 azure_host = "foo-bar.1.azuredatabricks.net"
@@ -22,6 +23,7 @@ class EndpointTest(unittest.TestCase):
     def test_oauth_endpoint(self):
         scopes = ["offline_access", "sql", "admin"]
         scopes2 = ["sql", "admin"]
+        azure_scope = f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_TENANT_ID}/user_impersonation"
 
         param_list = [(CloudType.AWS,
                        aws_host,
@@ -35,8 +37,8 @@ class EndpointTest(unittest.TestCase):
                           azure_host,
                           f"https://{azure_host}/oidc/oauth2/v2.0/authorize",
                           "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
-                          [AzureOAuthEndpointCollection.SCOPE_USER_IMPERSONATION, "offline_access"],
-                          [AzureOAuthEndpointCollection.SCOPE_USER_IMPERSONATION]
+                          [azure_scope, "offline_access"],
+                          [azure_scope]
                       )]
 
         for cloud_type, host, expected_auth_url, expected_config_url, expected_scopes, expected_scope2 in param_list:
@@ -47,8 +49,9 @@ class EndpointTest(unittest.TestCase):
                 self.assertEqual(endpoint.get_scopes_mapping(scopes), expected_scopes)
                 self.assertEqual(endpoint.get_scopes_mapping(scopes2), expected_scope2)
 
-    @patch.dict(os.environ, {'DATABRICKS_AZURE_SCOPE': 'foo/user_impersonation'})
-    def test_azure_oauth_scope_mappings_from_env(self):
+    @patch.dict(os.environ, {'DATABRICKS_AZURE_TENANT_ID': '052ee82f-b79d-443c-8682-3ec1749e56b0'})
+    def test_azure_oauth_scope_mappings_from_different_tenant_id(self):
         scopes = ["offline_access", "sql", "all"]
         endpoint = get_oauth_endpoints(CloudType.AZURE)
-        self.assertEqual(endpoint.get_scopes_mapping(scopes), ['foo/user_impersonation', "offline_access"])
+        self.assertEqual(endpoint.get_scopes_mapping(scopes),
+                         ['052ee82f-b79d-443c-8682-3ec1749e56b0/user_impersonation', "offline_access"])
