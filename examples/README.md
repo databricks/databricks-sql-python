@@ -37,3 +37,4 @@ To run all of these examples you can clone the entire repository to your disk. O
 - **`set_user_agent.py`** shows how to customize the user agent header used for Thrift commands. In
 this example the string `ExamplePartnerTag` will be added to the the user agent on every request.
 - **`staging_ingestion.py`** shows how the connector handles Databricks' experimental staging ingestion commands `GET`, `PUT`, and `REMOVE`.
+- **`sqlalchemy.py`** shows a basic example of connecting to Databricks with [SQLAlchemy](https://www.sqlalchemy.org/). 
