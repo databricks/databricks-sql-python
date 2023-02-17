@@ -1,5 +1,5 @@
 from datetime import date, datetime
-import unittest, pytest
+import unittest, pytest, decimal
 
 from databricks.sql.utils import ParamEscaper, inject_parameters
 
@@ -17,6 +17,11 @@ class TestIndividualFormatters(object):
         """This behaviour falls back to Python's default string formatting of numbers
         """
         assert pe.escape_number(100.1234) == 100.1234
+
+    def test_escape_number_decimal(self):
+        """This behaviour uses the string representation of a decimal
+        """
+        assert pe.escape_decimal(decimal.Decimal("124.32")) == "124.32"
 
     def test_escape_string_normal(self):
         """
