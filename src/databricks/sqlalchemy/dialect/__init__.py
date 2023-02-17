@@ -276,7 +276,7 @@ class DatabricksDialect(default.DefaultDialect):
         """SQLAlchemy docstrings say dialect providers must implement this method"""
 
         schema = schema or "default"
-        
+
         # DBR >12.x uses underscores in error messages
         DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
         DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
@@ -285,7 +285,9 @@ class DatabricksDialect(default.DefaultDialect):
             res = connection.execute(f"DESCRIBE TABLE {table_name}")
             return True
         except DatabaseError as e:
-            if (DBR_GT_12_NOT_FOUND_STRING in str(e) or DBR_LTE_12_NOT_FOUND_STRING in str(e)):
+            if DBR_GT_12_NOT_FOUND_STRING in str(
+                e
+            ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
                 return False
             else:
                 raise e
@@ -300,8 +302,7 @@ class DatabricksDialect(default.DefaultDialect):
 
 @event.listens_for(Engine, "do_connect")
 def receive_do_connect(dialect, conn_rec, cargs, cparams):
-    """Helpful for DS on traffic from clients using SQLAlchemy in particular
-    """
+    """Helpful for DS on traffic from clients using SQLAlchemy in particular"""
 
     # Ignore connect invocations that don't use our dialect
     if not dialect.name == "databricks":
