@@ -2,7 +2,7 @@
 
 ## 2.4.x (Unreleased)
 
-## 2.4.0 (2023-02-17)
+## 2.4.0 (2023-02-21)
 
 - Improve compatibility when installed alongside other Databricks namespace Python packages
 - Add SQLAlchemy dialect
