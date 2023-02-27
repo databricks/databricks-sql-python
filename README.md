@@ -37,9 +37,9 @@ Example usage:
 import os
 from databricks import sql
 
-host = os.getenv("DATABRICKS_HOST)
-http_path = os.getenv("DATABRICKS_HTTP_PATH)
-access_token = os.getenv("DATABRICKS_ACCESS_TOKEN)
+host = os.getenv("DATABRICKS_HOST")
+http_path = os.getenv("DATABRICKS_HTTP_PATH")
+access_token = os.getenv("DATABRICKS_ACCESS_TOKEN")
 
 connection = sql.connect(
   server_hostname=host,
