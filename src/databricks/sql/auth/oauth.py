@@ -17,6 +17,7 @@ from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
 
 logger = logging.getLogger(__name__)
 
+# pylint: disable=invalid-name
 
 class OAuthManager:
     OIDC_REDIRECTOR_PATH = "oidc"
@@ -38,12 +39,12 @@ class OAuthManager:
     def __fetch_well_known_config(idp_url: str):
         known_config_url = f"{idp_url}/.well-known/oauth-authorization-server"
         try:
-            response = requests.get(url=known_config_url)
+            response = requests.get(url=known_config_url, timeout=10)
         except RequestException as e:
             logger.error(
-                f"Unable to fetch OAuth configuration from {idp_url}.\n"
+                "Unable to fetch OAuth configuration from %s.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
-                "enabled on this account."
+                "enabled on this account.", idp_url
             )
             raise e
 
@@ -59,9 +60,9 @@ class OAuthManager:
             return response.json()
         except requests.exceptions.JSONDecodeError as e:
             logger.error(
-                f"Unable to decode OAuth configuration from {idp_url}.\n"
+                "Unable to decode OAuth configuration from %s.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
-                "enabled on this account."
+                "enabled on this account.", idp_url
             )
             raise e
 
@@ -96,24 +97,26 @@ class OAuthManager:
                         code_challenge=challenge,
                         code_challenge_method="S256",
                     )
-                    logger.info(f"Opening {auth_req_uri}")
+                    logger.info("Opening %s", auth_req_uri)
 
                     webbrowser.open_new(auth_req_uri)
                     logger.info(
-                        f"Listening for OAuth authorization callback at {redirect_url}"
+                        "Listening for OAuth authorization callback at %s",
+                        redirect_url
                     )
                     httpd.handle_request()
                 self.redirect_port = port
                 break
             except OSError as e:
                 if e.errno == 48:
-                    logger.info(f"Port {port} is in use")
+                    logger.info("Port %d is in use", port)
                     last_error = e
             except Exception as e:
-                logger.error("unexpected error", e)
+                logger.error("Unexpected error: %s", e, exc_info=True)
         if self.redirect_port is None:
             logger.error(
-                f"Tried all the ports {self.port_range} for oauth redirect, but can't find free port"
+                "Tried all the ports %s for oauth redirect, but can't find a free port",
+                self.port_range
             )
             raise last_error
 
@@ -150,7 +153,7 @@ class OAuthManager:
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        response = requests.post(url=token_request_url, data=data, headers=headers)
+        response = requests.post(url=token_request_url, data=data, headers=headers, timeout=5)
         return response.json()
 
     def __send_refresh_token_request(self, hostname, refresh_token):
@@ -206,7 +209,7 @@ class OAuthManager:
 
         # Try to refresh using the refresh token
         logger.debug(
-            f"Attempting to refresh OAuth access token that expired on {expiration_time}"
+            "Attempting to refresh OAuth access token that expired at %s", expiration_time
         )
         oauth_response = self.__send_refresh_token_request(hostname, refresh_token)
         fresh_access_token, fresh_refresh_token = self.__get_tokens_from_response(
