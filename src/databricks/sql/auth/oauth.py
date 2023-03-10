@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # pylint: disable=invalid-name
 
+
 class OAuthManager:
     OIDC_REDIRECTOR_PATH = "oidc"
 
@@ -44,7 +45,8 @@ class OAuthManager:
             logger.error(
                 "Unable to fetch OAuth configuration from %s.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
-                "enabled on this account.", idp_url
+                "enabled on this account.",
+                idp_url,
             )
             raise e
 
@@ -62,7 +64,8 @@ class OAuthManager:
             logger.error(
                 "Unable to decode OAuth configuration from %s.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
-                "enabled on this account.", idp_url
+                "enabled on this account.",
+                idp_url,
             )
             raise e
 
@@ -101,8 +104,7 @@ class OAuthManager:
 
                     webbrowser.open_new(auth_req_uri)
                     logger.info(
-                        "Listening for OAuth authorization callback at %s",
-                        redirect_url
+                        "Listening for OAuth authorization callback at %s", redirect_url
                     )
                     httpd.handle_request()
                 self.redirect_port = port
@@ -116,7 +118,7 @@ class OAuthManager:
         if self.redirect_port is None:
             logger.error(
                 "Tried all the ports %s for oauth redirect, but can't find a free port",
-                self.port_range
+                self.port_range,
             )
             raise last_error
 
@@ -153,7 +155,9 @@ class OAuthManager:
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        response = requests.post(url=token_request_url, data=data, headers=headers, timeout=5)
+        response = requests.post(
+            url=token_request_url, data=data, headers=headers, timeout=5
+        )
         return response.json()
 
     def __send_refresh_token_request(self, hostname, refresh_token):
@@ -209,7 +213,8 @@ class OAuthManager:
 
         # Try to refresh using the refresh token
         logger.debug(
-            "Attempting to refresh OAuth access token that expired at %s", expiration_time
+            "Attempting to refresh OAuth access token that expired at %s",
+            expiration_time,
         )
         oauth_response = self.__send_refresh_token_request(hostname, refresh_token)
         fresh_access_token, fresh_refresh_token = self.__get_tokens_from_response(
