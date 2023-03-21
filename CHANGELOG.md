@@ -2,6 +2,12 @@
 
 ## 2.4.x (Unreleased)
 
+## 2.4.1 (2023-03-21)
+
+- Less strict numpy and pyarrow dependencies
+- Update examples in README to use security best practices
+- Update docstring for client.execute() for clarity
+
 ## 2.4.0 (2023-02-21)
 
 - Improve compatibility when installed alongside other Databricks namespace Python packages
