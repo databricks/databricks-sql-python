@@ -457,9 +457,9 @@ class Cursor:
         Execute a query and wait for execution to complete.
         Parameters should be given in extended param format style: %(...)<s|d|f>.
         For example:
-            operation = "SELECT * FROM %(table_name)s"
-            parameters = {"table_name": "my_table_name"}
-            Will result in the query "SELECT * FROM 'my_table_name' being sent to the server
+            operation = "SELECT * FROM table WHERE field = %(some_value)s"
+            parameters = {"some_value": "foo"}
+            Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
         :returns self
         """
         if parameters is not None:
