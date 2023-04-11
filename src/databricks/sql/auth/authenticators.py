@@ -19,8 +19,8 @@ HeaderFactory = Callable[[], Dict[str, str]]
 
 # In order to keep compatibility with SDK
 class CredentialsProvider(abc.ABC):
-    """ CredentialsProvider is the protocol (call-side interface)
-     for authenticating requests to Databricks REST APIs"""
+    """CredentialsProvider is the protocol (call-side interface)
+    for authenticating requests to Databricks REST APIs"""
 
     @abc.abstractmethod
     def auth_type(self) -> str:
@@ -137,6 +137,7 @@ class DatabricksOAuthProvider(AuthProvider):
         except Exception as e:
             logging.error(f"unexpected error in oauth token update", e, exc_info=True)
             raise e
+
 
 class ExternalAuthProvider(AuthProvider):
     def __init__(self, credentials_provider: CredentialsProvider) -> None:

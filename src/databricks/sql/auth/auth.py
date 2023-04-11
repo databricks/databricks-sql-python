@@ -99,6 +99,6 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
         else PYSQL_OAUTH_REDIRECT_PORT_RANGE,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
-        credentials_provider = kwargs.get("credentials_provider")
+        credentials_provider=kwargs.get("credentials_provider"),
     )
     return get_auth_provider(cfg)
