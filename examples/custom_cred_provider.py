@@ -1,3 +1,5 @@
+# please install databricks-sdk prior to running this example.
+
 from databricks import sql
 from databricks.sdk.oauth import OAuthClient
 import os
@@ -16,7 +18,7 @@ with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
                  http_path       = os.getenv("DATABRICKS_HTTP_PATH"),
                  credentials_provider=creds) as connection:
 
-    for x in range(1, 100):
+    for x in range(1, 5):
         cursor = connection.cursor()
         cursor.execute('SELECT 1+1')
         result = cursor.fetchall()
