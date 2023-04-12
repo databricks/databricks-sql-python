@@ -1,6 +1,7 @@
+import abc
 import base64
 import logging
-from typing import Dict, List
+from typing import Callable, Dict, List
 
 from databricks.sql.auth.oauth import OAuthManager
 
@@ -12,6 +13,22 @@ from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersi
 class AuthProvider:
     def add_headers(self, request_headers: Dict[str, str]):
         pass
+
+
+HeaderFactory = Callable[[], Dict[str, str]]
+
+# In order to keep compatibility with SDK
+class CredentialsProvider(abc.ABC):
+    """CredentialsProvider is the protocol (call-side interface)
+    for authenticating requests to Databricks REST APIs"""
+
+    @abc.abstractmethod
+    def auth_type(self) -> str:
+        ...
+
+    @abc.abstractmethod
+    def __call__(self, *args, **kwargs) -> HeaderFactory:
+        ...
 
 
 # Private API: this is an evolving interface and it will change in the future.
@@ -120,3 +137,13 @@ class DatabricksOAuthProvider(AuthProvider):
         except Exception as e:
             logging.error(f"unexpected error in oauth token update", e, exc_info=True)
             raise e
+
+
+class ExternalAuthProvider(AuthProvider):
+    def __init__(self, credentials_provider: CredentialsProvider) -> None:
+        self._header_factory = credentials_provider()
+
+    def add_headers(self, request_headers: Dict[str, str]):
+        headers = self._header_factory()
+        for k, v in headers.items():
+            request_headers[k] = v

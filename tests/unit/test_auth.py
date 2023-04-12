@@ -1,7 +1,8 @@
 import unittest
 
-from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider
+from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider, ExternalAuthProvider
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
 
 
 class Auth(unittest.TestCase):
@@ -37,6 +38,22 @@ class Auth(unittest.TestCase):
         self.assertEqual(len(http_request.keys()), 1)
         self.assertEqual(http_request['myKey'], 'myVal')
 
+    def test_external_provider(self):
+        class MyProvider(CredentialsProvider):
+                def auth_type(self) -> str:
+                    return "mine"
+
+                def __call__(self, *args, **kwargs) -> HeaderFactory:
+                    return lambda: {"foo": "bar"}
+
+        auth = ExternalAuthProvider(MyProvider())
+
+        http_request = {'myKey': 'myVal'}
+        auth.add_headers(http_request)
+        self.assertEqual(http_request['foo'], 'bar')
+        self.assertEqual(len(http_request.keys()), 2)
+        self.assertEqual(http_request['myKey'], 'myVal')
+
     def test_get_python_sql_connector_auth_provider_access_token(self):
         hostname = "moderakh-test.cloud.databricks.com"
         kwargs = {'access_token': 'dpi123'}
@@ -46,6 +63,24 @@ class Auth(unittest.TestCase):
         headers = {}
         auth_provider.add_headers(headers)
         self.assertEqual(headers['Authorization'], 'Bearer dpi123')
+
+    def test_get_python_sql_connector_auth_provider_external(self):
+
+        class MyProvider(CredentialsProvider):
+                def auth_type(self) -> str:
+                    return "mine"
+
+                def __call__(self, *args, **kwargs) -> HeaderFactory:
+                    return lambda: {"foo": "bar"}
+
+        hostname = "moderakh-test.cloud.databricks.com"
+        kwargs = {'credentials_provider': MyProvider()}
+        auth_provider = get_python_sql_connector_auth_provider(hostname, **kwargs)
+        self.assertTrue(type(auth_provider).__name__, "ExternalAuthProvider")
+
+        headers = {}
+        auth_provider.add_headers(headers)
+        self.assertEqual(headers['foo'], 'bar')
 
     def test_get_python_sql_connector_auth_provider_username_password(self):
         username = "moderakh"
