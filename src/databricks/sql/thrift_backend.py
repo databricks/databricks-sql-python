@@ -322,26 +322,26 @@ class ThriftBackend:
             except OSError as err:
                 error = err
                 error_message = str(err)
+                # fmt: off
+                # The built-in errno package encapsulates OSError codes, which are OS-specific.
+                # log.info for errors we believe are not unusual or unexpected. log.warn for
+                # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
+                #
+                # I manually tested this retry behaviour using mitmweb and confirmed that 
+                # GetOperationStatus requests are retried when I forced network connection
+                # interruptions / timeouts / reconnects. See #24 for more info.
+                                        # | Debian | Darwin |
+                info_errs = [           # |--------|--------|         
+                    errno.ESHUTDOWN,    # |   32   |   32   |
+                    errno.EAFNOSUPPORT, # |   97   |   47   |
+                    errno.ECONNRESET,   # |   104  |   54   |
+                    errno.ETIMEDOUT,    # |   110  |   60   |
+                ]
 
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
-                if method.__name__ == gos_name:
+                # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
+                if method.__name__ == gos_name or err.errno == errno.ETIMEDOUT:
                     retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
-
-                    # fmt: off
-                    # The built-in errno package encapsulates OSError codes, which are OS-specific.
-                    # log.info for errors we believe are not unusual or unexpected. log.warn for
-                    # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
-                    #
-                    # I manually tested this retry behaviour using mitmweb and confirmed that 
-                    # GetOperationStatus requests are retried when I forced network connection
-                    # interruptions / timeouts / reconnects. See #24 for more info.
-                                            # | Debian | Darwin |
-                    info_errs = [           # |--------|--------|         
-                        errno.ESHUTDOWN,    # |   32   |   32   |
-                        errno.EAFNOSUPPORT, # |   97   |   47   |
-                        errno.ECONNRESET,   # |   104  |   54   |
-                        errno.ETIMEDOUT,    # |   110  |   60   |
-                    ]
 
                     # fmt: on
                     log_string = f"{gos_name} failed with code {err.errno} and will attempt to retry"
