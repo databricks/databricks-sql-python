@@ -39,7 +39,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
-        logger.warning("Hey I was called!")
         if proxy is None or not proxy.username:
             return None
         ap = "%s:%s" % (
