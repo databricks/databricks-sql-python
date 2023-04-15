@@ -1,6 +1,11 @@
 # Release History
 
-## 2.4.x (Unreleased)
+## 2.5.x (Unreleased)
+
+## 2.5.0 (Unreleased)
+- Add support for External Auth providers
+- Fix: Python HTTP proxies were broken
+- Other: All Thrift requests that timeout during connection will be automatically retried
 
 ## 2.4.1 (2023-03-21)
 
