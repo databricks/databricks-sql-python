@@ -5,6 +5,20 @@ import pytest
 import databricks.sql as sql
 from databricks.sql import Error
 
+@pytest.fixture(scope="module", autouse=True)
+def check_staging_ingestion_user():
+    """This fixture verifies that a staging ingestion user email address
+    is present in the environment and raises an exception if not. The fixture
+    only evaluates when the test _isn't skipped_.
+    """
+
+    staging_ingestion_user = os.getenv("staging_ingestion_user")
+
+    if staging_ingestion_user is None:
+        raise ValueError(
+            "To run this test you must designate a `staging_ingestion_user` environment variable. This will be the user associated with the personal access token."
+        )
+
 class PySQLStagingIngestionTestSuiteMixin:
     """Simple namespace for ingestion tests. These should be run against DBR >12.x
 
@@ -13,10 +27,6 @@ class PySQLStagingIngestionTestSuiteMixin:
 
     staging_ingestion_user = os.getenv("staging_ingestion_user")
 
-    if staging_ingestion_user is None:
-        raise ValueError(
-            "To run these tests you must designate a `staging_ingestion_user` environment variable. This will be the user associated with the personal access token."
-        )
 
     def test_staging_ingestion_life_cycle(self):
         """PUT a file into the staging location
