@@ -15,7 +15,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
     if staging_ingestion_user is None:
         raise ValueError(
-            "To run these tests you must designate a `staging_ingestion_user` environment variable. This will the user associated with the personal access token."
+            "To run these tests you must designate a `staging_ingestion_user` environment variable. This will be the user associated with the personal access token."
         )
 
     def test_staging_ingestion_life_cycle(self):
