@@ -2,6 +2,8 @@
 
 ## 2.5.x (Unreleased)
 
+## 2.5.1 (2023-04-28)
+
 - Other: Relax sqlalchemy required version as it was unecessarily strict.
 
 ## 2.5.0 (2023-04-14)
