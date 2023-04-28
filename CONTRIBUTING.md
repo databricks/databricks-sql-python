@@ -141,3 +141,13 @@ poetry run python3 -m black src --check
 Remove the `--check` flag to write reformatted files to disk.
 
 To simplify reviews you can format your changes in a separate commit.
+
+### Change a pinned dependency version
+
+Modify the dependency specification (syntax can be found [here](https://python-poetry.org/docs/dependency-specification/)) in `pyproject.toml` and run one of the following in your terminal:
+
+- `poetry update`
+- `rm poetry.lock && poetry install`
+
+Sometimes `poetry update` can freeze or run forever. Deleting the `poetry.lock` file and calling `poetry install` is guaranteed to update everything but is usually _slower_ than `poetry update` **if `poetry update` works at all**. 
+
