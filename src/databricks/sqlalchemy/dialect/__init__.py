@@ -59,7 +59,7 @@ class DatabricksDate(types.TypeDecorator):
     impl = types.DATE
 
     def process_result_value(self, value, dialect):
-        return processors.str_to_date(value)
+        return value
 
     def adapt(self, impltype, **kwargs):
         return self.impl
