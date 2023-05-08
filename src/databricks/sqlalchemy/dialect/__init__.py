@@ -47,7 +47,7 @@ class DatabricksTimestamp(types.TypeDecorator):
     impl = types.TIMESTAMP
 
     def process_result_value(self, value, dialect):
-        return processors.str_to_datetime(value)
+        return value
 
     def adapt(self, impltype, **kwargs):
         return self.impl
