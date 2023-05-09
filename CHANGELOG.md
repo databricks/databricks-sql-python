@@ -2,6 +2,11 @@
 
 ## 2.5.x (Unreleased)
 
+## 2.5.2 (2023-05-08)
+
+- Fix: SQLAlchemy adapter could not reflect TIMESTAMP or DATETIME columns
+- Other: Relax pandas and alembic dependency specifications
+
 ## 2.5.1 (2023-04-28)
 
 - Other: Relax sqlalchemy required version as it was unecessarily strict.
