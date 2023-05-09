@@ -4,6 +4,8 @@ It aims to be a drop-in replacement for the crflynn/sqlalchemy-databricks projec
 more of the Databricks API, particularly around table reflection, Alembic usage, and data
 ingestion with pandas.
 
+Expected URI format is: databricks+thrift://token:dapi***@***.cloud.databricks.com?http_path=/sql/***
+
 Because of the extent of SQLAlchemy's capabilities it isn't feasible to provide examples of every
 usage in a single script, so we only provide a basic one here. More examples are found in our test
 suite at tests/e2e/sqlalchemy/test_basic.py and in the PR that implements this change: 
