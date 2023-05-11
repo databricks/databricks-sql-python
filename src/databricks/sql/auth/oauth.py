@@ -18,6 +18,19 @@ from databricks.sql.auth.endpoint import OAuthEndpointCollection
 
 logger = logging.getLogger(__name__)
 
+class IgnoreNetrcAuth(requests.auth.AuthBase):
+    """This auth method is a no-op.
+    
+    We use it to force requestslib to not use .netrc to write auth headers
+    when making .post() requests to the oauth token endpoints, since these
+    don't require authentication.
+
+    In cases where .netrc is outdated or corrupt, these requests will fail.
+    
+    See issue #121
+    """
+    def __call__(self, r):
+        return r
 
 class OAuthManager:
     def __init__(
@@ -43,7 +56,7 @@ class OAuthManager:
         known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
 
         try:
-            response = requests.get(url=known_config_url)
+            response = requests.get(url=known_config_url, auth=IgnoreNetrcAuth())
         except RequestException as e:
             logger.error(
                 f"Unable to fetch OAuth configuration from {known_config_url}.\n"
@@ -149,7 +162,7 @@ class OAuthManager:
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        response = requests.post(url=token_request_url, data=data, headers=headers)
+        response = requests.post(url=token_request_url, data=data, headers=headers, auth=IgnoreNetrcAuth())
         return response.json()
 
     def __send_refresh_token_request(self, hostname, refresh_token):
