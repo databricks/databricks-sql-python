@@ -18,19 +18,22 @@ from databricks.sql.auth.endpoint import OAuthEndpointCollection
 
 logger = logging.getLogger(__name__)
 
+
 class IgnoreNetrcAuth(requests.auth.AuthBase):
     """This auth method is a no-op.
-    
+
     We use it to force requestslib to not use .netrc to write auth headers
     when making .post() requests to the oauth token endpoints, since these
     don't require authentication.
 
     In cases where .netrc is outdated or corrupt, these requests will fail.
-    
+
     See issue #121
     """
+
     def __call__(self, r):
         return r
+
 
 class OAuthManager:
     def __init__(
@@ -162,7 +165,9 @@ class OAuthManager:
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        response = requests.post(url=token_request_url, data=data, headers=headers, auth=IgnoreNetrcAuth())
+        response = requests.post(
+            url=token_request_url, data=data, headers=headers, auth=IgnoreNetrcAuth()
+        )
         return response.json()
 
     def __send_refresh_token_request(self, hostname, refresh_token):
