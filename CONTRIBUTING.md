@@ -107,6 +107,8 @@ End-to-end tests require a Databricks account. Before you can run them, you must
 export host=""
 export http_path=""
 export access_token=""
+export catalog=""
+export schema=""
 ```
 
 There are several e2e test suites available:
