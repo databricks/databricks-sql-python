@@ -70,7 +70,7 @@ class DatabricksDialect(default.DefaultDialect):
 
     # Possible attributes are defined here: https://docs.sqlalchemy.org/en/14/core/internals.html#sqlalchemy.engine.Dialect
     name: str = "databricks"
-    driver: str = "databricks-sql-python"
+    driver: str = "databricks"
     default_schema_name: str = "default"
 
     preparer = DatabricksIdentifierPreparer
