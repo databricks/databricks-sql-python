@@ -107,6 +107,8 @@ End-to-end tests require a Databricks account. Before you can run them, you must
 export host=""
 export http_path=""
 export access_token=""
+export catalog=""
+export schema=""
 ```
 
 There are several e2e test suites available:
@@ -130,6 +132,21 @@ The `PySQLLargeQueriesSuite` namespace contains long-running query tests and is 
 The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR version > 12.x which supports staging ingestion commands.
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
+
+#### SQLAlchemy dialog tests
+
+SQLAlchemy provides reusable tests tests for testing dialect implementations.
+
+To run these tests, assuming the environment variables needed for e2e tests are set:
+
+```
+poetry run python -m pytest tests/sqlalchemy_dialect_compliance --dburi \
+  "databricks://token:$access_token@$host?http_path=$http_path&catalog=$catalog&schema=$schema" 
+```
+
+Some of these of these tests fail currently. We're working on getting
+relavent tests passing and others skipped.
+
 ### Code formatting
 
 This project uses [Black](https://pypi.org/project/black/).
