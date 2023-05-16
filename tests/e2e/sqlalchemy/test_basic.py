@@ -157,7 +157,7 @@ def test_create_insert_drop_table_core(base, db_engine, metadata_obj: MetaData):
     metadata_obj.create_all()
 
     insert_stmt = insert(SampleTable).values(
-        name="Bim Adewunmi", episodes=6, some_bool=True, dollars=decimal.Decimal(125)
+        name="Bim Adewunmi", episodes=6, some_bool=True, dollars=decimal.Decimal(125), tiny_int=25
     )
 
     with db_engine.connect() as conn:
