@@ -4,6 +4,7 @@ from unittest import skipIf
 from sqlalchemy import create_engine, select, insert, Column, MetaData, Table
 from sqlalchemy.orm import declarative_base, Session
 from sqlalchemy.types import SMALLINT, Integer, BOOLEAN, String, DECIMAL, Date
+from databricks.sqlalchemy.dialect import TINYINT
 
 
 USER_AGENT_TOKEN = "PySQL e2e Tests"
@@ -150,6 +151,7 @@ def test_create_insert_drop_table_core(base, db_engine, metadata_obj: MetaData):
         Column("episodes", Integer),
         Column("some_bool", BOOLEAN),
         Column("dollars", DECIMAL(10, 2)),
+        Column("tiny_int", TINYINT)
     )
 
     metadata_obj.create_all()

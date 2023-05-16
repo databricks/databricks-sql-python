@@ -74,6 +74,12 @@ class TINYINT(types.Integer):
     Details about this type: https://docs.databricks.com/sql/language-manual/data-types/tinyint-type.html
     """
     __visit_name__ = "TINYINT"
+
+from sqlalchemy.ext.compiler import compiles
+@compiles(TINYINT, "databricks")
+def compile_tinyint_databricks(type_, compiler, **kw):
+    return "TINYINT"
+
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
