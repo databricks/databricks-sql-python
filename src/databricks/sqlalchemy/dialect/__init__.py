@@ -65,6 +65,15 @@ class DatabricksDate(types.TypeDecorator):
         return self.impl
 
 
+class TINYINT(types.Integer):
+    """
+    A one-byte signed integer. Can represent any integer number in the range from -128 to 127.
+
+    Implementation copied from mssql dialect
+
+    Details about this type: https://docs.databricks.com/sql/language-manual/data-types/tinyint-type.html
+    """
+    __visit_name__ = "TINYINT"
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
@@ -136,6 +145,7 @@ class DatabricksDialect(default.DefaultDialect):
         _type_map = {
             "boolean": types.Boolean,
             "smallint": types.SmallInteger,
+            "tinyint": TINYINT,
             "int": types.Integer,
             "bigint": types.BigInteger,
             "float": types.Float,
