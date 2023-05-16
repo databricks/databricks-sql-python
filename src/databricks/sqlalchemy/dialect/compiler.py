@@ -1,7 +1,6 @@
 from sqlalchemy.sql import compiler
 
 
-
 class DatabricksTypeCompiler(compiler.GenericTypeCompiler):
     """Originally forked from pyhive"""
 
@@ -37,6 +36,6 @@ class DatabricksTypeCompiler(compiler.GenericTypeCompiler):
 
     def visit_DATETIME(self, type_):
         return "TIMESTAMP"
-    
+
     def visit_TINYINT(self, type_):
         return "TINYINT"

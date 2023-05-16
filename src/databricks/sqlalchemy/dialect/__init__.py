@@ -73,7 +73,10 @@ class TINYINT(types.Integer):
 
     Details about this type: https://docs.databricks.com/sql/language-manual/data-types/tinyint-type.html
     """
+
     __visit_name__ = "TINYINT"
+
+
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
