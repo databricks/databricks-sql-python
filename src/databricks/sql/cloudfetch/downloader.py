@@ -3,11 +3,11 @@ import lz4.frame
 import threading
 import time
 
+
 class ResultSetDownloadHandler(threading.Thread):
 
     def __init__(self, downloadable_execution_context, t_spark_arrow_result_link):
         super().__init__()
-        # TODO: we need to define a typed DownloadableExecutionContext instead of a map
         self.execution_context = downloadable_execution_context
         self.result_link = t_spark_arrow_result_link
         self.is_download_finished = threading.Event()
@@ -20,7 +20,6 @@ class ResultSetDownloadHandler(threading.Thread):
         self.download_completion_semaphore = threading.Semaphore()
 
     def run(self):
-        # TODO: log function entrance
         self.is_file_downloaded_successfully = False
         self.is_link_expired = False
         self.is_download_timedout = False
@@ -37,7 +36,6 @@ class ResultSetDownloadHandler(threading.Thread):
 
         timeout = self.execution_context.settings.downloadable_result_settings.download_timeout
         session = requests.Session()
-        # TODO: investigate if I need to set connectTimeout or socketTimeout
         session.timeout = timeout
 
         if (
@@ -54,36 +52,21 @@ class ResultSetDownloadHandler(threading.Thread):
             session.proxies.update(proxy)
 
             # ProxyAuthentication -> static enum BASIC and NONE
-            # TODO: create enum or just use string for proxy_settings.proxy_auth
             if proxy_settings.proxy_auth == "BASIC":
-                # TODO: see if the below code is the equivalent of BasicCredentialsProvider, AuthScope, and UsernamePasswordCredentials
                 session.auth = requests.auth.HTTPBasicAuth(proxy_settings.proxy_uid, proxy_settings.proxy_pwd)
 
-        # TODO: look into ResultFileDownloadMonitor.getResultFileDownloadMonitor();
         try:
-            # TODO: verify this is the same as CloseableHttpClient, httpClientBuilder
             response = session.get(self.result_link.file_link)
             self.http_code = response.status_code
-            # TODO: look into ResultFileDownloadMonitor.getResultFileDownloadMonitor().addDownloadTask(self.http_request)
 
-            # TODO: there's some logic that roughly translates to this:
-            # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > TEHTTPSettings > Map<String, HttpErrorEmulationSettings> > HttpErrorEmulationSettings
-            # download_settings = self.execution_context.settings.thrift_http_settings.http_error_emulation_settings_map.get("Download")
-            # if download_settings:
-                # download_settings.api_index += 1
-                # if download_settings.shouldEmulateError():
-                    # self.http_code = download_settings.populate_emulated_http_response().status_line.status_code
             if self.http_code != 200:
-                # TODO: log warning
                 self.is_file_downloaded_successfully = False
             else:
                 if self.execution_context.is_lz4_compressed:
-                    # TODO: make sure the next 3 lines correspond to the Lz4 logic in JDBC
                     compressed_data = response.content
                     uncompressed_data = lz4.frame.decompress(compressed_data)
                     self.result_file = uncompressed_data
 
-                    # TODO: verify that lines 174-179 in JDBC doesn't need to be ported
                     if len(uncompressed_data) != self.result_link.bytes_num:
                         self.is_file_downloaded_successfully = False
                     else:
@@ -95,8 +78,6 @@ class ResultSetDownloadHandler(threading.Thread):
                         self.is_file_downloaded_successfully = False
                     else:
                         self.is_file_downloaded_successfully = True
-                # TODO: do I need to do something about EntityUtils.consume(response.content)?
-        # TODO: add IOException and Exception if the below isn't already
         except requests.exceptions.RequestException as e:
             self.is_file_downloaded_successfully = False
 
