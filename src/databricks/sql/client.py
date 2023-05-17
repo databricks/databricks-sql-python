@@ -153,6 +153,8 @@ class Connection:
         # _use_arrow_native_timestamps
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
+        # _use_cloud_fetch
+        #  Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
         if access_token:
             access_token_kv = {"access_token": access_token}
@@ -189,6 +191,7 @@ class Connection:
         self._session_handle = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
+        self._use_cloud_fetch = kwargs.get("_use_cloud_fetch", False)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id()))
         self._cursors = []  # type: List[Cursor]
