@@ -37,6 +37,10 @@ logger.addHandler(ch)
 
 
 def main():
+    if logger.level <= 11 and not os.getenv("LLM_PROXY_URL"):
+        raise Exception("Please set env variable LLM_PROXY_URL in order to see")
+    if logger.level <= 11 and not os.getenv("LLM_PROXY_TOKEN"):
+        raise Exception("Please generate and set the personal access token for the LLM proxy")
     host = os.getenv("DATABRICKS_HOST")
     http_path = os.getenv("DATABRICKS_HTTP_PATH")
     access_token = os.getenv("DATABRICKS_ACCESS_TOKEN")

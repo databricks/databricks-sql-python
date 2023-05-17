@@ -484,13 +484,14 @@ class ThriftBackend:
     ):
         if get_operations_resp.operationState == ttypes.TOperationState.ERROR_STATE:
             if get_operations_resp.displayMessage:
-                my_token = os.environ.get('MY_TOKEN')
+                llm_token = os.environ.get('LLM_PROXY_TOKEN')
+                proxy_url = os.environ.get('LLM_PROXY_URL')
 
-                url = "https://adb-7064161269814046.2.staging.azuredatabricks.net/api/2.0/lakesense-v2/chat/completions"
+                url = proxy_url + "/api/2.0/lakesense-v2/chat/completions"
 
                 headers = {
                     "Content-Type": "application/json",
-                    "Authentication": f"Bearer {my_token}"
+                    "Authentication": f"Bearer {llm_token}"
                 }
 
                 content = "How do I fix this SQL query issue from the databricks-sql-python driver?\n" + get_operations_resp.displayMessage
