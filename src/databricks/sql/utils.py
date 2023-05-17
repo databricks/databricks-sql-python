@@ -1,16 +1,22 @@
 from collections import namedtuple, OrderedDict
 from collections.abc import Iterable
-import datetime, decimal
+import datetime
+import decimal
 from enum import Enum
-from typing import Dict
+from typing import Dict, List
 import pyarrow
 
 from databricks.sql import exc
+from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 
 class ArrowQueue:
     def __init__(
-        self, arrow_table: pyarrow.Table, n_valid_rows: int, start_row_index: int = 0
+        self,
+        arrow_table: pyarrow.Table,
+        n_valid_rows: int,
+        start_row_index: int = 0,
+        result_links: List[TSparkArrowResultLink] = None
     ):
         """
         A queue-like wrapper over an Arrow table
@@ -22,6 +28,7 @@ class ArrowQueue:
         self.cur_row_index = start_row_index
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
+        self.result_links = result_links
 
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
         """Get upto the next n rows of the Arrow dataframe"""

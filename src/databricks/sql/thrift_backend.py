@@ -747,7 +747,8 @@ class ThriftBackend:
                 schema_bytes,
                 description,
             )
-            arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
+            result_links = direct_results.resultSet.results.resultLinks
+            arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0, result_links)
         else:
             arrow_queue_opt = None
         return ExecuteResponse(
@@ -963,7 +964,8 @@ class ThriftBackend:
         arrow_results, n_rows = self._create_arrow_table(
             resp.results, lz4_compressed, arrow_schema_bytes, description
         )
-        arrow_queue = ArrowQueue(arrow_results, n_rows)
+        result_links = resp.results.resultLinks
+        arrow_queue = ArrowQueue(arrow_results, n_rows, result_links=result_links)
 
         return arrow_queue, resp.hasMoreRows
 
