@@ -8,6 +8,7 @@ import os
 
 from databricks.sql import __version__
 from databricks.sql import *
+from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.exc import OperationalError
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper, inject_parameters
@@ -821,8 +822,10 @@ class ResultSet:
 
             if not self.connection.use_cloud_fetch or not self.results.result_links:
                 return
-            self.result_file_download_manager = ResultFileDownloadManager()
+            self.result_file_download_manager = ResultFileDownloadManager(self.connection)
             self.result_file_download_manager.add_file_links(self.results.result_links)
+        while self.result_file_download_manager.get_next_downloaded_file(self):
+            pass
 
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
