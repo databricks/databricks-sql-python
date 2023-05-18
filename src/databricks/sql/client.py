@@ -191,7 +191,7 @@ class Connection:
         self._session_handle = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
-        self._use_cloud_fetch = kwargs.get("_use_cloud_fetch", False)
+        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", False)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id()))
         self._cursors = []  # type: List[Cursor]
@@ -786,6 +786,7 @@ class ResultSet:
         self.description = execute_response.description
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
+        self.results = None
 
         if execute_response.arrow_queue:
             # In this case the server has taken the fast path and returned an initial batch of
@@ -804,17 +805,24 @@ class ResultSet:
                 break
 
     def _fill_results_buffer(self):
-        results, has_more_rows = self.thrift_backend.fetch_results(
-            op_handle=self.command_id,
-            max_rows=self.arraysize,
-            max_bytes=self.buffer_size_bytes,
-            expected_row_start_offset=self._next_row_index,
-            lz4_compressed=self.lz4_compressed,
-            arrow_schema_bytes=self._arrow_schema_bytes,
-            description=self.description,
-        )
-        self.results = results
-        self.has_more_rows = has_more_rows
+        # At initialization or if the server does not have cloud fetch result links available
+        if not self.connection.use_cloud_fetch or not self.results or not self.results.result_links:
+            results, has_more_rows = self.thrift_backend.fetch_results(
+                op_handle=self.command_id,
+                max_rows=self.arraysize,
+                max_bytes=self.buffer_size_bytes,
+                expected_row_start_offset=self._next_row_index,
+                lz4_compressed=self.lz4_compressed,
+                arrow_schema_bytes=self._arrow_schema_bytes,
+                description=self.description,
+            )
+            self.results = results
+            self.has_more_rows = has_more_rows
+
+            if not self.connection.use_cloud_fetch or not self.results.result_links:
+                return
+            self.result_file_download_manager = ResultFileDownloadManager()
+            self.result_file_download_manager.add_file_links(self.results.result_links)
 
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
