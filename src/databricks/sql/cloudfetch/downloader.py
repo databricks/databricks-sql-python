@@ -40,20 +40,19 @@ class ResultSetDownloadHandler(threading.Thread):
 
         if (
                 # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > ProxySettings > boolean
-                self.settings.proxy_settings.use_proxy
+                self.settings.use_proxy
                 # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > ProxySettings > boolean
-                and not self.settings.proxy_settings.disable_proxy_for_cloud_fetch
+                and not self.settings.disable_proxy_for_cloud_fetch
         ):
-            proxy_settings = self.settings.proxy_settings
             proxy = {
-                "http": f"http://{proxy_settings.proxy_host}:{proxy_settings.proxy_port}",
-                "https": f"http://{proxy_settings.proxy_host}:{proxy_settings.proxy_port}",
+                "http": f"http://{self.settings.proxy_host}:{self.settings.proxy_port}",
+                "https": f"http://{self.settings.proxy_host}:{self.settings.proxy_port}",
             }
             session.proxies.update(proxy)
 
             # ProxyAuthentication -> static enum BASIC and NONE
-            if proxy_settings.proxy_auth == "BASIC":
-                session.auth = requests.auth.HTTPBasicAuth(proxy_settings.proxy_uid, proxy_settings.proxy_pwd)
+            if self.settings.proxy_auth == "BASIC":
+                session.auth = requests.auth.HTTPBasicAuth(self.settings.proxy_uid, self.settings.proxy_pwd)
 
         try:
             response = session.get(self.result_link.file_link)
