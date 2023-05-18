@@ -6,9 +6,9 @@ import time
 
 class ResultSetDownloadHandler(threading.Thread):
 
-    def __init__(self, downloadable_execution_context, t_spark_arrow_result_link):
+    def __init__(self, downloadable_result_settings, t_spark_arrow_result_link):
         super().__init__()
-        self.execution_context = downloadable_execution_context
+        self.settings = downloadable_result_settings
         self.result_link = t_spark_arrow_result_link
         self.is_download_finished = threading.Event()
         self.is_file_downloaded_successfully = False
@@ -29,22 +29,22 @@ class ResultSetDownloadHandler(threading.Thread):
             if (self.result_link.expiry_time < current_time) or (
                     self.result_link.expiry_time - current_time < (
                     # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > DownloadableResultSettings > int
-                    self.execution_context.settings.downloadable_result_settings.result_file_link_expiry_buffer / 1000)
+                    self.settings.result_file_link_expiry_buffer / 1000)
             ):
                 self.is_link_expired = True
                 return
 
-        timeout = self.execution_context.settings.downloadable_result_settings.download_timeout
+        timeout = self.settings.download_timeout
         session = requests.Session()
         session.timeout = timeout
 
         if (
                 # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > ProxySettings > boolean
-                self.execution_context.settings.proxy_settings.use_proxy
+                self.settings.proxy_settings.use_proxy
                 # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > ProxySettings > boolean
-                and not self.execution_context.settings.proxy_settings.disable_proxy_for_cloud_fetch
+                and not self.settings.proxy_settings.disable_proxy_for_cloud_fetch
         ):
-            proxy_settings = self.execution_context.settings.proxy_settings
+            proxy_settings = self.settings.proxy_settings
             proxy = {
                 "http": f"http://{proxy_settings.proxy_host}:{proxy_settings.proxy_port}",
                 "https": f"http://{proxy_settings.proxy_host}:{proxy_settings.proxy_port}",
@@ -62,7 +62,7 @@ class ResultSetDownloadHandler(threading.Thread):
             if self.http_code != 200:
                 self.is_file_downloaded_successfully = False
             else:
-                if self.execution_context.is_lz4_compressed:
+                if self.settings.is_lz4_compressed:
                     compressed_data = response.content
                     uncompressed_data = lz4.frame.decompress(compressed_data)
                     self.result_file = uncompressed_data
