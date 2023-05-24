@@ -12,6 +12,8 @@ import ssl
 import warnings
 from six.moves import http_client
 from io import BytesIO
+import os
+import sys
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
@@ -84,7 +86,54 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.__auth_provider.add_headers(headers)
         self._headers = headers
         self.setCustomHeaders(self._headers)
-        super().flush()
+        
+        if self.isOpen():
+            self.close()
+        self.open()
+
+        # Pull data out of buffer
+        data = self.__wbuf.getvalue()
+        self.__wbuf = BytesIO()
+
+        # HTTP request
+        if self.using_proxy() and self.scheme == "http":
+            # need full URL of real host for HTTP proxy here (HTTPS uses CONNECT tunnel)
+            self.__http.putrequest('POST', "http://%s:%s%s" %
+                                   (self.realhost, self.realport, self.path))
+        else:
+            self.__http.putrequest('POST', self.path)
+
+        # Write headers
+        self.__http.putheader('Content-Type', 'application/x-thrift')
+        self.__http.putheader('Content-Length', str(len(data)))
+        if self.using_proxy() and self.scheme == "http" and self.proxy_auth is not None:
+            self.__http.putheader("Proxy-Authorization", self.proxy_auth)
+
+        if not self.__custom_headers or 'User-Agent' not in self.__custom_headers:
+            user_agent = 'Python/THttpClient'
+            script = os.path.basename(sys.argv[0])
+            if script:
+                user_agent = '%s (%s)' % (user_agent, urllib.parse.quote(script))
+            self.__http.putheader('User-Agent', user_agent)
+
+        if self.__custom_headers:
+            for key, val in six.iteritems(self.__custom_headers):
+                self.__http.putheader(key, val)
+
+        self.__http.endheaders()
+
+        # Write payload
+        self.__http.send(data)
+
+        # Get reply to flush the request
+        self.__http_response = self.__http.getresponse()
+        self.code = self.__http_response.status
+        self.message = self.__http_response.reason
+        self.headers = self.__http_response.msg
+
+        # Saves the cookie sent by the server response
+        if 'Set-Cookie' in self.headers:
+            self.__http.putheader('Cookie', self.headers['Set-Cookie'])
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
