@@ -10,10 +10,11 @@ logger = logging.getLogger(__name__)
 
 import ssl
 import warnings
-from six.moves import http_client
+
 from io import BytesIO
-import os
-import sys
+
+
+from urllib3 import HTTPConnectionPool, HTTPSConnectionPool
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
@@ -39,16 +40,14 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.path = path
             self.scheme = 'http'
         else:
-            parsed = urllib.parse.urlparse(uri_or_host)
+            parsed = urllib.parse.urlsplit(uri_or_host)
             self.scheme = parsed.scheme
             assert self.scheme in ('http', 'https')
-            if self.scheme == 'http':
-                self.port = parsed.port or http_client.HTTP_PORT
-            elif self.scheme == 'https':
-                self.port = parsed.port or http_client.HTTPS_PORT
+            if self.scheme == 'https':
                 self.certfile = cert_file
                 self.keyfile = key_file
                 self.context = ssl.create_default_context(cafile=cafile) if (cafile and not ssl_context) else ssl_context
+            self.port = parsed.port
             self.host = parsed.hostname
             self.path = parsed.path
             if parsed.query:
@@ -70,7 +69,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         else:
             self.realhost = self.realport = self.proxy_auth = None
         self.__wbuf = BytesIO()
-        self.__http = None
+
         self.__http_response = None
         self.__timeout = None
         self.__custom_headers = None
@@ -82,48 +81,62 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         super().setCustomHeaders(headers)
 
     def flush(self):
+
+
+        """
+        The original implementation makes these headers:
+
+        - Content-Type
+        - Content-Length
+        - User-Agent: a default is used by thrift. But we don't need that default because we always write a user-agent.
+            I can assert that user agent must be provided
+        - Proxy-Authorization
+
+        And then any custom headers.
+        
+        """
+
+        # Pull data out of buffer that will be sent in this request
+        data = self.__wbuf.getvalue()
+        self.__wbuf = BytesIO()
+
+        # Header handling
+
+        # NOTE: self._headers is only ever changed by .setCustomHeaders. .setCustomHeaders is never called by thrift lib code
+
+
+        # Pretty sure this line never has any effect
         headers = dict(self._headers)
         self.__auth_provider.add_headers(headers)
         self._headers = headers
         self.setCustomHeaders(self._headers)
         
-        if self.isOpen():
-            self.close()
-        self.open()
 
-        # Pull data out of buffer
-        data = self.__wbuf.getvalue()
-        self.__wbuf = BytesIO()
+        # Note: we don't set User-Agent explicitly in this class because PySQL
+        # should always provide one. Unlike the original THttpClient class, our version
+        # doesn't define a default User-Agent and so should raise an exception if one
+        # isn't provided. 
+        assert self.__custom_headers and 'User-Agent' in self.__custom_headers
 
-        # HTTP request
-        if self.using_proxy() and self.scheme == "http":
-            # need full URL of real host for HTTP proxy here (HTTPS uses CONNECT tunnel)
-            self.__http.putrequest('POST', "http://%s:%s%s" %
-                                   (self.realhost, self.realport, self.path))
-        else:
-            self.__http.putrequest('POST', self.path)
+        headers = {
+            "Content-Type": "application/x-thrift",
+            "Content-Length": str(len(data))
+        }
 
-        # Write headers
-        self.__http.putheader('Content-Type', 'application/x-thrift')
-        self.__http.putheader('Content-Length', str(len(data)))
         if self.using_proxy() and self.scheme == "http" and self.proxy_auth is not None:
-            self.__http.putheader("Proxy-Authorization", self.proxy_auth)
-
-        if not self.__custom_headers or 'User-Agent' not in self.__custom_headers:
-            user_agent = 'Python/THttpClient'
-            script = os.path.basename(sys.argv[0])
-            if script:
-                user_agent = '%s (%s)' % (user_agent, urllib.parse.quote(script))
-            self.__http.putheader('User-Agent', user_agent)
+            headers["Proxy-Authorization": self.proxy_auth]
 
         if self.__custom_headers:
-            for key, val in six.iteritems(self.__custom_headers):
-                self.__http.putheader(key, val)
+            # Don't need to use six.iteritems because PySQL only supports Python 3
+            custom_headers = {key: val for key, val in self.__custom_headers.items()}
+            headers.update(**custom_headers)
 
-        self.__http.endheaders()
 
         # Write payload
         self.__http.send(data)
+
+        # HTTP request
+        self.__resp = r = self.__pool.urlopen("POST", self.path, data, headers, preload_content=False)
 
         # Get reply to flush the request
         self.__http_response = self.__http.getresponse()
@@ -131,9 +144,21 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.message = self.__http_response.reason
         self.headers = self.__http_response.msg
 
-        # Saves the cookie sent by the server response
-        if 'Set-Cookie' in self.headers:
-            self.__http.putheader('Cookie', self.headers['Set-Cookie'])
+
+
+
+        # # HTTP request (replace this since __pool.urlopen() doesn't use a .putrequest() method)
+        # if self.using_proxy() and self.scheme == "http":
+        #     # need full URL of real host for HTTP proxy here (HTTPS uses CONNECT tunnel)
+        #     raise Exception("This subclass of thrift http transport doesn't support proxies yet.")
+            
+        #     # As part of resuing tcp connections we replaced __http with __pool
+            
+        #     self.__http.putrequest('POST', "http://%s:%s%s" %
+        #                            (self.realhost, self.realport, self.path))
+            
+        # # else:
+        # #     self.__http.putrequest('POST', self.path)
 
     @staticmethod
     def basic_proxy_auth_header(proxy):

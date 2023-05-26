@@ -24,10 +24,15 @@ import sys
 import warnings
 import base64
 
-from six.moves import urllib
-from six.moves import http_client
 
-from .TTransport import TTransportBase
+from http import client as http_client
+import urllib
+# from six.moves import urllib
+# from six.moves import http_client
+
+
+from thrift.transport.TTransport import TTransportBase
+
 import six
 
 
