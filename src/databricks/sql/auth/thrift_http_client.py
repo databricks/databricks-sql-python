@@ -1,18 +1,17 @@
+import base64
 import logging
-from typing import Dict
+import urllib.parse
+from typing import Dict, Union
 
-
+import six
 import thrift
-
-import urllib.parse, six, base64
 
 logger = logging.getLogger(__name__)
 
 import ssl
 import warnings
-
+from http.client import HTTPResponse
 from io import BytesIO
-
 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool
 
@@ -78,7 +77,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.max_connections = max_connections
 
         self.__wbuf = BytesIO()
-        self.__resp = None
+        self.__resp: Union[None, HTTPResponse] = None
         self.__timeout = None
         self.__custom_headers = None
 
