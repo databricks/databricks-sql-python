@@ -28,6 +28,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         cert_file=None,
         key_file=None,
         ssl_context=None,
+        max_connections: int=1,
     ):
         if port is not None:
             warnings.warn(
@@ -68,9 +69,11 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.proxy_auth = self.basic_proxy_auth_header(parsed)
         else:
             self.realhost = self.realport = self.proxy_auth = None
-        self.__wbuf = BytesIO()
 
-        self.__http_response = None
+        self.max_connections = max_connections        
+
+        self.__wbuf = BytesIO()
+        self.__resp = None
         self.__timeout = None
         self.__custom_headers = None
 
@@ -80,9 +83,26 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self._headers = headers
         super().setCustomHeaders(headers)
 
+    def open(self):
+        if self.scheme == 'http':
+            pool_class = HTTPConnectionPool
+        elif self.scheme == 'https':
+            pool_class = HTTPSConnectionPool
+
+        self.__pool = pool_class(self.host, self.port, maxsize=self.max_connections)
+
+    def close(self):
+        """This is a no-op because HTTP(S)ConnectionPool handles connection life-cycle
+        """
+        self.__resp = None
+
+    def read(self, sz):
+        return self.__resp.read(sz)
+
+    def isOpen(self):
+        return self.__resp is not None
+
     def flush(self):
-
-
         """
         The original implementation makes these headers:
 
@@ -132,33 +152,14 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             headers.update(**custom_headers)
 
 
-        # Write payload
-        self.__http.send(data)
-
         # HTTP request
-        self.__resp = r = self.__pool.urlopen("POST", self.path, data, headers, preload_content=False)
+        self.__resp = self.__pool.urlopen("POST", self.path, data, headers, preload_content=False, timeout=self.__timeout)
 
         # Get reply to flush the request
-        self.__http_response = self.__http.getresponse()
-        self.code = self.__http_response.status
-        self.message = self.__http_response.reason
-        self.headers = self.__http_response.msg
+        self.code = self.__resp.status
+        self.message = self.__resp.reason
+        self.headers = self.__resp.msg
 
-
-
-
-        # # HTTP request (replace this since __pool.urlopen() doesn't use a .putrequest() method)
-        # if self.using_proxy() and self.scheme == "http":
-        #     # need full URL of real host for HTTP proxy here (HTTPS uses CONNECT tunnel)
-        #     raise Exception("This subclass of thrift http transport doesn't support proxies yet.")
-            
-        #     # As part of resuing tcp connections we replaced __http with __pool
-            
-        #     self.__http.putrequest('POST', "http://%s:%s%s" %
-        #                            (self.realhost, self.realport, self.path))
-            
-        # # else:
-        # #     self.__http.putrequest('POST', self.path)
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
