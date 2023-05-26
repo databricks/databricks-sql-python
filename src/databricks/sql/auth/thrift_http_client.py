@@ -103,18 +103,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         return self.__resp is not None
 
     def flush(self):
-        """
-        The original implementation makes these headers:
-
-        - Content-Type
-        - Content-Length
-        - User-Agent: a default is used by thrift. But we don't need that default because we always write a user-agent.
-            I can assert that user agent must be provided
-        - Proxy-Authorization
-
-        And then any custom headers.
-        
-        """
 
         # Pull data out of buffer that will be sent in this request
         data = self.__wbuf.getvalue()
@@ -122,10 +110,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
         # Header handling
 
-        # NOTE: self._headers is only ever changed by .setCustomHeaders. .setCustomHeaders is never called by thrift lib code
-
-
-        # Pretty sure this line never has any effect
         headers = dict(self._headers)
         self.__auth_provider.add_headers(headers)
         self._headers = headers
@@ -147,10 +131,8 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             headers["Proxy-Authorization": self.proxy_auth]
 
         if self.__custom_headers:
-            # Don't need to use six.iteritems because PySQL only supports Python 3
             custom_headers = {key: val for key, val in self.__custom_headers.items()}
             headers.update(**custom_headers)
-
 
         # HTTP request
         self.__resp = self.__pool.urlopen("POST", self.path, data, headers, preload_content=False, timeout=self.__timeout)
