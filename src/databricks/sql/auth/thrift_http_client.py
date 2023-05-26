@@ -97,7 +97,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
     def close(self):
         """This is a no-op because HTTP(S)ConnectionPool handles connection life-cycle"""
-        self.__resp.release_conn()
+        self.__resp and self.__resp.release_conn()
         self.__resp = None
 
     def read(self, sz):
