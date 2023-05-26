@@ -28,31 +28,36 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         cert_file=None,
         key_file=None,
         ssl_context=None,
-        max_connections: int=1,
+        max_connections: int = 1,
     ):
         if port is not None:
             warnings.warn(
                 "Please use the THttpClient('http{s}://host:port/path') constructor",
                 DeprecationWarning,
-                stacklevel=2)
+                stacklevel=2,
+            )
             self.host = uri_or_host
             self.port = port
             assert path
             self.path = path
-            self.scheme = 'http'
+            self.scheme = "http"
         else:
             parsed = urllib.parse.urlsplit(uri_or_host)
             self.scheme = parsed.scheme
-            assert self.scheme in ('http', 'https')
-            if self.scheme == 'https':
+            assert self.scheme in ("http", "https")
+            if self.scheme == "https":
                 self.certfile = cert_file
                 self.keyfile = key_file
-                self.context = ssl.create_default_context(cafile=cafile) if (cafile and not ssl_context) else ssl_context
+                self.context = (
+                    ssl.create_default_context(cafile=cafile)
+                    if (cafile and not ssl_context)
+                    else ssl_context
+                )
             self.port = parsed.port
             self.host = parsed.hostname
             self.path = parsed.path
             if parsed.query:
-                self.path += '?%s' % parsed.query
+                self.path += "?%s" % parsed.query
         try:
             proxy = urllib.request.getproxies()[self.scheme]
         except KeyError:
@@ -70,7 +75,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         else:
             self.realhost = self.realport = self.proxy_auth = None
 
-        self.max_connections = max_connections        
+        self.max_connections = max_connections
 
         self.__wbuf = BytesIO()
         self.__resp = None
@@ -84,16 +89,15 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         super().setCustomHeaders(headers)
 
     def open(self):
-        if self.scheme == 'http':
+        if self.scheme == "http":
             pool_class = HTTPConnectionPool
-        elif self.scheme == 'https':
+        elif self.scheme == "https":
             pool_class = HTTPSConnectionPool
 
         self.__pool = pool_class(self.host, self.port, maxsize=self.max_connections)
 
     def close(self):
-        """This is a no-op because HTTP(S)ConnectionPool handles connection life-cycle
-        """
+        """This is a no-op because HTTP(S)ConnectionPool handles connection life-cycle"""
         self.__resp = None
 
     def read(self, sz):
@@ -114,34 +118,39 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.__auth_provider.add_headers(headers)
         self._headers = headers
         self.setCustomHeaders(self._headers)
-        
 
         # Note: we don't set User-Agent explicitly in this class because PySQL
         # should always provide one. Unlike the original THttpClient class, our version
         # doesn't define a default User-Agent and so should raise an exception if one
-        # isn't provided. 
-        assert self.__custom_headers and 'User-Agent' in self.__custom_headers
+        # isn't provided.
+        assert self.__custom_headers and "User-Agent" in self.__custom_headers
 
         headers = {
             "Content-Type": "application/x-thrift",
-            "Content-Length": str(len(data))
+            "Content-Length": str(len(data)),
         }
 
         if self.using_proxy() and self.scheme == "http" and self.proxy_auth is not None:
-            headers["Proxy-Authorization": self.proxy_auth]
+            headers["Proxy-Authorization" : self.proxy_auth]
 
         if self.__custom_headers:
             custom_headers = {key: val for key, val in self.__custom_headers.items()}
             headers.update(**custom_headers)
 
         # HTTP request
-        self.__resp = self.__pool.urlopen("POST", self.path, data, headers, preload_content=False, timeout=self.__timeout)
+        self.__resp = self.__pool.urlopen(
+            "POST",
+            self.path,
+            data,
+            headers,
+            preload_content=False,
+            timeout=self.__timeout,
+        )
 
         # Get reply to flush the request
         self.code = self.__resp.status
         self.message = self.__resp.reason
         self.headers = self.__resp.msg
-
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
