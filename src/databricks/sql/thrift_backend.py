@@ -317,6 +317,7 @@ class ThriftBackend:
             try:
                 logger.debug("Sending request: {}".format(request))
                 response = method(request)
+                self._transport.close()
                 logger.debug("Received response: {}".format(response))
                 return response
             except OSError as err:
