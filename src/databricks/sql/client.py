@@ -807,25 +807,30 @@ class ResultSet:
 
     def _fill_results_buffer(self):
         # At initialization or if the server does not have cloud fetch result links available
-        if not self.connection.use_cloud_fetch or not self.results or not self.results.result_links:
-            results, has_more_rows = self.thrift_backend.fetch_results(
-                op_handle=self.command_id,
-                max_rows=self.arraysize,
-                max_bytes=self.buffer_size_bytes,
-                expected_row_start_offset=self._next_row_index,
-                lz4_compressed=self.lz4_compressed,
-                arrow_schema_bytes=self._arrow_schema_bytes,
-                description=self.description,
-            )
-            self.results = results
-            self.has_more_rows = has_more_rows
+        results, has_more_rows = self.thrift_backend.fetch_results(
+            op_handle=self.command_id,
+            max_rows=self.arraysize,
+            max_bytes=self.buffer_size_bytes,
+            expected_row_start_offset=self._next_row_index,
+            lz4_compressed=self.lz4_compressed,
+            arrow_schema_bytes=self._arrow_schema_bytes,
+            description=self.description,
+        )
+        self.results = results
+        self.has_more_rows = has_more_rows
 
-            if not self.connection.use_cloud_fetch or not self.results.result_links:
-                return
-            self.result_file_download_manager = ResultFileDownloadManager(self.connection)
-            self.result_file_download_manager.add_file_links(self.results.result_links)
+    def _fill_results_buffer_cloudfetch(self):
+        if not self.results or not self.results.result_links:
+            self._fill_results_buffer()
+        if not self.results.result_links:
+            # Need to signal that buffer has more rows and server has moe rows
+            return
+        self.result_file_download_manager = ResultFileDownloadManager(self.connection)
+        self.result_file_download_manager.add_file_links(self.results.result_links)
+
         while self.result_file_download_manager.get_next_downloaded_file(self):
-            pass
+            # TODO: implement DownloadableFetchClient:L73-L77
+            self._fill_results_buffer()
 
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -886,7 +891,7 @@ class ResultSet:
             and not self.has_been_closed_server_side
             and self.has_more_rows
         ):
-            self._fill_results_buffer()
+            self._fill_results_buffer_cloudfetch() if self.connection.use_cloud_fetch else self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
             results = pyarrow.concat_tables([results, partial_results])
             n_remaining_rows -= partial_results.num_rows

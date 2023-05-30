@@ -56,9 +56,19 @@ class ResultFileDownloadManager:
             if handler.is_download_scheduled:
                 i += 1
                 continue
+            # Return false upon successful download to stop the while loop
             if not self._check_and_handle_download_error(handler, result_set):
+                # TODO: implement the success case
                 pass
+                result_set.results.arrow_table = ArrowQueue(handler.result_file, handler.result_link.rowCount)
+                result_set._next_row_index += handler.result_link.rowCount
+                self.download_handlers.pop(i)
+                return False
+            # Need to signal that server has more rows
+            return True
+        return True
 
+    # False = success, True = download error
     def _check_and_handle_download_error(self, handler, result_set):
         if not handler.is_file_download_successfully:
             self._stop_all_downloads_and_clear_handlers()
@@ -75,7 +85,7 @@ class ResultFileDownloadManager:
         return False
 
     def _stop_all_downloads_and_clear_handlers(self):
-        pass
+        self.download_handlers = []
 
 
 DownloadableResultSettings = namedtuple(
