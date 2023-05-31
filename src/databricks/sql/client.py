@@ -10,7 +10,7 @@ from databricks.sql import __version__
 from databricks.sql import *
 from databricks.sql.exc import OperationalError
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import ExecuteResponse, ParamEscaper, inject_parameters
+from databricks.sql.utils import ExecuteResponse, ParamEscaper, convert_arrow_table_to_pandas, inject_parameters
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -821,32 +821,8 @@ class ResultSet:
             return [
                 ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
             ]
-
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
-
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
+        
+        df = convert_arrow_table_to_pandas(table)
 
         res = df.to_numpy(na_value=None)
         return [ResultRow(*v) for v in res]

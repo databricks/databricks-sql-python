@@ -3,6 +3,7 @@ from collections.abc import Iterable
 import datetime, decimal
 from enum import Enum
 from typing import Dict
+import pandas
 import pyarrow
 
 from databricks.sql import exc
@@ -183,3 +184,32 @@ class ParamEscaper:
 
 def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
+
+
+def convert_arrow_table_to_pandas(table: pyarrow.Table) -> pandas.DataFrame:
+    # Need to use nullable types, as otherwise type can change when there are missing values.
+    # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+    # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+    dtype_mapping = {
+        pyarrow.int8(): pandas.Int8Dtype(),
+        pyarrow.int16(): pandas.Int16Dtype(),
+        pyarrow.int32(): pandas.Int32Dtype(),
+        pyarrow.int64(): pandas.Int64Dtype(),
+        pyarrow.uint8(): pandas.UInt8Dtype(),
+        pyarrow.uint16(): pandas.UInt16Dtype(),
+        pyarrow.uint32(): pandas.UInt32Dtype(),
+        pyarrow.uint64(): pandas.UInt64Dtype(),
+        pyarrow.bool_(): pandas.BooleanDtype(),
+        pyarrow.float32(): pandas.Float32Dtype(),
+        pyarrow.float64(): pandas.Float64Dtype(),
+        pyarrow.string(): pandas.StringDtype(),
+    }
+
+    # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+    table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+
+    return table_renamed.to_pandas(
+        types_mapper=dtype_mapping.get,
+        date_as_object=True,
+        timestamp_as_object=True,
+    )
