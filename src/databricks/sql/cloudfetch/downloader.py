@@ -17,7 +17,20 @@ class ResultSetDownloadHandler(threading.Thread):
         self.http_code = None
         self.result_file = None
         self.check_result_file_link_expiry = True
-        self.download_completion_semaphore = threading.Semaphore()
+        self.download_completion_semaphore = threading.Semaphore(0)
+
+    def is_file_download_successfully(self):
+        try:
+            if not self.is_download_finished.is_set():
+                if self.settings.download_timeout > 0:
+                    if not self.download_completion_semaphore.acquire(timeout=self.settings.download_timeout):
+                        self.is_download_timedout = True
+                        raise RuntimeError("Result file download timeout")
+                else:
+                    self.download_completion_semaphore.acquire()
+        except:
+            return False
+        return self.is_file_downloaded_successfully
 
     def run(self):
         self.is_file_downloaded_successfully = False
@@ -28,7 +41,6 @@ class ResultSetDownloadHandler(threading.Thread):
             current_time = int(time.time() * 1000)
             if (self.result_link.expiry_time < current_time) or (
                     self.result_link.expiry_time - current_time < (
-                    # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > DownloadableResultSettings > int
                     self.settings.result_file_link_expiry_buffer / 1000)
             ):
                 self.is_link_expired = True
@@ -39,14 +51,12 @@ class ResultSetDownloadHandler(threading.Thread):
         session.timeout = timeout
 
         if (
-                # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > ProxySettings > boolean
                 self.settings.use_proxy
-                # DownloadableExecutionContext > HiveExecutionContext > HiveJDBCSettings > ProxySettings > boolean
                 and not self.settings.disable_proxy_for_cloud_fetch
         ):
             proxy = {
                 "http": f"http://{self.settings.proxy_host}:{self.settings.proxy_port}",
-                "https": f"http://{self.settings.proxy_host}:{self.settings.proxy_port}",
+                "https": f"https://{self.settings.proxy_host}:{self.settings.proxy_port}",
             }
             session.proxies.update(proxy)
 
@@ -77,10 +87,10 @@ class ResultSetDownloadHandler(threading.Thread):
                         self.is_file_downloaded_successfully = False
                     else:
                         self.is_file_downloaded_successfully = True
-        except requests.exceptions.RequestException as e:
+        except:
             self.is_file_downloaded_successfully = False
 
         finally:
-            self.is_download_finished = True
-            self.download_completion_semaphore.release()
             session.close()
+            self.is_download_finished.set()
+            self.download_completion_semaphore.release()
