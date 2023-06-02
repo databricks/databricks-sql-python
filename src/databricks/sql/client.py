@@ -1,5 +1,6 @@
 from typing import Dict, Tuple, List, Optional, Any, Union
 
+import time
 import pandas
 import pyarrow
 import requests
@@ -795,7 +796,7 @@ class ResultSet:
             self.results = execute_response.arrow_queue
         else:
             # In this case, there are results waiting on the server so we fetch now for simplicity
-            self._fill_results_buffer()
+            self._fill_results_buffer_cloudfetch() if self.connection.use_cloud_fetch else self._fill_results_buffer()
 
     def __iter__(self):
         while True:
@@ -820,17 +821,31 @@ class ResultSet:
         self.has_more_rows = has_more_rows
 
     def _fill_results_buffer_cloudfetch(self):
-        if not self.results or not self.results.result_links:
-            self._fill_results_buffer()
-        if not self.results.result_links:
-            # Need to signal that buffer has more rows and server has moe rows
-            return
+        # Initialize singleton ResultFileDownloadManager
         self.result_file_download_manager = ResultFileDownloadManager(self.connection)
-        self.result_file_download_manager.add_file_links(self.results.result_links)
 
-        while self.result_file_download_manager.get_next_downloaded_file(self):
+        # If download manager already have handlers, fill buffer with remaining cloud fetch files
+        while not self.result_file_download_manager.get_next_downloaded_file(self):
             # TODO: implement DownloadableFetchClient:L73-L77
-            self._fill_results_buffer()
+            # At this point, there are no files to download, or there is an issue, or we need a retry
+
+            # If no prior download handlers or handlers were wiped for retry
+            if not self.result_file_download_manager.download_handlers:
+                # Call TFetchResults
+                self._fill_results_buffer()
+
+                # If fetch results doesn't have result links, then arrow batch is in the response. Break out of loop
+                if not self.results.result_links:
+                    break
+                # Otherwise, add cloudfetch links to the manager and continue the loop
+                self.result_file_download_manager.add_file_links(self.results.result_links, self._next_row_index)
+
+            # If we added handlers because of retry, wait some time
+            if self.result_file_download_manager.download_need_retry:
+                time.sleep(self.result_file_download_manager.downloadable_result_settings.download_retry_wait_time)
+
+        # At this point, buffer has cloud fetched arrow batches
+        # TODO: figure out how to update self.has_more_rows with combo of handlers + execute response
 
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
