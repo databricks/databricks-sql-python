@@ -114,7 +114,7 @@ def _get_downloadable_result_settings(connection):
     # TODO: pipe and get the default values from JDBC
     return DownloadableResultSettings(
         is_lz4_compressed=connection.lz4_compression,
-        result_file_link_expiry_buffer=None,
+        result_file_link_expiry_buffer=0,
         download_timeout=0,
         use_proxy=False,
         disable_proxy_for_cloud_fetch=False,

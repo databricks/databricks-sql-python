@@ -41,14 +41,13 @@ class ResultSetDownloadHandler(threading.Thread):
             current_time = int(time.time() * 1000)
             if (self.result_link.expiry_time < current_time) or (
                     self.result_link.expiry_time - current_time < (
-                    self.settings.result_file_link_expiry_buffer / 1000)
+                    self.settings.result_file_link_expiry_buffer * 1000)
             ):
                 self.is_link_expired = True
                 return
 
-        timeout = self.settings.download_timeout
         session = requests.Session()
-        session.timeout = timeout
+        session.timeout = self.settings.download_timeout
 
         if (
                 self.settings.use_proxy
