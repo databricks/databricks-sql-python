@@ -13,7 +13,7 @@ import warnings
 from http.client import HTTPResponse
 from io import BytesIO
 
-from urllib3 import HTTPConnectionPool, HTTPSConnectionPool
+from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
@@ -66,8 +66,13 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
                 proxy = None
         if proxy:
             parsed = urllib.parse.urlparse(proxy)
+            
+            # realhost and realport are the host and port of the actual request
             self.realhost = self.host
             self.realport = self.port
+            
+            # this is passed to ProxyManager 
+            self.proxy_uri: str = proxy
             self.host = parsed.hostname
             self.port = parsed.port
             self.proxy_auth = self.basic_proxy_auth_header(parsed)
@@ -93,7 +98,13 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         elif self.scheme == "https":
             pool_class = HTTPSConnectionPool
 
-        self.__pool = pool_class(self.host, self.port, maxsize=self.max_connections)
+        _pool_kwargs = {"maxsize": self.max_connections}
+
+        if self.using_proxy():
+            proxy_manager = ProxyManager(self.proxy_uri, num_pools=1, headers={"Proxy-Authorization": self.proxy_auth})
+            self.__pool = proxy_manager.connection_from_host(self.host, self.port, pool_kwargs=_pool_kwargs)
+        else:
+            self.__pool = pool_class(self.host, self.port, **_pool_kwargs)
 
     def close(self):
         """This is a no-op because HTTP(S)ConnectionPool handles connection life-cycle"""
