@@ -154,7 +154,7 @@ class ThriftBackend:
 
         timeout = 60 if kwargs.get("_socket_timeout") is None else kwargs.get("_socket_timeout")
         # setTimeout defaults to 60 seconds and is expected in ms
-        self._transport.setTimeout(float(timeout) * 1000.0)
+        self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
         self._transport.setCustomHeaders(dict(http_headers))
         protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(self._transport)
