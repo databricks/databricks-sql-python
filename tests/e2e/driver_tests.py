@@ -18,7 +18,7 @@ import thrift
 import pytest
 
 import databricks.sql as sql
-from databricks.sql import STRING, BINARY, NUMBER, DATETIME, DATE, DatabaseError, Error, OperationalError
+from databricks.sql import STRING, BINARY, NUMBER, DATETIME, DATE, DatabaseError, Error, OperationalError, RequestError
 from tests.e2e.common.predicates import pysql_has_version, pysql_supports_arrow, compare_dbr_versions, is_thrift_v5_plus
 from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
 from tests.e2e.common.large_queries_mixin import LargeQueriesMixin
@@ -466,6 +466,17 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
                 pass
 
         self.assertIsInstance(cm.exception.args[1], io.BlockingIOError)
+
+    @skipIf(pysql_has_version('<', '2'), 'requires pysql v2')
+    def test_socket_timeout_user_defined(self):
+        #  We expect to see a BlockingIO error when the socket is opened
+        #  in non-blocking mode, since no poll is done before the read
+        with self.assertRaises(RequestError) as cm:
+            with self.cursor({"_socket_timeout": 1}) as cursor:
+                query = "select * from range(10000000)"
+                cursor.execute(query)
+
+        self.assertIsInstance(cm.exception.args[1], TimeoutError)
 
     def test_ssp_passthrough(self):
         for enable_ansi in (True, False):
