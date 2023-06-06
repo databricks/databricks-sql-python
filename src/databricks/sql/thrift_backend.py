@@ -153,7 +153,7 @@ class ThriftBackend:
         )
 
         timeout = (
-            60
+            900
             if kwargs.get("_socket_timeout") is None
             else kwargs.get("_socket_timeout")
         )
