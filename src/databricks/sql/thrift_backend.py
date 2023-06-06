@@ -37,6 +37,7 @@ DATABRICKS_ERROR_OR_REDIRECT_HEADER = "x-databricks-error-or-redirect-message"
 DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 
 TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
+DEFAULT_SOCKET_TIMEOUT = float(900)
 
 # see Connection.__init__ for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
@@ -100,7 +101,7 @@ class ThriftBackend:
         #  The maximum number of times we should retry retryable requests (defaults to 24)
         # _socket_timeout
         #  The timeout in seconds for socket send, recv and connect operations. Should be a positive float or integer.
-        #  (defaults to 60)
+        #  (defaults to 900)
 
         port = port or 443
         if kwargs.get("_connection_uri"):
@@ -152,11 +153,7 @@ class ThriftBackend:
             ssl_context=ssl_context,
         )
 
-        timeout = (
-            900
-            if kwargs.get("_socket_timeout") is None
-            else kwargs.get("_socket_timeout")
-        )
+        timeout = kwargs.get("_socket_timeout", DEFAULT_SOCKET_TIMEOUT)
         # setTimeout defaults to 60 seconds and is expected in ms
         self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
