@@ -66,12 +66,12 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
                 proxy = None
         if proxy:
             parsed = urllib.parse.urlparse(proxy)
-            
+
             # realhost and realport are the host and port of the actual request
             self.realhost = self.host
             self.realport = self.port
-            
-            # this is passed to ProxyManager 
+
+            # this is passed to ProxyManager
             self.proxy_uri: str = proxy
             self.host = parsed.hostname
             self.port = parsed.port
@@ -101,8 +101,14 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         _pool_kwargs = {"maxsize": self.max_connections}
 
         if self.using_proxy():
-            proxy_manager = ProxyManager(self.proxy_uri, num_pools=1, headers={"Proxy-Authorization": self.proxy_auth})
-            self.__pool = proxy_manager.connection_from_host(self.host, self.port, pool_kwargs=_pool_kwargs)
+            proxy_manager = ProxyManager(
+                self.proxy_uri,
+                num_pools=1,
+                headers={"Proxy-Authorization": self.proxy_auth},
+            )
+            self.__pool = proxy_manager.connection_from_host(
+                self.host, self.port, pool_kwargs=_pool_kwargs
+            )
         else:
             self.__pool = pool_class(self.host, self.port, **_pool_kwargs)
 
