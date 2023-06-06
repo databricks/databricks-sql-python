@@ -152,7 +152,11 @@ class ThriftBackend:
             ssl_context=ssl_context,
         )
 
-        timeout = 60 if kwargs.get("_socket_timeout") is None else kwargs.get("_socket_timeout")
+        timeout = (
+            60
+            if kwargs.get("_socket_timeout") is None
+            else kwargs.get("_socket_timeout")
+        )
         # setTimeout defaults to 60 seconds and is expected in ms
         self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
