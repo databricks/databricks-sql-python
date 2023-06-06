@@ -167,7 +167,11 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         # Get reply to flush the request
         self.code = self.__resp.status
         self.message = self.__resp.reason
-        self.headers = self.__resp.msg
+        self.headers = self.__resp.headers
+
+        # Saves the cookie sent by the server response
+        if "Set-Cookie" in self.headers:
+            self.setCustomHeaders(dict("Cookie", self.headers["Set-Cookie"]))
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
