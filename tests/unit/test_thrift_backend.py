@@ -218,7 +218,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=0)
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 0)
         ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=None)
-        self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], None)
+        self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 60 * 1000)
 
     def test_non_primitive_types_raise_error(self):
         columns = [

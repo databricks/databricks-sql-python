@@ -459,7 +459,7 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
 
     @skipIf(pysql_has_version('<', '2'), 'requires pysql v2')
     def test_socket_timeout(self):
-        #  We we expect to see a BlockingIO error when the socket is opened
+        #  We expect to see a BlockingIO error when the socket is opened
         #  in non-blocking mode, since no poll is done before the read
         with self.assertRaises(OperationalError) as cm:
             with self.cursor({"_socket_timeout": 0}):
