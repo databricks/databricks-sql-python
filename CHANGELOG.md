@@ -2,6 +2,8 @@
 
 ## 2.5.x (Unreleased)
 
+- Add support for HTTP 1.1 connections (connection pools)
+
 ## 2.5.2 (2023-05-08)
 
 - Fix: SQLAlchemy adapter could not reflect TIMESTAMP or DATETIME columns
