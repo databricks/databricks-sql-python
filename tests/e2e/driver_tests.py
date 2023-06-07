@@ -469,8 +469,8 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
 
     @skipIf(pysql_has_version('<', '2'), 'requires pysql v2')
     def test_socket_timeout_user_defined(self):
-        #  We expect to see a BlockingIO error when the socket is opened
-        #  in non-blocking mode, since no poll is done before the read
+        #  We expect to see a TimeoutError when the socket timeout is only
+        #  1 sec for a query that takes longer than that to process
         with self.assertRaises(RequestError) as cm:
             with self.cursor({"_socket_timeout": 1}) as cursor:
                 query = "select * from range(10000000)"
