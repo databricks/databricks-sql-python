@@ -93,6 +93,8 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         super().setCustomHeaders(headers)
 
     def open(self):
+
+        # self.__pool replaces the self.__http used by the original THttpClient
         if self.scheme == "http":
             pool_class = HTTPConnectionPool
         elif self.scheme == "https":

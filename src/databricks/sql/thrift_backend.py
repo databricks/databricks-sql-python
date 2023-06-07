@@ -317,7 +317,10 @@ class ThriftBackend:
             try:
                 logger.debug("Sending request: {}".format(request))
                 response = method(request)
+
+                # Calling `close()` here releases the active HTTP connection back to the pool
                 self._transport.close()
+
                 logger.debug("Received response: {}".format(response))
                 return response
             except OSError as err:
