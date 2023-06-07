@@ -18,7 +18,7 @@ import thrift
 import pytest
 
 import databricks.sql as sql
-from databricks.sql import STRING, BINARY, NUMBER, DATETIME, DATE, DatabaseError, Error, OperationalError
+from databricks.sql import STRING, BINARY, NUMBER, DATETIME, DATE, DatabaseError, Error, OperationalError, RequestError
 from tests.e2e.common.predicates import pysql_has_version, pysql_supports_arrow, compare_dbr_versions, is_thrift_v5_plus
 from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
 from tests.e2e.common.large_queries_mixin import LargeQueriesMixin
@@ -460,13 +460,24 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
     @skipIf(pysql_has_version('<', '2'), 'requires pysql v2')
     @skipIf(True, "Unclear the purpose of this test since urllib3 does not complain when timeout == 0")
     def test_socket_timeout(self):
-        #  We we expect to see a BlockingIO error when the socket is opened
+        #  We expect to see a BlockingIO error when the socket is opened
         #  in non-blocking mode, since no poll is done before the read
         with self.assertRaises(OperationalError) as cm:
             with self.cursor({"_socket_timeout": 0}):
                 pass
 
         self.assertIsInstance(cm.exception.args[1], io.BlockingIOError)
+
+    @skipIf(pysql_has_version('<', '2'), 'requires pysql v2')
+    def test_socket_timeout_user_defined(self):
+        #  We expect to see a TimeoutError when the socket timeout is only
+        #  1 sec for a query that takes longer than that to process
+        with self.assertRaises(RequestError) as cm:
+            with self.cursor({"_socket_timeout": 1}) as cursor:
+                query = "select * from range(10000000)"
+                cursor.execute(query)
+
+        self.assertIsInstance(cm.exception.args[1], TimeoutError)
 
     def test_ssp_passthrough(self):
         for enable_ansi in (True, False):

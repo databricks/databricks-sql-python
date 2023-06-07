@@ -217,6 +217,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 129 * 1000)
         ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=0)
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 0)
+        ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider())
+        self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 900 * 1000)
         ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=None)
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], None)
 
