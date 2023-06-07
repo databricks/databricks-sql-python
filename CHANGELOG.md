@@ -1,8 +1,11 @@
 # Release History
 
-## 2.5.x (Unreleased)
+## 2.6.x (Unreleased)
+
+## 2.6.0 (2023-06-07)
 
 - Add support for HTTP 1.1 connections (connection pools)
+- Add a default socket timeout for thrift RPCs
 
 ## 2.5.2 (2023-05-08)
 
