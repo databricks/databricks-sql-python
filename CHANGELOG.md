@@ -2,6 +2,8 @@
 
 ## 2.6.x (Unreleased)
 
+## 2.6.1 (2023-06-08)
+
 - Fix: http.client would raise a BadStatusLine exception in some cases
 
 ## 2.6.0 (2023-06-07)
