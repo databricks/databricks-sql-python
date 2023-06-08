@@ -2,6 +2,8 @@
 
 ## 2.6.x (Unreleased)
 
+- Fix: http.client would raise a BadStatusLine exception in some cases
+
 ## 2.6.0 (2023-06-07)
 
 - Add support for HTTP 1.1 connections (connection pools)
