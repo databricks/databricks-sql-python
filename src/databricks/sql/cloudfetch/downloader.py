@@ -1,7 +1,11 @@
+import logging
+
 import requests
 import lz4.frame
 import threading
 import time
+
+logger = logging.getLogger(__name__)
 
 
 class ResultSetDownloadHandler(threading.Thread):
@@ -19,13 +23,16 @@ class ResultSetDownloadHandler(threading.Thread):
         self.check_result_file_link_expiry = True
         self.download_completion_semaphore = threading.Semaphore(0)
 
-    def is_file_download_successfully(self):
+    def is_file_download_successful(self):
         try:
             if not self.is_download_finished.is_set():
-                if self.settings.download_timeout > 0:
+                if self.settings.download_timeout and self.settings.download_timeout > 0:
                     if not self.download_completion_semaphore.acquire(timeout=self.settings.download_timeout):
                         self.is_download_timedout = True
-                        raise RuntimeError("Result file download timeout")
+                        logger.debug("Cloud fetch download timed out after {} seconds for url: {}"
+                                     .format(self.settings.download_timeout, self.result_link.file_link)
+                                     )
+                        return False
                 else:
                     self.download_completion_semaphore.acquire()
         except:

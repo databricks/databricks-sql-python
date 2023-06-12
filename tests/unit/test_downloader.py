@@ -167,3 +167,64 @@ class DownloaderTests(unittest.TestCase):
 
         assert not d.is_file_downloaded_successfully
         assert d.is_download_finished.is_set()
+
+    @patch("threading.Event.is_set", return_value=True)
+    def test_is_download_successful_with_event_set(self, mock_is_set):
+        settings = Mock()
+        result_link = Mock()
+        handler = downloader.ResultSetDownloadHandler(settings, result_link)
+
+        status = handler.is_file_download_successful()
+        assert status == handler.is_file_downloaded_successfully
+
+    @patch("threading.Event.is_set", return_value=False)
+    @patch("threading.Semaphore.acquire", return_value=True)
+    def test_is_file_download_successful_null_timeout_download_completes(self, mock_acquire, mock_is_set):
+        settings = Mock()
+        settings.download_timeout = None
+        result_link = Mock()
+        handler = downloader.ResultSetDownloadHandler(settings, result_link)
+
+        status = handler.is_file_download_successful()
+        assert status == handler.is_file_downloaded_successfully
+        mock_acquire.assert_called()
+
+    @patch("threading.Event.is_set", return_value=False)
+    @patch("threading.Semaphore.acquire", return_value=True)
+    def test_is_file_download_successful_zero_timeout_download_completes(self, mock_acquire, mock_is_set):
+        settings = Mock()
+        settings.download_timeout = 0
+        result_link = Mock()
+        handler = downloader.ResultSetDownloadHandler(settings, result_link)
+
+        status = handler.is_file_download_successful()
+        assert status == handler.is_file_downloaded_successfully
+        mock_acquire.assert_called()
+        assert not handler.is_download_timedout
+
+    @patch("threading.Event.is_set", return_value=False)
+    @patch("threading.Semaphore.acquire", return_value=True)
+    def test_is_file_download_successful_with_timeout_download_completes(self, mock_acquire, mock_is_set):
+        settings = Mock()
+        settings.download_timeout = 10
+        result_link = Mock()
+        handler = downloader.ResultSetDownloadHandler(settings, result_link)
+
+        status = handler.is_file_download_successful()
+        assert status == handler.is_file_downloaded_successfully
+        mock_acquire.assert_called_with(timeout=settings.download_timeout)
+        assert not handler.is_download_timedout
+
+    @patch("threading.Event.is_set", return_value=False)
+    @patch("threading.Semaphore.acquire", return_value=False)
+    def test_is_file_download_successful_download_times_out(self, mock_acquire, mock_is_set):
+        settings = Mock()
+        settings.download_timeout = 10
+        result_link = Mock()
+        result_link.file_link = "foo"
+        handler = downloader.ResultSetDownloadHandler(settings, result_link)
+
+        status = handler.is_file_download_successful()
+        assert not status
+        mock_acquire.assert_called_with(timeout=settings.download_timeout)
+        assert handler.is_download_timedout
