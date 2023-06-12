@@ -5,7 +5,6 @@ from databricks.sql.utils import ArrowQueue
 
 
 class ResultFileDownloadManager:
-    _instance = None
 
     def __init__(self, connection):
         self.download_handlers = []
@@ -14,11 +13,6 @@ class ResultFileDownloadManager:
         self.download_need_retry = False
         self.num_consecutive_result_file_download_retries = 0
         self.cloud_fetch_index = 0
-
-    def __new__(cls, connection):
-        if not cls._instance:
-            cls._instance = super(ResultFileDownloadManager, cls).__new__(cls, connection)
-        return cls._instance
 
     def add_file_links(self, t_spark_arrow_result_links, next_row_index):
         for t_spark_arrow_result_link in t_spark_arrow_result_links:
