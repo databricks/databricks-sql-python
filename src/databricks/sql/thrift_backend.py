@@ -14,6 +14,8 @@ import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
 import thrift.transport.TTransport
 
+import urllib3.exceptions
+
 import databricks.sql.auth.thrift_http_client
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
@@ -324,6 +326,16 @@ class ThriftBackend:
 
                 logger.debug("Received response: {}".format(response))
                 return response
+            
+            except urllib3.exceptions.HTTPError as err:
+                # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
+                
+                gos_name = TCLIServiceClient.GetOperationStatus.__name__
+                if method.__name__ == gos_name:
+                    retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
+                    logger.info(f"GetOperationStatus failed with HTTP error and will be retried: {str(err)}")
+                else:
+                    raise err
             except OSError as err:
                 error = err
                 error_message = str(err)

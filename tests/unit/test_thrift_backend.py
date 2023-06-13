@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
 
 import pyarrow
+import urllib3
 
 import databricks.sql
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -1033,7 +1034,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         self.assertEqual(mock_resp.operationHandle, mock_cursor.active_op_handle)
 
-    @patch("thrift.transport.THttpClient.THttpClient")
+    @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch("databricks.sql.thrift_api.TCLIService.TCLIService.Client.GetOperationStatus")
     @patch("databricks.sql.thrift_backend._retry_policy", new_callable=retry_policy_factory)
     def test_make_request_will_retry_GetOperationStatus(
@@ -1088,6 +1089,51 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         # The warnings should include this text
         self.assertIn(f"{this_gos_name} failed with code {errno.EEXIST} and will attempt to retry", cm.output[0])
+
+    @patch("databricks.sql.thrift_api.TCLIService.TCLIService.Client.GetOperationStatus")
+    @patch("databricks.sql.thrift_backend._retry_policy", new_callable=retry_policy_factory)
+    def test_make_request_will_retry_GetOperationStatus_for_http_error(
+            self, mock_retry_policy, mock_gos):
+        
+        import urllib3.exceptions
+        mock_gos.side_effect = urllib3.exceptions.HTTPError("Read timed out")
+
+        import thrift, errno
+        from databricks.sql.thrift_api.TCLIService.TCLIService import Client
+        from databricks.sql.exc import RequestError
+        from databricks.sql.utils import NoRetryReason
+        from databricks.sql.auth.thrift_http_client import THttpClient
+
+        this_gos_name = "GetOperationStatus"
+        mock_gos.__name__ = this_gos_name
+
+        protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(THttpClient)
+        client = Client(protocol)
+
+        req = ttypes.TGetOperationStatusReq(
+            operationHandle=self.operation_handle,
+            getProgressUpdate=False,
+        )
+
+        EXPECTED_RETRIES = 2
+
+        thrift_backend = ThriftBackend(
+            "foobar",
+            443,
+            "path", [],
+            auth_provider=AuthProvider(),
+            _retry_stop_after_attempts_count=EXPECTED_RETRIES,
+            _retry_delay_default=1)
+
+
+        with self.assertRaises(RequestError) as cm:
+            thrift_backend.make_request(client.GetOperationStatus, req)
+
+
+        self.assertEqual(NoRetryReason.OUT_OF_ATTEMPTS.value, cm.exception.context["no-retry-reason"])
+        self.assertEqual(f'{EXPECTED_RETRIES}/{EXPECTED_RETRIES}', cm.exception.context["attempt"])
+
+        
 
 
     @patch("thrift.transport.THttpClient.THttpClient")
