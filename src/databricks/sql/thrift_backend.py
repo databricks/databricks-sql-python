@@ -326,14 +326,16 @@ class ThriftBackend:
 
                 logger.debug("Received response: {}".format(response))
                 return response
-            
+
             except urllib3.exceptions.HTTPError as err:
                 # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
-                
+
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
                     retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
-                    logger.info(f"GetOperationStatus failed with HTTP error and will be retried: {str(err)}")
+                    logger.info(
+                        f"GetOperationStatus failed with HTTP error and will be retried: {str(err)}"
+                    )
                 else:
                     raise err
             except OSError as err:
