@@ -14,6 +14,7 @@ class ResultSetDownloadHandler(threading.Thread):
         super().__init__()
         self.settings = downloadable_result_settings
         self.result_link = t_spark_arrow_result_link
+        self.is_download_scheduled = False
         self.is_download_finished = threading.Event()
         self.is_file_downloaded_successfully = False
         self.is_link_expired = False
@@ -43,6 +44,7 @@ class ResultSetDownloadHandler(threading.Thread):
         self.is_file_downloaded_successfully = False
         self.is_link_expired = False
         self.is_download_timedout = False
+        self.is_download_finished = threading.Event()
 
         if self.check_result_file_link_expiry:
             current_time = int(time.time() * 1000)

@@ -1,7 +1,6 @@
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
-from databricks.sql.utils import ArrowQueue
 
 
 class ResultFileDownloadManager:
@@ -10,13 +9,13 @@ class ResultFileDownloadManager:
         self.download_handlers = []
         self.thread_pool = ThreadPoolExecutor(max_workers=max_download_threads + 1)
         self.downloadable_result_settings = _get_downloadable_result_settings(lz4_compressed)
-        self.download_need_retry = False
+        self.fetch_need_retry = False
         self.num_consecutive_result_file_download_retries = 0
         self.cloud_fetch_index = 0
 
     def add_file_links(self, t_spark_arrow_result_links, next_row_index):
         for t_spark_arrow_result_link in t_spark_arrow_result_links:
-            if t_spark_arrow_result_link.row_count <= 0:
+            if t_spark_arrow_result_link.rowCount <= 0:
                 continue
             self.download_handlers.append(ResultSetDownloadHandler(
                 self.downloadable_result_settings, t_spark_arrow_result_link))
@@ -24,7 +23,7 @@ class ResultFileDownloadManager:
 
     def get_next_downloaded_file(self, next_row_index):
         if not self.download_handlers:
-            return False
+            return None
 
         # Remove handlers we don't need anymore
         self._remove_past_handlers(next_row_index)
@@ -32,35 +31,26 @@ class ResultFileDownloadManager:
         # Schedule the downloads
         self._schedule_downloads()
 
-        # Get the next downloaded file
-        i = 0
-        while i < len(self.download_handlers):
-            handler = self.download_handlers[i]
-            # Skip handlers without download scheduled, typically tasks rejected by thread pool
-            if not handler.is_download_scheduled:
-                i += 1
-                continue
-
-            # Only evaluate the next file to download
-            if handler.result_link.start_row_offset != self.cloud_fetch_index:
-                i += 1
-                continue
-
-            # Download was successful for next download item
-            if self._check_if_download_successful(handler):
-                # Buffer should be empty so set buffer to new ArrowQueue with result_file
-                result = DownloadedFile(
-                    handler.result_file,
-                    handler.result_link.startRowOffset,
-                    handler.result_link.rowCount,
-                )
-                self.cloud_fetch_index += handler.result_link.rowCount
-                self.download_handlers.pop(i)
-                # Return True upon successful download to continue loop and not force a retry
-                return result
-            # TODO: Need to signal that server has more rows
-            # Download was not successful for next download item, force a retry
+        # Find next file
+        idx = self._find_next_file_index(next_row_index)
+        if idx is None:
             return None
+        handler = self.download_handlers[idx]
+
+        # Check (and wait) for download status
+        if self._check_if_download_successful(handler):
+            # Buffer should be empty so set buffer to new ArrowQueue with result_file
+            result = DownloadedFile(
+                handler.result_file,
+                handler.result_link.startRowOffset,
+                handler.result_link.rowCount,
+            )
+            self.cloud_fetch_index += handler.result_link.rowCount
+            self.download_handlers.pop(idx)
+            # Return True upon successful download to continue loop and not force a retry
+            return result
+        # TODO: Need to signal that server has more rows
+        # Download was not successful for next download item, force a retry
         return None
 
     def _remove_past_handlers(self, next_row_index):
@@ -71,7 +61,7 @@ class ResultFileDownloadManager:
         i = 0
         while i < len(self.download_handlers):
             result_link = self.download_handlers[i].result_link
-            if result_link.start_row_offset + result_link.row_count >= next_row_index:
+            if result_link.startRowOffset + result_link.rowCount > next_row_index:
                 i += 1
                 continue
             self.download_handlers.pop(i)
@@ -92,21 +82,33 @@ class ResultFileDownloadManager:
             handler.is_download_scheduled = True
             # TODO: downloadedResultFilesSize update
 
+    def _find_next_file_index(self, next_row_index):
+        # Get the next downloaded file
+        next_indices = [i for i, handler in enumerate(self.download_handlers)
+                        if handler.is_download_scheduled and handler.result_link.startRowOffset == next_row_index]
+        return next_indices[0] if len(next_indices) > 0 else None
+
     def _check_if_download_successful(self, handler):
-        if not handler.is_file_download_successfully:
-            self._stop_all_downloads_and_clear_handlers()
-            # TODO: downloadedResultFilesSize update to 0
-            if handler.is_link_expired or handler.is_download_timedout:  # TODO: add all the other conditions!
+        if not handler.is_file_download_successful():
+            if handler.is_link_expired:
+                self._stop_all_downloads_and_clear_handlers()
+                self.fetch_need_retry = True
+                return False
+            elif handler.is_download_timedout:
                 if self.num_consecutive_result_file_download_retries >= \
                         self.downloadable_result_settings.max_consecutive_file_download_retries:
-                    raise Exception("File download exceeded max retry limit")
+                    # raise Exception("File download exceeded max retry limit")
+                    self.fetch_need_retry = True
+                    return False
                 self.num_consecutive_result_file_download_retries += 1
+                self.thread_pool.submit(handler)
+                return self._check_if_download_successful(handler)
             else:
-                raise Exception("File download error")
-            self.download_need_retry = True
-            return False
+                self.fetch_need_retry = True
+                return False
+
         self.num_consecutive_result_file_download_retries = 0
-        self.download_need_retry = False
+        self.fetch_need_retry = False
         return True
 
     def _stop_all_downloads_and_clear_handlers(self):
