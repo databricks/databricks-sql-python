@@ -8,9 +8,11 @@ from typing import Dict, List
 import pyarrow
 
 from databricks.sql import exc
+from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink, TSparkRowSetType, TRowSet
 from databricks.sql.thrift_backend import ThriftBackend
 
+DEFAULT_MAX_DOWNLOAD_THREADS = 10
 
 class ResultSetQueue(ABC):
     @abstractmethod
@@ -86,15 +88,60 @@ class ArrowQueue(ResultSetQueue):
 class CloudFetchQueue(ResultSetQueue):
     def __init__(
         self,
+        schema_bytes,
+        start_row_index: int = 0,
         result_links: List[TSparkArrowResultLink] = None,
+        lz4_compressed: bool = True,
+        description: str = None,
     ):
+        """
+        A queue-like wrapper over CloudFetch arrow batches
+        """
+        self.schema_bytes = schema_bytes
+        self.start_row_index = start_row_index
         self.result_links = result_links
+        self.lz4_compressed = lz4_compressed
+        self.description = description
+        self.max_download_threads = DEFAULT_MAX_DOWNLOAD_THREADS
+
+        self.download_manager = ResultFileDownloadManager(self.max_download_threads, self.lz4_compressed)
+        self.download_manager.add_file_links(result_links, start_row_index)
+
+        self.table, self.table_num_rows = self._create_next_table()
+        self.table_row_index = 0
 
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
-        pass
+        results = None
+        while num_rows > 0 and self.table:
+            length = min(num_rows, self.table_num_rows - self.table_row_index)
+            table_slice = self.table.slice(self.table_row_index, length)
+            results = pyarrow.concat_tables([results, table_slice]) if results else table_slice
+            self.table_row_index += table_slice.num_rows
+            if self.table_row_index == self.table_num_rows:
+                self.table, self.table_num_rows = self._create_next_table()
+            num_rows -= table_slice.num_rows
+        return results
 
     def remaining_rows(self) -> pyarrow.Table:
-        pass
+        results = None
+        while self.table:
+            table_slice = self.table.slice(
+                self.table_row_index, self.table_num_rows - self.table_row_index
+            )
+            results = pyarrow.concat_tables([results, table_slice]) if results else table_slice
+            self.table_row_index += table_slice.num_rows
+            self.table, self.table_num_rows = self._create_next_table()
+        return results
+
+    def _create_next_table(self):
+        # TODO: need to update next_row_index and add to call for get_next_downloaded_file
+        # TODO: retry logic from _fill_results_buffer_cloudfetch
+        downloaded_file = self.download_manager.get_next_downloaded_file(self.start_row_index)
+        arrow_table = ThriftBackend.convert_arrow_based_set_to_arrow_table(
+            downloaded_file.file_bytes, self.schema_bytes, self.lz4_compressed)
+        converted_arrow_table = ThriftBackend.convert_decimals_in_arrow_table(arrow_table, self.description)
+        self.start_row_index += downloaded_file.row_count
+        return converted_arrow_table, downloaded_file.row_count
 
 
 ExecuteResponse = namedtuple(

@@ -6,10 +6,10 @@ from databricks.sql.utils import ArrowQueue
 
 class ResultFileDownloadManager:
 
-    def __init__(self, connection):
+    def __init__(self, max_download_threads, lz4_compressed):
         self.download_handlers = []
-        self.thread_pool = ThreadPoolExecutor(max_workers=connection.max_download_threads + 1)
-        self.downloadable_result_settings = _get_downloadable_result_settings(connection)
+        self.thread_pool = ThreadPoolExecutor(max_workers=max_download_threads + 1)
+        self.downloadable_result_settings = _get_downloadable_result_settings(lz4_compressed)
         self.download_need_retry = False
         self.num_consecutive_result_file_download_retries = 0
         self.cloud_fetch_index = 0
@@ -22,12 +22,12 @@ class ResultFileDownloadManager:
                 self.downloadable_result_settings, t_spark_arrow_result_link))
         self.cloud_fetch_index = next_row_index
 
-    def get_next_downloaded_file(self, result_set):
+    def get_next_downloaded_file(self, next_row_index):
         if not self.download_handlers:
             return False
 
         # Remove handlers we don't need anymore
-        self._remove_past_handlers(result_set._next_row_index)
+        self._remove_past_handlers(next_row_index)
 
         # Schedule the downloads
         self._schedule_downloads()
@@ -47,17 +47,21 @@ class ResultFileDownloadManager:
                 continue
 
             # Download was successful for next download item
-            if self._check_if_download_successful(handler, result_set):
+            if self._check_if_download_successful(handler):
                 # Buffer should be empty so set buffer to new ArrowQueue with result_file
-                result_set.results = ArrowQueue(handler.result_file, handler.result_link.rowCount)
+                result = DownloadedFile(
+                    handler.result_file,
+                    handler.result_link.startRowOffset,
+                    handler.result_link.rowCount,
+                )
                 self.cloud_fetch_index += handler.result_link.rowCount
                 self.download_handlers.pop(i)
                 # Return True upon successful download to continue loop and not force a retry
-                return True
+                return result
             # TODO: Need to signal that server has more rows
             # Download was not successful for next download item, force a retry
-            return False
-        return False
+            return None
+        return None
 
     def _remove_past_handlers(self, next_row_index):
         """
@@ -88,8 +92,7 @@ class ResultFileDownloadManager:
             handler.is_download_scheduled = True
             # TODO: downloadedResultFilesSize update
 
-
-    def _check_if_download_successful(self, handler, result_set):
+    def _check_if_download_successful(self, handler):
         if not handler.is_file_download_successfully:
             self._stop_all_downloads_and_clear_handlers()
             # TODO: downloadedResultFilesSize update to 0
@@ -117,11 +120,16 @@ DownloadableResultSettings = namedtuple(
     "proxy_host proxy_port proxy_uid proxy_pwd max_consecutive_file_download_retries download_retry_wait_time"
 )
 
+DownloadedFile = namedtuple(
+    "DownloadedFile",
+    "file_bytes start_row_offset row_count"
+)
 
-def _get_downloadable_result_settings(connection):
+
+def _get_downloadable_result_settings(lz4_compressed):
     # TODO: pipe and get the default values from JDBC
     return DownloadableResultSettings(
-        is_lz4_compressed=connection.lz4_compression,
+        is_lz4_compressed=lz4_compressed,
         result_file_link_expiry_buffer=0,
         download_timeout=0,
         use_proxy=False,
