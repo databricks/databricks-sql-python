@@ -46,8 +46,8 @@ class ResultSetDownloadHandler(threading.Thread):
 
         if self.check_result_file_link_expiry:
             current_time = int(time.time() * 1000)
-            if (self.result_link.expiry_time < current_time) or (
-                    self.result_link.expiry_time - current_time < (
+            if (self.result_link.expiryTime < current_time) or (
+                    self.result_link.expiryTime - current_time < (
                     self.settings.result_file_link_expiry_buffer * 1000)
             ):
                 self.is_link_expired = True
@@ -71,7 +71,7 @@ class ResultSetDownloadHandler(threading.Thread):
                 session.auth = requests.auth.HTTPBasicAuth(self.settings.proxy_uid, self.settings.proxy_pwd)
 
         try:
-            response = session.get(self.result_link.file_link)
+            response = session.get(self.result_link.fileLink)
             self.http_code = response.status_code
 
             if self.http_code != 200:
@@ -82,14 +82,14 @@ class ResultSetDownloadHandler(threading.Thread):
                     uncompressed_data = lz4.frame.decompress(compressed_data)
                     self.result_file = uncompressed_data
 
-                    if len(uncompressed_data) != self.result_link.bytes_num:
+                    if len(uncompressed_data) != self.result_link.bytesNum:
                         self.is_file_downloaded_successfully = False
                     else:
                         self.is_file_downloaded_successfully = True
 
                 else:
                     self.result_file = response.content
-                    if len(self.result_file) != self.result_link.bytes_num:
+                    if len(self.result_file) != self.result_link.bytesNum:
                         self.is_file_downloaded_successfully = False
                     else:
                         self.is_file_downloaded_successfully = True

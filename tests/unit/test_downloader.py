@@ -14,7 +14,7 @@ class DownloaderTests(unittest.TestCase):
         settings = Mock()
         result_link = Mock()
         # Already expired
-        result_link.expiry_time = 999999
+        result_link.expiryTime = 999999
         d = downloader.ResultSetDownloadHandler(settings, result_link)
         assert not d.is_link_expired
         d.run()
@@ -27,7 +27,7 @@ class DownloaderTests(unittest.TestCase):
         settings.result_file_link_expiry_buffer = 0.005
         result_link = Mock()
         # Within the expiry buffer time
-        result_link.expiry_time = 1000004
+        result_link.expiryTime = 1000004
         d = downloader.ResultSetDownloadHandler(settings, result_link)
         assert not d.is_link_expired
         d.run()
@@ -42,7 +42,7 @@ class DownloaderTests(unittest.TestCase):
         settings.download_timeout = 0
         settings.use_proxy = False
         result_link = Mock()
-        result_link.expiry_time = 1000001
+        result_link.expiryTime = 1000001
 
         d = downloader.ResultSetDownloadHandler(settings, result_link)
         d.run()
@@ -60,8 +60,8 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         settings.is_lz4_compressed = False
         result_link = Mock()
-        result_link.bytes_num = 100
-        result_link.expiry_time = 1000001
+        result_link.bytesNum = 100
+        result_link.expiryTime = 1000001
 
         d = downloader.ResultSetDownloadHandler(settings, result_link)
         d.run()
@@ -78,8 +78,8 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         settings.is_lz4_compressed = True
         result_link = Mock()
-        result_link.bytes_num = 100
-        result_link.expiry_time = 1000001
+        result_link.bytesNum = 100
+        result_link.expiryTime = 1000001
         mock_session.return_value.get.return_value.content = \
             b'\x04"M\x18h@Z\x00\x00\x00\x00\x00\x00\x00\xec\x14\x00\x00\x00\xaf1234567890\n\x008P67890\x00\x00\x00\x00'
 
@@ -99,8 +99,8 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         settings.is_lz4_compressed = False
         result_link = Mock()
-        result_link.bytes_num = 100
-        result_link.expiry_time = 1000001
+        result_link.bytesNum = 100
+        result_link.expiryTime = 1000001
 
         d = downloader.ResultSetDownloadHandler(settings, result_link)
         d.run()
@@ -118,8 +118,8 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         settings.is_lz4_compressed = True
         result_link = Mock()
-        result_link.bytes_num = 100
-        result_link.expiry_time = 1000001
+        result_link.bytesNum = 100
+        result_link.expiryTime = 1000001
         mock_session.return_value.get.return_value.content = \
             b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
@@ -138,8 +138,8 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         settings.is_lz4_compressed = True
         result_link = Mock()
-        result_link.bytes_num = 100
-        result_link.expiry_time = 1000001
+        result_link.bytesNum = 100
+        result_link.expiryTime = 1000001
         mock_session.return_value.get.return_value.content = \
             b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
@@ -157,8 +157,8 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         settings.is_lz4_compressed = True
         result_link = Mock()
-        result_link.bytes_num = 100
-        result_link.expiry_time = 1000001
+        result_link.bytesNum = 100
+        result_link.expiryTime = 1000001
         mock_session.return_value.get.return_value.content = \
             b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
@@ -221,7 +221,7 @@ class DownloaderTests(unittest.TestCase):
         settings = Mock()
         settings.download_timeout = 10
         result_link = Mock()
-        result_link.file_link = "foo"
+        result_link.fileLink = "foo"
         handler = downloader.ResultSetDownloadHandler(settings, result_link)
 
         status = handler.is_file_download_successful()
