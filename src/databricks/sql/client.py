@@ -155,8 +155,10 @@ class Connection:
         # _use_arrow_native_timestamps
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
-        # _use_cloud_fetch
-        #  Enable use of cloud fetch to extract large query results in parallel via cloud storage
+        # use_cloud_fetch
+        # Enable use of cloud fetch to extract large query results in parallel via cloud storage
+        # max_download_threads
+        # Number of threads for handling cloud fetch downloads. Defaults to 10
 
         if access_token:
             access_token_kv = {"access_token": access_token}
@@ -194,6 +196,7 @@ class Connection:
             session_configuration, catalog, schema
         )
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", False)
+        self.max_download_threads = kwargs.get("max_download_threads", 10)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id()))
         self._cursors = []  # type: List[Cursor]
@@ -789,8 +792,9 @@ class ResultSet:
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
         self.results = None
+        self.result_file_download_manager = ResultFileDownloadManager(self.connection)
 
-        if execute_response.arrow_queue:
+        if execute_response.arrow_queue and execute_response.arrow_queue.arrow_table:
             # In this case the server has taken the fast path and returned an initial batch of
             # results
             self.results = execute_response.arrow_queue
@@ -821,9 +825,6 @@ class ResultSet:
         self.has_more_rows = has_more_rows
 
     def _fill_results_buffer_cloudfetch(self):
-        # Initialize singleton ResultFileDownloadManager
-        self.result_file_download_manager = ResultFileDownloadManager(self.connection)
-
         # If download manager already have handlers, fill buffer with remaining cloud fetch files
         while not self.result_file_download_manager.get_next_downloaded_file(self):
             # TODO: implement DownloadableFetchClient:L73-L77
