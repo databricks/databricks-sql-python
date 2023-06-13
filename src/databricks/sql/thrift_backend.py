@@ -28,6 +28,7 @@ from databricks.sql.utils import (
     _bound,
     RequestErrorInfo,
     NoRetryReason,
+    ResultSetQueueFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -516,22 +517,22 @@ class ThriftBackend:
             (
                 arrow_table,
                 num_rows,
-            ) = ThriftBackend._convert_column_based_set_to_arrow_table(
+            ) = ThriftBackend.convert_column_based_set_to_arrow_table(
                 t_row_set.columns, description
             )
         elif t_row_set.arrowBatches is not None:
             (
                 arrow_table,
                 num_rows,
-            ) = ThriftBackend._convert_arrow_based_set_to_arrow_table(
+            ) = ThriftBackend.convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
             raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
-        return self._convert_decimals_in_arrow_table(arrow_table, description), num_rows
+        return self.convert_decimals_in_arrow_table(arrow_table, description), num_rows
 
     @staticmethod
-    def _convert_decimals_in_arrow_table(table, description):
+    def convert_decimals_in_arrow_table(table, description):
         for (i, col) in enumerate(table.itercolumns()):
             if description[i][1] == "decimal":
                 decimal_col = col.to_pandas().apply(
@@ -549,7 +550,7 @@ class ThriftBackend:
         return table
 
     @staticmethod
-    def _convert_arrow_based_set_to_arrow_table(
+    def convert_arrow_based_set_to_arrow_table(
         arrow_batches, lz4_compressed, schema_bytes
     ):
         ba = bytearray()
@@ -567,7 +568,7 @@ class ThriftBackend:
         return arrow_table, n_rows
 
     @staticmethod
-    def _convert_column_based_set_to_arrow_table(columns, description):
+    def convert_column_based_set_to_arrow_table(columns, description):
         arrow_table = pyarrow.Table.from_arrays(
             [ThriftBackend._convert_column_to_arrow_array(c) for c in columns],
             # Only use the column names from the schema, the types are determined by the
@@ -952,6 +953,7 @@ class ThriftBackend:
             maxRows=max_rows,
             maxBytes=max_bytes,
             orientation=ttypes.TFetchOrientation.FETCH_NEXT,
+            includeResultSetMetadata=True,
         )
 
         resp = self.make_request(self._client.FetchResults, req)
@@ -961,13 +963,16 @@ class ThriftBackend:
                     expected_row_start_offset, resp.results.startRowOffset
                 )
             )
-        arrow_results, n_rows = self._create_arrow_table(
-            resp.results, lz4_compressed, arrow_schema_bytes, description
-        )
-        result_links = resp.results.resultLinks
-        arrow_queue = ArrowQueue(arrow_results, n_rows, result_links=result_links)
 
-        return arrow_queue, resp.hasMoreRows
+        queue = ResultSetQueueFactory.build_queue(
+            row_set_type=resp.resultSetMetadata.resultFormat,
+            t_row_set=resp.results,
+            arrow_schema_bytes=arrow_schema_bytes,
+            lz4_compressed=lz4_compressed,
+            description=description,
+        )
+
+        return queue, resp.hasMoreRows
 
     def close_command(self, op_handle):
         req = ttypes.TCloseOperationReq(operationHandle=op_handle)

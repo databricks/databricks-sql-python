@@ -8,7 +8,8 @@ from typing import Dict, List
 import pyarrow
 
 from databricks.sql import exc
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink, TSparkRowSetType
+from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink, TSparkRowSetType, TRowSet
+from databricks.sql.thrift_backend import ThriftBackend
 
 
 class ResultSetQueue(ABC):
@@ -25,15 +26,24 @@ class ResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
         row_set_type: TSparkRowSetType,
-        arrow_table: pyarrow.Table = None,
-        n_valid_rows: int = 0,
-        start_row_index: int = 0,
-        result_links: List[TSparkArrowResultLink] = None
+        t_row_set: TRowSet,
+        arrow_schema_bytes,
+        lz4_compressed: bool = True,
+        description: str = None,
     ) -> ResultSetQueue:
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
-            return ArrowQueue(arrow_table, n_valid_rows, start_row_index)
+            arrow_table, n_valid_rows = ThriftBackend.convert_arrow_based_set_to_arrow_table(
+                t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
+            )
+            converted_arrow_table = ThriftBackend.convert_decimals_in_arrow_table(arrow_table, description)
+            return ArrowQueue(converted_arrow_table, n_valid_rows)
+        elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
+            arrow_table, n_valid_rows = ThriftBackend.convert_column_based_set_to_arrow_table(
+                t_row_set.columns, description
+            )
+            converted_arrow_table = ThriftBackend.convert_decimals_in_arrow_table(arrow_table, description)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
-            return CloudFetchQueue(result_links)
+            return CloudFetchQueue(t_row_set.resultLinks)
         else:
             raise AssertionError("Row set type is not valid")
 
@@ -85,6 +95,7 @@ class CloudFetchQueue(ResultSetQueue):
 
     def remaining_rows(self) -> pyarrow.Table:
         pass
+
 
 ExecuteResponse = namedtuple(
     "ExecuteResponse",

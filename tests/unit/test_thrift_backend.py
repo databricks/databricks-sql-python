@@ -907,10 +907,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
         ]).serialize().to_pybytes()
         
         arrow_batches = [ttypes.TSparkArrowBatch(batch=bytearray('Testing','utf-8'), rowCount=1) for _ in range(10)]
-        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
+        thrift_backend.convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
         lz4_decompress_mock.assert_not_called()
 
-        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
+        thrift_backend.convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
         lz4_decompress_mock.assert_called()
         
 
@@ -928,7 +928,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 binaryVal=ttypes.TBinaryColumn(values=[b'\x11', b'\x22', b'\x33'], nulls=bytes(1)))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+        arrow_table, n_rows = ThriftBackend.convert_column_based_set_to_arrow_table(
             t_cols, description)
         self.assertEqual(n_rows, 3)
 
@@ -964,7 +964,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     values=[b'\x11', b'\x22', b'\x33'], nulls=bytes([3])))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+        arrow_table, n_rows = ThriftBackend.convert_column_based_set_to_arrow_table(
             t_cols, description)
         self.assertEqual(n_rows, 3)
 
@@ -987,7 +987,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 binaryVal=ttypes.TBinaryColumn(values=[b'\x11', b'\x22', b'\x33'], nulls=bytes(1)))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+        arrow_table, n_rows = ThriftBackend.convert_column_based_set_to_arrow_table(
             t_cols, description)
         self.assertEqual(n_rows, 3)
 
@@ -1204,7 +1204,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     table, description = self.make_table_and_desc(height, n_decimal_cols, width,
                                                                   precision, scale, int_constant,
                                                                   decimal_constant)
-                    decimal_converted_table = ThriftBackend._convert_decimals_in_arrow_table(
+                    decimal_converted_table = ThriftBackend.convert_decimals_in_arrow_table(
                         table, description)
 
                     for i in range(width):
