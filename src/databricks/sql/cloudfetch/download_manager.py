@@ -25,28 +25,12 @@ class ResultFileDownloadManager:
     def get_next_downloaded_file(self, result_set):
         if not self.download_handlers:
             return False
-        i = 0
-        # Remove any download handlers whose start to end range doesn't include the next row to be fetched
-        # i.e. no need to download
-        while i < len(self.download_handlers):
-            result_link = self.download_handlers[i].result_link
-            if result_link.start_row_offset + result_link.row_count >= result_set._next_row_index:
-                i += 1
-                continue
-            self.download_handlers.pop(i)
+
+        # Remove handlers we don't need anymore
+        self._remove_past_handlers(result_set._next_row_index)
 
         # Schedule the downloads
-        for handler in self.download_handlers:
-            if handler.is_download_scheduled:
-                continue
-            # TODO: break if download result files size + bytes num > arrowMaxBytesPerFetch
-            try:
-                self.thread_pool.submit(handler)
-            except:
-                # TODO: better exception handling
-                break
-            handler.is_download_scheduled = True
-            # TODO: downloadedResultFilesSize update
+        self._schedule_downloads()
 
         # Get the next downloaded file
         i = 0
@@ -74,6 +58,36 @@ class ResultFileDownloadManager:
             # Download was not successful for next download item, force a retry
             return False
         return False
+
+    def _remove_past_handlers(self, next_row_index):
+        """
+        Remove any download handlers whose start to end range doesn't include the next row to be fetched
+        i.e. no need to download
+        """
+        i = 0
+        while i < len(self.download_handlers):
+            result_link = self.download_handlers[i].result_link
+            if result_link.start_row_offset + result_link.row_count >= next_row_index:
+                i += 1
+                continue
+            self.download_handlers.pop(i)
+
+    def _schedule_downloads(self):
+        """
+        Schedule downloads for all download handlers if not already scheduled
+        """
+        for handler in self.download_handlers:
+            if handler.is_download_scheduled:
+                continue
+            # TODO: break if download result files size + bytes num > arrowMaxBytesPerFetch
+            try:
+                self.thread_pool.submit(handler)
+            except:
+                # TODO: better exception handling
+                break
+            handler.is_download_scheduled = True
+            # TODO: downloadedResultFilesSize update
+
 
     def _check_if_download_successful(self, handler, result_set):
         if not handler.is_file_download_successfully:
