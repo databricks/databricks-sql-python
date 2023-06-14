@@ -1,18 +1,20 @@
 from abc import ABC, abstractmethod
 from collections import namedtuple, OrderedDict
 from collections.abc import Iterable
+from decimal import Decimal
 import datetime
 import decimal
 from enum import Enum
+import lz4.frame
 from typing import Dict, List
 import pyarrow
 
-from databricks.sql import exc
+from databricks.sql import exc, OperationalError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink, TSparkRowSetType, TRowSet
-from databricks.sql.thrift_backend import ThriftBackend
 
 DEFAULT_MAX_DOWNLOAD_THREADS = 10
+BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
 class ResultSetQueue(ABC):
@@ -35,16 +37,16 @@ class ResultSetQueueFactory(ABC):
         description: str = None,
     ) -> ResultSetQueue:
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
-            arrow_table, n_valid_rows = ThriftBackend.convert_arrow_based_set_to_arrow_table(
+            arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
             )
-            converted_arrow_table = ThriftBackend.convert_decimals_in_arrow_table(arrow_table, description)
+            converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, description)
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
-            arrow_table, n_valid_rows = ThriftBackend.convert_column_based_set_to_arrow_table(
+            arrow_table, n_valid_rows = convert_column_based_set_to_arrow_table(
                 t_row_set.columns, description
             )
-            converted_arrow_table = ThriftBackend.convert_decimals_in_arrow_table(arrow_table, description)
+            converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, description)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
                 arrow_schema_bytes,
@@ -143,9 +145,9 @@ class CloudFetchQueue(ResultSetQueue):
         # TODO: need to update next_row_index and add to call for get_next_downloaded_file
         # TODO: retry logic from _fill_results_buffer_cloudfetch
         downloaded_file = self.download_manager.get_next_downloaded_file(self.start_row_index)
-        arrow_table = ThriftBackend.convert_arrow_based_set_to_arrow_table(
+        arrow_table = convert_arrow_based_set_to_arrow_table(
             downloaded_file.file_bytes, self.schema_bytes, self.lz4_compressed)
-        converted_arrow_table = ThriftBackend.convert_decimals_in_arrow_table(arrow_table, self.description)
+        converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, self.description)
         self.start_row_index += downloaded_file.row_count
         return converted_arrow_table, downloaded_file.row_count
 
@@ -293,3 +295,92 @@ class ParamEscaper:
 
 def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
+
+
+def convert_arrow_based_set_to_arrow_table(
+    arrow_batches, lz4_compressed, schema_bytes
+):
+    ba = bytearray()
+    ba += schema_bytes
+    n_rows = 0
+    if lz4_compressed:
+        for arrow_batch in arrow_batches:
+            n_rows += arrow_batch.rowCount
+            ba += lz4.frame.decompress(arrow_batch.batch)
+    else:
+        for arrow_batch in arrow_batches:
+            n_rows += arrow_batch.rowCount
+            ba += arrow_batch.batch
+    arrow_table = pyarrow.ipc.open_stream(ba).read_all()
+    return arrow_table, n_rows
+
+
+def convert_decimals_in_arrow_table(table, description):
+    for (i, col) in enumerate(table.itercolumns()):
+        if description[i][1] == "decimal":
+            decimal_col = col.to_pandas().apply(
+                lambda v: v if v is None else Decimal(v)
+            )
+            precision, scale = description[i][4], description[i][5]
+            assert scale is not None
+            assert precision is not None
+            # Spark limits decimal to a maximum scale of 38,
+            # so 128 is guaranteed to be big enough
+            dtype = pyarrow.decimal128(precision, scale)
+            col_data = pyarrow.array(decimal_col, type=dtype)
+            field = table.field(i).with_type(dtype)
+            table = table.set_column(i, field, col_data)
+    return table
+
+
+def convert_column_based_set_to_arrow_table(columns, description):
+    arrow_table = pyarrow.Table.from_arrays(
+        [_convert_column_to_arrow_array(c) for c in columns],
+        # Only use the column names from the schema, the types are determined by the
+        # physical types used in column based set, as they can differ from the
+        # mapping used in _hive_schema_to_arrow_schema.
+        names=[c[0] for c in description],
+    )
+    return arrow_table, arrow_table.num_rows
+
+
+def _convert_column_to_arrow_array(t_col):
+    """
+    Return a pyarrow array from the values in a TColumn instance.
+    Note that ColumnBasedSet has no native support for complex types, so they will be converted
+    to strings server-side.
+    """
+    field_name_to_arrow_type = {
+        "boolVal": pyarrow.bool_(),
+        "byteVal": pyarrow.int8(),
+        "i16Val": pyarrow.int16(),
+        "i32Val": pyarrow.int32(),
+        "i64Val": pyarrow.int64(),
+        "doubleVal": pyarrow.float64(),
+        "stringVal": pyarrow.string(),
+        "binaryVal": pyarrow.binary(),
+    }
+    for field in field_name_to_arrow_type.keys():
+        wrapper = getattr(t_col, field)
+        if wrapper:
+            return _create_arrow_array(
+                wrapper, field_name_to_arrow_type[field]
+            )
+
+    raise OperationalError("Empty TColumn instance {}".format(t_col))
+
+
+def _create_arrow_array(t_col_value_wrapper, arrow_type):
+    result = t_col_value_wrapper.values
+    nulls = t_col_value_wrapper.nulls  # bitfield describing which values are null
+    assert isinstance(nulls, bytes)
+
+    # The number of bits in nulls can be both larger or smaller than the number of
+    # elements in result, so take the minimum of both to iterate over.
+    length = min(len(result), len(nulls) * 8)
+
+    for i in range(length):
+        if nulls[i >> 3] & BIT_MASKS[i & 0x7]:
+            result[i] = None
+
+    return pyarrow.array(result, type=arrow_type)
