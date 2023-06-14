@@ -205,10 +205,7 @@ def convert_arrow_table_to_pandas(table: pyarrow.Table) -> pandas.DataFrame:
         pyarrow.string(): pandas.StringDtype(),
     }
 
-    # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-    table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-
-    return table_renamed.to_pandas(
+    return table.to_pandas(
         types_mapper=dtype_mapping.get,
         date_as_object=True,
         timestamp_as_object=True,
