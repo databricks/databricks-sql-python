@@ -14,6 +14,7 @@ from databricks.sql.thrift_backend import ThriftBackend
 
 DEFAULT_MAX_DOWNLOAD_THREADS = 10
 
+
 class ResultSetQueue(ABC):
     @abstractmethod
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
@@ -45,7 +46,12 @@ class ResultSetQueueFactory(ABC):
             )
             converted_arrow_table = ThriftBackend.convert_decimals_in_arrow_table(arrow_table, description)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
-            return CloudFetchQueue(t_row_set.resultLinks)
+            return CloudFetchQueue(
+                arrow_schema_bytes,
+                result_links=t_row_set.resultLinks,
+                lz4_compressed=lz4_compressed,
+                description=description
+            )
         else:
             raise AssertionError("Row set type is not valid")
 
