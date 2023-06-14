@@ -2,6 +2,10 @@
 
 ## 2.6.x (Unreleased)
 
+## 2.6.2 (2023-06-14)
+
+- Fix: Retry GetOperationStatus requests for http errors
+
 ## 2.6.1 (2023-06-08)
 
 - Fix: http.client would raise a BadStatusLine exception in some cases
