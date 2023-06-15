@@ -598,7 +598,11 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
                 if hasattr(cm, "exception"):
                     assert "RESOURCE_DOES_NOT_EXIST" in cm.exception.message
 
+    def test_cloud_fetch(self):
+        with self.cursor({}) as cursor:
+            cursor.execute("SELECT * FROM user_data LIMIT 1000000")
 
+            cursor.fetchall()
 
 
 # use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep
