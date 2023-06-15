@@ -47,6 +47,7 @@ class ResultSetQueueFactory(ABC):
                 t_row_set.columns, description
             )
             converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, description)
+            return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
                 arrow_schema_bytes,
@@ -119,37 +120,48 @@ class CloudFetchQueue(ResultSetQueue):
         self.table_row_index = 0
 
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
-        results = None
+        if not self.table:
+            # Return empty pyarrow table to cause retry of fetch
+            return self._create_empty_table()
+        results = self.table.slice(0, 0)
         while num_rows > 0 and self.table:
             length = min(num_rows, self.table_num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice]) if results else table_slice
+            results = pyarrow.concat_tables([results, table_slice])
             self.table_row_index += table_slice.num_rows
             if self.table_row_index == self.table_num_rows:
                 self.table, self.table_num_rows = self._create_next_table()
+                self.table_row_index = 0
             num_rows -= table_slice.num_rows
         return results
 
     def remaining_rows(self) -> pyarrow.Table:
-        results = None
+        if not self.table:
+            # Return empty pyarrow table to cause retry of fetch
+            return self._create_empty_table()
+        results = self.table.slice(0, 0)
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table_num_rows - self.table_row_index
             )
-            results = pyarrow.concat_tables([results, table_slice]) if results else table_slice
+            results = pyarrow.concat_tables([results, table_slice])
             self.table_row_index += table_slice.num_rows
             self.table, self.table_num_rows = self._create_next_table()
+            self.table_row_index = 0
         return results
 
     def _create_next_table(self):
-        # TODO: need to update next_row_index and add to call for get_next_downloaded_file
-        # TODO: retry logic from _fill_results_buffer_cloudfetch
+        # TODO: add retry logic from _fill_results_buffer_cloudfetch
         downloaded_file = self.download_manager.get_next_downloaded_file(self.start_row_index)
-        arrow_table = convert_arrow_based_set_to_arrow_table(
-            downloaded_file.file_bytes, self.schema_bytes, self.lz4_compressed)
-        converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, self.description)
+        if not downloaded_file:
+            return None, 0
+        arrow_table, num_rows = create_arrow_table_from_arrow_batch(
+            downloaded_file.file_bytes, self.lz4_compressed, self.schema_bytes, self.description)
         self.start_row_index += downloaded_file.row_count
-        return converted_arrow_table, downloaded_file.row_count
+        return arrow_table, downloaded_file.row_count
+
+    def _create_empty_table(self):
+        return create_arrow_table_from_arrow_batch([], False, self.schema_bytes, self.description)[0]
 
 
 ExecuteResponse = namedtuple(
@@ -297,6 +309,16 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
+def create_arrow_table_from_arrow_batch(
+    arrow_batches, lz4_compressed, schema_bytes, description
+) -> (pyarrow.Table, int):
+    arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
+        arrow_batches, lz4_compressed, schema_bytes
+    )
+    converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, description)
+    return converted_arrow_table, n_valid_rows
+
+
 def convert_arrow_based_set_to_arrow_table(
     arrow_batches, lz4_compressed, schema_bytes
 ):
@@ -315,7 +337,7 @@ def convert_arrow_based_set_to_arrow_table(
     return arrow_table, n_rows
 
 
-def convert_decimals_in_arrow_table(table, description):
+def convert_decimals_in_arrow_table(table, description) -> pyarrow.Table:
     for (i, col) in enumerate(table.itercolumns()):
         if description[i][1] == "decimal":
             decimal_col = col.to_pandas().apply(

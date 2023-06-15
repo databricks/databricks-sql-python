@@ -624,6 +624,7 @@ class ThriftBackend:
         if t_result_set_metadata_resp.resultFormat not in [
             ttypes.TSparkRowSetType.ARROW_BASED_SET,
             ttypes.TSparkRowSetType.COLUMN_BASED_SET,
+            ttypes.TSparkRowSetType.URL_BASED_SET,
         ]:
             raise OperationalError(
                 "Expected results to be in Arrow or column based format, "
@@ -661,8 +662,7 @@ class ThriftBackend:
                 schema_bytes,
                 description,
             )
-            result_links = direct_results.resultSet.results.resultLinks
-            arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0, result_links)
+            arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
         else:
             arrow_queue_opt = None
         return ExecuteResponse(

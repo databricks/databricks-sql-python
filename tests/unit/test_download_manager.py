@@ -215,12 +215,4 @@ class DownloadManagerTests(unittest.TestCase):
         assert not status
         assert manager.fetch_need_retry
 
-
-
-
-
-
-
-
-
-
+    ### TODO: test get_next_download run twice and get next handler
