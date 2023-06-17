@@ -112,6 +112,7 @@ export access_token=""
 There are several e2e test suites available:
 - `PySQLCoreTestSuite`
 - `PySQLLargeQueriesSuite`
+- `PySQLStagingIngestionTestSuite`
 - `PySQLRetryTestSuite.HTTP503Suite` **[not documented]**
 - `PySQLRetryTestSuite.HTTP429Suite` **[not documented]**
 - `PySQLUnityCatalogTestSuite` **[not documented]**
@@ -121,6 +122,12 @@ To execute the core test suite:
 ```bash
 poetry run python -m pytest tests/e2e/driver_tests.py::PySQLCoreTestSuite
 ```
+
+The `PySQLCoreTestSuite` namespace contains tests for all of the connector's basic features and behaviours. This is the default namespace where tests should be written unless they require specially configured clusters or take an especially long-time to execute by design.
+
+The `PySQLLargeQueriesSuite` namespace contains long-running query tests and is kept separate. In general, if the `PySQLCoreTestSuite` passes then these tests will as well.
+
+The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR version > 12.x which supports staging ingestion commands.
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 ### Code formatting
@@ -134,3 +141,13 @@ poetry run python3 -m black src --check
 Remove the `--check` flag to write reformatted files to disk.
 
 To simplify reviews you can format your changes in a separate commit.
+
+### Change a pinned dependency version
+
+Modify the dependency specification (syntax can be found [here](https://python-poetry.org/docs/dependency-specification/)) in `pyproject.toml` and run one of the following in your terminal:
+
+- `poetry update`
+- `rm poetry.lock && poetry install`
+
+Sometimes `poetry update` can freeze or run forever. Deleting the `poetry.lock` file and calling `poetry install` is guaranteed to update everything but is usually _slower_ than `poetry update` **if `poetry update` works at all**. 
+

@@ -1,9 +1,11 @@
 from collections import namedtuple, OrderedDict
 from collections.abc import Iterable
-import datetime
+import datetime, decimal
 from enum import Enum
 from typing import Dict
 import pyarrow
+
+from databricks.sql import exc
 
 
 class ArrowQueue:
@@ -40,7 +42,7 @@ class ArrowQueue:
 
 ExecuteResponse = namedtuple(
     "ExecuteResponse",
-    "status has_been_closed_server_side has_more_rows description lz4_compressed "
+    "status has_been_closed_server_side has_more_rows description lz4_compressed is_staging_operation "
     "command_handle arrow_queue arrow_schema_bytes",
 )
 
@@ -157,6 +159,9 @@ class ParamEscaper:
         formatted = dt_str[:-cutoff] if cutoff and format.endswith(".%f") else dt_str
         return "'{}'".format(formatted)
 
+    def escape_decimal(self, item):
+        return str(item)
+
     def escape_item(self, item):
         if item is None:
             return "NULL"
@@ -170,6 +175,8 @@ class ParamEscaper:
             return self.escape_datetime(item, self._DATETIME_FORMAT)
         elif isinstance(item, datetime.date):
             return self.escape_datetime(item, self._DATE_FORMAT)
+        elif isinstance(item, decimal.Decimal):
+            return self.escape_decimal(item)
         else:
             raise exc.ProgrammingError("Unsupported object {}".format(item))
 

@@ -6,12 +6,15 @@ import time
 import threading
 import lz4.frame
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
+from typing import List, Union
 
 import pyarrow
 import thrift.transport.THttpClient
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
 import thrift.transport.TTransport
+
+import urllib3.exceptions
 
 import databricks.sql.auth.thrift_http_client
 from databricks.sql.auth.authenticators import AuthProvider
@@ -36,6 +39,7 @@ DATABRICKS_ERROR_OR_REDIRECT_HEADER = "x-databricks-error-or-redirect-message"
 DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 
 TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
+DEFAULT_SOCKET_TIMEOUT = float(900)
 
 # see Connection.__init__ for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
@@ -61,6 +65,7 @@ class ThriftBackend:
         http_path: str,
         http_headers,
         auth_provider: AuthProvider,
+        staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
@@ -97,8 +102,8 @@ class ThriftBackend:
         # _retry_stop_after_attempts_count
         #  The maximum number of times we should retry retryable requests (defaults to 24)
         # _socket_timeout
-        #  The timeout in seconds for socket send, recv and connect operations. Defaults to None for
-        #  no timeout. Should be a positive float or integer.
+        #  The timeout in seconds for socket send, recv and connect operations. Should be a positive float or integer.
+        #  (defaults to 900)
 
         port = port or 443
         if kwargs.get("_connection_uri"):
@@ -110,6 +115,7 @@ class ThriftBackend:
         else:
             raise ValueError("No valid connection settings.")
 
+        self.staging_allowed_local_path = staging_allowed_local_path
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
@@ -149,8 +155,8 @@ class ThriftBackend:
             ssl_context=ssl_context,
         )
 
-        timeout = kwargs.get("_socket_timeout")
-        # setTimeout defaults to None (i.e. no timeout), and is expected in ms
+        timeout = kwargs.get("_socket_timeout", DEFAULT_SOCKET_TIMEOUT)
+        # setTimeout defaults to 15 minutes and is expected in ms
         self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
 
         self._transport.setCustomHeaders(dict(http_headers))
@@ -314,31 +320,47 @@ class ThriftBackend:
             try:
                 logger.debug("Sending request: {}".format(request))
                 response = method(request)
+
+                # Calling `close()` here releases the active HTTP connection back to the pool
+                self._transport.close()
+
                 logger.debug("Received response: {}".format(response))
                 return response
-            except OSError as err:
-                error = err
-                error_message = str(err)
+
+            except urllib3.exceptions.HTTPError as err:
+                # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
 
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
                     retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
+                    logger.info(
+                        f"GetOperationStatus failed with HTTP error and will be retried: {str(err)}"
+                    )
+                else:
+                    raise err
+            except OSError as err:
+                error = err
+                error_message = str(err)
+                # fmt: off
+                # The built-in errno package encapsulates OSError codes, which are OS-specific.
+                # log.info for errors we believe are not unusual or unexpected. log.warn for
+                # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
+                #
+                # I manually tested this retry behaviour using mitmweb and confirmed that 
+                # GetOperationStatus requests are retried when I forced network connection
+                # interruptions / timeouts / reconnects. See #24 for more info.
+                                        # | Debian | Darwin |
+                info_errs = [           # |--------|--------|         
+                    errno.ESHUTDOWN,    # |   32   |   32   |
+                    errno.EAFNOSUPPORT, # |   97   |   47   |
+                    errno.ECONNRESET,   # |   104  |   54   |
+                    errno.ETIMEDOUT,    # |   110  |   60   |
+                ]
 
-                    # fmt: off
-                    # The built-in errno package encapsulates OSError codes, which are OS-specific.
-                    # log.info for errors we believe are not unusual or unexpected. log.warn for
-                    # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
-                    #
-                    # I manually tested this retry behaviour using mitmweb and confirmed that 
-                    # GetOperationStatus requests are retried when I forced network connection
-                    # interruptions / timeouts / reconnects. See #24 for more info.
-                                            # | Debian | Darwin |
-                    info_errs = [           # |--------|--------|         
-                        errno.ESHUTDOWN,    # |   32   |   32   |
-                        errno.EAFNOSUPPORT, # |   97   |   47   |
-                        errno.ECONNRESET,   # |   104  |   54   |
-                        errno.ETIMEDOUT,    # |   110  |   60   |
-                    ]
+                gos_name = TCLIServiceClient.GetOperationStatus.__name__
+                # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
+                if method.__name__ == gos_name or err.errno == errno.ETIMEDOUT:
+                    retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
 
                     # fmt: on
                     log_string = f"{gos_name} failed with code {err.errno} and will attempt to retry"
@@ -452,7 +474,7 @@ class ThriftBackend:
                 initial_namespace = None
 
             open_session_req = ttypes.TOpenSessionReq(
-                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V6,
+                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
                 client_protocol=None,
                 initialNamespace=initial_namespace,
                 canUseMultipleCatalogs=True,
@@ -733,6 +755,7 @@ class ThriftBackend:
             .to_pybytes()
         )
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
+        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         if direct_results and direct_results.resultSet:
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
@@ -752,6 +775,7 @@ class ThriftBackend:
             has_been_closed_server_side=has_been_closed_server_side,
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
+            is_staging_operation=is_staging_operation,
             command_handle=resp.operationHandle,
             description=description,
             arrow_schema_bytes=schema_bytes,

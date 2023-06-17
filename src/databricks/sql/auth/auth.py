@@ -5,6 +5,7 @@ from databricks.sql.auth.authenticators import (
     AuthProvider,
     AccessTokenAuthProvider,
     BasicAuthProvider,
+    ExternalAuthProvider,
     DatabricksOAuthProvider,
 )
 from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType
@@ -31,6 +32,7 @@ class ClientContext:
         use_cert_as_auth: str = None,
         tls_client_cert_file: str = None,
         oauth_persistence=None,
+        credentials_provider=None,
     ):
         self.hostname = hostname
         self.username = username
@@ -43,9 +45,12 @@ class ClientContext:
         self.use_cert_as_auth = use_cert_as_auth
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
+        self.credentials_provider = credentials_provider
 
 
 def get_auth_provider(cfg: ClientContext):
+    if cfg.credentials_provider:
+        return ExternalAuthProvider(cfg.credentials_provider)
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
         assert cfg.oauth_redirect_port_range is not None
         assert cfg.oauth_client_id is not None
@@ -104,5 +109,6 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
         else PYSQL_OAUTH_REDIRECT_PORT_RANGE,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
+        credentials_provider=kwargs.get("credentials_provider"),
     )
     return get_auth_provider(cfg)

@@ -1,6 +1,48 @@
 # Release History
 
-## 2.2.x (Unreleased)
+## 2.6.x (Unreleased)
+
+## 2.6.2 (2023-06-14)
+
+- Fix: Retry GetOperationStatus requests for http errors
+
+## 2.6.1 (2023-06-08)
+
+- Fix: http.client would raise a BadStatusLine exception in some cases
+
+## 2.6.0 (2023-06-07)
+
+- Add support for HTTP 1.1 connections (connection pools)
+- Add a default socket timeout for thrift RPCs
+
+## 2.5.2 (2023-05-08)
+
+- Fix: SQLAlchemy adapter could not reflect TIMESTAMP or DATETIME columns
+- Other: Relax pandas and alembic dependency specifications
+
+## 2.5.1 (2023-04-28)
+
+- Other: Relax sqlalchemy required version as it was unecessarily strict.
+
+## 2.5.0 (2023-04-14)
+- Add support for External Auth providers
+- Fix: Python HTTP proxies were broken
+- Other: All Thrift requests that timeout during connection will be automatically retried
+
+## 2.4.1 (2023-03-21)
+
+- Less strict numpy and pyarrow dependencies
+- Update examples in README to use security best practices
+- Update docstring for client.execute() for clarity
+
+## 2.4.0 (2023-02-21)
+
+- Improve compatibility when installed alongside other Databricks namespace Python packages
+- Add SQLAlchemy dialect
+
+## 2.3.0 (2023-01-10)
+
+- Support staging ingestion commands for DBR 12+
 
 ## 2.2.2 (2023-01-03)
 
