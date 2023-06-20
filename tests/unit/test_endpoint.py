@@ -23,7 +23,7 @@ class EndpointTest(unittest.TestCase):
     def test_oauth_endpoint(self):
         scopes = ["offline_access", "sql", "admin"]
         scopes2 = ["sql", "admin"]
-        azure_scope = f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_TENANT_ID}/user_impersonation"
+        azure_scope = f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_APP}/user_impersonation"
 
         param_list = [(CloudType.AWS,
                        aws_host,
