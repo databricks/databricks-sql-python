@@ -4,6 +4,7 @@ import logging
 from typing import Callable, Dict, List
 
 from databricks.sql.auth.oauth import OAuthManager
+from databricks.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_host
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
@@ -70,11 +71,26 @@ class DatabricksOAuthProvider(AuthProvider):
         scopes: List[str],
     ):
         try:
+            cloud_type = infer_cloud_from_host(hostname)
+            if not cloud_type:
+                raise NotImplementedError("Cannot infer the cloud type from hostname")
+
+            idp_endpoint = get_oauth_endpoints(cloud_type)
+            if not idp_endpoint:
+                raise NotImplementedError(
+                    f"OAuth is not supported for cloud ${cloud_type.value}"
+                )
+
+            # Convert to the corresponding scopes in the corresponding IdP
+            cloud_scopes = idp_endpoint.get_scopes_mapping(scopes)
+
             self.oauth_manager = OAuthManager(
-                port_range=redirect_port_range, client_id=client_id
+                port_range=redirect_port_range,
+                client_id=client_id,
+                idp_endpoint=idp_endpoint,
             )
             self._hostname = hostname
-            self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(scopes)
+            self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(cloud_scopes)
             self._oauth_persistence = oauth_persistence
             self._client_id = client_id
             self._access_token = None
