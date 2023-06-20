@@ -67,13 +67,13 @@ class OAuthEndpointCollection(ABC):
 
 
 class AzureOAuthEndpointCollection(OAuthEndpointCollection):
-    DATATRICKS_AZURE_TENANT_ID = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
+    DATATRICKS_AZURE_APP = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d"
 
     def get_scopes_mapping(self, scopes: List[str]) -> List[str]:
         # There is no corresponding scopes in Azure, instead, access control will be delegated to Databricks
         tenant_id = os.getenv(
             "DATABRICKS_AZURE_TENANT_ID",
-            AzureOAuthEndpointCollection.DATATRICKS_AZURE_TENANT_ID,
+            AzureOAuthEndpointCollection.DATATRICKS_AZURE_APP,
         )
         azure_scope = f"{tenant_id}/user_impersonation"
         mapped_scopes = [azure_scope]

@@ -5,7 +5,11 @@ from unittest.mock import patch
 
 from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider, ExternalAuthProvider
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.oauth import OAuthManager
+from databricks.sql.auth.authenticators import DatabricksOAuthProvider
+from databricks.sql.auth.endpoint import CloudType, AwsOAuthEndpointCollection, AzureOAuthEndpointCollection
 from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
+from databricks.sql.experimental.oauth_persistence import OAuthPersistenceCache
 
 
 class Auth(unittest.TestCase):
