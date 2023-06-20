@@ -27,6 +27,17 @@ class OAuthPersistence:
         pass
 
 
+class OAuthPersistenceCache(OAuthPersistence):
+    def __init__(self):
+        self.tokens = {}
+
+    def persist(self, hostname: str, oauth_token: OAuthToken):
+        self.tokens[hostname] = oauth_token
+
+    def read(self, hostname: str) -> Optional[OAuthToken]:
+        return self.tokens.get(hostname)
+
+
 # Note this is only intended to be used for development
 class DevOnlyFilePersistence(OAuthPersistence):
     def __init__(self, file_path):

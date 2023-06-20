@@ -8,6 +8,7 @@ from databricks.sql.auth.authenticators import (
     ExternalAuthProvider,
     DatabricksOAuthProvider,
 )
+from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 
@@ -75,7 +76,9 @@ def get_auth_provider(cfg: ClientContext):
 
 PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
 PYSQL_OAUTH_CLIENT_ID = "databricks-sql-python"
+PYSQL_OAUTH_AZURE_CLIENT_ID = "96eecda7-19ea-49cc-abb5-240097d554f5"
 PYSQL_OAUTH_REDIRECT_PORT_RANGE = list(range(8020, 8025))
+PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE = [8030]
 
 
 def normalize_host_name(hostname: str):
@@ -84,7 +87,16 @@ def normalize_host_name(hostname: str):
     return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
 
 
+def get_client_id_and_redirect_port(hostname: str):
+    return (
+        (PYSQL_OAUTH_CLIENT_ID, PYSQL_OAUTH_REDIRECT_PORT_RANGE)
+        if infer_cloud_from_host(hostname) == CloudType.AWS
+        else (PYSQL_OAUTH_AZURE_CLIENT_ID, PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE)
+    )
+
+
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
+    (client_id, redirect_port_range) = get_client_id_and_redirect_port(hostname)
     cfg = ClientContext(
         hostname=normalize_host_name(hostname),
         auth_type=kwargs.get("auth_type"),
@@ -94,10 +106,10 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         use_cert_as_auth=kwargs.get("_use_cert_as_auth"),
         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
         oauth_scopes=PYSQL_OAUTH_SCOPES,
-        oauth_client_id=kwargs.get("oauth_client_id") or PYSQL_OAUTH_CLIENT_ID,
+        oauth_client_id=kwargs.get("oauth_client_id") or client_id,
         oauth_redirect_port_range=[kwargs["oauth_redirect_port"]]
         if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
-        else PYSQL_OAUTH_REDIRECT_PORT_RANGE,
+        else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
     )
