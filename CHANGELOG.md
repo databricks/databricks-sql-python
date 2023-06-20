@@ -2,6 +2,8 @@
 
 ## 2.6.x (Unreleased)
 
+- Add support for OAuth on Databricks Azure
+
 ## 2.6.2 (2023-06-14)
 
 - Fix: Retry GetOperationStatus requests for http errors
