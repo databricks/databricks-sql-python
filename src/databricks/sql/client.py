@@ -153,6 +153,10 @@ class Connection:
         # _use_arrow_native_timestamps
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
+        # use_cloud_fetch
+        # Enable use of cloud fetch to extract large query results in parallel via cloud storage
+        # max_download_threads
+        # Number of threads for handling cloud fetch downloads. Defaults to 10
 
         if access_token:
             access_token_kv = {"access_token": access_token}
@@ -189,6 +193,8 @@ class Connection:
         self._session_handle = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
+        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", False)
+        self.max_download_threads = kwargs.get("max_download_threads", 10)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
@@ -497,6 +503,7 @@ class Cursor:
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
+            use_cloud_fetch=self.connection.use_cloud_fetch,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -804,6 +811,7 @@ class ResultSet:
         self.description = execute_response.description
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
+        self.results = None
 
         if execute_response.arrow_queue:
             # In this case the server has taken the fast path and returned an initial batch of
@@ -822,6 +830,7 @@ class ResultSet:
                 break
 
     def _fill_results_buffer(self):
+        # At initialization or if the server does not have cloud fetch result links available
         results, has_more_rows = self.thrift_backend.fetch_results(
             op_handle=self.command_id,
             max_rows=self.arraysize,
