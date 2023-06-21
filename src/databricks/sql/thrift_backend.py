@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
 unsafe_logger.setLevel(logging.DEBUG)
 
-# To capture these logs in client code, add a non-NullHandler for example.
+# To capture these logs in client code, add a non-NullHandler.
 # See our e2e test suite for an example with logging.FileHandler
 unsafe_logger.addHandler(logging.NullHandler())
 
@@ -328,6 +328,7 @@ class ThriftBackend:
 
             error, error_message, retry_delay = None, None, None
             try:
+                # The MagicMocks in our unit tests have a `name` property instead of `__name__. 
                 logger.debug(
                     "Sending request: {}(<REDACTED>)".format(
                         getattr(
