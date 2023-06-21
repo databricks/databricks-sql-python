@@ -51,6 +51,7 @@ class ResultSetQueueFactory(ABC):
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
                 arrow_schema_bytes,
+                start_row_index=t_row_set.startRowOffset,
                 result_links=t_row_set.resultLinks,
                 lz4_compressed=lz4_compressed,
                 description=description
@@ -155,13 +156,17 @@ class CloudFetchQueue(ResultSetQueue):
         downloaded_file = self.download_manager.get_next_downloaded_file(self.start_row_index)
         if not downloaded_file:
             return None, 0
-        arrow_table, num_rows = create_arrow_table_from_arrow_batch(
-            downloaded_file.file_bytes, self.lz4_compressed, self.schema_bytes, self.description)
-        self.start_row_index += downloaded_file.row_count
-        return arrow_table, downloaded_file.row_count
+        arrow_table = create_arrow_table_from_arrow_file(
+            downloaded_file.file_bytes, self.description)
+        if arrow_table.num_rows > downloaded_file.row_count:
+            self.start_row_index += downloaded_file.row_count
+            return arrow_table.slice(0, downloaded_file.row_count), downloaded_file.row_count
+        assert downloaded_file.row_count == arrow_table.num_rows
+        self.start_row_index += arrow_table.num_rows
+        return arrow_table, arrow_table.num_rows
 
     def _create_empty_table(self):
-        return create_arrow_table_from_arrow_batch([], False, self.schema_bytes, self.description)[0]
+        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
 
 ExecuteResponse = namedtuple(
@@ -309,14 +314,18 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-def create_arrow_table_from_arrow_batch(
-    arrow_batches, lz4_compressed, schema_bytes, description
+def create_arrow_table_from_arrow_file(
+    arrow_batches, description
 ) -> (pyarrow.Table, int):
-    arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
-        arrow_batches, lz4_compressed, schema_bytes
-    )
-    converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, description)
-    return converted_arrow_table, n_valid_rows
+    arrow_table = convert_arrow_based_file_to_arrow_table(arrow_batches)
+    return convert_decimals_in_arrow_table(arrow_table, description)
+
+
+def convert_arrow_based_file_to_arrow_table(arrow_bytes):
+    try:
+        return pyarrow.ipc.open_stream(arrow_bytes).read_all()
+    except Exception as e:
+        raise RuntimeError("Failure to convert arrow based file to arrow table", e)
 
 
 def convert_arrow_based_set_to_arrow_table(
