@@ -75,7 +75,7 @@ class ResultFileDownloadManager:
                 continue
             # TODO: break if download result files size + bytes num > arrowMaxBytesPerFetch
             try:
-                self.thread_pool.submit(handler)
+                self.thread_pool.submit(handler.run)
             except:
                 # TODO: better exception handling
                 break
