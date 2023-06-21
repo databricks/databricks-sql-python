@@ -81,20 +81,19 @@ class ResultSetDownloadHandler(threading.Thread):
             else:
                 if self.settings.is_lz4_compressed:
                     compressed_data = response.content
-                    uncompressed_data = lz4.frame.decompress(compressed_data)
+                    uncompressed_data, bytes_read = lz4.frame.decompress(compressed_data, return_bytes_read=True)
+                    if bytes_read < len(compressed_data):
+                        d_context = lz4.frame.create_decompression_context()
+                        start = 0
+                        uncompressed_data = bytearray()
+                        while start < len(compressed_data):
+                            data, num_bytes, e = lz4.frame.decompress_chunk(d_context, compressed_data[start:])
+                            uncompressed_data += data
+                            start += num_bytes
                     self.result_file = uncompressed_data
-
-                    if len(uncompressed_data) != self.result_link.bytesNum:
-                        self.is_file_downloaded_successfully = False
-                    else:
-                        self.is_file_downloaded_successfully = True
-
                 else:
                     self.result_file = response.content
-                    if len(self.result_file) != self.result_link.bytesNum:
-                        self.is_file_downloaded_successfully = False
-                    else:
-                        self.is_file_downloaded_successfully = True
+                self.is_file_downloaded_successfully = len(self.result_file) == self.result_link.bytesNum
         except:
             self.is_file_downloaded_successfully = False
 
