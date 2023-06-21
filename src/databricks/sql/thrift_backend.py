@@ -34,8 +34,14 @@ from databricks.sql.utils import (
 
 logger = logging.getLogger(__name__)
 
-# Disable propagation so that handlers for `databricks.sql` don't pick up these messages
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger.setLevel(logging.DEBUG)
+
+# To capture these logs in client code, add a non-NullHandler for example.
+# See our e2e test suite for an example with logging.FileHandler
+unsafe_logger.addHandler(logging.NullHandler())
+
+# Disable propagation so that handlers for `databricks.sql` don't pick up these messages
 unsafe_logger.propagate = False
 
 THRIFT_ERROR_MESSAGE_HEADER = "x-thriftserver-error-message"
