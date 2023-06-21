@@ -34,6 +34,10 @@ from databricks.sql.utils import (
 
 logger = logging.getLogger(__name__)
 
+# Disable propagation so that handlers for `databricks.sql` don't pick up these messages
+unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger.propagate = False
+
 THRIFT_ERROR_MESSAGE_HEADER = "x-thriftserver-error-message"
 DATABRICKS_ERROR_OR_REDIRECT_HEADER = "x-databricks-error-or-redirect-message"
 DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
@@ -318,13 +322,18 @@ class ThriftBackend:
 
             error, error_message, retry_delay = None, None, None
             try:
-                logger.debug("Sending request: {}".format(request))
+                logger.debug("Sending request: {}(<REDACTED>)".format(method.__name__))
+                unsafe_logger.debug("Sending request: {}".format(request))
                 response = method(request)
 
                 # Calling `close()` here releases the active HTTP connection back to the pool
                 self._transport.close()
 
-                logger.debug("Received response: {}".format(response))
+                # We need to call type(response) here because thrift doesn't implement __name__ attributes for thrift responses
+                logger.debug(
+                    "Received response: {}(<REDACTED>)".format(type(response).__name__)
+                )
+                unsafe_logger.debug("Received response: {}".format(response))
                 return response
 
             except urllib3.exceptions.HTTPError as err:
