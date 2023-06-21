@@ -73,7 +73,7 @@ class ResultFileDownloadManager:
             if handler.is_download_scheduled:
                 continue
             try:
-                self.thread_pool.submit(handler)
+                self.thread_pool.submit(handler.run)
             except:
                 break
             handler.is_download_scheduled = True
