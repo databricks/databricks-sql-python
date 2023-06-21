@@ -4,7 +4,6 @@ import logging
 import math
 import time
 import threading
-import lz4.frame
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union
 
@@ -656,13 +655,16 @@ class ThriftBackend:
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
 
-            arrow_results, n_rows = self._create_arrow_table(
-                direct_results.resultSet.results,
-                lz4_compressed,
-                schema_bytes,
-                description,
-            )
-            arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
+            if direct_results.resultSet.results.resultLinks is None:
+                arrow_results, n_rows = self._create_arrow_table(
+                    direct_results.resultSet.results,
+                    lz4_compressed,
+                    schema_bytes,
+                    description,
+                )
+                arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
+            else:
+                arrow_queue_opt = None
         else:
             arrow_queue_opt = None
         return ExecuteResponse(
@@ -716,7 +718,7 @@ class ThriftBackend:
                 )
 
     def execute_command(
-        self, operation, session_handle, max_rows, max_bytes, lz4_compression, cursor
+        self, operation, session_handle, max_rows, max_bytes, lz4_compression, cursor, use_cloud_fetch
     ):
         assert session_handle is not None
 
@@ -737,7 +739,7 @@ class ThriftBackend:
             ),
             canReadArrowResult=True,
             canDecompressLZ4Result=lz4_compression,
-            canDownloadResult=False,
+            canDownloadResult=use_cloud_fetch,
             confOverlay={
                 # We want to receive proper Timestamp arrow types.
                 "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
