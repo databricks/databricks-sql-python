@@ -328,7 +328,13 @@ class ThriftBackend:
 
             error, error_message, retry_delay = None, None, None
             try:
-                logger.debug("Sending request: {}(<REDACTED>)".format(method.__name__))
+                logger.debug(
+                    "Sending request: {}(<REDACTED>)".format(
+                        getattr(
+                            method, "__name__", getattr(method, "name", "UnknownMethod")
+                        )
+                    )
+                )
                 unsafe_logger.debug("Sending request: {}".format(request))
                 response = method(request)
 
