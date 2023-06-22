@@ -38,11 +38,6 @@ for name in loader.getTestCaseNames(DecimalTestsMixin, 'test_'):
     decorated = skipUnless(pysql_supports_arrow(), 'Decimal tests need arrow support')(fn)
     setattr(DecimalTestsMixin, name, decorated)
 
-# manually decorate PySQLStagingIngestionTestSuite to need arrow support
-for name in loader.getTestCaseNames(PySQLStagingIngestionTestSuiteMixin, 'test_'):
-    fn = getattr(PySQLStagingIngestionTestSuiteMixin, name)
-    decorated = skipIf(True, "DECO infra doesn't expose  staging ingestion user email yet.")(fn)
-    setattr(PySQLStagingIngestionTestSuiteMixin, name, decorated)
 
 get_args_from_env = True
 
