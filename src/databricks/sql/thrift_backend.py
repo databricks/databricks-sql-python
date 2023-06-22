@@ -697,16 +697,13 @@ class ThriftBackend:
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
 
-            if direct_results.resultSet.results.resultLinks is None:
-                arrow_results, n_rows = self._create_arrow_table(
-                    direct_results.resultSet.results,
-                    lz4_compressed,
-                    schema_bytes,
-                    description,
-                )
-                arrow_queue_opt = ArrowQueue(arrow_results, n_rows, 0)
-            else:
-                arrow_queue_opt = None
+            arrow_queue_opt = ResultSetQueueFactory.build_queue(
+                row_set_type=t_result_set_metadata_resp.resultFormat,
+                t_row_set=direct_results.resultSet.results,
+                arrow_schema_bytes=schema_bytes,
+                lz4_compressed=lz4_compressed,
+                description=description,
+            )
         else:
             arrow_queue_opt = None
         return ExecuteResponse(
