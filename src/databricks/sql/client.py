@@ -190,7 +190,7 @@ class Connection:
             session_configuration, catalog, schema
         )
         self.open = True
-        logger.info("Successfully opened session " + str(self.get_session_id()))
+        logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
 
     def __enter__(self):
@@ -248,9 +248,11 @@ class Connection:
             for cursor in self._cursors:
                 cursor.close()
         try:
+            logger.info(f"Closing session {self.get_session_id_hex()}")
             self.thrift_backend.close_session(self._session_handle)
         except DatabaseError as e:
             if "Invalid SessionHandle" in str(e):
+                logger.warning(f"Attempted to close session that was already closed: {e}")
                 pass
             else:
                 raise e

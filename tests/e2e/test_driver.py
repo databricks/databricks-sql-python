@@ -616,6 +616,20 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
                     assert "RESOURCE_DOES_NOT_EXIST" in cm.exception.message
 
 
+    def test_closing_a_closed_connection_doesnt_fail(self):
+
+        with self.assertLogs("databricks.sql", "WARNING") as cm:
+            with self.connection() as conn:
+                conn.close()
+
+            expected_message_was_found = False
+            for log in cm.output:
+                if expected_message_was_found:
+                    break
+                target = "Attempted to close session that was already closed"
+                expected_message_was_found = target in log
+            
+            self.assertTrue(expected_message_was_found, "Did not find expected log messages")
 
 
 # use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep
