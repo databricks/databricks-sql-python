@@ -2,6 +2,7 @@
 
 ## 2.6.x (Unreleased)
 
+- Improve e2e test development ergonomics
 - Redact logged thrift responses by default
 - Add support for OAuth on Databricks Azure
 
