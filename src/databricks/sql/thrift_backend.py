@@ -3,6 +3,7 @@ import errno
 import logging
 import math
 import time
+import uuid
 import threading
 import lz4.frame
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
@@ -1021,3 +1022,8 @@ class ThriftBackend:
     @staticmethod
     def handle_to_id(session_handle):
         return session_handle.sessionId.guid
+    
+    @staticmethod
+    def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
+        this_uuid = uuid.UUID(bytes=session_handle.sessionId.guid)
+        return str(this_uuid)

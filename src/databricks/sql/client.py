@@ -213,6 +213,9 @@ class Connection:
 
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
+    
+    def get_session_id_hex(self):
+        return self.thrift_backend.handle_to_hex_id(self._session_handle)
 
     def cursor(
         self,
