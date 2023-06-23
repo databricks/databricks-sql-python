@@ -109,7 +109,10 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
                 headers={"Proxy-Authorization": self.proxy_auth},
             )
             self.__pool = proxy_manager.connection_from_host(
-                self.realhost, self.realport, pool_kwargs=_pool_kwargs, scheme=self.scheme
+                host=self.realhost,
+                port=self.realport,
+                scheme=self.scheme,
+                pool_kwargs=_pool_kwargs,
             )
         else:
             self.__pool = pool_class(self.host, self.port, **_pool_kwargs)
