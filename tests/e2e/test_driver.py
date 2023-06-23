@@ -619,7 +619,9 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
     def test_closing_a_closed_connection_doesnt_fail(self):
 
         with self.assertLogs("databricks.sql", "WARNING") as cm:
+            # Second .close() call is when this context manager exits
             with self.connection() as conn:
+                # First .close() call is explicit here
                 conn.close()
 
             expected_message_was_found = False
