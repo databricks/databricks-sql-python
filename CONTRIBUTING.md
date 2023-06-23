@@ -109,6 +109,15 @@ export http_path=""
 export access_token=""
 ```
 
+Or you can write these into a file called `test.env` in the root of the repository:
+
+```
+host="****.cloud.databricks.com"
+http_path="/sql/1.0/warehouses/***"
+access_token="dapi***"
+staging_ingestion_user="***@example.com"
+```
+
 There are several e2e test suites available:
 - `PySQLCoreTestSuite`
 - `PySQLLargeQueriesSuite`
