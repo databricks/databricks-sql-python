@@ -118,6 +118,8 @@ access_token="dapi***"
 staging_ingestion_user="***@example.com"
 ```
 
+To see logging output from pytest while running tests, set `log_cli = "true"` under `tool.pytest.ini_options` in `pyproject.toml`. You can also set `log_cli_level` to any of the default Python log levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+
 There are several e2e test suites available:
 - `PySQLCoreTestSuite`
 - `PySQLLargeQueriesSuite`
