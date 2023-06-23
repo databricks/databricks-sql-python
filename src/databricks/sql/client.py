@@ -247,7 +247,14 @@ class Connection:
         if close_cursors:
             for cursor in self._cursors:
                 cursor.close()
-        self.thrift_backend.close_session(self._session_handle)
+        try:
+            self.thrift_backend.close_session(self._session_handle)
+        except DatabaseError as e:
+            if "Invalid SessionHandle" in str(e):
+                pass
+            else:
+                raise e
+
         self.open = False
 
     def commit(self):
