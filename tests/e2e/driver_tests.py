@@ -28,6 +28,10 @@ from tests.e2e.common.retry_test_mixins import Client429ResponseMixin, Client503
 
 log = logging.getLogger(__name__)
 
+unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger.setLevel(logging.DEBUG)
+unsafe_logger.addHandler(logging.FileHandler("./tests-unsafe.log"))
+
 # manually decorate DecimalTestsMixin to need arrow support
 for name in loader.getTestCaseNames(DecimalTestsMixin, 'test_'):
     fn = getattr(DecimalTestsMixin, name)

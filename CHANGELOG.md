@@ -2,6 +2,7 @@
 
 ## 2.6.x (Unreleased)
 
+- Redact logged thrift responses by default
 - Add support for OAuth on Databricks Azure
 
 ## 2.6.2 (2023-06-14)
