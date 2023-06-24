@@ -1022,7 +1022,7 @@ class ThriftBackend:
     @staticmethod
     def handle_to_id(session_handle):
         return session_handle.sessionId.guid
-    
+
     @staticmethod
     def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
         this_uuid = uuid.UUID(bytes=session_handle.sessionId.guid)

@@ -213,7 +213,7 @@ class Connection:
 
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
-    
+
     def get_session_id_hex(self):
         return self.thrift_backend.handle_to_hex_id(self._session_handle)
 
@@ -252,7 +252,9 @@ class Connection:
             self.thrift_backend.close_session(self._session_handle)
         except DatabaseError as e:
             if "Invalid SessionHandle" in str(e):
-                logger.warning(f"Attempted to close session that was already closed: {e}")
+                logger.warning(
+                    f"Attempted to close session that was already closed: {e}"
+                )
                 pass
             else:
                 raise e
