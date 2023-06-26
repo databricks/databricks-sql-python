@@ -6,7 +6,7 @@ import datetime
 import decimal
 from enum import Enum
 import lz4.frame
-from typing import Dict, List
+from typing import Dict, List, Union
 import pyarrow
 
 from databricks.sql import exc, OperationalError
@@ -117,7 +117,7 @@ class CloudFetchQueue(ResultSetQueue):
         self.download_manager = ResultFileDownloadManager(self.max_download_threads, self.lz4_compressed)
         self.download_manager.add_file_links(result_links, start_row_index)
 
-        self.table, self.table_num_rows = self._create_next_table()
+        self.table = self._create_next_table()
         self.table_row_index = 0
 
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
@@ -126,12 +126,12 @@ class CloudFetchQueue(ResultSetQueue):
             return self._create_empty_table()
         results = self.table.slice(0, 0)
         while num_rows > 0 and self.table:
-            length = min(num_rows, self.table_num_rows - self.table_row_index)
+            length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
             results = pyarrow.concat_tables([results, table_slice])
             self.table_row_index += table_slice.num_rows
-            if self.table_row_index == self.table_num_rows:
-                self.table, self.table_num_rows = self._create_next_table()
+            if self.table_row_index == self.table.num_rows:
+                self.table = self._create_next_table()
                 self.table_row_index = 0
             num_rows -= table_slice.num_rows
         return results
@@ -143,29 +143,28 @@ class CloudFetchQueue(ResultSetQueue):
         results = self.table.slice(0, 0)
         while self.table:
             table_slice = self.table.slice(
-                self.table_row_index, self.table_num_rows - self.table_row_index
+                self.table_row_index, self.table.num_rows - self.table_row_index
             )
             results = pyarrow.concat_tables([results, table_slice])
             self.table_row_index += table_slice.num_rows
-            self.table, self.table_num_rows = self._create_next_table()
+            self.table = self._create_next_table()
             self.table_row_index = 0
         return results
 
-    def _create_next_table(self):
+    def _create_next_table(self) -> Union[pyarrow.Table, None]:
         # TODO: add retry logic from _fill_results_buffer_cloudfetch
         downloaded_file = self.download_manager.get_next_downloaded_file(self.start_row_index)
         if not downloaded_file:
-            return None, 0
-        arrow_table = create_arrow_table_from_arrow_file(
-            downloaded_file.file_bytes, self.description)
+            return None
+        arrow_table = create_arrow_table_from_arrow_file(downloaded_file.file_bytes, self.description)
         if arrow_table.num_rows > downloaded_file.row_count:
             self.start_row_index += downloaded_file.row_count
-            return arrow_table.slice(0, downloaded_file.row_count), downloaded_file.row_count
+            return arrow_table.slice(0, downloaded_file.row_count)
         assert downloaded_file.row_count == arrow_table.num_rows
         self.start_row_index += arrow_table.num_rows
-        return arrow_table, arrow_table.num_rows
+        return arrow_table
 
-    def _create_empty_table(self):
+    def _create_empty_table(self) -> pyarrow.Table:
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
 
@@ -314,16 +313,14 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-def create_arrow_table_from_arrow_file(
-    arrow_batches, description
-) -> (pyarrow.Table, int):
-    arrow_table = convert_arrow_based_file_to_arrow_table(arrow_batches)
+def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> (pyarrow.Table, int):
+    arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
 
-def convert_arrow_based_file_to_arrow_table(arrow_bytes):
+def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
     try:
-        return pyarrow.ipc.open_stream(arrow_bytes).read_all()
+        return pyarrow.ipc.open_stream(file_bytes).read_all()
     except Exception as e:
         raise RuntimeError("Failure to convert arrow based file to arrow table", e)
 
@@ -334,14 +331,9 @@ def convert_arrow_based_set_to_arrow_table(
     ba = bytearray()
     ba += schema_bytes
     n_rows = 0
-    if lz4_compressed:
-        for arrow_batch in arrow_batches:
-            n_rows += arrow_batch.rowCount
-            ba += lz4.frame.decompress(arrow_batch.batch)
-    else:
-        for arrow_batch in arrow_batches:
-            n_rows += arrow_batch.rowCount
-            ba += arrow_batch.batch
+    for arrow_batch in arrow_batches:
+        n_rows += arrow_batch.rowCount
+        ba += lz4.frame.decompress(arrow_batch.batch) if lz4_compressed else arrow_batch.batch
     arrow_table = pyarrow.ipc.open_stream(ba).read_all()
     return arrow_table, n_rows
 

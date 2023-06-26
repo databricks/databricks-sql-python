@@ -59,13 +59,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
 
         assert len(queue.download_manager.download_handlers) == 0
         assert queue.table is None
-        assert queue.table_num_rows == 0
 
     @patch("databricks.sql.cloudfetch.download_manager.ResultFileDownloadManager.get_next_downloaded_file", return_value=None)
     def test_create_next_table_no_download(self, mock_get_next_downloaded_file):
         queue = utils.CloudFetchQueue(MagicMock(), result_links=[])
 
-        assert queue._create_next_table() == (None, 0)
+        assert queue._create_next_table() is None
         assert mock_get_next_downloaded_file.called_with(0)
 
     @patch("databricks.sql.utils.create_arrow_table_from_arrow_file", return_value=make_arrow_table())
@@ -79,21 +78,21 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert mock_create_arrow_table.called_with(b"1234567890", True, schema_bytes, description)
         assert mock_get_next_downloaded_file.called_with(0)
         assert queue.table == expected_result
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
         assert queue.start_row_index == 4
 
-        table, row_count = queue._create_next_table()
+        table = queue._create_next_table()
         assert table == expected_result
-        assert row_count == 4
+        assert table.num_rows == 4
         assert queue.start_row_index == 8
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=(make_arrow_table(), 4))
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=make_arrow_table())
     def test_next_n_rows_0_rows(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
 
         result = queue.next_n_rows(0)
@@ -101,12 +100,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert queue.table_row_index == 0
         assert result == self.make_arrow_table()[0:0]
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=(make_arrow_table(), 4))
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=make_arrow_table())
     def test_next_n_rows_partial_table(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
 
         result = queue.next_n_rows(3)
@@ -114,12 +113,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert queue.table_row_index == 3
         assert result == self.make_arrow_table()[:3]
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=(make_arrow_table(), 4))
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=make_arrow_table())
     def test_next_n_rows_more_than_one_table(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
 
         result = queue.next_n_rows(7)
@@ -127,12 +126,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert queue.table_row_index == 3
         assert result == pyarrow.concat_tables([self.make_arrow_table(), self.make_arrow_table()])[:7]
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=(make_arrow_table(), 4))
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=make_arrow_table())
     def test_next_n_rows_more_than_one_table(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
 
         result = queue.next_n_rows(7)
@@ -140,19 +139,19 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert queue.table_row_index == 3
         assert result == pyarrow.concat_tables([self.make_arrow_table(), self.make_arrow_table()])[:7]
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[(make_arrow_table(), 4), (None, 0)])
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[make_arrow_table(), None])
     def test_next_n_rows_only_one_table_returned(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
 
         result = queue.next_n_rows(7)
         assert result.num_rows == 4
         assert result == self.make_arrow_table()
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=(None, 0))
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=None)
     def test_next_n_rows_empty_table(self, mock_create_next_table):
         schema_bytes = self.get_schema_bytes()
         description = MagicMock()
@@ -162,36 +161,36 @@ class CloudFetchQueueSuite(unittest.TestCase):
         result = queue.next_n_rows(100)
         assert result == pyarrow.ipc.open_stream(bytearray(schema_bytes)).read_all()
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[(make_arrow_table(), 4), (None, 0)])
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[make_arrow_table(), None, 0])
     def test_remaining_rows_empty_table_fully_returned(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         queue.table_row_index = 4
 
         result = queue.remaining_rows()
         assert result.num_rows == 0
         assert result == self.make_arrow_table()[0:0]
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[(make_arrow_table(), 4), (None, 0)])
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[make_arrow_table(), None])
     def test_remaining_rows_partial_table_fully_returned(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         queue.table_row_index = 2
 
         result = queue.remaining_rows()
         assert result.num_rows == 2
         assert result == self.make_arrow_table()[2:]
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[(make_arrow_table(), 4), (None, 0)])
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", side_effect=[make_arrow_table(), None])
     def test_remaining_rows_one_table_fully_returned(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
 
         result = queue.remaining_rows()
@@ -199,12 +198,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert result == self.make_arrow_table()
 
     @patch("databricks.sql.utils.CloudFetchQueue._create_next_table",
-           side_effect=[(make_arrow_table(), 4), (make_arrow_table(), 4), (None, 0)])
+           side_effect=[make_arrow_table(), make_arrow_table(), None])
     def test_remaining_rows_multiple_tables_fully_returned(self, mock_create_next_table):
         schema_bytes, description = MagicMock(), MagicMock()
         queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description)
         assert queue.table == self.make_arrow_table()
-        assert queue.table_num_rows == 4
+        assert queue.table.num_rows == 4
         queue.table_row_index = 3
 
         result = queue.remaining_rows()
@@ -212,7 +211,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert result.num_rows == 5
         assert result == pyarrow.concat_tables([self.make_arrow_table(), self.make_arrow_table()])[3:]
 
-    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=(None, 0))
+    @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=None)
     def test_remaining_rows_empty_table(self, mock_create_next_table):
         schema_bytes = self.get_schema_bytes()
         description = MagicMock()
