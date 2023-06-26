@@ -247,8 +247,12 @@ class Connection:
         if close_cursors:
             for cursor in self._cursors:
                 cursor.close()
+
+        logger.info(f"Closing session {self.get_session_id_hex()}")
+        if not self.open:
+            logger.debug("Session appears to have been closed already")
+
         try:
-            logger.info(f"Closing session {self.get_session_id_hex()}")
             self.thrift_backend.close_session(self._session_handle)
         except DatabaseError as e:
             if "Invalid SessionHandle" in str(e):

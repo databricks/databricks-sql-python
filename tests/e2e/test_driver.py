@@ -618,7 +618,7 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
 
     def test_closing_a_closed_connection_doesnt_fail(self):
 
-        with self.assertLogs("databricks.sql", "WARNING") as cm:
+        with self.assertLogs("databricks.sql", level="DEBUG",) as cm:
             # Second .close() call is when this context manager exits
             with self.connection() as conn:
                 # First .close() call is explicit here
@@ -628,7 +628,7 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
             for log in cm.output:
                 if expected_message_was_found:
                     break
-                target = "Attempted to close session that was already closed"
+                target = "Session appears to have been closed already"
                 expected_message_was_found = target in log
             
             self.assertTrue(expected_message_was_found, "Did not find expected log messages")
