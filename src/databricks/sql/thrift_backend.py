@@ -3,6 +3,7 @@ import errno
 import logging
 import math
 import time
+import uuid
 import threading
 import lz4.frame
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
@@ -33,6 +34,16 @@ from databricks.sql.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger.setLevel(logging.DEBUG)
+
+# To capture these logs in client code, add a non-NullHandler.
+# See our e2e test suite for an example with logging.FileHandler
+unsafe_logger.addHandler(logging.NullHandler())
+
+# Disable propagation so that handlers for `databricks.sql` don't pick up these messages
+unsafe_logger.propagate = False
 
 THRIFT_ERROR_MESSAGE_HEADER = "x-thriftserver-error-message"
 DATABRICKS_ERROR_OR_REDIRECT_HEADER = "x-databricks-error-or-redirect-message"
@@ -318,13 +329,25 @@ class ThriftBackend:
 
             error, error_message, retry_delay = None, None, None
             try:
-                logger.debug("Sending request: {}".format(request))
+                # The MagicMocks in our unit tests have a `name` property instead of `__name__`.
+                logger.debug(
+                    "Sending request: {}(<REDACTED>)".format(
+                        getattr(
+                            method, "__name__", getattr(method, "name", "UnknownMethod")
+                        )
+                    )
+                )
+                unsafe_logger.debug("Sending request: {}".format(request))
                 response = method(request)
 
                 # Calling `close()` here releases the active HTTP connection back to the pool
                 self._transport.close()
 
-                logger.debug("Received response: {}".format(response))
+                # We need to call type(response) here because thrift doesn't implement __name__ attributes for thrift responses
+                logger.debug(
+                    "Received response: {}(<REDACTED>)".format(type(response).__name__)
+                )
+                unsafe_logger.debug("Received response: {}".format(response))
                 return response
 
             except urllib3.exceptions.HTTPError as err:
@@ -999,3 +1022,8 @@ class ThriftBackend:
     @staticmethod
     def handle_to_id(session_handle):
         return session_handle.sessionId.guid
+
+    @staticmethod
+    def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
+        this_uuid = uuid.UUID(bytes=session_handle.sessionId.guid)
+        return str(this_uuid)

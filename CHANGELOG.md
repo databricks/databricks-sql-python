@@ -2,6 +2,11 @@
 
 ## 2.6.x (Unreleased)
 
+- Fix: connector raised exception when calling close() on a closed Thrift session
+- Improve e2e test development ergonomics
+- Redact logged thrift responses by default
+- Add support for OAuth on Databricks Azure
+
 ## 2.6.2 (2023-06-14)
 
 - Fix: Retry GetOperationStatus requests for http errors
