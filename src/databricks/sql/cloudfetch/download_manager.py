@@ -45,6 +45,7 @@ class ResultFileDownloadManager:
 
     def get_next_downloaded_file(self, next_row_index: int) -> Union[DownloadedFile, None]:
         if not self.download_handlers:
+            self._shutdown_manager()
             return None
 
         # Remove handlers we don't need anymore
@@ -56,6 +57,7 @@ class ResultFileDownloadManager:
         # Find next file
         idx = self._find_next_file_index(next_row_index)
         if idx is None:
+            self._shutdown_manager()
             return None
         handler = self.download_handlers[idx]
 
@@ -72,6 +74,7 @@ class ResultFileDownloadManager:
             # Return True upon successful download to continue loop and not force a retry
             return result
         # Download was not successful for next download item, force a retry
+        self._shutdown_manager()
         return None
 
     def _remove_past_handlers(self, next_row_index: int):
@@ -110,7 +113,7 @@ class ResultFileDownloadManager:
     def _check_if_download_successful(self, handler: ResultSetDownloadHandler):
         if not handler.is_file_download_successful():
             if handler.is_link_expired:
-                self._stop_all_downloads_and_clear_handlers()
+                self._shutdown_manager()
                 self.fetch_need_retry = True
                 return False
             elif handler.is_download_timedout:
@@ -129,5 +132,6 @@ class ResultFileDownloadManager:
         self.fetch_need_retry = False
         return True
 
-    def _stop_all_downloads_and_clear_handlers(self):
+    def _shutdown_manager(self):
         self.download_handlers = []
+        self.thread_pool.shutdown(wait=False, cancel_futures=True)
