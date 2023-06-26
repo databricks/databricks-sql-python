@@ -1,6 +1,8 @@
 # Release History
 
-## 2.6.x (Unreleased)
+## 2.7.x (Unreleased)
+
+## 2.7.0 (2023-06-26)
 
 - Fix: connector raised exception when calling close() on a closed Thrift session
 - Improve e2e test development ergonomics
