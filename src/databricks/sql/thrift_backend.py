@@ -656,7 +656,7 @@ class ThriftBackend:
             ThriftBackend._col_to_description(col) for col in t_table_schema.columns
         ]
 
-    def _results_message_to_execute_response(self, resp, operation_state):
+    def _results_message_to_execute_response(self, resp, operation_state, max_download_threads):
         if resp.directResults and resp.directResults.resultSetMetadata:
             t_result_set_metadata_resp = resp.directResults.resultSetMetadata
         else:
@@ -703,6 +703,7 @@ class ThriftBackend:
                 arrow_schema_bytes=schema_bytes,
                 lz4_compressed=lz4_compressed,
                 description=description,
+                max_download_threads=max_download_threads,
             )
         else:
             arrow_queue_opt = None
@@ -883,7 +884,9 @@ class ThriftBackend:
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        return self._results_message_to_execute_response(resp, final_operation_state)
+        max_download_threads = cursor.connection.max_download_threads
+
+        return self._results_message_to_execute_response(resp, final_operation_state, max_download_threads)
 
     def fetch_results(
         self,
@@ -894,6 +897,7 @@ class ThriftBackend:
         lz4_compressed,
         arrow_schema_bytes,
         description,
+        max_download_threads,
     ):
         assert op_handle is not None
 
@@ -924,6 +928,7 @@ class ThriftBackend:
             arrow_schema_bytes=arrow_schema_bytes,
             lz4_compressed=lz4_compressed,
             description=description,
+            max_download_threads=max_download_threads,
         )
 
         return queue, resp.hasMoreRows

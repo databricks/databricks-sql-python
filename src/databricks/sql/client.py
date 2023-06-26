@@ -839,6 +839,7 @@ class ResultSet:
             lz4_compressed=self.lz4_compressed,
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
+            max_download_threads=self.connection.max_download_threads,
         )
         self.results = results
         self.has_more_rows = has_more_rows

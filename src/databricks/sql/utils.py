@@ -35,6 +35,7 @@ class ResultSetQueueFactory(ABC):
         arrow_schema_bytes,
         lz4_compressed: bool = True,
         description: str = None,
+        max_download_threads: int = DEFAULT_MAX_DOWNLOAD_THREADS,
     ) -> ResultSetQueue:
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
@@ -54,7 +55,8 @@ class ResultSetQueueFactory(ABC):
                 start_row_index=t_row_set.startRowOffset,
                 result_links=t_row_set.resultLinks,
                 lz4_compressed=lz4_compressed,
-                description=description
+                description=description,
+                max_download_threads=max_download_threads,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -99,6 +101,7 @@ class CloudFetchQueue(ResultSetQueue):
     def __init__(
         self,
         schema_bytes,
+        max_download_threads: int,
         start_row_index: int = 0,
         result_links: List[TSparkArrowResultLink] = None,
         lz4_compressed: bool = True,
@@ -108,11 +111,11 @@ class CloudFetchQueue(ResultSetQueue):
         A queue-like wrapper over CloudFetch arrow batches
         """
         self.schema_bytes = schema_bytes
+        self.max_download_threads = max_download_threads
         self.start_row_index = start_row_index
         self.result_links = result_links
         self.lz4_compressed = lz4_compressed
         self.description = description
-        self.max_download_threads = DEFAULT_MAX_DOWNLOAD_THREADS
 
         self.download_manager = ResultFileDownloadManager(self.max_download_threads, self.lz4_compressed)
         self.download_manager.add_file_links(result_links, start_row_index)
@@ -152,7 +155,6 @@ class CloudFetchQueue(ResultSetQueue):
         return results
 
     def _create_next_table(self) -> Union[pyarrow.Table, None]:
-        # TODO: add retry logic from _fill_results_buffer_cloudfetch
         downloaded_file = self.download_manager.get_next_downloaded_file(self.start_row_index)
         if not downloaded_file:
             return None
