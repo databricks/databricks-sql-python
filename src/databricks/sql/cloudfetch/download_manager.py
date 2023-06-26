@@ -1,11 +1,18 @@
+import logging
+
 from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
+from typing import List, Union
+
 from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
+from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
+
+logger = logging.getLogger(__name__)
 
 
 class ResultFileDownloadManager:
 
-    def __init__(self, max_download_threads, lz4_compressed):
+    def __init__(self, max_download_threads: int, lz4_compressed: bool):
         self.download_handlers = []
         self.thread_pool = ThreadPoolExecutor(max_workers=max_download_threads + 1)
         self.downloadable_result_settings = _get_downloadable_result_settings(lz4_compressed)
@@ -13,15 +20,15 @@ class ResultFileDownloadManager:
         self.num_consecutive_result_file_download_retries = 0
         self.cloud_fetch_index = 0
 
-    def add_file_links(self, t_spark_arrow_result_links, next_row_index):
-        for t_spark_arrow_result_link in t_spark_arrow_result_links:
-            if t_spark_arrow_result_link.rowCount <= 0:
+    def add_file_links(self, t_spark_arrow_result_links: List[TSparkArrowResultLink], next_row_index: int) -> None:
+        for link in t_spark_arrow_result_links:
+            if link.rowCount <= 0:
                 continue
             self.download_handlers.append(ResultSetDownloadHandler(
-                self.downloadable_result_settings, t_spark_arrow_result_link))
+                self.downloadable_result_settings, link))
         self.cloud_fetch_index = next_row_index
 
-    def get_next_downloaded_file(self, next_row_index):
+    def get_next_downloaded_file(self, next_row_index: int) -> Union[tuple, None]:
         if not self.download_handlers:
             return None
 
@@ -52,7 +59,7 @@ class ResultFileDownloadManager:
         # Download was not successful for next download item, force a retry
         return None
 
-    def _remove_past_handlers(self, next_row_index):
+    def _remove_past_handlers(self, next_row_index: int):
         """
         Remove any download handlers whose start to end range doesn't include the next row to be fetched
         i.e. no need to download
@@ -74,17 +81,18 @@ class ResultFileDownloadManager:
                 continue
             try:
                 self.thread_pool.submit(handler.run)
-            except:
+            except Exception as e:
+                logger.error(e)
                 break
             handler.is_download_scheduled = True
 
-    def _find_next_file_index(self, next_row_index):
+    def _find_next_file_index(self, next_row_index: int):
         # Get the next downloaded file
         next_indices = [i for i, handler in enumerate(self.download_handlers)
                         if handler.is_download_scheduled and handler.result_link.startRowOffset == next_row_index]
         return next_indices[0] if len(next_indices) > 0 else None
 
-    def _check_if_download_successful(self, handler):
+    def _check_if_download_successful(self, handler: ResultSetDownloadHandler):
         if not handler.is_file_download_successful():
             if handler.is_link_expired:
                 self._stop_all_downloads_and_clear_handlers()
@@ -93,7 +101,6 @@ class ResultFileDownloadManager:
             elif handler.is_download_timedout:
                 if self.num_consecutive_result_file_download_retries >= \
                         self.downloadable_result_settings.max_consecutive_file_download_retries:
-                    # raise Exception("File download exceeded max retry limit")
                     self.fetch_need_retry = True
                     return False
                 self.num_consecutive_result_file_download_retries += 1
