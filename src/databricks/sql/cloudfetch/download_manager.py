@@ -1,7 +1,7 @@
 import logging
 
-from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import List, Union
 
 from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
@@ -10,12 +10,27 @@ from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class DownloadableResultSettings:
+    is_lz4_compressed: bool
+    link_expiry_buffer: float = 0.0
+    download_timeout: float = 0.0
+    max_consecutive_file_download_retries: int = 0
+
+
+@dataclass
+class DownloadedFile:
+    file_bytes: bytes
+    start_row_offset: int
+    row_count: int
+
+
 class ResultFileDownloadManager:
 
     def __init__(self, max_download_threads: int, lz4_compressed: bool):
         self.download_handlers = []
         self.thread_pool = ThreadPoolExecutor(max_workers=max_download_threads + 1)
-        self.downloadable_result_settings = _get_downloadable_result_settings(lz4_compressed)
+        self.downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
         self.fetch_need_retry = False
         self.num_consecutive_result_file_download_retries = 0
         self.cloud_fetch_index = 0
@@ -28,7 +43,7 @@ class ResultFileDownloadManager:
                 self.downloadable_result_settings, link))
         self.cloud_fetch_index = next_row_index
 
-    def get_next_downloaded_file(self, next_row_index: int) -> Union[tuple, None]:
+    def get_next_downloaded_file(self, next_row_index: int) -> Union[DownloadedFile, None]:
         if not self.download_handlers:
             return None
 
@@ -116,31 +131,3 @@ class ResultFileDownloadManager:
 
     def _stop_all_downloads_and_clear_handlers(self):
         self.download_handlers = []
-
-
-DownloadableResultSettings = namedtuple(
-    "DownloadableResultSettings",
-    "is_lz4_compressed result_file_link_expiry_buffer download_timeout use_proxy disable_proxy_for_cloud_fetch "
-    "proxy_host proxy_port proxy_uid proxy_pwd max_consecutive_file_download_retries download_retry_wait_time"
-)
-
-DownloadedFile = namedtuple(
-    "DownloadedFile",
-    "file_bytes start_row_offset row_count"
-)
-
-
-def _get_downloadable_result_settings(lz4_compressed):
-    return DownloadableResultSettings(
-        is_lz4_compressed=lz4_compressed,
-        result_file_link_expiry_buffer=0,
-        download_timeout=0,
-        use_proxy=False,
-        disable_proxy_for_cloud_fetch=False,
-        proxy_host="",
-        proxy_port=0,
-        proxy_uid="",
-        proxy_pwd="",
-        max_consecutive_file_download_retries=0,
-        download_retry_wait_time=0.1
-    )

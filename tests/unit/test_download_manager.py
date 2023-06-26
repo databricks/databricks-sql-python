@@ -183,16 +183,8 @@ class DownloadManagerTests(unittest.TestCase):
         manager = self.create_download_manager()
         manager.downloadable_result_settings = download_manager.DownloadableResultSettings(
             is_lz4_compressed=True,
-            result_file_link_expiry_buffer=0,
             download_timeout=0,
-            use_proxy=False,
-            disable_proxy_for_cloud_fetch=False,
-            proxy_host="",
-            proxy_port=0,
-            proxy_uid="",
-            proxy_pwd="",
             max_consecutive_file_download_retries=1,
-            download_retry_wait_time=0.1
         )
         handler = downloader.ResultSetDownloadHandler(manager.downloadable_result_settings, self.create_result_link())
         handler.is_download_timedout = True
