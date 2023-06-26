@@ -1,6 +1,6 @@
 # Release History
 
-## 2.6.x (Unreleased)
+## 2.7.x (Unreleased)
 
 ## 2.7.0 (2023-06-26)
 
