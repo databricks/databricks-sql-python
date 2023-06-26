@@ -54,6 +54,8 @@ exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck
 
 [tool.pytest.ini_options]
 minversion = "6.0"
+log_cli = "false"
+log_cli_level = "INFO"
 testpaths = [
     "tests"
 ]
