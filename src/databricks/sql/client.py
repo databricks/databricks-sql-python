@@ -255,9 +255,12 @@ class Connection:
                 logger.warning(
                     f"Attempted to close session that was already closed: {e}"
                 )
-                pass
             else:
-                raise e
+                logger.warning(
+                    f"Attempt to close session raised an exception at the server: {e}"
+                )
+        except Exception as e:
+            logger.error(f"Attempt to close session raised a local exception: {e}")
 
         self.open = False
 
