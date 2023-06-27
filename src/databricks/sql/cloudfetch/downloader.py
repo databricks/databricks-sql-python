@@ -61,7 +61,7 @@ class ResultSetDownloadHandler(threading.Thread):
 
         # Check if link is already expired or is expiring
         if ResultSetDownloadHandler.check_link_expired(
-            self.result_link, self.settings.link_expiry_buffer
+            self.result_link, self.settings.link_expiry_buffer_secs
         ):
             self.is_link_expired = True
             return
