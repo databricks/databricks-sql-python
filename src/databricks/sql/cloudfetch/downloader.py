@@ -38,9 +38,10 @@ class ResultSetDownloadHandler(threading.Thread):
             if not self.is_download_finished.wait(timeout=timeout):
                 self.is_download_timedout = True
                 logger.debug(
-                    "Cloud fetch download timed out after {} seconds for url: {}".format(
+                    "Cloud fetch download timed out after {} seconds for link representing rows {} to {}".format(
                         self.settings.download_timeout,
-                        self.result_link.fileLink,
+                        self.result_link.startRowOffset,
+                        self.result_link.startRowOffset + self.result_link.rowCount,
                     )
                 )
                 return False
