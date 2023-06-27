@@ -37,21 +37,21 @@ class DownloadManagerTests(unittest.TestCase):
     def test_add_file_links_zero_row_count(self):
         links = [self.create_result_link(row_count=0, bytes_num=0)]
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
 
         assert not manager.download_handlers
 
     def test_add_file_links_success(self):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
 
         assert len(manager.download_handlers) == 10
 
     def test_remove_past_handlers_one(self):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
 
         manager._remove_past_handlers(8000)
         assert len(manager.download_handlers) == 9
@@ -59,7 +59,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_remove_past_handlers_all(self):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
 
         manager._remove_past_handlers(8000*10)
         assert len(manager.download_handlers) == 0
@@ -68,7 +68,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_schedule_downloads_partial_already_scheduled(self, mock_submit):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
 
         for i in range(5):
             manager.download_handlers[i].is_download_scheduled = True
@@ -81,7 +81,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_schedule_downloads_will_not_schedule_twice(self, mock_submit):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
 
         for i in range(5):
             manager.download_handlers[i].is_download_scheduled = True
@@ -97,7 +97,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_schedule_downloads_submit_fails(self, mock_submit):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
 
         manager._schedule_downloads()
         assert mock_submit.call_count == 2
@@ -107,7 +107,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_find_next_file_index_all_scheduled_next_row_0(self, mock_submit):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
         manager._schedule_downloads()
 
         assert manager._find_next_file_index(0) == 0
@@ -116,7 +116,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_find_next_file_index_all_scheduled_next_row_7999(self, mock_submit):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
         manager._schedule_downloads()
 
         assert manager._find_next_file_index(7999) is None
@@ -125,7 +125,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_find_next_file_index_all_scheduled_next_row_8000(self, mock_submit):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
         manager._schedule_downloads()
 
         assert manager._find_next_file_index(8000) == 1
@@ -134,7 +134,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_find_next_file_index_one_scheduled_next_row_8000(self, mock_submit):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
         manager._schedule_downloads()
 
         assert manager._find_next_file_index(8000) is None
@@ -145,7 +145,7 @@ class DownloadManagerTests(unittest.TestCase):
     def test_check_if_download_successful_happy(self, mock_submit, mock_is_file_download_successful):
         links = self.create_result_links(num_files=10)
         manager = self.create_download_manager()
-        manager.add_file_links(links, 0)
+        manager.add_file_links(links)
         manager._schedule_downloads()
 
         status = manager._check_if_download_successful(manager.download_handlers[0])
