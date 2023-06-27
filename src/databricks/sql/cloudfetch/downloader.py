@@ -5,6 +5,7 @@ import lz4.frame
 import threading
 import time
 
+from databricks.sql.cloudfetch.download_manager import DownloadableResultSettings
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 class ResultSetDownloadHandler(threading.Thread):
     def __init__(
         self,
-        downloadable_result_settings,
+        downloadable_result_settings: DownloadableResultSettings,
         t_spark_arrow_result_link: TSparkArrowResultLink,
     ):
         super().__init__()

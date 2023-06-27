@@ -46,7 +46,7 @@ class DownloadedFile:
 
 class ResultFileDownloadManager:
     def __init__(self, max_download_threads: int, lz4_compressed: bool):
-        self.download_handlers = []
+        self.download_handlers: List[ResultSetDownloadHandler] = []
         self.thread_pool = ThreadPoolExecutor(max_workers=max_download_threads + 1)
         self.downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
         self.fetch_need_retry = False
