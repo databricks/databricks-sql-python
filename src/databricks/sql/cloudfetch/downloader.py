@@ -1,14 +1,32 @@
 import logging
+from dataclasses import dataclass
 
 import requests
 import lz4.frame
 import threading
 import time
 
-from databricks.sql.cloudfetch.download_manager import DownloadableResultSettings
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DownloadableResultSettings:
+    """
+    Class for settings common to each download handler.
+
+    Attributes:
+        is_lz4_compressed (bool): Whether file is expected to be lz4 compressed.
+        link_expiry_buffer_secs (int): Time in seconds to prevent download of a link before it expires. Default 0 secs.
+        download_timeout (int): Timeout for download requests. Default 60 secs.
+        max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
+    """
+
+    is_lz4_compressed: bool
+    link_expiry_buffer_secs: int = 0
+    download_timeout: int = 60
+    max_consecutive_file_download_retries: int = 0
 
 
 class ResultSetDownloadHandler(threading.Thread):
