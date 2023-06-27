@@ -100,7 +100,9 @@ class ResultSetDownloadHandler(threading.Thread):
             self.is_download_finished.set()
 
     def _reset(self):
-        # Reset download-related flags for every retry of run()
+        """
+        Reset download-related flags for every retry of run()
+        """
         self.is_file_downloaded_successfully = False
         self.is_link_expired = False
         self.is_download_timedout = False
