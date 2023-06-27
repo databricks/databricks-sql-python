@@ -165,7 +165,7 @@ class ResultFileDownloadManager:
                 self.num_consecutive_result_file_download_retries += 1
 
                 # Re-submit handler run to thread pool and recursively check download status
-                self.thread_pool.submit(handler)
+                self.thread_pool.submit(handler.run)
                 return self._check_if_download_successful(handler)
             else:
                 self.fetch_need_retry = True
