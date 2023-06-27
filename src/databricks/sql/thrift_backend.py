@@ -25,7 +25,6 @@ from databricks.sql.thrift_api.TCLIService.TCLIService import (
 )
 
 from databricks.sql.utils import (
-    ArrowQueue,
     ExecuteResponse,
     _bound,
     RequestErrorInfo,
@@ -560,14 +559,9 @@ class ThriftBackend:
             (
                 arrow_table,
                 num_rows,
-            ) = convert_column_based_set_to_arrow_table(
-                t_row_set.columns, description
-            )
+            ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (
-                arrow_table,
-                num_rows,
-            ) = convert_arrow_based_set_to_arrow_table(
+            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -656,7 +650,9 @@ class ThriftBackend:
             ThriftBackend._col_to_description(col) for col in t_table_schema.columns
         ]
 
-    def _results_message_to_execute_response(self, resp, operation_state, max_download_threads):
+    def _results_message_to_execute_response(
+        self, resp, operation_state, max_download_threads
+    ):
         if resp.directResults and resp.directResults.resultSetMetadata:
             t_result_set_metadata_resp = resp.directResults.resultSetMetadata
         else:
@@ -758,7 +754,14 @@ class ThriftBackend:
                 )
 
     def execute_command(
-        self, operation, session_handle, max_rows, max_bytes, lz4_compression, cursor, use_cloud_fetch=False
+        self,
+        operation,
+        session_handle,
+        max_rows,
+        max_bytes,
+        lz4_compression,
+        cursor,
+        use_cloud_fetch=False,
     ):
         assert session_handle is not None
 
@@ -886,7 +889,9 @@ class ThriftBackend:
 
         max_download_threads = cursor.connection.max_download_threads
 
-        return self._results_message_to_execute_response(resp, final_operation_state, max_download_threads)
+        return self._results_message_to_execute_response(
+            resp, final_operation_state, max_download_threads
+        )
 
     def fetch_results(
         self,
