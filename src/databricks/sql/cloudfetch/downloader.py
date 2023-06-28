@@ -51,8 +51,11 @@ class ResultSetDownloadHandler(threading.Thread):
 
         This function will block until a file download finishes or until a timeout.
         """
-        timeout = self.settings.download_timeout
-        timeout = timeout if timeout and timeout > 0 else None
+        timeout = (
+            self.settings.download_timeout
+            if self.settings.download_timeout > 0
+            else None
+        )
         try:
             if not self.is_download_finished.wait(timeout=timeout):
                 self.is_download_timedout = True
