@@ -4,7 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import List, Union
 
-from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler, DownloadableResultSettings
+from databricks.sql.cloudfetch.downloader import (
+    ResultSetDownloadHandler,
+    DownloadableResultSettings,
+)
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
