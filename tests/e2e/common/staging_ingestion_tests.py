@@ -76,7 +76,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         # GET after REMOVE should fail
 
-            with pytest.raises(Error):
+            with pytest.raises(Error, match="Staging operation over HTTP was unsuccessful: 404"):
                 cursor = conn.cursor()
                 query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
                 cursor.execute(query)
@@ -97,7 +97,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         with open(fh, "wb") as fp:
             fp.write(original_text)
 
-        with pytest.raises(Error):
+        with pytest.raises(Error, match="You must provide at least one staging_allowed_local_path"):
             with self.connection() as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
@@ -118,7 +118,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         # Add junk to base_path
         base_path = os.path.join(base_path, "temp")
 
-        with pytest.raises(Error):
+        with pytest.raises(Error, match="Local file operations are restricted to paths within the configured staging_allowed_local_path"):
             with self.connection(extra_params={"staging_allowed_local_path": base_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
@@ -221,7 +221,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         staging_allowed_local_path = "/var/www/html"
         target_file = "/var/www/html/../html1/not_allowed.html"
 
-        with pytest.raises(Error):
+        with pytest.raises(Error, match="Local file operations are restricted to paths within the configured staging_allowed_local_path"):
             with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
