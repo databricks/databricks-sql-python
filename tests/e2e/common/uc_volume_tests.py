@@ -5,22 +5,6 @@ import pytest
 import databricks.sql as sql
 from databricks.sql import Error
 
-@pytest.fixture(scope="module", autouse=True)
-def check_staging_ingestion_user():
-    """This fixture verifies that a staging ingestion user email address
-    is present in the environment and raises an exception if not. The fixture
-    only evaluates when the test _isn't skipped_.
-    """
-
-    staging_ingestion_user = os.getenv("staging_ingestion_user")
-
-    if staging_ingestion_user is None:
-        raise ValueError(
-            "To run this test you must designate a `staging_ingestion_user` environment variable. This will be the user associated with the personal access token."
-        )
-    
-
-
 class PySQLUCVolumeTestSuiteMixin:
     """Simple namespace for UC Volume tests.
 
