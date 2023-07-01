@@ -18,9 +18,11 @@ def check_staging_ingestion_user():
         raise ValueError(
             "To run this test you must designate a `staging_ingestion_user` environment variable. This will be the user associated with the personal access token."
         )
+    
 
-class PySQLStagingIngestionTestSuiteMixin:
-    """Simple namespace for ingestion tests. These should be run against DBR >12.x
+
+class PySQLUCVolumeTestSuiteMixin:
+    """Simple namespace for UC Volume tests.
 
     In addition to connection credentials (host, path, token) this suite requires an env var
     named staging_ingestion_user"""
