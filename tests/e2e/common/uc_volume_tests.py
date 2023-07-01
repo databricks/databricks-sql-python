@@ -28,10 +28,10 @@ class PySQLUCVolumeTestSuiteMixin:
     catalog, schema = os.getenv("catalog"), os.getenv("schema")
 
 
-    def test_staging_ingestion_life_cycle(self):
-        """PUT a file into the staging location
-        GET the file from the staging location
-        REMOVE the file from the staging location
+    def test_uc_volume_life_cycle(self):
+        """PUT a file into the UC Volume
+        GET the file from the UC Volume
+        REMOVE the file from the UC Volume
         Try to GET the file again expecting to raise an exception
         """
 
@@ -85,7 +85,7 @@ class PySQLUCVolumeTestSuiteMixin:
         os.remove(new_temp_path)
 
 
-    def test_staging_ingestion_put_fails_without_staging_allowed_local_path(self):
+    def test_uc_volume_put_fails_without_staging_allowed_local_path(self):
         """PUT operations are not supported unless the connection was built with
         a parameter called staging_allowed_local_path
         """
@@ -103,7 +103,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_put_fails_if_localFile_not_in_staging_allowed_local_path(self):
+    def test_uc_volume_put_fails_if_localFile_not_in_staging_allowed_local_path(self):
 
 
         fh, temp_path = tempfile.mkstemp()
@@ -124,7 +124,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_put_fails_if_file_exists_and_overwrite_not_set(self):
+    def test_uc_volume_put_fails_if_file_exists_and_overwrite_not_set(self):
         """PUT a file into the staging location twice. First command should succeed. Second should fail.
         """
 
@@ -165,7 +165,7 @@ class PySQLUCVolumeTestSuiteMixin:
         # Clean up after ourselves
         perform_remove()
         
-    def test_staging_ingestion_fails_to_modify_another_staging_user(self):
+    def test_uc_volume_fails_to_modify_another_staging_user(self):
         """The server should only allow modification of the staging_ingestion_user's files
         """
 
@@ -211,7 +211,7 @@ class PySQLUCVolumeTestSuiteMixin:
         with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
             perform_get()
 
-    def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(self):
+    def test_uc_volume_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(self):
         """
         This test confirms that staging_allowed_local_path and target_file are resolved into absolute paths.
         """
@@ -228,7 +228,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(self):
+    def test_uc_volume_empty_local_path_fails_to_parse_at_server(self):
         staging_allowed_local_path = "/var/www/html"
         target_file = ""
 
@@ -238,7 +238,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_invalid_staging_path_fails_at_server(self):
+    def test_uc_volume_invalid_volume_path_fails_at_server(self):
         staging_allowed_local_path = "/var/www/html"
         target_file = "index.html"
 
@@ -248,7 +248,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_supports_multiple_staging_allowed_local_path_values(self):
+    def test_uc_volume_supports_multiple_staging_allowed_local_path_values(self):
         """staging_allowed_local_path may be either a path-like object or a list of path-like objects.
 
         This test confirms that two configured base paths:
