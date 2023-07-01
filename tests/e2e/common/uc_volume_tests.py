@@ -5,13 +5,27 @@ import pytest
 import databricks.sql as sql
 from databricks.sql import Error
 
+@pytest.fixture(scope="module", autouse=True)
+def check_catalog_and_schema():
+    """This fixture verifies that a catalog and schema are present in the environment.
+    The fixture only evaluates when the test _isn't skipped_.
+    """
+
+    _catalog = os.getenv("catalog")
+    _schema = os.getenv("schema")
+
+    if _catalog is None or _schema is None:
+        raise ValueError(
+            f"UC Volume tests require values for the `catalog` and `schema` environment variables. Found catalog {_catalog} schema {_schema}"
+        )
+
 class PySQLUCVolumeTestSuiteMixin:
     """Simple namespace for UC Volume tests.
 
-    In addition to connection credentials (host, path, token) this suite requires an env var
-    named staging_ingestion_user"""
+    In addition to connection credentials (host, path, token) this suite requires env vars
+    named catalog and schema"""
 
-    staging_ingestion_user = os.getenv("staging_ingestion_user")
+    catalog, schema = os.getenv("catalog"), os.getenv("schema")
 
 
     def test_staging_ingestion_life_cycle(self):
