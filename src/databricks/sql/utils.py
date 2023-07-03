@@ -6,7 +6,7 @@ import datetime
 import decimal
 from enum import Enum
 import lz4.frame
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Any
 import pyarrow
 
 from databricks.sql import exc, OperationalError
@@ -38,7 +38,7 @@ class ResultSetQueueFactory(ABC):
         arrow_schema_bytes: bytes,
         max_download_threads: int,
         lz4_compressed: bool = True,
-        description: List[List[any]] = None,
+        description: List[List[Any]] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -48,7 +48,7 @@ class ResultSetQueueFactory(ABC):
             t_row_set (TRowSet): Result containing arrow batches, columns, or cloud fetch links.
             arrow_schema_bytes (bytes): Bytes representing the arrow schema.
             lz4_compressed (bool): Whether result data has been lz4 compressed.
-            description (List[List[any]]): Hive table schema description.
+            description (List[List[Any]]): Hive table schema description.
             max_download_threads (int): Maximum number of downloader thread pool threads.
 
         Returns:
@@ -126,7 +126,7 @@ class CloudFetchQueue(ResultSetQueue):
         start_row_offset: int = 0,
         result_links: List[TSparkArrowResultLink] = None,
         lz4_compressed: bool = True,
-        description: List[List[any]] = None,
+        description: List[List[Any]] = None,
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.
@@ -137,7 +137,7 @@ class CloudFetchQueue(ResultSetQueue):
             start_row_offset (int): The offset of the first row of the cloud fetch links.
             result_links (List[TSparkArrowResultLink]): Links containing the downloadable URL and metadata.
             lz4_compressed (bool): Whether the files are lz4 compressed.
-            description (List[List[any]]): Hive table schema description.
+            description (List[List[Any]]): Hive table schema description.
         """
         self.schema_bytes = schema_bytes
         self.max_download_threads = max_download_threads
@@ -376,9 +376,7 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-def create_arrow_table_from_arrow_file(
-    file_bytes: bytes, description
-) -> (pyarrow.Table, int):
+def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
