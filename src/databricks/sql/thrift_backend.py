@@ -116,6 +116,8 @@ class ThriftBackend:
         # _socket_timeout
         #  The timeout in seconds for socket send, recv and connect operations. Should be a positive float or integer.
         #  (defaults to 900)
+        # max_download_threads
+        #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
         port = port or 443
         if kwargs.get("_connection_uri"):
@@ -136,6 +138,9 @@ class ThriftBackend:
         self._use_arrow_native_timestamps = kwargs.get(
             "_use_arrow_native_timestamps", True
         )
+
+        # Cloud fetch
+        self.max_download_threads = kwargs.get("max_download_threads", 10)
 
         # Configure tls context
         ssl_context = create_default_context(cafile=kwargs.get("_tls_trusted_ca_file"))
@@ -651,7 +656,7 @@ class ThriftBackend:
         ]
 
     def _results_message_to_execute_response(
-        self, resp, operation_state, max_download_threads
+        self, resp, operation_state
     ):
         if resp.directResults and resp.directResults.resultSetMetadata:
             t_result_set_metadata_resp = resp.directResults.resultSetMetadata
@@ -697,9 +702,9 @@ class ThriftBackend:
                 row_set_type=t_result_set_metadata_resp.resultFormat,
                 t_row_set=direct_results.resultSet.results,
                 arrow_schema_bytes=schema_bytes,
+                max_download_threads=self.max_download_threads,
                 lz4_compressed=lz4_compressed,
                 description=description,
-                max_download_threads=max_download_threads,
             )
         else:
             arrow_queue_opt = None
@@ -887,10 +892,8 @@ class ThriftBackend:
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        max_download_threads = cursor.connection.max_download_threads
-
         return self._results_message_to_execute_response(
-            resp, final_operation_state, max_download_threads
+            resp, final_operation_state
         )
 
     def fetch_results(
@@ -902,7 +905,6 @@ class ThriftBackend:
         lz4_compressed,
         arrow_schema_bytes,
         description,
-        max_download_threads,
     ):
         assert op_handle is not None
 
@@ -931,9 +933,9 @@ class ThriftBackend:
             row_set_type=resp.resultSetMetadata.resultFormat,
             t_row_set=resp.results,
             arrow_schema_bytes=arrow_schema_bytes,
+            max_download_threads=self.max_download_threads,
             lz4_compressed=lz4_compressed,
             description=description,
-            max_download_threads=max_download_threads,
         )
 
         return queue, resp.hasMoreRows

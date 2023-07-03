@@ -327,7 +327,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     thrift_backend._handle_execute_response(t_execute_resp, Mock())
                 self.assertIn("some information about the error", str(cm.exception))
 
-    def test_handle_execute_response_sets_compression_in_direct_results(self):
+    @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
+    def test_handle_execute_response_sets_compression_in_direct_results(self, build_queue):
         for resp_type in self.execute_response_types:
             lz4Compressed=Mock()
             resultSet=MagicMock()
@@ -589,9 +590,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(hive_schema_mock,
                          thrift_backend._hive_schema_to_arrow_schema.call_args[0][0])
 
+    @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_handle_execute_response_reads_has_more_rows_in_direct_results(
-            self, tcli_service_class):
+            self, tcli_service_class, build_queue):
         for has_more_rows, resp_type in itertools.product([True, False],
                                                           self.execute_response_types):
             with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
@@ -622,9 +624,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 self.assertEqual(has_more_rows, execute_response.has_more_rows)
 
+    @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_handle_execute_response_reads_has_more_rows_in_result_response(
-            self, tcli_service_class):
+            self, tcli_service_class, build_queue):
         for has_more_rows, resp_type in itertools.product([True, False],
                                                           self.execute_response_types):
             with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):

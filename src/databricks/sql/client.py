@@ -155,8 +155,6 @@ class Connection:
         # (True by default)
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
-        # max_download_threads
-        # Number of threads for handling cloud fetch downloads. Defaults to 10
 
         if access_token:
             access_token_kv = {"access_token": access_token}
@@ -194,7 +192,6 @@ class Connection:
             session_configuration, catalog, schema
         )
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", False)
-        self.max_download_threads = kwargs.get("max_download_threads", 10)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
@@ -811,7 +808,6 @@ class ResultSet:
         self.description = execute_response.description
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
-        self.results = None
 
         if execute_response.arrow_queue:
             # In this case the server has taken the fast path and returned an initial batch of
@@ -839,7 +835,6 @@ class ResultSet:
             lz4_compressed=self.lz4_compressed,
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
-            max_download_threads=self.connection.max_download_threads,
         )
         self.results = results
         self.has_more_rows = has_more_rows

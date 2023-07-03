@@ -17,7 +17,6 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
 )
 
-DEFAULT_MAX_DOWNLOAD_THREADS = 10
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
@@ -37,9 +36,9 @@ class ResultSetQueueFactory(ABC):
         row_set_type: TSparkRowSetType,
         t_row_set: TRowSet,
         arrow_schema_bytes: bytes,
+        max_download_threads: int,
         lz4_compressed: bool = True,
         description: List[List[any]] = None,
-        max_download_threads: int = DEFAULT_MAX_DOWNLOAD_THREADS,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
