@@ -17,7 +17,7 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
+DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
 
