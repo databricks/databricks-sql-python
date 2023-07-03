@@ -136,7 +136,7 @@ class DownloaderTests(unittest.TestCase):
 
     @patch("threading.Event.wait", return_value=True)
     def test_is_file_download_successful_has_finished(self, mock_wait):
-        for timeout in [None, 0, 1]:
+        for timeout in [0, 1]:
             with self.subTest(timeout=timeout):
                 settings = Mock(download_timeout=timeout)
                 result_link = Mock()

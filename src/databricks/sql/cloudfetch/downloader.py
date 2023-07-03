@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 
 import requests
 import lz4.frame
@@ -10,10 +11,28 @@ from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class DownloadableResultSettings:
+    """
+    Class for settings common to each download handler.
+
+    Attributes:
+        is_lz4_compressed (bool): Whether file is expected to be lz4 compressed.
+        link_expiry_buffer_secs (int): Time in seconds to prevent download of a link before it expires. Default 0 secs.
+        download_timeout (int): Timeout for download requests. Default 60 secs.
+        max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
+    """
+
+    is_lz4_compressed: bool
+    link_expiry_buffer_secs: int = 0
+    download_timeout: int = 60
+    max_consecutive_file_download_retries: int = 0
+
+
 class ResultSetDownloadHandler(threading.Thread):
     def __init__(
         self,
-        downloadable_result_settings,
+        downloadable_result_settings: DownloadableResultSettings,
         t_spark_arrow_result_link: TSparkArrowResultLink,
     ):
         super().__init__()
@@ -32,8 +51,11 @@ class ResultSetDownloadHandler(threading.Thread):
 
         This function will block until a file download finishes or until a timeout.
         """
-        timeout = self.settings.download_timeout
-        timeout = timeout if timeout and timeout > 0 else None
+        timeout = (
+            self.settings.download_timeout
+            if self.settings.download_timeout > 0
+            else None
+        )
         try:
             if not self.is_download_finished.wait(timeout=timeout):
                 self.is_download_timedout = True
