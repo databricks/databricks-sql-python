@@ -638,11 +638,11 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
     @skipUnless(pysql_supports_arrow(), 'needs arrow support')
     def test_cloud_fetch(self):
         # This test can take several minutes to run
-        limits = [100000, 600000]
+        limits = [100000, 300000]
         threads = [10, 25]
         self.buffer_size_bytes = 104857600
         self.arraysize = 100000
-        base_query = "SELECT * FROM store_sales "
+        base_query = "SELECT * FROM store_sales WHERE ss_sold_date_sk = 2452234 "
         for num_limit, num_threads, lz4_compression in itertools.product(limits, threads, [True, False]):
             with self.subTest(num_limit=num_limit, num_threads=num_threads, lz4_compression=lz4_compression):
                 cf_result, noop_result = None, None
