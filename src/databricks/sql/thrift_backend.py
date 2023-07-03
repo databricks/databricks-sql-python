@@ -655,9 +655,7 @@ class ThriftBackend:
             ThriftBackend._col_to_description(col) for col in t_table_schema.columns
         ]
 
-    def _results_message_to_execute_response(
-        self, resp, operation_state
-    ):
+    def _results_message_to_execute_response(self, resp, operation_state):
         if resp.directResults and resp.directResults.resultSetMetadata:
             t_result_set_metadata_resp = resp.directResults.resultSetMetadata
         else:
@@ -892,9 +890,7 @@ class ThriftBackend:
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        return self._results_message_to_execute_response(
-            resp, final_operation_state
-        )
+        return self._results_message_to_execute_response(resp, final_operation_state)
 
     def fetch_results(
         self,
