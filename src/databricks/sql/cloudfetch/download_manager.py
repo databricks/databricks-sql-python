@@ -161,6 +161,6 @@ class ResultFileDownloadManager:
         return True
 
     def _shutdown_manager(self):
-        # Clear download handlers and shutdown the thread pool to cancel pending futures
+        # Clear download handlers and shutdown the thread pool
         self.download_handlers = []
-        self.thread_pool.shutdown(wait=False, cancel_futures=True)
+        self.thread_pool.shutdown(wait=False)
