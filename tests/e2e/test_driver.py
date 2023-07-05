@@ -53,7 +53,7 @@ class PySQLTestCase(TestCase):
         # If running in local mode, just use environment variables for params.
         self.arguments = os.environ if get_args_from_env else {}
         self.arraysize = 1000
-        self.buffer_size_bytes = 10485760
+        self.buffer_size_bytes = 104857600
 
     def connection_params(self, arguments):
         params = {
@@ -111,7 +111,6 @@ class PySQLLargeQueriesSuite(PySQLTestCase, LargeQueriesMixin):
         # This test can take several minutes to run
         limits = [100000, 300000]
         threads = [10, 25]
-        self.buffer_size_bytes = 104857600
         self.arraysize = 100000
         base_query = "SELECT * FROM store_sales WHERE ss_sold_date_sk = 2452234 "
         for num_limit, num_threads, lz4_compression in itertools.product(limits, threads, [True, False]):
