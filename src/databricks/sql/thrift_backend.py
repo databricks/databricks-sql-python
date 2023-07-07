@@ -532,7 +532,7 @@ class ThriftBackend:
                 raise ServerOperationError(
                     get_operations_resp.displayMessage,
                     {
-                        "operation-id": op_handle and op_handle.operationId.guid,
+                        "operation-id": op_handle and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
                 )
@@ -540,16 +540,16 @@ class ThriftBackend:
                 raise ServerOperationError(
                     get_operations_resp.errorMessage,
                     {
-                        "operation-id": op_handle and op_handle.operationId.guid,
+                        "operation-id": op_handle and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
                 "Command {} unexpectedly closed server side".format(
-                    op_handle and op_handle.operationId.guid
+                    op_handle and self.guid_to_hex_id(op_handle.operationId.guid)
                 ),
-                {"operation-id": op_handle and op_handle.operationId.guid},
+                {"operation-id": op_handle and self.guid_to_hex_id(op_handle.operationId.guid)},
             )
 
     def _poll_for_status(self, op_handle):
@@ -942,7 +942,7 @@ class ThriftBackend:
         return resp.status
 
     def cancel_command(self, active_op_handle):
-        logger.debug("Cancelling command {}".format(active_op_handle.operationId.guid))
+        logger.debug("Cancelling command {}".format(self.guid_to_hex_id(active_op_handle.operationId.guid)))
         req = ttypes.TCancelOperationReq(active_op_handle)
         self.make_request(self._client.CancelOperation, req)
 
@@ -953,4 +953,24 @@ class ThriftBackend:
     @staticmethod
     def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
         this_uuid = uuid.UUID(bytes=session_handle.sessionId.guid)
+        return str(this_uuid)
+    
+    @staticmethod
+    def guid_to_hex_id(guid: bytes) -> str:
+        """Return a hexadecimal string instead of bytes
+
+        Example:
+            IN   b'\x01\xee\x1d)\xa4\x19\x1d\xb6\xa9\xc0\x8d\xf1\xfe\xbaB\xdd'
+            OUT  '01ee1d29-a419-1db6-a9c0-8df1feba42dd'
+
+        If conversion to hexadecimal fails, the original bytes are returned
+        """
+
+        this_uuid: Union[bytes, uuid.UUID]
+
+        try:
+            this_uuid = uuid.UUID(bytes=guid)
+        except Exception as e:
+            logger.debug(f"Unable to convert bytes to UUID: {bytes} -- {str(e)}")
+            this_uuid = guid
         return str(this_uuid)
