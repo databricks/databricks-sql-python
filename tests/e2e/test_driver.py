@@ -112,6 +112,9 @@ class PySQLLargeQueriesSuite(PySQLTestCase, LargeQueriesMixin):
         limits = [100000, 300000]
         threads = [10, 25]
         self.arraysize = 100000
+        # This test requires a large table with many rows to properly initiate cloud fetch.
+        # e2-dogfood host > hive_metastore catalog > main schema has such a table called store_sales.
+        # If this table is deleted or this test is run on a different host, a different table may need to be used.
         base_query = "SELECT * FROM store_sales WHERE ss_sold_date_sk = 2452234 "
         for num_limit, num_threads, lz4_compression in itertools.product(limits, threads, [True, False]):
             with self.subTest(num_limit=num_limit, num_threads=num_threads, lz4_compression=lz4_compression):
