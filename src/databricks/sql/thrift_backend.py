@@ -532,7 +532,8 @@ class ThriftBackend:
                 raise ServerOperationError(
                     get_operations_resp.displayMessage,
                     {
-                        "operation-id": op_handle and self.guid_to_hex_id(op_handle.operationId.guid),
+                        "operation-id": op_handle
+                        and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
                 )
@@ -540,7 +541,8 @@ class ThriftBackend:
                 raise ServerOperationError(
                     get_operations_resp.errorMessage,
                     {
-                        "operation-id": op_handle and self.guid_to_hex_id(op_handle.operationId.guid),
+                        "operation-id": op_handle
+                        and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
                 )
@@ -549,7 +551,10 @@ class ThriftBackend:
                 "Command {} unexpectedly closed server side".format(
                     op_handle and self.guid_to_hex_id(op_handle.operationId.guid)
                 ),
-                {"operation-id": op_handle and self.guid_to_hex_id(op_handle.operationId.guid)},
+                {
+                    "operation-id": op_handle
+                    and self.guid_to_hex_id(op_handle.operationId.guid)
+                },
             )
 
     def _poll_for_status(self, op_handle):
@@ -942,7 +947,11 @@ class ThriftBackend:
         return resp.status
 
     def cancel_command(self, active_op_handle):
-        logger.debug("Cancelling command {}".format(self.guid_to_hex_id(active_op_handle.operationId.guid)))
+        logger.debug(
+            "Cancelling command {}".format(
+                self.guid_to_hex_id(active_op_handle.operationId.guid)
+            )
+        )
         req = ttypes.TCancelOperationReq(active_op_handle)
         self.make_request(self._client.CancelOperation, req)
 
@@ -954,7 +963,7 @@ class ThriftBackend:
     def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
         this_uuid = uuid.UUID(bytes=session_handle.sessionId.guid)
         return str(this_uuid)
-    
+
     @staticmethod
     def guid_to_hex_id(guid: bytes) -> str:
         """Return a hexadecimal string instead of bytes
