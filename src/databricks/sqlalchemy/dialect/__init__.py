@@ -286,21 +286,19 @@ class DatabricksDialect(default.DefaultDialect):
                 return False
             else:
                 raise e
-            
-   
+
     def get_connection_cursor(self, connection):
-        """Added for backwards compatibility with 1.3.x
-        """
+        """Added for backwards compatibility with 1.3.x"""
         if hasattr(connection, "_dbapi_connection"):
             return connection._dbapi_connection.dbapi_connection.cursor()
         elif hasattr(connection, "raw_connection"):
             return connection.raw_connection().cursor()
         elif hasattr(connection, "connection"):
             return connection.connection.cursor()
-        
-        raise SQLAlchemyError("Databricks dialect can't obtain a cursor context manager from the dbapi")
 
-
+        raise SQLAlchemyError(
+            "Databricks dialect can't obtain a cursor context manager from the dbapi"
+        )
 
     @reflection.cache
     def get_schema_names(self, connection, **kw):
@@ -328,7 +326,7 @@ def receive_do_connect(dialect, conn_rec, cargs, cparams):
     if sqlalchemy.__version__.startswith("1.3"):
         # SQLAlchemy 1.3.x fails to parse the http_path, catalog, and schema from our connection string
         # These should be passed in as connect_args when building the Engine
-        
+
         if "schema" in cparams:
             dialect.schema = cparams["schema"]
 
