@@ -2,6 +2,8 @@
 
 ## 2.7.x (Unreleased)
 
+- Add support for Cloud Fetch
+
 ## 2.7.0 (2023-06-26)
 
 - Fix: connector raised exception when calling close() on a closed Thrift session
