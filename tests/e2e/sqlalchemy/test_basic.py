@@ -98,6 +98,7 @@ def test_connect_args(db_engine):
     assert expected in user_agent
 
 
+@pytest.mark.skipif(sqlalchemy_1_3(), reason="Pandas requires SQLAlchemy >= 1.4")
 def test_pandas_upload(db_engine, metadata_obj):
 
     import pandas as pd
@@ -237,7 +238,11 @@ def test_create_insert_drop_table_orm(base, session: Session):
         SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"])
     )
 
-    output = [i for i in session.scalars(stmt)]
+    if sqlalchemy_1_3():
+        output = [i for i in session.execute(stmt)]
+    else:
+        output = [i for i in session.scalars(stmt)]
+
     assert len(output) == 2
 
     base.metadata.drop_all()
