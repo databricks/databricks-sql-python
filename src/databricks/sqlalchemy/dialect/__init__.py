@@ -7,7 +7,7 @@ from dateutil.parser import parse
 import sqlalchemy
 from sqlalchemy import types, processors, event
 from sqlalchemy.engine import default, Engine
-from sqlalchemy.exc import DatabaseError
+from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 from sqlalchemy.engine import reflection
 
 from databricks import sql
@@ -154,9 +154,7 @@ class DatabricksDialect(default.DefaultDialect):
             "date": DatabricksDate,
         }
 
-        with self.get_driver_connection(
-            connection
-        )._dbapi_connection.dbapi_connection.cursor() as cur:
+        with self.get_connection_cursor(connection) as cur:
             resp = cur.columns(
                 catalog_name=self.catalog,
                 schema_name=schema or self.schema,
@@ -245,9 +243,7 @@ class DatabricksDialect(default.DefaultDialect):
 
     def get_table_names(self, connection, schema=None, **kwargs):
         TABLE_NAME = 1
-        with self.get_driver_connection(
-            connection
-        )._dbapi_connection.dbapi_connection.cursor() as cur:
+        with self.get_connection_cursor(connection) as cur:
             sql_str = "SHOW TABLES FROM {}".format(
                 ".".join([self.catalog, schema or self.schema])
             )
@@ -258,9 +254,7 @@ class DatabricksDialect(default.DefaultDialect):
 
     def get_view_names(self, connection, schema=None, **kwargs):
         VIEW_NAME = 1
-        with self.get_driver_connection(
-            connection
-        )._dbapi_connection.dbapi_connection.cursor() as cur:
+        with self.get_connection_cursor(connection) as cur:
             sql_str = "SHOW VIEWS FROM {}".format(
                 ".".join([self.catalog, schema or self.schema])
             )
@@ -292,6 +286,21 @@ class DatabricksDialect(default.DefaultDialect):
                 return False
             else:
                 raise e
+            
+   
+    def get_connection_cursor(self, connection):
+        """Added for backwards compatibility with 1.3.x
+        """
+        if hasattr(connection, "_dbapi_connection"):
+            return connection._dbapi_connection.dbapi_connection.cursor()
+        elif hasattr(connection, "raw_connection"):
+            return connection.raw_connection().cursor()
+        elif hasattr(connection, "connection"):
+            return connection.connection.cursor()
+        
+        raise SQLAlchemyError("Databricks dialect can't obtain a cursor context manager from the dbapi")
+
+
 
     @reflection.cache
     def get_schema_names(self, connection, **kw):
