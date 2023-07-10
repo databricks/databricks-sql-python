@@ -2,6 +2,8 @@
 
 ## 2.7.x (Unreleased)
 
+- Fix: Revised SQLAlchemy dialect and examples for compatibility with SQLAlchemy==1.3.x
+
 ## 2.7.0 (2023-06-26)
 
 - Fix: connector raised exception when calling close() on a closed Thrift session
