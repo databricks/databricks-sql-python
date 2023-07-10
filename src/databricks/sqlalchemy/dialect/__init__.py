@@ -4,6 +4,7 @@
 import decimal, re, datetime
 from dateutil.parser import parse
 
+import sqlalchemy
 from sqlalchemy import types, processors, event
 from sqlalchemy.engine import default, Engine
 from sqlalchemy.exc import DatabaseError
@@ -314,3 +315,13 @@ def receive_do_connect(dialect, conn_rec, cargs, cparams):
         new_user_agent = "sqlalchemy"
 
     cparams["_user_agent_entry"] = new_user_agent
+
+    if sqlalchemy.__version__.startswith("1.3"):
+        # SQLAlchemy 1.3.x fails to parse the http_path, catalog, and schema from our connection string
+        # These should be passed in as connect_args when building the Engine
+        
+        if "schema" in cparams:
+            dialect.schema = cparams["schema"]
+
+        if "catalog" in cparams:
+            dialect.catalog = cparams["catalog"]

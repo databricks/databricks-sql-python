@@ -2,8 +2,13 @@ import os, datetime, decimal
 import pytest
 from unittest import skipIf
 from sqlalchemy import create_engine, select, insert, Column, MetaData, Table
-from sqlalchemy.orm import declarative_base, Session
+from sqlalchemy.orm import Session
 from sqlalchemy.types import SMALLINT, Integer, BOOLEAN, String, DECIMAL, Date
+
+try:
+    from sqlalchemy.orm import declarative_base
+except ImportError:
+    from sqlalchemy.ext.declarative import declarative_base
 
 
 USER_AGENT_TOKEN = "PySQL e2e Tests"
@@ -19,6 +24,20 @@ def db_engine():
     SCHEMA = os.environ.get("schema")
 
     connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+    
+    connect_args = {
+        **connect_args,
+        "http_path": HTTP_PATH,
+        "server_hostname": HOST,
+        "catalog": CATALOG,
+        "schema": SCHEMA
+    }
+
+    engine = create_engine(
+        f"databricks://token:{ACCESS_TOKEN}@{HOST}",
+        connect_args=connect_args,
+    )
+    return engine
 
     engine = create_engine(
         f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}",
