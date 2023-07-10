@@ -13,6 +13,23 @@ except ImportError:
 
 USER_AGENT_TOKEN = "PySQL e2e Tests"
 
+def sqlalchemy_1_3():
+    import sqlalchemy
+    return sqlalchemy.__version__.startswith("1.3")
+
+def version_agnostic_select(object_to_select, *args, **kwargs):
+    """
+    SQLAlchemy==1.3.x requires arguments to select() to be a Python list
+    
+    https://docs.sqlalchemy.org/en/20/changelog/migration_14.html#orm-query-is-internally-unified-with-select-update-delete-2-0-style-execution-available
+    """
+
+    if sqlalchemy_1_3():
+        return select([object_to_select], *args, **kwargs)
+    else:
+        return select(object_to_select, *args, **kwargs)
+    
+
 
 @pytest.fixture
 def db_engine():
@@ -154,7 +171,7 @@ def test_bulk_insert_with_core(db_engine, metadata_obj, session):
     metadata_obj.create_all()
     db_engine.execute(insert(SampleTable).values(rows))
 
-    rows = db_engine.execute(select(SampleTable)).fetchall()
+    rows = db_engine.execute(version_agnostic_select(SampleTable)).fetchall()
 
     assert len(rows) == num_to_insert
 
@@ -180,7 +197,7 @@ def test_create_insert_drop_table_core(base, db_engine, metadata_obj: MetaData):
     with db_engine.connect() as conn:
         conn.execute(insert_stmt)
 
-    select_stmt = select(SampleTable)
+    select_stmt = version_agnostic_select(SampleTable)
     resp = db_engine.execute(select_stmt)
 
     result = resp.fetchall()
@@ -216,7 +233,7 @@ def test_create_insert_drop_table_orm(base, session: Session):
     session.add(sample_object_2)
     session.commit()
 
-    stmt = select(SampleObject).where(
+    stmt = version_agnostic_select(SampleObject).where(
         SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"])
     )
 
@@ -258,7 +275,7 @@ def test_dialect_type_mappings(base, db_engine, metadata_obj: MetaData):
     with db_engine.connect() as conn:
         conn.execute(insert_stmt)
 
-    select_stmt = select(SampleTable)
+    select_stmt = version_agnostic_select(SampleTable)
     resp = db_engine.execute(select_stmt)
 
     result = resp.fetchall()

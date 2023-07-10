@@ -102,9 +102,14 @@ session.add(sample_object_2)
 
 session.commit()
 
-stmt = select(SampleObject).where(SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"]))
+# SQLAlchemy 1.3 has slightly different methods
+if sqlalchemy.__version__.startswith("1.3"):
+    stmt = select([SampleObject]).where(SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"]))
+    output = [i for i in session.execute(stmt)]
+else:
+    stmt = select(SampleObject).where(SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"]))
+    output = [i for i in session.scalars(stmt)]
 
-output = [i for i in session.scalars(stmt)]
 assert len(output) == 2
 
 base.metadata.drop_all()
