@@ -4,6 +4,7 @@ from unittest import skipIf
 from sqlalchemy import create_engine, select, insert, Column, MetaData, Table
 from sqlalchemy.orm import Session
 from sqlalchemy.types import SMALLINT, Integer, BOOLEAN, String, DECIMAL, Date
+from sqlalchemy.engine import Engine
 
 try:
     from sqlalchemy.orm import declarative_base
@@ -32,7 +33,7 @@ def version_agnostic_select(object_to_select, *args, **kwargs):
 
 
 @pytest.fixture
-def db_engine():
+def db_engine() -> Engine:
 
     HOST = os.environ.get("host")
     HTTP_PATH = os.environ.get("http_path")
@@ -56,8 +57,24 @@ def db_engine():
     )
     return engine
 
+@pytest.fixture
+def samples_engine() -> Engine:
+    HOST = os.environ.get("host")
+    HTTP_PATH = os.environ.get("http_path")
+    ACCESS_TOKEN = os.environ.get("access_token")
+    CATALOG = "samples"
+
+    connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+    
+    connect_args = {
+        **connect_args,
+        "http_path": HTTP_PATH,
+        "server_hostname": HOST,
+        "catalog": CATALOG,
+    }
+
     engine = create_engine(
-        f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}",
+        f"databricks://token:{ACCESS_TOKEN}@{HOST}",
         connect_args=connect_args,
     )
     return engine
@@ -123,7 +140,7 @@ def test_pandas_upload(db_engine, metadata_obj):
         db_engine.execute("DROP TABLE mock_data")
 
 
-def test_create_table_not_null(db_engine, metadata_obj):
+def test_create_table_not_null(db_engine, metadata_obj:MetaData):
 
     table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 
@@ -293,3 +310,30 @@ def test_dialect_type_mappings(base, db_engine, metadata_obj: MetaData):
     assert this_row["date_example"] == date_example
 
     metadata_obj.drop_all()
+
+def test_inspector_smoke_test(samples_engine: Engine):
+    """It does not appear that 3L namespace is supported here
+    """
+
+    from sqlalchemy.engine.reflection import Inspector
+    schema, table = "nyctaxi", "trips" 
+    
+    try:
+        inspector = Inspector.from_engine(samples_engine)
+    except Exception as e:
+        assert False, f"Could not build inspector: {e}"
+
+    # Expect six columns
+    columns = inspector.get_columns(table, schema=schema)
+    
+    # Expect zero views, but the method should return
+    views = inspector.get_view_names(schema=schema)
+
+    assert len(columns) == 6, "Dialect did not find the expected number of columns in samples.nyctaxi.trips"
+    assert len(views) == 0, "Views could not be fetched"
+
+def test_get_table_names_smoke_test(samples_engine: Engine):
+    
+    with samples_engine.connect() as conn:
+        _names = samples_engine.table_names(schema="nyctaxi", connection=conn)
+        _names is not None, "get_table_names did not succeed"
