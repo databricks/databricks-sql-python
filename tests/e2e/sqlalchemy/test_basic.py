@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.types import SMALLINT, Integer, BOOLEAN, String, DECIMAL, Date
 from sqlalchemy.engine import Engine
 
+from typing import Tuple
+
 try:
     from sqlalchemy.orm import declarative_base
 except ImportError:
@@ -30,54 +32,42 @@ def version_agnostic_select(object_to_select, *args, **kwargs):
     else:
         return select(object_to_select, *args, **kwargs)
     
+def version_agnostic_connect_arguments(catalog=None, schema=None) -> Tuple[str, dict]:
+        
+    HOST = os.environ.get("host")
+    HTTP_PATH = os.environ.get("http_path")
+    ACCESS_TOKEN = os.environ.get("access_token")
+    CATALOG = catalog or os.environ.get("catalog")
+    SCHEMA = schema or os.environ.get("schema")
+
+    ua_connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+
+    if sqlalchemy_1_3():
+        conn_string = f"databricks://token:{ACCESS_TOKEN}@{HOST}"
+        connect_args = {**ua_connect_args, 
+            "http_path": HTTP_PATH,
+            "server_hostname": HOST,
+            "catalog": CATALOG,
+            "schema": SCHEMA
+        }
+
+        return conn_string, connect_args
+    else:
+        return f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}", ua_connect_args
+
+
 
 
 @pytest.fixture
 def db_engine() -> Engine:
-
-    HOST = os.environ.get("host")
-    HTTP_PATH = os.environ.get("http_path")
-    ACCESS_TOKEN = os.environ.get("access_token")
-    CATALOG = os.environ.get("catalog")
-    SCHEMA = os.environ.get("schema")
-
-    connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
-    
-    connect_args = {
-        **connect_args,
-        "http_path": HTTP_PATH,
-        "server_hostname": HOST,
-        "catalog": CATALOG,
-        "schema": SCHEMA
-    }
-
-    engine = create_engine(
-        f"databricks://token:{ACCESS_TOKEN}@{HOST}",
-        connect_args=connect_args,
-    )
-    return engine
+    conn_string, connect_args = version_agnostic_connect_arguments()
+    return create_engine(conn_string, connect_args=connect_args)
 
 @pytest.fixture
 def samples_engine() -> Engine:
-    HOST = os.environ.get("host")
-    HTTP_PATH = os.environ.get("http_path")
-    ACCESS_TOKEN = os.environ.get("access_token")
-    CATALOG = "samples"
 
-    connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
-    
-    connect_args = {
-        **connect_args,
-        "http_path": HTTP_PATH,
-        "server_hostname": HOST,
-        "catalog": CATALOG,
-    }
-
-    engine = create_engine(
-        f"databricks://token:{ACCESS_TOKEN}@{HOST}",
-        connect_args=connect_args,
-    )
-    return engine
+    conn_string, connect_args = version_agnostic_connect_arguments(catalog="samples", schema="nyctaxi")
+    return create_engine(conn_string, connect_args=connect_args)
 
 
 @pytest.fixture()
