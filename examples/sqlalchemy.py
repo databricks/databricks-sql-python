@@ -42,8 +42,14 @@ more about customer use cases there. That said, the following behaviours have be
 """
 
 import os
-from sqlalchemy.orm import declarative_base, Session
+import sqlalchemy
+from sqlalchemy.orm import Session
 from sqlalchemy import Column, String, Integer, BOOLEAN, create_engine, select
+
+try:
+    from sqlalchemy.orm import declarative_base
+except ImportError:
+    from sqlalchemy.ext.declarative import declarative_base
 
 host = os.getenv("DATABRICKS_SERVER_HOSTNAME")
 http_path = os.getenv("DATABRICKS_HTTP_PATH")
@@ -59,10 +65,20 @@ extra_connect_args = {
     "_user_agent_entry": "PySQL Example Script",
 }
 
-engine = create_engine(
-    f"databricks://token:{access_token}@{host}?http_path={http_path}&catalog={catalog}&schema={schema}",
-    connect_args=extra_connect_args,
-)
+if sqlalchemy.__version__.startswith("1.3"):
+    # SQLAlchemy 1.3.x fails to parse the http_path, catalog, and schema from our connection string
+    # Pass these in as connect_args instead
+
+    conn_string = f"databricks://token:{access_token}@{host}"
+    connect_args = dict(catalog=catalog, schema=schema, http_path=http_path)
+    all_connect_args = {**extra_connect_args, **connect_args}
+    engine = create_engine(conn_string, connect_args=all_connect_args)
+else:
+    engine = create_engine(
+        f"databricks://token:{access_token}@{host}?http_path={http_path}&catalog={catalog}&schema={schema}",
+        connect_args=extra_connect_args,
+    )
+
 session = Session(bind=engine)
 base = declarative_base(bind=engine)
 
@@ -73,7 +89,7 @@ class SampleObject(base):
 
     name = Column(String(255), primary_key=True)
     episodes = Column(Integer)
-    some_bool = Column(BOOLEAN)
+    some_bool = Column(BOOLEAN(create_constraint=False))
 
 
 base.metadata.create_all()
@@ -86,9 +102,14 @@ session.add(sample_object_2)
 
 session.commit()
 
-stmt = select(SampleObject).where(SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"]))
+# SQLAlchemy 1.3 has slightly different methods
+if sqlalchemy.__version__.startswith("1.3"):
+    stmt = select([SampleObject]).where(SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"]))
+    output = [i for i in session.execute(stmt)]
+else:
+    stmt = select(SampleObject).where(SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"]))
+    output = [i for i in session.scalars(stmt)]
 
-output = [i for i in session.scalars(stmt)]
 assert len(output) == 2
 
 base.metadata.drop_all()
