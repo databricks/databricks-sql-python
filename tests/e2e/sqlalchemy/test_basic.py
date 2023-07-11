@@ -2,29 +2,81 @@ import os, datetime, decimal
 import pytest
 from unittest import skipIf
 from sqlalchemy import create_engine, select, insert, Column, MetaData, Table
-from sqlalchemy.orm import declarative_base, Session
+from sqlalchemy.orm import Session
 from sqlalchemy.types import SMALLINT, Integer, BOOLEAN, String, DECIMAL, Date
+from sqlalchemy.engine import Engine
+
+from typing import Tuple
+
+try:
+    from sqlalchemy.orm import declarative_base
+except ImportError:
+    from sqlalchemy.ext.declarative import declarative_base
 
 
 USER_AGENT_TOKEN = "PySQL e2e Tests"
 
 
-@pytest.fixture
-def db_engine():
+def sqlalchemy_1_3():
+    import sqlalchemy
+
+    return sqlalchemy.__version__.startswith("1.3")
+
+
+def version_agnostic_select(object_to_select, *args, **kwargs):
+    """
+    SQLAlchemy==1.3.x requires arguments to select() to be a Python list
+
+    https://docs.sqlalchemy.org/en/20/changelog/migration_14.html#orm-query-is-internally-unified-with-select-update-delete-2-0-style-execution-available
+    """
+
+    if sqlalchemy_1_3():
+        return select([object_to_select], *args, **kwargs)
+    else:
+        return select(object_to_select, *args, **kwargs)
+
+
+def version_agnostic_connect_arguments(catalog=None, schema=None) -> Tuple[str, dict]:
 
     HOST = os.environ.get("host")
     HTTP_PATH = os.environ.get("http_path")
     ACCESS_TOKEN = os.environ.get("access_token")
-    CATALOG = os.environ.get("catalog")
-    SCHEMA = os.environ.get("schema")
+    CATALOG = catalog or os.environ.get("catalog")
+    SCHEMA = schema or os.environ.get("schema")
 
-    connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+    ua_connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
 
-    engine = create_engine(
-        f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}",
-        connect_args=connect_args,
+    if sqlalchemy_1_3():
+        conn_string = f"databricks://token:{ACCESS_TOKEN}@{HOST}"
+        connect_args = {
+            **ua_connect_args,
+            "http_path": HTTP_PATH,
+            "server_hostname": HOST,
+            "catalog": CATALOG,
+            "schema": SCHEMA,
+        }
+
+        return conn_string, connect_args
+    else:
+        return (
+            f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}",
+            ua_connect_args,
+        )
+
+
+@pytest.fixture
+def db_engine() -> Engine:
+    conn_string, connect_args = version_agnostic_connect_arguments()
+    return create_engine(conn_string, connect_args=connect_args)
+
+
+@pytest.fixture
+def samples_engine() -> Engine:
+
+    conn_string, connect_args = version_agnostic_connect_arguments(
+        catalog="samples", schema="nyctaxi"
     )
-    return engine
+    return create_engine(conn_string, connect_args=connect_args)
 
 
 @pytest.fixture()
@@ -62,6 +114,7 @@ def test_connect_args(db_engine):
     assert expected in user_agent
 
 
+@pytest.mark.skipif(sqlalchemy_1_3(), reason="Pandas requires SQLAlchemy >= 1.4")
 def test_pandas_upload(db_engine, metadata_obj):
 
     import pandas as pd
@@ -86,7 +139,7 @@ def test_pandas_upload(db_engine, metadata_obj):
         db_engine.execute("DROP TABLE mock_data")
 
 
-def test_create_table_not_null(db_engine, metadata_obj):
+def test_create_table_not_null(db_engine, metadata_obj: MetaData):
 
     table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 
@@ -95,7 +148,7 @@ def test_create_table_not_null(db_engine, metadata_obj):
         metadata_obj,
         Column("name", String(255)),
         Column("episodes", Integer),
-        Column("some_bool", BOOLEAN, nullable=False),
+        Column("some_bool", BOOLEAN(create_constraint=False), nullable=False),
     )
 
     metadata_obj.create_all()
@@ -135,7 +188,7 @@ def test_bulk_insert_with_core(db_engine, metadata_obj, session):
     metadata_obj.create_all()
     db_engine.execute(insert(SampleTable).values(rows))
 
-    rows = db_engine.execute(select(SampleTable)).fetchall()
+    rows = db_engine.execute(version_agnostic_select(SampleTable)).fetchall()
 
     assert len(rows) == num_to_insert
 
@@ -148,7 +201,7 @@ def test_create_insert_drop_table_core(base, db_engine, metadata_obj: MetaData):
         metadata_obj,
         Column("name", String(255)),
         Column("episodes", Integer),
-        Column("some_bool", BOOLEAN),
+        Column("some_bool", BOOLEAN(create_constraint=False)),
         Column("dollars", DECIMAL(10, 2)),
     )
 
@@ -161,7 +214,7 @@ def test_create_insert_drop_table_core(base, db_engine, metadata_obj: MetaData):
     with db_engine.connect() as conn:
         conn.execute(insert_stmt)
 
-    select_stmt = select(SampleTable)
+    select_stmt = version_agnostic_select(SampleTable)
     resp = db_engine.execute(select_stmt)
 
     result = resp.fetchall()
@@ -187,7 +240,7 @@ def test_create_insert_drop_table_orm(base, session: Session):
 
         name = Column(String(255), primary_key=True)
         episodes = Column(Integer)
-        some_bool = Column(BOOLEAN)
+        some_bool = Column(BOOLEAN(create_constraint=False))
 
     base.metadata.create_all()
 
@@ -197,11 +250,15 @@ def test_create_insert_drop_table_orm(base, session: Session):
     session.add(sample_object_2)
     session.commit()
 
-    stmt = select(SampleObject).where(
+    stmt = version_agnostic_select(SampleObject).where(
         SampleObject.name.in_(["Bim Adewunmi", "Miki Meek"])
     )
 
-    output = [i for i in session.scalars(stmt)]
+    if sqlalchemy_1_3():
+        output = [i for i in session.execute(stmt)]
+    else:
+        output = [i for i in session.scalars(stmt)]
+
     assert len(output) == 2
 
     base.metadata.drop_all()
@@ -215,7 +272,7 @@ def test_dialect_type_mappings(base, db_engine, metadata_obj: MetaData):
         metadata_obj,
         Column("string_example", String(255)),
         Column("integer_example", Integer),
-        Column("boolean_example", BOOLEAN),
+        Column("boolean_example", BOOLEAN(create_constraint=False)),
         Column("decimal_example", DECIMAL(10, 2)),
         Column("date_example", Date),
     )
@@ -239,7 +296,7 @@ def test_dialect_type_mappings(base, db_engine, metadata_obj: MetaData):
     with db_engine.connect() as conn:
         conn.execute(insert_stmt)
 
-    select_stmt = select(SampleTable)
+    select_stmt = version_agnostic_select(SampleTable)
     resp = db_engine.execute(select_stmt)
 
     result = resp.fetchall()
@@ -252,3 +309,34 @@ def test_dialect_type_mappings(base, db_engine, metadata_obj: MetaData):
     assert this_row["date_example"] == date_example
 
     metadata_obj.drop_all()
+
+
+def test_inspector_smoke_test(samples_engine: Engine):
+    """It does not appear that 3L namespace is supported here"""
+
+    from sqlalchemy.engine.reflection import Inspector
+
+    schema, table = "nyctaxi", "trips"
+
+    try:
+        inspector = Inspector.from_engine(samples_engine)
+    except Exception as e:
+        assert False, f"Could not build inspector: {e}"
+
+    # Expect six columns
+    columns = inspector.get_columns(table, schema=schema)
+
+    # Expect zero views, but the method should return
+    views = inspector.get_view_names(schema=schema)
+
+    assert (
+        len(columns) == 6
+    ), "Dialect did not find the expected number of columns in samples.nyctaxi.trips"
+    assert len(views) == 0, "Views could not be fetched"
+
+
+def test_get_table_names_smoke_test(samples_engine: Engine):
+
+    with samples_engine.connect() as conn:
+        _names = samples_engine.table_names(schema="nyctaxi", connection=conn)
+        _names is not None, "get_table_names did not succeed"
