@@ -1,7 +1,16 @@
 # Release History
 
-## 2.6.x (Unreleased)
+## 2.7.x (Unreleased)
 
+- Add support for Cloud Fetch
+- Fix: Revised SQLAlchemy dialect and examples for compatibility with SQLAlchemy==1.3.x
+- Fix: oauth would fail if expired credentials appeared in ~/.netrc
+
+## 2.7.0 (2023-06-26)
+
+- Fix: connector raised exception when calling close() on a closed Thrift session
+- Improve e2e test development ergonomics
+- Redact logged thrift responses by default
 - Add support for OAuth on Databricks Azure
 
 ## 2.6.2 (2023-06-14)

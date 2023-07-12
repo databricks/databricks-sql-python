@@ -17,7 +17,7 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
+DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
 
@@ -153,6 +153,8 @@ class Connection:
         # _use_arrow_native_timestamps
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
+        # use_cloud_fetch
+        # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
         if access_token:
             access_token_kv = {"access_token": access_token}
@@ -189,8 +191,9 @@ class Connection:
         self._session_handle = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
+        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", False)
         self.open = True
-        logger.info("Successfully opened session " + str(self.get_session_id()))
+        logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
 
     def __enter__(self):
@@ -213,6 +216,9 @@ class Connection:
 
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
+
+    def get_session_id_hex(self):
+        return self.thrift_backend.handle_to_hex_id(self._session_handle)
 
     def cursor(
         self,
@@ -244,7 +250,25 @@ class Connection:
         if close_cursors:
             for cursor in self._cursors:
                 cursor.close()
-        self.thrift_backend.close_session(self._session_handle)
+
+        logger.info(f"Closing session {self.get_session_id_hex()}")
+        if not self.open:
+            logger.debug("Session appears to have been closed already")
+
+        try:
+            self.thrift_backend.close_session(self._session_handle)
+        except DatabaseError as e:
+            if "Invalid SessionHandle" in str(e):
+                logger.warning(
+                    f"Attempted to close session that was already closed: {e}"
+                )
+            else:
+                logger.warning(
+                    f"Attempt to close session raised an exception at the server: {e}"
+                )
+        except Exception as e:
+            logger.error(f"Attempt to close session raised a local exception: {e}")
+
         self.open = False
 
     def commit(self):
@@ -476,6 +500,7 @@ class Cursor:
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
+            use_cloud_fetch=self.connection.use_cloud_fetch,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -801,6 +826,7 @@ class ResultSet:
                 break
 
     def _fill_results_buffer(self):
+        # At initialization or if the server does not have cloud fetch result links available
         results, has_more_rows = self.thrift_backend.fetch_results(
             op_handle=self.command_id,
             max_rows=self.arraysize,

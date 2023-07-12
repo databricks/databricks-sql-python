@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sql-connector"
-version = "2.6.2"
+version = "2.7.0"
 description = "Databricks SQL Connector for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
@@ -32,6 +32,7 @@ pytest = "^7.1.2"
 mypy = "^0.950"
 pylint = ">=2.12.0"
 black = "^22.3.0"
+pytest-dotenv = "^0.5.2"
 
 [tool.poetry.urls]
 "Homepage" = "https://github.com/databricks/databricks-sql-python"
@@ -50,3 +51,14 @@ exclude = ['ttypes\.py$', 'TCLIService\.py$']
 
 [tool.black]
 exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+log_cli = "false"
+log_cli_level = "INFO"
+testpaths = [
+    "tests"
+]
+env_files = [
+    "test.env"
+]

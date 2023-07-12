@@ -6,9 +6,9 @@ from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
 
 import pyarrow
-import urllib3
 
 import databricks.sql
+from databricks.sql import utils
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
@@ -327,7 +327,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     thrift_backend._handle_execute_response(t_execute_resp, Mock())
                 self.assertIn("some information about the error", str(cm.exception))
 
-    def test_handle_execute_response_sets_compression_in_direct_results(self):
+    @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
+    def test_handle_execute_response_sets_compression_in_direct_results(self, build_queue):
         for resp_type in self.execute_response_types:
             lz4Compressed=Mock()
             resultSet=MagicMock()
@@ -589,9 +590,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(hive_schema_mock,
                          thrift_backend._hive_schema_to_arrow_schema.call_args[0][0])
 
+    @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_handle_execute_response_reads_has_more_rows_in_direct_results(
-            self, tcli_service_class):
+            self, tcli_service_class, build_queue):
         for has_more_rows, resp_type in itertools.product([True, False],
                                                           self.execute_response_types):
             with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
@@ -622,9 +624,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 self.assertEqual(has_more_rows, execute_response.has_more_rows)
 
+    @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
     @patch("databricks.sql.thrift_backend.TCLIService.Client")
     def test_handle_execute_response_reads_has_more_rows_in_result_response(
-            self, tcli_service_class):
+            self, tcli_service_class, build_queue):
         for has_more_rows, resp_type in itertools.product([True, False],
                                                           self.execute_response_types):
             with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
@@ -641,6 +644,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     status=self.okay_status,
                     hasMoreRows=has_more_rows,
                     results=results_mock,
+                    resultSetMetadata=ttypes.TGetResultSetMetadataResp(
+                        resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET
+                    )
                 )
 
                 operation_status_resp = ttypes.TGetOperationStatusResp(
@@ -677,7 +683,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 rows=[],
                 arrowBatches=[
                     ttypes.TSparkArrowBatch(batch=bytearray(), rowCount=15) for _ in range(10)
-                ]))
+                ]
+            ),
+            resultSetMetadata=ttypes.TGetResultSetMetadataResp(
+                resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET
+            )
+        )
         tcli_service_instance.FetchResults.return_value = t_fetch_results_resp
         schema = pyarrow.schema([
             pyarrow.field("column1", pyarrow.int32()),
@@ -875,8 +886,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(OperationalError):
             thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
-    @patch.object(ThriftBackend, "_convert_arrow_based_set_to_arrow_table")
-    @patch.object(ThriftBackend, "_convert_column_based_set_to_arrow_table")
+    @patch("databricks.sql.thrift_backend.convert_arrow_based_set_to_arrow_table")
+    @patch("databricks.sql.thrift_backend.convert_column_based_set_to_arrow_table")
     def test_create_arrow_table_calls_correct_conversion_method(self, convert_col_mock,
                                                                 convert_arrow_mock):
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
@@ -910,12 +921,11 @@ class ThriftBackendTestSuite(unittest.TestCase):
         ]).serialize().to_pybytes()
         
         arrow_batches = [ttypes.TSparkArrowBatch(batch=bytearray('Testing','utf-8'), rowCount=1) for _ in range(10)]
-        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
+        utils.convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
         lz4_decompress_mock.assert_not_called()
 
-        thrift_backend._convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
+        utils.convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
         lz4_decompress_mock.assert_called()
-        
 
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):
         # Deliberately duplicate the column name to check that dups work
@@ -931,7 +941,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 binaryVal=ttypes.TBinaryColumn(values=[b'\x11', b'\x22', b'\x33'], nulls=bytes(1)))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+        arrow_table, n_rows = utils.convert_column_based_set_to_arrow_table(
             t_cols, description)
         self.assertEqual(n_rows, 3)
 
@@ -967,7 +977,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     values=[b'\x11', b'\x22', b'\x33'], nulls=bytes([3])))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+        arrow_table, n_rows = utils.convert_column_based_set_to_arrow_table(
             t_cols, description)
         self.assertEqual(n_rows, 3)
 
@@ -990,7 +1000,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 binaryVal=ttypes.TBinaryColumn(values=[b'\x11', b'\x22', b'\x33'], nulls=bytes(1)))
         ]
 
-        arrow_table, n_rows = ThriftBackend._convert_column_based_set_to_arrow_table(
+        arrow_table, n_rows = utils.convert_column_based_set_to_arrow_table(
             t_cols, description)
         self.assertEqual(n_rows, 3)
 
@@ -1094,7 +1104,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("databricks.sql.thrift_backend._retry_policy", new_callable=retry_policy_factory)
     def test_make_request_will_retry_GetOperationStatus_for_http_error(
             self, mock_retry_policy, mock_gos):
-        
+
         import urllib3.exceptions
         mock_gos.side_effect = urllib3.exceptions.HTTPError("Read timed out")
 
@@ -1133,7 +1143,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(NoRetryReason.OUT_OF_ATTEMPTS.value, cm.exception.context["no-retry-reason"])
         self.assertEqual(f'{EXPECTED_RETRIES}/{EXPECTED_RETRIES}', cm.exception.context["attempt"])
 
-        
+
 
 
     @patch("thrift.transport.THttpClient.THttpClient")
@@ -1252,7 +1262,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     table, description = self.make_table_and_desc(height, n_decimal_cols, width,
                                                                   precision, scale, int_constant,
                                                                   decimal_constant)
-                    decimal_converted_table = ThriftBackend._convert_decimals_in_arrow_table(
+                    decimal_converted_table = utils.convert_decimals_in_arrow_table(
                         table, description)
 
                     for i in range(width):
