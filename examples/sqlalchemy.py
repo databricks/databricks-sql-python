@@ -89,7 +89,7 @@ class SampleObject(base):
 
     name = Column(String(255), primary_key=True)
     episodes = Column(Integer)
-    some_bool = Column(BOOLEAN(create_constraint=False))
+    some_bool = Column(BOOLEAN)
 
 
 base.metadata.create_all()
