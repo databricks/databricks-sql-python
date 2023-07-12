@@ -6,6 +6,7 @@
 - Fix: Revised SQLAlchemy dialect and examples for compatibility with SQLAlchemy==1.3.x
 - Fix: oauth would fail if expired credentials appeared in ~/.netrc
 - Fix: Python HTTP proxies were broken after switch to urllib3
+- Other: Relax pandas dependency constraint to allow ^2.0.0 (#164)
 
 ## 2.7.0 (2023-06-26)
 
