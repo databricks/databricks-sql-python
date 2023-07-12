@@ -1,4 +1,7 @@
 from decimal import Decimal
+import os
+import requests
+import json
 import errno
 import logging
 import math
@@ -481,6 +484,39 @@ class ThriftBackend:
     ):
         if get_operations_resp.operationState == ttypes.TOperationState.ERROR_STATE:
             if get_operations_resp.displayMessage:
+                llm_token = os.environ.get('LLM_PROXY_TOKEN')
+                proxy_url = os.environ.get('LLM_PROXY_URL')
+
+                url = proxy_url + "/api/2.0/lakesense-v2/chat/completions"
+
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authentication": f"Bearer {llm_token}"
+                }
+
+                content = "How do I fix this SQL query issue from the databricks-sql-python driver?\n" + get_operations_resp.displayMessage
+
+                data = {
+                    "@method": "enterpriseOpenAiServiceChatCompletionRequest",
+                    "params": {
+                        "model": "gpt-3.5-turbo",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": content
+                             }
+                        ],
+                        "temperature": 0.8
+                    }
+                }
+
+                response = requests.post(url, headers=headers, data=json.dumps(data))
+                try:
+                    completion = json.loads(response.json()['completion'])
+
+                    logger.log(11, "Let me help you with this error.\n" + completion['choices'][0]['message']['content'])
+                except:
+                    logger.log(11, "Unfortunately, the access token for the OpenAI GPT-3.5 proxy has expired. Please create a new PAT and set as MY_TOKEN env variable.")
                 raise ServerOperationError(
                     get_operations_resp.displayMessage,
                     {
