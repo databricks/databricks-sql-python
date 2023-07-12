@@ -16,6 +16,7 @@ import pyarrow
 import pytz
 import thrift
 import pytest
+from urllib3.connectionpool import ReadTimeoutError
 
 import databricks.sql as sql
 from databricks.sql import STRING, BINARY, NUMBER, DATETIME, DATE, DatabaseError, Error, OperationalError, RequestError
@@ -509,12 +510,11 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
     def test_socket_timeout_user_defined(self):
         #  We expect to see a TimeoutError when the socket timeout is only
         #  1 sec for a query that takes longer than that to process
-        with self.assertRaises(RequestError) as cm:
+        with self.assertRaises(ReadTimeoutError) as cm:
             with self.cursor({"_socket_timeout": 1}) as cursor:
-                query = "select * from range(10000000)"
+                query = "select * from range(1000000000)"
                 cursor.execute(query)
 
-        self.assertIsInstance(cm.exception.args[1], TimeoutError)
 
     def test_ssp_passthrough(self):
         for enable_ansi in (True, False):
