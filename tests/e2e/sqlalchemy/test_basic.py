@@ -148,7 +148,7 @@ def test_create_table_not_null(db_engine, metadata_obj: MetaData):
         metadata_obj,
         Column("name", String(255)),
         Column("episodes", Integer),
-        Column("some_bool", BOOLEAN(create_constraint=False), nullable=False),
+        Column("some_bool", BOOLEAN, nullable=False),
     )
 
     metadata_obj.create_all()
@@ -201,7 +201,7 @@ def test_create_insert_drop_table_core(base, db_engine, metadata_obj: MetaData):
         metadata_obj,
         Column("name", String(255)),
         Column("episodes", Integer),
-        Column("some_bool", BOOLEAN(create_constraint=False)),
+        Column("some_bool", BOOLEAN),
         Column("dollars", DECIMAL(10, 2)),
     )
 
@@ -240,7 +240,7 @@ def test_create_insert_drop_table_orm(base, session: Session):
 
         name = Column(String(255), primary_key=True)
         episodes = Column(Integer)
-        some_bool = Column(BOOLEAN(create_constraint=False))
+        some_bool = Column(BOOLEAN)
 
     base.metadata.create_all()
 
@@ -272,7 +272,7 @@ def test_dialect_type_mappings(base, db_engine, metadata_obj: MetaData):
         metadata_obj,
         Column("string_example", String(255)),
         Column("integer_example", Integer),
-        Column("boolean_example", BOOLEAN(create_constraint=False)),
+        Column("boolean_example", BOOLEAN),
         Column("decimal_example", DECIMAL(10, 2)),
         Column("date_example", Date),
     )
