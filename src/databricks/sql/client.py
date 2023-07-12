@@ -206,7 +206,7 @@ class Connection:
         if self.open:
             logger.debug(
                 "Closing unclosed connection for session "
-                "{}".format(self.get_session_id())
+                "{}".format(self.get_session_id_hex())
             )
             try:
                 self._close(close_cursors=False)
