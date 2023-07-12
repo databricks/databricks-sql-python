@@ -4,6 +4,7 @@
 
 - Add support for Cloud Fetch
 - Fix: Revised SQLAlchemy dialect and examples for compatibility with SQLAlchemy==1.3.x
+- Connector now logs operation handle guids as hexadecimal instead of bytes
 
 ## 2.7.0 (2023-06-26)
 
