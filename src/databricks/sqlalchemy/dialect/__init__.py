@@ -4,9 +4,10 @@
 import decimal, re, datetime
 from dateutil.parser import parse
 
+import sqlalchemy
 from sqlalchemy import types, processors, event
 from sqlalchemy.engine import default, Engine
-from sqlalchemy.exc import DatabaseError
+from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 from sqlalchemy.engine import reflection
 
 from databricks import sql
@@ -154,9 +155,7 @@ class DatabricksDialect(default.DefaultDialect):
             "date": DatabricksDate,
         }
 
-        with self.get_driver_connection(
-            connection
-        )._dbapi_connection.dbapi_connection.cursor() as cur:
+        with self.get_connection_cursor(connection) as cur:
             resp = cur.columns(
                 catalog_name=self.catalog,
                 schema_name=schema or self.schema,
@@ -245,9 +244,7 @@ class DatabricksDialect(default.DefaultDialect):
 
     def get_table_names(self, connection, schema=None, **kwargs):
         TABLE_NAME = 1
-        with self.get_driver_connection(
-            connection
-        )._dbapi_connection.dbapi_connection.cursor() as cur:
+        with self.get_connection_cursor(connection) as cur:
             sql_str = "SHOW TABLES FROM {}".format(
                 ".".join([self.catalog, schema or self.schema])
             )
@@ -258,9 +255,7 @@ class DatabricksDialect(default.DefaultDialect):
 
     def get_view_names(self, connection, schema=None, **kwargs):
         VIEW_NAME = 1
-        with self.get_driver_connection(
-            connection
-        )._dbapi_connection.dbapi_connection.cursor() as cur:
+        with self.get_connection_cursor(connection) as cur:
             sql_str = "SHOW VIEWS FROM {}".format(
                 ".".join([self.catalog, schema or self.schema])
             )
@@ -273,17 +268,22 @@ class DatabricksDialect(default.DefaultDialect):
         # Databricks SQL Does not support transactions
         pass
 
-    def has_table(self, connection, table_name, schema=None, **kwargs) -> bool:
+    def has_table(
+        self, connection, table_name, schema=None, catalog=None, **kwargs
+    ) -> bool:
         """SQLAlchemy docstrings say dialect providers must implement this method"""
 
-        schema = schema or "default"
+        _schema = schema or self.schema
+        _catalog = catalog or self.catalog
 
         # DBR >12.x uses underscores in error messages
         DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
         DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
 
         try:
-            res = connection.execute(f"DESCRIBE TABLE {table_name}")
+            res = connection.execute(
+                f"DESCRIBE TABLE {_catalog}.{_schema}.{table_name}"
+            )
             return True
         except DatabaseError as e:
             if DBR_GT_12_NOT_FOUND_STRING in str(
@@ -292,6 +292,19 @@ class DatabricksDialect(default.DefaultDialect):
                 return False
             else:
                 raise e
+
+    def get_connection_cursor(self, connection):
+        """Added for backwards compatibility with 1.3.x"""
+        if hasattr(connection, "_dbapi_connection"):
+            return connection._dbapi_connection.dbapi_connection.cursor()
+        elif hasattr(connection, "raw_connection"):
+            return connection.raw_connection().cursor()
+        elif hasattr(connection, "connection"):
+            return connection.connection.cursor()
+
+        raise SQLAlchemyError(
+            "Databricks dialect can't obtain a cursor context manager from the dbapi"
+        )
 
     @reflection.cache
     def get_schema_names(self, connection, **kw):
@@ -315,3 +328,13 @@ def receive_do_connect(dialect, conn_rec, cargs, cparams):
         new_user_agent = "sqlalchemy"
 
     cparams["_user_agent_entry"] = new_user_agent
+
+    if sqlalchemy.__version__.startswith("1.3"):
+        # SQLAlchemy 1.3.x fails to parse the http_path, catalog, and schema from our connection string
+        # These should be passed in as connect_args when building the Engine
+
+        if "schema" in cparams:
+            dialect.schema = cparams["schema"]
+
+        if "catalog" in cparams:
+            dialect.catalog = cparams["catalog"]

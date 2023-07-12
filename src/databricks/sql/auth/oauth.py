@@ -14,17 +14,38 @@ from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from requests.exceptions import RequestException
 
 from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
+from databricks.sql.auth.endpoint import OAuthEndpointCollection
 
 logger = logging.getLogger(__name__)
 
 
-class OAuthManager:
-    OIDC_REDIRECTOR_PATH = "oidc"
+class IgnoreNetrcAuth(requests.auth.AuthBase):
+    """This auth method is a no-op.
 
-    def __init__(self, port_range: List[int], client_id: str):
+    We use it to force requestslib to not use .netrc to write auth headers
+    when making .post() requests to the oauth token endpoints, since these
+    don't require authentication.
+
+    In cases where .netrc is outdated or corrupt, these requests will fail.
+
+    See issue #121
+    """
+
+    def __call__(self, r):
+        return r
+
+
+class OAuthManager:
+    def __init__(
+        self,
+        port_range: List[int],
+        client_id: str,
+        idp_endpoint: OAuthEndpointCollection,
+    ):
         self.port_range = port_range
         self.client_id = client_id
         self.redirect_port = None
+        self.idp_endpoint = idp_endpoint
 
     @staticmethod
     def __token_urlsafe(nbytes=32):
@@ -34,14 +55,14 @@ class OAuthManager:
     def __get_redirect_url(redirect_port: int):
         return f"http://localhost:{redirect_port}"
 
-    @staticmethod
-    def __fetch_well_known_config(idp_url: str):
-        known_config_url = f"{idp_url}/.well-known/oauth-authorization-server"
+    def __fetch_well_known_config(self, hostname: str):
+        known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
+
         try:
-            response = requests.get(url=known_config_url)
+            response = requests.get(url=known_config_url, auth=IgnoreNetrcAuth())
         except RequestException as e:
             logger.error(
-                f"Unable to fetch OAuth configuration from {idp_url}.\n"
+                f"Unable to fetch OAuth configuration from {known_config_url}.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
                 "enabled on this account."
             )
@@ -50,7 +71,7 @@ class OAuthManager:
         if response.status_code != 200:
             msg = (
                 f"Received status {response.status_code} OAuth configuration from "
-                f"{idp_url}.\n Verify it is a valid workspace URL and "
+                f"{known_config_url}.\n Verify it is a valid workspace URL and "
                 "that OAuth is enabled on this account."
             )
             logger.error(msg)
@@ -59,17 +80,11 @@ class OAuthManager:
             return response.json()
         except requests.exceptions.JSONDecodeError as e:
             logger.error(
-                f"Unable to decode OAuth configuration from {idp_url}.\n"
+                f"Unable to decode OAuth configuration from {known_config_url}.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
                 "enabled on this account."
             )
             raise e
-
-    @staticmethod
-    def __get_idp_url(host: str):
-        maybe_scheme = "https://" if not host.startswith("https://") else ""
-        maybe_trailing_slash = "/" if not host.endswith("/") else ""
-        return f"{maybe_scheme}{host}{maybe_trailing_slash}{OAuthManager.OIDC_REDIRECTOR_PATH}"
 
     @staticmethod
     def __get_challenge():
@@ -150,12 +165,13 @@ class OAuthManager:
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        response = requests.post(url=token_request_url, data=data, headers=headers)
+        response = requests.post(
+            url=token_request_url, data=data, headers=headers, auth=IgnoreNetrcAuth()
+        )
         return response.json()
 
     def __send_refresh_token_request(self, hostname, refresh_token):
-        idp_url = OAuthManager.__get_idp_url(hostname)
-        oauth_config = OAuthManager.__fetch_well_known_config(idp_url)
+        oauth_config = self.__fetch_well_known_config(hostname)
         token_request_url = oauth_config["token_endpoint"]
         client = oauthlib.oauth2.WebApplicationClient(self.client_id)
         token_request_body = client.prepare_refresh_body(
@@ -215,14 +231,15 @@ class OAuthManager:
         return fresh_access_token, fresh_refresh_token, True
 
     def get_tokens(self, hostname: str, scope=None):
-        idp_url = self.__get_idp_url(hostname)
-        oauth_config = self.__fetch_well_known_config(idp_url)
+        oauth_config = self.__fetch_well_known_config(hostname)
         # We are going to override oauth_config["authorization_endpoint"] use the
         # /oidc redirector on the hostname, which may inject additional parameters.
-        auth_url = f"{hostname}oidc/v1/authorize"
+        auth_url = self.idp_endpoint.get_authorization_url(hostname)
+
         state = OAuthManager.__token_urlsafe(16)
         (verifier, challenge) = OAuthManager.__get_challenge()
         client = oauthlib.oauth2.WebApplicationClient(self.client_id)
+
         try:
             auth_response = self.__get_authorization_code(
                 client, auth_url, scope, state, challenge

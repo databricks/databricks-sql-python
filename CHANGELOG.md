@@ -1,6 +1,35 @@
 # Release History
 
-## 2.5.x (Unreleased)
+## 2.7.x (Unreleased)
+
+- Add support for Cloud Fetch (#146, #151, #154)
+- SQLAlchemy has_table function now honours schema= argument and adds catalog= argument (#174)
+- Fix: Revised SQLAlchemy dialect and examples for compatibility with SQLAlchemy==1.3.x (#173)
+- Fix: oauth would fail if expired credentials appeared in ~/.netrc (#122)
+- Fix: Python HTTP proxies were broken after switch to urllib3 (#158)
+- Other: Relax pandas dependency constraint to allow ^2.0.0 (#164)
+- Other: Connector now logs operation handle guids as hexadecimal instead of bytes (#170)
+- Other: test_socket_timeout_user_defined e2e test was broken (#144)
+
+## 2.7.0 (2023-06-26)
+
+- Fix: connector raised exception when calling close() on a closed Thrift session
+- Improve e2e test development ergonomics
+- Redact logged thrift responses by default
+- Add support for OAuth on Databricks Azure
+
+## 2.6.2 (2023-06-14)
+
+- Fix: Retry GetOperationStatus requests for http errors
+
+## 2.6.1 (2023-06-08)
+
+- Fix: http.client would raise a BadStatusLine exception in some cases
+
+## 2.6.0 (2023-06-07)
+
+- Add support for HTTP 1.1 connections (connection pools)
+- Add a default socket timeout for thrift RPCs
 
 ## 2.5.2 (2023-05-08)
 
