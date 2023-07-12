@@ -267,17 +267,22 @@ class DatabricksDialect(default.DefaultDialect):
         # Databricks SQL Does not support transactions
         pass
 
-    def has_table(self, connection, table_name, schema=None, **kwargs) -> bool:
+    def has_table(
+        self, connection, table_name, schema=None, catalog=None, **kwargs
+    ) -> bool:
         """SQLAlchemy docstrings say dialect providers must implement this method"""
 
-        schema = schema or "default"
+        _schema = schema or self.schema
+        _catalog = catalog or self.catalog
 
         # DBR >12.x uses underscores in error messages
         DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
         DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
 
         try:
-            res = connection.execute(f"DESCRIBE TABLE {table_name}")
+            res = connection.execute(
+                f"DESCRIBE TABLE {_catalog}.{_schema}.{table_name}"
+            )
             return True
         except DatabaseError as e:
             if DBR_GT_12_NOT_FOUND_STRING in str(
