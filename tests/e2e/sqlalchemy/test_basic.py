@@ -340,3 +340,44 @@ def test_get_table_names_smoke_test(samples_engine: Engine):
     with samples_engine.connect() as conn:
         _names = samples_engine.table_names(schema="nyctaxi", connection=conn)
         _names is not None, "get_table_names did not succeed"
+
+
+def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
+    """For this test to pass these conditions must be met:
+        - Table samples.nyctaxi.trips must exist
+        - Table samples.tpch.customer must exist
+        - The `catalog` and `schema` environment variables must be set and valid
+    """
+
+    with samples_engine.connect() as conn:
+
+        # 1) Check for table within schema declared at engine creation time
+        assert samples_engine.dialect.has_table(connection=conn, table_name="trips")
+
+        # 2) Check for table within another schema in the same catalog
+        assert samples_engine.dialect.has_table(
+            connection=conn, table_name="customer", schema="tpch"
+        )
+
+        # 3) Check for a table within a different catalog
+        other_catalog = os.environ.get("catalog")
+        other_schema = os.environ.get("schema")
+
+        # Create a table in a different catalog
+        with db_engine.connect() as conn:
+            conn.execute("CREATE TABLE test_has_table (numbers_are_cool INT);")
+
+            try:
+                # Verify that this table is not found in the samples catalog
+                assert not samples_engine.dialect.has_table(
+                    connection=conn, table_name="test_has_table"
+                )
+                # Verify that this table is found in a separate catalog
+                assert samples_engine.dialect.has_table(
+                    connection=conn,
+                    table_name="test_has_table",
+                    schema=other_schema,
+                    catalog=other_catalog,
+                )
+            finally:
+                conn.execute("DROP TABLE test_has_table;")
