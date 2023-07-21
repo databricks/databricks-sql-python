@@ -2,7 +2,7 @@
 
 ## 2.8.x (Unreleased)
 
-## 2.8.0 (2023-07-14)
+## 2.8.0 (2023-07-21)
 
 - Add support for Cloud Fetch (#146, #151, #154)
 - SQLAlchemy has_table function now honours schema= argument and adds catalog= argument (#174)
