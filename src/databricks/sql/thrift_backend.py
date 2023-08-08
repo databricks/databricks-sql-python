@@ -381,7 +381,7 @@ class ThriftBackend:
                 this_command_type = CommandType.get(this_method_name)
                 self._transport.set_retry_command_type(this_command_type)
                 self._transport.startRetryTimer()
-                
+
                 response = method(request)
 
                 # Calling `close()` here releases the active HTTP connection back to the pool
