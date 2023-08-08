@@ -30,7 +30,7 @@ class CommandType(Enum):
         value_name_map = {i.value: i.name for i in cls}
         valid_command = value_name_map.get(value, False)
         if valid_command:
-            return getattr(cls, valid_command)
+            return getattr(cls, str(valid_command))
         else:
             return cls.OTHER
 
