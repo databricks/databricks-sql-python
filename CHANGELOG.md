@@ -1,6 +1,8 @@
 # Release History
 
-## 2.8.x (Unreleased)
+## 2.10.x (Unreleased)
+
+## 2.9.0 (2023-08-10)
 
 - Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `enable_v3_retries=True` when creating `databricks.sql.client`
 - Other: Fix typo in README quick start example
