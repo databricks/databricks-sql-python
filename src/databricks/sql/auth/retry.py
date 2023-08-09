@@ -90,7 +90,7 @@ class DatabricksRetryPolicy(Retry):
         self.delay_min = delay_min
         self.stop_after_attempts_count = stop_after_attempts_count
         self.stop_after_attempts_duration = stop_after_attempts_duration
-        self.delay_default = delay_default
+        self._delay_default = delay_default
         self.force_dangerous_codes = force_dangerous_codes
 
         # the urllib3 kwargs are a mix of configuration (some of which we override)
@@ -236,13 +236,15 @@ class DatabricksRetryPolicy(Retry):
         self._command_type = value
 
     @property
-    def get_operation_status_delay(self) -> float:
+    def delay_default(self) -> float:
         """Time in seconds the connector will wait between requests polling a GetOperationStatus Request
 
         This property is never read by urllib3 for the purpose of retries. It's stored in this class
-        to keep all retry logic in one place
+        to keep all retry logic in one place.
+
+        This property is only set by __init__ and cannot be modified afterward.
         """
-        return self.delay_default
+        return self._delay_default
 
     def start_retry_timer(self) -> None:
         """Timer is used to monitor the overall time across successive requests

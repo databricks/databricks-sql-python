@@ -403,7 +403,7 @@ class ThriftBackend:
                 if method.__name__ == gos_name:
                     delay_default = (
                         self.enable_v3_retries
-                        and self.retry_policy.get_operation_status_delay
+                        and self.retry_policy.delay_default
                         or self._retry_delay_default
                     )
                     retry_delay = bound_retry_delay(attempt, delay_default)
