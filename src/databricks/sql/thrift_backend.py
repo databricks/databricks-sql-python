@@ -17,9 +17,11 @@ import thrift.transport.TTransport
 import urllib3.exceptions
 
 import databricks.sql.auth.thrift_http_client
+from databricks.sql.auth.thrift_http_client import CommandType
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
+from databricks.sql.exc import MaxRetryDurationError
 from databricks.sql.thrift_api.TCLIService.TCLIService import (
     Client as TCLIServiceClient,
 )
@@ -70,6 +72,12 @@ class ThriftBackend:
     CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
     ERROR_OP_STATE = ttypes.TOperationState.ERROR_STATE
 
+    _retry_delay_min: float
+    _retry_delay_max: float
+    _retry_stop_after_attempts_count: int
+    _retry_stop_after_attempts_duration: float
+    _retry_delay_default: float
+
     def __init__(
         self,
         server_hostname: str,
@@ -113,9 +121,15 @@ class ThriftBackend:
         #
         # _retry_stop_after_attempts_count
         #  The maximum number of times we should retry retryable requests (defaults to 24)
+        # _retry_dangerous_codes
+        #  An iterable of integer HTTP status codes. ExecuteStatement commands will be retried if these codes are received.
+        #  (defaults to [])
         # _socket_timeout
         #  The timeout in seconds for socket send, recv and connect operations. Should be a positive float or integer.
         #  (defaults to 900)
+        # _enable_v3_retries
+        # Whether to use the DatabricksRetryPolicy implemented in urllib3
+        # (defaults to False)
         # max_download_threads
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
@@ -166,10 +180,28 @@ class ThriftBackend:
 
         self._auth_provider = auth_provider
 
+        # Connector version 3 retry approach
+        self.enable_v3_retries = kwargs.get("_enable_v3_retries", False)
+        self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
+
+        additional_transport_args = {}
+        if self.enable_v3_retries:
+            self.retry_policy = databricks.sql.auth.thrift_http_client.DatabricksRetryPolicy(
+                delay_min=self._retry_delay_min,
+                delay_max=self._retry_delay_max,
+                stop_after_attempts_count=self._retry_stop_after_attempts_count,
+                stop_after_attempts_duration=self._retry_stop_after_attempts_duration,
+                delay_default=self._retry_delay_default,
+                force_dangerous_codes=self.force_dangerous_codes,
+            )
+
+            additional_transport_args["retry_policy"] = self.retry_policy
+
         self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
             auth_provider=self._auth_provider,
             uri_or_host=uri,
             ssl_context=ssl_context,
+            **additional_transport_args,  # type: ignore
         )
 
         timeout = kwargs.get("_socket_timeout", DEFAULT_SOCKET_TIMEOUT)
@@ -188,6 +220,7 @@ class ThriftBackend:
 
         self._request_lock = threading.RLock()
 
+    # TODO: Move this bounding logic into DatabricksRetryPolicy for v3 (PECO-918)
     def _initialize_retry_args(self, kwargs):
         # Configure retries & timing: use user-settings or defaults, and bound
         # by policy. Log.warn when given param gets restricted.
@@ -335,12 +368,17 @@ class ThriftBackend:
 
             error, error_message, retry_delay = None, None, None
             try:
-                logger.debug(
-                    "Sending request: {}(<REDACTED>)".format(
-                        getattr(method, "__name__")
-                    )
-                )
+
+                this_method_name = getattr(method, "__name__")
+
+                logger.debug("Sending request: {}(<REDACTED>)".format(this_method_name))
                 unsafe_logger.debug("Sending request: {}".format(request))
+
+                # These three lines are no-ops if the v3 retry policy is not in use
+                this_command_type = CommandType.get(this_method_name)
+                self._transport.set_retry_command_type(this_command_type)
+                self._transport.startRetryTimer()
+
                 response = method(request)
 
                 # Calling `close()` here releases the active HTTP connection back to the pool
@@ -356,9 +394,16 @@ class ThriftBackend:
             except urllib3.exceptions.HTTPError as err:
                 # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
 
+                # TODO: don't use exception handling for GOS polling...
+
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
-                    retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
+                    delay_default = (
+                        self.enable_v3_retries
+                        and self.retry_policy.delay_default
+                        or self._retry_delay_default
+                    )
+                    retry_delay = bound_retry_delay(attempt, delay_default)
                     logger.info(
                         f"GetOperationStatus failed with HTTP error and will be retried: {str(err)}"
                     )

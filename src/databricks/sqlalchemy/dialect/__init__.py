@@ -74,7 +74,7 @@ class DatabricksDialect(default.DefaultDialect):
     driver: str = "databricks"
     default_schema_name: str = "default"
 
-    preparer = DatabricksIdentifierPreparer
+    preparer = DatabricksIdentifierPreparer  # type: ignore
     type_compiler = DatabricksTypeCompiler
     ddl_compiler = DatabricksDDLCompiler
     supports_statement_cache: bool = True
