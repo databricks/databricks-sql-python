@@ -70,18 +70,6 @@ class DatabricksRetryPolicy(Retry):
         List of integer HTTP status codes that the connector will retry, even for dangerous
         commands like ExecuteStatement. This is passed to urllib3 by extending its status_forcelist
 
-    :param _retry_start_time:
-        Float unix timestamp. Used to monitor the overall request duration across successive
-        retries. Never set this value directly. Use self.start_retry_timer() instead. Users
-        never set this value. It is set by ThriftBackend immediately before issuing a network
-        request.
-
-    :param _command_type:
-        CommandType of the current request being retried. Used to modify retry behaviour based
-        on the type of Thrift command being issued. See self.should_retry() for details. Users
-        never set this value directly. It is set by ThriftBackend immediately before issuing
-        a network request.
-
     :param urllib3_kwargs:
         Dictionary of arguments that are passed to Retry.__init__. Any setting of Retry() that
         Databricks does not override or extend may be modified here.
@@ -95,8 +83,6 @@ class DatabricksRetryPolicy(Retry):
         stop_after_attempts_duration: float,
         delay_default: float,
         force_dangerous_codes: List[int],
-        _retry_start_time: Optional[float] = None,
-        _command_type: Optional[CommandType] = None,
         urllib3_kwargs: dict = {},
     ):
         # These values do not change from one command to the next
@@ -106,10 +92,6 @@ class DatabricksRetryPolicy(Retry):
         self.stop_after_attempts_duration = stop_after_attempts_duration
         self.delay_default = delay_default
         self.force_dangerous_codes = force_dangerous_codes
-
-        # These values do change from one command to the next
-        self._retry_start_time = _retry_start_time
-        self.command_type = _command_type
 
         # the urllib3 kwargs are a mix of configuration (some of which we override)
         # and counters like `total` or `connect` which may change between successive retries
@@ -145,6 +127,36 @@ class DatabricksRetryPolicy(Retry):
             **urllib3_kwargs,  # type: ignore
         )
 
+    @classmethod
+    def __private_init__(
+        cls, retry_start_time: float, command_type: Optional[CommandType], **init_kwargs
+    ):
+        """
+        Returns a new instance of DatabricksRetryPolicy with the _retry_start_time and _command_type
+        properties already set. This method should only be called by DatabricksRetryPolicy itself between
+        successive Retry attempts.
+
+        :param retry_start_time:
+            Float unix timestamp. Used to monitor the overall request duration across successive
+            retries. Never set this value directly. Use self.start_retry_timer() instead. Users
+            never set this value. It is set by ThriftBackend immediately before issuing a network
+            request.
+
+        :param command_type:
+            CommandType of the current request being retried. Used to modify retry behaviour based
+            on the type of Thrift command being issued. See self.should_retry() for details. Users
+            never set this value directly. It is set by ThriftBackend immediately before issuing
+            a network request.
+
+        :param init_kwargs:
+            A dictionary of parameters that will be passed to __init__ in the new object
+        """
+
+        new_object = cls(**init_kwargs)
+        new_object._retry_start_time = retry_start_time
+        new_object.command_type = command_type
+        return new_object
+
     def new(self, **urllib3_incremented_counters: typing.Any) -> Retry:
         """This method is responsible for passing the entire Retry state to its next iteration.
 
@@ -167,6 +179,7 @@ class DatabricksRetryPolicy(Retry):
 
         Since self.__init__ has a different signature than Retry.__init__ , we implement our own `self.new()`
         to pipe our Databricks-specific state while preserving the super-class's behaviour.
+
         """
 
         # These arguments will match the function signature for self.__init__
@@ -177,8 +190,6 @@ class DatabricksRetryPolicy(Retry):
             stop_after_attempts_duration=self.stop_after_attempts_duration,
             delay_default=self.delay_default,
             force_dangerous_codes=self.force_dangerous_codes,
-            _retry_start_time=self._retry_start_time,
-            _command_type=self._command_type,
             urllib3_kwargs={},
         )
 
@@ -210,8 +221,10 @@ class DatabricksRetryPolicy(Retry):
         # Include urllib3's current state in our __init__ params
         databricks_init_params["urllib3_kwargs"].update(**urllib3_init_params)  # type: ignore
 
-        return type(self)(
-            **databricks_init_params,  # type: ignore[arg-type]
+        return type(self).__private_init__(
+            retry_start_time=self._retry_start_time,
+            command_type=self.command_type,
+            **databricks_init_params,
         )
 
     @property
