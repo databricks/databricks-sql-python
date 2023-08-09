@@ -29,7 +29,7 @@ Note: Don't hard-code authentication secrets into your Python. Use environment v
 ```bash
 export DATABRICKS_HOST=********.databricks.com
 export DATABRICKS_HTTP_PATH=/sql/1.0/endpoints/****************
-export DATABRICKS_ACCESS_TOKEN=dapi********************************
+export DATABRICKS_TOKEN=dapi********************************
 ```
 
 Example usage:
@@ -39,7 +39,7 @@ from databricks import sql
 
 host = os.getenv("DATABRICKS_HOST")
 http_path = os.getenv("DATABRICKS_HTTP_PATH")
-access_token = os.getenv("DATABRICKS_ACCESS_TOKEN")
+access_token = os.getenv("DATABRICKS_TOKEN")
 
 connection = sql.connect(
   server_hostname=host,
