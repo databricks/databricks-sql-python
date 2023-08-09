@@ -39,7 +39,7 @@ from databricks import sql
 
 host = os.getenv("DATABRICKS_HOST")
 http_path = os.getenv("DATABRICKS_HTTP_PATH")
-access_token = os.getenv("DATABRICKS_ACCESS_TOKEN")
+access_token = os.getenv("DATABRICKS_TOKEN")
 
 connection = sql.connect(
   server_hostname=host,
