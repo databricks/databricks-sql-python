@@ -15,6 +15,8 @@ from io import BytesIO
 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 
+from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
+
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
     def __init__(
@@ -28,6 +30,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         key_file=None,
         ssl_context=None,
         max_connections: int = 1,
+        retry_policy: Union[DatabricksRetryPolicy, int] = 0,
     ):
         if port is not None:
             warnings.warn(
@@ -81,6 +84,10 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
         self.max_connections = max_connections
 
+        # If retry_policy == 0 then urllib3 will not retry automatically
+        # this falls back to the pre-v3 behaviour where thrift_backend.py handles retry logic
+        self.retry_policy = retry_policy
+
         self.__wbuf = BytesIO()
         self.__resp: Union[None, HTTPResponse] = None
         self.__timeout = None
@@ -91,6 +98,13 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
     def setCustomHeaders(self, headers: Dict[str, str]):
         self._headers = headers
         super().setCustomHeaders(headers)
+
+    def startRetryTimer(self):
+        """Notify DatabricksRetryPolicy of the request start time
+
+        This is used to enforce the retry_stop_after_attempts_duration
+        """
+        self.retry_policy and self.retry_policy.start_retry_timer()
 
     def open(self):
 
@@ -167,6 +181,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             headers=headers,
             preload_content=False,
             timeout=self.__timeout,
+            retries=self.retry_policy,
         )
 
         # Get reply to flush the request
@@ -188,3 +203,12 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         )
         cr = base64.b64encode(ap.encode()).strip()
         return "Basic " + six.ensure_str(cr)
+
+    def set_retry_command_type(self, value: CommandType):
+        """Pass the provided CommandType to the retry policy"""
+        if isinstance(self.retry_policy, DatabricksRetryPolicy):
+            self.retry_policy.command_type = value
+        else:
+            logger.warning(
+                "DatabricksRetryPolicy is currently bypassed. The CommandType cannot be set."
+            )

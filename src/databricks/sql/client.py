@@ -8,7 +8,11 @@ import os
 
 from databricks.sql import __version__
 from databricks.sql import *
-from databricks.sql.exc import OperationalError
+from databricks.sql.exc import (
+    OperationalError,
+    SessionAlreadyClosedError,
+    CursorAlreadyClosedError,
+)
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import ExecuteResponse, ParamEscaper, inject_parameters
 from databricks.sql.types import Row
@@ -257,6 +261,9 @@ class Connection:
 
         try:
             self.thrift_backend.close_session(self._session_handle)
+        except RequestError as e:
+            if isinstance(e.args[1], SessionAlreadyClosedError):
+                logger.info("Session was closed by a prior request")
         except DatabaseError as e:
             if "Invalid SessionHandle" in str(e):
                 logger.warning(
@@ -958,6 +965,9 @@ class ResultSet:
                 and self.connection.open
             ):
                 self.thrift_backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
         finally:
             self.has_been_closed_server_side = True
             self.op_state = self.thrift_backend.CLOSED_OP_STATE

@@ -27,6 +27,7 @@ from tests.e2e.common.timestamp_tests import TimestampTestsMixin
 from tests.e2e.common.decimal_tests import DecimalTestsMixin
 from tests.e2e.common.retry_test_mixins import Client429ResponseMixin, Client503ResponseMixin
 from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSuiteMixin
+from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 log = logging.getLogger(__name__)
 
@@ -141,7 +142,7 @@ class PySQLLargeQueriesSuite(PySQLTestCase, LargeQueriesMixin):
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core
 # tests
 class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, TimestampTestsMixin,
-                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin):
+                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin, PySQLRetryTestsMixin):
     validate_row_value_type = True
     validate_result = True
 
