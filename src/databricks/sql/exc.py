@@ -93,3 +93,25 @@ class RequestError(OperationalError):
     """
 
     pass
+
+
+class MaxRetryDurationError(RequestError):
+    """Thrown if the next HTTP request retry would exceed the configured
+    stop_after_attempts_duration
+    """
+
+
+class NonRecoverableNetworkError(RequestError):
+    """Thrown if an HTTP code 501 is received"""
+
+
+class UnsafeToRetryError(RequestError):
+    """Thrown if ExecuteStatement request receives a code other than 200, 429, or 503"""
+
+
+class SessionAlreadyClosedError(RequestError):
+    """Thrown if CloseSession receives a code 404. ThriftBackend should gracefully proceed as this is expected."""
+
+
+class CursorAlreadyClosedError(RequestError):
+    """Thrown if CancelOperation receives a code 404. ThriftBackend should gracefully proceed as this is expected."""
