@@ -335,12 +335,9 @@ class ThriftBackend:
 
             error, error_message, retry_delay = None, None, None
             try:
-                # The MagicMocks in our unit tests have a `name` property instead of `__name__`.
                 logger.debug(
                     "Sending request: {}(<REDACTED>)".format(
-                        getattr(
-                            method, "__name__", getattr(method, "name", "UnknownMethod")
-                        )
+                        getattr(method, "__name__")
                     )
                 )
                 unsafe_logger.debug("Sending request: {}".format(request))
