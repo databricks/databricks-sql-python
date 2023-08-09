@@ -205,7 +205,7 @@ class PySQLRetryTestsMixin:
 
         # These http codes are not retried by default
         # For some applications, idempotency is not important so we give users a way to force retries anyway
-        DANGEROUS_CODES = [502, 504]
+        DANGEROUS_CODES = [502, 504, 400]
 
         additional_settings = {
             "_retry_dangerous_codes": DANGEROUS_CODES,

@@ -1,7 +1,7 @@
 import base64
 import logging
 import urllib.parse
-from typing import Dict, Union, Optional
+from typing import Dict, Union
 
 import six
 import thrift

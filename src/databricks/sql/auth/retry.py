@@ -12,6 +12,7 @@ from databricks.sql.exc import (
     CursorAlreadyClosedError,
     MaxRetryDurationError,
     NonRecoverableNetworkError,
+    OperationalError,
     SessionAlreadyClosedError,
     UnsafeToRetryError,
 )
@@ -39,23 +40,26 @@ class DatabricksRetryPolicy(Retry):
     """
     Implements our v3 retry policy by extending urllib3's robust default retry behaviour.
 
-    See `should_retry()` for details about what we do and do not retry.
+    Retry logic varies based on the overall wall-clock request time and Thrift CommandType
+    being issued. ThriftBackend starts a timer and sets the current CommandType prior to
+    initiating a network request. See `self.should_retry()` for details about what we do
+    and do not retry.
 
     :param delay_min:
-        Float of seconds for the minimum delay between retries. Passed to urllib3 as its
-        backoff_factor.
+        Float of seconds for the minimum delay between retries. This is an alias for urllib3's
+        `backoff_factor`.
 
     :param delay_max:
-        Float of seconds for the maximum delay between retries. Passed to urllib3 as its
-        backoff_max
+        Float of seconds for the maximum delay between retries. This is an alias for urllib3's
+        `backoff_max`
 
     :param stop_after_attempts_count:
-        Integer maximum number of attempts that will be retried. Passed to urllib3 as its
-        total.
+        Integer maximum number of attempts that will be retried. This is an alias for urllib3's
+        `total`.
 
     :param stop_after_attempts_duration:
-        Float of maximum number of seconds from the beginning of the first request that a
-        request may be retried. This behaviour is not implemented in urllib3.
+        Float of maximum number of seconds within which a request may be retried starting from
+        the beginning of the first request.
 
     :param delay_default:
         Float of seconds the connector will wait between sucessive GetOperationStatus
@@ -68,7 +72,7 @@ class DatabricksRetryPolicy(Retry):
 
     :param _retry_start_time:
         Float unix timestamp. Used to monitor the overall request duration across successive
-        retries. Never set this value directly. Use self.start_retry_time() instead. Users
+        retries. Never set this value directly. Use self.start_retry_timer() instead. Users
         never set this value. It is set by ThriftBackend immediately before issuing a network
         request.
 
@@ -112,15 +116,17 @@ class DatabricksRetryPolicy(Retry):
         # we only care about urllib3 kwargs that we alias, override, or add to in some way
 
         # the length of _history increases as retries are performed
-        _history: Union[Tuple[RequestHistory, ...], None] = urllib3_kwargs.get(
-            "history"
-        )
+        _history: Optional[Tuple[RequestHistory, ...]] = urllib3_kwargs.get("history")
 
         if not _history:
-            # no attempts were made so we can retry the current command as many times as specified by the user
+            # no attempts were made so we can retry the current command as many times as specified
+            # by the user
             _attempts_remaining = self.stop_after_attempts_count
         else:
             # at least one of our attempts has been consumed, and urllib3 will have set a total
+            # `total` is a counter that begins equal to self.stop_after_attempts_count and is
+            # decremented after each unsuccessful request. When `total` is zero, urllib3 raises a
+            # MaxRetryError
             _total: int = urllib3_kwargs.pop("total")
             _attempts_remaining = _total
 
@@ -142,7 +148,8 @@ class DatabricksRetryPolicy(Retry):
     def new(self, **urllib3_incremented_counters: typing.Any) -> Retry:
         """This method is responsible for passing the entire Retry state to its next iteration.
 
-        urllib3 calls Retry.new() between successive requests as part of its `.increment()` method as shown below:
+        urllib3 calls Retry.new() between successive requests as part of its `.increment()` method
+        as shown below:
 
         ```python
             new_retry = self.new(
@@ -156,9 +163,9 @@ class DatabricksRetryPolicy(Retry):
         )
         ```
 
-        The arguments it passes to `.new()` (total, connect, read, etc.) are those which modified by `.increment()`.
+        The arguments it passes to `.new()` (total, connect, read, etc.) are those modified by `.increment()`.
 
-        Since our subclass has a new __init__ signature and requires custom state variables, we override the method
+        Since self.__init__ has a different signature than Retry.__init__ , we implement our own `self.new()`
         to pipe our Databricks-specific state while preserving the super-class's behaviour.
         """
 
@@ -176,7 +183,7 @@ class DatabricksRetryPolicy(Retry):
         )
 
         # Gather urllib3's current retry state _before_ increment was called
-        # These arguments match the function signature for super().__init__
+        # These arguments match the function signature for Retry.__init__
         # Note: if we update urllib3 we may need to add/remove arguments from this dict
         urllib3_init_params = dict(
             total=self.total,
@@ -212,7 +219,7 @@ class DatabricksRetryPolicy(Retry):
         return self._command_type or None
 
     @command_type.setter
-    def command_type(self, value: CommandType):
+    def command_type(self, value: CommandType) -> None:
         self._command_type = value
 
     @property
@@ -224,15 +231,21 @@ class DatabricksRetryPolicy(Retry):
         """
         return self.delay_default
 
-    def start_retry_timer(self):
+    def start_retry_timer(self) -> None:
         """Timer is used to monitor the overall time across successive requests
 
         Should only be called by ThriftBackend before sending a Thrift command"""
         self._retry_start_time = time.time()
 
-    def check_timer_duration(self):
+    def check_timer_duration(self) -> float:
         """Return time in seconds since the timer was started"""
-        return time.time() - self._retry_start_time
+
+        if self._retry_start_time is None:
+            raise OperationalError(
+                "Cannot check retry timer. Timer was not started for this request."
+            )
+        else:
+            return time.time() - self._retry_start_time
 
     def check_proposed_wait(self, proposed_wait: Union[int, float]) -> None:
         """Raise an exception if the proposed wait would exceed the configured max_attempts_duration"""
@@ -265,7 +278,7 @@ class DatabricksRetryPolicy(Retry):
         A MaxRetryDurationError will be raised if the calculated backoff would exceed self.max_attempts_duration
 
         Note: within urllib3, a backoff is only calculated in cases where a Retry-After header is not present
-            in the previous unsuccessful request.
+            in the previous unsuccessful request and `self.respect_retry_after_header` is True (which is always true)
         """
 
         proposed_backoff = super().get_backoff_time()
@@ -280,7 +293,7 @@ class DatabricksRetryPolicy(Retry):
         We always retry a request unless one of these conditions is met:
 
             1. The request received a 200 (Success) status code
-               Because the request succeeded. No retry is required.
+               Because the request succeeded .
             2. The request received a 501 (Not Implemented) status code
                Because this request can never succeed.
             3. The request received a 404 (Not Found) code and the request CommandType
@@ -289,12 +302,13 @@ class DatabricksRetryPolicy(Retry):
                code.
             4. The request CommandType was ExecuteStatement and the HTTP code does not
                appear in the default status_forcelist or force_dangerous_codes list. By
-               default, thisd means ExecuteStatement is only retried for codes 429 and 503.
+               default, this means ExecuteStatement is only retried for codes 429 and 503.
                This limit prevents automatically retrying non-idempotent commands that could
                be destructive.
 
-            5. OSErrors (handled automatically by urllib3 outside this method)
-            6. Redirects (handled automatically by urllib3 outside this method)
+
+        Q: What about OSErrors and Redirects?
+        A: urllib3 automatically retries in both scenarios
 
         Returns True if the request should be retried. Returns False or raises an exception
         if a retry would violate the configured policy.
@@ -312,7 +326,7 @@ class DatabricksRetryPolicy(Retry):
         if not self._is_method_retryable(method):  # type: ignore
             return False, "Only POST requests are retried"
 
-        # Request failed with 404 because CloseSession return 404 if you repeat the request.
+        # Request failed with 404 because CloseSession returns 404 if you repeat the request.
         if (
             status_code == 404
             and self.command_type == CommandType.CLOSE_SESSION
@@ -322,7 +336,7 @@ class DatabricksRetryPolicy(Retry):
                 "CloseSession received 404 code from Databricks. Session is already closed."
             )
 
-        # Request failed with 404 because CloseOperation return 404 if you repeat the request.
+        # Request failed with 404 because CloseOperation returns 404 if you repeat the request.
         if (
             status_code == 404
             and self.command_type == CommandType.CLOSE_OPERATION
@@ -342,7 +356,10 @@ class DatabricksRetryPolicy(Retry):
                 "ExecuteStatement command can only be retried for codes 429 and 503"
             )
 
-        # Request failed with a dangerous code, was an ExecuteStatement, but user forced retries
+        # Request failed with a dangerous code, was an ExecuteStatement, but user forced retries for this
+        # dangerous code. Note that these lines _are not required_ to make these requests retry. They would
+        # retry automatically. This code is included only so that we can log the exact reason for the retry.
+        # This gives users signal that their _retry_dangerous_codes setting actually did something.
         if (
             self.command_type == CommandType.EXECUTE_STATEMENT
             and status_code in self.force_dangerous_codes
