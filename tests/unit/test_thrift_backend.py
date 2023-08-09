@@ -96,7 +96,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(arrow_schema.field(2).name, "column 2")
         self.assertEqual(arrow_schema.field(3).name, "")
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_bad_protocol_versions_are_rejected(self, tcli_service_client_cass):
         t_http_client_instance = tcli_service_client_cass.return_value
         bad_protocol_versions = [
@@ -123,7 +123,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
             self.assertIn("expected server to use a protocol version", str(cm.exception))
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_okay_protocol_versions_succeed(self, tcli_service_client_cass):
         t_http_client_instance = tcli_service_client_cass.return_value
         good_protocol_versions = [
@@ -351,7 +351,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             execute_response = thrift_backend._handle_execute_response(t_execute_resp, Mock())
             self.assertEqual(execute_response.lz4_compressed, lz4Compressed)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_handle_execute_response_checks_operation_state_in_polls(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
 
@@ -380,7 +380,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 if op_state_resp.errorMessage:
                     self.assertIn(op_state_resp.errorMessage, str(cm.exception))
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_status_uses_display_message_if_available(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
 
@@ -405,7 +405,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(display_message, str(cm.exception))
         self.assertIn(diagnostic_info, str(cm.exception.message_with_context()))
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_direct_results_uses_display_message_if_available(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
 
@@ -477,7 +477,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                         thrift_backend._handle_execute_response(error_resp, Mock())
                     self.assertIn("this is a bad error", str(cm.exception))
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_handle_execute_response_can_handle_without_direct_results(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
 
@@ -542,7 +542,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     ttypes.TOperationState.FINISHED_STATE,
                 )
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_use_arrow_schema_if_available(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         arrow_schema_mock = MagicMock(name="Arrow schema mock")
@@ -566,7 +566,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         self.assertEqual(execute_response.arrow_schema_bytes, arrow_schema_mock)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_fall_back_to_hive_schema_if_no_arrow_schema(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         hive_schema_mock = MagicMock(name="Hive schema mock")
@@ -591,7 +591,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                          thrift_backend._hive_schema_to_arrow_schema.call_args[0][0])
 
     @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_handle_execute_response_reads_has_more_rows_in_direct_results(
             self, tcli_service_class, build_queue):
         for has_more_rows, resp_type in itertools.product([True, False],
@@ -625,7 +625,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 self.assertEqual(has_more_rows, execute_response.has_more_rows)
 
     @patch("databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock())
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_handle_execute_response_reads_has_more_rows_in_result_response(
             self, tcli_service_class, build_queue):
         for has_more_rows, resp_type in itertools.product([True, False],
@@ -671,7 +671,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 self.assertEqual(has_more_rows, has_more_rows_resp)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_arrow_batches_row_count_are_respected(self, tcli_service_class):
         # make some semi-real arrow batches and check the number of rows is correct in the queue
         tcli_service_instance = tcli_service_class.return_value
@@ -709,7 +709,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         self.assertEqual(arrow_queue.n_valid_rows, 15 * 10)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_execute_statement_calls_client_and_handle_execute_response(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
@@ -727,7 +727,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         # Check response handling
         thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_catalogs_calls_client_and_handle_execute_response(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
@@ -744,7 +744,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         # Check response handling
         thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_schemas_calls_client_and_handle_execute_response(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
@@ -769,7 +769,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         # Check response handling
         thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_tables_calls_client_and_handle_execute_response(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
@@ -798,7 +798,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         # Check response handling
         thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_columns_calls_client_and_handle_execute_response(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
@@ -827,7 +827,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         # Check response handling
         thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_open_session_user_provided_session_id_optional(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
@@ -836,7 +836,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend.open_session({}, None, None)
         self.assertEqual(len(tcli_service_instance.OpenSession.call_args_list), 1)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_op_handle_respected_in_close_command(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
@@ -844,7 +844,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(tcli_service_instance.CloseOperation.call_args[0][0].operationHandle,
                          self.operation_handle)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_session_handle_respected_in_close_session(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
@@ -852,7 +852,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(tcli_service_instance.CloseSession.call_args[0][0].sessionHandle,
                          self.session_handle)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_non_arrow_non_column_based_set_triggers_exception(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         results_mock = Mock()
@@ -1021,7 +1021,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(arrow_table.column(2).to_pylist(), [1.15, 2.2, 3.3])
         self.assertEqual(arrow_table.column(3).to_pylist(), [b'\x11', b'\x22', b'\x33'])
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_cancel_command_uses_active_op_handle(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
 
@@ -1318,7 +1318,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             for (arg, val) in retry_delay_expected_vals.items():
                 self.assertEqual(getattr(backend, arg), val)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_configuration_passthrough(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
@@ -1336,7 +1336,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
         self.assertEqual(open_session_req.configuration, expected_config)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_cant_set_timestamp_as_string_to_true(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
@@ -1355,7 +1355,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             canUseMultipleCatalogs=can_use_multiple_cats,
             initialNamespace=ttypes.TNamespace(catalogName=cat, schemaName=schem))
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_initial_namespace_passthrough_to_open_session(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
 
@@ -1373,7 +1373,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 self.assertEqual(open_session_req.initialNamespace.catalogName, cat)
                 self.assertEqual(open_session_req.initialNamespace.schemaName, schem)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_can_use_multiple_catalogs_is_set_in_open_session_req(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
@@ -1384,7 +1384,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
         self.assertTrue(open_session_req.canUseMultipleCatalogs)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_can_use_multiple_catalogs_is_false_fails_with_initial_catalog(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
 
@@ -1410,7 +1410,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 self._construct_open_session_with_namespace(False, cat, schem)
             backend.open_session({}, cat, schem)
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_protocol_v3_fails_if_initial_namespace_set(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
 
@@ -1430,7 +1430,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertIn("Setting initial namespace not supported by the DBR version",
                       str(cm.exception))
 
-    @patch("databricks.sql.thrift_backend.TCLIService.Client")
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     @patch("databricks.sql.thrift_backend.ThriftBackend._handle_execute_response")
     def test_execute_command_sets_complex_type_fields_correctly(self, mock_handle_execute_response,
                                                                 tcli_service_class):
