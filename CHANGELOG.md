@@ -10,7 +10,7 @@
 
 ## 2.8.0 (2023-07-21)
 
-- Add support for Cloud Fetch (#146, #151, #154)
+- Add support for Cloud Fetch. Disabled by default. Set `use_cloud_fetch=True` when building `databricks.sql.client` to enable it (#146, #151, #154)
 - SQLAlchemy has_table function now honours schema= argument and adds catalog= argument (#174)
 - SQLAlchemy set non_native_boolean_check_constraint False as it's not supported by Databricks (#120)
 - Fix: Revised SQLAlchemy dialect and examples for compatibility with SQLAlchemy==1.3.x (#173)
