@@ -2,6 +2,10 @@
 
 ## 2.8.x (Unreleased)
 
+- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `enable_v3_retries=True` when creating `databricks.sql.client`
+- Other: Fix typo in README quick start example
+- Other: Add autospec to Client mocks and tidy up `make_request`
+
 ## 2.8.0 (2023-07-21)
 
 - Add support for Cloud Fetch (#146, #151, #154)
