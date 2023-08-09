@@ -29,7 +29,7 @@ Note: Don't hard-code authentication secrets into your Python. Use environment v
 ```bash
 export DATABRICKS_HOST=********.databricks.com
 export DATABRICKS_HTTP_PATH=/sql/1.0/endpoints/****************
-export DATABRICKS_TOKEN=dapi********************************
+export DATABRICKS_ACCESS_TOKEN=dapi********************************
 ```
 
 Example usage:
