@@ -2,6 +2,8 @@
 
 ## 2.8.x (Unreleased)
 
+- Other: Fix typo in README quick start example
+
 ## 2.8.0 (2023-07-21)
 
 - Add support for Cloud Fetch (#146, #151, #154)
