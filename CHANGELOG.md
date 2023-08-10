@@ -1,6 +1,8 @@
 # Release History
 
-## 2.10.x (Unreleased)
+## 2.9.x (Unreleased)
+
+- Other: Explicitly pin urllib3 to ^2.0.0
 
 ## 2.9.0 (2023-08-10)
 
