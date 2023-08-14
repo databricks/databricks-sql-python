@@ -526,9 +526,11 @@ class Cursor:
 
     def executemany(self, operation, seq_of_parameters):
         """
-        Prepare a database operation (query or command) and then execute it against all parameter
-        sequences or mappings found in the sequence ``seq_of_parameters``.
+        Execute the operation once for every set of passed in parameters.
 
+        This will issue N sequential request to the database where N is the length of the provided sequence.
+        No optimizations of the query (like batching) will be performed. 
+        
         Only the final result set is retained.
 
         :returns self
