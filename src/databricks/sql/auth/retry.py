@@ -10,7 +10,7 @@ try:
     from urllib3 import BaseHTTPResponse  # type: ignore
 except ImportError:
     # If urllib3~=1.0 is installed
-    from urllib3 import HTTPResponse as BaseHTTPResponse 
+    from urllib3 import HTTPResponse as BaseHTTPResponse
 from urllib3 import Retry
 from urllib3.util.retry import RequestHistory
 
