@@ -375,9 +375,10 @@ class ThriftBackend:
                 unsafe_logger.debug("Sending request: {}".format(request))
 
                 # These three lines are no-ops if the v3 retry policy is not in use
-                this_command_type = CommandType.get(this_method_name)
-                self._transport.set_retry_command_type(this_command_type)
-                self._transport.startRetryTimer()
+                if self.enable_v3_retries:
+                    this_command_type = CommandType.get(this_method_name)
+                    self._transport.set_retry_command_type(this_command_type)
+                    self._transport.startRetryTimer()
 
                 response = method(request)
 
