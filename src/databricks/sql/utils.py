@@ -372,10 +372,6 @@ class ParamEscaper:
             raise exc.ProgrammingError("Unsupported object {}".format(item))
 
 
-def inject_parameters(operation: str, parameters: Dict[str, str]):
-    return operation % parameters
-
-
 def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)

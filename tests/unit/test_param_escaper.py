@@ -1,7 +1,7 @@
 from datetime import date, datetime
 import unittest, pytest, decimal
 
-from databricks.sql.utils import ParamEscaper, inject_parameters
+from databricks.sql.utils import ParamEscaper
 
 pe = ParamEscaper()
 
@@ -106,50 +106,3 @@ class TestIndividualFormatters(object):
         OUTPUT = "(('his','name'),('was','robert'),('palmer'))"
 
         assert pe.escape_sequence(INPUT) == OUTPUT
-
-
-class TestFullQueryEscaping(object):
-
-    def test_simple(self):
-
-        INPUT = """
-        SELECT
-          field1,
-          field2,
-          field3
-        FROM
-          table
-        WHERE
-          field1 = %(param1)s
-        """
-
-        OUTPUT = """
-        SELECT
-          field1,
-          field2,
-          field3
-        FROM
-          table
-        WHERE
-          field1 = ';DROP ALL TABLES'
-        """
-
-        args = {"param1": ";DROP ALL TABLES"}
-
-        assert inject_parameters(INPUT, pe.escape_args(args)) == OUTPUT
-
-    @unittest.skipUnless(False, "Thrift server supports native parameter binding.")
-    def test_only_bind_in_where_clause(self):
-
-        INPUT = """
-        SELECT
-          %(field)s,
-          field2,
-          field3
-        FROM table
-        """
-
-        args = {"field": "Some Value"}
-
-        with pytest.raises(Exception):
-            inject_parameters(INPUT, pe.escape_args(args))

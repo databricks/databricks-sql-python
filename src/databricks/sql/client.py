@@ -14,7 +14,7 @@ from databricks.sql.exc import (
     CursorAlreadyClosedError,
 )
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import ExecuteResponse, ParamEscaper, inject_parameters
+from databricks.sql.utils import ExecuteResponse, ParamEscaper
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -493,10 +493,6 @@ class Cursor:
             Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
         :returns self
         """
-        if parameters is not None:
-            operation = inject_parameters(
-                operation, self.escaper.escape_args(parameters)
-            )
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
