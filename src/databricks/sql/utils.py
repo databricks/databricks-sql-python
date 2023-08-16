@@ -469,20 +469,23 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
 
     return pyarrow.array(result, type=arrow_type)
 
+
 class ParamConverter:
 
-    def convert_to_spark_parameters(self, parameters: Dict[str, Any]) -> List[TSparkParameter]:
+    @staticmethod
+    def convert_to_spark_parameters(parameters: Dict[str, Any]) -> List[TSparkParameter]:
         spark_params = []
-        for k,v in parameters.items():
-            sql_type, spark_value = self._get_type_and_value(k, v)
+        for k, v in parameters.items():
+            sql_type, spark_value = ParamConverter.get_type_and_value(v)
             spark_params.append(
                 TSparkParameter(name=k, type=sql_type, value=spark_value)
             )
         return spark_params
 
-    def _get_type_and_value(self, key: str, value: Any) -> (str, TSparkParameterValue):
+    @staticmethod
+    def get_type_and_value(value: Any) -> (str, TSparkParameterValue):
         if value is None:
-            raise RuntimeError("Parameter value for key {} is None".format(key))
+            return "VOID", TSparkParameterValue()
         elif isinstance(value, bool):
             return "BOOLEAN", TSparkParameterValue(booleanValue=value)
         elif isinstance(value, int):
@@ -490,7 +493,7 @@ class ParamConverter:
         elif isinstance(value, str):
             return "STRING", TSparkParameterValue(stringValue=value)
         elif isinstance(value, float):
-            return "FLOAT", TSparkParameterValue(doubleValue=value)
+            return "DOUBLE", TSparkParameterValue(doubleValue=value)
         # TODO: handle decimal.Decimal
         # TODO: handle datetime.datetime
         else:
