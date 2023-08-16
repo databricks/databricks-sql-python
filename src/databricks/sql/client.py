@@ -486,11 +486,11 @@ class Cursor:
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
-        Parameters should be given in extended param format style: %(...)<s|d|f>.
+        Named parameters should be given in this format: :param.
         For example:
-            operation = "SELECT * FROM table WHERE field = %(some_value)s"
-            parameters = {"some_value": "foo"}
-            Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
+            operation = "SELECT * FROM table WHERE field = :some_param"
+            parameters = {"some_param": "foo"}
+            Will result in the query with the parameters sent to the server for server-side parameterization
         :returns self
         """
 

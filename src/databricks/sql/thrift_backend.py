@@ -35,6 +35,7 @@ from databricks.sql.utils import (
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
+    ParamConverter
 )
 
 logger = logging.getLogger(__name__)
@@ -824,6 +825,7 @@ class ThriftBackend:
             # DBR should be changed to use month_day_nano_interval
             intervalTypesAsArrow=False,
         )
+        spark_parameters = ParamConverter.convert_to_spark_parameters(parameters) if parameters else None
         req = ttypes.TExecuteStatementReq(
             sessionHandle=session_handle,
             statement=operation,
@@ -839,6 +841,7 @@ class ThriftBackend:
                 "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
             },
             useArrowNativeTypes=spark_arrow_types,
+            parameters=spark_parameters,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)
