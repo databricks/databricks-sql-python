@@ -6,7 +6,7 @@ import os
 #
 # The new retry behaviour is defined in src/databricks/sql/auth/retry.py
 # 
-# The new retry behaviour allows users to force the connector to automatically retry requests that fail with
+# The new retry behaviour allows users to force the connector to automatically retry requests that fail with codes
 # that are not retried by default (in most cases only codes 429 and 503 are retried by default). Additional HTTP
 # codes to retry are specified as a list passed to `_retry_dangerous_codes`.
 #
