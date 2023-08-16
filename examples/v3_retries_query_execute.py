@@ -18,7 +18,8 @@ import os
 #
 # However, if your use-case emits idempotent queries such as SELECT statements, it can be helpful to retry 
 # for 502 (Bad Gateway) codes etc. In these cases, there is a possibility that the initial command _did_ reach
-# Databricks compute and retrying it could result in additional executions.
+# Databricks compute and retrying it could result in additional executions. Retrying under these conditions uses
+# an exponential back-off since a Retry-After header is not present.
 
 with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
                  http_path       = os.getenv("DATABRICKS_HTTP_PATH"),
