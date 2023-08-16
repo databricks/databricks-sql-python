@@ -728,6 +728,26 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
 
     @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
+    def test_execute_statement_calls_client_and_handle_execute_response_with_parameters(self, tcli_service_class):
+        tcli_service_instance = tcli_service_class.return_value
+        response = Mock()
+        tcli_service_instance.ExecuteStatement.return_value = response
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend._handle_execute_response = Mock()
+        cursor_mock = Mock()
+
+        thrift_backend.execute_command("foo", Mock(), 100, 200, Mock(), cursor_mock, {"param_name": "param_value"})
+        # Check call to client
+        req = tcli_service_instance.ExecuteStatement.call_args[0][0]
+        get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
+        self.assertEqual(req.getDirectResults, get_direct_results)
+        spark_parameters = [ttypes.TSparkParameter(name="param_name", type="STRING", value=ttypes.TSparkParameterValue(stringValue="param_value"))]
+        self.assertEqual(req.parameters, spark_parameters)
+        self.assertEqual(req.statement, "foo")
+        # Check response handling
+        thrift_backend._handle_execute_response.assert_called_with(response, cursor_mock)
+
+    @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_catalogs_calls_client_and_handle_execute_response(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
