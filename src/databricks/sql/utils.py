@@ -15,6 +15,8 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkArrowResultLink,
     TSparkRowSetType,
     TRowSet,
+    TSparkParameter,
+    TSparkParameterValue,
 )
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -466,3 +468,30 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
             result[i] = None
 
     return pyarrow.array(result, type=arrow_type)
+
+class ParamConverter:
+
+    def convert_to_spark_parameters(self, parameters: Dict[str, Any]) -> List[TSparkParameter]:
+        spark_params = []
+        for k,v in parameters.items():
+            sql_type, spark_value = self._get_type_and_value(k, v)
+            spark_params.append(
+                TSparkParameter(name=k, type=sql_type, value=spark_value)
+            )
+        return spark_params
+
+    def _get_type_and_value(self, key: str, value: Any) -> (str, TSparkParameterValue):
+        if value is None:
+            raise RuntimeError("Parameter value for key {} is None".format(key))
+        elif isinstance(value, bool):
+            return "BOOLEAN", TSparkParameterValue(booleanValue=value)
+        elif isinstance(value, int):
+            return "INT", TSparkParameterValue(doubleValue=value)
+        elif isinstance(value, str):
+            return "STRING", TSparkParameterValue(stringValue=value)
+        elif isinstance(value, float):
+            return "FLOAT", TSparkParameterValue(doubleValue=value)
+        # TODO: handle decimal.Decimal
+        # TODO: handle datetime.datetime
+        else:
+            raise exc.ProgrammingError("Unsupported parameter type for {}".format(value))

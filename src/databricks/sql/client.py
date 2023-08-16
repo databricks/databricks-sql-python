@@ -482,7 +482,7 @@ class Cursor:
             )
 
     def execute(
-        self, operation: str, parameters: Optional[Dict[str, str]] = None
+        self, operation: str, parameters: Optional[Dict[str, Any]] = None
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -503,6 +503,7 @@ class Cursor:
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
+            parameters=parameters,
             use_cloud_fetch=self.connection.use_cloud_fetch,
         )
         self.active_result_set = ResultSet(

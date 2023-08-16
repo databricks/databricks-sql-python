@@ -811,6 +811,7 @@ class ThriftBackend:
         max_bytes,
         lz4_compression,
         cursor,
+        parameters,
         use_cloud_fetch=False,
     ):
         assert session_handle is not None
