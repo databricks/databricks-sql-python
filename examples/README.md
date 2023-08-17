@@ -39,3 +39,4 @@ this example the string `ExamplePartnerTag` will be added to the the user agent 
 - **`staging_ingestion.py`** shows how the connector handles Databricks' experimental staging ingestion commands `GET`, `PUT`, and `REMOVE`.
 - **`sqlalchemy.py`** shows a basic example of connecting to Databricks with [SQLAlchemy](https://www.sqlalchemy.org/). 
 - **`custom_cred_provider.py`** shows how to pass a custom credential provider to bypass connector authentication. Please install databricks-sdk prior to running this example.
+- **`v3_retries_query_execute.py`** shows how to enable v3 retries in connector version 2.9.x including how to enable retries for non-default retry cases.
