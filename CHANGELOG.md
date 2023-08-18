@@ -2,6 +2,8 @@
 
 ## 2.9.x (Unreleased)
 
+## 2.9.2 (2023-08-17)
+
 - Other: Add `examples/v3_retries_query_execute.py` 
 - Other: suppress log message when `_enable_v3_retries` is not `True`
 - Other: make this connector backwards compatible with `urllib3>=1.0.0`
