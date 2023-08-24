@@ -1,22 +1,26 @@
 # Release History
 
-## 2.9.x (Unreleased)
+## 2.9.4 (Unreleased)
+
+## 2.9.3 (2023-08-24)
+
+- Fix: Connections failed when urllib3~=1.0.0 is installed (#206)
 
 ## 2.9.2 (2023-08-17)
 
-- Other: Add `examples/v3_retries_query_execute.py` 
-- Other: suppress log message when `_enable_v3_retries` is not `True`
-- Other: make this connector backwards compatible with `urllib3>=1.0.0`
+- Other: Add `examples/v3_retries_query_execute.py` (#199)
+- Other: suppress log message when `_enable_v3_retries` is not `True` (#199)
+- Other: make this connector backwards compatible with `urllib3>=1.0.0` (#197)
 
 ## 2.9.1 (2023-08-11)
 
-- Other: Explicitly pin urllib3 to ^2.0.0
+- Other: Explicitly pin urllib3 to ^2.0.0 (#191)
 
 ## 2.9.0 (2023-08-10)
 
-- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `enable_v3_retries=True` when creating `databricks.sql.client`
-- Other: Fix typo in README quick start example
-- Other: Add autospec to Client mocks and tidy up `make_request`
+- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `enable_v3_retries=True` when creating `databricks.sql.client` (#182)
+- Other: Fix typo in README quick start example (#186)
+- Other: Add autospec to Client mocks and tidy up `make_request` (#188)
 
 ## 2.8.0 (2023-07-21)
 
