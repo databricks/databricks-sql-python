@@ -58,14 +58,16 @@ class Client503ResponseMixin:
 
 
 @contextmanager
-def mocked_server_response(status: int = 200, headers: dict = {"Retry-After": None}):
+def mocked_server_response(status: int = 200, headers: dict = {}):
     """Context manager for patching urllib3 responses"""
 
     # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
     #   1. A status code
     #   2. A headers dict
     #   3. mock.get_redirect_location() return falsy
-    mock_response = MagicMock(headers=headers, status=status)
+
+    # `msg` is included for testing when urllib3~=1.0.0 is installed
+    mock_response = MagicMock(headers=headers, msg=headers, status=status)
     mock_response.get_redirect_location.return_value = False
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
@@ -91,7 +93,9 @@ def mock_sequential_server_responses(responses: List[dict]):
     # Each resp should have these members:
 
     for resp in responses:
-        _mock = MagicMock(headers=resp["headers"], status=resp["status"])
+        _mock = MagicMock(
+            headers=resp["headers"], msg=resp["headers"], status=resp["status"]
+        )
         _mock.get_redirect_location.return_value = False
         mock_responses.append(_mock)
 
@@ -239,7 +243,7 @@ class PySQLRetryTestsMixin:
 
         responses = [
             {"status": 429, "headers": {"Retry-After": "1"}},
-            {"status": 503, "headers": {"Retry-After": None}},
+            {"status": 503, "headers": {}},
         ]
 
         with self.connection(
@@ -262,7 +266,7 @@ class PySQLRetryTestsMixin:
         # Second response is a 404 because the session is no longer found
         responses = [
             {"status": 502, "headers": {"Retry-After": "1"}},
-            {"status": 404, "headers": {"Retry-After": None}},
+            {"status": 404, "headers": {}},
         ]
 
         with self.connection(extra_params={**self._retry_policy}) as conn:
@@ -292,7 +296,7 @@ class PySQLRetryTestsMixin:
         # Second response is a 404 because the session is no longer found
         responses = [
             {"status": 502, "headers": {"Retry-After": "1"}},
-            {"status": 404, "headers": {"Retry-After": None}},
+            {"status": 404, "headers": {}},
         ]
 
         with self.connection(extra_params={**self._retry_policy}) as conn:
