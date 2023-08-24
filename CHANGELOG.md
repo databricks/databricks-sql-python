@@ -2,7 +2,7 @@
 
 ## 2.9.4 (Unreleased)
 
-## 2.9.3 (2023-08-23)
+## 2.9.3 (2023-08-24)
 
 - Fix: Connections failed when urllib3~=1.0.0 is installed (#206)
 
