@@ -56,8 +56,7 @@ class DatabricksRetryPolicy(Retry):
         `backoff_factor`.
 
     :param delay_max:
-        Float of seconds for the maximum delay between retries. This is an alias for urllib3's
-        `backoff_max`
+        Float of seconds for the maximum delay between retries.
 
     :param stop_after_attempts_count:
         Integer maximum number of attempts that will be retried. This is an alias for urllib3's
@@ -122,7 +121,6 @@ class DatabricksRetryPolicy(Retry):
             total=_attempts_remaining,
             respect_retry_after_header=True,
             backoff_factor=self.delay_min,
-            backoff_max=self.delay_max,
             allowed_methods=["POST"],
             status_forcelist=[429, 503, *self.force_dangerous_codes],
         )
@@ -212,13 +210,11 @@ class DatabricksRetryPolicy(Retry):
             allowed_methods=self.allowed_methods,
             status_forcelist=self.status_forcelist,
             backoff_factor=self.backoff_factor,  # type: ignore
-            backoff_max=self.backoff_max,  # type: ignore
             raise_on_redirect=self.raise_on_redirect,
             raise_on_status=self.raise_on_status,
             history=self.history,
             remove_headers_on_redirect=self.remove_headers_on_redirect,
             respect_retry_after_header=self.respect_retry_after_header,
-            backoff_jitter=self.backoff_jitter,  # type: ignore
         )
 
         # Update urllib3's current state to reflect the incremented counters
