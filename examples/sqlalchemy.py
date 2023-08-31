@@ -39,6 +39,7 @@ more about customer use cases there. That said, the following behaviours have be
     - Constraints: with the addition of information_schema to Unity Catalog, Databricks SQL supports
       foreign key and primary key constraints. This dialect can write these constraints but the ability
       for alembic to reflect and modify them programmatically has not been tested.
+    - Delta IDENTITY columns are not yet supported.
 """
 
 import os
