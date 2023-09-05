@@ -1,3 +1,4 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import namedtuple, OrderedDict
 from collections.abc import Iterable
@@ -8,6 +9,7 @@ from enum import Enum
 import lz4.frame
 from typing import Dict, List, Union, Any
 import pyarrow
+from enum import Enum
 
 from databricks.sql import exc, OperationalError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
@@ -470,3 +472,70 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
             result[i] = None
 
     return pyarrow.array(result, type=arrow_type)
+
+class DbSqlType(Enum):
+    STRING = "STRING"
+    DATE = "DATE"
+    TIMESTAMP = "TIMESTAMP"
+    FLOAT = "FLOAT"
+    DECIMAL = "DECIMAL"
+    INTEGER = "INTEGER"
+    BIGINT = "BIGINT"
+    SMALLINT = "SMALLINT"
+    TINYINT = "TINYINT"
+    BOOLEAN = "BOOLEAN"
+    INTERVAL_MONTH = "INTERVAL MONTH"
+    INTERVAL_DAY = "INTERVAL DAY"
+    VOID = "VOID"
+
+class DbSqlParameter:
+    name: str
+    value: Any
+    type: DbSqlType
+def named_parameters_to_dbsqlparams(parameters: Any):
+    dbsqlparams = []
+    if(type(parameters) is dict):
+        # Support legacy impl
+        for name,parameter in parameters.items():
+            dbsqlparams.append(DbSqlParameter(name=name,value=parameter))
+    else:
+        for parameter in parameters:
+            if(type(parameter) is DbSqlParameter):
+                continue
+            else:
+                dbsqlparams.append(DbSqlParameter(value=parameter))
+
+def infer_types(params: list[DbSqlParameter]):
+    for param in params:
+        if(not param.type):
+            if(type(param.value) is str):
+                param.type = DbSqlType.STRING
+            elif(type(param.value) is int):
+                param.type = DbSqlType.INTEGER
+            elif(type(param.value) is float):
+                param.type = DbSqlType.FLOAT
+            elif(type(param.value) is datetime.datetime):
+                param.type = DbSqlType.TIMESTAMP
+            elif(type(param.value) is bool):
+                param.type = DbSqlType.BOOLEAN
+            elif(type(param.value) is None):
+                param.type = DbSqlType.VOID
+
+def dbsqlparams_to_tsparkparams(params: list[DbSqlParameter]):
+    for param in params:
+        if(not param.type):
+            if(type(param.value) is str):
+                param.type = DbSqlType.STRING
+            elif(type(param.value) is int):
+                param.type = DbSqlType.INTEGER
+            elif(type(param.value) is float):
+                param.type = DbSqlType.FLOAT
+            elif(type(param.value) is datetime.datetime):
+                param.type = DbSqlType.TIMESTAMP
+            elif(type(param.value) is bool):
+                param.type = DbSqlType.BOOLEAN
+            elif(type(param.value) is None):
+                param.type = DbSqlType.VOID
+
+
+
