@@ -17,6 +17,8 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkArrowResultLink,
     TSparkRowSetType,
     TRowSet,
+    TSparkParameter,
+    TSparkParameterValue
 )
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -520,22 +522,12 @@ def infer_types(params: list[DbSqlParameter]):
                 param.type = DbSqlType.BOOLEAN
             elif(type(param.value) is None):
                 param.type = DbSqlType.VOID
+        if(param.value):
+            param.value = str(param.value)
 
 def dbsqlparams_to_tsparkparams(params: list[DbSqlParameter]):
+    tspark_params = []
     for param in params:
-        if(not param.type):
-            if(type(param.value) is str):
-                param.type = DbSqlType.STRING
-            elif(type(param.value) is int):
-                param.type = DbSqlType.INTEGER
-            elif(type(param.value) is float):
-                param.type = DbSqlType.FLOAT
-            elif(type(param.value) is datetime.datetime):
-                param.type = DbSqlType.TIMESTAMP
-            elif(type(param.value) is bool):
-                param.type = DbSqlType.BOOLEAN
-            elif(type(param.value) is None):
-                param.type = DbSqlType.VOID
-
+        tspark_params.append(TSparkParameter(type=param.type,name=param.name,value=TSparkParameterValue(stringValue=param.value)))
 
 
