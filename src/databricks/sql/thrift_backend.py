@@ -813,6 +813,7 @@ class ThriftBackend:
         lz4_compression,
         cursor,
         use_cloud_fetch=False,
+        parameters = []
     ):
         assert session_handle is not None
 
@@ -839,6 +840,7 @@ class ThriftBackend:
                 "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
             },
             useArrowNativeTypes=spark_arrow_types,
+            parameters=parameters
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)

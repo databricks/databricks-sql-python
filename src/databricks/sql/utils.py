@@ -488,12 +488,17 @@ class DbSqlType(Enum):
     BOOLEAN = "BOOLEAN"
     INTERVAL_MONTH = "INTERVAL MONTH"
     INTERVAL_DAY = "INTERVAL DAY"
-    VOID = "VOID"
 
 class DbSqlParameter:
     name: str
     value: Any
     type: DbSqlType
+    def __init__(self,name="",value=None,type=None):
+        self.name = name
+        self.value = value
+        self.type = type
+        
+        
 def named_parameters_to_dbsqlparams(parameters: Any):
     dbsqlparams = []
     if(type(parameters) is dict):
@@ -503,9 +508,10 @@ def named_parameters_to_dbsqlparams(parameters: Any):
     else:
         for parameter in parameters:
             if(type(parameter) is DbSqlParameter):
-                continue
+                dbsqlparams.append(parameter)
             else:
                 dbsqlparams.append(DbSqlParameter(value=parameter))
+    return dbsqlparams
 
 def infer_types(params: list[DbSqlParameter]):
     for param in params:
@@ -520,14 +526,14 @@ def infer_types(params: list[DbSqlParameter]):
                 param.type = DbSqlType.TIMESTAMP
             elif(type(param.value) is bool):
                 param.type = DbSqlType.BOOLEAN
-            elif(type(param.value) is None):
-                param.type = DbSqlType.VOID
         if(param.value):
             param.value = str(param.value)
 
-def dbsqlparams_to_tsparkparams(params: list[DbSqlParameter]):
+def named_parameters_to_tsparkparams(parameters: Any):
     tspark_params = []
-    for param in params:
-        tspark_params.append(TSparkParameter(type=param.type,name=param.name,value=TSparkParameterValue(stringValue=param.value)))
-
+    dbsql_params = named_parameters_to_dbsqlparams(parameters)
+    infer_types(dbsql_params)
+    for param in dbsql_params:
+        tspark_params.append(TSparkParameter(type=param.type.value,name=param.name,value=TSparkParameterValue(stringValue=param.value)))
+    return tspark_params
 
