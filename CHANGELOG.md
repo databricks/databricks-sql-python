@@ -8,11 +8,15 @@
 
 ## 2.9.2 (2023-08-17)
 
+__Note: this release was yanked from Pypi on 13 September 2023 due to compatibility issues with environments where `urllib3<=2.0.0` were installed. The log changes are incorporated into version 2.9.3 and greater.__
+
 - Other: Add `examples/v3_retries_query_execute.py` (#199)
 - Other: suppress log message when `_enable_v3_retries` is not `True` (#199)
 - Other: make this connector backwards compatible with `urllib3>=1.0.0` (#197)
 
 ## 2.9.1 (2023-08-11)
+
+__Note: this release was yanked from Pypi on 13 September 2023 due to compatibility issues with environments where `urllib3<=2.0.0` were installed.__
 
 - Other: Explicitly pin urllib3 to ^2.0.0 (#191)
 
