@@ -9,6 +9,11 @@ on:
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest
+    environment: azure-prod
+    env:
+      host: ${{ secrets.DATABRICKS_HOST }}
+      http_path: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+      access_token: ${{ secrets.DATABRICKS_TOKEN }}
     strategy:
       matrix:
         python-version: [3.7, 3.8, 3.9, "3.10", "3.11"]
@@ -59,6 +64,11 @@ jobs:
       #----------------------------------------------
       - name: Run tests
         run: poetry run python -m pytest tests/unit
+      #----------------------------------------------
+      #              run test suite
+      #----------------------------------------------
+      - name: Run tests e2e
+        run: poetry run python -m pytest tests/e2e
   check-linting:
     runs-on: ubuntu-latest
     strategy:
