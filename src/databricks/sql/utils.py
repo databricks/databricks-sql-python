@@ -508,13 +508,13 @@ class DbSqlParameter:
 
 def named_parameters_to_dbsqlparams(parameters: Any):
     dbsqlparams = []
-    if type(parameters) is dict:
+    if isinstance(parameters, dict):
         # Support legacy impl
         for name, parameter in parameters.items():
             dbsqlparams.append(DbSqlParameter(name=name, value=parameter))
     else:
         for parameter in parameters:
-            if type(parameter) is DbSqlParameter:
+            if isinstance(parameter, DbSqlParameter):
                 dbsqlparams.append(parameter)
             else:
                 dbsqlparams.append(DbSqlParameter(value=parameter))
