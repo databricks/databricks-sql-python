@@ -10,6 +10,7 @@ import lz4.frame
 from typing import Dict, List, Union, Any
 import pyarrow
 from enum import Enum
+import copy
 
 from databricks.sql import exc, OperationalError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
@@ -18,7 +19,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
     TRowSet,
     TSparkParameter,
-    TSparkParameterValue
+    TSparkParameterValue,
 )
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -408,7 +409,7 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
 
 
 def convert_decimals_in_arrow_table(table, description) -> pyarrow.Table:
-    for (i, col) in enumerate(table.itercolumns()):
+    for i, col in enumerate(table.itercolumns()):
         if description[i][1] == "decimal":
             decimal_col = col.to_pandas().apply(
                 lambda v: v if v is None else Decimal(v)
@@ -475,6 +476,7 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
 
     return pyarrow.array(result, type=arrow_type)
 
+
 class DbSqlType(Enum):
     STRING = "STRING"
     DATE = "DATE"
@@ -489,51 +491,65 @@ class DbSqlType(Enum):
     INTERVAL_MONTH = "INTERVAL MONTH"
     INTERVAL_DAY = "INTERVAL DAY"
 
+
 class DbSqlParameter:
     name: str
     value: Any
     type: DbSqlType
-    def __init__(self,name="",value=None,type=None):
+
+    def __init__(self, name="", value=None, type=None):
         self.name = name
         self.value = value
         self.type = type
-        
-        
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+
 def named_parameters_to_dbsqlparams(parameters: Any):
     dbsqlparams = []
-    if(type(parameters) is dict):
+    if type(parameters) is dict:
         # Support legacy impl
-        for name,parameter in parameters.items():
-            dbsqlparams.append(DbSqlParameter(name=name,value=parameter))
+        for name, parameter in parameters.items():
+            dbsqlparams.append(DbSqlParameter(name=name, value=parameter))
     else:
         for parameter in parameters:
-            if(type(parameter) is DbSqlParameter):
+            if type(parameter) is DbSqlParameter:
                 dbsqlparams.append(parameter)
             else:
                 dbsqlparams.append(DbSqlParameter(value=parameter))
     return dbsqlparams
 
+
 def infer_types(params: list[DbSqlParameter]):
-    for param in params:
-        if(not param.type):
-            if(type(param.value) is str):
-                param.type = DbSqlType.STRING
-            elif(type(param.value) is int):
-                param.type = DbSqlType.INTEGER
-            elif(type(param.value) is float):
-                param.type = DbSqlType.FLOAT
-            elif(type(param.value) is datetime.datetime):
-                param.type = DbSqlType.TIMESTAMP
-            elif(type(param.value) is bool):
-                param.type = DbSqlType.BOOLEAN
-        if(param.value):
-            param.value = str(param.value)
+    type_lookup_table = {
+        str: DbSqlType.STRING,
+        int: DbSqlType.INTEGER,
+        float: DbSqlType.FLOAT,
+        datetime.datetime: DbSqlType.TIMESTAMP,
+        bool: DbSqlType.BOOLEAN,
+    }
+    newParams = copy.deepcopy(params)
+    for param in newParams:
+        if not param.type:
+            if type(param.value) in type_lookup_table:
+                param.type = type_lookup_table[type(param.value)]
+            else:
+                raise ValueError("Parameter type cannot be inferred")
+        param.value = str(param.value)
+    return newParams
+
 
 def named_parameters_to_tsparkparams(parameters: Any):
     tspark_params = []
     dbsql_params = named_parameters_to_dbsqlparams(parameters)
-    infer_types(dbsql_params)
-    for param in dbsql_params:
-        tspark_params.append(TSparkParameter(type=param.type.value,name=param.name,value=TSparkParameterValue(stringValue=param.value)))
+    inferred_type_parameters = infer_types(dbsql_params)
+    for param in inferred_type_parameters:
+        tspark_params.append(
+            TSparkParameter(
+                type=param.type.value,
+                name=param.name,
+                value=TSparkParameterValue(stringValue=param.value),
+            )
+        )
     return tspark_params
-
