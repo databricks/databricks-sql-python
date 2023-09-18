@@ -22,7 +22,7 @@ __Note: this release was yanked from Pypi on 13 September 2023 due to compatibil
 
 ## 2.9.0 (2023-08-10)
 
-- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `enable_v3_retries=True` when creating `databricks.sql.client` (#182)
+- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `_enable_v3_retries=True` when creating `databricks.sql.client` (#182)
 - Other: Fix typo in README quick start example (#186)
 - Other: Add autospec to Client mocks and tidy up `make_request` (#188)
 
