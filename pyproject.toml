@@ -62,3 +62,8 @@ log_cli = "false"
 log_cli_level = "INFO"
 testpaths = ["tests"]
 env_files = ["test.env"]
+addopts = "--tb native -v -r fxX --maxfail=25 -p no:warnings"
+
+[tool.pytest.ini_options.sqla_testing]
+requirement_cls = "databricks.sqlalchemy.dialect.requirements:Requirements"
+profile_file = "profiles.txt"

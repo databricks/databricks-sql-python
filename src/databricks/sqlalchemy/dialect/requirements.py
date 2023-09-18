@@ -79,7 +79,11 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
 
     @property
     def temp_table_reflection(self):
-        return supported()
+        return unsupported()
+    
+    @property
+    def table_reflection(self):
+        return unsupported()
 
     @property
     def duplicate_key_raises_integrity_error(self):
