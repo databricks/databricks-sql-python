@@ -14,7 +14,11 @@ from databricks.sql.exc import (
     CursorAlreadyClosedError,
 )
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import ExecuteResponse, ParamEscaper,named_parameters_to_tsparkparams
+from databricks.sql.utils import (
+    ExecuteResponse,
+    ParamEscaper,
+    named_parameters_to_tsparkparams,
+)
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -482,7 +486,9 @@ class Cursor:
             )
 
     def execute(
-        self, operation: str, parameters: Optional[Dict[str, str]] = None
+        self,
+        operation: str,
+        parameters: Optional[Union[List[Any], Dict[str, str]]] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -508,7 +514,7 @@ class Cursor:
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
-            parameters=parameters
+            parameters=parameters,
         )
         self.active_result_set = ResultSet(
             self.connection,

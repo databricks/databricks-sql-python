@@ -1,7 +1,8 @@
 from databricks.sql.utils import (
     named_parameters_to_tsparkparams,
     infer_types,
-    named_parameters_to_dbsqlparams,
+    named_parameters_to_dbsqlparams_v1,
+    named_parameters_to_dbsqlparams_v2,
 )
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -34,15 +35,17 @@ class TestTSparkParameterConversion(object):
             ),
         ]
 
-    def test_basic_conversions(self):
+    def test_basic_conversions_v1(self):
         # Test legacy codepath
-        assert named_parameters_to_dbsqlparams({"1": 1, "2": "foo", "3": 2.0}) == [
+        assert named_parameters_to_dbsqlparams_v1({"1": 1, "2": "foo", "3": 2.0}) == [
             DbSqlParameter("1", 1),
             DbSqlParameter("2", "foo"),
             DbSqlParameter("3", 2.0),
         ]
+
+    def test_basic_conversions_v2(self):
         # Test interspersing named params with unnamed
-        assert named_parameters_to_dbsqlparams(
+        assert named_parameters_to_dbsqlparams_v2(
             [DbSqlParameter("1", 1.0, DbSqlType.DECIMAL), 5, DbSqlParameter("3", "foo")]
         ) == [
             DbSqlParameter("1", 1.0, DbSqlType.DECIMAL),

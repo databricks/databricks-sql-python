@@ -506,18 +506,20 @@ class DbSqlParameter:
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
 
 
-def named_parameters_to_dbsqlparams(parameters: Any):
+def named_parameters_to_dbsqlparams_v1(parameters: Dict[str, str]):
     dbsqlparams = []
-    if isinstance(parameters, dict):
-        # Support legacy impl
-        for name, parameter in parameters.items():
-            dbsqlparams.append(DbSqlParameter(name=name, value=parameter))
-    else:
-        for parameter in parameters:
-            if isinstance(parameter, DbSqlParameter):
-                dbsqlparams.append(parameter)
-            else:
-                dbsqlparams.append(DbSqlParameter(value=parameter))
+    for name, parameter in parameters.items():
+        dbsqlparams.append(DbSqlParameter(name=name, value=parameter))
+    return dbsqlparams
+
+
+def named_parameters_to_dbsqlparams_v2(parameters: List[Any]):
+    dbsqlparams = []
+    for parameter in parameters:
+        if isinstance(parameter, DbSqlParameter):
+            dbsqlparams.append(parameter)
+        else:
+            dbsqlparams.append(DbSqlParameter(value=parameter))
     return dbsqlparams
 
 
@@ -540,9 +542,12 @@ def infer_types(params: list[DbSqlParameter]):
     return newParams
 
 
-def named_parameters_to_tsparkparams(parameters: Any):
+def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]]):
     tspark_params = []
-    dbsql_params = named_parameters_to_dbsqlparams(parameters)
+    if isinstance(parameters, dict):
+        dbsql_params = named_parameters_to_dbsqlparams_v1(parameters)
+    else:
+        dbsql_params = named_parameters_to_dbsqlparams_v2(parameters)
     inferred_type_parameters = infer_types(dbsql_params)
     for param in inferred_type_parameters:
         tspark_params.append(
