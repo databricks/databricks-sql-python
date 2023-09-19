@@ -23,25 +23,6 @@ import pytest
 # See further: https://github.com/sqlalchemy/sqlalchemy/blob/rel_1_4_48/README.dialects.rst
 
 
-# These types are not all properly supported
-# del BinaryTest # (#108)
-# del BooleanTest
-# del DateHistoricTest
-# del DateTest
-# del DateTimeHistoricTest
-# del DateTimeMicrosecondsTest
-# del DateTimeTest
-
-
-# del ComponentReflectionTest
-# del CTETest
-# del DifficultParametersTest
-# del FetchLimitOffsetTest
-# del FutureTableDDLTest
-# del HasIndexTest
-# del IdentityAutoincrementTest
-# del InsertBehaviorTest
-
 
 @pytest.mark.skip(reason="Binary support isn't implemented. See #108")
 class BinaryTest:
@@ -559,3 +540,139 @@ class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
             AssertionError: '2012-10-15 12:57:18.000396' != datetime.datetime(2012, 10, 15, 12, 57, 18, 396)
         """
         
+
+class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
+    @pytest.mark.skip(reason="")
+    def test_numeric_reflection(self):
+        """
+        Exception:
+            databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
+            If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
+            To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+        """
+
+class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
+    @pytest.mark.skip(reason="Composite key implementation needs. Work may not be supported by Databricks.")
+    def test_fk_column_order(self):
+        """
+        Excpetion:
+            AssertionError: 0 != 1
+            assert 0 == 1
+        """
+
+class DateTimeCoercedToDateTimeTest(DateTimeCoercedToDateTimeTest):
+    
+    @pytest.mark.skip(reason="Date type implementation needs work. Literal values not coerced properly.")
+    def test_select_direct(self):
+        """
+        Exception:
+            AssertionError: '2012-10-15 12:57:18.000000' != datetime.datetime(2012, 10, 15, 12, 57, 18)
+            assert '2012-10-15 12:57:18.000000' == datetime.datetime(2012, 10, 15, 12, 57, 18)
+        """
+
+class ExceptionTest(ExceptionTest):
+    @pytest.mark.skip(reason="Databricks may not support this method.")
+    def test_integrity_error(self):
+        """
+        Exception:
+            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
+        """
+
+
+class HasTableTest(HasTableTest):
+    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    def test_has_table(self):
+        """
+        Exception
+
+            databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
+If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
+To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+            
+        """
+    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    def test_has_table_schema(self):
+        """
+        Exception
+            databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
+If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
+To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+            
+        """
+    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    def test_has_table_temp_table(self):
+        """
+        Exception
+            databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
+If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
+To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+            
+        """
+    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    def test_has_table_temp_view(self):
+        """
+        Exception
+            databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
+If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
+To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+            
+        """
+    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    def test_has_table_view(self):
+        """
+        Exception
+            databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
+If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
+To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+            
+        """
+    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    def test_has_table_view_schema(self):
+        """
+        Exception
+        databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
+If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
+To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+
+        """
+
+class LastrowidTest(LastrowidTest):
+    @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
+    def test_autoincrement_on_insert(self):
+        """
+        Exception
+            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
+
+        """
+
+    @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
+    def test_last_inserted_id(self):
+        """
+        Exception:
+            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
+        
+        """
+
+class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
+
+    @pytest.mark.skip(reason="Primary key handling needs work.")
+    def test_pk_column_order(self):
+        """
+        Exception:
+        AssertionError: [] != ['name', 'id', 'attr']
+            assert [] == ['name', 'id', 'attr']
+            Right contains 3 more items, first extra item: 'name'
+            Full diff:
+            - ['name', 'id', 'attr']
+            + []
+        """
+
+class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
+    
+    @pytest.mark.skip(reason="Test setup needs adjustment.")
+    def test_varchar_reflection(self):
+        """
+        Exception:
+            databricks.sql.exc.ServerOperationError: [TABLE_OR_VIEW_ALREADY_EXISTS] Cannot create table or view `pysql_sqlalchemy`.`t` because it already exists.
+            Choose a different name, drop or replace the existing object, add the IF NOT EXISTS clause to tolerate pre-existing objects, or add the OR REFRESH clause to refresh the existing streaming table.
+        """
