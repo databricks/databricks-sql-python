@@ -62,8 +62,5 @@ log_cli = "false"
 log_cli_level = "INFO"
 testpaths = ["tests"]
 env_files = ["test.env"]
+addopts = "--ignore=tests/sqlalchemy_dialect_compliance"
 
-
-[tool.pytest.ini_options.sqla_testing]
-requirement_cls = "databricks.sqlalchemy.dialect.requirements:Requirements"
-profile_file = "profiles.txt"

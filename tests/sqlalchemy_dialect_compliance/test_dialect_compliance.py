@@ -12,7 +12,7 @@ import pytest
 # it obvious what areas of dialect compliance we have not evaluated. The next
 # step towards dialect compliance is to review each of these and document exactly
 # which methods should or should not work. This can be done by removing the corr-
-# esponding `del` statement, running the test, and evaluating the results
+# esponding skip marker and then running the test.
 
 # If we find tests that are skippable for a documented reason, we can call these
 # out directly in the way suggested by SQLAlchemy's document for dialect authors:
