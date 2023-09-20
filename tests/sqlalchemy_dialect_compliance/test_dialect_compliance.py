@@ -840,157 +840,157 @@ class ComponentReflectionTest(ComponentReflectionTest):
    def test_autoincrement_col(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_dialect_initialize(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_columns(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_comments(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_comments_with_schema(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_default_schema_name(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_foreign_keys(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_foreign_keys(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_indexes(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_inter_schema_foreign_keys(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_noncol_index(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_pk_constraint(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_schema_names(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_schema_names_w_translate_map(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_table_names(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_table_oid(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_table_oid(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_temp_table_columns(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_temp_table_indexes(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_temp_table_names(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_temp_table_unique_constraints(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_temp_view_columns(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_temp_view_names(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_unique_constraints(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_view_definition(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
    def test_get_view_definition(self):
       """
       Exception:
-      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:dapi3496b1417ce2ca2ec70196ac5759781a@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
+      - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
       """
 
 class HasIndexTest(HasIndexTest):
