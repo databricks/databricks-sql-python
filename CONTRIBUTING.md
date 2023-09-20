@@ -146,7 +146,7 @@ The suites marked `[not documented]` require additional configuration which will
 
 #### SQLAlchemy dialog tests
 
-SQLAlchemy provides reusable tests tests for testing dialect implementations.
+SQLAlchemy provides reusable tests for testing dialect implementations.
 
 To run these tests, assuming the environment variables needed for e2e tests are set:
 
