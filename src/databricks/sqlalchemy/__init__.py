@@ -82,6 +82,7 @@ class DatabricksDialect(default.DefaultDialect):
     supports_native_decimal: bool = True
     supports_sane_rowcount: bool = False
     non_native_boolean_check_constraint: bool = False
+    default_paramstyle: str = "qmark"
 
     @classmethod
     def dbapi(cls):
