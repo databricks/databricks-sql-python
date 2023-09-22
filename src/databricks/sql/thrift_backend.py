@@ -224,7 +224,7 @@ class ThriftBackend:
     def _initialize_retry_args(self, kwargs):
         # Configure retries & timing: use user-settings or defaults, and bound
         # by policy. Log.warn when given param gets restricted.
-        for (key, (type_, default, min, max)) in _retry_policy.items():
+        for key, (type_, default, min, max) in _retry_policy.items():
             given_or_default = type_(kwargs.get(key, default))
             bound = _bound(min, max, given_or_default)
             setattr(self, key, bound)
@@ -368,7 +368,6 @@ class ThriftBackend:
 
             error, error_message, retry_delay = None, None, None
             try:
-
                 this_method_name = getattr(method, "__name__")
 
                 logger.debug("Sending request: {}(<REDACTED>)".format(this_method_name))
@@ -614,7 +613,10 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
+            (
+                arrow_table,
+                num_rows,
+            ) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -813,6 +815,7 @@ class ThriftBackend:
         lz4_compression,
         cursor,
         use_cloud_fetch=False,
+        parameters=[],
     ):
         assert session_handle is not None
 
@@ -839,6 +842,7 @@ class ThriftBackend:
                 "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
             },
             useArrowNativeTypes=spark_arrow_types,
+            parameters=parameters,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)
