@@ -1,14 +1,10 @@
-import pytest
-import databricks.sql as sql
-from databricks.sql import Error
-import pytz
-
+from datetime import datetime
 from decimal import Decimal
 
-from databricks.sql.utils import DbSqlParameter, DbSqlType
-from datetime import datetime
+import pytz
 
 from databricks.sql.client import Connection
+from databricks.sql.utils import DbSqlParameter, DbSqlType
 
 
 class PySQLParameterizedQueryTestSuiteMixin:
