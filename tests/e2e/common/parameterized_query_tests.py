@@ -1,5 +1,6 @@
-from datetime import datetime
+import datetime
 from decimal import Decimal
+from typing import Dict, List, Tuple, Union
 
 import pytz
 
@@ -10,172 +11,134 @@ from databricks.sql.utils import DbSqlParameter, DbSqlType
 class PySQLParameterizedQueryTestSuiteMixin:
     """Namespace for tests of server-side parameterized queries"""
 
-    def test_parameterized_query_named_and_inferred_e2e(self):
-        """Verify that named parameters passed to the database as a dict are returned of the correct type
-        All types are inferred.
-        """
+    QUERY = "SELECT :p AS col"
 
-        conn: Connection
-
-        query = """
-        SELECT
-            :p_bool AS col_bool,
-            :p_int AS col_int,
-            :p_double AS col_double,
-            :p_date as col_date,
-            :p_timestamp as col_timestamp,
-            :p_str AS col_str
-        """
-
-        named_parameters = {
-            "p_bool": True,
-            "p_int": 1234,
-            "p_double": 3.14,
-            "p_date": datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC).date(),
-            "p_timestamp": datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC),
-            "p_str": "Hello",
-        }
+    def _get_one_result(self, query: str, parameters: Union[Dict, List[Dict]]) -> Tuple:
         with self.connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, parameters=named_parameters)
-            result = cursor.fetchone()
+            with conn.cursor() as cursor:
+                cursor.execute(query, parameters=parameters)
+                return cursor.fetchone()
 
-            assert result.col_bool == True
-            assert result.col_int == 1234
+    def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
 
-            # For equality, we use Decimal to quantize these values
-            assert Decimal(result.col_double).quantize(Decimal("0.00")) == Decimal(
-                3.14
-            ).quantize(Decimal("0.00"))
+        return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
 
-            assert result.col_date == datetime(
-                2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
-            ).date()
-            assert result.col_timestamp == datetime(
-                2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
-            )
-            assert result.col_str == "Hello"
+    def test_primitive_inferred_bool(self):
 
-    def test_parameterized_query_named_dict_and_inferred_e2e(self):
-        """Verify that named parameters passed to the database as a list are returned of the correct type
-        All types are inferred.
-        """
+        params = {"p": True}
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == True
 
-        conn: Connection
+    def test_primitive_inferred_integer(self):
 
-        query = """
-        SELECT
-            :p_bool AS col_bool,
-            :p_int AS col_int,
-            :p_double AS col_double,
-            :p_date as col_date,
-            :p_timestamp as col_timestamp,
-            :p_str AS col_str
-        """
+        params = {"p": 1}
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == 1
 
-        named_parameters = [
-            DbSqlParameter(
-                name="p_bool",
-                value=True,
-            ),
-            DbSqlParameter(
-                name="p_int",
-                value=1234,
-            ),
-            DbSqlParameter(
-                name="p_double",
-                value=3.14,
-            ),
-            DbSqlParameter(
-                name="p_date",
-                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC).date(),
-            ),
-            DbSqlParameter(
-                name="p_timestamp",
-                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC),
-            ),
-            DbSqlParameter(name="p_str", value="Hello"),
-        ]
+    def test_primitive_inferred_double(self):
 
-        with self.connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, parameters=named_parameters)
-            result = cursor.fetchone()
+        params = {"p": 3.14}
+        result = self._get_one_result(self.QUERY, params)
+        assert self._quantize(result.col) == self._quantize(3.14)
 
-            assert result.col_bool == True
-            assert result.col_int == 1234
+    def test_primitive_inferred_date(self):
 
-            # For equality, we use Decimal to quantize these values
-            assert Decimal(result.col_double).quantize(Decimal("0.00")) == Decimal(
-                3.14
-            ).quantize(Decimal("0.00"))
+        # DATE in Databricks is mapped into a datetime.date object in Python
+        date_value = datetime.date(2023, 9, 6)
+        params = {"p": date_value}
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == date_value
 
-            assert result.col_date == datetime(
-                2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
-            ).date()
-            assert result.col_timestamp == datetime(
-                2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
-            )
-            assert result.col_str == "Hello"
+    def test_primitive_inferred_timestamp(self):
 
-    def test_parameterized_query_named_dict_and_not_inferred_e2e(self):
-        """Verify that named parameters passed to the database are returned of the correct type
-        All types are explicitly set.
-        """
+        # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
+        date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
+        params = {"p": date_value}
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == date_value
 
-        conn: Connection
+    def test_primitive_inferred_string(self):
 
-        query = """
-        SELECT
-            :p_bool AS col_bool,
-            :p_int AS col_int,
-            :p_double AS col_double,
-            :p_date as col_date,
-            :p_timestamp as col_timestamp,
-            :p_str AS col_str
-        """
+        params = {"p": "Hello"}
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == "Hello"
 
-        named_parameters = [
-            DbSqlParameter(name="p_bool", value=True, type=DbSqlType.BOOLEAN),
-            DbSqlParameter(name="p_int", value=1234, type=DbSqlType.INTEGER),
-            DbSqlParameter(name="p_double", value=3.14, type=DbSqlType.FLOAT),
-            DbSqlParameter(
-                name="p_date",
-                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC).date(),
-                type=DbSqlType.DATE,
-            ),
-            DbSqlParameter(
-                name="p_timestamp",
-                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC),
-                type=DbSqlType.TIMESTAMP,
-            ),
-            DbSqlParameter(name="p_str", value="Hello", type=DbSqlType.STRING),
-        ]
+    def test_dbsqlparam_inferred_bool(self):
 
-        with self.connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, parameters=named_parameters)
-            result = cursor.fetchone()
+        params = [DbSqlParameter(name="p", value=True, type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == True
 
-            assert result.col_bool == True
-            assert result.col_int == 1234
+    def test_dbsqlparam_inferred_integer(self):
 
-            # For equality, we use Decimal to quantize these values
-            assert Decimal(result.col_double).quantize(Decimal("0.00")) == Decimal(
-                3.14
-            ).quantize(Decimal("0.00"))
+        params = [DbSqlParameter(name="p", value=1, type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == 1
 
-            # Observe that passing a datetime object with timezone information and the type set to DbSqlType.DATE
-            # strips away the time and tz info
-            assert (
-                result.col_date
-                == datetime(
-                    2023,
-                    9,
-                    6,
-                ).date()
-            )
-            assert result.col_timestamp == datetime(
-                2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
-            )
-            assert result.col_str == "Hello"
+    def test_dbsqlparam_inferred_double(self):
+
+        params = [DbSqlParameter(name="p", value=3.14, type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert self._quantize(result.col) == self._quantize(3.14)
+
+    def test_dbsqlparam_inferred_date(self):
+
+        # DATE in Databricks is mapped into a datetime.date object in Python
+        date_value = datetime.date(2023, 9, 6)
+        params = [DbSqlParameter(name="p", value=date_value, type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == date_value
+
+    def test_dbsqlparam_inferred_timestamp(self):
+
+        # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
+        date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
+        params = [DbSqlParameter(name="p", value=date_value, type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == date_value
+
+    def test_dbsqlparam_inferred_string(self):
+
+        params = [DbSqlParameter(name="p", value="Hello", type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == "Hello"
+
+    def test_dbsqlparam_explicit_bool(self):
+
+        params = [DbSqlParameter(name="p", value=True, type=DbSqlType.BOOLEAN)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == True
+
+    def test_dbsqlparam_explicit_integer(self):
+
+        params = [DbSqlParameter(name="p", value=1, type=DbSqlType.INTEGER)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == 1
+
+    def test_dbsqlparam_explicit_double(self):
+
+        params = [DbSqlParameter(name="p", value=3.14, type=DbSqlType.FLOAT)]
+        result = self._get_one_result(self.QUERY, params)
+        assert self._quantize(result.col) == self._quantize(3.14)
+
+    def test_dbsqlparam_explicit_date(self):
+
+        # DATE in Databricks is mapped into a datetime.date object in Python
+        date_value = datetime.date(2023, 9, 6)
+        params = [DbSqlParameter(name="p", value=date_value, type=DbSqlType.DATE)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == date_value
+
+    def test_dbsqlparam_explicit_timestamp(self):
+
+        # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
+        date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
+        params = [DbSqlParameter(name="p", value=date_value, type=DbSqlType.TIMESTAMP)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == date_value
+
+    def test_dbsqlparam_explicit_string(self):
+
+        params = [DbSqlParameter(name="p", value="Hello", type=DbSqlType.STRING)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == "Hello"
