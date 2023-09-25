@@ -529,6 +529,7 @@ def infer_types(params: list[DbSqlParameter]):
         int: DbSqlType.INTEGER,
         float: DbSqlType.FLOAT,
         datetime.datetime: DbSqlType.TIMESTAMP,
+        datetime.date: DbSqlType.DATE,
         bool: DbSqlType.BOOLEAN,
     }
     newParams = copy.deepcopy(params)

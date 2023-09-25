@@ -24,9 +24,11 @@ import sqlalchemy.testing.requirements
 import sqlalchemy.testing.exclusions
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 logger.warning("requirements.py is not currently employed by Databricks dialect")
+
 
 class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     pass
