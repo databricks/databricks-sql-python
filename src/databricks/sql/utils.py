@@ -510,6 +510,7 @@ class DbSqlParameter:
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
 
+
 class DbsqlDynamicDecimalType:
     def __init__(self, value):
         self.value = value
