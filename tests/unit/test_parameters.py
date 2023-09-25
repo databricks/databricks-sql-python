@@ -3,6 +3,7 @@ from databricks.sql.utils import (
     infer_types,
     named_parameters_to_dbsqlparams_v1,
     named_parameters_to_dbsqlparams_v2,
+    calculate_decimal_cast_string
 )
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -10,6 +11,8 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 )
 from databricks.sql.utils import DbSqlParameter, DbSqlType
 import pytest
+
+from decimal import Decimal
 
 
 class TestTSparkParameterConversion(object):
@@ -73,3 +76,25 @@ class TestTSparkParameterConversion(object):
         assert infer_types([DbSqlParameter("", 1.0, DbSqlType.DECIMAL)]) == [
             DbSqlParameter("", "1.0", DbSqlType.DECIMAL)
         ]
+
+class TestCalculateDecimalCast(object):
+
+    def test_38_38(self):
+        input = Decimal(".12345678912345678912345678912345678912")
+        output = calculate_decimal_cast_string(input)
+        assert output == "DECIMAL(38,38)"
+    
+    def test_18_9(self):
+        input = Decimal("123456789.123456789")
+        output = calculate_decimal_cast_string(input)
+        assert output == "DECIMAL(18,9)"
+    
+    def test_38_0(self):
+        input = Decimal("12345678912345678912345678912345678912")
+        output = calculate_decimal_cast_string(input)
+        assert output == "DECIMAL(38,0)"
+
+    def test_6_2(self):
+        input = Decimal("1234.56")
+        output = calculate_decimal_cast_string(input)
+        assert output == "DECIMAL(6,2)"

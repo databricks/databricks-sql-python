@@ -6,7 +6,11 @@ from typing import Dict, List, Tuple, Union
 import pytz
 
 from databricks.sql.exc import DatabaseError
-from databricks.sql.utils import DbSqlParameter, DbSqlType
+from databricks.sql.utils import (
+    DbSqlParameter,
+    DbSqlType,
+    calculate_decimal_cast_string,
+)
 
 
 class MyCustomDecimalType(Enum):
@@ -197,13 +201,12 @@ class PySQLParameterizedQueryTestSuiteMixin:
         result = self._get_one_result(self.QUERY, params)
         assert result.col == value
 
-    def test_primitive_inferred_decimal_raises_exception(self):
-        """The default precision is DECIMAL(6,2). Without a custom DbsqlParameter type, the value will be rounded"""
+    def test_calculate_decimal_cast_string(self):
 
-        # This DECIMAL would require DECIMAL(10,2) but the default is DECIMAL(6,2)
-        params = {"p": Decimal("12345678.91")}
-
-        with self.assertRaises(
-            DatabaseError, msg="cannot be cast to DECIMAL(6,2) because it is malformed"
-        ):
-            result = self._get_one_result(self.QUERY, params)
+        assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
+        assert (
+            calculate_decimal_cast_string(
+                Decimal("123456789123456789.123456789123456789")
+            )
+            == "DECIMAL(36,18)"
+        )

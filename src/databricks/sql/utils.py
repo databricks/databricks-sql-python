@@ -1,25 +1,26 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from collections import namedtuple, OrderedDict
-from collections.abc import Iterable
-from decimal import Decimal
+
+import copy
 import datetime
 import decimal
+from abc import ABC, abstractmethod
+from collections import OrderedDict, namedtuple
+from collections.abc import Iterable
+from decimal import Decimal
 from enum import Enum
-import lz4.frame
-from typing import Dict, List, Union, Any
-import pyarrow
-from enum import Enum
-import copy
+from typing import Any, Dict, List, Union
 
-from databricks.sql import exc, OperationalError
+import lz4.frame
+import pyarrow
+
+from databricks.sql import OperationalError, exc
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkArrowResultLink,
-    TSparkRowSetType,
     TRowSet,
+    TSparkArrowResultLink,
     TSparkParameter,
     TSparkParameterValue,
+    TSparkRowSetType,
 )
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -486,7 +487,7 @@ class DbSqlType(Enum):
     DATE = "DATE"
     TIMESTAMP = "TIMESTAMP"
     FLOAT = "FLOAT"
-    DECIMAL = "DECIMAL(6,2)"
+    DECIMAL = "DECIMAL"
     INTEGER = "INTEGER"
     BIGINT = "BIGINT"
     SMALLINT = "SMALLINT"
@@ -544,8 +545,41 @@ def infer_types(params: list[DbSqlParameter]):
                 param.type = type_lookup_table[type(param.value)]
             else:
                 raise ValueError("Parameter type cannot be inferred")
+
+        if param.type == DbSqlType.DECIMAL:
+            maker = namedtuple("DbsqlDynamicDecimalType", "value")
+            cast_exp = calculate_decimal_cast_string(param.value)
+            param.type = maker(cast_exp)
+
         param.value = str(param.value)
     return new_params
+
+
+def calculate_decimal_cast_string(input: Decimal) -> str:
+    """Returns the smallest SQL cast argument that can contain the passed decimal
+
+    Example:
+        Input:   Decimal("1234.5678")
+        Output:  DECIMAL(8,4)
+    """
+
+    string_decimal = str(input)
+
+    if string_decimal.startswith("0."):
+        # This decimal is less than 1
+        overall = after = len(string_decimal) - 2
+    elif "." not in string_decimal:
+        # This decimal has no fractional component
+        overall = len(string_decimal)
+        after = 0
+    else:
+        # This decimal has both whole and fractional parts
+        parts = string_decimal.split(".")
+        parts_lengths = [len(i) for i in parts]
+        before, after = parts_lengths[:2]
+        overall = before + after
+
+    return f"DECIMAL({overall},{after})"
 
 
 def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]]):
