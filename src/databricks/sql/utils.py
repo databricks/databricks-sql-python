@@ -510,6 +510,10 @@ class DbSqlParameter:
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
 
+class DbsqlDynamicDecimalType:
+    def __init__(self, value):
+        self.value = value
+
 
 def named_parameters_to_dbsqlparams_v1(parameters: Dict[str, str]):
     dbsqlparams = []
@@ -547,9 +551,8 @@ def infer_types(params: list[DbSqlParameter]):
                 raise ValueError("Parameter type cannot be inferred")
 
         if param.type == DbSqlType.DECIMAL:
-            maker = namedtuple("DbsqlDynamicDecimalType", "value")
             cast_exp = calculate_decimal_cast_string(param.value)
-            param.type = maker(cast_exp)
+            param.type = DbsqlDynamicDecimalType(cast_exp)
 
         param.value = str(param.value)
     return new_params
