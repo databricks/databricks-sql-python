@@ -189,7 +189,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
 
     def test_dbsqlparam_custom_explicit_decimal_18_9(self):
 
-        # This DECIMAL can be contained in a DECIMAL(38,2) column in Databricks
+        # This DECIMAL can be contained in a DECIMAL(18,9) column in Databricks
         value = Decimal("123456789.123456789")
         params = [
             DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_18_9)
