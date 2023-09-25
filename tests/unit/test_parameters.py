@@ -31,7 +31,7 @@ class TestTSparkParameterConversion(object):
                 name="", type="FLOAT", value=TSparkParameterValue(stringValue="1.0")
             ),
             TSparkParameter(
-                name="", type="DECIMAL", value=TSparkParameterValue(stringValue="1.0")
+                name="", type="DECIMAL(6,2)", value=TSparkParameterValue(stringValue="1.0")
             ),
         ]
 
