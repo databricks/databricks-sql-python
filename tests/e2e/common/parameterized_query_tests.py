@@ -31,7 +31,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
             "p_bool": True,
             "p_int": 1234,
             "p_double": 3.14,
-            "p_date": datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC),
+            "p_date": datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC).date(),
             "p_timestamp": datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC),
             "p_str": "Hello",
         }
@@ -50,7 +50,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
 
             assert result.col_date == datetime(
                 2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
-            )
+            ).date()
             assert result.col_timestamp == datetime(
                 2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
             )
@@ -88,7 +88,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
             ),
             DbSqlParameter(
                 name="p_date",
-                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC),
+                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC).date(),
             ),
             DbSqlParameter(
                 name="p_timestamp",
@@ -112,7 +112,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
 
             assert result.col_date == datetime(
                 2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
-            )
+            ).date()
             assert result.col_timestamp == datetime(
                 2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC
             )
@@ -141,7 +141,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
             DbSqlParameter(name="p_double", value=3.14, type=DbSqlType.FLOAT),
             DbSqlParameter(
                 name="p_date",
-                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC),
+                value=datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC).date(),
                 type=DbSqlType.DATE,
             ),
             DbSqlParameter(
