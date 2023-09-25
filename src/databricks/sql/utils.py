@@ -478,11 +478,15 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
 
 
 class DbSqlType(Enum):
+    """The values of this enumeration are passed as literals to be used in a CAST
+    evaluation by the thrift server.
+    """
+
     STRING = "STRING"
     DATE = "DATE"
     TIMESTAMP = "TIMESTAMP"
     FLOAT = "FLOAT"
-    DECIMAL = "DECIMAL"
+    DECIMAL = "DECIMAL(6,2)"
     INTEGER = "INTEGER"
     BIGINT = "BIGINT"
     SMALLINT = "SMALLINT"
@@ -495,7 +499,7 @@ class DbSqlType(Enum):
 class DbSqlParameter:
     name: str
     value: Any
-    type: DbSqlType
+    type: Union[DbSqlType, Enum]
 
     def __init__(self, name="", value=None, type=None):
         self.name = name
@@ -531,16 +535,17 @@ def infer_types(params: list[DbSqlParameter]):
         datetime.datetime: DbSqlType.TIMESTAMP,
         datetime.date: DbSqlType.DATE,
         bool: DbSqlType.BOOLEAN,
+        Decimal: DbSqlType.DECIMAL,
     }
-    newParams = copy.deepcopy(params)
-    for param in newParams:
+    new_params = copy.deepcopy(params)
+    for param in new_params:
         if not param.type:
             if type(param.value) in type_lookup_table:
                 param.type = type_lookup_table[type(param.value)]
             else:
                 raise ValueError("Parameter type cannot be inferred")
         param.value = str(param.value)
-    return newParams
+    return new_params
 
 
 def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]]):
