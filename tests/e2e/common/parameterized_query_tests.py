@@ -1,11 +1,22 @@
 import datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Dict, List, Tuple, Union
 
 import pytz
 
-from databricks.sql.client import Connection
-from databricks.sql.utils import DbSqlParameter, DbSqlType
+from databricks.sql.exc import DatabaseError
+from databricks.sql.utils import (
+    DbSqlParameter,
+    DbSqlType,
+    calculate_decimal_cast_string,
+)
+
+
+class MyCustomDecimalType(Enum):
+    DECIMAL_38_0 = "DECIMAL(38,0)"
+    DECIMAL_38_2 = "DECIMAL(38,2)"
+    DECIMAL_18_9 = "DECIMAL(18,9)"
 
 
 class PySQLParameterizedQueryTestSuiteMixin:
@@ -63,6 +74,11 @@ class PySQLParameterizedQueryTestSuiteMixin:
         result = self._get_one_result(self.QUERY, params)
         assert result.col == "Hello"
 
+    def test_primitive_inferred_decimal(self):
+        params = {"p": Decimal("1234.56")}
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == Decimal("1234.56")
+
     def test_dbsqlparam_inferred_bool(self):
 
         params = [DbSqlParameter(name="p", value=True, type=None)]
@@ -103,6 +119,11 @@ class PySQLParameterizedQueryTestSuiteMixin:
         result = self._get_one_result(self.QUERY, params)
         assert result.col == "Hello"
 
+    def test_dbsqlparam_inferred_decimal(self):
+        params = [DbSqlParameter(name="p", value=Decimal("1234.56"), type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == Decimal("1234.56")
+
     def test_dbsqlparam_explicit_bool(self):
 
         params = [DbSqlParameter(name="p", value=True, type=DbSqlType.BOOLEAN)]
@@ -142,3 +163,50 @@ class PySQLParameterizedQueryTestSuiteMixin:
         params = [DbSqlParameter(name="p", value="Hello", type=DbSqlType.STRING)]
         result = self._get_one_result(self.QUERY, params)
         assert result.col == "Hello"
+
+    def test_dbsqlparam_explicit_decimal(self):
+        params = [
+            DbSqlParameter(name="p", value=Decimal("1234.56"), type=DbSqlType.DECIMAL)
+        ]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == Decimal("1234.56")
+
+    def test_dbsqlparam_custom_explicit_decimal_38_0(self):
+
+        # This DECIMAL can be contained in a DECIMAL(38,0) column in Databricks
+        value = Decimal("12345678912345678912345678912345678912")
+        params = [
+            DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_38_0)
+        ]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == value
+
+    def test_dbsqlparam_custom_explicit_decimal_38_2(self):
+
+        # This DECIMAL can be contained in a DECIMAL(38,2) column in Databricks
+        value = Decimal("123456789123456789123456789123456789.12")
+        params = [
+            DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_38_2)
+        ]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == value
+
+    def test_dbsqlparam_custom_explicit_decimal_18_9(self):
+
+        # This DECIMAL can be contained in a DECIMAL(18,9) column in Databricks
+        value = Decimal("123456789.123456789")
+        params = [
+            DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_18_9)
+        ]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == value
+
+    def test_calculate_decimal_cast_string(self):
+
+        assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
+        assert (
+            calculate_decimal_cast_string(
+                Decimal("123456789123456789.123456789123456789")
+            )
+            == "DECIMAL(36,18)"
+        )

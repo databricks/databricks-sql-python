@@ -1,25 +1,26 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from collections import namedtuple, OrderedDict
-from collections.abc import Iterable
-from decimal import Decimal
+
+import copy
 import datetime
 import decimal
+from abc import ABC, abstractmethod
+from collections import OrderedDict, namedtuple
+from collections.abc import Iterable
+from decimal import Decimal
 from enum import Enum
-import lz4.frame
-from typing import Dict, List, Union, Any
-import pyarrow
-from enum import Enum
-import copy
+from typing import Any, Dict, List, Union
 
-from databricks.sql import exc, OperationalError
+import lz4.frame
+import pyarrow
+
+from databricks.sql import OperationalError, exc
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkArrowResultLink,
-    TSparkRowSetType,
     TRowSet,
+    TSparkArrowResultLink,
     TSparkParameter,
     TSparkParameterValue,
+    TSparkRowSetType,
 )
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -478,6 +479,10 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
 
 
 class DbSqlType(Enum):
+    """The values of this enumeration are passed as literals to be used in a CAST
+    evaluation by the thrift server.
+    """
+
     STRING = "STRING"
     DATE = "DATE"
     TIMESTAMP = "TIMESTAMP"
@@ -495,7 +500,7 @@ class DbSqlType(Enum):
 class DbSqlParameter:
     name: str
     value: Any
-    type: DbSqlType
+    type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum]
 
     def __init__(self, name="", value=None, type=None):
         self.name = name
@@ -504,6 +509,11 @@ class DbSqlParameter:
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+
+class DbsqlDynamicDecimalType:
+    def __init__(self, value):
+        self.value = value
 
 
 def named_parameters_to_dbsqlparams_v1(parameters: Dict[str, str]):
@@ -531,16 +541,49 @@ def infer_types(params: list[DbSqlParameter]):
         datetime.datetime: DbSqlType.TIMESTAMP,
         datetime.date: DbSqlType.DATE,
         bool: DbSqlType.BOOLEAN,
+        Decimal: DbSqlType.DECIMAL,
     }
-    newParams = copy.deepcopy(params)
-    for param in newParams:
+    new_params = copy.deepcopy(params)
+    for param in new_params:
         if not param.type:
             if type(param.value) in type_lookup_table:
                 param.type = type_lookup_table[type(param.value)]
             else:
                 raise ValueError("Parameter type cannot be inferred")
+
+        if param.type == DbSqlType.DECIMAL:
+            cast_exp = calculate_decimal_cast_string(param.value)
+            param.type = DbsqlDynamicDecimalType(cast_exp)
+
         param.value = str(param.value)
-    return newParams
+    return new_params
+
+
+def calculate_decimal_cast_string(input: Decimal) -> str:
+    """Returns the smallest SQL cast argument that can contain the passed decimal
+
+    Example:
+        Input:   Decimal("1234.5678")
+        Output:  DECIMAL(8,4)
+    """
+
+    string_decimal = str(input)
+
+    if string_decimal.startswith("0."):
+        # This decimal is less than 1
+        overall = after = len(string_decimal) - 2
+    elif "." not in string_decimal:
+        # This decimal has no fractional component
+        overall = len(string_decimal)
+        after = 0
+    else:
+        # This decimal has both whole and fractional parts
+        parts = string_decimal.split(".")
+        parts_lengths = [len(i) for i in parts]
+        before, after = parts_lengths[:2]
+        overall = before + after
+
+    return f"DECIMAL({overall},{after})"
 
 
 def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]]):
