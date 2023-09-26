@@ -500,7 +500,7 @@ class DbSqlType(Enum):
 class DbSqlParameter:
     name: str
     value: Any
-    type: Union[DbSqlType, Enum]
+    type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum]
 
     def __init__(self, name="", value=None, type=None):
         self.name = name
