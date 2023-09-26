@@ -62,5 +62,3 @@ log_cli = "false"
 log_cli_level = "INFO"
 testpaths = ["tests"]
 env_files = ["test.env"]
-addopts = "--ignore=tests/sqlalchemy_dialect_compliance"
-
