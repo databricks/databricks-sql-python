@@ -195,7 +195,6 @@ def test_bulk_insert_with_core(db_engine, metadata_obj, session):
     assert len(rows) == num_to_insert
 
 
-@pytest.mark.skip(reason="Parameterized query implementation cannot work with Decimal types yet.")
 def test_create_insert_drop_table_core(base, db_engine, metadata_obj: MetaData):
     """ """
 
@@ -267,7 +266,6 @@ def test_create_insert_drop_table_orm(base, session: Session):
     base.metadata.drop_all()
 
 
-@pytest.mark.skip(reason="Parameterized query implementation cannot work with Decimal types yet.")
 def test_dialect_type_mappings(base, db_engine, metadata_obj: MetaData):
     """Confirms that we get back the same time we declared in a model and inserted using Core"""
 
