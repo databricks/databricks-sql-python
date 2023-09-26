@@ -1,3 +1,4 @@
+# type: ignore
 from sqlalchemy.testing.suite import *
 import pytest
 
