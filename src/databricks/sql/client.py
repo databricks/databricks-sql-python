@@ -5,6 +5,7 @@ import pyarrow
 import requests
 import json
 import os
+from databricks.sql.thrift_api.TCLIService import ttypes
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -224,6 +225,9 @@ class Connection:
 
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
+
+    def get_session_protocol_version(self):
+        return self.thrift_backend.handle_to_protocol_version(self._session_handle)
 
     def get_session_id_hex(self):
         return self.thrift_backend.handle_to_hex_id(self._session_handle)
@@ -501,6 +505,11 @@ class Cursor:
         """
         if parameters is None:
             parameters = []
+        elif (
+            self.connection.get_session_protocol_version()
+            < ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+        ):
+            raise Error("Parameterized operations are not supported by this server")
         else:
             parameters = named_parameters_to_tsparkparams(parameters)
 
