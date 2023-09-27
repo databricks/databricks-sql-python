@@ -509,7 +509,7 @@ class Cursor:
             self.connection.get_session_protocol_version()
             < ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
         ):
-            raise Error("Parameterized operations are not supported by this server")
+            raise Error("Parameterized operations are not supported by this server. Support will begin with server version DBR 14.1")
         else:
             parameters = named_parameters_to_tsparkparams(parameters)
 
