@@ -197,7 +197,7 @@ class PySQLUCVolumeTestSuiteMixin:
         staging_allowed_local_path = "/var/www/html"
         target_file = "index.html"
 
-        with pytest.raises(Error, match="INVALID_STAGING_PATH_IN_STAGING_ACCESS_QUERY"):
+        with pytest.raises(Error, match="NOT_FOUND: CATALOG"):
             with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO '/Volumes/RANDOMSTRINGOFCHARACTERS/{self.catalog}/{self.schema}/e2etests/file1.csv' OVERWRITE"
