@@ -122,7 +122,7 @@ def test_pandas_upload(db_engine, metadata_obj):
 
     SCHEMA = os.environ.get("schema")
     try:
-        df = pd.read_excel("tests/sqlalchemy/demo_data/MOCK_DATA.xlsx")
+        df = pd.read_excel("src/databricks/sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx")
         df.to_sql(
             "mock_data",
             db_engine,
