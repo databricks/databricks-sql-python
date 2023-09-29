@@ -97,6 +97,17 @@ class TestTSparkParameterConversion(object):
         assert x.value == "1.0"
         assert isinstance(x.type, DbsqlDynamicDecimalType)
         assert x.type.value == "DECIMAL(2,1)"
+
+    def test_infer_types_none(self):
+        
+        input = DbSqlParameter("", None)
+        output: List[DbSqlParameter] = infer_types([input])
+        
+        x = output[0]
+
+        assert x.value == None
+        assert x.type == DbSqlType.VOID
+        assert x.type.value == "VOID"
        
 
 class TestCalculateDecimalCast(object):

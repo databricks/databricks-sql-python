@@ -34,6 +34,12 @@ class PySQLParameterizedQueryTestSuiteMixin:
 
         return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
 
+    def test_primitive_inferred_none(self):
+
+        params = {"p": None}
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == None
+
     def test_primitive_inferred_bool(self):
 
         params = {"p": True}
@@ -78,6 +84,12 @@ class PySQLParameterizedQueryTestSuiteMixin:
         params = {"p": Decimal("1234.56")}
         result = self._get_one_result(self.QUERY, params)
         assert result.col == Decimal("1234.56")
+
+    def test_dbsqlparam_inferred_none(self):
+
+        params = [DbSqlParameter(name="p", value=None, type=None)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == None
 
     def test_dbsqlparam_inferred_bool(self):
 
@@ -124,6 +136,12 @@ class PySQLParameterizedQueryTestSuiteMixin:
         result = self._get_one_result(self.QUERY, params)
         assert result.col == Decimal("1234.56")
 
+    def test_dbsqlparam_explicit_none(self):
+
+        params = [DbSqlParameter(name="p", value=None, type=DbSqlType.VOID)]
+        result = self._get_one_result(self.QUERY, params)
+        assert result.col == None
+    
     def test_dbsqlparam_explicit_bool(self):
 
         params = [DbSqlParameter(name="p", value=True, type=DbSqlType.BOOLEAN)]
