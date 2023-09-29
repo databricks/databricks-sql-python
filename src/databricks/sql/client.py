@@ -512,7 +512,7 @@ class Cursor:
             < ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
         ):
             raise Error(
-                "Parameterized operations are not supported by this server. Support will begin with server version DBR 14.1"
+                "Parameterized operations are not supported by this server. DBR 14.1 is required."
             )
         else:
             parameters = named_parameters_to_tsparkparams(parameters)
