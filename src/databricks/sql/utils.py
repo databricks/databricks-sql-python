@@ -546,28 +546,27 @@ def infer_types(params: list[DbSqlParameter]):
     }
 
     new_params = []
+
+    # cycle through each parameter we've been passed
     for param in params:
         _name: str = param.name
-        _value: Any
+        _value: Any = param.value
         _type: DbSqlType
 
-        if not param.type:
-            if type(param.value) in type_lookup_table:
-                _type = type_lookup_table[type(param.value)]
-            else:
-                raise ValueError(
-                    "Parameter type cannot be inferred from {} - {}".format(
-                        type(param.value), str(param.value)
-                    )
-                )
-
-        else:
+        if param.type:
             _type = param.type
-            
+        else:
+            # figure out what type to use
+            _type = type_lookup_table.get(type(_value), False)
+            if not _type:
+                raise ValueError(f"Could not infer parameter type from {type(param.value)} - {param.value}")
+
+        # Decimal require special handling because one column type in Databricks can have multiple precisions
         if _type == DbSqlType.DECIMAL:
             cast_exp = calculate_decimal_cast_string(param.value)
             _type = DbsqlDynamicDecimalType(cast_exp)
-
+        
+        # VOID / NULL types must be passed in a unique way as TSparkParameters with no value
         if _type == DbSqlType.VOID:
             new_params.append(DbSqlParameter(name=_name, type=DbSqlType.VOID))
             continue

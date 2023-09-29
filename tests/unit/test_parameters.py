@@ -4,7 +4,7 @@ from databricks.sql.utils import (
     named_parameters_to_dbsqlparams_v1,
     named_parameters_to_dbsqlparams_v2,
     calculate_decimal_cast_string,
-    DbsqlDynamicDecimalType
+    DbsqlDynamicDecimalType,
 )
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -37,7 +37,9 @@ class TestTSparkParameterConversion(object):
                 name="", type="FLOAT", value=TSparkParameterValue(stringValue="1.0")
             ),
             TSparkParameter(
-                name="", type="DECIMAL(2,1)", value=TSparkParameterValue(stringValue="1.0")
+                name="",
+                type="DECIMAL(2,1)",
+                value=TSparkParameterValue(stringValue="1.0"),
             ),
         ]
 
@@ -91,7 +93,7 @@ class TestTSparkParameterConversion(object):
         # The output decimal will have a dynamically calculated decimal type with a value of DECIMAL(2,1)
         input = DbSqlParameter("", Decimal("1.0"))
         output: List[DbSqlParameter] = infer_types([input])
-        
+
         x = output[0]
 
         assert x.value == "1.0"
@@ -99,29 +101,37 @@ class TestTSparkParameterConversion(object):
         assert x.type.value == "DECIMAL(2,1)"
 
     def test_infer_types_none(self):
-        
+
         input = DbSqlParameter("", None)
         output: List[DbSqlParameter] = infer_types([input])
-        
+
         x = output[0]
 
         assert x.value == None
         assert x.type == DbSqlType.VOID
         assert x.type.value == "VOID"
-       
+
+    def test_infer_types_unsupported(self):
+        class ArbitraryType:
+            pass
+
+        input = DbSqlParameter("", ArbitraryType())
+
+        with pytest.raises(ValueError, match="Could not infer parameter type from"):
+            infer_types([input])
+
 
 class TestCalculateDecimalCast(object):
-
     def test_38_38(self):
         input = Decimal(".12345678912345678912345678912345678912")
         output = calculate_decimal_cast_string(input)
         assert output == "DECIMAL(38,38)"
-    
+
     def test_18_9(self):
         input = Decimal("123456789.123456789")
         output = calculate_decimal_cast_string(input)
         assert output == "DECIMAL(18,9)"
-    
+
     def test_38_0(self):
         input = Decimal("12345678912345678912345678912345678912")
         output = calculate_decimal_cast_string(input)
