@@ -227,7 +227,9 @@ class Connection:
         return self.thrift_backend.handle_to_id(self._session_handle)
 
     def get_session_protocol_version(self):
-        return self.thrift_backend.extract_protocol_version_from_handle(self._session_handle)
+        return self.thrift_backend.extract_protocol_version_from_handle(
+            self._session_handle
+        )
 
     def get_session_id_hex(self):
         return self.thrift_backend.handle_to_hex_id(self._session_handle)
@@ -509,7 +511,9 @@ class Cursor:
             self.connection.get_session_protocol_version()
             < ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
         ):
-            raise Error("Parameterized operations are not supported by this server. Support will begin with server version DBR 14.1")
+            raise Error(
+                "Parameterized operations are not supported by this server. Support will begin with server version DBR 14.1"
+            )
         else:
             parameters = named_parameters_to_tsparkparams(parameters)
 
