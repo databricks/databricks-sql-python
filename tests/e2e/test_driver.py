@@ -1,3 +1,4 @@
+import itertools
 from contextlib import contextmanager
 from collections import OrderedDict
 import datetime
@@ -15,6 +16,7 @@ import pyarrow
 import pytz
 import thrift
 import pytest
+from urllib3.connectionpool import ReadTimeoutError
 
 import databricks.sql as sql
 from databricks.sql import STRING, BINARY, NUMBER, DATETIME, DATE, DatabaseError, Error, OperationalError, RequestError
@@ -25,6 +27,8 @@ from tests.e2e.common.timestamp_tests import TimestampTestsMixin
 from tests.e2e.common.decimal_tests import DecimalTestsMixin
 from tests.e2e.common.retry_test_mixins import Client429ResponseMixin, Client503ResponseMixin
 from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSuiteMixin
+from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
+from tests.e2e.common.parameterized_query_tests import PySQLParameterizedQueryTestSuiteMixin
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
 log = logging.getLogger(__name__)
@@ -53,6 +57,7 @@ class PySQLTestCase(TestCase):
         # If running in local mode, just use environment variables for params.
         self.arguments = os.environ if get_args_from_env else {}
         self.arraysize = 1000
+        self.buffer_size_bytes = 104857600
 
     def connection_params(self, arguments):
         params = {
@@ -85,7 +90,7 @@ class PySQLTestCase(TestCase):
     @contextmanager
     def cursor(self, extra_params=()):
         with self.connection(extra_params) as conn:
-            cursor = conn.cursor(arraysize=self.arraysize)
+            cursor = conn.cursor(arraysize=self.arraysize, buffer_size_bytes=self.buffer_size_bytes)
             try:
                 yield cursor
             finally:
@@ -105,11 +110,41 @@ class PySQLLargeQueriesSuite(PySQLTestCase, LargeQueriesMixin):
         else:
             return None
 
+    @skipUnless(pysql_supports_arrow(), 'needs arrow support')
+    def test_cloud_fetch(self):
+        # This test can take several minutes to run
+        limits = [100000, 300000]
+        threads = [10, 25]
+        self.arraysize = 100000
+        # This test requires a large table with many rows to properly initiate cloud fetch.
+        # e2-dogfood host > hive_metastore catalog > main schema has such a table called store_sales.
+        # If this table is deleted or this test is run on a different host, a different table may need to be used.
+        base_query = "SELECT * FROM store_sales WHERE ss_sold_date_sk = 2452234 "
+        for num_limit, num_threads, lz4_compression in itertools.product(limits, threads, [True, False]):
+            with self.subTest(num_limit=num_limit, num_threads=num_threads, lz4_compression=lz4_compression):
+                cf_result, noop_result = None, None
+                query = base_query + "LIMIT " + str(num_limit)
+                with self.cursor({
+                    "use_cloud_fetch": True,
+                    "max_download_threads": num_threads,
+                    "catalog": "hive_metastore"
+                }) as cursor:
+                    cursor.execute(query)
+                    cf_result = cursor.fetchall()
+                with self.cursor({
+                    "catalog": "hive_metastore"
+                }) as cursor:
+                    cursor.execute(query)
+                    noop_result = cursor.fetchall()
+                assert len(cf_result) == len(noop_result)
+                for i in range(len(cf_result)):
+                    assert cf_result[i] == noop_result[i]
+
 
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core
 # tests
 class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, TimestampTestsMixin,
-                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin, PySQLUCVolumeTestSuiteMixin):
+                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin, PySQLRetryTestsMixin, PySQLParameterizedQueryTestSuiteMixin, PySQLUCVolumeTestSuiteMixin):
     validate_row_value_type = True
     validate_result = True
 
@@ -478,12 +513,11 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
     def test_socket_timeout_user_defined(self):
         #  We expect to see a TimeoutError when the socket timeout is only
         #  1 sec for a query that takes longer than that to process
-        with self.assertRaises(RequestError) as cm:
+        with self.assertRaises(ReadTimeoutError) as cm:
             with self.cursor({"_socket_timeout": 1}) as cursor:
-                query = "select * from range(10000000)"
+                query = "select * from range(1000000000)"
                 cursor.execute(query)
 
-        self.assertIsInstance(cm.exception.args[1], TimeoutError)
 
     def test_ssp_passthrough(self):
         for enable_ansi in (True, False):

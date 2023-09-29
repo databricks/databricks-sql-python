@@ -8,16 +8,24 @@ import os
 
 from databricks.sql import __version__
 from databricks.sql import *
-from databricks.sql.exc import OperationalError
+from databricks.sql.exc import (
+    OperationalError,
+    SessionAlreadyClosedError,
+    CursorAlreadyClosedError,
+)
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import ExecuteResponse, ParamEscaper, inject_parameters
+from databricks.sql.utils import (
+    ExecuteResponse,
+    ParamEscaper,
+    named_parameters_to_tsparkparams,
+)
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RESULT_BUFFER_SIZE_BYTES = 10485760
+DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
 
@@ -153,6 +161,8 @@ class Connection:
         # _use_arrow_native_timestamps
         # Databricks runtime will return native Arrow types for timestamps instead of Arrow strings
         # (True by default)
+        # use_cloud_fetch
+        # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
         if access_token:
             access_token_kv = {"access_token": access_token}
@@ -189,6 +199,7 @@ class Connection:
         self._session_handle = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
+        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", False)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
@@ -203,7 +214,7 @@ class Connection:
         if self.open:
             logger.debug(
                 "Closing unclosed connection for session "
-                "{}".format(self.get_session_id())
+                "{}".format(self.get_session_id_hex())
             )
             try:
                 self._close(close_cursors=False)
@@ -254,6 +265,9 @@ class Connection:
 
         try:
             self.thrift_backend.close_session(self._session_handle)
+        except RequestError as e:
+            if isinstance(e.args[1], SessionAlreadyClosedError):
+                logger.info("Session was closed by a prior request")
         except DatabaseError as e:
             if "Invalid SessionHandle" in str(e):
                 logger.warning(
@@ -472,7 +486,9 @@ class Cursor:
             )
 
     def execute(
-        self, operation: str, parameters: Optional[Dict[str, str]] = None
+        self,
+        operation: str,
+        parameters: Optional[Union[List[Any], Dict[str, str]]] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -483,10 +499,10 @@ class Cursor:
             Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
         :returns self
         """
-        if parameters is not None:
-            operation = inject_parameters(
-                operation, self.escaper.escape_args(parameters)
-            )
+        if parameters is None:
+            parameters = []
+        else:
+            parameters = named_parameters_to_tsparkparams(parameters)
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
@@ -497,6 +513,8 @@ class Cursor:
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
+            use_cloud_fetch=self.connection.use_cloud_fetch,
+            parameters=parameters,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -822,6 +840,7 @@ class ResultSet:
                 break
 
     def _fill_results_buffer(self):
+        # At initialization or if the server does not have cloud fetch result links available
         results, has_more_rows = self.thrift_backend.fetch_results(
             op_handle=self.command_id,
             max_rows=self.arraysize,
@@ -953,6 +972,9 @@ class ResultSet:
                 and self.connection.open
             ):
                 self.thrift_backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
         finally:
             self.has_been_closed_server_side = True
             self.op_state = self.thrift_backend.CLOSED_OP_STATE

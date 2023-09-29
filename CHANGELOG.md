@@ -1,6 +1,45 @@
 # Release History
 
-## 2.7.x (Unreleased)
+## 2.9.4 (Unreleased)
+
+- Other: Introduce SQLAlchemy dialect compliance test suite and enumerate all excluded tests
+
+## 2.9.3 (2023-08-24)
+
+- Fix: Connections failed when urllib3~=1.0.0 is installed (#206)
+
+## 2.9.2 (2023-08-17)
+
+__Note: this release was yanked from Pypi on 13 September 2023 due to compatibility issues with environments where `urllib3<=2.0.0` were installed. The log changes are incorporated into version 2.9.3 and greater.__
+
+- Other: Add `examples/v3_retries_query_execute.py` (#199)
+- Other: suppress log message when `_enable_v3_retries` is not `True` (#199)
+- Other: make this connector backwards compatible with `urllib3>=1.0.0` (#197)
+
+## 2.9.1 (2023-08-11)
+
+__Note: this release was yanked from Pypi on 13 September 2023 due to compatibility issues with environments where `urllib3<=2.0.0` were installed.__
+
+- Other: Explicitly pin urllib3 to ^2.0.0 (#191)
+
+## 2.9.0 (2023-08-10)
+
+- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `_enable_v3_retries=True` when creating `databricks.sql.client` (#182)
+- Other: Fix typo in README quick start example (#186)
+- Other: Add autospec to Client mocks and tidy up `make_request` (#188)
+
+## 2.8.0 (2023-07-21)
+
+- Add support for Cloud Fetch. Disabled by default. Set `use_cloud_fetch=True` when building `databricks.sql.client` to enable it (#146, #151, #154)
+- SQLAlchemy has_table function now honours schema= argument and adds catalog= argument (#174)
+- SQLAlchemy set non_native_boolean_check_constraint False as it's not supported by Databricks (#120)
+- Fix: Revised SQLAlchemy dialect and examples for compatibility with SQLAlchemy==1.3.x (#173)
+- Fix: oauth would fail if expired credentials appeared in ~/.netrc (#122)
+- Fix: Python HTTP proxies were broken after switch to urllib3 (#158)
+- Other: remove unused import in SQLAlchemy dialect
+- Other: Relax pandas dependency constraint to allow ^2.0.0 (#164)
+- Other: Connector now logs operation handle guids as hexadecimal instead of bytes (#170)
+- Other: test_socket_timeout_user_defined e2e test was broken (#144)
 
 ## 2.7.0 (2023-06-26)
 
