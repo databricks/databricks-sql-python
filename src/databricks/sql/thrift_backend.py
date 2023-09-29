@@ -1004,7 +1004,7 @@ class ThriftBackend:
         return session_handle.sessionId.guid
 
     @staticmethod
-    def handle_to_protocol_version(session_handle):
+    def extract_protocol_version_from_handle(session_handle):
         return session_handle.serverProtocolVersion
 
     @staticmethod

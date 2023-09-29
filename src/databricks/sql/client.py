@@ -227,7 +227,7 @@ class Connection:
         return self.thrift_backend.handle_to_id(self._session_handle)
 
     def get_session_protocol_version(self):
-        return self.thrift_backend.handle_to_protocol_version(self._session_handle)
+        return self.thrift_backend.extract_protocol_version_from_handle(self._session_handle)
 
     def get_session_id_hex(self):
         return self.thrift_backend.handle_to_hex_id(self._session_handle)
