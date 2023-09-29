@@ -551,13 +551,13 @@ def infer_types(params: list[DbSqlParameter]):
     for param in params:
         _name: str = param.name
         _value: Any = param.value
-        _type: DbSqlType
+        _type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum, None]
 
         if param.type:
             _type = param.type
         else:
             # figure out what type to use
-            _type = type_lookup_table.get(type(_value), False)
+            _type = type_lookup_table.get(type(_value), None)
             if not _type:
                 raise ValueError(
                     f"Could not infer parameter type from {type(param.value)} - {param.value}"
