@@ -1,7 +1,16 @@
 import os, datetime, decimal
 import pytest
 from unittest import skipIf
-from sqlalchemy import create_engine, select, insert, Column, MetaData, Table, Text, text
+from sqlalchemy import (
+    create_engine,
+    select,
+    insert,
+    Column,
+    MetaData,
+    Table,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Session, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import SMALLINT, Integer, BOOLEAN, String, DECIMAL, Date
 from sqlalchemy.engine import Engine
@@ -71,7 +80,7 @@ def db_engine() -> Engine:
 
 
 def run_query(db_engine: Engine, query: Union[str, Text]):
-    
+
     if not isinstance(query, Text):
         _query = text(query)
     else:
@@ -125,14 +134,18 @@ def test_connect_args(db_engine):
 
 
 @pytest.mark.skipif(sqlalchemy_1_3(), reason="Pandas requires SQLAlchemy >= 1.4")
-@pytest.mark.skip(reason="DBR is currently limited to 256 parameters per call to .execute(). Test cannot pass.")
+@pytest.mark.skip(
+    reason="DBR is currently limited to 256 parameters per call to .execute(). Test cannot pass."
+)
 def test_pandas_upload(db_engine, metadata_obj):
 
     import pandas as pd
 
     SCHEMA = os.environ.get("schema")
     try:
-        df = pd.read_excel("src/databricks/sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx")
+        df = pd.read_excel(
+            "src/databricks/sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx"
+        )
         df.to_sql(
             "mock_data",
             db_engine,
@@ -264,7 +277,6 @@ def test_create_insert_drop_table_orm(db_engine):
 
     sample_object_1 = SampleObject(name="Bim Adewunmi", episodes=6, some_bool=True)
     sample_object_2 = SampleObject(name="Miki Meek", episodes=12, some_bool=False)
-    
 
     session = Session(db_engine)
     session.add(sample_object_1)
@@ -370,9 +382,9 @@ def test_get_table_names_smoke_test(samples_engine: Engine):
 
 def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
     """For this test to pass these conditions must be met:
-        - Table samples.nyctaxi.trips must exist
-        - Table samples.tpch.customer must exist
-        - The `catalog` and `schema` environment variables must be set and valid
+    - Table samples.nyctaxi.trips must exist
+    - Table samples.tpch.customer must exist
+    - The `catalog` and `schema` environment variables must be set and valid
     """
 
     with samples_engine.connect() as conn:
