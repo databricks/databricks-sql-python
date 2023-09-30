@@ -545,7 +545,7 @@ class ThriftBackend:
                 initial_namespace = None
 
             open_session_req = ttypes.TOpenSessionReq(
-                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                client_protocol_i64=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
                 client_protocol=None,
                 initialNamespace=initial_namespace,
                 canUseMultipleCatalogs=True,
@@ -1002,6 +1002,10 @@ class ThriftBackend:
     @staticmethod
     def handle_to_id(session_handle):
         return session_handle.sessionId.guid
+
+    @staticmethod
+    def extract_protocol_version_from_handle(session_handle):
+        return session_handle.serverProtocolVersion
 
     @staticmethod
     def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
