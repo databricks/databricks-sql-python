@@ -3,6 +3,7 @@
 ## 2.9.4 (Unreleased)
 
 - Other: Introduce SQLAlchemy dialect compliance test suite and enumerate all excluded tests
+- Add integration tests for Databricks UC Volumes ingestion queries
 
 ## 2.9.3 (2023-08-24)
 
