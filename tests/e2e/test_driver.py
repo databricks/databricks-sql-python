@@ -341,7 +341,7 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
             assert rows[0]["col_1"] == "you're"
 
             # Test escape syntax in parameter
-            cursor.execute("SELECT * FROM {} WHERE {}.col_1 LIKE %(var)s".format(table_name, table_name), parameters={"var": "you're"})
+            cursor.execute("SELECT * FROM {} WHERE {}.col_1 LIKE :var".format(table_name, table_name), parameters={"var": "you're"})
             rows = cursor.fetchall()
             assert rows[0]["col_1"] == "you're"
 
