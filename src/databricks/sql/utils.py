@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import datetime
 import decimal
 from abc import ABC, abstractmethod
@@ -495,6 +494,7 @@ class DbSqlType(Enum):
     BOOLEAN = "BOOLEAN"
     INTERVAL_MONTH = "INTERVAL MONTH"
     INTERVAL_DAY = "INTERVAL DAY"
+    VOID = "VOID"
 
 
 class DbSqlParameter:
@@ -542,20 +542,41 @@ def infer_types(params: list[DbSqlParameter]):
         datetime.date: DbSqlType.DATE,
         bool: DbSqlType.BOOLEAN,
         Decimal: DbSqlType.DECIMAL,
+        type(None): DbSqlType.VOID,
     }
-    new_params = copy.deepcopy(params)
-    for param in new_params:
-        if not param.type:
-            if type(param.value) in type_lookup_table:
-                param.type = type_lookup_table[type(param.value)]
-            else:
-                raise ValueError("Parameter type cannot be inferred")
 
-        if param.type == DbSqlType.DECIMAL:
+    new_params = []
+
+    # cycle through each parameter we've been passed
+    for param in params:
+        _name: str = param.name
+        _value: Any = param.value
+        _type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum, None]
+
+        if param.type:
+            _type = param.type
+        else:
+            # figure out what type to use
+            _type = type_lookup_table.get(type(_value), None)
+            if not _type:
+                raise ValueError(
+                    f"Could not infer parameter type from {type(param.value)} - {param.value}"
+                )
+
+        # Decimal require special handling because one column type in Databricks can have multiple precisions
+        if _type == DbSqlType.DECIMAL:
             cast_exp = calculate_decimal_cast_string(param.value)
-            param.type = DbsqlDynamicDecimalType(cast_exp)
+            _type = DbsqlDynamicDecimalType(cast_exp)
 
-        param.value = str(param.value)
+        # VOID / NULL types must be passed in a unique way as TSparkParameters with no value
+        if _type == DbSqlType.VOID:
+            new_params.append(DbSqlParameter(name=_name, type=DbSqlType.VOID))
+            continue
+        else:
+            _value = str(param.value)
+
+        new_params.append(DbSqlParameter(name=_name, value=_value, type=_type))
+
     return new_params
 
 
@@ -594,11 +615,15 @@ def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]
         dbsql_params = named_parameters_to_dbsqlparams_v2(parameters)
     inferred_type_parameters = infer_types(dbsql_params)
     for param in inferred_type_parameters:
-        tspark_params.append(
-            TSparkParameter(
-                type=param.type.value,
-                name=param.name,
-                value=TSparkParameterValue(stringValue=param.value),
+        # The only way to pass a VOID/NULL to DBR is to declare TSparkParameter without declaring
+        # its value or type arguments. If we set these to NoneType, the request will fail with a
+        # thrift transport error
+        if param.type == DbSqlType.VOID:
+            this_tspark_param = TSparkParameter(name=param.name)
+        else:
+            this_tspark_param_value = TSparkParameterValue(stringValue=param.value)
+            this_tspark_param = TSparkParameter(
+                type=param.type.value, name=param.name, value=this_tspark_param_value
             )
-        )
+        tspark_params.append(this_tspark_param)
     return tspark_params
