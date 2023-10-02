@@ -18,6 +18,7 @@ from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
     named_parameters_to_tsparkparams,
+    inject_parameters
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -500,6 +501,11 @@ class Cursor:
         :returns self
         """
         if parameters is None:
+            parameters = []
+        elif self.thrift_backend._use_legacy_parameters:
+            operation = inject_parameters(
+                operation, self.escaper.escape_args(parameters)
+            )
             parameters = []
         else:
             parameters = named_parameters_to_tsparkparams(parameters)

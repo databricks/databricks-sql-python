@@ -152,6 +152,9 @@ class ThriftBackend:
         self._use_arrow_native_timestamps = kwargs.get(
             "_use_arrow_native_timestamps", True
         )
+        self._use_legacy_parameters= kwargs.get(
+            "_use_legacy_parameters", False
+        )
 
         # Cloud fetch
         self.max_download_threads = kwargs.get("max_download_threads", 10)
