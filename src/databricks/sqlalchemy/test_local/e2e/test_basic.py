@@ -82,9 +82,9 @@ def db_engine() -> Engine:
 def run_query(db_engine: Engine, query: Union[str, Text]):
 
     if not isinstance(query, Text):
-        _query = text(query)
+        _query = text(query)  # type: ignore
     else:
-        _query = query
+        _query = query  # type: ignore
     with db_engine.begin() as conn:
         return conn.execute(_query).fetchall()
 
@@ -376,7 +376,7 @@ def test_inspector_smoke_test(samples_engine: Engine):
 def test_get_table_names_smoke_test(samples_engine: Engine):
 
     with samples_engine.connect() as conn:
-        _names = samples_engine.table_names(schema="nyctaxi", connection=conn)
+        _names = samples_engine.table_names(schema="nyctaxi", connection=conn)  # type: ignore
         _names is not None, "get_table_names did not succeed"
 
 
