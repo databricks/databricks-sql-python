@@ -12,6 +12,9 @@ from sqlalchemy.engine import reflection
 
 from databricks import sql
 
+# This import is required to process our @compiles decorators
+import databricks.sqlalchemy.types
+
 
 from databricks.sqlalchemy.base import (
     DatabricksDDLCompiler,
@@ -36,7 +39,6 @@ class DatabricksDialect(default.DefaultDialect):
     name: str = "databricks"
     driver: str = "databricks"
     default_schema_name: str = "default"
-
     preparer = DatabricksIdentifierPreparer  # type: ignore
     ddl_compiler = DatabricksDDLCompiler
     supports_statement_cache: bool = True
