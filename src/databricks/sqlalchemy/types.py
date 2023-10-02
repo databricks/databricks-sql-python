@@ -1,27 +1,14 @@
+import sqlalchemy
 from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.sql.compiler import GenericTypeCompiler
-from sqlalchemy.types import (
-    DateTime,
-    Enum,
-    Integer,
-    LargeBinary,
-    Numeric,
-    String,
-    Text,
-    Time,
-    Unicode,
-    UnicodeText,
-    Uuid,
-)
 
 
-@compiles(Enum, "databricks")
-@compiles(String, "databricks")
-@compiles(Text, "databricks")
-@compiles(Time, "databricks")
-@compiles(Unicode, "databricks")
-@compiles(UnicodeText, "databricks")
-@compiles(Uuid, "databricks")
+@compiles(sqlalchemy.types.Enum, "databricks")
+@compiles(sqlalchemy.types.String, "databricks")
+@compiles(sqlalchemy.types.Text, "databricks")
+@compiles(sqlalchemy.types.Time, "databricks")
+@compiles(sqlalchemy.types.Unicode, "databricks")
+@compiles(sqlalchemy.types.UnicodeText, "databricks")
+@compiles(sqlalchemy.types.Uuid, "databricks")
 def compile_string_databricks(type_, compiler, **kw):
     """
     We override the default compilation for Enum(), String(), Text(), and Time() because SQLAlchemy
@@ -40,7 +27,7 @@ def compile_string_databricks(type_, compiler, **kw):
     return "STRING"
 
 
-@compiles(Integer, "databricks")
+@compiles(sqlalchemy.types.Integer, "databricks")
 def compile_integer_databricks(type_, compiler, **kw):
     """
     We need to override the default Integer compilation rendering because Databricks uses "INT" instead of "INTEGER"
@@ -48,7 +35,7 @@ def compile_integer_databricks(type_, compiler, **kw):
     return "INT"
 
 
-@compiles(LargeBinary, "databricks")
+@compiles(sqlalchemy.types.LargeBinary, "databricks")
 def compile_binary_databricks(type_, compiler, **kw):
     """
     We need to override the default LargeBinary compilation rendering because Databricks uses "BINARY" instead of "BLOB"
@@ -56,7 +43,7 @@ def compile_binary_databricks(type_, compiler, **kw):
     return "BINARY"
 
 
-@compiles(Numeric, "databricks")
+@compiles(sqlalchemy.types.Numeric, "databricks")
 def compile_numeric_databricks(type_, compiler, **kw):
     """
     We need to override the default Numeric compilation rendering because Databricks uses "DECIMAL" instead of "NUMERIC"
@@ -67,7 +54,7 @@ def compile_numeric_databricks(type_, compiler, **kw):
     return compiler.visit_DECIMAL(type_, **kw)
 
 
-@compiles(DateTime, "databricks")
+@compiles(sqlalchemy.types.DateTime, "databricks")
 def compile_datetime_databricks(type_, compiler, **kw):
     """
     We need to override the default DateTime compilation rendering because Databricks uses "TIMESTAMP" instead of "DATETIME"
