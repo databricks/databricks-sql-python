@@ -17,7 +17,6 @@ from databricks.sqlalchemy.base import (
     DatabricksDDLCompiler,
     DatabricksIdentifierPreparer,
 )
-from databricks.sqlalchemy.compiler import DatabricksTypeCompiler
 
 try:
     import alembic
@@ -30,42 +29,6 @@ else:
         __dialect__ = "databricks"
 
 
-class DatabricksDecimal(types.TypeDecorator):
-    """Translates strings to decimals"""
-
-    impl = types.DECIMAL
-
-    def process_result_value(self, value, dialect):
-        if value is not None:
-            return decimal.Decimal(value)
-        else:
-            return None
-
-
-class DatabricksTimestamp(types.TypeDecorator):
-    """Translates timestamp strings to datetime objects"""
-
-    impl = types.TIMESTAMP
-
-    def process_result_value(self, value, dialect):
-        return value
-
-    def adapt(self, impltype, **kwargs):
-        return self.impl
-
-
-class DatabricksDate(types.TypeDecorator):
-    """Translates date strings to date objects"""
-
-    impl = types.DATE
-
-    def process_result_value(self, value, dialect):
-        return value
-
-    def adapt(self, impltype, **kwargs):
-        return self.impl
-
-
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
@@ -75,7 +38,6 @@ class DatabricksDialect(default.DefaultDialect):
     default_schema_name: str = "default"
 
     preparer = DatabricksIdentifierPreparer  # type: ignore
-    type_compiler = DatabricksTypeCompiler
     ddl_compiler = DatabricksDDLCompiler
     supports_statement_cache: bool = True
     supports_multivalues_insert: bool = True
@@ -137,23 +99,23 @@ class DatabricksDialect(default.DefaultDialect):
         """
 
         _type_map = {
-            "boolean": types.Boolean,
-            "smallint": types.SmallInteger,
-            "int": types.Integer,
-            "bigint": types.BigInteger,
-            "float": types.Float,
-            "double": types.Float,
-            "string": types.String,
-            "varchar": types.String,
-            "char": types.String,
-            "binary": types.String,
-            "array": types.String,
-            "map": types.String,
-            "struct": types.String,
-            "uniontype": types.String,
-            "decimal": DatabricksDecimal,
-            "timestamp": DatabricksTimestamp,
-            "date": DatabricksDate,
+            "boolean": sqlalchemy.types.Boolean,
+            "smallint": sqlalchemy.types.SmallInteger,
+            "int": sqlalchemy.types.Integer,
+            "bigint": sqlalchemy.types.BigInteger,
+            "float": sqlalchemy.types.Float,
+            "double": sqlalchemy.types.Float,
+            "string": sqlalchemy.types.String,
+            "varchar": sqlalchemy.types.String,
+            "char": sqlalchemy.types.String,
+            "binary": sqlalchemy.types.String,
+            "array": sqlalchemy.types.String,
+            "map": sqlalchemy.types.String,
+            "struct": sqlalchemy.types.String,
+            "uniontype": sqlalchemy.types.String,
+            "decimal": sqlalchemy.types.Numeric,
+            "timestamp": sqlalchemy.types.DateTime,
+            "date": sqlalchemy.types.Date,
         }
 
         with self.get_connection_cursor(connection) as cur:
