@@ -283,7 +283,7 @@ class DatabricksDialect(default.DefaultDialect):
 
         try:
             res = connection.execute(
-                f"DESCRIBE TABLE {_catalog}.{_schema}.{table_name}"
+                sqlalchemy.text(f"DESCRIBE TABLE {_catalog}.{_schema}.{table_name}")
             )
             return True
         except DatabaseError as e:
