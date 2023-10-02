@@ -144,3 +144,13 @@ class TestUppercaseTypesCompilation(CompilationTestBase):
             # I preserve it in the uppercase_type_map for clarity
             return True
         return self._assert_compiled_value(type_, expected)
+
+    def test_array_string_renders_as_array_of_string(self):
+        """SQLAlchemy's ARRAY type requires an item definition. And their docs indicate that they've only tested
+        it with Postgres since that's the only first-class dialect with support for ARRAY.
+
+        https://docs.sqlalchemy.org/en/20/core/type_basics.html#sqlalchemy.types.ARRAY
+        """
+        return self._assert_compiled_value_explicit(
+            sqlalchemy.types.ARRAY(sqlalchemy.types.String), "ARRAY<STRING>"
+        )

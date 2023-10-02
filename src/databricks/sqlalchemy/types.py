@@ -60,3 +60,21 @@ def compile_datetime_databricks(type_, compiler, **kw):
     We need to override the default DateTime compilation rendering because Databricks uses "TIMESTAMP" instead of "DATETIME"
     """
     return "TIMESTAMP"
+
+
+@compiles(sqlalchemy.types.ARRAY, "databricks")
+def compile_array_databricks(type_, compiler, **kw):
+    """
+    SQLAlchemy's default ARRAY can't compile as it's only implemented for Postgresql.
+    The Postgres implementation works for Databricks SQL, so we duplicate that here.
+
+    :type_:
+        This is an instance of sqlalchemy.types.ARRAY which always includes an item_type attribute
+        which is itself an instance of TypeEngine
+
+    https://docs.sqlalchemy.org/en/20/core/type_basics.html#sqlalchemy.types.ARRAY
+    """
+
+    inner = compiler.process(type_.item_type, **kw)
+
+    return f"ARRAY<{inner}>"
