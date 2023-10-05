@@ -502,7 +502,7 @@ class Cursor:
         """
         if parameters is None:
             parameters = []
-        elif self.thrift_backend._use_legacy_parameters:
+        elif self.thrift_backend._use_inline_parameters:
             operation = inject_parameters(
                 operation, self.escaper.escape_args(parameters)
             )
