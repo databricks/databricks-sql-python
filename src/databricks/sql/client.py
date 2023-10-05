@@ -225,6 +225,21 @@ class Connection:
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
 
+<<<<<<< HEAD
+=======
+    def get_session_protocol_version(self):
+        return self.thrift_backend.extract_protocol_version_from_handle(
+            self._session_handle
+        )
+    
+    @staticmethod
+    def server_parameterized_queries_enabled(protocolVersion):
+        if protocolVersion and protocolVersion >= ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8:
+            return True
+        else:
+            return False
+
+>>>>>>> cd93869 (Put in some unit tests, will add e2e)
     def get_session_id_hex(self):
         return self.thrift_backend.handle_to_hex_id(self._session_handle)
 
@@ -501,6 +516,13 @@ class Cursor:
         """
         if parameters is None:
             parameters = []
+<<<<<<< HEAD
+=======
+        elif (not self.server_parameterized_queries_enabled(self.connection._session_handle)):
+            raise Error(
+                "Parameterized operations are not supported by this server. DBR 14.2 is required."
+            )
+>>>>>>> cd93869 (Put in some unit tests, will add e2e)
         else:
             parameters = named_parameters_to_tsparkparams(parameters)
 

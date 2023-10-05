@@ -29,6 +29,12 @@ class PySQLParameterizedQueryTestSuiteMixin:
             with conn.cursor() as cursor:
                 cursor.execute(query, parameters=parameters)
                 return cursor.fetchone()
+            
+    def _test_protocol_checking(self) -> Tuple:
+        with self.connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, parameters=parameters)
+                return cursor.fetchone()
 
     def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
 
