@@ -29,26 +29,6 @@ class BinaryTest(BinaryTest):
     pass
 
 
-class DateHistoricTest(DateHistoricTest):
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Cannot render literal values."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.date(1727, 4, 1)" with datatype DATE
-        """
-
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Cannot render literal values."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '1727-04-01' != datetime.date(1727, 4, 1)
-        """
-
-
 class DateTest(DateTest):
     @pytest.mark.skip(
         reason="Date type implementation needs work. Cannot render literal values."
