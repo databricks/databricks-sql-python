@@ -24,20 +24,9 @@ import pytest
 # See further: https://github.com/sqlalchemy/sqlalchemy/blob/rel_1_4_48/README.dialects.rst
 
 
+@pytest.mark.skip(reason="pysql doesn't support binding of BINARY type parameters")
 class BinaryTest(BinaryTest):
-    @pytest.mark.skip(reason="Binary type is not implemented.")
-    def test_binary_roundtrip(self):
-        """
-        Exception:
-            sqlalchemy.exc.StatementError: (builtins.AttributeError) module 'databricks.sql' has no attribute 'Binary'
-        """
-
-    @pytest.mark.skip(reason="Binary type is not implemented.")
-    def test_pickle_roundtrip(self):
-        """
-        Exception:
-            sqlalchemy.exc.StatementError: (builtins.AttributeError) module 'databricks.sql' has no attribute 'Binary'
-        """
+    pass
 
 
 class DateHistoricTest(DateHistoricTest):
