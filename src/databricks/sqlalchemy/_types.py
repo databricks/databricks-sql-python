@@ -1,6 +1,7 @@
 import sqlalchemy
 from sqlalchemy.ext.compiler import compiles
 
+import databricks.sql
 
 @compiles(sqlalchemy.types.Enum, "databricks")
 @compiles(sqlalchemy.types.String, "databricks")
@@ -78,3 +79,15 @@ def compile_array_databricks(type_, compiler, **kw):
     inner = compiler.process(type_.item_type, **kw)
 
     return f"ARRAY<{inner}>"
+
+
+class DatabricksBinaryType(sqlalchemy.types.TypeDecorator):
+    """
+    """
+
+    impl = sqlalchemy.types.BINARY
+
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return databricks.sql.BINARY(value)

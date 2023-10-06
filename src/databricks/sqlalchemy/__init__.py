@@ -13,7 +13,7 @@ from sqlalchemy.engine import reflection
 from databricks import sql
 
 # This import is required to process our @compiles decorators
-import databricks.sqlalchemy.types
+import databricks.sqlalchemy._types
 
 
 from databricks.sqlalchemy.base import (
