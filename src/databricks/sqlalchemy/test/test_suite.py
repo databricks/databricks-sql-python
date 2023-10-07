@@ -59,36 +59,6 @@ class DateTimeMicrosecondsTest(DateTimeMicrosecondsTest):
         """
 
 
-class DateTimeTest(DateTimeTest):
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.datetime(2012, 10, 15, 12, 57, 18)" with datatype DATETIME
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15 12:57:18.000000' != datetime.datetime(2012, 10, 15, 12, 57, 18)
-        """
-
-
 class FetchLimitOffsetTest(FetchLimitOffsetTest):
     @pytest.mark.skip(
         reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
