@@ -355,42 +355,7 @@ class TimeMicrosecondsTest(TimeMicrosecondsTest):
         """
 
 
-class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.datetime(2012, 10, 15, 12, 57, 18, 396)" with datatype TIMESTAMP
-        """
 
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_round_trip(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, 396, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18, 396),)
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, 396, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18, 396),)
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15 12:57:18.000396' != datetime.datetime(2012, 10, 15, 12, 57, 18, 396)
-        """
 
 
 class ExceptionTest(ExceptionTest):

@@ -54,5 +54,13 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         """
 
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def timestamp_microseconds(self):
+        """target dialect supports representation of Python
+        datetime.datetime() with microsecond objects but only
+        if TIMESTAMP is used."""
+
+        return sqlalchemy.testing.exclusions.open()
 
 
