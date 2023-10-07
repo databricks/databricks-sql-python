@@ -1,7 +1,9 @@
 import sqlalchemy
 from sqlalchemy.ext.compiler import compiles
 
-import databricks.sql
+from typing import Union
+
+from datetime import datetime
 
 @compiles(sqlalchemy.types.Enum, "databricks")
 @compiles(sqlalchemy.types.String, "databricks")
@@ -60,7 +62,7 @@ def compile_datetime_databricks(type_, compiler, **kw):
     """
     We need to override the default DateTime compilation rendering because Databricks uses "TIMESTAMP" instead of "DATETIME"
     """
-    return "TIMESTAMP"
+    return "TIMESTAMP_NTZ"
 
 
 @compiles(sqlalchemy.types.ARRAY, "databricks")
@@ -81,13 +83,20 @@ def compile_array_databricks(type_, compiler, **kw):
     return f"ARRAY<{inner}>"
 
 
-class DatabricksBinaryType(sqlalchemy.types.TypeDecorator):
-    """
+class DatabricksDateTimeNoTimezoneType(sqlalchemy.types.TypeDecorator):
+    """The decimal that pysql creates when it receives the contents of a TIMESTAMP_NTZ
+     includes a timezone of 'Etc/UTC'.  But since SQLAlchemy's test suite assumes that
+     the sqlalchemy.types.DateTime type will return a datetime.datetime _without_ any
+     timezone set, we need to strip the timezone off the value received from pysql.
+
+     It's not clear if DBR sends a timezone to pysql or if pysql is adding it. This could be a bug.
     """
 
-    impl = sqlalchemy.types.BINARY
+    impl = sqlalchemy.types.DateTime
 
     cache_ok = True
 
-    def process_bind_param(self, value, dialect):
-        return databricks.sql.BINARY(value)
+    def process_result_value(self, value: Union[None, datetime], dialect):
+        if value is None:
+            return None
+        return value.replace(tzinfo=None)

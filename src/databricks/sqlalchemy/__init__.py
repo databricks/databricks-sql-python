@@ -13,7 +13,7 @@ from sqlalchemy.engine import reflection
 from databricks import sql
 
 # This import is required to process our @compiles decorators
-import databricks.sqlalchemy._types
+import databricks.sqlalchemy._types as dialect_type_impl
 
 
 from databricks.sqlalchemy.base import (
@@ -47,6 +47,10 @@ class DatabricksDialect(default.DefaultDialect):
     supports_sane_rowcount: bool = False
     non_native_boolean_check_constraint: bool = False
     paramstyle: str = "named"
+
+    colspecs = {
+        sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType
+    }
 
     @classmethod
     def dbapi(cls):

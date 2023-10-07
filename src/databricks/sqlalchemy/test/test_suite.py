@@ -29,36 +29,6 @@ class BinaryTest(BinaryTest):
     pass
 
 
-class DateTimeHistoricTest(DateTimeHistoricTest):
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.datetime(1850, 11, 10, 11, 52, 35)" with datatype DATETIME
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(1850, 11, 10, 11, 52, 35, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(1850, 11, 10, 11, 52, 35),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(1850, 11, 10, 11, 52, 35, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(1850, 11, 10, 11, 52, 35),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '1850-11-10 11:52:35.000000' != datetime.datetime(1850, 11, 10, 11, 52, 35)
-        """
-
-
 class DateTimeMicrosecondsTest(DateTimeMicrosecondsTest):
     @pytest.mark.skip(reason="Date type implementation needs work")
     def test_literal(self):
