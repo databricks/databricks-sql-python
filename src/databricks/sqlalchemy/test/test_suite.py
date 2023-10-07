@@ -355,53 +355,6 @@ class TimeMicrosecondsTest(TimeMicrosecondsTest):
         """
 
 
-class TimeTest(TimeTest):
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.time(12, 57, 18)" with datatype TIME
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_null_bound_comparison(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_round_trip(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-
 class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
     @pytest.mark.skip(
         reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."

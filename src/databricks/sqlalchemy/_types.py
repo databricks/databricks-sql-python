@@ -100,3 +100,35 @@ class DatabricksDateTimeNoTimezoneType(sqlalchemy.types.TypeDecorator):
         if value is None:
             return None
         return value.replace(tzinfo=None)
+    
+class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
+    """Databricks has no native TIME type. So we store it as a string.
+    """
+
+    impl = sqlalchemy.types.Time
+    cache_ok = True
+
+
+    def process_bind_param(self, value: Union[datetime.time, None], dialect) -> str:
+        """Values sent to the database are converted to %:H:%M:%S strings.
+        """
+        if value is None:
+            return None
+        return value.strftime("%H:%M:%S")
+    
+    def process_literal_param(self, value, dialect) -> datetime.time:
+        """It's not clear to me why this is necessary. Without it, SQLAlchemy's Timetest:test_literal fails
+        because the string literal renderer receives a str() object and calls .isoformat() on it.
+
+        Whereas this method receives a datetime.time() object which is subsequently passed to that
+        same renderer. And that works.
+        """
+        return value
+
+    
+    def process_result_value(self, value: Union[None, str], dialect) -> Union[datetime.time, None]:
+        """Values received from the database are parsed into datetime.time() objects
+        """
+        if value is None:
+            return None
+        return datetime.strptime(value, "%H:%M:%S").time()

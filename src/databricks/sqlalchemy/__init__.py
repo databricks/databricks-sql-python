@@ -49,7 +49,8 @@ class DatabricksDialect(default.DefaultDialect):
     paramstyle: str = "named"
 
     colspecs = {
-        sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType
+        sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType,
+        sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
     }
 
     @classmethod
