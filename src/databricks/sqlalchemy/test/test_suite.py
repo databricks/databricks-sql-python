@@ -393,58 +393,6 @@ class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
         """
 
 
-class DateTimeCoercedToDateTimeTest(DateTimeCoercedToDateTimeTest):
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Literal values not coerced properly."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15 12:57:18.000000' != datetime.datetime(2012, 10, 15, 12, 57, 18)
-            assert '2012-10-15 12:57:18.000000' == datetime.datetime(2012, 10, 15, 12, 57, 18)
-        """
-
-    @pytest.mark.skip(reason="Forthcoming deprecated feature.")
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.RemovedIn20Warning: Deprecated API features detected! These feature(s) are not compatible with SQLAlchemy 2.0. To prevent incompatible upgrades prior to updating applications, ensure requirements files are pinned to "sqlalchemy<2.0". Set environment variable SQLALCHEMY_WARN_20=1 to show all deprecation warnings.  Set environment variable SQLALCHEMY_SILENCE_UBER_WARNING=1 to silence this message. (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_null(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_null_bound_comparison(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_round_trip(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
-        """
-
-
 class ExceptionTest(ExceptionTest):
     @pytest.mark.skip(reason="Databricks may not support this method.")
     def test_integrity_error(self):
