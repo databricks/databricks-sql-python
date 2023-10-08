@@ -236,25 +236,6 @@ class RowFetchTest(RowFetchTest):
         """
 
 
-class StringTest(StringTest):
-    @pytest.mark.skip(
-        reason="String implementation needs work. Quote escaping is inconsistent between read/write."
-    )
-    def test_literal_backslashes(self):
-        """
-        Exception:
-            AssertionError: assert 'backslash one  backslash two \\ end' in ['backslash one \\ backslash two \\\\ end']
-        """
-
-    @pytest.mark.skip(
-        reason="String implementation needs work. Quote escaping is inconsistent between read/write."
-    )
-    def test_literal_quoting(self):
-        """
-        Exception:
-            assert 'some text hey "hi there" thats text' in ['some \'text\' hey "hi there" that\'s text']
-        """
-
 
 class TextTest(TextTest):
     """Fixing StringTest should fix these failures also."""

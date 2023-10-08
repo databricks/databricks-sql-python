@@ -5,6 +5,9 @@ from typing import Union
 
 from datetime import datetime
 
+
+from databricks.sql.utils import ParamEscaper
+
 @compiles(sqlalchemy.types.Enum, "databricks")
 @compiles(sqlalchemy.types.String, "databricks")
 @compiles(sqlalchemy.types.Text, "databricks")
@@ -132,3 +135,62 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
         if value is None:
             return None
         return datetime.strptime(value, "%H:%M:%S").time()
+    
+class DatabricksStringType(sqlalchemy.types.TypeDecorator):
+    """We have to implement our own String() type because SQLAlchemy's default implementation
+    wants to escape single-quotes with a doubled single-quote. Databricks uses a backslash for
+    escaping of literal strings. And SQLAlchemy's default escaping breaks Databricks SQL.
+    """
+
+    impl = sqlalchemy.types.String
+    cache_ok = True
+    pe = ParamEscaper()
+    
+    def process_literal_param(self, value, dialect) -> str:
+        """SQLAlchemy's default string escaping for backslashes doesn't work for databricks. The logic here
+        implements the same logic as our legacy inline escaping logic.
+        """
+
+        return self.pe.escape_string(value)
+    
+    def literal_processor(self, dialect):
+        """We manually override this method to prevent further processing of the string literal beyond
+        what happens in the process_literal_param() method.
+        
+        The SQLAlchemy docs _specifically_ say to not override this method.
+
+        It appears that any processing that happens from TypeEngine.process_literal_param happens _before_
+        and _in addition to_ whatever the class's impl.literal_processor() method does. The String.literal_processor()
+        method performs a string replacement that doubles any single-quote in the contained string. This raises a syntax
+        error in Databricks. And it's not necessary because ParamEscaper() already implements all the escaping we need.
+
+        We should consider opening an issue on the SQLAlchemy project to see if I'm using it wrong.
+        
+        See type_api.py::TypeEngine.literal_processor:
+
+        ```python
+            def process(value: Any) -> str:
+                return fixed_impl_processor(
+                    fixed_process_literal_param(value, dialect)
+                )
+        ```
+
+        That call to fixed_impl_processor wraps the result of fixed_process_literal_param (which is the
+        process_literal_param defined in our Databricks dialect)
+        
+        https://docs.sqlalchemy.org/en/20/core/custom_types.html#sqlalchemy.types.TypeDecorator.literal_processor
+        """
+        def process(value):
+            """This is a copy of the default String.literal_processor() method but stripping away
+            its double-escaping behaviour for single-quotes.
+            """
+
+            _step1 = self.process_literal_param(value, dialect="databricks")
+            if dialect.identifier_preparer._double_percents:
+                _step2 = _step1.replace("%", "%%")
+            else:
+                _step2 = _step1
+
+            return "%s" % _step2
+
+        return process

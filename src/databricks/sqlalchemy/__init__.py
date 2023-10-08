@@ -51,6 +51,7 @@ class DatabricksDialect(default.DefaultDialect):
     colspecs = {
         sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType,
         sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
+        sqlalchemy.types.String: dialect_type_impl.DatabricksStringType
     }
 
     @classmethod
