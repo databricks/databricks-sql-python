@@ -13,7 +13,7 @@ from sqlalchemy.engine import reflection
 from databricks import sql
 
 # This import is required to process our @compiles decorators
-import databricks.sqlalchemy.types
+import databricks.sqlalchemy._types as dialect_type_impl
 
 
 from databricks.sqlalchemy.base import (
@@ -47,6 +47,12 @@ class DatabricksDialect(default.DefaultDialect):
     supports_sane_rowcount: bool = False
     non_native_boolean_check_constraint: bool = False
     paramstyle: str = "named"
+
+    colspecs = {
+        sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType,
+        sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
+        sqlalchemy.types.String: dialect_type_impl.DatabricksStringType,
+    }
 
     @classmethod
     def dbapi(cls):
@@ -130,7 +136,6 @@ class DatabricksDialect(default.DefaultDialect):
         columns = []
 
         for col in resp:
-
             # Taken from PyHive. This removes added type info from decimals and maps
             _col_type = re.search(r"^\w+", col.TYPE_NAME).group(0)
             this_column = {
@@ -277,6 +282,13 @@ class DatabricksDialect(default.DefaultDialect):
 
         # TODO: replace with call to cursor.schemas() once its performance matches raw SQL
         return [row[0] for row in connection.execute("SHOW SCHEMAS")]
+    
+    @classmethod
+    def load_provisioning(cls):
+        try:
+            __import__("databricks.sqlalchemy.provision")
+        except ImportError:
+            pass
 
 
 @event.listens_for(Engine, "do_connect")
