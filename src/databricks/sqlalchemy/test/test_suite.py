@@ -237,28 +237,6 @@ class RowFetchTest(RowFetchTest):
 
 
 
-class TextTest(TextTest):
-    """Fixing StringTest should fix these failures also."""
-
-    @pytest.mark.skip(
-        reason="String implementation needs work. See comments from StringTest."
-    )
-    def test_literal_backslashes(self):
-        """
-        Exception:
-            AssertionError: assert 'backslash one  backslash two \\ end' in ['backslash one \\ backslash two \\\\ end']
-        """
-
-    @pytest.mark.skip(
-        reason="String implementation needs work. See comments from StringTest."
-    )
-    def test_literal_quoting(self):
-        """
-        Exception:
-            assert 'some text hey "hi there" thats text' in ['some \'text\' hey "hi there" that\'s text']
-        """
-
-
 class TimeMicrosecondsTest(TimeMicrosecondsTest):
     @pytest.mark.skip(
         reason="Time type implementation needs work. Microseconds are not handled at all."
