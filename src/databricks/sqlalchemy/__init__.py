@@ -282,6 +282,13 @@ class DatabricksDialect(default.DefaultDialect):
 
         # TODO: replace with call to cursor.schemas() once its performance matches raw SQL
         return [row[0] for row in connection.execute("SHOW SCHEMAS")]
+    
+    @classmethod
+    def load_provisioning(cls):
+        try:
+            __import__("databricks.sqlalchemy.provision")
+        except ImportError:
+            pass
 
 
 @event.listens_for(Engine, "do_connect")
