@@ -129,4 +129,9 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
 
         return sqlalchemy.testing.exclusions.open()
 
+    @property
+    def array_type(self):
+        """While Databricks does support ARRAY types, pysql cannot bind them. So
+        we cannot use them with SQLAlchemy"""
 
+        return sqlalchemy.testing.exclusions.closed()
