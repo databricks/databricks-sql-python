@@ -298,41 +298,6 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
         """
 
 
-class BooleanTest(BooleanTest):
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_null(self):
-        """
-        This failure appears to infrastructure based. Should attempt a re-run.
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-        """
-        pass
-
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_render_literal_bool(self):
-        """
-                Exception:
-                    sqlalchemy.exc.RemovedIn20Warning: Deprecated API features detected! These feature(s) are not compatible with SQLAlchemy 2.0. To prevent incompatible upgrades prior to updating applications, ensure requirements files are pinned to "sqlalchemy<2.0". Set environment variable SQLALCHEMY_WARN_20=1 to show all deprecation warnings.  Set environment variable SQLALCHEMY_SILENCE_UBER_WARNING=1 to silence this message. (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
-        _ ERROR at setup of BooleanTest_databricks+databricks.test_render_literal_bool _
-        """
-        pass
-
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_round_trip(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-        """
-        pass
-
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_whereclause(self):
-        """
-        Exception:
-            sqlalchemy.exc.RemovedIn20Warning: Deprecated API features detected! These feature(s) are not compatible with SQLAlchemy 2.0. To prevent incompatible upgrades prior to updating applications, ensure requirements files are pinned to "sqlalchemy<2.0". Set environment variable SQLALCHEMY_WARN_20=1 to show all deprecation warnings.  Set environment variable SQLALCHEMY_SILENCE_UBER_WARNING=1 to silence this message. (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
-        """
-        pass
-
 
 class DifficultParametersTest(DifficultParametersTest):
     @pytest.mark.skip(reason="Error during execution. Requires investigation.")
