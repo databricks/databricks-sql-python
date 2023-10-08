@@ -148,16 +148,14 @@ The suites marked `[not documented]` require additional configuration which will
 
 SQLAlchemy provides reusable tests for testing dialect implementations.
 
-To run these tests, assuming the environment variables needed for e2e tests are set, do the following:
-
 ```
-cd src/databricks/sqlalchemy
-poetry run python -m pytest test/sqlalchemy_dialect_compliance.py --dburi \
+poetry shell
+cd src/databricks/sqlalchemy/test
+python -m pytest test_suite.py --dburi \
   "databricks://token:$access_token@$host?http_path=$http_path&catalog=$catalog&schema=$schema" 
 ```
 
-Some of these of these tests fail currently. We're working on getting
-relavent tests passing and others skipped.
+Some of these of these tests fail currently. We're working on getting relevant tests passing and others skipped.
 
 ### Code formatting
 
