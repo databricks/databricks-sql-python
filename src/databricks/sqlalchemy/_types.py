@@ -111,13 +111,15 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.Time
     cache_ok = True
 
+    TIME_WITH_MICROSECONDS_FMT = "%H:%M:%S.%f"
+    TIME_NO_MICROSECONDS_FMT = "%H:%M:%S"
 
     def process_bind_param(self, value: Union[datetime.time, None], dialect) -> str:
         """Values sent to the database are converted to %:H:%M:%S strings.
         """
         if value is None:
             return None
-        return value.strftime("%H:%M:%S")
+        return value.strftime(self.TIME_WITH_MICROSECONDS_FMT)
     
     def process_literal_param(self, value, dialect) -> datetime.time:
         """It's not clear to me why this is necessary. Without it, SQLAlchemy's Timetest:test_literal fails
@@ -125,6 +127,12 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
 
         Whereas this method receives a datetime.time() object which is subsequently passed to that
         same renderer. And that works.
+
+        UPDATE: After coping with the literal_processor override in DatabricksStringType, I suspect a similar
+        mechanism is at play. Two different processors are are called in sequence. This is likely a byproduct
+        of Databricks not having a true TIME type. I think the string representation of Time() types is
+        somehow affecting the literal rendering process. But as long as this passes the tests, I'm not
+        worried about it.
         """
         return value
 
@@ -134,7 +142,14 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
         """
         if value is None:
             return None
-        return datetime.strptime(value, "%H:%M:%S").time()
+        
+        try:
+            _parsed = datetime.strptime(value, self.TIME_WITH_MICROSECONDS_FMT)
+        except ValueError:
+            # If the string doesn't have microseconds, try parsing it without them
+            _parsed = datetime.strptime(value, self.TIME_NO_MICROSECONDS_FMT)
+        
+        return _parsed.time()
     
 class DatabricksStringType(sqlalchemy.types.TypeDecorator):
     """We have to implement our own String() type because SQLAlchemy's default implementation

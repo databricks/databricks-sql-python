@@ -237,56 +237,6 @@ class RowFetchTest(RowFetchTest):
 
 
 
-class TimeMicrosecondsTest(TimeMicrosecondsTest):
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.time(12, 57, 18, 396)" with datatype TIME
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_null_bound_comparison(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_round_trip(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-
-
-
-
 class ExceptionTest(ExceptionTest):
     @pytest.mark.skip(reason="Databricks may not support this method.")
     def test_integrity_error(self):

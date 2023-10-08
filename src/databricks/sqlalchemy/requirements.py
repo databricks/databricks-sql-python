@@ -62,5 +62,20 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         if TIMESTAMP is used."""
 
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def time_microseconds(self):
+        """target dialect supports representation of Python
+        datetime.time() with microsecond objects.
+        
+        This requirement declaration isn't needed but I've included it here for completeness.
+        Since Databricks doesn't have a TIME type, SQLAlchemy will compile Time() columns
+        as STRING Databricks data types. And we use a custom time type to render those strings
+        between str() and time.time() representations. Therefore we can store _any_ precision
+        that SQLAlchemy needs. The time_microseconds requirement defaults to ON for all dialects
+        except mssql, mysql, mariadb, and oracle. 
+        """
+
+        return sqlalchemy.testing.exclusions.open()
 
 
