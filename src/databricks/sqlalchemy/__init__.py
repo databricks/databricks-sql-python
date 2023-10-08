@@ -51,7 +51,7 @@ class DatabricksDialect(default.DefaultDialect):
     colspecs = {
         sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType,
         sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
-        sqlalchemy.types.String: dialect_type_impl.DatabricksStringType
+        sqlalchemy.types.String: dialect_type_impl.DatabricksStringType,
     }
 
     @classmethod
@@ -136,7 +136,6 @@ class DatabricksDialect(default.DefaultDialect):
         columns = []
 
         for col in resp:
-
             # Taken from PyHive. This removes added type info from decimals and maps
             _col_type = re.search(r"^\w+", col.TYPE_NAME).group(0)
             this_column = {

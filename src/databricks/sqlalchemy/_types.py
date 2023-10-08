@@ -8,6 +8,7 @@ from datetime import datetime
 
 from databricks.sql.utils import ParamEscaper
 
+
 @compiles(sqlalchemy.types.Enum, "databricks")
 @compiles(sqlalchemy.types.String, "databricks")
 @compiles(sqlalchemy.types.Text, "databricks")
@@ -88,11 +89,11 @@ def compile_array_databricks(type_, compiler, **kw):
 
 class DatabricksDateTimeNoTimezoneType(sqlalchemy.types.TypeDecorator):
     """The decimal that pysql creates when it receives the contents of a TIMESTAMP_NTZ
-     includes a timezone of 'Etc/UTC'.  But since SQLAlchemy's test suite assumes that
-     the sqlalchemy.types.DateTime type will return a datetime.datetime _without_ any
-     timezone set, we need to strip the timezone off the value received from pysql.
+    includes a timezone of 'Etc/UTC'.  But since SQLAlchemy's test suite assumes that
+    the sqlalchemy.types.DateTime type will return a datetime.datetime _without_ any
+    timezone set, we need to strip the timezone off the value received from pysql.
 
-     It's not clear if DBR sends a timezone to pysql or if pysql is adding it. This could be a bug.
+    It's not clear if DBR sends a timezone to pysql or if pysql is adding it. This could be a bug.
     """
 
     impl = sqlalchemy.types.DateTime
@@ -103,10 +104,10 @@ class DatabricksDateTimeNoTimezoneType(sqlalchemy.types.TypeDecorator):
         if value is None:
             return None
         return value.replace(tzinfo=None)
-    
+
+
 class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
-    """Databricks has no native TIME type. So we store it as a string.
-    """
+    """Databricks has no native TIME type. So we store it as a string."""
 
     impl = sqlalchemy.types.Time
     cache_ok = True
@@ -115,12 +116,11 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
     TIME_NO_MICROSECONDS_FMT = "%H:%M:%S"
 
     def process_bind_param(self, value: Union[datetime.time, None], dialect) -> str:
-        """Values sent to the database are converted to %:H:%M:%S strings.
-        """
+        """Values sent to the database are converted to %:H:%M:%S strings."""
         if value is None:
             return None
         return value.strftime(self.TIME_WITH_MICROSECONDS_FMT)
-    
+
     def process_literal_param(self, value, dialect) -> datetime.time:
         """It's not clear to me why this is necessary. Without it, SQLAlchemy's Timetest:test_literal fails
         because the string literal renderer receives a str() object and calls .isoformat() on it.
@@ -136,21 +136,22 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
         """
         return value
 
-    
-    def process_result_value(self, value: Union[None, str], dialect) -> Union[datetime.time, None]:
-        """Values received from the database are parsed into datetime.time() objects
-        """
+    def process_result_value(
+        self, value: Union[None, str], dialect
+    ) -> Union[datetime.time, None]:
+        """Values received from the database are parsed into datetime.time() objects"""
         if value is None:
             return None
-        
+
         try:
             _parsed = datetime.strptime(value, self.TIME_WITH_MICROSECONDS_FMT)
         except ValueError:
             # If the string doesn't have microseconds, try parsing it without them
             _parsed = datetime.strptime(value, self.TIME_NO_MICROSECONDS_FMT)
-        
+
         return _parsed.time()
-    
+
+
 class DatabricksStringType(sqlalchemy.types.TypeDecorator):
     """We have to implement our own String() type because SQLAlchemy's default implementation
     wants to escape single-quotes with a doubled single-quote. Databricks uses a backslash for
@@ -160,18 +161,18 @@ class DatabricksStringType(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.String
     cache_ok = True
     pe = ParamEscaper()
-    
+
     def process_literal_param(self, value, dialect) -> str:
         """SQLAlchemy's default string escaping for backslashes doesn't work for databricks. The logic here
         implements the same logic as our legacy inline escaping logic.
         """
 
         return self.pe.escape_string(value)
-    
+
     def literal_processor(self, dialect):
         """We manually override this method to prevent further processing of the string literal beyond
         what happens in the process_literal_param() method.
-        
+
         The SQLAlchemy docs _specifically_ say to not override this method.
 
         It appears that any processing that happens from TypeEngine.process_literal_param happens _before_
@@ -180,7 +181,7 @@ class DatabricksStringType(sqlalchemy.types.TypeDecorator):
         error in Databricks. And it's not necessary because ParamEscaper() already implements all the escaping we need.
 
         We should consider opening an issue on the SQLAlchemy project to see if I'm using it wrong.
-        
+
         See type_api.py::TypeEngine.literal_processor:
 
         ```python
@@ -192,9 +193,10 @@ class DatabricksStringType(sqlalchemy.types.TypeDecorator):
 
         That call to fixed_impl_processor wraps the result of fixed_process_literal_param (which is the
         process_literal_param defined in our Databricks dialect)
-        
+
         https://docs.sqlalchemy.org/en/20/core/custom_types.html#sqlalchemy.types.TypeDecorator.literal_processor
         """
+
         def process(value):
             """This is a copy of the default String.literal_processor() method but stripping away
             its double-escaping behaviour for single-quotes.

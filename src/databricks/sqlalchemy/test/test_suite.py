@@ -151,8 +151,6 @@ class LongNameBlowoutTest(LongNameBlowoutTest):
         """
 
 
-
-
 class RowFetchTest(RowFetchTest):
     @pytest.mark.skip(
         reason="Date type implementation needs work. Timezone information not preserved."
@@ -162,7 +160,6 @@ class RowFetchTest(RowFetchTest):
         Exception:
             AssertionError: datetime.datetime(2006, 5, 12, 12, 0, tzinfo=<StaticTzInfo 'Etc/UTC'>) != datetime.datetime(2006, 5, 12, 12, 0)
         """
-
 
 
 class ExceptionTest(ExceptionTest):
@@ -296,7 +293,6 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
             If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
             To tolerate the error on drop use DROP SCHEMA IF EXISTS.
         """
-
 
 
 class DifficultParametersTest(DifficultParametersTest):
