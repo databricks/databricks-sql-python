@@ -93,4 +93,11 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         test runner will crash the pytest process due to an AttributeError
         """
 
+        # TODO: Implement array type using inline?
         return sqlalchemy.testing.exclusions.closed()
+    
+    @property
+    def table_ddl_if_exists(self):
+        """target platform supports IF NOT EXISTS / IF EXISTS for tables."""
+
+        return sqlalchemy.testing.exclusions.open()

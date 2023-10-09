@@ -445,51 +445,6 @@ class InsertBehaviorTest(InsertBehaviorTest):
         """
 
 
-class TableDDLTest(TableDDLTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_create_table(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [TABLE_OR_VIEW_ALREADY_EXISTS] Cannot create table or view `pysql_sqlalchemy`.`test_table` because it already exists.
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_create_table_schema(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        """
-
-    @pytest.mark.skip(
-        reason="DDL handling needs work. Some features not implemented in dialect."
-    )
-    def test_add_table_comment(self):
-        """
-        Exception:
-            NotImplementedError
-        """
-
-    @pytest.mark.skip(
-        reason="DDL handling needs work. Some features not implemented in dialect."
-    )
-    def test_drop_table_comment(self):
-        """
-        Exception:
-            NotImplementedError
-        """
-
-    @pytest.mark.skip(
-        reason="DDL handling needs work. Some features not implemented in dialect."
-    )
-    def test_underscore_names(self):
-        """
-        This exception may require this test to simply be rewritten as it appears to be a race condition.
-
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [TABLE_OR_VIEW_ALREADY_EXISTS] Cannot create table or view `pysql_sqlalchemy`.`_test_table` because it already exists.
-        """
-
-
 class ComponentReflectionTest(ComponentReflectionTest):
     @pytest.mark.skip(reason="Error during execution. Requires investigation.")
     def test_autoincrement_col(self):
@@ -673,21 +628,40 @@ class ComponentReflectionTest(ComponentReflectionTest):
         - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
         """
 
+@pytest.mark.reviewed
+class TableDDLTest(TableDDLTest):
 
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_create_index_if_not_exists(self, connection):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
+        """
+        pass
+
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_drop_index_if_exists(self, connection):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
+        """
+        pass
+
+    @pytest.mark.skip(reason="Comment reflection is possible but not implemented in this dialect.")
+    def test_add_table_comment(self, connection):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message
+        """
+        pass
+
+    @pytest.mark.skip(reason="Comment reflection is possible but not implemented in this dialect.")
+    def test_drop_table_comment(self, connection):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message
+        """
+        pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support indexes.")
 class HasIndexTest(HasIndexTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_has_index_schema(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [UC_COMMAND_NOT_SUPPORTED.WITHOUT_RECOMMENDATION] The command(s): CreateIndex are not supported in Unity Catalog.
-        """
+    pass
 
-    @pytest.mark.skip(reason="Dialect doesn't know how to handle indexes.")
-    def test_has_index(self):
-        """
-        Exception:
-            AssertionError: assert False
-        """
 
 
 class QuotedNameArgumentTest(QuotedNameArgumentTest):
