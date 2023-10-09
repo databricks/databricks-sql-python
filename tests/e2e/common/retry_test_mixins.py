@@ -323,3 +323,41 @@ class PySQLRetryTestsMixin:
                 self.assertTrue(
                     expected_message_was_found, "Did not find expected log messages"
                 )
+
+    def test_retry_urllib3_kwargs_are_set(self):
+        """GIVEN the connector is configured _urllib3_kwargs
+        WHEN the DatabricksRetryPolicy is created
+        THEN the _urllib3_kwargs are set on the DatabricksRetryPolicy
+        """
+
+        # First response is a Bad Gateway -> Result is the command actually goes through
+        # Second response is a 404 because the session is no longer found
+        responses = [
+            {"status": 502, "headers": {"Retry-After": "1"}},
+            {"status": 404, "headers": {}},
+        ]
+
+        with self.connection(extra_params={**self._retry_policy}) as conn:
+            with conn.cursor() as curs:
+                with patch(
+                    "databricks.sql.utils.ExecuteResponse.has_been_closed_server_side",
+                    new_callable=PropertyMock,
+                    return_value=False,
+                ):
+                    # This call guarantees we have an open cursor at the server
+                    curs.execute("SELECT 1")
+                    with mock_sequential_server_responses(responses):
+                        with self.assertLogs(
+                            "databricks.sql",
+                            level="INFO",
+                        ) as cm:
+                            curs.close()
+                        expected_message_was_found = False
+                        for log in cm.output:
+                            if expected_message_was_found:
+                                break
+                            target = "Operation was canceled by a prior request"
+                            expected_message_was_found = target in log
+                self.assertTrue(
+                    expected_message_was_found, "Did not find expected log messages"
+                )
