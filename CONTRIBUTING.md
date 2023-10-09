@@ -155,7 +155,8 @@ python -m pytest test_suite.py --dburi \
   "databricks://token:$access_token@$host?http_path=$http_path&catalog=$catalog&schema=$schema" 
 ```
 
-Some of these of these tests fail currently. We're working on getting relevant tests passing and others skipped.
+Some of these of these tests fail currently. We're working on getting relevant tests passing and others skipped. The tests that we've already reviewed and verified
+are decorated with a pytest marker called `reviewed`. To only run these tests and check for regressions, you can add `-m reviewed` to the invocation command above.
 
 ### Code formatting
 

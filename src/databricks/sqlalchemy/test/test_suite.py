@@ -29,6 +29,71 @@ class BinaryTest(BinaryTest):
     pass
 
 
+@pytest.mark.reviewed
+class BooleanTest(BooleanTest):
+    pass
+
+
+@pytest.mark.reviewed
+class NumericTest(NumericTest):
+    pass
+
+
+@pytest.mark.reviewed
+class TimeMicrosecondsTest(TimeMicrosecondsTest):
+    pass
+
+
+@pytest.mark.reviewed
+class TextTest(TextTest):
+    pass
+
+
+@pytest.mark.reviewed
+class StringTest(StringTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateTimeMicrosecondsTest(DateTimeMicrosecondsTest):
+    pass
+
+
+@pytest.mark.reviewed
+class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateTimeCoercedToDateTimeTest(DateTimeCoercedToDateTimeTest):
+    pass
+
+
+@pytest.mark.reviewed
+class TimeTest(TimeTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateTimeTest(DateTimeTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateTimeHistoricTest(DateTimeHistoricTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateTest(DateTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateHistoricTest(DateHistoricTest):
+    pass
+
+
 class FetchLimitOffsetTest(FetchLimitOffsetTest):
     @pytest.mark.skip(
         reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."

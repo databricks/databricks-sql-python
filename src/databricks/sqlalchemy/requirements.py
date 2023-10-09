@@ -7,6 +7,7 @@ https://github.com/sqlalchemy/sqlalchemy/blob/main/lib/sqlalchemy/testing/requir
 import sqlalchemy.testing.requirements
 import sqlalchemy.testing.exclusions
 
+
 class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     @property
     def date_historic(self):
