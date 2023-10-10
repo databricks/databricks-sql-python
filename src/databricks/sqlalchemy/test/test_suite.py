@@ -24,150 +24,102 @@ import pytest
 # See further: https://github.com/sqlalchemy/sqlalchemy/blob/rel_1_4_48/README.dialects.rst
 
 
+@pytest.mark.skip(reason="pysql doesn't support binding of BINARY type parameters")
 class BinaryTest(BinaryTest):
-    @pytest.mark.skip(reason="Binary type is not implemented.")
-    def test_binary_roundtrip(self):
-        """
-        Exception:
-            sqlalchemy.exc.StatementError: (builtins.AttributeError) module 'databricks.sql' has no attribute 'Binary'
-        """
-
-    @pytest.mark.skip(reason="Binary type is not implemented.")
-    def test_pickle_roundtrip(self):
-        """
-        Exception:
-            sqlalchemy.exc.StatementError: (builtins.AttributeError) module 'databricks.sql' has no attribute 'Binary'
-        """
+    pass
 
 
-class DateHistoricTest(DateHistoricTest):
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Cannot render literal values."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.date(1727, 4, 1)" with datatype DATE
-        """
+@pytest.mark.reviewed
+class BooleanTest(BooleanTest):
+    pass
+
+
+@pytest.mark.reviewed
+class NumericTest(NumericTest):
+    @pytest.mark.skip(reason="Databricks doesn't support E notation for DECIMAL types")
+    def test_enotation_decimal(self):
+        """This test automatically runs if requirements.precision_numerics_enotation_large is open()"""
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support E notation for DECIMAL types")
+    def test_enotation_decimal_large(self):
+        """This test automatically runs if requirements.precision_numerics_enotation_large is open()"""
+        pass
 
     @pytest.mark.skip(
-        reason="Date type implementation needs work. Cannot render literal values."
+        reason="Without a specific CAST, Databricks doesn't return floats with same precision that was selected."
     )
-    def test_select_direct(self):
+    def test_float_coerce_round_trip(self):
         """
-        Exception:
-            AssertionError: '1727-04-01' != datetime.date(1727, 4, 1)
-        """
+        This automatically runs if requirements.literal_float_coercion is open()
 
-
-class DateTest(DateTest):
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Cannot render literal values."
-    )
-    def test_literal(self):
+        Without additional work, Databricks returns 15.75629997253418 when you SELECT 15.7563.
+        This is a potential area where we could override the Float literal processor to add a CAST.
+        Will leave to a PM to decide if we should do so.
         """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.date(2012, 10, 15)" with datatype DATE
-        """
+        pass
 
     @pytest.mark.skip(
-        reason="Date type implementation needs work. Cannot render literal values."
+        reason="Databricks sometimes only returns six digits of precision for the generic Float type"
     )
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15' != datetime.date(2012, 10, 15)
-        """
+    def test_float_custom_scale(self):
+        """This test automatically runs if requirements.precision_generic_float_type is open()"""
+        pass
 
 
-class DateTimeHistoricTest(DateTimeHistoricTest):
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.datetime(1850, 11, 10, 11, 52, 35)" with datatype DATETIME
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(1850, 11, 10, 11, 52, 35, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(1850, 11, 10, 11, 52, 35),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(1850, 11, 10, 11, 52, 35, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(1850, 11, 10, 11, 52, 35),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '1850-11-10 11:52:35.000000' != datetime.datetime(1850, 11, 10, 11, 52, 35)
-        """
+@pytest.mark.reviewed
+class TimeMicrosecondsTest(TimeMicrosecondsTest):
+    pass
 
 
+@pytest.mark.reviewed
+class TextTest(TextTest):
+    pass
+
+
+@pytest.mark.reviewed
+class StringTest(StringTest):
+    pass
+
+
+@pytest.mark.reviewed
 class DateTimeMicrosecondsTest(DateTimeMicrosecondsTest):
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.datetime(2012, 10, 15, 12, 57, 18, 396)" with datatype DATETIME
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, 396, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18, 396),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, 396, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18, 396),)
-        """
-
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15 12:57:18.000396' != datetime.datetime(2012, 10, 15, 12, 57, 18, 396)
-        """
+    pass
 
 
+@pytest.mark.reviewed
+class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateTimeCoercedToDateTimeTest(DateTimeCoercedToDateTimeTest):
+    pass
+
+
+@pytest.mark.reviewed
+class TimeTest(TimeTest):
+    pass
+
+
+@pytest.mark.reviewed
 class DateTimeTest(DateTimeTest):
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.datetime(2012, 10, 15, 12, 57, 18)" with datatype DATETIME
-        """
+    pass
 
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18),)
-        """
 
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18),)
-        """
+@pytest.mark.reviewed
+class DateTimeHistoricTest(DateTimeHistoricTest):
+    pass
 
-    @pytest.mark.skip(reason="Date type implementation needs work")
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15 12:57:18.000000' != datetime.datetime(2012, 10, 15, 12, 57, 18)
-        """
+
+@pytest.mark.reviewed
+class DateTest(DateTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DateHistoricTest(DateHistoricTest):
+    pass
 
 
 class FetchLimitOffsetTest(FetchLimitOffsetTest):
@@ -292,80 +244,6 @@ class LongNameBlowoutTest(LongNameBlowoutTest):
         """
 
 
-class NumericTest(NumericTest):
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_decimal_coerce_round_trip_w_cast(self):
-        """
-        Exception:
-            AssertionError: Decimal('16') != Decimal('15.7563')
-        """
-
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_enotation_decimal(self):
-        """
-        Exception:
-            AssertionError: {Decimal('0'), Decimal('1')} != {Decimal('0.70000000000696'), Decimal('1E-7'), Decimal('0.00001'), Decimal('6.96E-12'), Decimal('0.001'), Decimal('5.940696E-8'), Decimal('0.01000005940696'), Decimal('1E-8'), Decimal('0.01'), Decimal('0.000001'), Decimal('0.0001'), Decimal('6.96E-10')}
-        """
-
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_enotation_decimal_large(self):
-        """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [CAST_OVERFLOW_IN_TABLE_INSERT] Fail to insert a value of "DOUBLE" type into the "DECIMAL(10,0)" type column `x` due to an overflow. Use `try_cast` on the input value to tolerate overflow and return NULL instead.
-        """
-
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_float_custom_scale(self):
-        """
-        Exception:
-            AssertionError: {Decimal('15.7563829')} != {Decimal('15.7563827')}
-        """
-
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_many_significant_digits(self):
-        """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [CAST_OVERFLOW_IN_TABLE_INSERT] Fail to insert a value of "DECIMAL(22,2)" type into the "DECIMAL(10,0)" type column `x` due to an overflow. Use `try_cast` on the input value to tolerate overflow and return NULL instead.
-        """
-
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_numeric_as_decimal(self):
-        """
-        Exception:
-            AssertionError: {Decimal('16')} != {Decimal('15.7563')}
-        """
-
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_numeric_as_float(self):
-        """
-        Exception:
-            AssertionError: {16.0} != {15.7563}
-        """
-
-    @pytest.mark.skip(
-        reason="Numeric implementation needs work. Rounding looks to be incorrect."
-    )
-    def test_precision_decimal(self):
-        """
-        Exception:
-            AssertionError: {Decimal('0'), Decimal('900'), Decimal('54')} != {Decimal('0.004354'), Decimal('900.0'), Decimal('54.234246451650')}
-        """
-
-
 class RowFetchTest(RowFetchTest):
     @pytest.mark.skip(
         reason="Date type implementation needs work. Timezone information not preserved."
@@ -374,232 +252,6 @@ class RowFetchTest(RowFetchTest):
         """
         Exception:
             AssertionError: datetime.datetime(2006, 5, 12, 12, 0, tzinfo=<StaticTzInfo 'Etc/UTC'>) != datetime.datetime(2006, 5, 12, 12, 0)
-        """
-
-
-class StringTest(StringTest):
-    @pytest.mark.skip(
-        reason="String implementation needs work. Quote escaping is inconsistent between read/write."
-    )
-    def test_literal_backslashes(self):
-        """
-        Exception:
-            AssertionError: assert 'backslash one  backslash two \\ end' in ['backslash one \\ backslash two \\\\ end']
-        """
-
-    @pytest.mark.skip(
-        reason="String implementation needs work. Quote escaping is inconsistent between read/write."
-    )
-    def test_literal_quoting(self):
-        """
-        Exception:
-            assert 'some text hey "hi there" thats text' in ['some \'text\' hey "hi there" that\'s text']
-        """
-
-
-class TextTest(TextTest):
-    """Fixing StringTest should fix these failures also."""
-
-    @pytest.mark.skip(
-        reason="String implementation needs work. See comments from StringTest."
-    )
-    def test_literal_backslashes(self):
-        """
-        Exception:
-            AssertionError: assert 'backslash one  backslash two \\ end' in ['backslash one \\ backslash two \\\\ end']
-        """
-
-    @pytest.mark.skip(
-        reason="String implementation needs work. See comments from StringTest."
-    )
-    def test_literal_quoting(self):
-        """
-        Exception:
-            assert 'some text hey "hi there" thats text' in ['some \'text\' hey "hi there" that\'s text']
-        """
-
-
-class TimeMicrosecondsTest(TimeMicrosecondsTest):
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.time(12, 57, 18, 396)" with datatype TIME
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_null_bound_comparison(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_round_trip(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Microseconds are not handled at all."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18.000396
-        """
-
-
-class TimeTest(TimeTest):
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.time(12, 57, 18)" with datatype TIME
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_null_bound_comparison(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_round_trip(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Dialect cannot write literal values."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            sqlalchemy.exc.ProgrammingError: (databricks.sql.exc.ProgrammingError) Unsupported object 12:57:18
-        """
-
-
-class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.CompileError: No literal value renderer is available for literal value "datetime.datetime(2012, 10, 15, 12, 57, 18, 396)" with datatype TIMESTAMP
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_round_trip(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, 396, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18, 396),)
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            AssertionError: (datetime.datetime(2012, 10, 15, 12, 57, 18, 396, tzinfo=<StaticTzInfo 'Etc/UTC'>),) != (datetime.datetime(2012, 10, 15, 12, 57, 18, 396),)
-        """
-
-    @pytest.mark.skip(
-        reason="Time type implementation needs work. Timezone not preserved. Cannot render literal values."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15 12:57:18.000396' != datetime.datetime(2012, 10, 15, 12, 57, 18, 396)
-        """
-
-
-class DateTimeCoercedToDateTimeTest(DateTimeCoercedToDateTimeTest):
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Literal values not coerced properly."
-    )
-    def test_select_direct(self):
-        """
-        Exception:
-            AssertionError: '2012-10-15 12:57:18.000000' != datetime.datetime(2012, 10, 15, 12, 57, 18)
-            assert '2012-10-15 12:57:18.000000' == datetime.datetime(2012, 10, 15, 12, 57, 18)
-        """
-
-    @pytest.mark.skip(reason="Forthcoming deprecated feature.")
-    def test_literal(self):
-        """
-        Exception:
-            sqlalchemy.exc.RemovedIn20Warning: Deprecated API features detected! These feature(s) are not compatible with SQLAlchemy 2.0. To prevent incompatible upgrades prior to updating applications, ensure requirements files are pinned to "sqlalchemy<2.0". Set environment variable SQLALCHEMY_WARN_20=1 to show all deprecation warnings.  Set environment variable SQLALCHEMY_SILENCE_UBER_WARNING=1 to silence this message. (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_null(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_null_bound_comparison(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_round_trip(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
-        """
-
-    @pytest.mark.skip(reason="urllib3 is complaining")
-    def test_round_trip_decorated(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-
         """
 
 
@@ -734,42 +386,6 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
             If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
             To tolerate the error on drop use DROP SCHEMA IF EXISTS.
         """
-
-
-class BooleanTest(BooleanTest):
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_null(self):
-        """
-        This failure appears to infrastructure based. Should attempt a re-run.
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-        """
-        pass
-
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_render_literal_bool(self):
-        """
-                Exception:
-                    sqlalchemy.exc.RemovedIn20Warning: Deprecated API features detected! These feature(s) are not compatible with SQLAlchemy 2.0. To prevent incompatible upgrades prior to updating applications, ensure requirements files are pinned to "sqlalchemy<2.0". Set environment variable SQLALCHEMY_WARN_20=1 to show all deprecation warnings.  Set environment variable SQLALCHEMY_SILENCE_UBER_WARNING=1 to silence this message. (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
-        _ ERROR at setup of BooleanTest_databricks+databricks.test_render_literal_bool _
-        """
-        pass
-
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_round_trip(self):
-        """
-        Exception:
-            urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-        """
-        pass
-
-    @pytest.mark.skip(reason="Boolean type needs work.")
-    def test_whereclause(self):
-        """
-        Exception:
-            sqlalchemy.exc.RemovedIn20Warning: Deprecated API features detected! These feature(s) are not compatible with SQLAlchemy 2.0. To prevent incompatible upgrades prior to updating applications, ensure requirements files are pinned to "sqlalchemy<2.0". Set environment variable SQLALCHEMY_WARN_20=1 to show all deprecation warnings.  Set environment variable SQLALCHEMY_SILENCE_UBER_WARNING=1 to silence this message. (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
-        """
-        pass
 
 
 class DifficultParametersTest(DifficultParametersTest):
