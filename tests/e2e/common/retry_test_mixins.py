@@ -58,17 +58,21 @@ class Client503ResponseMixin:
 
 
 @contextmanager
-def mocked_server_response(status: int = 200, headers: dict = {}):
+def mocked_server_response(
+    status: int = 200, headers: dict = {}, redirect_location: str = None
+):
     """Context manager for patching urllib3 responses"""
 
     # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
     #   1. A status code
     #   2. A headers dict
-    #   3. mock.get_redirect_location() return falsy
+    #   3. mock.get_redirect_location() return falsy by default
 
     # `msg` is included for testing when urllib3~=1.0.0 is installed
     mock_response = MagicMock(headers=headers, msg=headers, status=status)
-    mock_response.get_redirect_location.return_value = False
+    mock_response.get_redirect_location.return_value = (
+        False if redirect_location is None else redirect_location
+    )
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.return_value = mock_response
@@ -86,6 +90,7 @@ def mock_sequential_server_responses(responses: List[dict]):
     `responses` should be a list of dictionaries containing these members:
         - status: int
         - headers: dict
+        - redirect_location: str
     """
 
     mock_responses = []
@@ -96,7 +101,9 @@ def mock_sequential_server_responses(responses: List[dict]):
         _mock = MagicMock(
             headers=resp["headers"], msg=resp["headers"], status=resp["status"]
         )
-        _mock.get_redirect_location.return_value = False
+        _mock.get_redirect_location.return_value = (
+            False if resp["redirect_location"] is None else resp["redirect_location"]
+        )
         mock_responses.append(_mock)
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
@@ -220,7 +227,7 @@ class PySQLRetryTestsMixin:
         with self.connection(extra_params={**self._retry_policy}) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
-                    with mocked_server_response(status=dangerous_code) as mock_obj:
+                    with mocked_server_response(status=dangerous_code):
                         with self.assertRaises(RequestError) as cm:
                             cursor.execute("Not a real query")
                             assert isinstance(cm.exception.args[1], UnsafeToRetryError)
@@ -231,7 +238,7 @@ class PySQLRetryTestsMixin:
         ) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
-                    with mocked_server_response(status=dangerous_code) as mock_obj:
+                    with mocked_server_response(status=dangerous_code):
                         with pytest.raises(MaxRetryError) as cm:
                             cursor.execute("Not a real query")
 
@@ -242,8 +249,8 @@ class PySQLRetryTestsMixin:
         """
 
         responses = [
-            {"status": 429, "headers": {"Retry-After": "1"}},
-            {"status": 503, "headers": {}},
+            {"status": 429, "headers": {"Retry-After": "1"}, "redirect_location": None},
+            {"status": 503, "headers": {}, "redirect_location": None},
         ]
 
         with self.connection(
@@ -265,8 +272,8 @@ class PySQLRetryTestsMixin:
         # First response is a Bad Gateway -> Result is the command actually goes through
         # Second response is a 404 because the session is no longer found
         responses = [
-            {"status": 502, "headers": {"Retry-After": "1"}},
-            {"status": 404, "headers": {}},
+            {"status": 502, "headers": {"Retry-After": "1"}, "redirect_location": None},
+            {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
         with self.connection(extra_params={**self._retry_policy}) as conn:
@@ -295,8 +302,8 @@ class PySQLRetryTestsMixin:
         # First response is a Bad Gateway -> Result is the command actually goes through
         # Second response is a 404 because the session is no longer found
         responses = [
-            {"status": 502, "headers": {"Retry-After": "1"}},
-            {"status": 404, "headers": {}},
+            {"status": 502, "headers": {"Retry-After": "1"}, "redirect_location": None},
+            {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
         with self.connection(extra_params={**self._retry_policy}) as conn:
@@ -323,3 +330,97 @@ class PySQLRetryTestsMixin:
                 self.assertTrue(
                     expected_message_was_found, "Did not find expected log messages"
                 )
+
+    def test_retry_max_redirects_raises_too_many_redirects_exception(self):
+        """GIVEN the connector is configured with a custom max_redirects
+        WHEN the DatabricksRetryPolicy is created
+        THEN the connector raises a MaxRedirectsError if that number is exceeded
+        """
+
+        max_redirects, expected_call_count = 1, 2
+
+        # Code 302 is a redirect
+        with mocked_server_response(
+            status=302, redirect_location="/foo.bar"
+        ) as mock_obj:
+            with self.assertRaises(MaxRetryError) as cm:
+                with self.connection(
+                    extra_params={
+                        **self._retry_policy,
+                        "_retry_max_redirects": max_redirects,
+                    }
+                ):
+                    pass
+            assert "too many redirects" == str(cm.exception.reason)
+            # Total call count should be 2 (original + 1 retry)
+            assert mock_obj.return_value.getresponse.call_count == expected_call_count
+
+    def test_retry_max_redirects_unset_doesnt_redirect_forever(self):
+        """GIVEN the connector is configured without a custom max_redirects
+        WHEN the DatabricksRetryPolicy is used
+        THEN the connector raises a MaxRedirectsError if that number is exceeded
+
+        This test effectively guarantees that regardless of _retry_max_redirects,
+        _stop_after_attempts_count is enforced.
+        """
+        # Code 302 is a redirect
+        with mocked_server_response(
+            status=302, redirect_location="/foo.bar/"
+        ) as mock_obj:
+            with self.assertRaises(MaxRetryError) as cm:
+                with self.connection(
+                    extra_params={
+                        **self._retry_policy,
+                    }
+                ):
+                    pass
+
+            # Total call count should be 6 (original + _retry_stop_after_attempts_count)
+            assert mock_obj.return_value.getresponse.call_count == 6
+
+    def test_retry_max_redirects_is_bounded_by_stop_after_attempts_count(self):
+        # If I add another 503 or 302 here the test will fail with a MaxRetryError
+        responses = [
+            {"status": 302, "headers": {}, "redirect_location": "/foo.bar"},
+            {"status": 500, "headers": {}, "redirect_location": None},
+        ]
+
+        additional_settings = {
+            "_retry_max_redirects": 1,
+            "_retry_stop_after_attempts_count": 2,
+        }
+
+        with pytest.raises(RequestError) as cm:
+            with mock_sequential_server_responses(responses):
+                with self.connection(
+                    extra_params={**self._retry_policy, **additional_settings}
+                ):
+                    pass
+
+        # The error should be the result of the 500, not because of too many requests.
+        assert "too many redirects" not in str(cm.value.message)
+        assert "Error during request to server" in str(cm.value.message)
+
+    def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(self):
+        with self.assertLogs(
+            "databricks.sql",
+            level="WARN",
+        ) as cm:
+            with self.connection(
+                extra_params={
+                    **self._retry_policy,
+                    **{
+                        "_retry_max_redirects": 100,
+                        "_retry_stop_after_attempts_count": 1,
+                    },
+                }
+            ):
+                pass
+            expected_message_was_found = False
+            for log in cm.output:
+                if expected_message_was_found:
+                    break
+                target = "it will have no affect!"
+                expected_message_was_found = target in log
+
+        assert expected_message_was_found, "Did not find expected log messages"
