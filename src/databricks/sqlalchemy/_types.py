@@ -3,7 +3,7 @@ from sqlalchemy.ext.compiler import compiles
 
 from typing import Union
 
-from datetime import datetime
+from datetime import datetime, time
 
 
 from databricks.sql.utils import ParamEscaper
@@ -115,13 +115,14 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
     TIME_WITH_MICROSECONDS_FMT = "%H:%M:%S.%f"
     TIME_NO_MICROSECONDS_FMT = "%H:%M:%S"
 
-    def process_bind_param(self, value: Union[datetime.time, None], dialect) -> str:
+    def process_bind_param(self, value: Union[time, None], dialect) -> Union[None, str]:
         """Values sent to the database are converted to %:H:%M:%S strings."""
         if value is None:
             return None
         return value.strftime(self.TIME_WITH_MICROSECONDS_FMT)
 
-    def process_literal_param(self, value, dialect) -> datetime.time:
+    # mypy doesn't like this workaround because TypeEngine wants process_literal_param to return a string
+    def process_literal_param(self, value, dialect) -> time: # type: ignore 
         """It's not clear to me why this is necessary. Without it, SQLAlchemy's Timetest:test_literal fails
         because the string literal renderer receives a str() object and calls .isoformat() on it.
 
@@ -138,7 +139,7 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
 
     def process_result_value(
         self, value: Union[None, str], dialect
-    ) -> Union[datetime.time, None]:
+    ) -> Union[time, None]:
         """Values received from the database are parsed into datetime.time() objects"""
         if value is None:
             return None
