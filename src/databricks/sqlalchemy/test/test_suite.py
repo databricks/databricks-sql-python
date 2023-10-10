@@ -36,7 +36,15 @@ class BooleanTest(BooleanTest):
 
 @pytest.mark.reviewed
 class NumericTest(NumericTest):
-    pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support E notation for DECIMAL types")
+    def test_enotation_decimal(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support E notation for DECIMAL types")
+    def test_enotation_decimal_large(self):
+        pass
+
 
 
 @pytest.mark.reviewed

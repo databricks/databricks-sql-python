@@ -82,17 +82,6 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         return sqlalchemy.testing.exclusions.closed()
 
     @property
-    def precision_numerics_enotation_large(self):
-        """target backend supports Decimal() objects using E notation
-        to represent very large values.
-
-        Databricks supports E notation for FLOAT data types but not for DECIMAL types,
-        which is the underlying data type SQLAlchemy uses for Numeric() types.
-
-        """
-        return sqlalchemy.testing.exclusions.closed()
-
-    @property
     def infinity_floats(self):
         """The Float type can persist and load float('inf'), float('-inf')."""
 
