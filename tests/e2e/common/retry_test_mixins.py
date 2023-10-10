@@ -220,7 +220,7 @@ class PySQLRetryTestsMixin:
         with self.connection(extra_params={**self._retry_policy}) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
-                    with mocked_server_response(status=dangerous_code) as mock_obj:
+                    with mocked_server_response(status=dangerous_code):
                         with self.assertRaises(RequestError) as cm:
                             cursor.execute("Not a real query")
                             assert isinstance(cm.exception.args[1], UnsafeToRetryError)
@@ -231,7 +231,7 @@ class PySQLRetryTestsMixin:
         ) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
-                    with mocked_server_response(status=dangerous_code) as mock_obj:
+                    with mocked_server_response(status=dangerous_code):
                         with pytest.raises(MaxRetryError) as cm:
                             cursor.execute("Not a real query")
 
