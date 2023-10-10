@@ -2,6 +2,13 @@
 The complete list of requirements is provided by SQLAlchemy here:
 
 https://github.com/sqlalchemy/sqlalchemy/blob/main/lib/sqlalchemy/testing/requirements.py
+
+When SQLAlchemy skips a test because a requirement is closed() it gives a generic skip message.
+To make these failures more actionable, we only define requirements in this file that we wish to 
+force to be open(). If a test should be skipped on Databricks, it will be specifically marked skip
+in test_suite.py with a Databricks-specific reason.
+
+See the special note about the array_type exclusion below.
 """
 
 import sqlalchemy.testing.requirements
@@ -56,32 +63,6 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         return sqlalchemy.testing.exclusions.open()
 
     @property
-    def precision_generic_float_type(self):
-        """target backend will return native floating point numbers with at
-        least seven decimal places when using the generic Float type.
-
-        Databricks sometimes only returns six digits of precision for the generic Float type
-        """
-        return sqlalchemy.testing.exclusions.closed()
-
-    @property
-    def literal_float_coercion(self):
-        """target backend will return the exact float value 15.7563
-        with only four significant digits from this statement:
-
-        SELECT :param
-
-        where :param is the Python float 15.7563
-
-        i.e. it does not return 15.75629997253418
-
-        Without additional work, Databricks returns 15.75629997253418
-        This is a potential area where we could override the Float literal processor.
-        Will leave to a PM to decide if we should do so.
-        """
-        return sqlalchemy.testing.exclusions.closed()
-
-    @property
     def infinity_floats(self):
         """The Float type can persist and load float('inf'), float('-inf')."""
 
@@ -106,6 +87,10 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     @property
     def array_type(self):
         """While Databricks does support ARRAY types, pysql cannot bind them. So
-        we cannot use them with SQLAlchemy"""
+        we cannot use them with SQLAlchemy
+        
+        Due to a bug in SQLAlchemy, we _must_ define this exclusion as closed() here or else the
+        test runner will crash the pytest process due to an AttributeError
+        """
 
         return sqlalchemy.testing.exclusions.closed()
