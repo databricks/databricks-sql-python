@@ -338,7 +338,7 @@ class PySQLRetryTestsMixin:
         """
 
         max_redirects, expected_call_count = 1, 2
-        
+
         # Code 302 is a redirect
         with mocked_server_response(
             status=302, redirect_location="/foo.bar"
@@ -400,3 +400,27 @@ class PySQLRetryTestsMixin:
         # The error should be the result of the 500, not because of too many requests.
         assert "too many redirects" not in str(cm.value.message)
         assert "Error during request to server" in str(cm.value.message)
+
+    def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(self):
+        with self.assertLogs(
+            "databricks.sql",
+            level="WARN",
+        ) as cm:
+            with self.connection(
+                extra_params={
+                    **self._retry_policy,
+                    **{
+                        "_retry_max_redirects": 100,
+                        "_retry_stop_after_attempts_count": 1,
+                    },
+                }
+            ):
+                pass
+            expected_message_was_found = False
+            for log in cm.output:
+                if expected_message_was_found:
+                    break
+                target = "it will have no affect!"
+                expected_message_was_found = target in log
+
+        assert expected_message_was_found, "Did not find expected log messages"

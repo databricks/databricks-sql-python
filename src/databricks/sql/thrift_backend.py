@@ -190,7 +190,12 @@ class ThriftBackend:
 
         additional_transport_args = {}
         _max_redirects: int = kwargs.get("_retry_max_redirects")
+
         if _max_redirects:
+            if _max_redirects > self._retry_stop_after_attempts_count:
+                logger.warn(
+                    "_retry_max_redirects > _retry_stop_after_attempts_count so it will have no affect!"
+                )
             urllib3_kwargs = {"redirect": _max_redirects}
         else:
             urllib3_kwargs = {}
@@ -623,7 +628,10 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
+            (
+                arrow_table,
+                num_rows,
+            ) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
