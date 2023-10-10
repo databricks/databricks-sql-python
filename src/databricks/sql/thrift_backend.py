@@ -628,10 +628,7 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (
-                arrow_table,
-                num_rows,
-            ) = convert_arrow_based_set_to_arrow_table(
+            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
