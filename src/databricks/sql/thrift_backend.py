@@ -189,7 +189,7 @@ class ThriftBackend:
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}
-        _max_redirects: int = kwargs.get("_retry_max_redirects")
+        _max_redirects: Union[None, int] = kwargs.get("_retry_max_redirects")
 
         if _max_redirects:
             if _max_redirects > self._retry_stop_after_attempts_count:
