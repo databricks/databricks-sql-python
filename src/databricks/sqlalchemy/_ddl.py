@@ -3,8 +3,8 @@ from sqlalchemy.sql import compiler
 
 
 class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
-    # SparkSQL identifier specification:
-    # ref: https://spark.apache.org/docs/latest/sql-ref-identifier.html
+    """https://docs.databricks.com/en/sql/language-manual/sql-ref-identifiers.html
+    """
 
     legal_characters = re.compile(r"^[A-Z0-9_]+$", re.I)
 

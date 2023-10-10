@@ -14,12 +14,8 @@ from databricks import sql
 
 # This import is required to process our @compiles decorators
 import databricks.sqlalchemy._types as dialect_type_impl
+import databricks.sqlalchemy._ddl as dialect_ddl_impl
 
-
-from databricks.sqlalchemy.base import (
-    DatabricksDDLCompiler,
-    DatabricksIdentifierPreparer,
-)
 
 try:
     import alembic
@@ -39,8 +35,8 @@ class DatabricksDialect(default.DefaultDialect):
     name: str = "databricks"
     driver: str = "databricks"
     default_schema_name: str = "default"
-    preparer = DatabricksIdentifierPreparer  # type: ignore
-    ddl_compiler = DatabricksDDLCompiler
+    preparer = dialect_ddl_impl.DatabricksIdentifierPreparer  # type: ignore
+    ddl_compiler = dialect_ddl_impl.DatabricksDDLCompiler
     supports_statement_cache: bool = True
     supports_multivalues_insert: bool = True
     supports_native_decimal: bool = True
