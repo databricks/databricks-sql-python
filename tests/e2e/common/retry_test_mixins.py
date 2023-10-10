@@ -58,7 +58,9 @@ class Client503ResponseMixin:
 
 
 @contextmanager
-def mocked_server_response(status: int = 200, headers: dict = {}, redirect_location: str = None):
+def mocked_server_response(
+    status: int = 200, headers: dict = {}, redirect_location: str = None
+):
     """Context manager for patching urllib3 responses"""
 
     # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
@@ -68,7 +70,9 @@ def mocked_server_response(status: int = 200, headers: dict = {}, redirect_locat
 
     # `msg` is included for testing when urllib3~=1.0.0 is installed
     mock_response = MagicMock(headers=headers, msg=headers, status=status)
-    mock_response.get_redirect_location.return_value = False if redirect_location is None else redirect_location
+    mock_response.get_redirect_location.return_value = (
+        False if redirect_location is None else redirect_location
+    )
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.return_value = mock_response
@@ -324,7 +328,7 @@ class PySQLRetryTestsMixin:
                     expected_message_was_found, "Did not find expected log messages"
                 )
 
-    # I really want to use pytest.mark.parametrize here but it doesn't work for tests defined in a 
+    # I really want to use pytest.mark.parametrize here but it doesn't work for tests defined in a
     # unittest.TestCase. Our test suite needs some reorganisation anyway, since right now all of the
     # tests are blended into the PySQLCoreTestSuite. I'll leave this as-is for now.
 
@@ -335,27 +339,32 @@ class PySQLRetryTestsMixin:
         THEN the connector raises a MaxRedirectsError if that number is exceeded
         """
         # Code 302 is a redirect
-        with mocked_server_response(status=302, redirect_location="/foo.bar/") as mock_obj:
+        with mocked_server_response(
+            status=302, redirect_location="/foo.bar/"
+        ) as mock_obj:
             with self.assertRaises(MaxRetryError) as cm:
-                with self.connection(extra_params={**self._retry_policy, "_retry_max_redirects": max_redirects}) as conn:
+                with self.connection(
+                    extra_params={
+                        **self._retry_policy,
+                        "_retry_max_redirects": max_redirects,
+                    }
+                ) as conn:
                     pass
-            
+
             # Total call count should be 3 (original + 2 retries)
             assert mock_obj.return_value.getresponse.call_count == expected_call_count
-    
+
     def test_retry_max_redirects_raises_1_2(self):
-        return self._base_retry_max_redirect_raises(1,2)
-    
+        return self._base_retry_max_redirect_raises(1, 2)
+
     def test_retry_max_redirects_raises_2_3(self):
-        return self._base_retry_max_redirect_raises(2,3)
-    
+        return self._base_retry_max_redirect_raises(2, 3)
+
     def test_retry_max_redirects_raises_3_4(self):
-        return self._base_retry_max_redirect_raises(3,4)
-    
+        return self._base_retry_max_redirect_raises(3, 4)
+
     def test_retry_max_redirects_raises_4_5(self):
-        return self._base_retry_max_redirect_raises(4,5)
+        return self._base_retry_max_redirect_raises(4, 5)
+
     def test_retry_max_redirects_raises_5_6(self):
-        return self._base_retry_max_redirect_raises(5,6)
-
-        
-
+        return self._base_retry_max_redirect_raises(5, 6)
