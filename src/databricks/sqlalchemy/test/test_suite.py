@@ -664,63 +664,11 @@ class HasIndexTest(HasIndexTest):
 
 
 
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support spaces in table names. See comment in test_suite.py")
 class QuotedNameArgumentTest(QuotedNameArgumentTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_check_constraints(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_columns(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_foreign_keys(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_indexes(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_pk_constraint(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_table_comment(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_table_options(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_view_definition(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_unique_constraints(self):
-        pass
+    """These tests are challenging. The whole test setup depends on a table with a name like `quote ' one`
+    which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest
+    also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
+    methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
+    """

@@ -15,3 +15,9 @@ class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
 class DatabricksDDLCompiler(compiler.DDLCompiler):
     def post_create_table(self, table):
         return " USING DELTA"
+    
+    def visit_unique_constraint(self, constraint, **kw):
+        pass
+
+    def visit_check_constraint(self, constraint, **kw):
+        pass
