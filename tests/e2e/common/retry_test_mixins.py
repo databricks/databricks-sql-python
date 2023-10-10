@@ -90,6 +90,7 @@ def mock_sequential_server_responses(responses: List[dict]):
     `responses` should be a list of dictionaries containing these members:
         - status: int
         - headers: dict
+        - redirect_location: str
     """
 
     mock_responses = []
@@ -100,7 +101,9 @@ def mock_sequential_server_responses(responses: List[dict]):
         _mock = MagicMock(
             headers=resp["headers"], msg=resp["headers"], status=resp["status"]
         )
-        _mock.get_redirect_location.return_value = False
+        _mock.get_redirect_location.return_value = (
+            False if resp["redirect_location"] is None else resp["redirect_location"]
+        )
         mock_responses.append(_mock)
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
@@ -246,8 +249,8 @@ class PySQLRetryTestsMixin:
         """
 
         responses = [
-            {"status": 429, "headers": {"Retry-After": "1"}},
-            {"status": 503, "headers": {}},
+            {"status": 429, "headers": {"Retry-After": "1"}, "redirect_location": None},
+            {"status": 503, "headers": {}, "redirect_location": None},
         ]
 
         with self.connection(
@@ -269,8 +272,8 @@ class PySQLRetryTestsMixin:
         # First response is a Bad Gateway -> Result is the command actually goes through
         # Second response is a 404 because the session is no longer found
         responses = [
-            {"status": 502, "headers": {"Retry-After": "1"}},
-            {"status": 404, "headers": {}},
+            {"status": 502, "headers": {"Retry-After": "1"}, "redirect_location": None},
+            {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
         with self.connection(extra_params={**self._retry_policy}) as conn:
@@ -299,8 +302,8 @@ class PySQLRetryTestsMixin:
         # First response is a Bad Gateway -> Result is the command actually goes through
         # Second response is a 404 because the session is no longer found
         responses = [
-            {"status": 502, "headers": {"Retry-After": "1"}},
-            {"status": 404, "headers": {}},
+            {"status": 502, "headers": {"Retry-After": "1"}, "redirect_location": None},
+            {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
         with self.connection(extra_params={**self._retry_policy}) as conn:
@@ -332,7 +335,7 @@ class PySQLRetryTestsMixin:
     # unittest.TestCase. Our test suite needs some reorganisation anyway, since right now all of the
     # tests are blended into the PySQLCoreTestSuite. I'll leave this as-is for now.
 
-    # We only test up to 5 retries because this mixin's max_attempts_count is 5.
+    # We only test up to 5 retries because this mixin's stop_after_attempts_count is 5.
     def _base_retry_max_redirect_raises(self, max_redirects, expected_call_count):
         """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy is created
@@ -368,3 +371,26 @@ class PySQLRetryTestsMixin:
 
     def test_retry_max_redirects_raises_5_6(self):
         return self._base_retry_max_redirect_raises(5, 6)
+
+    def test_retry_max_redirects_unset_doesnt_redirect_forever(self):
+        """GIVEN the connector is configured without a custom max_redirects
+        WHEN the DatabricksRetryPolicy is used
+        THEN the connector raises a MaxRedirectsError if that number is exceeded
+
+        This test effectively guarantees that regardless of _retry_max_redirects,
+        _stop_after_attempts_count is enforced.
+        """
+        # Code 302 is a redirect
+        with mocked_server_response(
+            status=302, redirect_location="/foo.bar/"
+        ) as mock_obj:
+            with self.assertRaises(MaxRetryError) as cm:
+                with self.connection(
+                    extra_params={
+                        **self._retry_policy,
+                    }
+                ):
+                    pass
+
+            # Total call count should be 6 (original + _retry_stop_after_attempts_count)
+            assert mock_obj.return_value.getresponse.call_count == 6

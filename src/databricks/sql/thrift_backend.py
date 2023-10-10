@@ -132,6 +132,8 @@ class ThriftBackend:
         # (defaults to False)
         # _retry_max_redirects
         #  An integer representing the maximum number of redirects to follow for a request.
+        #  This number must be <= _retry_stop_after_attempts_count.
+        #  (defaults to None)
         # max_download_threads
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
