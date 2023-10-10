@@ -353,7 +353,7 @@ class PySQLRetryTestsMixin:
                     }
                 ) as conn:
                     pass
-
+            assert "too many redirects" == str(cm.exception.reason)
             # Total call count should be 3 (original + 2 retries)
             assert mock_obj.return_value.getresponse.call_count == expected_call_count
 
@@ -394,3 +394,26 @@ class PySQLRetryTestsMixin:
 
             # Total call count should be 6 (original + _retry_stop_after_attempts_count)
             assert mock_obj.return_value.getresponse.call_count == 6
+
+    def test_retry_max_redirects_is_bounded_by_stop_after_attempts_count(self):
+        # If I add another 503 or 302 here the test will fail with a MaxRetryError
+        responses = [
+            {"status": 302, "headers": {}, "redirect_location": "/foo.bar"},
+            {"status": 500, "headers": {}, "redirect_location": None},
+        ]
+
+        additional_settings = {
+            "_retry_max_redirects": 1,
+            "_retry_stop_after_attempts_count": 2,
+        }
+
+        with pytest.raises(RequestError) as cm:
+            with mock_sequential_server_responses(responses):
+                with self.connection(
+                    extra_params={**self._retry_policy, **additional_settings}
+                ):
+                    pass
+
+        # The error should be the result of the 500, not because of too many requests.
+        assert "too many redirects" not in str(cm.value.message)
+        assert "Error during request to server" in str(cm.value.message)
