@@ -20,12 +20,20 @@ import os
 # for 502 (Bad Gateway) codes etc. In these cases, there is a possibility that the initial command _did_ reach
 # Databricks compute and retrying it could result in additional executions. Retrying under these conditions uses
 # an exponential back-off since a Retry-After header is not present.
+#
+# This new retry behaviour allows you to configure the maximum number of redirects that the connector will follow.
+# Just set `_retry_max_redirects` to the integer number of redirects you want to allow. The default is None,
+# which means all redirects will be followed. In this case, a redirect will count toward the
+# _retry_stop_after_attempts_count which means that by default the connector will not enter an endless retry loop.
+#
+# For complete information about configuring retries, see the docstring for databricks.sql.thrift_backend.ThriftBackend
 
 with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
                  http_path       = os.getenv("DATABRICKS_HTTP_PATH"),
                  access_token    = os.getenv("DATABRICKS_TOKEN"),
                  _enable_v3_retries = True,
-                 _retry_dangerous_codes=[502,400]) as connection:
+                 _retry_dangerous_codes=[502,400],
+                 _retry_max_redirects=2) as connection:
 
   with connection.cursor() as cursor:
     cursor.execute("SELECT * FROM default.diamonds LIMIT 2")

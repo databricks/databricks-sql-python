@@ -130,6 +130,10 @@ class ThriftBackend:
         # _enable_v3_retries
         # Whether to use the DatabricksRetryPolicy implemented in urllib3
         # (defaults to False)
+        # _retry_max_redirects
+        #  An integer representing the maximum number of redirects to follow for a request.
+        #  This number must be <= _retry_stop_after_attempts_count.
+        #  (defaults to None)
         # max_download_threads
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
@@ -185,6 +189,16 @@ class ThriftBackend:
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}
+        _max_redirects: Union[None, int] = kwargs.get("_retry_max_redirects")
+
+        if _max_redirects:
+            if _max_redirects > self._retry_stop_after_attempts_count:
+                logger.warn(
+                    "_retry_max_redirects > _retry_stop_after_attempts_count so it will have no affect!"
+                )
+            urllib3_kwargs = {"redirect": _max_redirects}
+        else:
+            urllib3_kwargs = {}
         if self.enable_v3_retries:
             self.retry_policy = databricks.sql.auth.thrift_http_client.DatabricksRetryPolicy(
                 delay_min=self._retry_delay_min,
@@ -193,6 +207,7 @@ class ThriftBackend:
                 stop_after_attempts_duration=self._retry_stop_after_attempts_duration,
                 delay_default=self._retry_delay_default,
                 force_dangerous_codes=self.force_dangerous_codes,
+                urllib3_kwargs=urllib3_kwargs,
             )
 
             additional_transport_args["retry_policy"] = self.retry_policy
