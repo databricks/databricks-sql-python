@@ -58,17 +58,17 @@ class Client503ResponseMixin:
 
 
 @contextmanager
-def mocked_server_response(status: int = 200, headers: dict = {}):
+def mocked_server_response(status: int = 200, headers: dict = {}, redirect_location: str = None):
     """Context manager for patching urllib3 responses"""
 
     # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
     #   1. A status code
     #   2. A headers dict
-    #   3. mock.get_redirect_location() return falsy
+    #   3. mock.get_redirect_location() return falsy by default
 
     # `msg` is included for testing when urllib3~=1.0.0 is installed
     mock_response = MagicMock(headers=headers, msg=headers, status=status)
-    mock_response.get_redirect_location.return_value = False
+    mock_response.get_redirect_location.return_value = False if redirect_location is None else redirect_location
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.return_value = mock_response
@@ -324,40 +324,38 @@ class PySQLRetryTestsMixin:
                     expected_message_was_found, "Did not find expected log messages"
                 )
 
-    def test_retry_urllib3_kwargs_are_set(self):
-        """GIVEN the connector is configured _urllib3_kwargs
+    # I really want to use pytest.mark.parametrize here but it doesn't work for tests defined in a 
+    # unittest.TestCase. Our test suite needs some reorganisation anyway, since right now all of the
+    # tests are blended into the PySQLCoreTestSuite. I'll leave this as-is for now.
+
+    # We only test up to 5 retries because this mixin's max_attempts_count is 5.
+    def _base_retry_max_redirect_raises(self, max_redirects, expected_call_count):
+        """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy is created
-        THEN the _urllib3_kwargs are set on the DatabricksRetryPolicy
+        THEN the connector raises a MaxRedirectsError if that number is exceeded
         """
+        # Code 302 is a redirect
+        with mocked_server_response(status=302, redirect_location="/foo.bar/") as mock_obj:
+            with self.assertRaises(MaxRetryError) as cm:
+                with self.connection(extra_params={**self._retry_policy, "_retry_max_redirects": max_redirects}) as conn:
+                    pass
+            
+            # Total call count should be 3 (original + 2 retries)
+            assert mock_obj.return_value.getresponse.call_count == expected_call_count
+    
+    def test_retry_max_redirects_raises_1_2(self):
+        return self._base_retry_max_redirect_raises(1,2)
+    
+    def test_retry_max_redirects_raises_2_3(self):
+        return self._base_retry_max_redirect_raises(2,3)
+    
+    def test_retry_max_redirects_raises_3_4(self):
+        return self._base_retry_max_redirect_raises(3,4)
+    
+    def test_retry_max_redirects_raises_4_5(self):
+        return self._base_retry_max_redirect_raises(4,5)
+    def test_retry_max_redirects_raises_5_6(self):
+        return self._base_retry_max_redirect_raises(5,6)
 
-        # First response is a Bad Gateway -> Result is the command actually goes through
-        # Second response is a 404 because the session is no longer found
-        responses = [
-            {"status": 502, "headers": {"Retry-After": "1"}},
-            {"status": 404, "headers": {}},
-        ]
+        
 
-        with self.connection(extra_params={**self._retry_policy}) as conn:
-            with conn.cursor() as curs:
-                with patch(
-                    "databricks.sql.utils.ExecuteResponse.has_been_closed_server_side",
-                    new_callable=PropertyMock,
-                    return_value=False,
-                ):
-                    # This call guarantees we have an open cursor at the server
-                    curs.execute("SELECT 1")
-                    with mock_sequential_server_responses(responses):
-                        with self.assertLogs(
-                            "databricks.sql",
-                            level="INFO",
-                        ) as cm:
-                            curs.close()
-                        expected_message_was_found = False
-                        for log in cm.output:
-                            if expected_message_was_found:
-                                break
-                            target = "Operation was canceled by a prior request"
-                            expected_message_was_found = target in log
-                self.assertTrue(
-                    expected_message_was_found, "Did not find expected log messages"
-                )
