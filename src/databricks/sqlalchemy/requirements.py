@@ -94,6 +94,14 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         the .000 maintained."""
 
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def precision_numerics_many_significant_digits(self):
+        """target backend supports values with many digits on both sides,
+        such as 319438950232418390.273596, 87673.594069654243
+
+        """
+        return sqlalchemy.testing.exclusions.open()
 
     @property
     def array_type(self):
