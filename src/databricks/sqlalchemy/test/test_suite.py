@@ -36,36 +36,35 @@ class BooleanTest(BooleanTest):
 
 @pytest.mark.reviewed
 class NumericTest(NumericTest):
-
     @pytest.mark.skip(reason="Databricks doesn't support E notation for DECIMAL types")
     def test_enotation_decimal(self):
-        """This test automatically runs if requirements.precision_numerics_enotation_large is open()
-        """
+        """This test automatically runs if requirements.precision_numerics_enotation_large is open()"""
         pass
 
     @pytest.mark.skip(reason="Databricks doesn't support E notation for DECIMAL types")
     def test_enotation_decimal_large(self):
-        """This test automatically runs if requirements.precision_numerics_enotation_large is open()
-        """
+        """This test automatically runs if requirements.precision_numerics_enotation_large is open()"""
         pass
 
-    @pytest.mark.skip(reason="Without a specific CAST, Databricks doesn't return floats with same precision that was selected.")
+    @pytest.mark.skip(
+        reason="Without a specific CAST, Databricks doesn't return floats with same precision that was selected."
+    )
     def test_float_coerce_round_trip(self):
         """
         This automatically runs if requirements.literal_float_coercion is open()
-        
+
         Without additional work, Databricks returns 15.75629997253418 when you SELECT 15.7563.
         This is a potential area where we could override the Float literal processor to add a CAST.
         Will leave to a PM to decide if we should do so.
         """
         pass
 
-    @pytest.mark.skip(reason="Databricks sometimes only returns six digits of precision for the generic Float type")
+    @pytest.mark.skip(
+        reason="Databricks sometimes only returns six digits of precision for the generic Float type"
+    )
     def test_float_custom_scale(self):
-        """This test automatically runs if requirements.precision_generic_float_type is open()
-        """
+        """This test automatically runs if requirements.precision_generic_float_type is open()"""
         pass
-
 
 
 @pytest.mark.reviewed

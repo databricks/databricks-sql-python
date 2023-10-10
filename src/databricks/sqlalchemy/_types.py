@@ -122,7 +122,7 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
         return value.strftime(self.TIME_WITH_MICROSECONDS_FMT)
 
     # mypy doesn't like this workaround because TypeEngine wants process_literal_param to return a string
-    def process_literal_param(self, value, dialect) -> time: # type: ignore 
+    def process_literal_param(self, value, dialect) -> time:  # type: ignore
         """It's not clear to me why this is necessary. Without it, SQLAlchemy's Timetest:test_literal fails
         because the string literal renderer receives a str() object and calls .isoformat() on it.
 

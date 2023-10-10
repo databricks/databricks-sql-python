@@ -75,7 +75,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         the .000 maintained."""
 
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def precision_numerics_many_significant_digits(self):
         """target backend supports values with many digits on both sides,
@@ -88,7 +88,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     def array_type(self):
         """While Databricks does support ARRAY types, pysql cannot bind them. So
         we cannot use them with SQLAlchemy
-        
+
         Due to a bug in SQLAlchemy, we _must_ define this exclusion as closed() here or else the
         test runner will crash the pytest process due to an AttributeError
         """
