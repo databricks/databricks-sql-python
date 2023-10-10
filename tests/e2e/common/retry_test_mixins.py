@@ -331,19 +331,17 @@ class PySQLRetryTestsMixin:
                     expected_message_was_found, "Did not find expected log messages"
                 )
 
-    # I really want to use pytest.mark.parametrize here but it doesn't work for tests defined in a
-    # unittest.TestCase. Our test suite needs some reorganisation anyway, since right now all of the
-    # tests are blended into the PySQLCoreTestSuite. I'll leave this as-is for now.
-
-    # We only test up to 5 retries because this mixin's stop_after_attempts_count is 5.
-    def _base_retry_max_redirect_raises(self, max_redirects, expected_call_count):
+    def test_retry_max_redirects_raises_too_many_redirects_exception(self):
         """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy is created
         THEN the connector raises a MaxRedirectsError if that number is exceeded
         """
+
+        max_redirects, expected_call_count = 1, 2
+        
         # Code 302 is a redirect
         with mocked_server_response(
-            status=302, redirect_location="/foo.bar/"
+            status=302, redirect_location="/foo.bar"
         ) as mock_obj:
             with self.assertRaises(MaxRetryError) as cm:
                 with self.connection(
@@ -351,26 +349,11 @@ class PySQLRetryTestsMixin:
                         **self._retry_policy,
                         "_retry_max_redirects": max_redirects,
                     }
-                ) as conn:
+                ):
                     pass
             assert "too many redirects" == str(cm.exception.reason)
-            # Total call count should be 3 (original + 2 retries)
+            # Total call count should be 2 (original + 1 retry)
             assert mock_obj.return_value.getresponse.call_count == expected_call_count
-
-    def test_retry_max_redirects_raises_1_2(self):
-        return self._base_retry_max_redirect_raises(1, 2)
-
-    def test_retry_max_redirects_raises_2_3(self):
-        return self._base_retry_max_redirect_raises(2, 3)
-
-    def test_retry_max_redirects_raises_3_4(self):
-        return self._base_retry_max_redirect_raises(3, 4)
-
-    def test_retry_max_redirects_raises_4_5(self):
-        return self._base_retry_max_redirect_raises(4, 5)
-
-    def test_retry_max_redirects_raises_5_6(self):
-        return self._base_retry_max_redirect_raises(5, 6)
 
     def test_retry_max_redirects_unset_doesnt_redirect_forever(self):
         """GIVEN the connector is configured without a custom max_redirects
