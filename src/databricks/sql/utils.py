@@ -534,9 +534,15 @@ def named_parameters_to_dbsqlparams_v2(parameters: List[Any]):
 
 
 def resolve_databricks_sql_integer_type(integer):
-    """Returns the smallest Databricks SQL integer type that can contain the passed integer"""
+    """Returns DbsqlType.INTEGER unless the passed int() requires a BIGINT.
+    
+    Note: TINYINT is never inferred here because it is a rarely used type and clauses like LIMIT and OFFSET
+    cannot accept TINYINT bound parameter values. If you need to bind a TINYINT value, you can explicitly
+    declare its type in a DbsqlParameter object, which will bypass this inference logic."""
     if -128 <= integer <= 127:
-        return DbSqlType.TINYINT
+        # If DBR is ever updated to permit TINYINT values passed to LIMIT and OFFSET
+        # then we can change this line to return DbSqlType.TINYINT
+        return DbSqlType.INTEGER
     elif -2147483648 <= integer <= 2147483647:
         return DbSqlType.INTEGER
     else:
