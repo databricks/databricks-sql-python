@@ -266,29 +266,35 @@ class IdentityAutoincrementTest(IdentityAutoincrementTest):
 
 @pytest.mark.reviewed
 class LongNameBlowoutTest(LongNameBlowoutTest):
-    """These tests all include assertions that the tested name > 255 characters
-    """
-    @pytest.mark.skip(reason="Databricks constraint names are limited to 255 characters")
+    """These tests all include assertions that the tested name > 255 characters"""
+
+    @pytest.mark.skip(
+        reason="Databricks constraint names are limited to 255 characters"
+    )
     def test_long_convention_name(self):
         pass
 
-    # class ExceptionTest(ExceptionTest):
-    @pytest.mark.skip(reason="Databricks may not support this method.")
+
+@pytest.mark.reviewed
+class ExceptionTest(ExceptionTest):
+    @pytest.mark.skip(reason="Databricks doesn't enforce primary key constraints.")
     def test_integrity_error(self):
+        """Per Databricks documentation, primary and foreign key constraints are informational only
+        and are not enforced.
+
+        https://docs.databricks.com/api/workspace/tableconstraints
         """
-        Exception:
-            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
-        """
+        pass
 
 
 @pytest.mark.reviewed
 class HasTableTest(HasTableTest):
-    """Databricks does not support temporary tables. 
-    """
+    """Databricks does not support temporary tables."""
+
     @pytest.mark.skip(reason="Databricks does not support temporary tables.")
     def test_has_table_temp_table(self):
         pass
-    
+
     @pytest.mark.skip(reason="Strange test design. See comments in test_suite.py")
     def test_has_table_temp_view(self):
         """Databricks supports temporary views but this test depends on requirements.has_temp_table, which we
@@ -297,13 +303,14 @@ class HasTableTest(HasTableTest):
 
         From what I can see, there is no way to run this test since it will fail during setup if we mark has_temp_table
         open(). It _might_ be possible to hijack this behaviour by implementing temp_table_keyword_args in our own
-        provision.py. Doing so would mean creating a real table during this class setup instead of a temp table. Then 
+        provision.py. Doing so would mean creating a real table during this class setup instead of a temp table. Then
         we could just skip the temp table tests but run the temp view tests. But this test fixture doesn't cleanup its
-        temp tables and has no hook to do so. 
+        temp tables and has no hook to do so.
 
         It would be ideal for SQLAlchemy to define a separate requirements.has_temp_views.
         """
         pass
+
 
 class LastrowidTest(LastrowidTest):
     @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
