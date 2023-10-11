@@ -121,53 +121,79 @@ class DateTest(DateTest):
 class DateHistoricTest(DateHistoricTest):
     pass
 
+
 @pytest.mark.reviewed
 class RowFetchTest(RowFetchTest):
     pass
 
-class FetchLimitOffsetTest(FetchLimitOffsetTest):
-    @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
-    )
-    def test_bound_offset(self):
-        """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
 
+@pytest.mark.reviewed
+class FetchLimitOffsetTest(FetchLimitOffsetTest):
+    @pytest.mark.flaky
     @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
+        reason="Insertion order on Databricks is not deterministic. See comment in test_suite.py."
     )
     def test_limit_render_multiple_times(self):
-        """
-        Exception:
-            AssertionError: [(5,)] != [(1,)]
-        """
+        """This test depends on the order that records are inserted into the table. It's passing criteria requires that
+        a record inserted with id=1 is the first record returned when no ORDER BY clause is specified. But Databricks occasionally
+        INSERTS in a different order, which makes this test seem to fail. The test is flaky, but the underlying functionality
+        (can multiple LIMIT clauses be rendered) is not broken.
 
-    @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
-    )
-    def test_simple_offset(self):
+        Unclear if this is a bug in Databricks, Delta, or some race-condition in the test itself.
         """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
+        pass
 
-    @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
-    )
-    def test_simple_offset_zero(self):
-        """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_bound_fetch_offset(self):
+        pass
 
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_expr_offset(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_no_order(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_nobinds(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_offset(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_percent(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_percent_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_expr_fetch_offset(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_percent(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_percent_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_ties_exact_number(self):
+        pass
 
 
 class FutureTableDDLTest(FutureTableDDLTest):
@@ -246,8 +272,7 @@ class LongNameBlowoutTest(LongNameBlowoutTest):
             [pk-_exclusions1] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [RequestId=f3e6940b-bd69-455d-9314-87522bcf8cef ErrorClass=INVALID_PARAMETER_VALUE.INVALID_FIELD_LENGTH] CreateTable primary_key.name too long. Maximum length is 255 characters.
         """
 
-
-class ExceptionTest(ExceptionTest):
+    # class ExceptionTest(ExceptionTest):
     @pytest.mark.skip(reason="Databricks may not support this method.")
     def test_integrity_error(self):
         """
@@ -620,9 +645,9 @@ class ComponentReflectionTest(ComponentReflectionTest):
         - NotImplementedError: no temp table keyword args routine for cfg: databricks+databricks://token:***redacted***@e2-dogfood.staging.cloud.databricks.com?catalog=main&http_path=%2Fsql%2F1.0%2Fwarehouses%2F5c89f447c476a5a8&schema=pysql_sqlalchemy
         """
 
+
 @pytest.mark.reviewed
 class TableDDLTest(TableDDLTest):
-
     @pytest.mark.skip(reason="Databricks does not support indexes.")
     def test_create_index_if_not_exists(self, connection):
         """We could use requirements.index_reflection and requirements.index_ddl_if_exists
@@ -637,17 +662,20 @@ class TableDDLTest(TableDDLTest):
         """
         pass
 
-    @pytest.mark.skip(reason="Comment reflection is possible but not implemented in this dialect.")
+    @pytest.mark.skip(
+        reason="Comment reflection is possible but not implemented in this dialect."
+    )
     def test_add_table_comment(self, connection):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message
-        """
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
         pass
 
-    @pytest.mark.skip(reason="Comment reflection is possible but not implemented in this dialect.")
+    @pytest.mark.skip(
+        reason="Comment reflection is possible but not implemented in this dialect."
+    )
     def test_drop_table_comment(self, connection):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message
-        """
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
         pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks does not support indexes.")
@@ -655,9 +683,10 @@ class HasIndexTest(HasIndexTest):
     pass
 
 
-
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support spaces in table names. See comment in test_suite.py")
+@pytest.mark.skip(
+    reason="Databricks does not support spaces in table names. See comment in test_suite.py"
+)
 class QuotedNameArgumentTest(QuotedNameArgumentTest):
     """These tests are challenging. The whole test setup depends on a table with a name like `quote ' one`
     which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest

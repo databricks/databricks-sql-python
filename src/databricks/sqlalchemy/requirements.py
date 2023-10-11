@@ -95,7 +95,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
 
         # TODO: Implement array type using inline?
         return sqlalchemy.testing.exclusions.closed()
-    
+
     @property
     def table_ddl_if_exists(self):
         """target platform supports IF NOT EXISTS / IF EXISTS for tables."""

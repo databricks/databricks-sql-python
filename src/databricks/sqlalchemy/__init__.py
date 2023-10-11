@@ -37,6 +37,7 @@ class DatabricksDialect(default.DefaultDialect):
     default_schema_name: str = "default"
     preparer = dialect_ddl_impl.DatabricksIdentifierPreparer  # type: ignore
     ddl_compiler = dialect_ddl_impl.DatabricksDDLCompiler
+    statement_compiler = dialect_ddl_impl.DatabricksStatementCompiler
     supports_statement_cache: bool = True
     supports_multivalues_insert: bool = True
     supports_native_decimal: bool = True
@@ -248,7 +249,9 @@ class DatabricksDialect(default.DefaultDialect):
 
         try:
             res = connection.execute(
-                sqlalchemy.text(f"DESCRIBE TABLE `{_catalog}`.`{_schema}`.`{table_name}`")
+                sqlalchemy.text(
+                    f"DESCRIBE TABLE `{_catalog}`.`{_schema}`.`{table_name}`"
+                )
             )
             return True
         except DatabaseError as e:
