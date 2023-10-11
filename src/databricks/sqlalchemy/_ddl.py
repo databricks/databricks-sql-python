@@ -1,5 +1,8 @@
 import re
 from sqlalchemy.sql import compiler
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
@@ -17,7 +20,9 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         return " USING DELTA"
     
     def visit_unique_constraint(self, constraint, **kw):
+        logger.warn("Databricks does not support unique constraints")
         pass
 
     def visit_check_constraint(self, constraint, **kw):
+        logger.warn("Databricks does not support check constraints")
         pass
