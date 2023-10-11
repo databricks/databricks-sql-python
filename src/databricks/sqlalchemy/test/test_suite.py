@@ -121,6 +121,9 @@ class DateTest(DateTest):
 class DateHistoricTest(DateHistoricTest):
     pass
 
+@pytest.mark.reviewed
+class RowFetchTest(RowFetchTest):
+    pass
 
 class FetchLimitOffsetTest(FetchLimitOffsetTest):
     @pytest.mark.skip(
@@ -241,17 +244,6 @@ class LongNameBlowoutTest(LongNameBlowoutTest):
             [fk-_exclusions0] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [RequestId=9e4262cc-05bc-4086-b17d-0c8082599218 ErrorClass=INVALID_PARAMETER_VALUE.INVALID_FIELD_LENGTH] CreateTable foreign_key.name too long. Maximum length is 255 characters.
             [ix-_exclusions2] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [UC_COMMAND_NOT_SUPPORTED.WITHOUT_RECOMMENDATION] The command(s): CreateIndex are not supported in Unity Catalog.
             [pk-_exclusions1] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [RequestId=f3e6940b-bd69-455d-9314-87522bcf8cef ErrorClass=INVALID_PARAMETER_VALUE.INVALID_FIELD_LENGTH] CreateTable primary_key.name too long. Maximum length is 255 characters.
-        """
-
-
-class RowFetchTest(RowFetchTest):
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Timezone information not preserved."
-    )
-    def test_row_w_scalar_select(self):
-        """
-        Exception:
-            AssertionError: datetime.datetime(2006, 5, 12, 12, 0, tzinfo=<StaticTzInfo 'Etc/UTC'>) != datetime.datetime(2006, 5, 12, 12, 0)
         """
 
 
