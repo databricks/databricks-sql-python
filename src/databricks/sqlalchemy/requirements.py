@@ -9,6 +9,7 @@ force to be open(). If a test should be skipped on Databricks, it will be specif
 in test_suite.py with a Databricks-specific reason.
 
 See the special note about the array_type exclusion below.
+See special note about has_temp_table exclusion below.
 """
 
 import sqlalchemy.testing.requirements
@@ -114,4 +115,32 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         AS IDENTITY with a standard syntax.
         This is mainly to exclude MSSql.
         """
+        return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def has_temp_table(self):
+        """target dialect supports checking a single temp table name
+
+        unfortunately this is not the same as temp_table_names
+
+        SQLAlchemy's HasTableTest is not normalised in such a way that temp table tests
+        are separate from temp view and normal table tests. If those tests were split out,
+        we would just add detailed skip markers in test_suite.py. But since we'd like to
+        run the HasTableTest group for the features we support, we must set this exclusinon
+        to closed().
+
+        It would be ideal if there were a separate requirement for has_temp_view. Without it,
+        we're in a bind.
+        """
+        return sqlalchemy.testing.exclusions.closed()
+    
+    @property
+    def temporary_views(self):
+        """target database supports temporary views"""
+        return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def views(self):
+        """Target database must support VIEWs."""
+
         return sqlalchemy.testing.exclusions.open()

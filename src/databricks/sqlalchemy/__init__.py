@@ -44,6 +44,7 @@ class DatabricksDialect(default.DefaultDialect):
     supports_sane_rowcount: bool = False
     non_native_boolean_check_constraint: bool = False
     supports_identity_columns: bool = True
+    supports_schemas: bool = True
     paramstyle: str = "named"
 
     colspecs = {
@@ -236,6 +237,7 @@ class DatabricksDialect(default.DefaultDialect):
         # Databricks SQL Does not support transactions
         pass
 
+    @reflection.cache
     def has_table(
         self, connection, table_name, schema=None, catalog=None, **kwargs
     ) -> bool:

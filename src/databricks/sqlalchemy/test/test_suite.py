@@ -286,68 +286,29 @@ class LongNameBlowoutTest(LongNameBlowoutTest):
         """
 
 
+@pytest.mark.reviewed
 class HasTableTest(HasTableTest):
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table(self):
-        """
-                Exception
-
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table_schema(self):
-        """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    """Databricks does not support temporary tables. 
+    """
+    @pytest.mark.skip(reason="Databricks does not support temporary tables.")
     def test_has_table_temp_table(self):
-        """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+        pass
+    
+    @pytest.mark.skip(reason="Strange test design. See comments in test_suite.py")
     def test_has_table_temp_view(self):
-        """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+        """Databricks supports temporary views but this test depends on requirements.has_temp_table, which we
+        explicitly close so that we can run other tests in this group. See the comment under has_temp_table in
+        requirements.py for details.
 
-        """
+        From what I can see, there is no way to run this test since it will fail during setup if we mark has_temp_table
+        open(). It _might_ be possible to hijack this behaviour by implementing temp_table_keyword_args in our own
+        provision.py. Doing so would mean creating a real table during this class setup instead of a temp table. Then 
+        we could just skip the temp table tests but run the temp view tests. But this test fixture doesn't cleanup its
+        temp tables and has no hook to do so. 
 
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table_view(self):
+        It would be ideal for SQLAlchemy to define a separate requirements.has_temp_views.
         """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table_view_schema(self):
-        """
-                Exception
-                databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
+        pass
 
 class LastrowidTest(LastrowidTest):
     @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
