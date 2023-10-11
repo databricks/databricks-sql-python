@@ -533,6 +533,16 @@ def named_parameters_to_dbsqlparams_v2(parameters: List[Any]):
     return dbsqlparams
 
 
+def resolve_databricks_sql_integer_type(integer):
+    """Returns the smallest Databricks SQL integer type that can contain the passed integer"""
+    if -128 <= integer <= 127:
+        return DbSqlType.TINYINT
+    elif -2147483648 <= integer <= 2147483647:
+        return DbSqlType.INTEGER
+    else:
+        return DbSqlType.BIGINT
+
+
 def infer_types(params: list[DbSqlParameter]):
     type_lookup_table = {
         str: DbSqlType.STRING,
@@ -567,6 +577,10 @@ def infer_types(params: list[DbSqlParameter]):
         if _type == DbSqlType.DECIMAL:
             cast_exp = calculate_decimal_cast_string(param.value)
             _type = DbsqlDynamicDecimalType(cast_exp)
+
+        # int() requires special handling because one Python type can be cast to multiple SQL types (INT, BIGINT, TINYINT)
+        if _type == DbSqlType.INTEGER:
+            _type = resolve_databricks_sql_integer_type(param.value)
 
         # VOID / NULL types must be passed in a unique way as TSparkParameters with no value
         if _type == DbSqlType.VOID:

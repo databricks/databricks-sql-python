@@ -19,28 +19,36 @@ from typing import List
 
 
 class TestTSparkParameterConversion(object):
-    def test_conversion_e2e(self):
+    @pytest.mark.parametrize(
+        "input_value, expected_type",
+        [
+            ("a", "STRING"),
+            (1, "TINYINT"),
+            (1000, "INTEGER"),
+            (9223372036854775807, "BIGINT"),  # Max value of a signed 64-bit integer
+            (True, "BOOLEAN"),
+            (1.0, "FLOAT"),
+        ],
+    )
+    def test_conversion_e2e(self, input_value, expected_type):
         """This behaviour falls back to Python's default string formatting of numbers"""
-        assert named_parameters_to_tsparkparams(
-            ["a", 1, True, 1.0, DbSqlParameter(value="1.0", type=DbSqlType.DECIMAL)]
-        ) == [
-            TSparkParameter(
-                name="", type="STRING", value=TSparkParameterValue(stringValue="a")
-            ),
-            TSparkParameter(
-                name="", type="INTEGER", value=TSparkParameterValue(stringValue="1")
-            ),
-            TSparkParameter(
-                name="", type="BOOLEAN", value=TSparkParameterValue(stringValue="True")
-            ),
-            TSparkParameter(
-                name="", type="FLOAT", value=TSparkParameterValue(stringValue="1.0")
-            ),
+        output = named_parameters_to_tsparkparams([input_value])
+        expected = TSparkParameter(
+            name="",
+            type=expected_type,
+            value=TSparkParameterValue(stringValue=str(input_value)),
+        )
+        assert output == [expected]
+
+    def test_conversion_e2e_decimal(self):
+        input = DbSqlParameter(value="1.0", type=DbSqlType.DECIMAL)
+        output = named_parameters_to_tsparkparams([input])
+        assert output == [
             TSparkParameter(
                 name="",
                 type="DECIMAL(2,1)",
                 value=TSparkParameterValue(stringValue="1.0"),
-            ),
+            )
         ]
 
     def test_basic_conversions_v1(self):
@@ -69,10 +77,24 @@ class TestTSparkParameterConversion(object):
         with pytest.raises(ValueError):
             infer_types([DbSqlParameter("", {1: 1})])
 
-    def test_infer_types_integer(self):
-        input = DbSqlParameter("", 1)
+    @pytest.mark.parametrize(
+        "input_value, expected_type",
+        [
+            (-128, DbSqlType.TINYINT),
+            (127, DbSqlType.TINYINT),
+            (-2147483649, DbSqlType.BIGINT),
+            (-2147483648, DbSqlType.INTEGER),
+            (2147483647, DbSqlType.INTEGER),
+            (-9223372036854775808, DbSqlType.BIGINT),
+            (9223372036854775807, DbSqlType.BIGINT),
+        ],
+    )
+    def test_infer_types_integer(self, input_value, expected_type):
+        input = DbSqlParameter("", input_value)
         output = infer_types([input])
-        assert output == [DbSqlParameter("", "1", DbSqlType.INTEGER)]
+        assert output == [
+            DbSqlParameter("", str(input_value), expected_type)
+        ], f"{output[0].type} received, expected {expected_type}"
 
     def test_infer_types_boolean(self):
         input = DbSqlParameter("", True)
@@ -101,7 +123,6 @@ class TestTSparkParameterConversion(object):
         assert x.type.value == "DECIMAL(2,1)"
 
     def test_infer_types_none(self):
-
         input = DbSqlParameter("", None)
         output: List[DbSqlParameter] = infer_types([input])
 
