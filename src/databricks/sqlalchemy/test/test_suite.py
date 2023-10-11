@@ -196,58 +196,35 @@ class FetchLimitOffsetTest(FetchLimitOffsetTest):
         pass
 
 
+@pytest.mark.reviewed
 class FutureTableDDLTest(FutureTableDDLTest):
     @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
+        reason="Comment reflection is possible but not implemented in this dialect."
     )
     def test_add_table_comment(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
 
     @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
-    )
-    def test_create_table(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
-
-    @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
-    )
-    def test_drop_table(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
-
-    @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
+        reason="Comment reflection is possible but not implemented in this dialect."
     )
     def test_drop_table_comment(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
 
-    @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
-    )
-    def test_underscore_names(self):
+    @pytest.mark.skip(reason="Databricks does not support indexes")
+    def test_create_index_if_not_exists(self):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
         """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy._test_table'
-        """
+        pass
 
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_create_table_schema(self):
+    @pytest.mark.skip(reason="Databricks does not support indexes")
+    def test_drop_index_if_exists(self):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
         """
-        Exception:
-        - sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.test_schema.test_table'
-        """
+        pass
 
 
 class IdentityAutoincrementTest(IdentityAutoincrementTest):
