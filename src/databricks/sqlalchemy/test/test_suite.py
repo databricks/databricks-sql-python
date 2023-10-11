@@ -264,18 +264,13 @@ class IdentityAutoincrementTest(IdentityAutoincrementTest):
         """
 
 
+@pytest.mark.reviewed
 class LongNameBlowoutTest(LongNameBlowoutTest):
-    @pytest.mark.skip(
-        reason="CreateIndex is not supported in Unity Catalog + parameters cannot exceed 255 characters in length"
-    )
+    """These tests all include assertions that the tested name > 255 characters
+    """
+    @pytest.mark.skip(reason="Databricks constraint names are limited to 255 characters")
     def test_long_convention_name(self):
-        """
-        This test is parameterized. It receives the following failures from Databricks compute
-        Exception:
-            [fk-_exclusions0] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [RequestId=9e4262cc-05bc-4086-b17d-0c8082599218 ErrorClass=INVALID_PARAMETER_VALUE.INVALID_FIELD_LENGTH] CreateTable foreign_key.name too long. Maximum length is 255 characters.
-            [ix-_exclusions2] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [UC_COMMAND_NOT_SUPPORTED.WITHOUT_RECOMMENDATION] The command(s): CreateIndex are not supported in Unity Catalog.
-            [pk-_exclusions1] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [RequestId=f3e6940b-bd69-455d-9314-87522bcf8cef ErrorClass=INVALID_PARAMETER_VALUE.INVALID_FIELD_LENGTH] CreateTable primary_key.name too long. Maximum length is 255 characters.
-        """
+        pass
 
     # class ExceptionTest(ExceptionTest):
     @pytest.mark.skip(reason="Databricks may not support this method.")
