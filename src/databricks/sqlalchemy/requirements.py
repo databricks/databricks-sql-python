@@ -101,3 +101,17 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         """target platform supports IF NOT EXISTS / IF EXISTS for tables."""
 
         return sqlalchemy.testing.exclusions.open()
+
+    @property
+    def identity_columns(self):
+        """If a backend supports GENERATED { ALWAYS | BY DEFAULT }
+        AS IDENTITY"""
+        return sqlalchemy.testing.exclusions.open()
+
+    @property
+    def identity_columns_standard(self):
+        """If a backend supports GENERATED { ALWAYS | BY DEFAULT }
+        AS IDENTITY with a standard syntax.
+        This is mainly to exclude MSSql.
+        """
+        return sqlalchemy.testing.exclusions.open()

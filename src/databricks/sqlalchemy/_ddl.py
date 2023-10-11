@@ -26,6 +26,19 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         logger.warn("Databricks does not support check constraints")
         pass
 
+    def visit_identity_column(self, identity, **kw):
+        """When configuring an Identity() with Databricks, only the always option is supported.
+        All other options are ignored.
+
+        Note: IDENTITY columns must always be defined as BIGINT. An exception will be raised if INT is used.
+
+        https://www.databricks.com/blog/2022/08/08/identity-columns-to-generate-surrogate-keys-are-now-available-in-a-lakehouse-near-you.html
+        """
+        text = "GENERATED %s AS IDENTITY" % (
+            "ALWAYS" if identity.always else "BY DEFAULT",
+        )
+        return text
+
 
 class DatabricksStatementCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):

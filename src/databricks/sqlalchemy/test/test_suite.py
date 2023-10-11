@@ -212,14 +212,14 @@ class FutureTableDDLTest(FutureTableDDLTest):
         """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
         pass
 
-    @pytest.mark.skip(reason="Databricks does not support indexes")
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
     def test_create_index_if_not_exists(self):
         """We could use requirements.index_reflection and requirements.index_ddl_if_exists
         here to disable this but prefer a more meaningful skip message
         """
         pass
 
-    @pytest.mark.skip(reason="Databricks does not support indexes")
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
     def test_drop_index_if_exists(self):
         """We could use requirements.index_reflection and requirements.index_ddl_if_exists
         here to disable this but prefer a more meaningful skip message
@@ -227,12 +227,40 @@ class FutureTableDDLTest(FutureTableDDLTest):
         pass
 
 
-class IdentityAutoincrementTest(IdentityAutoincrementTest):
-    @pytest.mark.skip(reason="Identity column handling needs work.")
-    def test_autoincrement_with_identity(self):
+@pytest.mark.reviewed
+class IdentityColumnTest(IdentityColumnTest):
+    @pytest.mark.skip(
+        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
+    )
+    def test_select_all(self):
+        """The setup for this test tries to create a table with a DELTA IDENTITY column but has two problems:
+        1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
+        2. It tries to set the start == 42, which Databricks doesn't support
+
+        I can get the test to _run_ by patching the table fixture to use BigInteger(). But it asserts that the
+        identity of two rows are 42 and 43, which is not possible since they will be rows 1 and 2 instead.
+
+        I'm satisified through manual testing that our implementation of visit_identity_column works but a better test is needed.
         """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
+        pass
+
+    @pytest.mark.skip(
+        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
+    )
+    def test_select_columns(self):
+        """See comment under self.test_select_all() as it applies here as well."""
+        pass
+
+
+@pytest.mark.reviewed
+class IdentityAutoincrementTest(IdentityAutoincrementTest):
+    @pytest.mark.skip(
+        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
+    )
+    def test_autoincrement_with_identity(self):
+        """This test has the same issue as IdentityColumnTest.test_select_all in that it creates a table with identity
+        using an Integer() rather than a BigInteger(). If I override this behaviour to use a BigInteger() instead, the
+        test passes.
         """
 
 
