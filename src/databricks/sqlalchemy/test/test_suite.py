@@ -332,29 +332,9 @@ class LastrowidTest(LastrowidTest):
     pass
 
 
+@pytest.mark.reviewed
 class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
-    @pytest.mark.skip(reason="Primary key handling needs work.")
-    def test_pk_column_order(self):
-        """
-        Exception:
-        AssertionError: [] != ['name', 'id', 'attr']
-            assert [] == ['name', 'id', 'attr']
-            Right contains 3 more items, first extra item: 'name'
-            Full diff:
-            - ['name', 'id', 'attr']
-            + []
-        """
-
-    @pytest.mark.skip(
-        reason="Composite key implementation needs. Work may not be supported by Databricks."
-    )
-    def test_fk_column_order(self):
-        """
-        Excpetion:
-            AssertionError: 0 != 1
-            assert 0 == 1
-        """
-
+    pass
 
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(reason="Test setup needs adjustment.")
