@@ -312,22 +312,24 @@ class HasTableTest(HasTableTest):
         pass
 
 
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="This dialect does not support implicit autoincrement. See comments in test_suite.py"
+)
 class LastrowidTest(LastrowidTest):
-    @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
-    def test_autoincrement_on_insert(self):
-        """
-        Exception
-            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
+    """SQLAlchemy docs describe that a column without an explicit Identity() may implicitly create one if autoincrement=True.
+    That is what this method tests. Databricks supports auto-incrementing IDENTITY columns but they must be explicitly
+    declared. This limitation is present in our dialect as well. Which means that SQLAlchemy's autoincrement setting of a column
+    is ignored. We emit a logging.WARN message if you try it.
 
-        """
+    In the future we could handle this autoincrement by implicitly calling the visit_identity_column() method of our DDLCompiler
+    when autoincrement=True. There is an example of this in the Microsoft SQL Server dialect: MSSDDLCompiler.get_column_specification
 
-    @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
-    def test_last_inserted_id(self):
-        """
-        Exception:
-            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
+    For now, if you need to create a SQLAlchemy column with an auto-incrementing identity, you must set this explicitly in your column
+    definition by passing an Identity() to the column constructor.
+    """
 
-        """
+    pass
 
 
 class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
