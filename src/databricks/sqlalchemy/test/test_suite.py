@@ -228,28 +228,18 @@ class FutureTableDDLTest(FutureTableDDLTest):
 
 
 @pytest.mark.reviewed
+@pytest.mark.skip(reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py")
 class IdentityColumnTest(IdentityColumnTest):
-    @pytest.mark.skip(
-        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
-    )
-    def test_select_all(self):
-        """The setup for this test tries to create a table with a DELTA IDENTITY column but has two problems:
-        1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
-        2. It tries to set the start == 42, which Databricks doesn't support
+    """The setup for these tests tries to create a table with a DELTA IDENTITY column but has two problems:
+    1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
+    2. It tries to set the start == 42, which Databricks doesn't support
 
-        I can get the test to _run_ by patching the table fixture to use BigInteger(). But it asserts that the
-        identity of two rows are 42 and 43, which is not possible since they will be rows 1 and 2 instead.
+    I can get the tests to _run_ by patching the table fixture to use BigInteger(). But it asserts that the
+    identity of two rows are 42 and 43, which is not possible since they will be rows 1 and 2 instead.
 
-        I'm satisified through manual testing that our implementation of visit_identity_column works but a better test is needed.
-        """
-        pass
-
-    @pytest.mark.skip(
-        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
-    )
-    def test_select_columns(self):
-        """See comment under self.test_select_all() as it applies here as well."""
-        pass
+    I'm satisified through manual testing that our implementation of visit_identity_column works but a better test is needed.
+    """
+    pass
 
 
 @pytest.mark.reviewed

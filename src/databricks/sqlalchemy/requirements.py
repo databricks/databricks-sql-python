@@ -116,7 +116,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         This is mainly to exclude MSSql.
         """
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def has_temp_table(self):
         """target dialect supports checking a single temp table name
