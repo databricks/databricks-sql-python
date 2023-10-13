@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 import sqlalchemy
 from sqlalchemy import event, DDL
-from sqlalchemy.engine import Engine, default, reflection
+from sqlalchemy.engine import Engine, default, reflection, Connection, Row, CursorResult
 from sqlalchemy.engine.interfaces import (
     ReflectedForeignKeyConstraint,
     ReflectedPrimaryKeyConstraint,
@@ -31,8 +31,34 @@ else:
     class DatabricksImpl(DefaultImpl):
         __dialect__ = "databricks"
 
+
 DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
 DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
+
+
+def _match_table_not_found_string(message: str) -> bool:
+    """Return True if the message contains a substring indicating that a table was not found"""
+    return any(
+        [
+            DBR_LTE_12_NOT_FOUND_STRING in message,
+            DBR_GT_12_NOT_FOUND_STRING in message,
+        ]
+    )
+
+
+def _describe_table_extended_result_to_dict(result: CursorResult) -> dict:
+    """Transform the output of DESCRIBE TABLE EXTENDED into a dictionary
+
+    The output from DESCRIBE TABLE EXTENDED puts all values in the `data_type` column
+    Even CONSTRAINT descriptions are contained in the `data_type` column
+    Some rows have an empty string for their col_name. These are present only for spacing
+    so we ignore them.
+    """
+
+    result_dict = {row.col_name: row.data_type for row in result if row.col_name != ""}
+
+    return result_dict
+
 
 COLUMN_TYPE_MAP = {
     "boolean": sqlalchemy.types.Boolean,
@@ -53,6 +79,7 @@ COLUMN_TYPE_MAP = {
     "timestamp": sqlalchemy.types.DateTime,
     "date": sqlalchemy.types.Date,
 }
+
 
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
@@ -156,6 +183,46 @@ class DatabricksDialect(default.DefaultDialect):
 
         return columns
 
+    def _describe_table_extended(
+        self,
+        connection: Connection,
+        table_name: str,
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        expect_result=True,
+    ):
+        """Run DESCRIBE TABLE EXTENDED on a table and return a dictionary of the result.
+
+        This method is the fastest way to check for the presence of a table in a schema.
+
+        If expect_result is False, this method returns None as the output dict isn't required.
+
+        Raises NoSuchTableError if the table is not present in the schema.
+        """
+
+        _target_catalog = catalog_name or self.catalog
+        _target_schema = schema_name or self.schema
+        _target = f"`{_target_catalog}`.`{_target_schema}`.`{table_name}`"
+
+        # sql injection risk?
+        # DESCRIBE TABLE EXTENDED in DBR doesn't support parameterised inputs :(
+        stmt = DDL(f"DESCRIBE TABLE EXTENDED {_target}")
+
+        try:
+            result = connection.execute(stmt).all()
+        except DatabaseError as e:
+            if _match_table_not_found_string(str(e)):
+                raise sqlalchemy.exc.NoSuchTableError(
+                    f"No such table {table_name}"
+                ) from e
+            raise e
+
+        if not expect_result:
+            return None
+
+        fmt_result = _describe_table_extended_result_to_dict(result)
+        return fmt_result
+
     @reflection.cache
     def get_pk_constraint(
         self,
@@ -169,16 +236,18 @@ class DatabricksDialect(default.DefaultDialect):
         """
 
         with self.get_connection_cursor(connection) as cursor:
-            
             try:
                 # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
-                result = cursor.execute(f"DESCRIBE TABLE EXTENDED {table_name}").fetchall()
+                result = cursor.execute(
+                    f"DESCRIBE TABLE EXTENDED {table_name}"
+                ).fetchall()
             except ServerOperationError as e:
                 if DBR_GT_12_NOT_FOUND_STRING in str(
                     e
                 ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
-                    raise sqlalchemy.exc.NoSuchTableError(f"No such table {table_name}") from e
-
+                    raise sqlalchemy.exc.NoSuchTableError(
+                        f"No such table {table_name}"
+                    ) from e
 
         # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
         # a primary key constraint will be found in its output. So we cycle through its
@@ -237,7 +306,9 @@ class DatabricksDialect(default.DefaultDialect):
             if DBR_GT_12_NOT_FOUND_STRING in str(
                 e
             ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
-                raise sqlalchemy.exc.NoSuchTableError(f"No such table {table_name}") from e
+                raise sqlalchemy.exc.NoSuchTableError(
+                    f"No such table {table_name}"
+                ) from e
 
         # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
         # a foreign key constraint will be found in its output. So we cycle through its
@@ -333,29 +404,20 @@ class DatabricksDialect(default.DefaultDialect):
     def has_table(
         self, connection, table_name, schema=None, catalog=None, **kwargs
     ) -> bool:
-        """SQLAlchemy docstrings say dialect providers must implement this method"""
-
-        _schema = schema or self.schema
-        _catalog = catalog or self.catalog
-
-        # DBR >12.x uses underscores in error messages
-        DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
-        DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
+        """For internal dialect use, check the existence of a particular table
+        or view in the database.
+        """
 
         try:
-            res = connection.execute(
-                sqlalchemy.text(
-                    f"DESCRIBE TABLE `{_catalog}`.`{_schema}`.`{table_name}`"
-                )
+            self._describe_table_extended(
+                connection=connection,
+                table_name=table_name,
+                catalog_name=catalog,
+                schema_name=schema,
             )
             return True
-        except DatabaseError as e:
-            if DBR_GT_12_NOT_FOUND_STRING in str(
-                e
-            ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
-                return False
-            else:
-                raise e
+        except sqlalchemy.exc.NoSuchTableError as e:
+            return False
 
     def get_connection_cursor(self, connection):
         """Added for backwards compatibility with 1.3.x"""
@@ -372,8 +434,7 @@ class DatabricksDialect(default.DefaultDialect):
 
     @reflection.cache
     def get_schema_names(self, connection, **kw):
-        """Return a list of all schema names available in the database.
-        """
+        """Return a list of all schema names available in the database."""
         stmt = DDL("SHOW SCHEMAS")
         result = connection.execute(stmt)
         schema_list = [row[0] for row in result]
