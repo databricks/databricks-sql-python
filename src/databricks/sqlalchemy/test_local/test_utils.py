@@ -2,6 +2,7 @@ import pytest
 from databricks.sqlalchemy.utils import (
     extract_identifiers_from_string,
     extract_identifier_groups_from_string,
+    extract_three_level_identifier_from_constraint_string
 )
 
 
@@ -36,3 +37,14 @@ def test_extract_identifer_batches(input, expected):
     assert (
         extract_identifier_groups_from_string(input) == expected
     ), "Failed to extract identifier groups from string"
+
+def test_extract_3l_namespace_from_constraint_string():
+
+    input = "FOREIGN KEY (`parent_user_id`) REFERENCES `main`.`pysql_dialect_compliance`.`users` (`user_id`)"
+    expected = {
+        "catalog": "main",
+        "schema": "pysql_dialect_compliance",
+        "table": "users"
+    }
+
+    assert extract_three_level_identifier_from_constraint_string(input) == expected, "Failed to extract 3L namespace from constraint string"

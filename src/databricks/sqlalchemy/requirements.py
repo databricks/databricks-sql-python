@@ -176,3 +176,9 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         Databricks supports unique constraints but they are not implemented in this dialect.
         """
         return sqlalchemy.testing.exclusions.closed()
+    
+    @property
+    def reflects_pk_names(self):
+        """Target driver reflects the name of primary key constraints."""
+
+        return sqlalchemy.testing.exclusions.open()
