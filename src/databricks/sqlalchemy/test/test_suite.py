@@ -122,252 +122,209 @@ class DateHistoricTest(DateHistoricTest):
     pass
 
 
-class FetchLimitOffsetTest(FetchLimitOffsetTest):
-    @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
-    )
-    def test_bound_offset(self):
-        """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
+@pytest.mark.reviewed
+class RowFetchTest(RowFetchTest):
+    pass
 
+
+@pytest.mark.reviewed
+class FetchLimitOffsetTest(FetchLimitOffsetTest):
+    @pytest.mark.flaky
     @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
+        reason="Insertion order on Databricks is not deterministic. See comment in test_suite.py."
     )
     def test_limit_render_multiple_times(self):
-        """
-        Exception:
-            AssertionError: [(5,)] != [(1,)]
-        """
+        """This test depends on the order that records are inserted into the table. It's passing criteria requires that
+        a record inserted with id=1 is the first record returned when no ORDER BY clause is specified. But Databricks occasionally
+        INSERTS in a different order, which makes this test seem to fail. The test is flaky, but the underlying functionality
+        (can multiple LIMIT clauses be rendered) is not broken.
 
-    @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
-    )
-    def test_simple_offset(self):
+        Unclear if this is a bug in Databricks, Delta, or some race-condition in the test itself.
         """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
+        pass
 
-    @pytest.mark.skip(
-        reason="Dialect should advertise which offset rules Databricks supports. Offset handling needs work."
-    )
-    def test_simple_offset_zero(self):
-        """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_bound_fetch_offset(self):
+        pass
 
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_expr_offset(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [INVALID_LIMIT_LIKE_EXPRESSION.IS_NEGATIVE] The limit like expression "-1" is invalid. The limit expression must be equal to or greater than 0, but got -1.; line 3 pos 7
-        """
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_no_order(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_nobinds(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_offset(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_percent(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_percent_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_simple_fetch_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_expr_fetch_offset(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_percent(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_percent_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_ties(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
+    def test_fetch_offset_ties_exact_number(self):
+        pass
 
 
+@pytest.mark.reviewed
 class FutureTableDDLTest(FutureTableDDLTest):
     @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
+        reason="Comment reflection is possible but not implemented in this dialect."
     )
     def test_add_table_comment(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
 
     @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
-    )
-    def test_create_table(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
-
-    @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
-    )
-    def test_drop_table(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
-
-    @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
+        reason="Comment reflection is possible but not implemented in this dialect."
     )
     def test_drop_table_comment(self):
-        """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy.test_table'
-        """
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
 
-    @pytest.mark.skip(
-        reason="Internal bug. DESCRIBE TABLE function should deliver an executable object."
-    )
-    def test_underscore_names(self):
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_create_index_if_not_exists(self):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
         """
-        Exception:
-            sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.pysql_sqlalchemy._test_table'
-        """
+        pass
 
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_create_table_schema(self):
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_drop_index_if_exists(self):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
         """
-        Exception:
-        - sqlalchemy.exc.ObjectNotExecutableError: Not an executable object: 'DESCRIBE TABLE main.test_schema.test_table'
-        """
+        pass
 
 
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py")
+class IdentityColumnTest(IdentityColumnTest):
+    """The setup for these tests tries to create a table with a DELTA IDENTITY column but has two problems:
+    1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
+    2. It tries to set the start == 42, which Databricks doesn't support
+
+    I can get the tests to _run_ by patching the table fixture to use BigInteger(). But it asserts that the
+    identity of two rows are 42 and 43, which is not possible since they will be rows 1 and 2 instead.
+
+    I'm satisified through manual testing that our implementation of visit_identity_column works but a better test is needed.
+    """
+    pass
+
+
+@pytest.mark.reviewed
 class IdentityAutoincrementTest(IdentityAutoincrementTest):
-    @pytest.mark.skip(reason="Identity column handling needs work.")
-    def test_autoincrement_with_identity(self):
-        """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
-        """
-
-
-class LongNameBlowoutTest(LongNameBlowoutTest):
     @pytest.mark.skip(
-        reason="CreateIndex is not supported in Unity Catalog + parameters cannot exceed 255 characters in length"
+        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
+    )
+    def test_autoincrement_with_identity(self):
+        """This test has the same issue as IdentityColumnTest.test_select_all in that it creates a table with identity
+        using an Integer() rather than a BigInteger(). If I override this behaviour to use a BigInteger() instead, the
+        test passes.
+        """
+
+
+@pytest.mark.reviewed
+class LongNameBlowoutTest(LongNameBlowoutTest):
+    """These tests all include assertions that the tested name > 255 characters"""
+
+    @pytest.mark.skip(
+        reason="Databricks constraint names are limited to 255 characters"
     )
     def test_long_convention_name(self):
-        """
-        This test is parameterized. It receives the following failures from Databricks compute
-        Exception:
-            [fk-_exclusions0] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [RequestId=9e4262cc-05bc-4086-b17d-0c8082599218 ErrorClass=INVALID_PARAMETER_VALUE.INVALID_FIELD_LENGTH] CreateTable foreign_key.name too long. Maximum length is 255 characters.
-            [ix-_exclusions2] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [UC_COMMAND_NOT_SUPPORTED.WITHOUT_RECOMMENDATION] The command(s): CreateIndex are not supported in Unity Catalog.
-            [pk-_exclusions1] sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [RequestId=f3e6940b-bd69-455d-9314-87522bcf8cef ErrorClass=INVALID_PARAMETER_VALUE.INVALID_FIELD_LENGTH] CreateTable primary_key.name too long. Maximum length is 255 characters.
-        """
+        pass
 
 
-class RowFetchTest(RowFetchTest):
-    @pytest.mark.skip(
-        reason="Date type implementation needs work. Timezone information not preserved."
-    )
-    def test_row_w_scalar_select(self):
-        """
-        Exception:
-            AssertionError: datetime.datetime(2006, 5, 12, 12, 0, tzinfo=<StaticTzInfo 'Etc/UTC'>) != datetime.datetime(2006, 5, 12, 12, 0)
-        """
-
-
+@pytest.mark.reviewed
 class ExceptionTest(ExceptionTest):
-    @pytest.mark.skip(reason="Databricks may not support this method.")
+    @pytest.mark.skip(reason="Databricks doesn't enforce primary key constraints.")
     def test_integrity_error(self):
+        """Per Databricks documentation, primary and foreign key constraints are informational only
+        and are not enforced.
+
+        https://docs.databricks.com/api/workspace/tableconstraints
         """
-        Exception:
-            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
-        """
+        pass
 
 
+@pytest.mark.reviewed
 class HasTableTest(HasTableTest):
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table(self):
-        """
-                Exception
+    """Databricks does not support temporary tables."""
 
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table_schema(self):
-        """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    @pytest.mark.skip(reason="Databricks does not support temporary tables.")
     def test_has_table_temp_table(self):
-        """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
+        pass
 
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
+    @pytest.mark.skip(reason="Strange test design. See comments in test_suite.py")
     def test_has_table_temp_view(self):
+        """Databricks supports temporary views but this test depends on requirements.has_temp_table, which we
+        explicitly close so that we can run other tests in this group. See the comment under has_temp_table in
+        requirements.py for details.
+
+        From what I can see, there is no way to run this test since it will fail during setup if we mark has_temp_table
+        open(). It _might_ be possible to hijack this behaviour by implementing temp_table_keyword_args in our own
+        provision.py. Doing so would mean creating a real table during this class setup instead of a temp table. Then
+        we could just skip the temp table tests but run the temp view tests. But this test fixture doesn't cleanup its
+        temp tables and has no hook to do so.
+
+        It would be ideal for SQLAlchemy to define a separate requirements.has_temp_views.
         """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table_view(self):
-        """
-                Exception
-                    databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
-
-    @pytest.mark.skip(reason="Schema is not properly configured for this test.")
-    def test_has_table_view_schema(self):
-        """
-                Exception
-                databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-        To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-
-        """
+        pass
 
 
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="This dialect does not support implicit autoincrement. See comments in test_suite.py"
+)
 class LastrowidTest(LastrowidTest):
-    @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
-    def test_autoincrement_on_insert(self):
-        """
-        Exception
-            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
+    """SQLAlchemy docs describe that a column without an explicit Identity() may implicitly create one if autoincrement=True.
+    That is what this method tests. Databricks supports auto-incrementing IDENTITY columns but they must be explicitly
+    declared. This limitation is present in our dialect as well. Which means that SQLAlchemy's autoincrement setting of a column
+    is ignored. We emit a logging.WARN message if you try it.
 
-        """
+    In the future we could handle this autoincrement by implicitly calling the visit_identity_column() method of our DDLCompiler
+    when autoincrement=True. There is an example of this in the Microsoft SQL Server dialect: MSSDDLCompiler.get_column_specification
 
-    @pytest.mark.skip(reason="DDL for INSERT requires adjustment")
-    def test_last_inserted_id(self):
-        """
-        Exception:
-            databricks.sql.exc.ServerOperationError: Column id is not specified in INSERT
+    For now, if you need to create a SQLAlchemy column with an auto-incrementing identity, you must set this explicitly in your column
+    definition by passing an Identity() to the column constructor.
+    """
 
-        """
+    pass
 
 
+@pytest.mark.reviewed
 class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
-    @pytest.mark.skip(reason="Primary key handling needs work.")
-    def test_pk_column_order(self):
-        """
-        Exception:
-        AssertionError: [] != ['name', 'id', 'attr']
-            assert [] == ['name', 'id', 'attr']
-            Right contains 3 more items, first extra item: 'name'
-            Full diff:
-            - ['name', 'id', 'attr']
-            + []
-        """
-
-    @pytest.mark.skip(
-        reason="Composite key implementation needs. Work may not be supported by Databricks."
-    )
-    def test_fk_column_order(self):
-        """
-        Excpetion:
-            AssertionError: 0 != 1
-            assert 0 == 1
-        """
-
+    pass
 
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(reason="Test setup needs adjustment.")
@@ -442,51 +399,6 @@ class InsertBehaviorTest(InsertBehaviorTest):
             E               [SQL: INSERT INTO autoinc_pk () VALUES ()]
             E               [parameters: ({}, {}, {})]
             E               (Background on this error at: https://sqlalche.me/e/14/4xp6)
-        """
-
-
-class TableDDLTest(TableDDLTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_create_table(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [TABLE_OR_VIEW_ALREADY_EXISTS] Cannot create table or view `pysql_sqlalchemy`.`test_table` because it already exists.
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_create_table_schema(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-        """
-
-    @pytest.mark.skip(
-        reason="DDL handling needs work. Some features not implemented in dialect."
-    )
-    def test_add_table_comment(self):
-        """
-        Exception:
-            NotImplementedError
-        """
-
-    @pytest.mark.skip(
-        reason="DDL handling needs work. Some features not implemented in dialect."
-    )
-    def test_drop_table_comment(self):
-        """
-        Exception:
-            NotImplementedError
-        """
-
-    @pytest.mark.skip(
-        reason="DDL handling needs work. Some features not implemented in dialect."
-    )
-    def test_underscore_names(self):
-        """
-        This exception may require this test to simply be rewritten as it appears to be a race condition.
-
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [TABLE_OR_VIEW_ALREADY_EXISTS] Cannot create table or view `pysql_sqlalchemy`.`_test_table` because it already exists.
         """
 
 
@@ -674,79 +586,50 @@ class ComponentReflectionTest(ComponentReflectionTest):
         """
 
 
-class HasIndexTest(HasIndexTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_has_index_schema(self):
+@pytest.mark.reviewed
+class TableDDLTest(TableDDLTest):
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_create_index_if_not_exists(self, connection):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
         """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) [UC_COMMAND_NOT_SUPPORTED.WITHOUT_RECOMMENDATION] The command(s): CreateIndex are not supported in Unity Catalog.
-        """
-
-    @pytest.mark.skip(reason="Dialect doesn't know how to handle indexes.")
-    def test_has_index(self):
-        """
-        Exception:
-            AssertionError: assert False
-        """
-
-
-class QuotedNameArgumentTest(QuotedNameArgumentTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_check_constraints(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_columns(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_foreign_keys(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_indexes(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_pk_constraint(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_table_comment(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_table_options(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_view_definition(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_get_unique_constraints(self):
         pass
+
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_drop_index_if_exists(self, connection):
+        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
+        here to disable this but prefer a more meaningful skip message
+        """
+        pass
+
+    @pytest.mark.skip(
+        reason="Comment reflection is possible but not implemented in this dialect."
+    )
+    def test_add_table_comment(self, connection):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
+
+    @pytest.mark.skip(
+        reason="Comment reflection is possible but not implemented in this dialect."
+    )
+    def test_drop_table_comment(self, connection):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support indexes.")
+class HasIndexTest(HasIndexTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Databricks does not support spaces in table names. See comment in test_suite.py"
+)
+class QuotedNameArgumentTest(QuotedNameArgumentTest):
+    """These tests are challenging. The whole test setup depends on a table with a name like `quote ' one`
+    which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest
+    also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
+    methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
+    """

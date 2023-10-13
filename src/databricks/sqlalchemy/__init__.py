@@ -1,24 +1,23 @@
-"""This module's layout loosely follows example of SQLAlchemy's postgres dialect
-"""
-
-import decimal, re, datetime
-from dateutil.parser import parse
+import re
+from typing import Any, Optional
 
 import sqlalchemy
-from sqlalchemy import types, event
-from sqlalchemy.engine import default, Engine
+from sqlalchemy import event
+from sqlalchemy.engine import Engine, default, reflection
+from sqlalchemy.engine.interfaces import (
+    ReflectedForeignKeyConstraint,
+    ReflectedPrimaryKeyConstraint,
+)
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
-from sqlalchemy.engine import reflection
 
-from databricks import sql
+import databricks.sqlalchemy._ddl as dialect_ddl_impl
 
 # This import is required to process our @compiles decorators
 import databricks.sqlalchemy._types as dialect_type_impl
-
-
-from databricks.sqlalchemy.base import (
-    DatabricksDDLCompiler,
-    DatabricksIdentifierPreparer,
+from databricks import sql
+from databricks.sqlalchemy.utils import (
+    extract_identifier_groups_from_string,
+    extract_identifiers_from_string,
 )
 
 try:
@@ -39,13 +38,16 @@ class DatabricksDialect(default.DefaultDialect):
     name: str = "databricks"
     driver: str = "databricks"
     default_schema_name: str = "default"
-    preparer = DatabricksIdentifierPreparer  # type: ignore
-    ddl_compiler = DatabricksDDLCompiler
+    preparer = dialect_ddl_impl.DatabricksIdentifierPreparer  # type: ignore
+    ddl_compiler = dialect_ddl_impl.DatabricksDDLCompiler
+    statement_compiler = dialect_ddl_impl.DatabricksStatementCompiler
     supports_statement_cache: bool = True
     supports_multivalues_insert: bool = True
     supports_native_decimal: bool = True
     supports_sane_rowcount: bool = False
     non_native_boolean_check_constraint: bool = False
+    supports_identity_columns: bool = True
+    supports_schemas: bool = True
     paramstyle: str = "named"
 
     colspecs = {
@@ -149,25 +151,43 @@ class DatabricksDialect(default.DefaultDialect):
 
         return columns
 
-    def get_pk_constraint(self, connection, table_name, schema=None, **kw):
+    @reflection.cache
+    def get_pk_constraint(
+        self,
+        connection,
+        table_name: str,
+        schema: Optional[str] = None,
+        **kw: Any,
+    ) -> ReflectedPrimaryKeyConstraint:
         """Return information about the primary key constraint on
         table_name`.
-
-        Given a :class:`_engine.Connection`, a string
-        `table_name`, and an optional string `schema`, return primary
-        key information as a dictionary with these keys:
-
-        constrained_columns
-          a list of column names that make up the primary key
-
-        name
-          optional name of the primary key constraint.
-
         """
-        # TODO: implement this behaviour
-        return {"constrained_columns": []}
 
-    def get_foreign_keys(self, connection, table_name, schema=None, **kw):
+        with self.get_connection_cursor(connection) as cursor:
+            # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
+            result = cursor.execute(f"DESCRIBE TABLE EXTENDED {table_name}").fetchall()
+
+        # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
+        # a primary key constraint will be found in its output. So we cycle through its
+        # output looking for a match that includes "PRIMARY KEY". This is brittle. We
+        # could optionally make two roundtrips: the first would query information_schema
+        # for the name of the primary key constraint on this table, and a second to
+        # DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
+        # But for now we instead assume that Python list comprehension is faster than a
+        # network roundtrip.
+        dte_dict = {row["col_name"]: row["data_type"] for row in result}
+        target = [(k, v) for k, v in dte_dict.items() if "PRIMARY KEY" in v]
+        if target:
+            name, _constraint_string = target[0]
+            column_list = extract_identifiers_from_string(_constraint_string)
+        else:
+            name, column_list = None, None
+
+        return {"constrained_columns": column_list, "name": name}
+
+    def get_foreign_keys(
+        self, connection, table_name, schema=None, **kw
+    ) -> ReflectedForeignKeyConstraint:
         """Return information about foreign_keys in `table_name`.
 
         Given a :class:`_engine.Connection`, a string
@@ -190,8 +210,60 @@ class DatabricksDialect(default.DefaultDialect):
           a list of column names in the referred table that correspond to
           constrained_columns
         """
-        # TODO: Implement this behaviour
-        return []
+        """Return information about the primary key constraint on
+        table_name`.
+        """
+
+        with self.get_connection_cursor(connection) as cursor:
+            # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
+            result = cursor.execute(
+                f"DESCRIBE TABLE EXTENDED {schema + '.' if schema else ''}{table_name}"
+            ).fetchall()
+
+        # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
+        # a foreign key constraint will be found in its output. So we cycle through its
+        # output looking for a match that includes "FOREIGN KEY". This is brittle. We
+        # could optionally make two roundtrips: the first would query information_schema
+        # for the name of the foreign key constraint on this table, and a second to
+        # DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
+        # But for now we instead assume that Python list comprehension is faster than a
+        # network roundtrip.
+        dte_dict = {row["col_name"]: row["data_type"] for row in result}
+        target = [(k, v) for k, v in dte_dict.items() if "FOREIGN KEY" in v]
+
+        def extract_constraint_dict_from_target(target):
+            if target:
+                name, _constraint_string = target
+                _extracted = extract_identifier_groups_from_string(_constraint_string)
+                constrained_columns_str, referred_columns_str = (
+                    _extracted[0],
+                    _extracted[1],
+                )
+
+                constrained_columns = extract_identifiers_from_string(
+                    constrained_columns_str
+                )
+                referred_columns = extract_identifiers_from_string(referred_columns_str)
+                referred_table = str(table_name)
+            else:
+                name, constrained_columns, referred_columns, referred_table = (
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+
+            return {
+                "constrained_columns": constrained_columns,
+                "name": name,
+                "referred_table": referred_table,
+                "referred_columns": referred_columns,
+            }
+
+        if target:
+            return [extract_constraint_dict_from_target(i) for i in target]
+        else:
+            return []
 
     def get_indexes(self, connection, table_name, schema=None, **kw):
         """Return information about indexes in `table_name`.
@@ -238,6 +310,7 @@ class DatabricksDialect(default.DefaultDialect):
         # Databricks SQL Does not support transactions
         pass
 
+    @reflection.cache
     def has_table(
         self, connection, table_name, schema=None, catalog=None, **kwargs
     ) -> bool:
@@ -252,7 +325,9 @@ class DatabricksDialect(default.DefaultDialect):
 
         try:
             res = connection.execute(
-                sqlalchemy.text(f"DESCRIBE TABLE {_catalog}.{_schema}.{table_name}")
+                sqlalchemy.text(
+                    f"DESCRIBE TABLE `{_catalog}`.`{_schema}`.`{table_name}`"
+                )
             )
             return True
         except DatabaseError as e:
