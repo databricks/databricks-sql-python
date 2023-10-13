@@ -1,5 +1,5 @@
 import re
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Tuple
 
 import sqlalchemy
 from sqlalchemy import event, DDL
@@ -16,10 +16,10 @@ from databricks.sql.exc import ServerOperationError
 # This import is required to process our @compiles decorators
 import databricks.sqlalchemy._types as dialect_type_impl
 from databricks import sql
-from databricks.sqlalchemy.utils import (
-    extract_identifier_groups_from_string,
+from databricks.sqlalchemy._parse import (
+    build_fk_dict,
     extract_identifiers_from_string,
-    extract_three_level_identifier_from_constraint_string
+    extract_three_level_identifier_from_constraint_string,
 )
 
 try:
@@ -109,56 +109,11 @@ def _extract_pk_from_dte_result(result: dict) -> ReflectedPrimaryKeyConstraint:
     return {"constrained_columns": column_list, "name": name}
 
 
-def _extract_single_fk_dict_from_dte_result_row(
-    table_name: str, schema_name: Optional[str], fk_name: str, fk_constraint_string: str
-) -> dict:
-    """
-    """
-    
-    # SQLAlchemy's ComponentReflectionTest::test_get_foreign_keys is strange in that it
-    # expects the `referred_schema` member of the outputted dictionary to be None if
-    # a `schema` argument was not passed to the dialect's `get_foreign_keys` method
-    referred_table_dict = extract_three_level_identifier_from_constraint_string(fk_constraint_string)
-    referred_table = referred_table_dict["table"]
-    if schema_name:
-        referred_schema = referred_table_dict["schema"]
-    else:
-        referred_schema = None
-
-    _extracted = extract_identifier_groups_from_string(fk_constraint_string)
-    constrained_columns_str, referred_columns_str = (
-        _extracted[0],
-        _extracted[1],
-    )
-
-    constrainted_columns = extract_identifiers_from_string(constrained_columns_str)
-    referred_columns = extract_identifiers_from_string(referred_columns_str)
-
-    return {
-        "constrained_columns": constrainted_columns,
-        "name": fk_name,
-        "referred_table": referred_table,
-        "referred_columns": referred_columns,
-        "referred_schema": referred_schema,
-    }
-
-
 def _extract_fk_from_dte_result(
-    table_name: str, schema_name: Optional[str], result: dict
+    result: dict, schema_name: Optional[str]
 ) -> ReflectedForeignKeyConstraint:
-    """Return a list of dictionaries with the keys:
-
-    constrained_columns
-      a list of column names that make up the foreign key
-
-    name
-      the name of the foreign key constraint
-
-    referred_table
-      the name of the table that the foreign key references
-
-    referred_columns
-      a list of column names that are referenced by the foreign key
+    """Extract a list of foreign key information dictionaries from the result
+    of a DESCRIBE TABLE EXTENDED call.
 
     Returns an empty list if no foreign key is defined.
 
@@ -173,7 +128,7 @@ def _extract_fk_from_dte_result(
     """
 
     # find any rows that contain "FOREIGN_KEY" as the `data_type`
-    filtered_rows = [(k, v) for k, v in result.items() if "FOREIGN KEY" in v]
+    filtered_rows: List[Tuple] = [(k, v) for k, v in result.items() if "FOREIGN KEY" in v]
 
     # bail if no foreign key was found
     if not filtered_rows:
@@ -184,8 +139,8 @@ def _extract_fk_from_dte_result(
     # target is a tuple of (constraint_name, constraint_string)
     for target in filtered_rows:
         _constraint_name, _constraint_string = target
-        this_constraint_dict = _extract_single_fk_dict_from_dte_result_row(
-            table_name, schema_name, _constraint_name, _constraint_string
+        this_constraint_dict = build_fk_dict(
+            _constraint_name, _constraint_string, schema_name
         )
         constraint_list.append(this_constraint_dict)
 
@@ -386,7 +341,7 @@ class DatabricksDialect(default.DefaultDialect):
             schema_name=schema,
         )
 
-        return _extract_fk_from_dte_result(table_name, schema, result)
+        return _extract_fk_from_dte_result(result, schema)
 
     def get_indexes(self, connection, table_name, schema=None, **kw):
         """Return information about indexes in `table_name`.
