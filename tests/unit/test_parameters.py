@@ -23,7 +23,7 @@ class TestTSparkParameterConversion(object):
         "input_value, expected_type",
         [
             ("a", "STRING"),
-            (1, "TINYINT"),
+            (1, "INTEGER"),
             (1000, "INTEGER"),
             (9223372036854775807, "BIGINT"),  # Max value of a signed 64-bit integer
             (True, "BOOLEAN"),
@@ -80,8 +80,8 @@ class TestTSparkParameterConversion(object):
     @pytest.mark.parametrize(
         "input_value, expected_type",
         [
-            (-128, DbSqlType.TINYINT),
-            (127, DbSqlType.TINYINT),
+            (-128, DbSqlType.INTEGER),
+            (127, DbSqlType.INTEGER),
             (-2147483649, DbSqlType.BIGINT),
             (-2147483648, DbSqlType.INTEGER),
             (2147483647, DbSqlType.INTEGER),
