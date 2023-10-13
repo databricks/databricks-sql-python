@@ -34,6 +34,26 @@ else:
 DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
 DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
 
+COLUMN_TYPE_MAP = {
+    "boolean": sqlalchemy.types.Boolean,
+    "smallint": sqlalchemy.types.SmallInteger,
+    "int": sqlalchemy.types.Integer,
+    "bigint": sqlalchemy.types.BigInteger,
+    "float": sqlalchemy.types.Float,
+    "double": sqlalchemy.types.Float,
+    "string": sqlalchemy.types.String,
+    "varchar": sqlalchemy.types.String,
+    "char": sqlalchemy.types.String,
+    "binary": sqlalchemy.types.String,
+    "array": sqlalchemy.types.String,
+    "map": sqlalchemy.types.String,
+    "struct": sqlalchemy.types.String,
+    "uniontype": sqlalchemy.types.String,
+    "decimal": sqlalchemy.types.Numeric,
+    "timestamp": sqlalchemy.types.DateTime,
+    "date": sqlalchemy.types.Date,
+}
+
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
@@ -111,26 +131,6 @@ class DatabricksDialect(default.DefaultDialect):
         Additional column attributes may be present.
         """
 
-        _type_map = {
-            "boolean": sqlalchemy.types.Boolean,
-            "smallint": sqlalchemy.types.SmallInteger,
-            "int": sqlalchemy.types.Integer,
-            "bigint": sqlalchemy.types.BigInteger,
-            "float": sqlalchemy.types.Float,
-            "double": sqlalchemy.types.Float,
-            "string": sqlalchemy.types.String,
-            "varchar": sqlalchemy.types.String,
-            "char": sqlalchemy.types.String,
-            "binary": sqlalchemy.types.String,
-            "array": sqlalchemy.types.String,
-            "map": sqlalchemy.types.String,
-            "struct": sqlalchemy.types.String,
-            "uniontype": sqlalchemy.types.String,
-            "decimal": sqlalchemy.types.Numeric,
-            "timestamp": sqlalchemy.types.DateTime,
-            "date": sqlalchemy.types.Date,
-        }
-
         with self.get_connection_cursor(connection) as cur:
             resp = cur.columns(
                 catalog_name=self.catalog,
@@ -147,7 +147,7 @@ class DatabricksDialect(default.DefaultDialect):
             _col_type = re.search(r"^\w+", col.TYPE_NAME).group(0)
             this_column = {
                 "name": col.COLUMN_NAME,
-                "type": _type_map[_col_type.lower()],
+                "type": COLUMN_TYPE_MAP[_col_type.lower()],
                 "nullable": bool(col.NULLABLE),
                 "default": col.COLUMN_DEF,
                 "autoincrement": False if col.IS_AUTO_INCREMENT == "NO" else True,
