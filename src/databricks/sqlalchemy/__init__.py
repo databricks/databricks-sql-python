@@ -2,7 +2,7 @@ import re
 from typing import Any, Optional
 
 import sqlalchemy
-from sqlalchemy import event
+from sqlalchemy import event, DDL
 from sqlalchemy.engine import Engine, default, reflection
 from sqlalchemy.engine.interfaces import (
     ReflectedForeignKeyConstraint,
@@ -372,10 +372,12 @@ class DatabricksDialect(default.DefaultDialect):
 
     @reflection.cache
     def get_schema_names(self, connection, **kw):
-        # Equivalent to SHOW DATABASES
-
-        # TODO: replace with call to cursor.schemas() once its performance matches raw SQL
-        return [row[0] for row in connection.execute("SHOW SCHEMAS")]
+        """Return a list of all schema names available in the database.
+        """
+        stmt = DDL("SHOW SCHEMAS")
+        result = connection.execute(stmt)
+        schema_list = [row[0] for row in result]
+        return schema_list
 
 
 @event.listens_for(Engine, "do_connect")
