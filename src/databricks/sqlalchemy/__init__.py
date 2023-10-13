@@ -1,9 +1,9 @@
 import re
-from typing import Any, Optional
+from typing import Any, Optional, List, Tuple
 
 import sqlalchemy
-from sqlalchemy import event
-from sqlalchemy.engine import Engine, default, reflection
+from sqlalchemy import event, DDL
+from sqlalchemy.engine import Engine, default, reflection, Connection, Row, CursorResult
 from sqlalchemy.engine.interfaces import (
     ReflectedForeignKeyConstraint,
     ReflectedPrimaryKeyConstraint,
@@ -11,13 +11,15 @@ from sqlalchemy.engine.interfaces import (
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
+from databricks.sql.exc import ServerOperationError
 
 # This import is required to process our @compiles decorators
 import databricks.sqlalchemy._types as dialect_type_impl
 from databricks import sql
-from databricks.sqlalchemy.utils import (
-    extract_identifier_groups_from_string,
+from databricks.sqlalchemy._parse import (
+    build_fk_dict,
     extract_identifiers_from_string,
+    extract_three_level_identifier_from_constraint_string,
 )
 
 try:
@@ -29,6 +31,141 @@ else:
 
     class DatabricksImpl(DefaultImpl):
         __dialect__ = "databricks"
+
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
+DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
+
+
+def _match_table_not_found_string(message: str) -> bool:
+    """Return True if the message contains a substring indicating that a table was not found"""
+    return any(
+        [
+            DBR_LTE_12_NOT_FOUND_STRING in message,
+            DBR_GT_12_NOT_FOUND_STRING in message,
+        ]
+    )
+
+
+def _describe_table_extended_result_to_dict(result: CursorResult) -> dict:
+    """Transform the output of DESCRIBE TABLE EXTENDED into a dictionary
+
+    The output from DESCRIBE TABLE EXTENDED puts all values in the `data_type` column
+    Even CONSTRAINT descriptions are contained in the `data_type` column
+    Some rows have an empty string for their col_name. These are present only for spacing
+    so we ignore them.
+    """
+
+    result_dict = {row.col_name: row.data_type for row in result if row.col_name != ""}
+
+    return result_dict
+
+
+def _extract_pk_from_dte_result(result: dict) -> ReflectedPrimaryKeyConstraint:
+    """Return a dictionary with the keys:
+
+    constrained_columns
+      a list of column names that make up the primary key. Results is an empty list
+      if no PRIMARY KEY is defined.
+
+    name
+      the name of the primary key constraint
+
+    Today, DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
+    a primary key constraint will be found in its output. So we cycle through its
+    output looking for a match that includes "PRIMARY KEY". This is brittle. We
+    could optionally make two roundtrips: the first would query information_schema
+    for the name of the primary key constraint on this table, and a second to
+    DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
+    But for now we instead assume that Python list comprehension is faster than a
+    network roundtrip.
+    """
+
+    # find any rows that contain "PRIMARY KEY" as the `data_type`
+    filtered_rows = [(k, v) for k, v in result.items() if "PRIMARY KEY" in v]
+
+    # bail if no primary key was found
+    if not filtered_rows:
+        return {"constrained_columns": [], "name": None}
+
+    # there should only ever be one PRIMARY KEY that matches
+    if len(filtered_rows) > 1:
+        logger.warning(
+            "Found more than one primary key constraint in DESCRIBE TABLE EXTENDED output. "
+            "This is unexpected. Please report this as a bug. "
+            "Only the first primary key constraint will be returned."
+        )
+
+    # target is a tuple of (constraint_name, constraint_string)
+    target = filtered_rows[0]
+    name = target[0]
+    _constraint_string = target[1]
+    column_list = extract_identifiers_from_string(_constraint_string)
+
+    return {"constrained_columns": column_list, "name": name}
+
+
+def _extract_fk_from_dte_result(
+    result: dict, schema_name: Optional[str]
+) -> ReflectedForeignKeyConstraint:
+    """Extract a list of foreign key information dictionaries from the result
+    of a DESCRIBE TABLE EXTENDED call.
+
+    Returns an empty list if no foreign key is defined.
+
+    Today, DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
+    a foreign key constraint will be found in its output. So we cycle through its
+    output looking for a match that includes "FOREIGN KEY". This is brittle. We
+    could optionally make two roundtrips: the first would query information_schema
+    for the name of the foreign key constraint on this table, and a second to
+    DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
+    But for now we instead assume that Python list comprehension is faster than a
+    network roundtrip.
+    """
+
+    # find any rows that contain "FOREIGN_KEY" as the `data_type`
+    filtered_rows: List[Tuple] = [(k, v) for k, v in result.items() if "FOREIGN KEY" in v]
+
+    # bail if no foreign key was found
+    if not filtered_rows:
+        return []
+
+    constraint_list = []
+
+    # target is a tuple of (constraint_name, constraint_string)
+    for target in filtered_rows:
+        _constraint_name, _constraint_string = target
+        this_constraint_dict = build_fk_dict(
+            _constraint_name, _constraint_string, schema_name
+        )
+        constraint_list.append(this_constraint_dict)
+
+    return constraint_list
+
+
+COLUMN_TYPE_MAP = {
+    "boolean": sqlalchemy.types.Boolean,
+    "smallint": sqlalchemy.types.SmallInteger,
+    "int": sqlalchemy.types.Integer,
+    "bigint": sqlalchemy.types.BigInteger,
+    "float": sqlalchemy.types.Float,
+    "double": sqlalchemy.types.Float,
+    "string": sqlalchemy.types.String,
+    "varchar": sqlalchemy.types.String,
+    "char": sqlalchemy.types.String,
+    "binary": sqlalchemy.types.String,
+    "array": sqlalchemy.types.String,
+    "map": sqlalchemy.types.String,
+    "struct": sqlalchemy.types.String,
+    "uniontype": sqlalchemy.types.String,
+    "decimal": sqlalchemy.types.Numeric,
+    "timestamp": sqlalchemy.types.DateTime,
+    "date": sqlalchemy.types.Date,
+}
 
 
 class DatabricksDialect(default.DefaultDialect):
@@ -108,26 +245,6 @@ class DatabricksDialect(default.DefaultDialect):
         Additional column attributes may be present.
         """
 
-        _type_map = {
-            "boolean": sqlalchemy.types.Boolean,
-            "smallint": sqlalchemy.types.SmallInteger,
-            "int": sqlalchemy.types.Integer,
-            "bigint": sqlalchemy.types.BigInteger,
-            "float": sqlalchemy.types.Float,
-            "double": sqlalchemy.types.Float,
-            "string": sqlalchemy.types.String,
-            "varchar": sqlalchemy.types.String,
-            "char": sqlalchemy.types.String,
-            "binary": sqlalchemy.types.String,
-            "array": sqlalchemy.types.String,
-            "map": sqlalchemy.types.String,
-            "struct": sqlalchemy.types.String,
-            "uniontype": sqlalchemy.types.String,
-            "decimal": sqlalchemy.types.Numeric,
-            "timestamp": sqlalchemy.types.DateTime,
-            "date": sqlalchemy.types.Date,
-        }
-
         with self.get_connection_cursor(connection) as cur:
             resp = cur.columns(
                 catalog_name=self.catalog,
@@ -135,6 +252,8 @@ class DatabricksDialect(default.DefaultDialect):
                 table_name=table_name,
             ).fetchall()
 
+        if not resp:
+            raise sqlalchemy.exc.NoSuchTableError(table_name)
         columns = []
 
         for col in resp:
@@ -142,7 +261,7 @@ class DatabricksDialect(default.DefaultDialect):
             _col_type = re.search(r"^\w+", col.TYPE_NAME).group(0)
             this_column = {
                 "name": col.COLUMN_NAME,
-                "type": _type_map[_col_type.lower()],
+                "type": COLUMN_TYPE_MAP[_col_type.lower()],
                 "nullable": bool(col.NULLABLE),
                 "default": col.COLUMN_DEF,
                 "autoincrement": False if col.IS_AUTO_INCREMENT == "NO" else True,
@@ -150,6 +269,46 @@ class DatabricksDialect(default.DefaultDialect):
             columns.append(this_column)
 
         return columns
+
+    def _describe_table_extended(
+        self,
+        connection: Connection,
+        table_name: str,
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        expect_result=True,
+    ):
+        """Run DESCRIBE TABLE EXTENDED on a table and return a dictionary of the result.
+
+        This method is the fastest way to check for the presence of a table in a schema.
+
+        If expect_result is False, this method returns None as the output dict isn't required.
+
+        Raises NoSuchTableError if the table is not present in the schema.
+        """
+
+        _target_catalog = catalog_name or self.catalog
+        _target_schema = schema_name or self.schema
+        _target = f"`{_target_catalog}`.`{_target_schema}`.`{table_name}`"
+
+        # sql injection risk?
+        # DESCRIBE TABLE EXTENDED in DBR doesn't support parameterised inputs :(
+        stmt = DDL(f"DESCRIBE TABLE EXTENDED {_target}")
+
+        try:
+            result = connection.execute(stmt).all()
+        except DatabaseError as e:
+            if _match_table_not_found_string(str(e)):
+                raise sqlalchemy.exc.NoSuchTableError(
+                    f"No such table {table_name}"
+                ) from e
+            raise e
+
+        if not expect_result:
+            return None
+
+        fmt_result = _describe_table_extended_result_to_dict(result)
+        return fmt_result
 
     @reflection.cache
     def get_pk_constraint(
@@ -163,107 +322,26 @@ class DatabricksDialect(default.DefaultDialect):
         table_name`.
         """
 
-        with self.get_connection_cursor(connection) as cursor:
-            # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
-            result = cursor.execute(f"DESCRIBE TABLE EXTENDED {table_name}").fetchall()
+        result = self._describe_table_extended(
+            connection=connection,
+            table_name=table_name,
+            schema_name=schema,
+        )
 
-        # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
-        # a primary key constraint will be found in its output. So we cycle through its
-        # output looking for a match that includes "PRIMARY KEY". This is brittle. We
-        # could optionally make two roundtrips: the first would query information_schema
-        # for the name of the primary key constraint on this table, and a second to
-        # DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
-        # But for now we instead assume that Python list comprehension is faster than a
-        # network roundtrip.
-        dte_dict = {row["col_name"]: row["data_type"] for row in result}
-        target = [(k, v) for k, v in dte_dict.items() if "PRIMARY KEY" in v]
-        if target:
-            name, _constraint_string = target[0]
-            column_list = extract_identifiers_from_string(_constraint_string)
-        else:
-            name, column_list = None, None
-
-        return {"constrained_columns": column_list, "name": name}
+        return _extract_pk_from_dte_result(result)
 
     def get_foreign_keys(
         self, connection, table_name, schema=None, **kw
     ) -> ReflectedForeignKeyConstraint:
-        """Return information about foreign_keys in `table_name`.
+        """Return information about foreign_keys in `table_name`."""
 
-        Given a :class:`_engine.Connection`, a string
-        `table_name`, and an optional string `schema`, return foreign
-        key information as a list of dicts with these keys:
+        result = self._describe_table_extended(
+            connection=connection,
+            table_name=table_name,
+            schema_name=schema,
+        )
 
-        name
-          the constraint's name
-
-        constrained_columns
-          a list of column names that make up the foreign key
-
-        referred_schema
-          the name of the referred schema
-
-        referred_table
-          the name of the referred table
-
-        referred_columns
-          a list of column names in the referred table that correspond to
-          constrained_columns
-        """
-        """Return information about the primary key constraint on
-        table_name`.
-        """
-
-        with self.get_connection_cursor(connection) as cursor:
-            # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
-            result = cursor.execute(
-                f"DESCRIBE TABLE EXTENDED {schema + '.' if schema else ''}{table_name}"
-            ).fetchall()
-
-        # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
-        # a foreign key constraint will be found in its output. So we cycle through its
-        # output looking for a match that includes "FOREIGN KEY". This is brittle. We
-        # could optionally make two roundtrips: the first would query information_schema
-        # for the name of the foreign key constraint on this table, and a second to
-        # DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
-        # But for now we instead assume that Python list comprehension is faster than a
-        # network roundtrip.
-        dte_dict = {row["col_name"]: row["data_type"] for row in result}
-        target = [(k, v) for k, v in dte_dict.items() if "FOREIGN KEY" in v]
-
-        def extract_constraint_dict_from_target(target):
-            if target:
-                name, _constraint_string = target
-                _extracted = extract_identifier_groups_from_string(_constraint_string)
-                constrained_columns_str, referred_columns_str = (
-                    _extracted[0],
-                    _extracted[1],
-                )
-
-                constrained_columns = extract_identifiers_from_string(
-                    constrained_columns_str
-                )
-                referred_columns = extract_identifiers_from_string(referred_columns_str)
-                referred_table = str(table_name)
-            else:
-                name, constrained_columns, referred_columns, referred_table = (
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-
-            return {
-                "constrained_columns": constrained_columns,
-                "name": name,
-                "referred_table": referred_table,
-                "referred_columns": referred_columns,
-            }
-
-        if target:
-            return [extract_constraint_dict_from_target(i) for i in target]
-        else:
-            return []
+        return _extract_fk_from_dte_result(result, schema)
 
     def get_indexes(self, connection, table_name, schema=None, **kw):
         """Return information about indexes in `table_name`.
@@ -314,29 +392,20 @@ class DatabricksDialect(default.DefaultDialect):
     def has_table(
         self, connection, table_name, schema=None, catalog=None, **kwargs
     ) -> bool:
-        """SQLAlchemy docstrings say dialect providers must implement this method"""
-
-        _schema = schema or self.schema
-        _catalog = catalog or self.catalog
-
-        # DBR >12.x uses underscores in error messages
-        DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
-        DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
+        """For internal dialect use, check the existence of a particular table
+        or view in the database.
+        """
 
         try:
-            res = connection.execute(
-                sqlalchemy.text(
-                    f"DESCRIBE TABLE `{_catalog}`.`{_schema}`.`{table_name}`"
-                )
+            self._describe_table_extended(
+                connection=connection,
+                table_name=table_name,
+                catalog_name=catalog,
+                schema_name=schema,
             )
             return True
-        except DatabaseError as e:
-            if DBR_GT_12_NOT_FOUND_STRING in str(
-                e
-            ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
-                return False
-            else:
-                raise e
+        except sqlalchemy.exc.NoSuchTableError as e:
+            return False
 
     def get_connection_cursor(self, connection):
         """Added for backwards compatibility with 1.3.x"""
@@ -353,10 +422,11 @@ class DatabricksDialect(default.DefaultDialect):
 
     @reflection.cache
     def get_schema_names(self, connection, **kw):
-        # Equivalent to SHOW DATABASES
-
-        # TODO: replace with call to cursor.schemas() once its performance matches raw SQL
-        return [row[0] for row in connection.execute("SHOW SCHEMAS")]
+        """Return a list of all schema names available in the database."""
+        stmt = DDL("SHOW SCHEMAS")
+        result = connection.execute(stmt)
+        schema_list = [row[0] for row in result]
+        return schema_list
 
 
 @event.listens_for(Engine, "do_connect")

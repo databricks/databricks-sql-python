@@ -133,14 +133,52 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         we're in a bind.
         """
         return sqlalchemy.testing.exclusions.closed()
-    
+
     @property
     def temporary_views(self):
         """target database supports temporary views"""
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def views(self):
         """Target database must support VIEWs."""
+
+        return sqlalchemy.testing.exclusions.open()
+
+    @property
+    def temporary_tables(self):
+        """target database supports temporary tables
+
+        ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
+        This happens because we cannot skip individual combinations used in ComponentReflection test.
+        """
+        return sqlalchemy.testing.exclusions.closed()
+
+    @property
+    def temp_table_reflection(self):
+        """ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
+        This happens because we cannot skip individual combinations used in ComponentReflection test.
+        """
+        return sqlalchemy.testing.exclusions.closed()
+
+    @property
+    def index_reflection(self):
+        """ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
+        This happens because we cannot skip individual combinations used in ComponentReflection test.
+        """
+        return sqlalchemy.testing.exclusions.closed()
+
+    @property
+    def unique_constraint_reflection(self):
+        """ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
+        This happens because we cannot skip individual combinations used in ComponentReflection test.
+
+        Databricks supports unique constraints but they are not implemented in this dialect.
+        """
+        return sqlalchemy.testing.exclusions.closed()
+    
+    @property
+    def reflects_pk_names(self):
+        """Target driver reflects the name of primary key constraints."""
 
         return sqlalchemy.testing.exclusions.open()
