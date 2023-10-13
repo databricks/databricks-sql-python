@@ -1,5 +1,5 @@
 import re
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 import sqlalchemy
 from sqlalchemy import event, DDL
@@ -19,6 +19,7 @@ from databricks import sql
 from databricks.sqlalchemy.utils import (
     extract_identifier_groups_from_string,
     extract_identifiers_from_string,
+    extract_three_level_identifier_from_constraint_string
 )
 
 try:
@@ -31,6 +32,10 @@ else:
     class DatabricksImpl(DefaultImpl):
         __dialect__ = "databricks"
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
 DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
@@ -58,6 +63,133 @@ def _describe_table_extended_result_to_dict(result: CursorResult) -> dict:
     result_dict = {row.col_name: row.data_type for row in result if row.col_name != ""}
 
     return result_dict
+
+
+def _extract_pk_from_dte_result(result: dict) -> ReflectedPrimaryKeyConstraint:
+    """Return a dictionary with the keys:
+
+    constrained_columns
+      a list of column names that make up the primary key. Results is an empty list
+      if no PRIMARY KEY is defined.
+
+    name
+      the name of the primary key constraint
+
+    Today, DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
+    a primary key constraint will be found in its output. So we cycle through its
+    output looking for a match that includes "PRIMARY KEY". This is brittle. We
+    could optionally make two roundtrips: the first would query information_schema
+    for the name of the primary key constraint on this table, and a second to
+    DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
+    But for now we instead assume that Python list comprehension is faster than a
+    network roundtrip.
+    """
+
+    # find any rows that contain "PRIMARY KEY" as the `data_type`
+    filtered_rows = [(k, v) for k, v in result.items() if "PRIMARY KEY" in v]
+
+    # bail if no primary key was found
+    if not filtered_rows:
+        return {"constrained_columns": [], "name": None}
+
+    # there should only ever be one PRIMARY KEY that matches
+    if len(filtered_rows) > 1:
+        logger.warning(
+            "Found more than one primary key constraint in DESCRIBE TABLE EXTENDED output. "
+            "This is unexpected. Please report this as a bug. "
+            "Only the first primary key constraint will be returned."
+        )
+
+    # target is a tuple of (constraint_name, constraint_string)
+    target = filtered_rows[0]
+    name = target[0]
+    _constraint_string = target[1]
+    column_list = extract_identifiers_from_string(_constraint_string)
+
+    return {"constrained_columns": column_list, "name": name}
+
+
+def _extract_single_fk_dict_from_dte_result_row(
+    table_name: str, schema_name: Optional[str], fk_name: str, fk_constraint_string: str
+) -> dict:
+    """
+    """
+    
+    # SQLAlchemy's ComponentReflectionTest::test_get_foreign_keys is strange in that it
+    # expects the `referred_schema` member of the outputted dictionary to be None if
+    # a `schema` argument was not passed to the dialect's `get_foreign_keys` method
+    referred_table_dict = extract_three_level_identifier_from_constraint_string(fk_constraint_string)
+    referred_table = referred_table_dict["table"]
+    if schema_name:
+        referred_schema = referred_table_dict["schema"]
+    else:
+        referred_schema = None
+
+    _extracted = extract_identifier_groups_from_string(fk_constraint_string)
+    constrained_columns_str, referred_columns_str = (
+        _extracted[0],
+        _extracted[1],
+    )
+
+    constrainted_columns = extract_identifiers_from_string(constrained_columns_str)
+    referred_columns = extract_identifiers_from_string(referred_columns_str)
+
+    return {
+        "constrained_columns": constrainted_columns,
+        "name": fk_name,
+        "referred_table": referred_table,
+        "referred_columns": referred_columns,
+        "referred_schema": referred_schema,
+    }
+
+
+def _extract_fk_from_dte_result(
+    table_name: str, schema_name: Optional[str], result: dict
+) -> ReflectedForeignKeyConstraint:
+    """Return a list of dictionaries with the keys:
+
+    constrained_columns
+      a list of column names that make up the foreign key
+
+    name
+      the name of the foreign key constraint
+
+    referred_table
+      the name of the table that the foreign key references
+
+    referred_columns
+      a list of column names that are referenced by the foreign key
+
+    Returns an empty list if no foreign key is defined.
+
+    Today, DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
+    a foreign key constraint will be found in its output. So we cycle through its
+    output looking for a match that includes "FOREIGN KEY". This is brittle. We
+    could optionally make two roundtrips: the first would query information_schema
+    for the name of the foreign key constraint on this table, and a second to
+    DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
+    But for now we instead assume that Python list comprehension is faster than a
+    network roundtrip.
+    """
+
+    # find any rows that contain "FOREIGN_KEY" as the `data_type`
+    filtered_rows = [(k, v) for k, v in result.items() if "FOREIGN KEY" in v]
+
+    # bail if no foreign key was found
+    if not filtered_rows:
+        return []
+
+    constraint_list = []
+
+    # target is a tuple of (constraint_name, constraint_string)
+    for target in filtered_rows:
+        _constraint_name, _constraint_string = target
+        this_constraint_dict = _extract_single_fk_dict_from_dte_result_row(
+            table_name, schema_name, _constraint_name, _constraint_string
+        )
+        constraint_list.append(this_constraint_dict)
+
+    return constraint_list
 
 
 COLUMN_TYPE_MAP = {
@@ -235,125 +367,26 @@ class DatabricksDialect(default.DefaultDialect):
         table_name`.
         """
 
-        with self.get_connection_cursor(connection) as cursor:
-            try:
-                # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
-                result = cursor.execute(
-                    f"DESCRIBE TABLE EXTENDED {table_name}"
-                ).fetchall()
-            except ServerOperationError as e:
-                if DBR_GT_12_NOT_FOUND_STRING in str(
-                    e
-                ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
-                    raise sqlalchemy.exc.NoSuchTableError(
-                        f"No such table {table_name}"
-                    ) from e
+        result = self._describe_table_extended(
+            connection=connection,
+            table_name=table_name,
+            schema_name=schema,
+        )
 
-        # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
-        # a primary key constraint will be found in its output. So we cycle through its
-        # output looking for a match that includes "PRIMARY KEY". This is brittle. We
-        # could optionally make two roundtrips: the first would query information_schema
-        # for the name of the primary key constraint on this table, and a second to
-        # DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
-        # But for now we instead assume that Python list comprehension is faster than a
-        # network roundtrip.
-        dte_dict = {row["col_name"]: row["data_type"] for row in result}
-        target = [(k, v) for k, v in dte_dict.items() if "PRIMARY KEY" in v]
-        if target:
-            name, _constraint_string = target[0]
-            column_list = extract_identifiers_from_string(_constraint_string)
-        else:
-            name, column_list = None, None
-
-        return {"constrained_columns": column_list, "name": name}
+        return _extract_pk_from_dte_result(result)
 
     def get_foreign_keys(
         self, connection, table_name, schema=None, **kw
     ) -> ReflectedForeignKeyConstraint:
-        """Return information about foreign_keys in `table_name`.
+        """Return information about foreign_keys in `table_name`."""
 
-        Given a :class:`_engine.Connection`, a string
-        `table_name`, and an optional string `schema`, return foreign
-        key information as a list of dicts with these keys:
+        result = self._describe_table_extended(
+            connection=connection,
+            table_name=table_name,
+            schema_name=schema,
+        )
 
-        name
-          the constraint's name
-
-        constrained_columns
-          a list of column names that make up the foreign key
-
-        referred_schema
-          the name of the referred schema
-
-        referred_table
-          the name of the referred table
-
-        referred_columns
-          a list of column names in the referred table that correspond to
-          constrained_columns
-        """
-        """Return information about the primary key constraint on
-        table_name`.
-        """
-
-        try:
-            with self.get_connection_cursor(connection) as cursor:
-                # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
-                result = cursor.execute(
-                    f"DESCRIBE TABLE EXTENDED {schema + '.' if schema else ''}{table_name}"
-                ).fetchall()
-        except ServerOperationError as e:
-            if DBR_GT_12_NOT_FOUND_STRING in str(
-                e
-            ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
-                raise sqlalchemy.exc.NoSuchTableError(
-                    f"No such table {table_name}"
-                ) from e
-
-        # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
-        # a foreign key constraint will be found in its output. So we cycle through its
-        # output looking for a match that includes "FOREIGN KEY". This is brittle. We
-        # could optionally make two roundtrips: the first would query information_schema
-        # for the name of the foreign key constraint on this table, and a second to
-        # DESCRIBE TABLE EXTENDED, at which point we would know the name of the constraint.
-        # But for now we instead assume that Python list comprehension is faster than a
-        # network roundtrip.
-        dte_dict = {row["col_name"]: row["data_type"] for row in result}
-        target = [(k, v) for k, v in dte_dict.items() if "FOREIGN KEY" in v]
-
-        def extract_constraint_dict_from_target(target):
-            if target:
-                name, _constraint_string = target
-                _extracted = extract_identifier_groups_from_string(_constraint_string)
-                constrained_columns_str, referred_columns_str = (
-                    _extracted[0],
-                    _extracted[1],
-                )
-
-                constrained_columns = extract_identifiers_from_string(
-                    constrained_columns_str
-                )
-                referred_columns = extract_identifiers_from_string(referred_columns_str)
-                referred_table = str(table_name)
-            else:
-                name, constrained_columns, referred_columns, referred_table = (
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-
-            return {
-                "constrained_columns": constrained_columns,
-                "name": name,
-                "referred_table": referred_table,
-                "referred_columns": referred_columns,
-            }
-
-        if target:
-            return [extract_constraint_dict_from_target(i) for i in target]
-        else:
-            return []
+        return _extract_fk_from_dte_result(table_name, schema, result)
 
     def get_indexes(self, connection, table_name, schema=None, **kw):
         """Return information about indexes in `table_name`.
