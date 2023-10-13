@@ -11,6 +11,7 @@ from sqlalchemy.engine.interfaces import (
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
+from databricks.sql.exc import ServerOperationError
 
 # This import is required to process our @compiles decorators
 import databricks.sqlalchemy._types as dialect_type_impl
@@ -30,6 +31,8 @@ else:
     class DatabricksImpl(DefaultImpl):
         __dialect__ = "databricks"
 
+DBR_LTE_12_NOT_FOUND_STRING = "Table or view not found"
+DBR_GT_12_NOT_FOUND_STRING = "TABLE_OR_VIEW_NOT_FOUND"
 
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
@@ -135,6 +138,8 @@ class DatabricksDialect(default.DefaultDialect):
                 table_name=table_name,
             ).fetchall()
 
+        if not resp:
+            raise sqlalchemy.exc.NoSuchTableError(table_name)
         columns = []
 
         for col in resp:
@@ -164,8 +169,16 @@ class DatabricksDialect(default.DefaultDialect):
         """
 
         with self.get_connection_cursor(connection) as cursor:
-            # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
-            result = cursor.execute(f"DESCRIBE TABLE EXTENDED {table_name}").fetchall()
+            
+            try:
+                # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
+                result = cursor.execute(f"DESCRIBE TABLE EXTENDED {table_name}").fetchall()
+            except ServerOperationError as e:
+                if DBR_GT_12_NOT_FOUND_STRING in str(
+                    e
+                ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
+                    raise sqlalchemy.exc.NoSuchTableError(f"No such table {table_name}") from e
+
 
         # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
         # a primary key constraint will be found in its output. So we cycle through its
@@ -214,11 +227,17 @@ class DatabricksDialect(default.DefaultDialect):
         table_name`.
         """
 
-        with self.get_connection_cursor(connection) as cursor:
-            # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
-            result = cursor.execute(
-                f"DESCRIBE TABLE EXTENDED {schema + '.' if schema else ''}{table_name}"
-            ).fetchall()
+        try:
+            with self.get_connection_cursor(connection) as cursor:
+                # DESCRIBE TABLE EXTENDED doesn't support parameterised inputs :(
+                result = cursor.execute(
+                    f"DESCRIBE TABLE EXTENDED {schema + '.' if schema else ''}{table_name}"
+                ).fetchall()
+        except ServerOperationError as e:
+            if DBR_GT_12_NOT_FOUND_STRING in str(
+                e
+            ) or DBR_LTE_12_NOT_FOUND_STRING in str(e):
+                raise sqlalchemy.exc.NoSuchTableError(f"No such table {table_name}") from e
 
         # DESCRIBE TABLE EXTENDED doesn't give a deterministic name to the field where
         # a foreign key constraint will be found in its output. So we cycle through its

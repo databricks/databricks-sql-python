@@ -228,7 +228,9 @@ class FutureTableDDLTest(FutureTableDDLTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py")
+@pytest.mark.skip(
+    reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
+)
 class IdentityColumnTest(IdentityColumnTest):
     """The setup for these tests tries to create a table with a DELTA IDENTITY column but has two problems:
     1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
@@ -239,6 +241,7 @@ class IdentityColumnTest(IdentityColumnTest):
 
     I'm satisified through manual testing that our implementation of visit_identity_column works but a better test is needed.
     """
+
     pass
 
 
@@ -326,6 +329,7 @@ class LastrowidTest(LastrowidTest):
 class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
     pass
 
+
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(reason="Test setup needs adjustment.")
     def test_varchar_reflection(self):
@@ -404,6 +408,10 @@ class InsertBehaviorTest(InsertBehaviorTest):
 
 @pytest.mark.reviewed
 class ComponentReflectionTest(ComponentReflectionTest):
+    """This test requires two schemas be present in the target Databricks workspace:
+    - The schema set in --dburi
+    - A second schema named "test_schema"
+    """
 
     @pytest.mark.skip(reason="Databricks doesn't support temp tables.")
     def test_get_temp_table_columns(self):
@@ -424,8 +432,6 @@ class ComponentReflectionTest(ComponentReflectionTest):
     @pytest.mark.skip(reason="Databricks doesn't support temp tables.")
     def test_reflect_table_temp_table(self):
         pass
-
-
 
 
 @pytest.mark.reviewed
