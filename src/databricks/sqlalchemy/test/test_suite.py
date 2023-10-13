@@ -413,6 +413,10 @@ class ComponentReflectionTest(ComponentReflectionTest):
     - A second schema named "test_schema"
     """
 
+    # We've reviewed these tests:
+    # test_get_schema_names
+    # test_not_existing_table
+
     @pytest.mark.skip(reason="Databricks doesn't support temp tables.")
     def test_get_temp_table_columns(self):
         pass
