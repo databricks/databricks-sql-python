@@ -279,31 +279,40 @@ class DatabricksDialect(default.DefaultDialect):
         return fk_constraints
 
     def get_indexes(self, connection, table_name, schema=None, **kw):
-        """SQLAlchemy requires this method. Databricks doesn't support indexes.
-        """
+        """SQLAlchemy requires this method. Databricks doesn't support indexes."""
         return self.EMPTY_INDEX
 
-    def get_table_names(self, connection, schema=None, **kwargs):
-        TABLE_NAME = 1
-        with self.get_connection_cursor(connection) as cur:
-            sql_str = "SHOW TABLES FROM {}".format(
-                ".".join([self.catalog, schema or self.schema])
-            )
-            data = cur.execute(sql_str).fetchall()
-            _tables = [i[TABLE_NAME] for i in data]
+    def get_table_names(self, connection: Connection, schema=None, **kwargs):
+        """Return a list of tables in the current schema."""
 
-        return _tables
+        _target_catalog = self.catalog
+        _target_schema = schema or self.schema
+        _target = f"`{_target_catalog}`.`{_target_schema}`"
+
+        stmt = DDL(f"SHOW TABLES FROM {_target}")
+
+        tables_result = connection.execute(stmt).all()
+        views_result = self.get_view_names(connection=connection, schema=schema)
+
+        # In Databricks, SHOW TABLES FROM <schema> returns both tables and views.
+        # Potential optimisation: rewrite this to instead query informtation_schema
+        tables_minus_views = [
+            row.tableName for row in tables_result if row.tableName not in views_result
+        ]
+
+        return tables_minus_views
 
     def get_view_names(self, connection, schema=None, **kwargs):
-        VIEW_NAME = 1
-        with self.get_connection_cursor(connection) as cur:
-            sql_str = "SHOW VIEWS FROM {}".format(
-                ".".join([self.catalog, schema or self.schema])
-            )
-            data = cur.execute(sql_str).fetchall()
-            _tables = [i[VIEW_NAME] for i in data]
+        """Returns a list of string view names contained in the schema, if any."""
 
-        return _tables
+        _target_catalog = self.catalog
+        _target_schema = schema or self.schema
+        _target = f"`{_target_catalog}`.`{_target_schema}`"
+
+        stmt = DDL(f"SHOW VIEWS FROM {_target}")
+        result = connection.execute(stmt).all()
+
+        return [row.viewName for row in result]
 
     def do_rollback(self, dbapi_connection):
         # Databricks SQL Does not support transactions

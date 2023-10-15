@@ -417,6 +417,19 @@ class ComponentReflectionTest(ComponentReflectionTest):
     # test_get_schema_names
     # test_not_existing_table
 
+    @pytest.mark.skip("This dialect doesn't implement get_multi_pk_constraint")
+    def test_get_multi_pk_constraint(self):
+        pass
+
+    @pytest.mark.skip("This dialect doesn't implement get_multi_columns")
+    def test_get_multi_columns(self):
+        pass
+
+    @pytest.mark.skip("This dialect doesn't implement get_multi_foreign_keys")
+    def test_get_multi_foreign_keys(self):
+        pass
+
+
     @pytest.mark.skip(reason="Databricks doesn't support temp tables.")
     def test_get_temp_table_columns(self):
         pass
