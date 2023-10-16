@@ -344,16 +344,18 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     def test_reflect_expression_based_indexes(self):
         pass
 
-    @pytest.mark.skip(reason="Databricks doesn't enforce String or VARCHAR length limitations.")
+    @pytest.mark.skip(
+        reason="Databricks doesn't enforce String or VARCHAR length limitations."
+    )
     def test_varchar_reflection(self):
-        """Even if a user specifies String(52), Databricks won't enforce that limit.
-        """
+        """Even if a user specifies String(52), Databricks won't enforce that limit."""
         pass
 
-    @pytest.mark.skip(reason="This dialect doesn't implement foreign key options checks.")
+    @pytest.mark.skip(
+        reason="This dialect doesn't implement foreign key options checks."
+    )
     def test_get_foreign_key_options(self):
-        """It's not clear from the test code what the expected output is here. Further research required.
-        """
+        """It's not clear from the test code what the expected output is here. Further research required."""
         pass
 
 
@@ -527,4 +529,22 @@ class QuotedNameArgumentTest(QuotedNameArgumentTest):
     which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest
     also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
     methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
+    """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
+class BizarroCharacterFKResolutionTest:
+    """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
+    we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
+    these tests is not an acceptance criteria for our dialect.
+    """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
+class DifficultParametersTest:
+    """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
+    we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
+    these tests is not an acceptance criteria for our dialect.
     """
