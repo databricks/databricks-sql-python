@@ -359,15 +359,6 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
         pass
 
 
-class DifficultParametersTest(DifficultParametersTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_round_trip_same_named_column(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Found invalid character(s) among ' ,;{}()\n\t=' in the column names of your schema.
-        """
-
-
 class InsertBehaviorTest(InsertBehaviorTest):
     @pytest.mark.skip(reason="Error during execution. Requires investigation.")
     def test_autoclose_on_insert(self):
