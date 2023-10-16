@@ -359,52 +359,53 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
         pass
 
 
+@pytest.mark.reviewed
 class InsertBehaviorTest(InsertBehaviorTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_autoclose_on_insert(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement empty inserts. See test_suite.py"
+    )
     def test_empty_insert(self):
+        """Empty inserts are possible using DEFAULT VALUES on Databricks. To implement it, we need
+        to hook into the SQLCompiler to render a no-op column list. With SQLAlchemy's default implementation
+        the request fails with a syntax error
         """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
+        pass
 
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_insert_from_select_autoinc(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_insert_from_select_autoinc_no_rows(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
-        """
-
-    @pytest.mark.skip(reason="Databricks doesn't support empty INSERT.")
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement empty inserts. See test_suite.py"
+    )
     def test_empty_insert_multiple(self):
+        """Empty inserts are possible using DEFAULT VALUES on Databricks. To implement it, we need
+        to hook into the SQLCompiler to render a no-op column list. With SQLAlchemy's default implementation
+        the request fails with a syntax error
         """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
+        pass
 
-            E               sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-            E               [PARSE_SYNTAX_ERROR] Syntax error at or near ')'.(line 1, pos 24)
-            E
-            E               == SQL ==
-            E               INSERT INTO autoinc_pk () VALUES ()
-            E               ------------------------^^^
-            E
-            E               [SQL: INSERT INTO autoinc_pk () VALUES ()]
-            E               [parameters: ({}, {}, {})]
-            E               (Background on this error at: https://sqlalche.me/e/14/4xp6)
+    @pytest.mark.skip(
+        reason="Test setup relies on implicit autoincrement. See test_suite.py"
+    )
+    def test_autoclose_on_insert(self):
+        """The setup for this test creates a column with implicit autoincrement enabled.
+        This dialect does not implement implicit autoincrement - users must declare Identity() explicitly.
         """
+        pass
+
+    @pytest.mark.skip(
+        reason="Test setup relies on implicit autoincrement. See test_suite.py"
+    )
+    def test_insert_from_select_autoinc(self):
+        """Implicit autoincrement is not implemented in this dialect."""
+        pass
+
+    @pytest.mark.skip(
+        reason="Test setup relies on implicit autoincrement. See test_suite.py"
+    )
+    def test_insert_from_select_autoinc_no_rows(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
+    def test_autoclose_on_insert_implicit_returning(self):
+        pass
 
 
 @pytest.mark.reviewed
@@ -540,14 +541,18 @@ class DifficultParametersTest:
     these tests is not an acceptance criteria for our dialect.
     """
 
+
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Identity reflection is not implemented in this dialect. See test_suite.py")
+@pytest.mark.skip(
+    reason="Identity reflection is not implemented in this dialect. See test_suite.py"
+)
 class IdentityReflectionTest(IdentityReflectionTest):
     """It's not clear _how_ to implement this for SQLAlchemy. Columns created with GENERATED ALWAYS AS IDENTITY
     are not specially demarked in the output of TGetColumnsResponse or DESCRIBE TABLE EXTENDED.
 
     We could theoretically parse this from the contents of `SHOW CREATE TABLE` but that feels like a hack.
     """
+
 
 @pytest.mark.reviewed
 class TrueDivTest(TrueDivTest):
