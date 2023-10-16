@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple, Union
 from unittest.mock import Mock, patch, MagicMock
 from databricks.sql import Error
 
+import pytz
 import pytest
 
 from databricks.sql.exc import DatabaseError
@@ -31,17 +32,23 @@ class PySQLParameterizedQueryTestSuiteMixin:
             with conn.cursor() as cursor:
                 cursor.execute(query, parameters=parameters)
                 return cursor.fetchone()
-        
+
     def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
 
         return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
 
-    @patch('databricks.sql.client.Connection.server_parameterized_queries_enabled', return_value=False)
+    @patch(
+        "databricks.sql.client.Connection.server_parameterized_queries_enabled",
+        return_value=False,
+    )
     def test_protocol_too_low(self, mock_parameterized_queries_enabled):
         params = {"p": None}
-        with pytest.raises(Error, match="Parameterized operations are not supported by this server. DBR 14.1 is required."):
+        with pytest.raises(
+            Error,
+            match="Parameterized operations are not supported by this server. DBR 14.1 is required.",
+        ):
             result = self._get_one_result(self.QUERY, params)
-    
+
     def test_primitive_inferred_none(self):
         params = {"p": None}
         result = self._get_one_result(self.QUERY, params)
@@ -148,7 +155,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
         params = [DbSqlParameter(name="p", value=None, type=DbSqlType.VOID)]
         result = self._get_one_result(self.QUERY, params)
         assert result.col == None
-    
+
     def test_dbsqlparam_explicit_bool(self):
 
         params = [DbSqlParameter(name="p", value=True, type=DbSqlType.BOOLEAN)]

@@ -229,10 +229,13 @@ class Connection:
         return self.thrift_backend.extract_protocol_version_from_handle(
             self._session_handle
         )
-    
+
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
-        if protocolVersion and protocolVersion >= ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8:
+        if (
+            protocolVersion
+            and protocolVersion >= ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+        ):
             return True
         else:
             return False
@@ -514,7 +517,9 @@ class Cursor:
         if parameters is None:
             parameters = []
 
-        elif (not Connection.server_parameterized_queries_enabled(self.connection._session_handle)):
+        elif not Connection.server_parameterized_queries_enabled(
+            self.connection._session_handle
+        ):
             raise Error(
                 "Parameterized operations are not supported by this server. DBR 14.1 is required."
             )

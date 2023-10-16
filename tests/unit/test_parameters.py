@@ -10,7 +10,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TSparkParameterValue,
     TSessionHandle,
-    TOpenSessionResp
+    TOpenSessionResp,
 )
 from databricks.sql.utils import DbSqlParameter, DbSqlType
 import pytest
@@ -22,16 +22,42 @@ from decimal import Decimal
 from databricks.sql.client import Connection
 from typing import List
 
+
 class TestSessionHandleChecks(object):
     def test_get_session_handle(self):
-        assert ThriftBackend.get_session_handle_from_resp(TOpenSessionResp(serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7, sessionHandle=TSessionHandle(1, None) )) == TSessionHandle(1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7)
-        assert ThriftBackend.get_session_handle_from_resp(TOpenSessionResp(serverProtocolVersion=None, sessionHandle=TSessionHandle(1, None) )) == TSessionHandle(1, None)
-        assert ThriftBackend.get_session_handle_from_resp(TOpenSessionResp(serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8, sessionHandle=TSessionHandle(1, None) )) == TSessionHandle(1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8)
-    
+        assert ThriftBackend.get_session_handle_from_resp(
+            TOpenSessionResp(
+                serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                sessionHandle=TSessionHandle(1, None),
+            )
+        ) == TSessionHandle(1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7)
+        assert ThriftBackend.get_session_handle_from_resp(
+            TOpenSessionResp(
+                serverProtocolVersion=None, sessionHandle=TSessionHandle(1, None)
+            )
+        ) == TSessionHandle(1, None)
+        assert ThriftBackend.get_session_handle_from_resp(
+            TOpenSessionResp(
+                serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+                sessionHandle=TSessionHandle(1, None),
+            )
+        ) == TSessionHandle(1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8)
+
     def test_parameters_enabled(self):
         assert Connection.server_parameterized_queries_enabled(None) == False
-        assert Connection.server_parameterized_queries_enabled(ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7) == False
-        assert Connection.server_parameterized_queries_enabled(ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8) == True
+        assert (
+            Connection.server_parameterized_queries_enabled(
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7
+            )
+            == False
+        )
+        assert (
+            Connection.server_parameterized_queries_enabled(
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+            )
+            == True
+        )
+
 
 class TestTSparkParameterConversion(object):
     @pytest.mark.parametrize(

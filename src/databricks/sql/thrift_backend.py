@@ -506,7 +506,7 @@ class ThriftBackend:
                 "SPARK_CLI_SERVICE_PROTOCOL_V2, "
                 "instead got: {}".format(protocol_version)
             )
-    
+
     def _check_initial_namespace(self, catalog, schema, response):
         if not (catalog or schema):
             return
@@ -1018,9 +1018,11 @@ class ThriftBackend:
     def get_session_handle_from_resp(t_open_session_resp):
         sessionHandle = t_open_session_resp.sessionHandle
         if sessionHandle.serverProtocolVersion == None:
-            sessionHandle.serverProtocolVersion = t_open_session_resp.serverProtocolVersion
+            sessionHandle.serverProtocolVersion = (
+                t_open_session_resp.serverProtocolVersion
+            )
         return sessionHandle
-    
+
     @staticmethod
     def handle_to_id(session_handle):
         return session_handle.sessionId.guid
