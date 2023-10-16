@@ -629,3 +629,9 @@ class ArrayTest(ArrayTest):
     This makes them unusable to SQLAlchemy without some workaround. Potentially we could inline 
     the values of these parameters (which risks sql injection).
     """
+
+@pytest.mark.skip(reason="Databricks dialect doesn't implement JSON column types. See test_suite.py")
+class JSONTest(JSONTest):
+    """Databricks supports JSON path expressions in queries it's just not implemented in this dialect.
+    """
+    pass
