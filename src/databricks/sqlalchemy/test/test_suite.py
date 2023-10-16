@@ -548,3 +548,12 @@ class DifficultParametersTest:
     we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
     these tests is not an acceptance criteria for our dialect.
     """
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Identity reflection is not implemented in this dialect. See test_suite.py")
+class IdentityReflectionTest(IdentityReflectionTest):
+    """It's not clear _how_ to implement this for SQLAlchemy. Columns created with GENERATED ALWAYS AS IDENTITY
+    are not specially demarked in the output of TGetColumnsResponse or DESCRIBE TABLE EXTENDED.
+
+    We could theoretically parse this from the contents of `SHOW CREATE TABLE` but that feels like a hack.
+    """
