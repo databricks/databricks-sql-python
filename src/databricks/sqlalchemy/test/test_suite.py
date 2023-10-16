@@ -411,24 +411,33 @@ class ComponentReflectionTest(ComponentReflectionTest):
     """This test requires two schemas be present in the target Databricks workspace:
     - The schema set in --dburi
     - A second schema named "test_schema"
+
+    Note that test_get_multi_foreign keys is flaky because DBR does not guarantee the order of data returned in DESCRIBE TABLE EXTENDED
     """
 
     # We've reviewed these tests:
     # test_get_schema_names
     # test_not_existing_table
 
-    @pytest.mark.skip("This dialect doesn't implement test_get_view_definition")
+    @pytest.mark.skip("This dialect doesn't implement get_view_definition")
     def test_get_view_definition(self):
         pass
+
+    @pytest.mark.skip(reason="This dialect doesn't implement get_view_definition")
+    def test_get_view_definition_does_not_exist(self):
+        pass
+
+    @pytest.mark.skip(reason="Strange test design. See test_suite.py")
+    def test_get_temp_view_names(self):
+        """While Databricks supports temporary views, this test creates a temp view aimed at a temp table.
+        Databricks doesn't support temp tables. So the test can never pass.
+        """
+        pass
+
     
     @pytest.mark.skip("This dialect doesn't implement get_multi_pk_constraint")
     def test_get_multi_pk_constraint(self):
         pass
-
-    @pytest.mark.skip("This dialect doesn't implement get_multi_foreign_keys")
-    def test_get_multi_foreign_keys(self):
-        pass
-
 
     @pytest.mark.skip(reason="Databricks doesn't support temp tables.")
     def test_get_temp_table_columns(self):

@@ -1,5 +1,5 @@
 import re
-from typing import Any, List, Optional, Dict
+from typing import Any, List, Optional, Dict, Collection, Iterable, Tuple
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
 import databricks.sqlalchemy._types as dialect_type_impl
@@ -17,10 +17,12 @@ from databricks.sqlalchemy._parse import (
 import sqlalchemy
 from sqlalchemy import DDL, event
 from sqlalchemy.engine import Connection, Engine, default, reflection
+from sqlalchemy.engine.reflection import ObjectKind
 from sqlalchemy.engine.interfaces import (
     ReflectedForeignKeyConstraint,
     ReflectedPrimaryKeyConstraint,
     ReflectedColumn,
+    TableKey,
 )
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
@@ -250,7 +252,14 @@ class DatabricksDialect(default.DefaultDialect):
         return tables_minus_views
 
     @reflection.cache
-    def get_view_names(self, connection, schema=None, **kwargs):
+    def get_view_names(
+        self,
+        connection,
+        schema=None,
+        only_materialized=False,
+        only_temp=False,
+        **kwargs,
+    ) -> List[str]:
         """Returns a list of string view names contained in the schema, if any."""
 
         _target_catalog = self.catalog
@@ -260,7 +269,26 @@ class DatabricksDialect(default.DefaultDialect):
         stmt = DDL(f"SHOW VIEWS FROM {_target}")
         result = connection.execute(stmt).all()
 
-        return [row.viewName for row in result]
+        return [
+            row.viewName
+            for row in result
+            if (not only_materialized or row.isMaterialized)
+            and (not only_temp or row.isTemporary)
+        ]
+
+    @reflection.cache
+    def get_materialized_view_names(
+        self, connection: Connection, schema: Optional[str] = None, **kw: Any
+    ) -> List[str]:
+        """A wrapper around get_view_names that fetches only the names of materialized views"""
+        return self.get_view_names(connection, schema, only_materialized=True)
+
+    @reflection.cache
+    def get_temp_view_names(
+        self, connection: Connection, schema: Optional[str] = None, **kw: Any
+    ) -> List[str]:
+        """A wrapper around get_view_names taht fetches only the names of temporary views"""
+        return self.get_view_names(connection, schema, only_temp=True)
 
     def do_rollback(self, dbapi_connection):
         # Databricks SQL Does not support transactions
