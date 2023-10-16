@@ -187,3 +187,12 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         """Target driver reflects the name of primary key constraints."""
 
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def datetime_implicit_bound(self):
+        """target dialect when given a datetime object will bind it such
+        that the database server knows the object is a date, and not
+        a plain string.
+        """
+
+        return sqlalchemy.testing.exclusions.open()
