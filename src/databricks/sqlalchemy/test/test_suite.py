@@ -24,6 +24,7 @@ import pytest
 # See further: https://github.com/sqlalchemy/sqlalchemy/blob/rel_1_4_48/README.dialects.rst
 
 
+@pytest.mark.reviewed
 @pytest.mark.skip(reason="pysql doesn't support binding of BINARY type parameters")
 class BinaryTest(BinaryTest):
     pass
@@ -621,3 +622,10 @@ class UnicodeTextTest(UnicodeTextTest):
 @pytest.mark.reviewed
 class UnicodeVarcharTest(UnicodeVarcharTest):
     pass
+
+@pytest.mark.skip(reason="pysql doesn't support binding of array parameters. See test_suite.py")
+class ArrayTest(ArrayTest):
+    """While Databricks supports ARRAY types, DBR cannot handle bound parameters of this type.
+    This makes them unusable to SQLAlchemy without some workaround. Potentially we could inline 
+    the values of these parameters (which risks sql injection).
+    """
