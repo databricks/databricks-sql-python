@@ -723,3 +723,13 @@ class ExpandingBoundInTest(ExpandingBoundInTest):
     @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
     def test_empty_homogeneous_tuples_direct(self):
         pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
+class HasSequenceTest(HasSequenceTest):
+    pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
+class HasSequenceTestEmpty(HasSequenceTestEmpty):
+    pass
