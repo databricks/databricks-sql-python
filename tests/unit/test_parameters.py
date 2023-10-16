@@ -25,23 +25,35 @@ from typing import List
 
 class TestSessionHandleChecks(object):
     def test_get_session_handle(self):
-        assert ThriftBackend.get_session_handle_from_resp(
-            TOpenSessionResp(
-                serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
-                sessionHandle=TSessionHandle(1, None),
+        assert (
+            Connection.get_protocol_version(
+                TOpenSessionResp(
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                    sessionHandle=TSessionHandle(1, None),
+                )
             )
-        ) == TSessionHandle(1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7)
-        assert ThriftBackend.get_session_handle_from_resp(
-            TOpenSessionResp(
-                serverProtocolVersion=None, sessionHandle=TSessionHandle(1, None)
+            == ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7
+        )
+        assert (
+            Connection.get_protocol_version(
+                TOpenSessionResp(
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                    sessionHandle=TSessionHandle(
+                        1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+                    ),
+                )
             )
-        ) == TSessionHandle(1, None)
-        assert ThriftBackend.get_session_handle_from_resp(
-            TOpenSessionResp(
-                serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
-                sessionHandle=TSessionHandle(1, None),
+            == ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+        )
+        assert (
+            Connection.get_protocol_version(
+                TOpenSessionResp(
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+                    sessionHandle=TSessionHandle(1, None),
+                )
             )
-        ) == TSessionHandle(1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8)
+            == ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+        )
 
     def test_parameters_enabled(self):
         assert Connection.server_parameterized_queries_enabled(None) == False

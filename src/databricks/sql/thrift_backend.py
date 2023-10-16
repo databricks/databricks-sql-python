@@ -569,7 +569,7 @@ class ThriftBackend:
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            return self.get_session_handle_from_resp(response)
+            return response
         except:
             self._transport.close()
             raise
@@ -1013,15 +1013,6 @@ class ThriftBackend:
         )
         req = ttypes.TCancelOperationReq(active_op_handle)
         self.make_request(self._client.CancelOperation, req)
-
-    @staticmethod
-    def get_session_handle_from_resp(t_open_session_resp):
-        sessionHandle = t_open_session_resp.sessionHandle
-        if sessionHandle.serverProtocolVersion == None:
-            sessionHandle.serverProtocolVersion = (
-                t_open_session_resp.serverProtocolVersion
-            )
-        return sessionHandle
 
     @staticmethod
     def handle_to_id(session_handle):

@@ -13,6 +13,7 @@ from databricks.sql.exc import (
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
 )
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import (
     ExecuteResponse,
@@ -196,9 +197,11 @@ class Connection:
             **kwargs,
         )
 
-        self._session_handle = self.thrift_backend.open_session(
+        self._open_session_resp = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
+        self._session_handle = self._open_session_resp.sessionHandle
+        self.protocol_version = self.get_protocol_version(self._open_session_resp)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
@@ -225,10 +228,15 @@ class Connection:
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
 
-    def get_session_protocol_version(self):
-        return self.thrift_backend.extract_protocol_version_from_handle(
-            self._session_handle
-        )
+    @staticmethod
+    def get_protocol_version(openSessionResp):
+        if (
+            openSessionResp.sessionHandle
+            and hasattr(openSessionResp.sessionHandle, "serverProtocolVersion")
+            and openSessionResp.sessionHandle.serverProtocolVersion
+        ):
+            return openSessionResp.sessionHandle.serverProtocolVersion
+        return openSessionResp.serverProtocolVersion
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
@@ -518,7 +526,7 @@ class Cursor:
             parameters = []
 
         elif not Connection.server_parameterized_queries_enabled(
-            self.connection._session_handle
+            self.connection.protocol_version
         ):
             raise Error(
                 "Parameterized operations are not supported by this server. DBR 14.1 is required."
