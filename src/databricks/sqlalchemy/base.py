@@ -11,6 +11,7 @@ from databricks.sqlalchemy._parse import (
     build_pk_dict,
     get_fk_strings_from_dte_output,
     get_pk_strings_from_dte_output,
+    parse_column_info_from_tgetcolumnsresponse,
 )
 
 import sqlalchemy
@@ -19,6 +20,7 @@ from sqlalchemy.engine import Connection, Engine, default, reflection
 from sqlalchemy.engine.interfaces import (
     ReflectedForeignKeyConstraint,
     ReflectedPrimaryKeyConstraint,
+    ReflectedColumn,
 )
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
@@ -36,27 +38,6 @@ else:
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-COLUMN_TYPE_MAP = {
-    "boolean": sqlalchemy.types.Boolean,
-    "smallint": sqlalchemy.types.SmallInteger,
-    "int": sqlalchemy.types.Integer,
-    "bigint": sqlalchemy.types.BigInteger,
-    "float": sqlalchemy.types.Float,
-    "double": sqlalchemy.types.Float,
-    "string": sqlalchemy.types.String,
-    "varchar": sqlalchemy.types.String,
-    "char": sqlalchemy.types.String,
-    "binary": sqlalchemy.types.String,
-    "array": sqlalchemy.types.String,
-    "map": sqlalchemy.types.String,
-    "struct": sqlalchemy.types.String,
-    "uniontype": sqlalchemy.types.String,
-    "decimal": sqlalchemy.types.Numeric,
-    "timestamp": sqlalchemy.types.DateTime,
-    "date": sqlalchemy.types.Date,
-}
 
 
 class DatabricksDialect(default.DefaultDialect):
@@ -113,36 +94,10 @@ class DatabricksDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    def get_columns(self, connection, table_name, schema=None, **kwargs):
-        """Return information about columns in `table_name`.
-
-        Given a :class:`_engine.Connection`, a string
-        `table_name`, and an optional string `schema`, return column
-        information as a list of dictionaries with these keys:
-
-        name
-          the column's name
-
-        type
-          [sqlalchemy.types#TypeEngine]
-
-        nullable
-          boolean
-
-        default
-          the column's default value
-
-        autoincrement
-          boolean
-
-        sequence
-          a dictionary of the form
-              {'name' : str, 'start' :int, 'increment': int, 'minvalue': int,
-               'maxvalue': int, 'nominvalue': bool, 'nomaxvalue': bool,
-               'cycle': bool, 'cache': int, 'order': bool}
-
-        Additional column attributes may be present.
-        """
+    def get_columns(
+        self, connection, table_name, schema=None, **kwargs
+    ) -> List[ReflectedColumn]:
+        """Return information about columns in `table_name`."""
 
         with self.get_connection_cursor(connection) as cur:
             resp = cur.columns(
@@ -154,18 +109,9 @@ class DatabricksDialect(default.DefaultDialect):
         if not resp:
             raise sqlalchemy.exc.NoSuchTableError(table_name)
         columns = []
-
         for col in resp:
-            # Taken from PyHive. This removes added type info from decimals and maps
-            _col_type = re.search(r"^\w+", col.TYPE_NAME).group(0)
-            this_column = {
-                "name": col.COLUMN_NAME,
-                "type": COLUMN_TYPE_MAP[_col_type.lower()],
-                "nullable": bool(col.NULLABLE),
-                "default": col.COLUMN_DEF,
-                "autoincrement": False if col.IS_AUTO_INCREMENT == "NO" else True,
-            }
-            columns.append(this_column)
+            row_dict = parse_column_info_from_tgetcolumnsresponse(col)
+            columns.append(row_dict)
 
         return columns
 

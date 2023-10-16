@@ -417,6 +417,10 @@ class ComponentReflectionTest(ComponentReflectionTest):
     # test_get_schema_names
     # test_not_existing_table
 
+    @pytest.mark.skip("This dialect doesn't implement test_get_view_definition")
+    def test_get_view_definition(self):
+        pass
+    
     @pytest.mark.skip("This dialect doesn't implement get_multi_pk_constraint")
     def test_get_multi_pk_constraint(self):
         pass
