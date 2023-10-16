@@ -173,7 +173,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         """ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
         This happens because we cannot skip individual combinations used in ComponentReflection test.
 
-        Databricks supports unique constraints but they are not implemented in this dialect.
+        Databricks doesn't support UNIQUE constraints.
         """
         return sqlalchemy.testing.exclusions.closed()
     

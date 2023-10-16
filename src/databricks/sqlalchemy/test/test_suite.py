@@ -419,6 +419,22 @@ class ComponentReflectionTest(ComponentReflectionTest):
     # test_get_schema_names
     # test_not_existing_table
 
+    @pytest.mark.skip(reason="Comment reflection is possible but not enabled in this dialect")
+    def test_get_multi_table_comment(self):
+        """There are 84 permutations of this test that are skipped.
+        """
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support UNIQUE constraints")
+    def test_get_multi_unique_constraints(self):
+        pass
+
+    @pytest.mark.skip(reason="This dialect doesn't support get_table_options. See comment in test_suite.py")
+    def test_multi_get_table_options_tables(self):
+        """It's not clear what the expected ouput from this method would even _be_. Requires research.
+        """
+        pass
+
     @pytest.mark.skip("This dialect doesn't implement get_view_definition")
     def test_get_view_definition(self):
         pass

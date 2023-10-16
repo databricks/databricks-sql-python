@@ -19,7 +19,7 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         return " USING DELTA"
 
     def visit_unique_constraint(self, constraint, **kw):
-        logger.warn("Databricks does not support unique constraints")
+        logger.warning("Databricks does not support unique constraints")
         pass
 
     def visit_check_constraint(self, constraint, **kw):
