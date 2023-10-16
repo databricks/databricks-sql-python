@@ -683,17 +683,43 @@ class LikeFunctionsTest(LikeFunctionsTest):
 
 @pytest.mark.reviewed
 class UuidTest(UuidTest):
-
     @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
     def test_uuid_returning(self):
         pass
 
 
-@pytest.mark.skip(reason="Datetime handling doesn't handle timezones well. Priority to fix.")
+@pytest.mark.skip(
+    reason="Datetime handling doesn't handle timezones well. Priority to fix."
+)
 class DateTimeTZTest(DateTimeTZTest):
     """When I initially implemented DateTime type handling, I started using TIMESTAMP_NTZ because
     that's the default behaviour of the DateTime() type and the other tests passed. I simply missed
     this group of tests. Will need to modify the compilation and result_processor for our type override
     so that we can pass both DateTimeTZTest and DateTimeTest. Currently, only DateTimeTest passes.
     """
+
     pass
+
+
+TUPLES_READ_AS_STRUCT_MSG = (
+    "Databricks interprets tuple-like IN markers as though they are structs."
+)
+
+
+@pytest.mark.reviewed
+class ExpandingBoundInTest(ExpandingBoundInTest):
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_heterogeneous_tuples_bindparam(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_heterogeneous_tuples_direct(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_homogeneous_tuples_bindparam(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_homogeneous_tuples_direct(self):
+        pass

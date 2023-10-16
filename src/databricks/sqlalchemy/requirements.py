@@ -196,3 +196,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         """
 
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def tuple_in(self):
+        return sqlalchemy.testing.exclusions.open()
