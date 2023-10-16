@@ -557,3 +557,67 @@ class IdentityReflectionTest(IdentityReflectionTest):
 @pytest.mark.reviewed
 class TrueDivTest(TrueDivTest):
     pass
+
+@pytest.mark.reviewed
+class ArgSignatureTest(ArgSignatureTest):
+    pass
+
+@pytest.mark.reviewed
+class CompoundSelectTest(CompoundSelectTest):
+    pass
+
+@pytest.mark.reviewed
+class DeprecatedCompoundSelectTest(DeprecatedCompoundSelectTest):
+    pass
+
+@pytest.mark.reviewed
+class CastTypeDecoratorTest(CastTypeDecoratorTest):
+    pass
+
+@pytest.mark.reviewed
+class DistinctOnTest(DistinctOnTest):
+    pass
+
+@pytest.mark.reviewed
+class EscapingTest(EscapingTest):
+    pass
+
+@pytest.mark.reviewed
+class ExistsTest(ExistsTest):
+    pass
+
+@pytest.mark.reviewed
+class IntegerTest(IntegerTest):
+    pass
+
+@pytest.mark.reviewed
+class IsOrIsNotDistinctFromTest(IsOrIsNotDistinctFromTest):
+    pass
+
+@pytest.mark.reviewed
+class JoinTest(JoinTest):
+    pass
+
+@pytest.mark.reviewed
+class OrderByLabelTest(OrderByLabelTest):
+    pass
+
+@pytest.mark.reviewed
+class PingTest(PingTest):
+    pass
+
+@pytest.mark.reviewed
+class ReturningGuardsTest(ReturningGuardsTest):
+    pass
+
+@pytest.mark.reviewed
+class SameNamedSchemaTableTest(SameNamedSchemaTableTest):
+    pass
+
+@pytest.mark.reviewed
+class UnicodeTextTest(UnicodeTextTest):
+    pass
+
+@pytest.mark.reviewed
+class UnicodeVarcharTest(UnicodeVarcharTest):
+    pass
