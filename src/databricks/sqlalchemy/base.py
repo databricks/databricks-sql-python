@@ -228,6 +228,7 @@ class DatabricksDialect(default.DefaultDialect):
         """SQLAlchemy requires this method. Databricks doesn't support indexes."""
         return self.EMPTY_INDEX
 
+    @reflection.cache
     def get_table_names(self, connection: Connection, schema=None, **kwargs):
         """Return a list of tables in the current schema."""
 
@@ -248,6 +249,7 @@ class DatabricksDialect(default.DefaultDialect):
 
         return tables_minus_views
 
+    @reflection.cache
     def get_view_names(self, connection, schema=None, **kwargs):
         """Returns a list of string view names contained in the schema, if any."""
 
