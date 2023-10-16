@@ -557,3 +557,7 @@ class IdentityReflectionTest(IdentityReflectionTest):
 
     We could theoretically parse this from the contents of `SHOW CREATE TABLE` but that feels like a hack.
     """
+
+@pytest.mark.reviewed
+class TrueDivTest(TrueDivTest):
+    pass
