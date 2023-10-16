@@ -23,7 +23,7 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         pass
 
     def visit_check_constraint(self, constraint, **kw):
-        logger.warn("Databricks does not support check constraints")
+        logger.warning("This dialect does not support check constraints")
         pass
 
     def visit_identity_column(self, identity, **kw):
