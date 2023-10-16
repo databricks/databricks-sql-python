@@ -425,10 +425,6 @@ class ComponentReflectionTest(ComponentReflectionTest):
     def test_get_multi_pk_constraint(self):
         pass
 
-    @pytest.mark.skip("This dialect doesn't implement get_multi_columns")
-    def test_get_multi_columns(self):
-        pass
-
     @pytest.mark.skip("This dialect doesn't implement get_multi_foreign_keys")
     def test_get_multi_foreign_keys(self):
         pass
