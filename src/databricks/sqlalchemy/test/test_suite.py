@@ -733,3 +733,28 @@ class HasSequenceTest(HasSequenceTest):
 @pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
 class HasSequenceTestEmpty(HasSequenceTestEmpty):
     pass
+
+@pytest.mark.reviewed
+class CTETest(CTETest):
+    """During the teardown for this test block, it tries to drop a constraint that it never named which raises
+    a compilation error. This could point to poor constraint reflection but our other constraint reflection
+    tests pass. Requires investigation.
+    """
+
+    @pytest.mark.skip(reason="Databricks dialect doesn't implement multiple-table criteria within DELETE")
+    def test_delete_from_round_trip(self):
+        """This may be supported by Databricks but has not been implemented here.
+        """
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support recursive CTE")
+    def test_select_recursive_round_trip(self):
+        pass
+
+    @pytest.mark.skip(reason="Unsupported by Databricks. See test_suite.py")
+    def test_delete_scalar_subq_round_trip(self):
+        """Error received is [UNSUPPORTED_SUBQUERY_EXPRESSION_CATEGORY.MUST_AGGREGATE_CORRELATED_SCALAR_SUBQUERY]
+
+        This suggests a limitation of the platform. But a workaround may be possible if customers require it.
+        """
+        pass

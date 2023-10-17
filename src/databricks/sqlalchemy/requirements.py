@@ -200,3 +200,16 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     @property
     def tuple_in(self):
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def ctes(self):
+        return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def ctes_with_update_delete(self):
+        return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def delete_from(self):
+        """Target must support DELETE FROM..FROM or DELETE..USING syntax"""
+        return sqlalchemy.testing.exclusions.open()
