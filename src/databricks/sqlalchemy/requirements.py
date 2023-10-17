@@ -213,3 +213,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     def delete_from(self):
         """Target must support DELETE FROM..FROM or DELETE..USING syntax"""
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def table_value_constructor(self):
+        return sqlalchemy.testing.exclusions.open()

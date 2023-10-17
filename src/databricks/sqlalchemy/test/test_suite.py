@@ -769,3 +769,7 @@ class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
     in the dialect. Deferred for now.
     """
     pass
+
+@pytest.mark.reviewed
+class ValuesExpressionTest(ValuesExpressionTest):
+    pass
