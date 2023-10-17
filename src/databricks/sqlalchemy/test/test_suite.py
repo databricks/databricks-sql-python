@@ -773,3 +773,8 @@ class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
 @pytest.mark.reviewed
 class ValuesExpressionTest(ValuesExpressionTest):
     pass
+
+@pytest.mark.reviewed
+@pytest.mark.skipped(reason="Databricks doesn't support unicode in symbol names")
+class UnicodeSchemaTest(UnicodeSchemaTest):
+    pass
