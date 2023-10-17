@@ -758,3 +758,14 @@ class CTETest(CTETest):
         This suggests a limitation of the platform. But a workaround may be possible if customers require it.
         """
         pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
+class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
+    """provision.py allows us to define event listeners that emit DDL for things like setting up a test schema
+    or, in this case, changing the default schema for the connection after it's been built. This would override
+    the schema defined in the sqlalchemy connection string. This support is possible but is not implemented
+    in the dialect. Deferred for now.
+    """
+    pass
