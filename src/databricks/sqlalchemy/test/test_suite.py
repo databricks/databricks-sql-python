@@ -819,6 +819,11 @@ class RowCountTest(RowCountTest):
     pass
 
 @pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
+class SimpleUpdateDeleteTest(SimpleUpdateDeleteTest):
+    pass
+
+@pytest.mark.reviewed
 class PostCompileParamsTest(PostCompileParamsTest):
     pass
 
