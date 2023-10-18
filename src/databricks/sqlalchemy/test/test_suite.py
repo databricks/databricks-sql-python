@@ -640,6 +640,7 @@ class UnicodeVarcharTest(UnicodeVarcharTest):
     pass
 
 
+@pytest.mark.reviewed
 @pytest.mark.skip(
     reason="pysql doesn't support binding of array parameters. See test_suite.py"
 )
@@ -668,6 +669,7 @@ class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
     """
     pass
 
+@pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
 class ReturningText(ReturningTest):
     pass
@@ -697,6 +699,7 @@ class UuidTest(UuidTest):
         pass
 
 
+@pytest.mark.reviewed
 @pytest.mark.skip(
     reason="Datetime handling doesn't handle timezones well. Priority to fix."
 )
@@ -887,3 +890,16 @@ class NormalizedNameTest(NormalizedNameTest):
         It's forcibly calling .upper() and .lower() on the same string and expecting them to be equal.
         """
         pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
+class ReturningTest(ReturningTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks dialect does not implement timezone support for Timestamp() types. See test_suite.py")
+class TimeTZTest(TimeTZTest):
+    """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
+    and processing in _types.py. Implementation has been deferred.
+    """
