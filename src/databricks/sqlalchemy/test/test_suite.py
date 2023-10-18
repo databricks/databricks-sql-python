@@ -650,6 +650,7 @@ class ArrayTest(ArrayTest):
     """
 
 
+@pytest.mark.reviewed
 @pytest.mark.skip(
     reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
 )
@@ -658,6 +659,14 @@ class JSONTest(JSONTest):
 
     pass
 
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
+)
+class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
+    """Same comment applies as JSONTest
+    """
+    pass
 
 @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
 class ReturningText(ReturningTest):
