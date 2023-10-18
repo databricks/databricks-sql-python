@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
-    # Possible attributes are defined here: https://docs.sqlalchemy.org/en/14/core/internals.html#sqlalchemy.engine.Dialect
+    # See sqlalchemy.engine.interfaces for descriptions of each of these properties
     name: str = "databricks"
     driver: str = "databricks"
     default_schema_name: str = "default"
@@ -60,6 +60,10 @@ class DatabricksDialect(default.DefaultDialect):
     supports_identity_columns: bool = True
     supports_schemas: bool = True
     paramstyle: str = "named"
+    div_is_floordiv: bool = False
+    supports_default_values: bool = False
+    supports_server_side_cursors: bool = False
+    supports_sequences: bool = False
 
     colspecs = {
         sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType,
@@ -109,7 +113,18 @@ class DatabricksDialect(default.DefaultDialect):
             ).fetchall()
 
         if not resp:
-            raise sqlalchemy.exc.NoSuchTableError(table_name)
+            # TGetColumnsRequest will not raise an exception if passed a table that doesn't exist
+            # But Databricks supports tables with no columns. So if the result is an empty list,
+            # we need to check if the table exists (and raise an exception if not) or simply return
+            # an empty list.
+            self._describe_table_extended(
+                connection,
+                table_name,
+                self.catalog,
+                schema or self.schema,
+                expect_result=False,
+            )
+            return resp
         columns = []
         for col in resp:
             row_dict = parse_column_info_from_tgetcolumnsresponse(col)
