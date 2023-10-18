@@ -814,6 +814,11 @@ class SequenceTest(SequenceTest):
     pass
 
 @pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support sequences.")
+class SequenceCompilerTest(SequenceCompilerTest):
+    pass
+
+@pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
 class RowCountTest(RowCountTest):
     pass
