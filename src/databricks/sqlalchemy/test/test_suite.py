@@ -31,11 +31,6 @@ class BinaryTest(BinaryTest):
 
 
 @pytest.mark.reviewed
-class BooleanTest(BooleanTest):
-    pass
-
-
-@pytest.mark.reviewed
 class NumericTest(NumericTest):
     @pytest.mark.skip(reason="Databricks doesn't support E notation for DECIMAL types")
     def test_enotation_decimal(self):
@@ -68,217 +63,15 @@ class NumericTest(NumericTest):
         pass
 
 
-@pytest.mark.reviewed
-class TimeMicrosecondsTest(TimeMicrosecondsTest):
-    pass
 
 
-@pytest.mark.reviewed
-class TextTest(TextTest):
-    pass
 
 
-@pytest.mark.reviewed
-class StringTest(StringTest):
-    pass
 
 
-@pytest.mark.reviewed
-class DateTimeMicrosecondsTest(DateTimeMicrosecondsTest):
-    pass
 
 
-@pytest.mark.reviewed
-class TimestampMicrosecondsTest(TimestampMicrosecondsTest):
-    pass
 
-
-@pytest.mark.reviewed
-class DateTimeCoercedToDateTimeTest(DateTimeCoercedToDateTimeTest):
-    pass
-
-
-@pytest.mark.reviewed
-class TimeTest(TimeTest):
-    pass
-
-
-@pytest.mark.reviewed
-class DateTimeTest(DateTimeTest):
-    pass
-
-
-@pytest.mark.reviewed
-class DateTimeHistoricTest(DateTimeHistoricTest):
-    pass
-
-
-@pytest.mark.reviewed
-class DateTest(DateTest):
-    pass
-
-
-@pytest.mark.reviewed
-class DateHistoricTest(DateHistoricTest):
-    pass
-
-
-@pytest.mark.reviewed
-class RowFetchTest(RowFetchTest):
-    pass
-
-
-@pytest.mark.reviewed
-class FetchLimitOffsetTest(FetchLimitOffsetTest):
-    @pytest.mark.flaky
-    @pytest.mark.skip(
-        reason="Insertion order on Databricks is not deterministic. See comment in test_suite.py."
-    )
-    def test_limit_render_multiple_times(self):
-        """This test depends on the order that records are inserted into the table. It's passing criteria requires that
-        a record inserted with id=1 is the first record returned when no ORDER BY clause is specified. But Databricks occasionally
-        INSERTS in a different order, which makes this test seem to fail. The test is flaky, but the underlying functionality
-        (can multiple LIMIT clauses be rendered) is not broken.
-
-        Unclear if this is a bug in Databricks, Delta, or some race-condition in the test itself.
-        """
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_bound_fetch_offset(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_fetch_offset_no_order(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_fetch_offset_nobinds(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_simple_fetch(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_simple_fetch_offset(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_simple_fetch_percent(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_simple_fetch_percent_ties(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_simple_fetch_ties(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_expr_fetch_offset(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_fetch_offset_percent(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_fetch_offset_percent_ties(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_fetch_offset_ties(self):
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support FETCH clauses")
-    def test_fetch_offset_ties_exact_number(self):
-        pass
-
-
-@pytest.mark.reviewed
-class FutureTableDDLTest(FutureTableDDLTest):
-    @pytest.mark.skip(
-        reason="Comment reflection is possible but not implemented in this dialect."
-    )
-    def test_add_table_comment(self):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-    @pytest.mark.skip(
-        reason="Comment reflection is possible but not implemented in this dialect."
-    )
-    def test_drop_table_comment(self):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-    @pytest.mark.skip(reason="Databricks does not support indexes.")
-    def test_create_index_if_not_exists(self):
-        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
-        here to disable this but prefer a more meaningful skip message
-        """
-        pass
-
-    @pytest.mark.skip(reason="Databricks does not support indexes.")
-    def test_drop_index_if_exists(self):
-        """We could use requirements.index_reflection and requirements.index_ddl_if_exists
-        here to disable this but prefer a more meaningful skip message
-        """
-        pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
-)
-class IdentityColumnTest(IdentityColumnTest):
-    """The setup for these tests tries to create a table with a DELTA IDENTITY column but has two problems:
-    1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
-    2. It tries to set the start == 42, which Databricks doesn't support
-
-    I can get the tests to _run_ by patching the table fixture to use BigInteger(). But it asserts that the
-    identity of two rows are 42 and 43, which is not possible since they will be rows 1 and 2 instead.
-
-    I'm satisified through manual testing that our implementation of visit_identity_column works but a better test is needed.
-    """
-
-    pass
-
-
-@pytest.mark.reviewed
-class IdentityAutoincrementTest(IdentityAutoincrementTest):
-    @pytest.mark.skip(
-        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
-    )
-    def test_autoincrement_with_identity(self):
-        """This test has the same issue as IdentityColumnTest.test_select_all in that it creates a table with identity
-        using an Integer() rather than a BigInteger(). If I override this behaviour to use a BigInteger() instead, the
-        test passes.
-        """
-
-
-@pytest.mark.reviewed
-class LongNameBlowoutTest(LongNameBlowoutTest):
-    """These tests all include assertions that the tested name > 255 characters"""
-
-    @pytest.mark.skip(
-        reason="Databricks constraint names are limited to 255 characters"
-    )
-    def test_long_convention_name(self):
-        pass
-
-
-@pytest.mark.reviewed
-class ExceptionTest(ExceptionTest):
-    @pytest.mark.skip(reason="Databricks doesn't enforce primary key constraints.")
-    def test_integrity_error(self):
-        """Per Databricks documentation, primary and foreign key constraints are informational only
-        and are not enforced.
-
-        https://docs.databricks.com/api/workspace/tableconstraints
-        """
-        pass
 
 
 @pytest.mark.reviewed
@@ -323,11 +116,6 @@ class LastrowidTest(LastrowidTest):
     definition by passing an Identity() to the column constructor.
     """
 
-    pass
-
-
-@pytest.mark.reviewed
-class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
     pass
 
 
@@ -508,12 +296,6 @@ class TableDDLTest(TableDDLTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support indexes.")
-class HasIndexTest(HasIndexTest):
-    pass
-
-
-@pytest.mark.reviewed
 @pytest.mark.skip(
     reason="Databricks does not support spaces in table names. See comment in test_suite.py"
 )
@@ -523,121 +305,6 @@ class QuotedNameArgumentTest(QuotedNameArgumentTest):
     also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
     methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
     """
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
-class BizarroCharacterFKResolutionTest:
-    """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
-    we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
-    these tests is not an acceptance criteria for our dialect.
-    """
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
-class DifficultParametersTest:
-    """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
-    we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
-    these tests is not an acceptance criteria for our dialect.
-    """
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Identity reflection is not implemented in this dialect. See test_suite.py"
-)
-class IdentityReflectionTest(IdentityReflectionTest):
-    """It's not clear _how_ to implement this for SQLAlchemy. Columns created with GENERATED ALWAYS AS IDENTITY
-    are not specially demarked in the output of TGetColumnsResponse or DESCRIBE TABLE EXTENDED.
-
-    We could theoretically parse this from the contents of `SHOW CREATE TABLE` but that feels like a hack.
-    """
-
-
-@pytest.mark.reviewed
-class TrueDivTest(TrueDivTest):
-    pass
-
-
-@pytest.mark.reviewed
-class ArgSignatureTest(ArgSignatureTest):
-    pass
-
-
-@pytest.mark.reviewed
-class CompoundSelectTest(CompoundSelectTest):
-    pass
-
-
-@pytest.mark.reviewed
-class DeprecatedCompoundSelectTest(DeprecatedCompoundSelectTest):
-    pass
-
-
-@pytest.mark.reviewed
-class CastTypeDecoratorTest(CastTypeDecoratorTest):
-    pass
-
-
-@pytest.mark.reviewed
-class DistinctOnTest(DistinctOnTest):
-    pass
-
-
-@pytest.mark.reviewed
-class EscapingTest(EscapingTest):
-    pass
-
-
-@pytest.mark.reviewed
-class ExistsTest(ExistsTest):
-    pass
-
-
-@pytest.mark.reviewed
-class IntegerTest(IntegerTest):
-    pass
-
-
-@pytest.mark.reviewed
-class IsOrIsNotDistinctFromTest(IsOrIsNotDistinctFromTest):
-    pass
-
-
-@pytest.mark.reviewed
-class JoinTest(JoinTest):
-    pass
-
-
-@pytest.mark.reviewed
-class OrderByLabelTest(OrderByLabelTest):
-    pass
-
-
-@pytest.mark.reviewed
-class PingTest(PingTest):
-    pass
-
-
-@pytest.mark.reviewed
-class ReturningGuardsTest(ReturningGuardsTest):
-    pass
-
-
-@pytest.mark.reviewed
-class SameNamedSchemaTableTest(SameNamedSchemaTableTest):
-    pass
-
-
-@pytest.mark.reviewed
-class UnicodeTextTest(UnicodeTextTest):
-    pass
-
-
-@pytest.mark.reviewed
-class UnicodeVarcharTest(UnicodeVarcharTest):
-    pass
 
 
 @pytest.mark.reviewed
@@ -652,66 +319,8 @@ class ArrayTest(ArrayTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
-)
-class JSONTest(JSONTest):
-    """Databricks supports JSON path expressions in queries it's just not implemented in this dialect."""
-
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
-)
-class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
-    """Same comment applies as JSONTest"""
-
-    pass
-
-
-@pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
 class ReturningText(ReturningTest):
-    pass
-
-
-@pytest.mark.reviewed
-class LikeFunctionsTest(LikeFunctionsTest):
-    @pytest.mark.skip(
-        reason="Databricks dialect doesn't implement regexp features. See test_suite.py"
-    )
-    def test_not_regexp_match(self):
-        """The defaul dialect doesn't implement _visit_regexp methods so we don't get them automatically."""
-        pass
-
-    @pytest.mark.skip(
-        reason="Databricks dialect doesn't implement regexp features. See test_suite.py"
-    )
-    def test_regexp_match(self):
-        """The defaul dialect doesn't implement _visit_regexp methods so we don't get them automatically."""
-        pass
-
-
-@pytest.mark.reviewed
-class UuidTest(UuidTest):
-    @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
-    def test_uuid_returning(self):
-        pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Datetime handling doesn't handle timezones well. Priority to fix."
-)
-class DateTimeTZTest(DateTimeTZTest):
-    """When I initially implemented DateTime type handling, I started using TIMESTAMP_NTZ because
-    that's the default behaviour of the DateTime() type and the other tests passed. I simply missed
-    this group of tests. Will need to modify the compilation and result_processor for our type override
-    so that we can pass both DateTimeTZTest and DateTimeTest. Currently, only DateTimeTest passes.
-    """
-
     pass
 
 
@@ -737,18 +346,6 @@ class ExpandingBoundInTest(ExpandingBoundInTest):
     @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
     def test_empty_homogeneous_tuples_direct(self):
         pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
-class HasSequenceTest(HasSequenceTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
-class HasSequenceTestEmpty(HasSequenceTestEmpty):
-    pass
 
 
 @pytest.mark.reviewed
@@ -779,129 +376,6 @@ class CTETest(CTETest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
-class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
-    """provision.py allows us to define event listeners that emit DDL for things like setting up a test schema
-    or, in this case, changing the default schema for the connection after it's been built. This would override
-    the schema defined in the sqlalchemy connection string. This support is possible but is not implemented
-    in the dialect. Deferred for now.
-    """
-
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
-class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsTest):
-    """provision.py allows us to define event listeners that emit DDL for things like setting up a test schema
-    or, in this case, changing the default schema for the connection after it's been built. This would override
-    the schema defined in the sqlalchemy connection string. This support is possible but is not implemented
-    in the dialect. Deferred for now.
-    """
-
-    pass
-
-
-@pytest.mark.reviewed
-class ValuesExpressionTest(ValuesExpressionTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skipped(reason="Databricks doesn't support unicode in symbol names")
-class UnicodeSchemaTest(UnicodeSchemaTest):
-    pass
-
-
-@pytest.mark.reviewed
-class TableNoColumnsTest(TableNoColumnsTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support server-side cursors.")
-class ServerSideCursorsTest(ServerSideCursorsTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support sequences.")
-class SequenceTest(SequenceTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support sequences.")
-class SequenceCompilerTest(SequenceCompilerTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
-class RowCountTest(RowCountTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
-class SimpleUpdateDeleteTest(SimpleUpdateDeleteTest):
-    pass
-
-
-@pytest.mark.reviewed
-class PostCompileParamsTest(PostCompileParamsTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect doesn't implement UUID type. See test_suite.py"
-)
-class NativeUUIDTest(NativeUUIDTest):
-    """Type implementation will be straightforward. Since Databricks doesn't have a native UUID type we can use
-    a STRING field, create a custom TypeDecorator for sqlalchemy.types.Uuid and add it to the dialect's colspecs.
-
-    Then mark requirements.uuid_data_type as open() so this test can run.
-    """
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't allow percent signs in identifiers")
-class PercentSchemaNamesTest(PercentSchemaNamesTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support transactions")
-class IsolationLevelTest(IsolationLevelTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support transactions")
-class AutocommitIsolationTest(AutocommitIsolationTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect does not implement COLLATE support")
-class CollateTest(CollateTest):
-    """This is supported in Databricks. Not implemented here."""
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
-class ComputedColumnTest(ComputedColumnTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
-class ComputedReflectionTest(ComputedReflectionTest):
-    pass
-
-
-@pytest.mark.reviewed
 class NormalizedNameTest(NormalizedNameTest):
     @pytest.mark.skip(reason="Poor test design? See test_suite.py")
     def test_get_table_names(self):
@@ -915,19 +389,3 @@ class NormalizedNameTest(NormalizedNameTest):
         It's forcibly calling .upper() and .lower() on the same string and expecting them to be equal.
         """
         pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
-class ReturningTest(ReturningTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect does not implement timezone support for Timestamp() types. See test_suite.py"
-)
-class TimeTZTest(TimeTZTest):
-    """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
-    and processing in _types.py. Implementation has been deferred.
-    """
