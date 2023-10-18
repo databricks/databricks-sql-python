@@ -62,6 +62,7 @@ class DatabricksDialect(default.DefaultDialect):
     paramstyle: str = "named"
     div_is_floordiv: bool = False
     supports_default_values: bool = False
+    supports_server_side_cursors: bool = False
 
     colspecs = {
         sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType,

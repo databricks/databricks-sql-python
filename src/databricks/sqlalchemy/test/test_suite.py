@@ -777,5 +777,13 @@ class ValuesExpressionTest(ValuesExpressionTest):
 @pytest.mark.reviewed
 @pytest.mark.skipped(reason="Databricks doesn't support unicode in symbol names")
 class UnicodeSchemaTest(UnicodeSchemaTest):
+    pass
+
+@pytest.mark.reviewed
 class TableNoColumnsTest(TableNoColumnsTest):
+    pass
+
+@pytes.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support server-side cursors.")
+class ServerSideCursorsTest(ServerSideCursorsTest):
     pass
