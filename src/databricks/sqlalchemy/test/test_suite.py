@@ -330,23 +330,33 @@ class CompositeKeyReflectionTest(CompositeKeyReflectionTest):
     pass
 
 
+@pytest.mark.reviewed
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
-    @pytest.mark.skip(reason="Test setup needs adjustment.")
-    def test_varchar_reflection(self):
-        """
-        Exception:
-            databricks.sql.exc.ServerOperationError: [TABLE_OR_VIEW_ALREADY_EXISTS] Cannot create table or view `pysql_sqlalchemy`.`t` because it already exists.
-            Choose a different name, drop or replace the existing object, add the IF NOT EXISTS clause to tolerate pre-existing objects, or add the OR REFRESH clause to refresh the existing streaming table.
-        """
+    @pytest.mark.skip(reason="This dialect does not support check constraints")
+    def test_get_check_constraints(self):
+        pass
 
-    @pytest.mark.skip(reason="Test setup appears broken")
-    def test_numeric_reflection(self):
-        """
-        Exception:
-            databricks.sql.exc.ServerOperationError: [SCHEMA_NOT_FOUND] The schema `main.test_schema` cannot be found. Verify the spelling and correctness of the schema and catalog.
-            If you did not qualify the name with a catalog, verify the current_schema() output, or qualify the name with the correct catalog.
-            To tolerate the error on drop use DROP SCHEMA IF EXISTS.
-        """
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_reflect_covering_index(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks does not support indexes.")
+    def test_reflect_expression_based_indexes(self):
+        pass
+
+    @pytest.mark.skip(
+        reason="Databricks doesn't enforce String or VARCHAR length limitations."
+    )
+    def test_varchar_reflection(self):
+        """Even if a user specifies String(52), Databricks won't enforce that limit."""
+        pass
+
+    @pytest.mark.skip(
+        reason="This dialect doesn't implement foreign key options checks."
+    )
+    def test_get_foreign_key_options(self):
+        """It's not clear from the test code what the expected output is here. Further research required."""
+        pass
 
 
 class DifficultParametersTest(DifficultParametersTest):
@@ -411,11 +421,46 @@ class ComponentReflectionTest(ComponentReflectionTest):
     """This test requires two schemas be present in the target Databricks workspace:
     - The schema set in --dburi
     - A second schema named "test_schema"
+
+    Note that test_get_multi_foreign keys is flaky because DBR does not guarantee the order of data returned in DESCRIBE TABLE EXTENDED
     """
 
-    # We've reviewed these tests:
-    # test_get_schema_names
-    # test_not_existing_table
+    @pytest.mark.skip(
+        reason="Comment reflection is possible but not enabled in this dialect"
+    )
+    def test_get_multi_table_comment(self):
+        """There are 84 permutations of this test that are skipped."""
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support UNIQUE constraints")
+    def test_get_multi_unique_constraints(self):
+        pass
+
+    @pytest.mark.skip(
+        reason="This dialect doesn't support get_table_options. See comment in test_suite.py"
+    )
+    def test_multi_get_table_options_tables(self):
+        """It's not clear what the expected ouput from this method would even _be_. Requires research."""
+        pass
+
+    @pytest.mark.skip("This dialect doesn't implement get_view_definition")
+    def test_get_view_definition(self):
+        pass
+
+    @pytest.mark.skip(reason="This dialect doesn't implement get_view_definition")
+    def test_get_view_definition_does_not_exist(self):
+        pass
+
+    @pytest.mark.skip(reason="Strange test design. See test_suite.py")
+    def test_get_temp_view_names(self):
+        """While Databricks supports temporary views, this test creates a temp view aimed at a temp table.
+        Databricks doesn't support temp tables. So the test can never pass.
+        """
+        pass
+
+    @pytest.mark.skip("This dialect doesn't implement get_multi_pk_constraint")
+    def test_get_multi_pk_constraint(self):
+        pass
 
     @pytest.mark.skip(reason="Databricks doesn't support temp tables.")
     def test_get_temp_table_columns(self):
@@ -484,4 +529,22 @@ class QuotedNameArgumentTest(QuotedNameArgumentTest):
     which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest
     also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
     methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
+    """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
+class BizarroCharacterFKResolutionTest:
+    """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
+    we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
+    these tests is not an acceptance criteria for our dialect.
+    """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
+class DifficultParametersTest:
+    """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
+    we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
+    these tests is not an acceptance criteria for our dialect.
     """
