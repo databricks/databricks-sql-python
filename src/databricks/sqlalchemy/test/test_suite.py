@@ -840,3 +840,8 @@ class PercentSchemaNamesTest(PercentSchemaNamesTest):
 @pytest.mark.skip(reason="Databricks does not support transactions")
 class IsolationLevelTest(IsolationLevelTest):
     pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support transactions")
+class AutocommitIsolationTest(AutocommitIsolationTest):
+    pass
