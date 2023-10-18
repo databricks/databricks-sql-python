@@ -783,7 +783,12 @@ class UnicodeSchemaTest(UnicodeSchemaTest):
 class TableNoColumnsTest(TableNoColumnsTest):
     pass
 
-@pytes.mark.reviewed
+@pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support server-side cursors.")
 class ServerSideCursorsTest(ServerSideCursorsTest):
+    pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support sequences.")
+class SequenceTest(SequenceTest):
     pass
