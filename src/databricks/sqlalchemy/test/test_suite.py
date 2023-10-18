@@ -851,3 +851,13 @@ class AutocommitIsolationTest(AutocommitIsolationTest):
 class CollateTest(CollateTest):
     """This is supported in Databricks. Not implemented here.
     """
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
+class ComputedColumnTest(ComputedColumnTest):
+    pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
+class ComputedReflectionTest(ComputedReflectionTest):
+    pass
