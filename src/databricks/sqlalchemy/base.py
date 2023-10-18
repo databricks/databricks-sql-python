@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 class DatabricksDialect(default.DefaultDialect):
     """This dialect implements only those methods required to pass our e2e tests"""
 
-    # Possible attributes are defined here: https://docs.sqlalchemy.org/en/14/core/internals.html#sqlalchemy.engine.Dialect
+    # See sqlalchemy.engine.interfaces for descriptions of each of these properties
     name: str = "databricks"
     driver: str = "databricks"
     default_schema_name: str = "default"
