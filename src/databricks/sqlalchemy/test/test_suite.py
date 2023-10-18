@@ -797,3 +797,7 @@ class SequenceTest(SequenceTest):
 @pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
 class RowCountTest(RowCountTest):
     pass
+
+@pytest.mark.reviewed
+class PostCompileParamsTest(PostCompileParamsTest):
+    pass
