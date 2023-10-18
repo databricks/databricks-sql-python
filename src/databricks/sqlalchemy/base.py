@@ -111,7 +111,12 @@ class DatabricksDialect(default.DefaultDialect):
             ).fetchall()
 
         if not resp:
-            raise sqlalchemy.exc.NoSuchTableError(table_name)
+            # TGetColumnsRequest will not raise an exception if passed a table that doesn't exist
+            # But Databricks supports tables with no columns. So if the result is an empty list,
+            # we need to check if the table exists (and raise an exception if not) or simply return
+            # an empty list.
+            self._describe_table_extended(connection, table_name, self.catalog, schema or self.schema, expect_result=False)
+            return resp
         columns = []
         for col in resp:
             row_dict = parse_column_info_from_tgetcolumnsresponse(col)

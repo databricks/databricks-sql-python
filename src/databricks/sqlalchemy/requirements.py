@@ -217,3 +217,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     @property
     def table_value_constructor(self):
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def reflect_tables_no_columns(self):
+        return sqlalchemy.testing.exclusions.open()
