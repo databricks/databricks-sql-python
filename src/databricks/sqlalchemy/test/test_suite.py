@@ -801,3 +801,12 @@ class RowCountTest(RowCountTest):
 @pytest.mark.reviewed
 class PostCompileParamsTest(PostCompileParamsTest):
     pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks dialect doesn't implement UUID type. See test_suite.py")
+class NativeUUIDTest(NativeUUIDTest):
+    """Type implementation will be straightforward. Since Databricks doesn't have a native UUID type we can use
+    a STRING field, create a custom TypeDecorator for sqlalchemy.types.Uuid and add it to the dialect's colspecs.
+
+    Then mark requirements.uuid_data_type as open() so this test can run.
+    """
