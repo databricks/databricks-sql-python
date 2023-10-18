@@ -810,3 +810,8 @@ class NativeUUIDTest(NativeUUIDTest):
 
     Then mark requirements.uuid_data_type as open() so this test can run.
     """
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't allow percent signs in identifiers")
+class PercentSchemaNamesTest(PercentSchemaNamesTest):
+    pass
