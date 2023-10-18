@@ -3,7 +3,9 @@ from databricks.sqlalchemy._parse import (
     extract_identifiers_from_string,
     extract_identifier_groups_from_string,
     extract_three_level_identifier_from_constraint_string,
-    build_fk_dict
+    build_fk_dict,
+    build_pk_dict,
+    match_dte_rows_by_value,
 )
 
 
@@ -39,16 +41,19 @@ def test_extract_identifer_batches(input, expected):
         extract_identifier_groups_from_string(input) == expected
     ), "Failed to extract identifier groups from string"
 
-def test_extract_3l_namespace_from_constraint_string():
 
+def test_extract_3l_namespace_from_constraint_string():
     input = "FOREIGN KEY (`parent_user_id`) REFERENCES `main`.`pysql_dialect_compliance`.`users` (`user_id`)"
     expected = {
         "catalog": "main",
         "schema": "pysql_dialect_compliance",
-        "table": "users"
+        "table": "users",
     }
 
-    assert extract_three_level_identifier_from_constraint_string(input) == expected, "Failed to extract 3L namespace from constraint string"
+    assert (
+        extract_three_level_identifier_from_constraint_string(input) == expected
+    ), "Failed to extract 3L namespace from constraint string"
+
 
 @pytest.mark.parametrize("schema", [None, "some_schema"])
 def test_build_fk_dict(schema):
@@ -64,3 +69,78 @@ def test_build_fk_dict(schema):
         "referred_columns": ["user_id"],
     }
 
+
+def test_build_pk_dict():
+    pk_constraint_string = "PRIMARY KEY (`id`, `name`, `email_address`)"
+    pk_name = "pk1"
+
+    result = build_pk_dict(pk_name, pk_constraint_string)
+
+    assert result == {
+        "constrained_columns": ["id", "name", "email_address"],
+        "name": "pk1",
+    }
+
+
+# This is a real example of the output from DESCRIBE TABLE EXTENDED as of 15 October 2023
+RAW_SAMPLE_DTE_OUTPUT = [
+    ["id", "int"],
+    ["name", "string"],
+    ["", ""],
+    ["# Detailed Table Information", ""],
+    ["Catalog", "main"],
+    ["Database", "pysql_sqlalchemy"],
+    ["Table", "exampleexampleexample"],
+    ["Created Time", "Sun Oct 15 21:12:54 UTC 2023"],
+    ["Last Access", "UNKNOWN"],
+    ["Created By", "Spark "],
+    ["Type", "MANAGED"],
+    ["Location", "s3://us-west-2-****-/19a85dee-****/tables/ccb7***"],
+    ["Provider", "delta"],
+    ["Owner", "some.user@example.com"],
+    ["Is_managed_location", "true"],
+    ["Predictive Optimization", "ENABLE (inherited from CATALOG main)"],
+    [
+        "Table Properties",
+        "[delta.checkpoint.writeStatsAsJson=false,delta.checkpoint.writeStatsAsStruct=true,delta.minReaderVersion=1,delta.minWriterVersion=2]",
+    ],
+    ["", ""],
+    ["# Constraints", ""],
+    ["exampleexampleexample_pk", "PRIMARY KEY (`id`)"],
+    [
+        "exampleexampleexample_fk",
+        "FOREIGN KEY (`parent_user_id`) REFERENCES `main`.`pysql_dialect_compliance`.`users` (`user_id`)",
+    ],
+]
+
+FMT_SAMPLE_DT_OUTPUT = [
+    {"col_name": i[0], "data_type": i[1]} for i in RAW_SAMPLE_DTE_OUTPUT
+]
+
+
+@pytest.mark.parametrize(
+    "match, output",
+    [
+        (
+            "PRIMARY KEY",
+            [
+                {
+                    "col_name": "exampleexampleexample_pk",
+                    "data_type": "PRIMARY KEY (`id`)",
+                }
+            ],
+        ),
+        (
+            "FOREIGN KEY",
+            [
+                {
+                    "col_name": "exampleexampleexample_fk",
+                    "data_type": "FOREIGN KEY (`parent_user_id`) REFERENCES `main`.`pysql_dialect_compliance`.`users` (`user_id`)",
+                }
+            ],
+        ),
+    ],
+)
+def test_filter_dict_by_value(match, output):
+    result = match_dte_rows_by_value(FMT_SAMPLE_DT_OUTPUT, match)
+    assert result == output

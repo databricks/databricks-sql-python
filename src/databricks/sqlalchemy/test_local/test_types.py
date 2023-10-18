@@ -3,7 +3,7 @@ import enum
 import pytest
 import sqlalchemy
 
-from databricks.sqlalchemy import DatabricksDialect
+from databricks.sqlalchemy.base import DatabricksDialect
 
 
 class DatabricksDataType(enum.Enum):
