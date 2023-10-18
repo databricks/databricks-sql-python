@@ -815,3 +815,8 @@ class NativeUUIDTest(NativeUUIDTest):
 @pytest.mark.skip(reason="Databricks doesn't allow percent signs in identifiers")
 class PercentSchemaNamesTest(PercentSchemaNamesTest):
     pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support transactions")
+class IsolationLevelTest(IsolationLevelTest):
+    pass
