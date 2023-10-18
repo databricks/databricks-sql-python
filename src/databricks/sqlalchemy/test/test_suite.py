@@ -845,3 +845,9 @@ class IsolationLevelTest(IsolationLevelTest):
 @pytest.mark.skip(reason="Databricks does not support transactions")
 class AutocommitIsolationTest(AutocommitIsolationTest):
     pass
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks dialect does not implement COLLATE support")
+class CollateTest(CollateTest):
+    """This is supported in Databricks. Not implemented here.
+    """
