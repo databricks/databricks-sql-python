@@ -24,6 +24,7 @@ import pytest
 # See further: https://github.com/sqlalchemy/sqlalchemy/blob/rel_1_4_48/README.dialects.rst
 
 
+@pytest.mark.reviewed
 @pytest.mark.skip(reason="pysql doesn't support binding of BINARY type parameters")
 class BinaryTest(BinaryTest):
     pass
@@ -359,61 +360,53 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
         pass
 
 
-class DifficultParametersTest(DifficultParametersTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_round_trip_same_named_column(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Found invalid character(s) among ' ,;{}()\n\t=' in the column names of your schema.
-        """
-
-
+@pytest.mark.reviewed
 class InsertBehaviorTest(InsertBehaviorTest):
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_autoclose_on_insert(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement empty inserts. See test_suite.py"
+    )
     def test_empty_insert(self):
+        """Empty inserts are possible using DEFAULT VALUES on Databricks. To implement it, we need
+        to hook into the SQLCompiler to render a no-op column list. With SQLAlchemy's default implementation
+        the request fails with a syntax error
         """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-        """
+        pass
 
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_insert_from_select_autoinc(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
-        """
-
-    @pytest.mark.skip(reason="Error during execution. Requires investigation.")
-    def test_insert_from_select_autoinc_no_rows(self):
-        """
-        Exception:
-        - sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError) Column id is not specified in INSERT
-        """
-
-    @pytest.mark.skip(reason="Databricks doesn't support empty INSERT.")
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement empty inserts. See test_suite.py"
+    )
     def test_empty_insert_multiple(self):
+        """Empty inserts are possible using DEFAULT VALUES on Databricks. To implement it, we need
+        to hook into the SQLCompiler to render a no-op column list. With SQLAlchemy's default implementation
+        the request fails with a syntax error
         """
-        Exception:
-            sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
+        pass
 
-            E               sqlalchemy.exc.DatabaseError: (databricks.sql.exc.ServerOperationError)
-            E               [PARSE_SYNTAX_ERROR] Syntax error at or near ')'.(line 1, pos 24)
-            E
-            E               == SQL ==
-            E               INSERT INTO autoinc_pk () VALUES ()
-            E               ------------------------^^^
-            E
-            E               [SQL: INSERT INTO autoinc_pk () VALUES ()]
-            E               [parameters: ({}, {}, {})]
-            E               (Background on this error at: https://sqlalche.me/e/14/4xp6)
+    @pytest.mark.skip(
+        reason="Test setup relies on implicit autoincrement. See test_suite.py"
+    )
+    def test_autoclose_on_insert(self):
+        """The setup for this test creates a column with implicit autoincrement enabled.
+        This dialect does not implement implicit autoincrement - users must declare Identity() explicitly.
         """
+        pass
+
+    @pytest.mark.skip(
+        reason="Test setup relies on implicit autoincrement. See test_suite.py"
+    )
+    def test_insert_from_select_autoinc(self):
+        """Implicit autoincrement is not implemented in this dialect."""
+        pass
+
+    @pytest.mark.skip(
+        reason="Test setup relies on implicit autoincrement. See test_suite.py"
+    )
+    def test_insert_from_select_autoinc_no_rows(self):
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
+    def test_autoclose_on_insert_implicit_returning(self):
+        pass
 
 
 @pytest.mark.reviewed
@@ -547,4 +540,394 @@ class DifficultParametersTest:
     """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
     we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
     these tests is not an acceptance criteria for our dialect.
+    """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Identity reflection is not implemented in this dialect. See test_suite.py"
+)
+class IdentityReflectionTest(IdentityReflectionTest):
+    """It's not clear _how_ to implement this for SQLAlchemy. Columns created with GENERATED ALWAYS AS IDENTITY
+    are not specially demarked in the output of TGetColumnsResponse or DESCRIBE TABLE EXTENDED.
+
+    We could theoretically parse this from the contents of `SHOW CREATE TABLE` but that feels like a hack.
+    """
+
+
+@pytest.mark.reviewed
+class TrueDivTest(TrueDivTest):
+    pass
+
+
+@pytest.mark.reviewed
+class ArgSignatureTest(ArgSignatureTest):
+    pass
+
+
+@pytest.mark.reviewed
+class CompoundSelectTest(CompoundSelectTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DeprecatedCompoundSelectTest(DeprecatedCompoundSelectTest):
+    pass
+
+
+@pytest.mark.reviewed
+class CastTypeDecoratorTest(CastTypeDecoratorTest):
+    pass
+
+
+@pytest.mark.reviewed
+class DistinctOnTest(DistinctOnTest):
+    pass
+
+
+@pytest.mark.reviewed
+class EscapingTest(EscapingTest):
+    pass
+
+
+@pytest.mark.reviewed
+class ExistsTest(ExistsTest):
+    pass
+
+
+@pytest.mark.reviewed
+class IntegerTest(IntegerTest):
+    pass
+
+
+@pytest.mark.reviewed
+class IsOrIsNotDistinctFromTest(IsOrIsNotDistinctFromTest):
+    pass
+
+
+@pytest.mark.reviewed
+class JoinTest(JoinTest):
+    pass
+
+
+@pytest.mark.reviewed
+class OrderByLabelTest(OrderByLabelTest):
+    pass
+
+
+@pytest.mark.reviewed
+class PingTest(PingTest):
+    pass
+
+
+@pytest.mark.reviewed
+class ReturningGuardsTest(ReturningGuardsTest):
+    pass
+
+
+@pytest.mark.reviewed
+class SameNamedSchemaTableTest(SameNamedSchemaTableTest):
+    pass
+
+
+@pytest.mark.reviewed
+class UnicodeTextTest(UnicodeTextTest):
+    pass
+
+
+@pytest.mark.reviewed
+class UnicodeVarcharTest(UnicodeVarcharTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="pysql doesn't support binding of array parameters. See test_suite.py"
+)
+class ArrayTest(ArrayTest):
+    """While Databricks supports ARRAY types, DBR cannot handle bound parameters of this type.
+    This makes them unusable to SQLAlchemy without some workaround. Potentially we could inline
+    the values of these parameters (which risks sql injection).
+    """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
+)
+class JSONTest(JSONTest):
+    """Databricks supports JSON path expressions in queries it's just not implemented in this dialect."""
+
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
+)
+class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
+    """Same comment applies as JSONTest"""
+
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
+class ReturningText(ReturningTest):
+    pass
+
+
+@pytest.mark.reviewed
+class LikeFunctionsTest(LikeFunctionsTest):
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement regexp features. See test_suite.py"
+    )
+    def test_not_regexp_match(self):
+        """The defaul dialect doesn't implement _visit_regexp methods so we don't get them automatically."""
+        pass
+
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement regexp features. See test_suite.py"
+    )
+    def test_regexp_match(self):
+        """The defaul dialect doesn't implement _visit_regexp methods so we don't get them automatically."""
+        pass
+
+
+@pytest.mark.reviewed
+class UuidTest(UuidTest):
+    @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
+    def test_uuid_returning(self):
+        pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Datetime handling doesn't handle timezones well. Priority to fix."
+)
+class DateTimeTZTest(DateTimeTZTest):
+    """When I initially implemented DateTime type handling, I started using TIMESTAMP_NTZ because
+    that's the default behaviour of the DateTime() type and the other tests passed. I simply missed
+    this group of tests. Will need to modify the compilation and result_processor for our type override
+    so that we can pass both DateTimeTZTest and DateTimeTest. Currently, only DateTimeTest passes.
+    """
+
+    pass
+
+
+TUPLES_READ_AS_STRUCT_MSG = (
+    "Databricks interprets tuple-like IN markers as though they are structs."
+)
+
+
+@pytest.mark.reviewed
+class ExpandingBoundInTest(ExpandingBoundInTest):
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_heterogeneous_tuples_bindparam(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_heterogeneous_tuples_direct(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_homogeneous_tuples_bindparam(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_homogeneous_tuples_direct(self):
+        pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
+class HasSequenceTest(HasSequenceTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
+class HasSequenceTestEmpty(HasSequenceTestEmpty):
+    pass
+
+
+@pytest.mark.reviewed
+class CTETest(CTETest):
+    """During the teardown for this test block, it tries to drop a constraint that it never named which raises
+    a compilation error. This could point to poor constraint reflection but our other constraint reflection
+    tests pass. Requires investigation.
+    """
+
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement multiple-table criteria within DELETE"
+    )
+    def test_delete_from_round_trip(self):
+        """This may be supported by Databricks but has not been implemented here."""
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support recursive CTE")
+    def test_select_recursive_round_trip(self):
+        pass
+
+    @pytest.mark.skip(reason="Unsupported by Databricks. See test_suite.py")
+    def test_delete_scalar_subq_round_trip(self):
+        """Error received is [UNSUPPORTED_SUBQUERY_EXPRESSION_CATEGORY.MUST_AGGREGATE_CORRELATED_SCALAR_SUBQUERY]
+
+        This suggests a limitation of the platform. But a workaround may be possible if customers require it.
+        """
+        pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
+class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
+    """provision.py allows us to define event listeners that emit DDL for things like setting up a test schema
+    or, in this case, changing the default schema for the connection after it's been built. This would override
+    the schema defined in the sqlalchemy connection string. This support is possible but is not implemented
+    in the dialect. Deferred for now.
+    """
+
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
+class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsTest):
+    """provision.py allows us to define event listeners that emit DDL for things like setting up a test schema
+    or, in this case, changing the default schema for the connection after it's been built. This would override
+    the schema defined in the sqlalchemy connection string. This support is possible but is not implemented
+    in the dialect. Deferred for now.
+    """
+
+    pass
+
+
+@pytest.mark.reviewed
+class ValuesExpressionTest(ValuesExpressionTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skipped(reason="Databricks doesn't support unicode in symbol names")
+class UnicodeSchemaTest(UnicodeSchemaTest):
+    pass
+
+
+@pytest.mark.reviewed
+class TableNoColumnsTest(TableNoColumnsTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support server-side cursors.")
+class ServerSideCursorsTest(ServerSideCursorsTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support sequences.")
+class SequenceTest(SequenceTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support sequences.")
+class SequenceCompilerTest(SequenceCompilerTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
+class RowCountTest(RowCountTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
+class SimpleUpdateDeleteTest(SimpleUpdateDeleteTest):
+    pass
+
+
+@pytest.mark.reviewed
+class PostCompileParamsTest(PostCompileParamsTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Databricks dialect doesn't implement UUID type. See test_suite.py"
+)
+class NativeUUIDTest(NativeUUIDTest):
+    """Type implementation will be straightforward. Since Databricks doesn't have a native UUID type we can use
+    a STRING field, create a custom TypeDecorator for sqlalchemy.types.Uuid and add it to the dialect's colspecs.
+
+    Then mark requirements.uuid_data_type as open() so this test can run.
+    """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't allow percent signs in identifiers")
+class PercentSchemaNamesTest(PercentSchemaNamesTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support transactions")
+class IsolationLevelTest(IsolationLevelTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support transactions")
+class AutocommitIsolationTest(AutocommitIsolationTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks dialect does not implement COLLATE support")
+class CollateTest(CollateTest):
+    """This is supported in Databricks. Not implemented here."""
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
+class ComputedColumnTest(ComputedColumnTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
+class ComputedReflectionTest(ComputedReflectionTest):
+    pass
+
+
+@pytest.mark.reviewed
+class NormalizedNameTest(NormalizedNameTest):
+    @pytest.mark.skip(reason="Poor test design? See test_suite.py")
+    def test_get_table_names(self):
+        """I'm not clear how this test can ever pass given that it's assertion looks like this:
+
+        ```python
+                eq_(tablenames[0].upper(), tablenames[0].lower())
+                eq_(tablenames[1].upper(), tablenames[1].lower())
+        ```
+
+        It's forcibly calling .upper() and .lower() on the same string and expecting them to be equal.
+        """
+        pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
+class ReturningTest(ReturningTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Databricks dialect does not implement timezone support for Timestamp() types. See test_suite.py"
+)
+class TimeTZTest(TimeTZTest):
+    """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
+    and processing in _types.py. Implementation has been deferred.
     """
