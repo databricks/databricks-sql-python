@@ -158,7 +158,7 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     def table_reflection(self):
         """target database has general support for table reflection"""
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def temp_table_reflection(self):
         """ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
@@ -181,13 +181,13 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         Databricks doesn't support UNIQUE constraints.
         """
         return sqlalchemy.testing.exclusions.closed()
-    
+
     @property
     def reflects_pk_names(self):
         """Target driver reflects the name of primary key constraints."""
 
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def datetime_implicit_bound(self):
         """target dialect when given a datetime object will bind it such
@@ -196,32 +196,32 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         """
 
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def tuple_in(self):
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def ctes(self):
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def ctes_with_update_delete(self):
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def delete_from(self):
         """Target must support DELETE FROM..FROM or DELETE..USING syntax"""
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def table_value_constructor(self):
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def reflect_tables_no_columns(self):
         return sqlalchemy.testing.exclusions.open()
-    
+
     @property
     def denormalized_names(self):
         """Target database must have 'denormalized', i.e.

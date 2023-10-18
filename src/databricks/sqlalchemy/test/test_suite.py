@@ -660,14 +660,16 @@ class JSONTest(JSONTest):
 
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(
     reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
 )
 class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
-    """Same comment applies as JSONTest
-    """
+    """Same comment applies as JSONTest"""
+
     pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
@@ -736,15 +738,18 @@ class ExpandingBoundInTest(ExpandingBoundInTest):
     def test_empty_homogeneous_tuples_direct(self):
         pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
 class HasSequenceTest(HasSequenceTest):
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
 class HasSequenceTestEmpty(HasSequenceTestEmpty):
     pass
+
 
 @pytest.mark.reviewed
 class CTETest(CTETest):
@@ -753,10 +758,11 @@ class CTETest(CTETest):
     tests pass. Requires investigation.
     """
 
-    @pytest.mark.skip(reason="Databricks dialect doesn't implement multiple-table criteria within DELETE")
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement multiple-table criteria within DELETE"
+    )
     def test_delete_from_round_trip(self):
-        """This may be supported by Databricks but has not been implemented here.
-        """
+        """This may be supported by Databricks but has not been implemented here."""
         pass
 
     @pytest.mark.skip(reason="Databricks doesn't support recursive CTE")
@@ -780,7 +786,9 @@ class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
     the schema defined in the sqlalchemy connection string. This support is possible but is not implemented
     in the dialect. Deferred for now.
     """
+
     pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
@@ -790,6 +798,7 @@ class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsT
     the schema defined in the sqlalchemy connection string. This support is possible but is not implemented
     in the dialect. Deferred for now.
     """
+
     pass
 
 
@@ -797,46 +806,57 @@ class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsT
 class ValuesExpressionTest(ValuesExpressionTest):
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skipped(reason="Databricks doesn't support unicode in symbol names")
 class UnicodeSchemaTest(UnicodeSchemaTest):
     pass
 
+
 @pytest.mark.reviewed
 class TableNoColumnsTest(TableNoColumnsTest):
     pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support server-side cursors.")
 class ServerSideCursorsTest(ServerSideCursorsTest):
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks does not support sequences.")
 class SequenceTest(SequenceTest):
     pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks does not support sequences.")
 class SequenceCompilerTest(SequenceCompilerTest):
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
 class RowCountTest(RowCountTest):
     pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
 class SimpleUpdateDeleteTest(SimpleUpdateDeleteTest):
     pass
 
+
 @pytest.mark.reviewed
 class PostCompileParamsTest(PostCompileParamsTest):
     pass
 
+
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect doesn't implement UUID type. See test_suite.py")
+@pytest.mark.skip(
+    reason="Databricks dialect doesn't implement UUID type. See test_suite.py"
+)
 class NativeUUIDTest(NativeUUIDTest):
     """Type implementation will be straightforward. Since Databricks doesn't have a native UUID type we can use
     a STRING field, create a custom TypeDecorator for sqlalchemy.types.Uuid and add it to the dialect's colspecs.
@@ -844,40 +864,45 @@ class NativeUUIDTest(NativeUUIDTest):
     Then mark requirements.uuid_data_type as open() so this test can run.
     """
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't allow percent signs in identifiers")
 class PercentSchemaNamesTest(PercentSchemaNamesTest):
     pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks does not support transactions")
 class IsolationLevelTest(IsolationLevelTest):
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks does not support transactions")
 class AutocommitIsolationTest(AutocommitIsolationTest):
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks dialect does not implement COLLATE support")
 class CollateTest(CollateTest):
-    """This is supported in Databricks. Not implemented here.
-    """
+    """This is supported in Databricks. Not implemented here."""
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks does not support computed / generated columns")
 class ComputedColumnTest(ComputedColumnTest):
     pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks does not support computed / generated columns")
 class ComputedReflectionTest(ComputedReflectionTest):
     pass
 
+
 @pytest.mark.reviewed
 class NormalizedNameTest(NormalizedNameTest):
-    
     @pytest.mark.skip(reason="Poor test design? See test_suite.py")
     def test_get_table_names(self):
         """I'm not clear how this test can ever pass given that it's assertion looks like this:
@@ -891,6 +916,7 @@ class NormalizedNameTest(NormalizedNameTest):
         """
         pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
 class ReturningTest(ReturningTest):
@@ -898,7 +924,9 @@ class ReturningTest(ReturningTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect does not implement timezone support for Timestamp() types. See test_suite.py")
+@pytest.mark.skip(
+    reason="Databricks dialect does not implement timezone support for Timestamp() types. See test_suite.py"
+)
 class TimeTZTest(TimeTZTest):
     """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
     and processing in _types.py. Implementation has been deferred.

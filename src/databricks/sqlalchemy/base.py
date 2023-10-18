@@ -117,7 +117,13 @@ class DatabricksDialect(default.DefaultDialect):
             # But Databricks supports tables with no columns. So if the result is an empty list,
             # we need to check if the table exists (and raise an exception if not) or simply return
             # an empty list.
-            self._describe_table_extended(connection, table_name, self.catalog, schema or self.schema, expect_result=False)
+            self._describe_table_extended(
+                connection,
+                table_name,
+                self.catalog,
+                schema or self.schema,
+                expect_result=False,
+            )
             return resp
         columns = []
         for col in resp:
