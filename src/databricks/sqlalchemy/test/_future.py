@@ -18,60 +18,62 @@ from sqlalchemy.testing.suite import (
     IdentityAutoincrementTest,
     CTETest,
     NormalizedNameTest,
-    ExpandingBoundInTest,
-    LastrowidTest,
-    BinaryTest
+    BinaryTest,
+    ArrayTest,
 )
 
+from databricks.sqlalchemy.test._unsupported import (
+    FutureTableDDLTest,
+    TableDDLTest,
+    ComponentReflectionTest,
+    ComponentReflectionTestExtra,
+    InsertBehaviorTest,
+)
+
+from databricks.sqlalchemy.test._regression import ExpandingBoundInTest
+
+from enum import Enum
+
+
+class FutureFeature(Enum):
+    TBL_COMMENTS = "table comment reflection"
+    VIEW_DEF = "get_view_definition method"
+    TBL_OPTS = "get_table_options method"
+    MULTI_PK = "get_multi_pk_constraint method"
+    CHECK = "CHECK constraint handling"
+    FK_OPTS = "foreign key option checking"
+    EMPTY_INSERT = "empty INSERT support"
+    ARRAY = "ARRAY type handling"
+    BINARY = "BINARY type handling"
+    TUPLE_LITERAL = "tuple-like IN markers completely"
+
+
+def render_future_feature(rsn: FutureFeature, extra=False) -> str:
+    postfix = " More detail in _future.py" if extra else ""
+    return f"[FUTURE][{rsn.name}]: This dialect doesn't implement {rsn.value}.{postfix}"
+
+
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="pysql doesn't support binding of BINARY type parameters")
+@pytest.mark.skip(render_future_feature(FutureFeature.BINARY))
 class BinaryTest(BinaryTest):
     pass
 
 
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="This dialect does not support implicit autoincrement. See comments in test_suite.py"
-)
-class LastrowidTest(LastrowidTest):
-    """SQLAlchemy docs describe that a column without an explicit Identity() may implicitly create one if autoincrement=True.
-    That is what this method tests. Databricks supports auto-incrementing IDENTITY columns but they must be explicitly
-    declared. This limitation is present in our dialect as well. Which means that SQLAlchemy's autoincrement setting of a column
-    is ignored. We emit a logging.WARN message if you try it.
-
-    In the future we could handle this autoincrement by implicitly calling the visit_identity_column() method of our DDLCompiler
-    when autoincrement=True. There is an example of this in the Microsoft SQL Server dialect: MSSDDLCompiler.get_column_specification
-
-    For now, if you need to create a SQLAlchemy column with an auto-incrementing identity, you must set this explicitly in your column
-    definition by passing an Identity() to the column constructor.
-    """
-
-    pass
-
-
-
-TUPLES_READ_AS_STRUCT_MSG = (
-    "Databricks interprets tuple-like IN markers as though they are structs."
-)
-
-
 @pytest.mark.reviewed
 class ExpandingBoundInTest(ExpandingBoundInTest):
-    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    @pytest.mark.skip(render_future_feature(FutureFeature.TUPLE_LITERAL))
     def test_empty_heterogeneous_tuples_bindparam(self):
         pass
 
-    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    @pytest.mark.skip(render_future_feature(FutureFeature.TUPLE_LITERAL))
     def test_empty_heterogeneous_tuples_direct(self):
         pass
 
-    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    @pytest.mark.skip(render_future_feature(FutureFeature.TUPLE_LITERAL))
     def test_empty_homogeneous_tuples_bindparam(self):
         pass
 
-    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    @pytest.mark.skip(render_future_feature(FutureFeature.TUPLE_LITERAL))
     def test_empty_homogeneous_tuples_direct(self):
         pass
 
@@ -119,7 +121,6 @@ class CTETest(CTETest):
         pass
 
 
-
 @pytest.mark.reviewed
 @pytest.mark.skip(
     reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
@@ -148,6 +149,7 @@ class IdentityAutoincrementTest(IdentityAutoincrementTest):
         using an Integer() rather than a BigInteger(). If I override this behaviour to use a BigInteger() instead, the
         test passes.
         """
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
@@ -178,6 +180,7 @@ class IdentityReflectionTest(IdentityReflectionTest):
     We could theoretically parse this from the contents of `SHOW CREATE TABLE` but that feels like a hack.
     """
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(
     reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
@@ -197,6 +200,7 @@ class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
 
     pass
 
+
 @pytest.mark.reviewed
 class LikeFunctionsTest(LikeFunctionsTest):
     @pytest.mark.skip(
@@ -214,7 +218,6 @@ class LikeFunctionsTest(LikeFunctionsTest):
         pass
 
 
-
 @pytest.mark.reviewed
 @pytest.mark.skip(
     reason="Datetime handling doesn't handle timezones well. Priority to fix."
@@ -227,6 +230,7 @@ class DateTimeTZTest(DateTimeTZTest):
     """
 
     pass
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(
@@ -268,7 +272,6 @@ class SimpleUpdateDeleteTest(SimpleUpdateDeleteTest):
     pass
 
 
-
 @pytest.mark.reviewed
 @pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
 class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
@@ -291,3 +294,94 @@ class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsT
     """
 
     pass
+
+
+@pytest.mark.reviewed
+class FutureTableDDLTest(FutureTableDDLTest):
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_add_table_comment(self):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
+
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_drop_table_comment(self):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
+
+
+@pytest.mark.reviewed
+class TableDDLTest(TableDDLTest):
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_add_table_comment(self, connection):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
+
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_drop_table_comment(self, connection):
+        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
+        pass
+
+
+@pytest.mark.reviewed
+class ComponentReflectionTest(ComponentReflectionTest):
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_get_multi_table_comment(self):
+        """There are 84 permutations of this test that are skipped."""
+        pass
+
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_OPTS, True))
+    def test_multi_get_table_options_tables(self):
+        """It's not clear what the expected ouput from this method would even _be_. Requires research."""
+        pass
+
+    @pytest.mark.skip(render_future_feature(FutureFeature.VIEW_DEF))
+    def test_get_view_definition(self):
+        pass
+
+    @pytest.mark.skip(render_future_feature(FutureFeature.VIEW_DEF))
+    def test_get_view_definition_does_not_exist(self):
+        pass
+
+    @pytest.mark.skip(render_future_feature(FutureFeature.MULTI_PK))
+    def test_get_multi_pk_constraint(self):
+        pass
+
+
+@pytest.mark.reviewed
+class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
+    @pytest.mark.skip(render_future_feature(FutureFeature.CHECK))
+    def test_get_check_constraints(self):
+        pass
+
+    @pytest.mark.skip(render_future_feature(FutureFeature.FK_OPTS))
+    def test_get_foreign_key_options(self):
+        """It's not clear from the test code what the expected output is here. Further research required."""
+        pass
+
+
+@pytest.mark.reviewed
+class InsertBehaviorTest(InsertBehaviorTest):
+    @pytest.mark.skip(render_future_feature(FutureFeature.EMPTY_INSERT, True))
+    def test_empty_insert(self):
+        """Empty inserts are possible using DEFAULT VALUES on Databricks. To implement it, we need
+        to hook into the SQLCompiler to render a no-op column list. With SQLAlchemy's default implementation
+        the request fails with a syntax error
+        """
+        pass
+
+    @pytest.mark.skip(render_future_feature(FutureFeature.EMPTY_INSERT, True))
+    def test_empty_insert_multiple(self):
+        """Empty inserts are possible using DEFAULT VALUES on Databricks. To implement it, we need
+        to hook into the SQLCompiler to render a no-op column list. With SQLAlchemy's default implementation
+        the request fails with a syntax error
+        """
+        pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(render_future_feature(FutureFeature.ARRAY))
+class ArrayTest(ArrayTest):
+    """While Databricks supports ARRAY types, DBR cannot handle bound parameters of this type.
+    This makes them unusable to SQLAlchemy without some workaround. Potentially we could inline
+    the values of these parameters (which risks sql injection).
+    """

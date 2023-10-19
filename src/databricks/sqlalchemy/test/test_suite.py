@@ -1,8 +1,8 @@
 # type: ignore
 from sqlalchemy.testing.suite import *
 from databricks.sqlalchemy.test._regression import *
-from databricks.sqlalchemy.test._future import *
 from databricks.sqlalchemy.test._unsupported import *
+from databricks.sqlalchemy.test._future import *
 
 # Test definitions are found here:
 # https://github.com/sqlalchemy/sqlalchemy/tree/main/lib/sqlalchemy/testing/suite
