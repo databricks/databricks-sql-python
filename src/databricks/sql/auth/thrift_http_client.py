@@ -107,7 +107,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.retry_policy and self.retry_policy.start_retry_timer()
 
     def open(self):
-
         # self.__pool replaces the self.__http used by the original THttpClient
         if self.scheme == "http":
             pool_class = HTTPConnectionPool
@@ -143,7 +142,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         return self.__resp is not None
 
     def flush(self):
-
         # Pull data out of buffer that will be sent in this request
         data = self.__wbuf.getvalue()
         self.__wbuf = BytesIO()
@@ -191,7 +189,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
         # Saves the cookie sent by the server response
         if "Set-Cookie" in self.headers:
-            self.setCustomHeaders(dict("Cookie", self.headers["Set-Cookie"]))
+            self.setCustomHeaders({"Cookie", self.headers["Set-Cookie"]})
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
