@@ -14,8 +14,35 @@ from sqlalchemy.testing.suite import (
     HasSequenceTest,
     HasSequenceTestEmpty,
     LongNameBlowoutTest,
-    ExceptionTest
+    ExceptionTest,
+    ArrayTest,
+    QuotedNameArgumentTest
 )
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="Databricks does not support spaces in table names. See comment in test_suite.py"
+)
+class QuotedNameArgumentTest(QuotedNameArgumentTest):
+    """These tests are challenging. The whole test setup depends on a table with a name like `quote ' one`
+    which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest
+    also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
+    methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
+    """
+
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="pysql doesn't support binding of array parameters. See test_suite.py"
+)
+class ArrayTest(ArrayTest):
+    """While Databricks supports ARRAY types, DBR cannot handle bound parameters of this type.
+    This makes them unusable to SQLAlchemy without some workaround. Potentially we could inline
+    the values of these parameters (which risks sql injection).
+    """
+
+
 
 @pytest.mark.reviewed
 class ExceptionTest(ExceptionTest):

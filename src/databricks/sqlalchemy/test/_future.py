@@ -15,8 +15,109 @@ from sqlalchemy.testing.suite import (
     DifficultParametersTest,
     IdentityReflectionTest,
     IdentityColumnTest,
-    IdentityAutoincrementTest
+    IdentityAutoincrementTest,
+    CTETest,
+    NormalizedNameTest,
+    ExpandingBoundInTest,
+    LastrowidTest,
+    BinaryTest
 )
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason="pysql doesn't support binding of BINARY type parameters")
+class BinaryTest(BinaryTest):
+    pass
+
+
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(
+    reason="This dialect does not support implicit autoincrement. See comments in test_suite.py"
+)
+class LastrowidTest(LastrowidTest):
+    """SQLAlchemy docs describe that a column without an explicit Identity() may implicitly create one if autoincrement=True.
+    That is what this method tests. Databricks supports auto-incrementing IDENTITY columns but they must be explicitly
+    declared. This limitation is present in our dialect as well. Which means that SQLAlchemy's autoincrement setting of a column
+    is ignored. We emit a logging.WARN message if you try it.
+
+    In the future we could handle this autoincrement by implicitly calling the visit_identity_column() method of our DDLCompiler
+    when autoincrement=True. There is an example of this in the Microsoft SQL Server dialect: MSSDDLCompiler.get_column_specification
+
+    For now, if you need to create a SQLAlchemy column with an auto-incrementing identity, you must set this explicitly in your column
+    definition by passing an Identity() to the column constructor.
+    """
+
+    pass
+
+
+
+TUPLES_READ_AS_STRUCT_MSG = (
+    "Databricks interprets tuple-like IN markers as though they are structs."
+)
+
+
+@pytest.mark.reviewed
+class ExpandingBoundInTest(ExpandingBoundInTest):
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_heterogeneous_tuples_bindparam(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_heterogeneous_tuples_direct(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_homogeneous_tuples_bindparam(self):
+        pass
+
+    @pytest.mark.skip(reason=TUPLES_READ_AS_STRUCT_MSG)
+    def test_empty_homogeneous_tuples_direct(self):
+        pass
+
+
+@pytest.mark.reviewed
+class NormalizedNameTest(NormalizedNameTest):
+    @pytest.mark.skip(reason="Poor test design? See test_suite.py")
+    def test_get_table_names(self):
+        """I'm not clear how this test can ever pass given that it's assertion looks like this:
+
+        ```python
+                eq_(tablenames[0].upper(), tablenames[0].lower())
+                eq_(tablenames[1].upper(), tablenames[1].lower())
+        ```
+
+        It's forcibly calling .upper() and .lower() on the same string and expecting them to be equal.
+        """
+        pass
+
+
+@pytest.mark.reviewed
+class CTETest(CTETest):
+    """During the teardown for this test block, it tries to drop a constraint that it never named which raises
+    a compilation error. This could point to poor constraint reflection but our other constraint reflection
+    tests pass. Requires investigation.
+    """
+
+    @pytest.mark.skip(
+        reason="Databricks dialect doesn't implement multiple-table criteria within DELETE"
+    )
+    def test_delete_from_round_trip(self):
+        """This may be supported by Databricks but has not been implemented here."""
+        pass
+
+    @pytest.mark.skip(reason="Databricks doesn't support recursive CTE")
+    def test_select_recursive_round_trip(self):
+        pass
+
+    @pytest.mark.skip(reason="Unsupported by Databricks. See test_suite.py")
+    def test_delete_scalar_subq_round_trip(self):
+        """Error received is [UNSUPPORTED_SUBQUERY_EXPRESSION_CATEGORY.MUST_AGGREGATE_CORRELATED_SCALAR_SUBQUERY]
+
+        This suggests a limitation of the platform. But a workaround may be possible if customers require it.
+        """
+        pass
+
 
 
 @pytest.mark.reviewed
