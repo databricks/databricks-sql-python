@@ -19,10 +19,27 @@ from sqlalchemy.testing.suite import (
     QuotedNameArgumentTest
 )
 
+from enum import Enum
+class SkipReason(Enum):
+
+    TABLE_NAMES_NO_SPACE = "spaces in table names"
+    PK_FK_NO_ENFORCE = "enforcing primary or foreign key restraints"
+    IDENTIFIER_LENGTH = "identifiers > 255 characters"
+    SEQUENCES = "SQL SEQUENCES"
+    INDEXES = "SQL INDEXes"
+    SYMBOL_CHARSET = "symbols expected by test"
+    CURSORS = "server-side cursors"
+    TRANSACTIONS = "transactions"
+    RETURNING = "INSERT ... RETURNING syntax"
+    GENERATED_COLUMNS = "computed / generated columns" 
+
+
+def render_skip_reason(rsn: SkipReason, setup_error=False) -> str:
+    prefix = "[BADSETUP]" if setup_error else ""
+    return f"{prefix}{rsn.name}: Databricks does not support {rsn.value}."
+
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks does not support spaces in table names. See comment in test_suite.py"
-)
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.TABLE_NAMES_NO_SPACE, True))
 class QuotedNameArgumentTest(QuotedNameArgumentTest):
     """These tests are challenging. The whole test setup depends on a table with a name like `quote ' one`
     which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest
@@ -45,47 +62,42 @@ class ArrayTest(ArrayTest):
 
 
 @pytest.mark.reviewed
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.PK_FK_NO_ENFORCE))
 class ExceptionTest(ExceptionTest):
-    @pytest.mark.skip(reason="Databricks doesn't enforce primary key constraints.")
-    def test_integrity_error(self):
-        """Per Databricks documentation, primary and foreign key constraints are informational only
+    """Per Databricks documentation, primary and foreign key constraints are informational only
         and are not enforced.
-
+        
         https://docs.databricks.com/api/workspace/tableconstraints
-        """
-        pass
+    """
+    pass
+
 
 @pytest.mark.reviewed
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.IDENTIFIER_LENGTH))
 class LongNameBlowoutTest(LongNameBlowoutTest):
     """These tests all include assertions that the tested name > 255 characters"""
 
-    @pytest.mark.skip(
-        reason="Databricks constraint names are limited to 255 characters"
-    )
-    def test_long_convention_name(self):
-        pass
-
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.SEQUENCES))
 class HasSequenceTest(HasSequenceTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support SEQUENCE server defaults")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.SEQUENCES))
 class HasSequenceTestEmpty(HasSequenceTestEmpty):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support indexes.")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.INDEXES))
 class HasIndexTest(HasIndexTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skipped(reason="Databricks doesn't support unicode in symbol names")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.SYMBOL_CHARSET))
 class UnicodeSchemaTest(UnicodeSchemaTest):
     pass
 
@@ -93,54 +105,54 @@ class UnicodeSchemaTest(UnicodeSchemaTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support server-side cursors.")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.CURSORS))
 class ServerSideCursorsTest(ServerSideCursorsTest):
     pass
 
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't allow percent signs in identifiers")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.SYMBOL_CHARSET))
 class PercentSchemaNamesTest(PercentSchemaNamesTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support transactions")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.TRANSACTIONS))
 class IsolationLevelTest(IsolationLevelTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support transactions")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.TRANSACTIONS))
 class AutocommitIsolationTest(AutocommitIsolationTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks doesn't support INSERT ... RETURNING syntax")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.RETURNING))
 class ReturningTest(ReturningTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support sequences.")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.SEQUENCES))
 class SequenceTest(SequenceTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support sequences.")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.SEQUENCES))
 class SequenceCompilerTest(SequenceCompilerTest):
     pass
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.GENERATED_COLUMNS))
 class ComputedColumnTest(ComputedColumnTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks does not support computed / generated columns")
+@pytest.mark.skip(reason=render_skip_reason(SkipReason.GENERATED_COLUMNS))
 class ComputedReflectionTest(ComputedReflectionTest):
     pass
