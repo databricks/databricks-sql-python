@@ -16,7 +16,6 @@ from sqlalchemy.testing.suite import (
     IdentityReflectionTest,
     IdentityColumnTest,
     IdentityAutoincrementTest,
-    NormalizedNameTest,
     BinaryTest,
     ArrayTest,
 )
@@ -30,7 +29,7 @@ from databricks.sqlalchemy.test._unsupported import (
     CTETest,
 )
 
-from databricks.sqlalchemy.test._regression import ExpandingBoundInTest
+from databricks.sqlalchemy.test._regression import ExpandingBoundInTest, NormalizedNameTest
 
 from enum import Enum
 
@@ -48,6 +47,7 @@ class FutureFeature(Enum):
     JSON = "JSON column type handling"
     TUPLE_LITERAL = "tuple-like IN markers completely"
     CTE_FEAT = "required CTE features"
+    TEST_DESIGN = "required test-fixture overrides"
 
 
 def render_future_feature(rsn: FutureFeature, extra=False) -> str:
@@ -80,9 +80,8 @@ class ExpandingBoundInTest(ExpandingBoundInTest):
         pass
 
 
-@pytest.mark.reviewed
 class NormalizedNameTest(NormalizedNameTest):
-    @pytest.mark.skip(reason="Poor test design? See test_suite.py")
+    @pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN, True))
     def test_get_table_names(self):
         """I'm not clear how this test can ever pass given that it's assertion looks like this:
 
