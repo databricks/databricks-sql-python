@@ -18,7 +18,6 @@ from sqlalchemy.testing.suite import (
     HasSequenceTestEmpty,
     LongNameBlowoutTest,
     ExceptionTest,
-    QuotedNameArgumentTest,
     LastrowidTest,
 )
 
@@ -65,14 +64,7 @@ def render_skip_reason(rsn: SkipReason, setup_error=False, extra=False) -> str:
     return f"[UNSUPPORTED]{prefix}[{rsn.name}]: Databricks does not support {rsn.value}.{postfix}"
 
 
-@pytest.mark.reviewed
-@pytest.mark.skip(reason=render_skip_reason(SkipReason.SYMBOL_CHARSET, True, True))
-class QuotedNameArgumentTest(QuotedNameArgumentTest):
-    """These tests are challenging. The whole test setup depends on a table with a name like `quote ' one`
-    which will never work on Databricks because table names can't contains spaces. But QuotedNamedArgumentTest
-    also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
-    methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
-    """
+
 
 
 @pytest.mark.reviewed
