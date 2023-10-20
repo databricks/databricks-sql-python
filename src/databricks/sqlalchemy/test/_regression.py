@@ -46,7 +46,8 @@ from sqlalchemy.testing.suite import (
     ExpandingBoundInTest,
     CTETest,
     NormalizedNameTest,
-    IdentityAutoincrementTest
+    IdentityAutoincrementTest,
+    LikeFunctionsTest
 )
 
 @pytest.mark.reviewed
@@ -283,4 +284,8 @@ class NormalizedNameTest(NormalizedNameTest):
 
 @pytest.mark.reviewed
 class IdentityAutoincrementTest(IdentityAutoincrementTest):
+    pass
+
+@pytest.mark.reviewed
+class LikeFunctionsTest(LikeFunctionsTest):
     pass

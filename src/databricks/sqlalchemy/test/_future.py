@@ -8,7 +8,6 @@ from sqlalchemy.testing.suite import (
     CollateTest,
     TimeTZTest,
     DateTimeTZTest,
-    LikeFunctionsTest,
     JSONTest,
     JSONLegacyStringCastIndexTest,
     BizarroCharacterFKResolutionTest,
@@ -33,6 +32,7 @@ from databricks.sqlalchemy.test._regression import (
     ExpandingBoundInTest,
     NormalizedNameTest,
     IdentityAutoincrementTest,
+    LikeFunctionsTest
 )
 
 from enum import Enum
@@ -53,6 +53,7 @@ class FutureFeature(Enum):
     CTE_FEAT = "required CTE features"
     TEST_DESIGN = "required test-fixture overrides"
     IDENTITY = "identity reflection"
+    REGEXP = "_visit_regexp"
 
 
 def render_future_feature(rsn: FutureFeature, extra=False) -> str:
@@ -179,18 +180,13 @@ class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
     pass
 
 
-@pytest.mark.reviewed
 class LikeFunctionsTest(LikeFunctionsTest):
-    @pytest.mark.skip(
-        reason="Databricks dialect doesn't implement regexp features. See test_suite.py"
-    )
+    @pytest.mark.skip(render_future_feature(FutureFeature.REGEXP))
     def test_not_regexp_match(self):
         """The defaul dialect doesn't implement _visit_regexp methods so we don't get them automatically."""
         pass
 
-    @pytest.mark.skip(
-        reason="Databricks dialect doesn't implement regexp features. See test_suite.py"
-    )
+    @pytest.mark.skip(render_future_feature(FutureFeature.REGEXP))
     def test_regexp_match(self):
         """The defaul dialect doesn't implement _visit_regexp methods so we don't get them automatically."""
         pass
