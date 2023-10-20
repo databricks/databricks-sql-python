@@ -123,9 +123,7 @@ class IdentityColumnTest(IdentityColumnTest):
 
 @pytest.mark.reviewed
 class IdentityAutoincrementTest(IdentityAutoincrementTest):
-    @pytest.mark.skip(
-        reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
-    )
+    @pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN, True))
     def test_autoincrement_with_identity(self):
         """This test has the same issue as IdentityColumnTest.test_select_all in that it creates a table with identity
         using an Integer() rather than a BigInteger(). If I override this behaviour to use a BigInteger() instead, the
