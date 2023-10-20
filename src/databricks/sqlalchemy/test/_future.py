@@ -57,6 +57,8 @@ class FutureFeature(Enum):
     REGEXP = "_visit_regexp"
     TIMEZONE = "timezone handling for DateTime() or Time() types"
     COLLATE = "COLLATE DDL generation"
+    SANE_ROWCOUNT = "sane_rowcount support"
+    PROVISION = "event-driven engine configuration"
 
 
 def render_future_feature(rsn: FutureFeature, extra=False) -> str:
@@ -232,19 +234,19 @@ class NativeUUIDTest(NativeUUIDTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
+@pytest.mark.skip(render_future_feature(FutureFeature.SANE_ROWCOUNT))
 class RowCountTest(RowCountTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect does not implement sane rowcount.")
+@pytest.mark.skip(render_future_feature(FutureFeature.SANE_ROWCOUNT))
 class SimpleUpdateDeleteTest(SimpleUpdateDeleteTest):
     pass
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
+@pytest.mark.skip(render_future_feature(FutureFeature.PROVISION, True))
 class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
     """provision.py allows us to define event listeners that emit DDL for things like setting up a test schema
     or, in this case, changing the default schema for the connection after it's been built. This would override
@@ -256,7 +258,7 @@ class WeCanSetDefaultSchemaWEventsTest(WeCanSetDefaultSchemaWEventsTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Dialect doesn't implement provision.py See test_suite.py")
+@pytest.mark.skip(render_future_feature(FutureFeature.PROVISION, True))
 class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsTest):
     """provision.py allows us to define event listeners that emit DDL for things like setting up a test schema
     or, in this case, changing the default schema for the connection after it's been built. This would override
