@@ -49,12 +49,14 @@ class FutureFeature(Enum):
     ARRAY = "ARRAY column type handling"
     BINARY = "BINARY column type handling"
     JSON = "JSON column type handling"
+    UUID = "native Uuid() type"
     TUPLE_LITERAL = "tuple-like IN markers completely"
     CTE_FEAT = "required CTE features"
     TEST_DESIGN = "required test-fixture overrides"
     IDENTITY = "identity reflection"
     REGEXP = "_visit_regexp"
     TIMEZONE = "timezone handling for DateTime() or Time() types"
+    COLLATE = "COLLATE DDL generation"
 
 
 def render_future_feature(rsn: FutureFeature, extra=False) -> str:
@@ -214,15 +216,13 @@ class TimeTZTest(TimeTZTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Databricks dialect does not implement COLLATE support")
+@pytest.mark.skip(render_future_feature(FutureFeature.COLLATE))
 class CollateTest(CollateTest):
     """This is supported in Databricks. Not implemented here."""
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect doesn't implement UUID type. See test_suite.py"
-)
+@pytest.mark.skip(render_future_feature(FutureFeature.UUID, True))
 class NativeUUIDTest(NativeUUIDTest):
     """Type implementation will be straightforward. Since Databricks doesn't have a native UUID type we can use
     a STRING field, create a custom TypeDecorator for sqlalchemy.types.Uuid and add it to the dialect's colspecs.
