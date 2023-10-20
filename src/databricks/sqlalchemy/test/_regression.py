@@ -43,7 +43,8 @@ from sqlalchemy.testing.suite import (
     ComponentReflectionTestExtra,
     HasTableTest,
     NumericTest,
-    ExpandingBoundInTest
+    ExpandingBoundInTest,
+    CTETest
 )
 
 @pytest.mark.reviewed
@@ -268,4 +269,8 @@ class TableNoColumnsTest(TableNoColumnsTest):
 
 @pytest.mark.reviewed
 class ExpandingBoundInTest(ExpandingBoundInTest):
+    pass
+
+@pytest.mark.reviewed
+class CTETest(CTETest):
     pass

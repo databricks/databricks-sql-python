@@ -19,7 +19,7 @@ from sqlalchemy.testing.suite import (
     LongNameBlowoutTest,
     ExceptionTest,
     QuotedNameArgumentTest,
-    LastrowidTest
+    LastrowidTest,
 )
 
 from databricks.sqlalchemy.test._regression import (
@@ -31,7 +31,8 @@ from databricks.sqlalchemy.test._regression import (
     NumericTest,
     HasTableTest,
     ComponentReflectionTestExtra,
-    InsertBehaviorTest
+    InsertBehaviorTest,
+    CTETest,
 )
 
 from enum import Enum
@@ -55,6 +56,8 @@ class SkipReason(Enum):
     IMPL_FLOAT_PREC = "required implicit float precision"
     STRING_FEAT = "required STRING type features"
     AUTO_INC = "implicit AUTO_INCREMENT"
+    CTE_FEAT = "required CTE features"
+
 
 def render_skip_reason(rsn: SkipReason, setup_error=False, extra=False) -> str:
     prefix = "[BADSETUP]" if setup_error else ""
@@ -70,8 +73,6 @@ class QuotedNameArgumentTest(QuotedNameArgumentTest):
     also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
     methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
     """
-
-
 
 
 @pytest.mark.reviewed
@@ -90,6 +91,7 @@ class ExceptionTest(ExceptionTest):
 @pytest.mark.skip(reason=render_skip_reason(SkipReason.IDENTIFIER_LENGTH))
 class LongNameBlowoutTest(LongNameBlowoutTest):
     """These tests all include assertions that the tested name > 255 characters"""
+
     pass
 
 
@@ -245,7 +247,6 @@ class UuidTest(UuidTest):
 
 @pytest.mark.reviewed
 class FutureTableDDLTest(FutureTableDDLTest):
-
     @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
     def test_create_index_if_not_exists(self):
         """We could use requirements.index_reflection and requirements.index_ddl_if_exists
@@ -347,6 +348,7 @@ class NumericTest(NumericTest):
         """This test automatically runs if requirements.precision_generic_float_type is open()"""
         pass
 
+
 @pytest.mark.reviewed
 class HasTableTest(HasTableTest):
     """Databricks does not support temporary tables."""
@@ -355,7 +357,7 @@ class HasTableTest(HasTableTest):
     def test_has_table_temp_table(self):
         pass
 
-    @pytest.mark.skip(render_skip_reason(SkipReason.TEMP_TBL,True,True))
+    @pytest.mark.skip(render_skip_reason(SkipReason.TEMP_TBL, True, True))
     def test_has_table_temp_view(self):
         """Databricks supports temporary views but this test depends on requirements.has_temp_table, which we
         explicitly close so that we can run other tests in this group. See the comment under has_temp_table in
@@ -371,9 +373,9 @@ class HasTableTest(HasTableTest):
         """
         pass
 
+
 @pytest.mark.reviewed
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
-
     @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
     def test_reflect_covering_index(self):
         pass
@@ -384,13 +386,12 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
 
     @pytest.mark.skip(render_skip_reason(SkipReason.STRING_FEAT, extra=True))
     def test_varchar_reflection(self):
-        """Databricks doesn't enforce string length limitations like STRING(255). """
+        """Databricks doesn't enforce string length limitations like STRING(255)."""
         pass
 
 
 @pytest.mark.reviewed
 class InsertBehaviorTest(InsertBehaviorTest):
-
     @pytest.mark.skip(render_skip_reason(SkipReason.AUTO_INC, True, True))
     def test_autoclose_on_insert(self):
         """The setup for this test creates a column with implicit autoincrement enabled.
@@ -411,6 +412,7 @@ class InsertBehaviorTest(InsertBehaviorTest):
     def test_autoclose_on_insert_implicit_returning(self):
         pass
 
+
 @pytest.mark.reviewed
 @pytest.mark.skip(render_skip_reason(SkipReason.AUTO_INC, extra=True))
 class LastrowidTest(LastrowidTest):
@@ -427,3 +429,23 @@ class LastrowidTest(LastrowidTest):
     """
 
     pass
+
+
+@pytest.mark.reviewed
+class CTETest(CTETest):
+    """During the teardown for this test block, it tries to drop a constraint that it never named which raises
+    a compilation error. This could point to poor constraint reflection but our other constraint reflection
+    tests pass. Requires investigation.
+    """
+
+    @pytest.mark.skip(render_skip_reason(SkipReason.CTE_FEAT, extra=True))
+    def test_select_recursive_round_trip(self):
+        pass
+
+    @pytest.mark.skip(render_skip_reason(SkipReason.CTE_FEAT, extra=True))
+    def test_delete_scalar_subq_round_trip(self):
+        """Error received is [UNSUPPORTED_SUBQUERY_EXPRESSION_CATEGORY.MUST_AGGREGATE_CORRELATED_SCALAR_SUBQUERY]
+
+        This suggests a limitation of the platform. But a workaround may be possible if customers require it.
+        """
+        pass

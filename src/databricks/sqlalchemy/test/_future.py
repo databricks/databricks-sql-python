@@ -16,7 +16,6 @@ from sqlalchemy.testing.suite import (
     IdentityReflectionTest,
     IdentityColumnTest,
     IdentityAutoincrementTest,
-    CTETest,
     NormalizedNameTest,
     BinaryTest,
     ArrayTest,
@@ -28,6 +27,7 @@ from databricks.sqlalchemy.test._unsupported import (
     ComponentReflectionTest,
     ComponentReflectionTestExtra,
     InsertBehaviorTest,
+    CTETest,
 )
 
 from databricks.sqlalchemy.test._regression import ExpandingBoundInTest
@@ -43,9 +43,11 @@ class FutureFeature(Enum):
     CHECK = "CHECK constraint handling"
     FK_OPTS = "foreign key option checking"
     EMPTY_INSERT = "empty INSERT support"
-    ARRAY = "ARRAY type handling"
-    BINARY = "BINARY type handling"
+    ARRAY = "ARRAY column type handling"
+    BINARY = "BINARY column type handling"
+    JSON = "JSON column type handling"
     TUPLE_LITERAL = "tuple-like IN markers completely"
+    CTE_FEAT = "required CTE features"
 
 
 def render_future_feature(rsn: FutureFeature, extra=False) -> str:
@@ -94,30 +96,10 @@ class NormalizedNameTest(NormalizedNameTest):
         pass
 
 
-@pytest.mark.reviewed
 class CTETest(CTETest):
-    """During the teardown for this test block, it tries to drop a constraint that it never named which raises
-    a compilation error. This could point to poor constraint reflection but our other constraint reflection
-    tests pass. Requires investigation.
-    """
-
-    @pytest.mark.skip(
-        reason="Databricks dialect doesn't implement multiple-table criteria within DELETE"
-    )
+    @pytest.mark.skip(render_future_feature(FutureFeature.CTE_FEAT, True))
     def test_delete_from_round_trip(self):
-        """This may be supported by Databricks but has not been implemented here."""
-        pass
-
-    @pytest.mark.skip(reason="Databricks doesn't support recursive CTE")
-    def test_select_recursive_round_trip(self):
-        pass
-
-    @pytest.mark.skip(reason="Unsupported by Databricks. See test_suite.py")
-    def test_delete_scalar_subq_round_trip(self):
-        """Error received is [UNSUPPORTED_SUBQUERY_EXPRESSION_CATEGORY.MUST_AGGREGATE_CORRELATED_SCALAR_SUBQUERY]
-
-        This suggests a limitation of the platform. But a workaround may be possible if customers require it.
-        """
+        """Databricks dialect doesn't implement multiple-table criteria within DELETE"""
         pass
 
 
