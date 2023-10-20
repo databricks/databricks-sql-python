@@ -54,6 +54,7 @@ class FutureFeature(Enum):
     TEST_DESIGN = "required test-fixture overrides"
     IDENTITY = "identity reflection"
     REGEXP = "_visit_regexp"
+    TIMEZONE = "timezone handling for DateTime() or Time() types"
 
 
 def render_future_feature(rsn: FutureFeature, extra=False) -> str:
@@ -193,9 +194,7 @@ class LikeFunctionsTest(LikeFunctionsTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Datetime handling doesn't handle timezones well. Priority to fix."
-)
+@pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
 class DateTimeTZTest(DateTimeTZTest):
     """When I initially implemented DateTime type handling, I started using TIMESTAMP_NTZ because
     that's the default behaviour of the DateTime() type and the other tests passed. I simply missed
@@ -207,9 +206,7 @@ class DateTimeTZTest(DateTimeTZTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect does not implement timezone support for Timestamp() types. See test_suite.py"
-)
+@pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
 class TimeTZTest(TimeTZTest):
     """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
     and processing in _types.py. Implementation has been deferred.
