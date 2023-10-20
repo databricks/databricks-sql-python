@@ -104,11 +104,11 @@ class CTETest(CTETest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Identity works. Test needs rewrite for Databricks. See comments in test_suite.py"
-)
+@pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN, True))
 class IdentityColumnTest(IdentityColumnTest):
-    """The setup for these tests tries to create a table with a DELTA IDENTITY column but has two problems:
+    """Identity works. Test needs rewrite for Databricks. See comments in test_suite.py
+    
+    The setup for these tests tries to create a table with a DELTA IDENTITY column but has two problems:
     1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
     2. It tries to set the start == 42, which Databricks doesn't support
 
