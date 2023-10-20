@@ -15,10 +15,9 @@ from sqlalchemy.testing.suite import (
     DifficultParametersTest,
     IdentityReflectionTest,
     IdentityColumnTest,
-    IdentityAutoincrementTest,
     BinaryTest,
     ArrayTest,
-    QuotedNameArgumentTest
+    QuotedNameArgumentTest,
 )
 
 from databricks.sqlalchemy.test._unsupported import (
@@ -30,7 +29,11 @@ from databricks.sqlalchemy.test._unsupported import (
     CTETest,
 )
 
-from databricks.sqlalchemy.test._regression import ExpandingBoundInTest, NormalizedNameTest
+from databricks.sqlalchemy.test._regression import (
+    ExpandingBoundInTest,
+    NormalizedNameTest,
+    IdentityAutoincrementTest,
+)
 
 from enum import Enum
 
@@ -49,6 +52,7 @@ class FutureFeature(Enum):
     TUPLE_LITERAL = "tuple-like IN markers completely"
     CTE_FEAT = "required CTE features"
     TEST_DESIGN = "required test-fixture overrides"
+    IDENTITY = "identity reflection"
 
 
 def render_future_feature(rsn: FutureFeature, extra=False) -> str:
@@ -107,7 +111,7 @@ class CTETest(CTETest):
 @pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN, True))
 class IdentityColumnTest(IdentityColumnTest):
     """Identity works. Test needs rewrite for Databricks. See comments in test_suite.py
-    
+
     The setup for these tests tries to create a table with a DELTA IDENTITY column but has two problems:
     1. It uses an Integer() type for the column. Whereas DELTA IDENTITY columns must be BIGINT.
     2. It tries to set the start == 42, which Databricks doesn't support
@@ -132,7 +136,7 @@ class IdentityAutoincrementTest(IdentityAutoincrementTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
+@pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN))
 class BizarroCharacterFKResolutionTest(BizarroCharacterFKResolutionTest):
     """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
     we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
@@ -141,7 +145,7 @@ class BizarroCharacterFKResolutionTest(BizarroCharacterFKResolutionTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(reason="Implementation deferred. See test_suite.py")
+@pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN))
 class DifficultParametersTest(DifficultParametersTest):
     """Some of the combinations in this test pass. Others fail. Given the esoteric nature of these failures,
     we have opted to defer implementing fixes to a later time, guided by customer feedback. Passage of
@@ -150,9 +154,7 @@ class DifficultParametersTest(DifficultParametersTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Identity reflection is not implemented in this dialect. See test_suite.py"
-)
+@pytest.mark.skip(render_future_feature(FutureFeature.IDENTITY, True))
 class IdentityReflectionTest(IdentityReflectionTest):
     """It's not clear _how_ to implement this for SQLAlchemy. Columns created with GENERATED ALWAYS AS IDENTITY
     are not specially demarked in the output of TGetColumnsResponse or DESCRIBE TABLE EXTENDED.
@@ -162,9 +164,7 @@ class IdentityReflectionTest(IdentityReflectionTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
-)
+@pytest.mark.skip(render_future_feature(FutureFeature.JSON))
 class JSONTest(JSONTest):
     """Databricks supports JSON path expressions in queries it's just not implemented in this dialect."""
 
@@ -172,9 +172,7 @@ class JSONTest(JSONTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(
-    reason="Databricks dialect doesn't implement JSON column types. See test_suite.py"
-)
+@pytest.mark.skip(render_future_feature(FutureFeature.JSON))
 class JSONLegacyStringCastIndexTest(JSONLegacyStringCastIndexTest):
     """Same comment applies as JSONTest"""
 
@@ -365,6 +363,7 @@ class ArrayTest(ArrayTest):
     This makes them unusable to SQLAlchemy without some workaround. Potentially we could inline
     the values of these parameters (which risks sql injection).
     """
+
 
 @pytest.mark.reviewed
 @pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN, True))
