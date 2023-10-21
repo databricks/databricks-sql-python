@@ -1,5 +1,4 @@
 import pytest
-from typing import Union
 
 # These are test suites that are fully skipped with a SkipReason
 from sqlalchemy.testing.suite import (
@@ -62,9 +61,6 @@ def render_skip_reason(rsn: SkipReason, setup_error=False, extra=False) -> str:
     prefix = "[BADSETUP]" if setup_error else ""
     postfix = " More detail in _unsupported.py" if extra else ""
     return f"[UNSUPPORTED]{prefix}[{rsn.name}]: Databricks does not support {rsn.value}.{postfix}"
-
-
-
 
 
 @pytest.mark.reviewed
@@ -237,7 +233,7 @@ class UuidTest(UuidTest):
         pass
 
 
-@pytest.mark.reviewed
+
 class FutureTableDDLTest(FutureTableDDLTest):
     @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
     def test_create_index_if_not_exists(self):
@@ -254,7 +250,7 @@ class FutureTableDDLTest(FutureTableDDLTest):
         pass
 
 
-@pytest.mark.reviewed
+
 class TableDDLTest(TableDDLTest):
     @pytest.mark.skip(reason=render_skip_reason(SkipReason.INDEXES))
     def test_create_index_if_not_exists(self, connection):
@@ -271,7 +267,7 @@ class TableDDLTest(TableDDLTest):
         pass
 
 
-@pytest.mark.reviewed
+
 class ComponentReflectionTest(ComponentReflectionTest):
     """This test requires two schemas be present in the target Databricks workspace:
     - The schema set in --dburi
@@ -312,7 +308,7 @@ class ComponentReflectionTest(ComponentReflectionTest):
         pass
 
 
-@pytest.mark.reviewed
+
 class NumericTest(NumericTest):
     @pytest.mark.skip(render_skip_reason(SkipReason.DECIMAL_FEAT))
     def test_enotation_decimal(self):
@@ -341,7 +337,7 @@ class NumericTest(NumericTest):
         pass
 
 
-@pytest.mark.reviewed
+
 class HasTableTest(HasTableTest):
     """Databricks does not support temporary tables."""
 
@@ -366,7 +362,7 @@ class HasTableTest(HasTableTest):
         pass
 
 
-@pytest.mark.reviewed
+
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
     def test_reflect_covering_index(self):
@@ -382,7 +378,7 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
         pass
 
 
-@pytest.mark.reviewed
+
 class InsertBehaviorTest(InsertBehaviorTest):
     @pytest.mark.skip(render_skip_reason(SkipReason.AUTO_INC, True, True))
     def test_autoclose_on_insert(self):
@@ -423,7 +419,7 @@ class LastrowidTest(LastrowidTest):
     pass
 
 
-@pytest.mark.reviewed
+
 class CTETest(CTETest):
     """During the teardown for this test block, it tries to drop a constraint that it never named which raises
     a compilation error. This could point to poor constraint reflection but our other constraint reflection

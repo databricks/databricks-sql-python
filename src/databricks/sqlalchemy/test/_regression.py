@@ -78,6 +78,8 @@ class ComponentReflectionTest(ComponentReflectionTest):
     - A second schema named "test_schema"
 
     Note that test_get_multi_foreign keys is flaky because DBR does not guarantee the order of data returned in DESCRIBE TABLE EXTENDED
+
+    _Most_ of these tests pass if we manually override the bad test setup.
     """
     pass
 
