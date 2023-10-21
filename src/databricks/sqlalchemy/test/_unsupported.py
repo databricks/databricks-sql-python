@@ -1,39 +1,38 @@
+from enum import Enum
+
 import pytest
+from databricks.sqlalchemy.test._regression import (
+    ComponentReflectionTest,
+    ComponentReflectionTestExtra,
+    CTETest,
+    FetchLimitOffsetTest,
+    FutureTableDDLTest,
+    HasTableTest,
+    InsertBehaviorTest,
+    NumericTest,
+    TableDDLTest,
+    UuidTest,
+)
 
 # These are test suites that are fully skipped with a SkipReason
 from sqlalchemy.testing.suite import (
-    SequenceTest,
-    SequenceCompilerTest,
+    AutocommitIsolationTest,
     ComputedColumnTest,
     ComputedReflectionTest,
-    ReturningTest,
-    IsolationLevelTest,
-    AutocommitIsolationTest,
-    PercentSchemaNamesTest,
-    UnicodeSchemaTest,
-    ServerSideCursorsTest,
+    ExceptionTest,
     HasIndexTest,
     HasSequenceTest,
     HasSequenceTestEmpty,
-    LongNameBlowoutTest,
-    ExceptionTest,
+    IsolationLevelTest,
     LastrowidTest,
+    LongNameBlowoutTest,
+    PercentSchemaNamesTest,
+    ReturningTest,
+    SequenceCompilerTest,
+    SequenceTest,
+    ServerSideCursorsTest,
+    UnicodeSchemaTest,
 )
-
-from databricks.sqlalchemy.test._regression import (
-    FetchLimitOffsetTest,
-    UuidTest,
-    FutureTableDDLTest,
-    TableDDLTest,
-    ComponentReflectionTest,
-    NumericTest,
-    HasTableTest,
-    ComponentReflectionTestExtra,
-    InsertBehaviorTest,
-    CTETest,
-)
-
-from enum import Enum
 
 
 class SkipReason(Enum):
@@ -233,7 +232,6 @@ class UuidTest(UuidTest):
         pass
 
 
-
 class FutureTableDDLTest(FutureTableDDLTest):
     @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
     def test_create_index_if_not_exists(self):
@@ -250,7 +248,6 @@ class FutureTableDDLTest(FutureTableDDLTest):
         pass
 
 
-
 class TableDDLTest(TableDDLTest):
     @pytest.mark.skip(reason=render_skip_reason(SkipReason.INDEXES))
     def test_create_index_if_not_exists(self, connection):
@@ -265,7 +262,6 @@ class TableDDLTest(TableDDLTest):
         here to disable this but prefer a more meaningful skip message
         """
         pass
-
 
 
 class ComponentReflectionTest(ComponentReflectionTest):
@@ -308,7 +304,6 @@ class ComponentReflectionTest(ComponentReflectionTest):
         pass
 
 
-
 class NumericTest(NumericTest):
     @pytest.mark.skip(render_skip_reason(SkipReason.DECIMAL_FEAT))
     def test_enotation_decimal(self):
@@ -337,7 +332,6 @@ class NumericTest(NumericTest):
         pass
 
 
-
 class HasTableTest(HasTableTest):
     """Databricks does not support temporary tables."""
 
@@ -362,7 +356,6 @@ class HasTableTest(HasTableTest):
         pass
 
 
-
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
     def test_reflect_covering_index(self):
@@ -376,7 +369,6 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     def test_varchar_reflection(self):
         """Databricks doesn't enforce string length limitations like STRING(255)."""
         pass
-
 
 
 class InsertBehaviorTest(InsertBehaviorTest):
@@ -417,7 +409,6 @@ class LastrowidTest(LastrowidTest):
     """
 
     pass
-
 
 
 class CTETest(CTETest):

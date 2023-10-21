@@ -1,59 +1,59 @@
 import pytest
 from sqlalchemy.testing.suite import (
-    TimeMicrosecondsTest,
-    TextTest,
-    StringTest,
-    DateTimeMicrosecondsTest,
-    TimestampMicrosecondsTest,
-    DateTimeCoercedToDateTimeTest,
-    TimeTest,
-    DateTimeTest,
-    DateTimeHistoricTest,
-    DateTest,
-    DateHistoricTest,
-    RowFetchTest,
-    CompositeKeyReflectionTest,
-    TrueDivTest,
     ArgSignatureTest,
-    CompoundSelectTest,
-    DeprecatedCompoundSelectTest,
+    BooleanTest,
     CastTypeDecoratorTest,
+    ComponentReflectionTest,
+    ComponentReflectionTestExtra,
+    CompositeKeyReflectionTest,
+    CompoundSelectTest,
+    CTETest,
+    DateHistoricTest,
+    DateTest,
+    DateTimeCoercedToDateTimeTest,
+    DateTimeHistoricTest,
+    DateTimeMicrosecondsTest,
+    DateTimeTest,
+    DeprecatedCompoundSelectTest,
     DistinctOnTest,
     EscapingTest,
     ExistsTest,
+    ExpandingBoundInTest,
+    FetchLimitOffsetTest,
+    FutureTableDDLTest,
+    HasTableTest,
+    IdentityAutoincrementTest,
+    InsertBehaviorTest,
     IntegerTest,
     IsOrIsNotDistinctFromTest,
     JoinTest,
+    LikeFunctionsTest,
+    NormalizedNameTest,
+    NumericTest,
     OrderByLabelTest,
     PingTest,
+    PostCompileParamsTest,
     ReturningGuardsTest,
+    RowFetchTest,
     SameNamedSchemaTableTest,
+    StringTest,
+    TableDDLTest,
+    TableNoColumnsTest,
+    TextTest,
+    TimeMicrosecondsTest,
+    TimestampMicrosecondsTest,
+    TimeTest,
+    TrueDivTest,
     UnicodeTextTest,
     UnicodeVarcharTest,
-    TableNoColumnsTest,
-    PostCompileParamsTest,
-    BooleanTest,
-    ValuesExpressionTest,
     UuidTest,
-    FetchLimitOffsetTest,
-    FutureTableDDLTest,
-    TableDDLTest,
-    ComponentReflectionTest,
-    InsertBehaviorTest,
-    ComponentReflectionTestExtra,
-    HasTableTest,
-    NumericTest,
-    ExpandingBoundInTest,
-    CTETest,
-    NormalizedNameTest,
-    IdentityAutoincrementTest,
-    LikeFunctionsTest
+    ValuesExpressionTest,
 )
+
 
 @pytest.mark.reviewed
 class NumericTest(NumericTest):
     pass
-
 
 
 @pytest.mark.reviewed
@@ -81,7 +81,9 @@ class ComponentReflectionTest(ComponentReflectionTest):
 
     _Most_ of these tests pass if we manually override the bad test setup.
     """
+
     pass
+
 
 @pytest.mark.reviewed
 class TableDDLTest(TableDDLTest):
@@ -267,6 +269,7 @@ class UnicodeTextTest(UnicodeTextTest):
 class UnicodeVarcharTest(UnicodeVarcharTest):
     pass
 
+
 @pytest.mark.reviewed
 class TableNoColumnsTest(TableNoColumnsTest):
     pass
@@ -276,17 +279,21 @@ class TableNoColumnsTest(TableNoColumnsTest):
 class ExpandingBoundInTest(ExpandingBoundInTest):
     pass
 
+
 @pytest.mark.reviewed
 class CTETest(CTETest):
     pass
+
 
 @pytest.mark.reviewed
 class NormalizedNameTest(NormalizedNameTest):
     pass
 
+
 @pytest.mark.reviewed
 class IdentityAutoincrementTest(IdentityAutoincrementTest):
     pass
+
 
 @pytest.mark.reviewed
 class LikeFunctionsTest(LikeFunctionsTest):

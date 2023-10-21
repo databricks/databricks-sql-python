@@ -1,41 +1,39 @@
+from enum import Enum
+
 import pytest
-from sqlalchemy.testing.suite import (
-    WeCanSetDefaultSchemaWEventsTest,
-    FutureWeCanSetDefaultSchemaWEventsTest,
-    SimpleUpdateDeleteTest,
-    RowCountTest,
-    NativeUUIDTest,
-    CollateTest,
-    TimeTZTest,
-    DateTimeTZTest,
-    JSONTest,
-    JSONLegacyStringCastIndexTest,
-    BizarroCharacterFKResolutionTest,
-    DifficultParametersTest,
-    IdentityReflectionTest,
-    IdentityColumnTest,
-    BinaryTest,
-    ArrayTest,
-    QuotedNameArgumentTest,
-)
-
-from databricks.sqlalchemy.test._unsupported import (
-    FutureTableDDLTest,
-    TableDDLTest,
-    ComponentReflectionTest,
-    ComponentReflectionTestExtra,
-    InsertBehaviorTest,
-    CTETest,
-)
-
 from databricks.sqlalchemy.test._regression import (
     ExpandingBoundInTest,
-    NormalizedNameTest,
     IdentityAutoincrementTest,
     LikeFunctionsTest,
+    NormalizedNameTest,
 )
-
-from enum import Enum
+from databricks.sqlalchemy.test._unsupported import (
+    ComponentReflectionTest,
+    ComponentReflectionTestExtra,
+    CTETest,
+    FutureTableDDLTest,
+    InsertBehaviorTest,
+    TableDDLTest,
+)
+from sqlalchemy.testing.suite import (
+    ArrayTest,
+    BinaryTest,
+    BizarroCharacterFKResolutionTest,
+    CollateTest,
+    DateTimeTZTest,
+    DifficultParametersTest,
+    FutureWeCanSetDefaultSchemaWEventsTest,
+    IdentityColumnTest,
+    IdentityReflectionTest,
+    JSONLegacyStringCastIndexTest,
+    JSONTest,
+    NativeUUIDTest,
+    QuotedNameArgumentTest,
+    RowCountTest,
+    SimpleUpdateDeleteTest,
+    TimeTZTest,
+    WeCanSetDefaultSchemaWEventsTest,
+)
 
 
 class FutureFeature(Enum):
@@ -70,7 +68,6 @@ def render_future_feature(rsn: FutureFeature, extra=False) -> str:
 @pytest.mark.skip(render_future_feature(FutureFeature.BINARY))
 class BinaryTest(BinaryTest):
     pass
-
 
 
 class ExpandingBoundInTest(ExpandingBoundInTest):
