@@ -32,7 +32,7 @@ from databricks.sqlalchemy.test._regression import (
     ExpandingBoundInTest,
     NormalizedNameTest,
     IdentityAutoincrementTest,
-    LikeFunctionsTest
+    LikeFunctionsTest,
 )
 
 from enum import Enum
@@ -72,7 +72,7 @@ class BinaryTest(BinaryTest):
     pass
 
 
-@pytest.mark.reviewed
+
 class ExpandingBoundInTest(ExpandingBoundInTest):
     @pytest.mark.skip(render_future_feature(FutureFeature.TUPLE_LITERAL))
     def test_empty_heterogeneous_tuples_bindparam(self):
@@ -131,7 +131,6 @@ class IdentityColumnTest(IdentityColumnTest):
     pass
 
 
-@pytest.mark.reviewed
 class IdentityAutoincrementTest(IdentityAutoincrementTest):
     @pytest.mark.skip(render_future_feature(FutureFeature.TEST_DESIGN, True))
     def test_autoincrement_with_identity(self):
@@ -269,7 +268,6 @@ class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsT
     pass
 
 
-@pytest.mark.reviewed
 class FutureTableDDLTest(FutureTableDDLTest):
     @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
     def test_add_table_comment(self):
@@ -282,7 +280,6 @@ class FutureTableDDLTest(FutureTableDDLTest):
         pass
 
 
-@pytest.mark.reviewed
 class TableDDLTest(TableDDLTest):
     @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
     def test_add_table_comment(self, connection):
@@ -295,7 +292,6 @@ class TableDDLTest(TableDDLTest):
         pass
 
 
-@pytest.mark.reviewed
 class ComponentReflectionTest(ComponentReflectionTest):
     @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
     def test_get_multi_table_comment(self):
@@ -320,7 +316,6 @@ class ComponentReflectionTest(ComponentReflectionTest):
         pass
 
 
-@pytest.mark.reviewed
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(render_future_feature(FutureFeature.CHECK))
     def test_get_check_constraints(self):
@@ -332,7 +327,6 @@ class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
         pass
 
 
-@pytest.mark.reviewed
 class InsertBehaviorTest(InsertBehaviorTest):
     @pytest.mark.skip(render_future_feature(FutureFeature.EMPTY_INSERT, True))
     def test_empty_insert(self):
