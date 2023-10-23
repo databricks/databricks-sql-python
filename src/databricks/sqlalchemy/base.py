@@ -73,10 +73,12 @@ class DatabricksDialect(default.DefaultDialect):
 
     # SQLAlchemy requires that a table with no primary key
     # constraint return a dictionary that looks like this.
-    EMPTY_PK = {"constrained_columns": [], "name": None}
+    EMPTY_PK: Dict[str, Any] = {"constrained_columns": [], "name": None}
 
     # SQLAlchemy requires that a table with no foreign keys
     # defined return an empty list. Same for indexes.
+    EMPTY_FK: List
+    EMPTY_INDEX: List
     EMPTY_FK = EMPTY_INDEX = []
 
     @classmethod
