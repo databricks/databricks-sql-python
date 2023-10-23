@@ -12,6 +12,10 @@ wrappers around regexes.
 """
 
 
+class DatabricksSqlAlchemyParseException(Exception):
+    pass
+
+
 def _match_table_not_found_string(message: str) -> bool:
     """Return True if the message contains a substring indicating that a table was not found"""
 
@@ -31,7 +35,7 @@ def _describe_table_extended_result_to_dict_list(
     """Transform the CursorResult of DESCRIBE TABLE EXTENDED into a list of Dictionaries"""
 
     rows_to_return = []
-    for row in result:
+    for row in result.all():
         this_row = {"col_name": row.col_name, "data_type": row.data_type}
         rows_to_return.append(this_row)
 
@@ -69,12 +73,16 @@ def extract_three_level_identifier_from_constraint_string(input_str: str) -> dic
             "schema": "pysql_dialect_compliance",
             "table": "users"
         }
+
+    Raise a DatabricksSqlAlchemyParseException if a 3L namespace isn't found
     """
     pat = re.compile(r"REFERENCES\s+(.*?)\s*\(")
     matches = pat.findall(input_str)
 
     if not matches:
-        return None
+        raise DatabricksSqlAlchemyParseException(
+            "3L namespace not found in constraint string"
+        )
 
     first_match = matches[0]
     parts = first_match.split(".")
@@ -82,11 +90,16 @@ def extract_three_level_identifier_from_constraint_string(input_str: str) -> dic
     def strip_backticks(input: str):
         return input.replace("`", "")
 
-    return {
-        "catalog": strip_backticks(parts[0]),
-        "schema": strip_backticks(parts[1]),
-        "table": strip_backticks(parts[2]),
-    }
+    try:
+        return {
+            "catalog": strip_backticks(parts[0]),
+            "schema": strip_backticks(parts[1]),
+            "table": strip_backticks(parts[2]),
+        }
+    except IndexError:
+        raise DatabricksSqlAlchemyParseException(
+            "Incomplete 3L namespace found in constraint string: " + ".".join(parts)
+        )
 
 
 def _parse_fk_from_constraint_string(constraint_str: str) -> dict:
@@ -170,10 +183,12 @@ def build_fk_dict(
     else:
         schema_override_dict = {}
 
+    # mypy doesn't like this method of conditionally adding a key to a dictionary
+    # while keeping everything immutable
     complete_foreign_key_dict = {
         "name": fk_name,
         **base_fk_dict,
-        **schema_override_dict,
+        **schema_override_dict,  # type: ignore
     }
 
     return complete_foreign_key_dict
@@ -234,7 +249,7 @@ def match_dte_rows_by_value(dte_output: List[Dict[str, str]], match: str) -> Lis
     return output_rows
 
 
-def get_fk_strings_from_dte_output(dte_output: List[List]) -> List[dict]:
+def get_fk_strings_from_dte_output(dte_output: List[Dict[str, str]]) -> List[dict]:
     """If the DESCRIBE TABLE EXTENDED output contains foreign key constraints, return a list of dictionaries,
     one dictionary per defined constraint
     """
@@ -307,7 +322,11 @@ def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColu
     """
 
     pat = re.compile(r"^\w+")
-    _raw_col_type = re.search(pat, thrift_resp_row.TYPE_NAME).group(0).lower()
+
+    # This method assumes a valid TYPE_NAME field in the response.
+    # TODO: add error handling in case TGetColumnsResponse format changes
+
+    _raw_col_type = re.search(pat, thrift_resp_row.TYPE_NAME).group(0).lower()  # type: ignore
     _col_type = GET_COLUMNS_TYPE_MAP[_raw_col_type]
 
     if _raw_col_type == "decimal":
@@ -334,4 +353,5 @@ def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColu
         "default": thrift_resp_row.COLUMN_DEF,
     }
 
-    return this_column
+    # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
+    return this_column  # type: ignore
