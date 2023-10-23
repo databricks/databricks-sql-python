@@ -67,6 +67,9 @@ def render_future_feature(rsn: FutureFeature, extra=False) -> str:
 @pytest.mark.reviewed
 @pytest.mark.skip(render_future_feature(FutureFeature.BINARY))
 class BinaryTest(BinaryTest):
+    """Databricks doesn't support binding of BINARY type values. When DBR supports this, we can implement
+    in this dialect.
+    """
     pass
 
 
