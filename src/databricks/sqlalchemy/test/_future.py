@@ -20,6 +20,8 @@ from sqlalchemy.testing.suite import (
     BinaryTest,
     BizarroCharacterFKResolutionTest,
     CollateTest,
+    ComputedColumnTest,
+    ComputedReflectionTest,
     DateTimeTZTest,
     DifficultParametersTest,
     FutureWeCanSetDefaultSchemaWEventsTest,
@@ -44,6 +46,7 @@ class FutureFeature(Enum):
     CTE_FEAT = "required CTE features"
     EMPTY_INSERT = "empty INSERT support"
     FK_OPTS = "foreign key option checking"
+    GENERATED_COLUMNS = "Delta computed / generated columns support"
     IDENTITY = "identity reflection"
     JSON = "JSON column type handling"
     MULTI_PK = "get_multi_pk_constraint method"
@@ -363,3 +366,15 @@ class QuotedNameArgumentTest(QuotedNameArgumentTest):
     also checks the behaviour of DDL identifier preparation process. We need to override some of IdentifierPreparer
     methods because these are the ultimate control for whether or not CHECK and UNIQUE constraints are emitted.
     """
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason=render_future_feature(FutureFeature.GENERATED_COLUMNS))
+class ComputedColumnTest(ComputedColumnTest):
+    pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(reason=render_future_feature(FutureFeature.GENERATED_COLUMNS))
+class ComputedReflectionTest(ComputedReflectionTest):
+    pass

@@ -17,8 +17,6 @@ from databricks.sqlalchemy.test._regression import (
 # These are test suites that are fully skipped with a SkipReason
 from sqlalchemy.testing.suite import (
     AutocommitIsolationTest,
-    ComputedColumnTest,
-    ComputedReflectionTest,
     ExceptionTest,
     HasIndexTest,
     HasSequenceTest,
@@ -42,7 +40,6 @@ class SkipReason(Enum):
     DECIMAL_FEAT = "required decimal features"
     ENFORCE_KEYS = "enforcing primary or foreign key restraints"
     FETCH = "fetch clauses"
-    GENERATED_COLUMNS = "computed / generated columns"
     IDENTIFIER_LENGTH = "identifiers > 255 characters"
     IMPL_FLOAT_PREC = "required implicit float precision"
     IMPLICIT_ORDER = "deterministic return order if ORDER BY is not present"
@@ -145,18 +142,6 @@ class SequenceTest(SequenceTest):
 @pytest.mark.reviewed
 @pytest.mark.skip(reason=render_skip_reason(SkipReason.SEQUENCES))
 class SequenceCompilerTest(SequenceCompilerTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason=render_skip_reason(SkipReason.GENERATED_COLUMNS))
-class ComputedColumnTest(ComputedColumnTest):
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(reason=render_skip_reason(SkipReason.GENERATED_COLUMNS))
-class ComputedReflectionTest(ComputedReflectionTest):
     pass
 
 
