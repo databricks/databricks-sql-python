@@ -11,8 +11,10 @@ of metadata and exceptions received from DBR. These are mostly just
 wrappers around regexes.
 """
 
+
 class DatabricksSqlAlchemyParseException(Exception):
     pass
+
 
 def _match_table_not_found_string(message: str) -> bool:
     """Return True if the message contains a substring indicating that a table was not found"""
@@ -78,7 +80,9 @@ def extract_three_level_identifier_from_constraint_string(input_str: str) -> dic
     matches = pat.findall(input_str)
 
     if not matches:
-        raise DatabricksSqlAlchemyParseException("3L namespace not found in constraint string")
+        raise DatabricksSqlAlchemyParseException(
+            "3L namespace not found in constraint string"
+        )
 
     first_match = matches[0]
     parts = first_match.split(".")
@@ -93,7 +97,9 @@ def extract_three_level_identifier_from_constraint_string(input_str: str) -> dic
             "table": strip_backticks(parts[2]),
         }
     except IndexError:
-        raise DatabricksSqlAlchemyParseException("Incomplete 3L namespace found in constraint string: " + ".".join(parts))
+        raise DatabricksSqlAlchemyParseException(
+            "Incomplete 3L namespace found in constraint string: " + ".".join(parts)
+        )
 
 
 def _parse_fk_from_constraint_string(constraint_str: str) -> dict:
@@ -314,7 +320,11 @@ def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColu
     """
 
     pat = re.compile(r"^\w+")
-    _raw_col_type = re.search(pat, thrift_resp_row.TYPE_NAME).group(0).lower()
+
+    # This method assumes a valid TYPE_NAME field in the response.
+    # TODO: add error handling in case TGetColumnsResponse format changes
+
+    _raw_col_type = re.search(pat, thrift_resp_row.TYPE_NAME).group(0).lower()  # type: ignore
     _col_type = GET_COLUMNS_TYPE_MAP[_raw_col_type]
 
     if _raw_col_type == "decimal":
