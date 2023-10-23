@@ -1,3 +1,5 @@
+# type: ignore
+
 import pytest
 from sqlalchemy.testing.suite import (
     ArgSignatureTest,
