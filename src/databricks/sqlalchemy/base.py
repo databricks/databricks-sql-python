@@ -1,5 +1,5 @@
 import re
-from typing import Any, List, Optional, Dict, Collection, Iterable, Tuple
+from typing import Any, List, Optional, Dict, Union, Collection, Iterable, Tuple
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
 import databricks.sqlalchemy._types as dialect_type_impl
@@ -73,10 +73,12 @@ class DatabricksDialect(default.DefaultDialect):
 
     # SQLAlchemy requires that a table with no primary key
     # constraint return a dictionary that looks like this.
-    EMPTY_PK = {"constrained_columns": [], "name": None}
+    EMPTY_PK: Dict[str, Any] = {"constrained_columns": [], "name": None}
 
     # SQLAlchemy requires that a table with no foreign keys
     # defined return an empty list. Same for indexes.
+    EMPTY_FK: List
+    EMPTY_INDEX: List
     EMPTY_FK = EMPTY_INDEX = []
 
     @classmethod
@@ -139,7 +141,7 @@ class DatabricksDialect(default.DefaultDialect):
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         expect_result=True,
-    ) -> List[Dict[str, str]]:
+    ) -> Union[List[Dict[str, str]], None]:
         """Run DESCRIBE TABLE EXTENDED on a table and return a list of dictionaries of the result.
 
         This method is the fastest way to check for the presence of a table in a schema.
@@ -158,7 +160,7 @@ class DatabricksDialect(default.DefaultDialect):
         stmt = DDL(f"DESCRIBE TABLE EXTENDED {_target}")
 
         try:
-            result = connection.execute(stmt).all()
+            result = connection.execute(stmt)
         except DatabaseError as e:
             if _match_table_not_found_string(str(e)):
                 raise sqlalchemy.exc.NoSuchTableError(
@@ -197,9 +199,11 @@ class DatabricksDialect(default.DefaultDialect):
             schema_name=schema,
         )
 
-        raw_pk_constraints: List = get_pk_strings_from_dte_output(result)
+        # Type ignore is because mypy knows that self._describe_table_extended *can*
+        # return None (even though it never will since expect_result defaults to True)
+        raw_pk_constraints: List = get_pk_strings_from_dte_output(result)  # type: ignore
         if not any(raw_pk_constraints):
-            return self.EMPTY_PK
+            return self.EMPTY_PK  # type: ignore
 
         if len(raw_pk_constraints) > 1:
             logger.warning(
@@ -212,11 +216,12 @@ class DatabricksDialect(default.DefaultDialect):
         pk_name = first_pk_constraint.get("col_name")
         pk_constraint_string = first_pk_constraint.get("data_type")
 
-        return build_pk_dict(pk_name, pk_constraint_string)
+        # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
+        return build_pk_dict(pk_name, pk_constraint_string)  # type: ignore
 
     def get_foreign_keys(
         self, connection, table_name, schema=None, **kw
-    ) -> ReflectedForeignKeyConstraint:
+    ) -> List[ReflectedForeignKeyConstraint]:
         """Return information about foreign_keys in `table_name`."""
 
         result = self._describe_table_extended(
@@ -225,7 +230,9 @@ class DatabricksDialect(default.DefaultDialect):
             schema_name=schema,
         )
 
-        raw_fk_constraints: List = get_fk_strings_from_dte_output(result)
+        # Type ignore is because mypy knows that self._describe_table_extended *can*
+        # return None (even though it never will since expect_result defaults to True)
+        raw_fk_constraints: List = get_fk_strings_from_dte_output(result)  # type: ignore
 
         if not any(raw_fk_constraints):
             return self.EMPTY_FK
@@ -239,7 +246,8 @@ class DatabricksDialect(default.DefaultDialect):
             )
             fk_constraints.append(this_constraint_dict)
 
-        return fk_constraints
+        # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
+        return fk_constraints  # type: ignore
 
     def get_indexes(self, connection, table_name, schema=None, **kw):
         """SQLAlchemy requires this method. Databricks doesn't support indexes."""
