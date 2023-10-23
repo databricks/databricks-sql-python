@@ -183,10 +183,12 @@ def build_fk_dict(
     else:
         schema_override_dict = {}
 
+    # mypy doesn't like this method of conditionally adding a key to a dictionary
+    # while keeping everything immutable
     complete_foreign_key_dict = {
         "name": fk_name,
         **base_fk_dict,
-        **schema_override_dict,
+        **schema_override_dict,  # type: ignore
     }
 
     return complete_foreign_key_dict
