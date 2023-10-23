@@ -241,7 +241,7 @@ def match_dte_rows_by_value(dte_output: List[Dict[str, str]], match: str) -> Lis
     return output_rows
 
 
-def get_fk_strings_from_dte_output(dte_output: List[List]) -> List[dict]:
+def get_fk_strings_from_dte_output(dte_output: List[Dict[str, str]]) -> List[dict]:
     """If the DESCRIBE TABLE EXTENDED output contains foreign key constraints, return a list of dictionaries,
     one dictionary per defined constraint
     """
