@@ -1,5 +1,5 @@
 import re
-from typing import Any, List, Optional, Dict, Collection, Iterable, Tuple
+from typing import Any, List, Optional, Dict, Union, Collection, Iterable, Tuple
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
 import databricks.sqlalchemy._types as dialect_type_impl
@@ -141,7 +141,7 @@ class DatabricksDialect(default.DefaultDialect):
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         expect_result=True,
-    ) -> List[Dict[str, str]]:
+    ) -> Union[List[Dict[str, str]], None]:
         """Run DESCRIBE TABLE EXTENDED on a table and return a list of dictionaries of the result.
 
         This method is the fastest way to check for the presence of a table in a schema.
@@ -160,7 +160,7 @@ class DatabricksDialect(default.DefaultDialect):
         stmt = DDL(f"DESCRIBE TABLE EXTENDED {_target}")
 
         try:
-            result = connection.execute(stmt).all()
+            result = connection.execute(stmt)
         except DatabaseError as e:
             if _match_table_not_found_string(str(e)):
                 raise sqlalchemy.exc.NoSuchTableError(

@@ -35,7 +35,7 @@ def _describe_table_extended_result_to_dict_list(
     """Transform the CursorResult of DESCRIBE TABLE EXTENDED into a list of Dictionaries"""
 
     rows_to_return = []
-    for row in result:
+    for row in result.all():
         this_row = {"col_name": row.col_name, "data_type": row.data_type}
         rows_to_return.append(this_row)
 
