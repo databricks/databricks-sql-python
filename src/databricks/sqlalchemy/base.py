@@ -221,7 +221,7 @@ class DatabricksDialect(default.DefaultDialect):
 
     def get_foreign_keys(
         self, connection, table_name, schema=None, **kw
-    ) -> ReflectedForeignKeyConstraint:
+    ) -> List[ReflectedForeignKeyConstraint]:
         """Return information about foreign_keys in `table_name`."""
 
         result = self._describe_table_extended(
