@@ -11,6 +11,8 @@ of metadata and exceptions received from DBR. These are mostly just
 wrappers around regexes.
 """
 
+class DatabricksSqlAlchemyParseException(Exception):
+    pass
 
 def _match_table_not_found_string(message: str) -> bool:
     """Return True if the message contains a substring indicating that a table was not found"""
@@ -69,12 +71,14 @@ def extract_three_level_identifier_from_constraint_string(input_str: str) -> dic
             "schema": "pysql_dialect_compliance",
             "table": "users"
         }
+
+    Raise a DatabricksSqlAlchemyParseException if a 3L namespace isn't found
     """
     pat = re.compile(r"REFERENCES\s+(.*?)\s*\(")
     matches = pat.findall(input_str)
 
     if not matches:
-        return None
+        raise DatabricksSqlAlchemyParseException("3L namespace not found in constraint string")
 
     first_match = matches[0]
     parts = first_match.split(".")
@@ -82,11 +86,14 @@ def extract_three_level_identifier_from_constraint_string(input_str: str) -> dic
     def strip_backticks(input: str):
         return input.replace("`", "")
 
-    return {
-        "catalog": strip_backticks(parts[0]),
-        "schema": strip_backticks(parts[1]),
-        "table": strip_backticks(parts[2]),
-    }
+    try:
+        return {
+            "catalog": strip_backticks(parts[0]),
+            "schema": strip_backticks(parts[1]),
+            "table": strip_backticks(parts[2]),
+        }
+    except IndexError:
+        raise DatabricksSqlAlchemyParseException("Incomplete 3L namespace found in constraint string: " + ".".join(parts))
 
 
 def _parse_fk_from_constraint_string(constraint_str: str) -> dict:

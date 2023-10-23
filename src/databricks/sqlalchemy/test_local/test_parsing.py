@@ -6,6 +6,7 @@ from databricks.sqlalchemy._parse import (
     build_fk_dict,
     build_pk_dict,
     match_dte_rows_by_value,
+    DatabricksSqlAlchemyParseException
 )
 
 
@@ -53,6 +54,12 @@ def test_extract_3l_namespace_from_constraint_string():
     assert (
         extract_three_level_identifier_from_constraint_string(input) == expected
     ), "Failed to extract 3L namespace from constraint string"
+
+def test_extract_3l_namespace_from_bad_constraint_string():
+    input = "FOREIGN KEY (`parent_user_id`) REFERENCES `pysql_dialect_compliance`.`users` (`user_id`)"
+
+    with pytest.raises(DatabricksSqlAlchemyParseException):
+        extract_three_level_identifier_from_constraint_string(input)
 
 
 @pytest.mark.parametrize("schema", [None, "some_schema"])
