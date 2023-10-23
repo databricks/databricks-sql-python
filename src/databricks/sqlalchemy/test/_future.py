@@ -70,6 +70,7 @@ class BinaryTest(BinaryTest):
     """Databricks doesn't support binding of BINARY type values. When DBR supports this, we can implement
     in this dialect.
     """
+
     pass
 
 
