@@ -246,7 +246,8 @@ class DatabricksDialect(default.DefaultDialect):
             )
             fk_constraints.append(this_constraint_dict)
 
-        return fk_constraints
+        # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
+        return fk_constraints  # type: ignore
 
     def get_indexes(self, connection, table_name, schema=None, **kw):
         """SQLAlchemy requires this method. Databricks doesn't support indexes."""
