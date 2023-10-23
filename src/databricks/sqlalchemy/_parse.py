@@ -354,4 +354,4 @@ def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColu
     }
 
     # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
-    return this_column # type: ignore
+    return this_column  # type: ignore
