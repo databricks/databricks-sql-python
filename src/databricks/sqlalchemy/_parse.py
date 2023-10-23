@@ -353,4 +353,5 @@ def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColu
         "default": thrift_resp_row.COLUMN_DEF,
     }
 
-    return this_column
+    # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
+    return this_column # type: ignore
