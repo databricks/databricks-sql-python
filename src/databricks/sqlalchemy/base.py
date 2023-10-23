@@ -230,7 +230,9 @@ class DatabricksDialect(default.DefaultDialect):
             schema_name=schema,
         )
 
-        raw_fk_constraints: List = get_fk_strings_from_dte_output(result)
+        # Type ignore is because mypy knows that self._describe_table_extended *can*
+        # return None (even though it never will since expect_result defaults to True)
+        raw_fk_constraints: List = get_fk_strings_from_dte_output(result)  # type: ignore
 
         if not any(raw_fk_constraints):
             return self.EMPTY_FK
