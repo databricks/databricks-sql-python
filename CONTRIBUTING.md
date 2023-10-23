@@ -144,23 +144,9 @@ The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR ve
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 
-#### SQLAlchemy dialog tests
+#### SQLAlchemy dialect tests
 
-SQLAlchemy provides reusable tests for testing dialect implementations.
-
-```
-poetry shell
-cd src/databricks/sqlalchemy/test
-python -m pytest test_suite.py --dburi \
-  "databricks://token:$access_token@$host?http_path=$http_path&catalog=$catalog&schema=$schema" 
-```
-
-Some of these of these tests fail currently. We're working on getting relevant tests passing and others skipped. The tests that we've already reviewed and verified
-are decorated with a pytest marker called `reviewed`. To only run these tests and check for regressions, you can add `-m reviewed` to the invocation command above.
-
-These tests require two schemas exist in your catalog:
-- An empty schema which can have an arbitrary name. It is configured in the SQLAlchemy --dburi
-- An empty schema named `test_schema`
+See README.tests.md for details.
 
 ### Code formatting
 
