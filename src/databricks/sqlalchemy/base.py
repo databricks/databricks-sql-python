@@ -201,9 +201,9 @@ class DatabricksDialect(default.DefaultDialect):
 
         # Type ignore is because mypy knows that self._describe_table_extended *can*
         # return None (even though it never will since expect_result defaults to True)
-        raw_pk_constraints: List = get_pk_strings_from_dte_output(result) # type: ignore
+        raw_pk_constraints: List = get_pk_strings_from_dte_output(result)  # type: ignore
         if not any(raw_pk_constraints):
-            return self.EMPTY_PK
+            return self.EMPTY_PK  # type: ignore
 
         if len(raw_pk_constraints) > 1:
             logger.warning(
@@ -216,7 +216,8 @@ class DatabricksDialect(default.DefaultDialect):
         pk_name = first_pk_constraint.get("col_name")
         pk_constraint_string = first_pk_constraint.get("data_type")
 
-        return build_pk_dict(pk_name, pk_constraint_string)
+        # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
+        return build_pk_dict(pk_name, pk_constraint_string)  # type: ignore
 
     def get_foreign_keys(
         self, connection, table_name, schema=None, **kw
