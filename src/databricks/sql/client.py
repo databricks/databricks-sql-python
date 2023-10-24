@@ -199,7 +199,7 @@ class Connection:
         self._session_handle = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
-        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", False)
+        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
