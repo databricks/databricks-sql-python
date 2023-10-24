@@ -528,7 +528,7 @@ class Cursor:
         elif not Connection.server_parameterized_queries_enabled(
             self.connection.protocol_version
         ):
-            raise Error(
+            raise NotSupportedError(
                 "Parameterized operations are not supported by this server. DBR 14.1 is required."
             )
         else:

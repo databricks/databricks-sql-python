@@ -24,51 +24,49 @@ from typing import List
 
 
 class TestSessionHandleChecks(object):
-    def test_get_session_handle(self):
-        assert (
-            Connection.get_protocol_version(
+    @pytest.mark.parametrize(
+        "test_input,expected",
+        [
+            (
                 TOpenSessionResp(
                     serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
                     sessionHandle=TSessionHandle(1, None),
-                )
-            )
-            == ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7
-        )
-        assert (
-            Connection.get_protocol_version(
+                ),
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+            ),
+            (
                 TOpenSessionResp(
                     serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
                     sessionHandle=TSessionHandle(
                         1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
                     ),
-                )
-            )
-            == ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
-        )
-        assert (
-            Connection.get_protocol_version(
-                TOpenSessionResp(
-                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
-                    sessionHandle=TSessionHandle(1, None),
-                )
-            )
-            == ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
-        )
+                ),
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+            ),
+        ],
+    )
+    def test_get_session_handle(self, test_input, expected):
+        assert Connection.get_protocol_version(test_input) == expected
 
-    def test_parameters_enabled(self):
-        assert Connection.server_parameterized_queries_enabled(None) == False
-        assert (
-            Connection.server_parameterized_queries_enabled(
-                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7
-            )
-            == False
-        )
-        assert (
-            Connection.server_parameterized_queries_enabled(
-                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
-            )
-            == True
-        )
+    @pytest.mark.parametrize(
+        "test_input,expected",
+        [
+            (
+                None,
+                False,
+            ),
+            (
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                False,
+            ),
+            (
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+                True,
+            ),
+        ],
+    )
+    def test_parameters_enabled(self, test_input, expected):
+        assert Connection.server_parameterized_queries_enabled(test_input) == expected
 
 
 class TestTSparkParameterConversion(object):
