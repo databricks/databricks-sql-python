@@ -34,6 +34,7 @@ class TestSessionHandleChecks(object):
                 ),
                 ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
             ),
+            # Ensure that protocol version inside sessionhandle takes precedence.
             (
                 TOpenSessionResp(
                     serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
