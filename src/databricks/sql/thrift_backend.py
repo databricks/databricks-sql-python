@@ -569,7 +569,7 @@ class ThriftBackend:
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            return response.sessionHandle
+            return response
         except:
             self._transport.close()
             raise

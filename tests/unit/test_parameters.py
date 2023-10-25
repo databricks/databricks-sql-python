@@ -9,13 +9,65 @@ from databricks.sql.utils import (
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TSparkParameterValue,
+    TSessionHandle,
+    TOpenSessionResp,
 )
 from databricks.sql.utils import DbSqlParameter, DbSqlType
 import pytest
 
-from decimal import Decimal
+from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql.thrift_api.TCLIService import ttypes
 
+from decimal import Decimal
+from databricks.sql.client import Connection
 from typing import List
+
+
+class TestSessionHandleChecks(object):
+    @pytest.mark.parametrize(
+        "test_input,expected",
+        [
+            (
+                TOpenSessionResp(
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                    sessionHandle=TSessionHandle(1, None),
+                ),
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+            ),
+            # Ensure that protocol version inside sessionhandle takes precedence.
+            (
+                TOpenSessionResp(
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                    sessionHandle=TSessionHandle(
+                        1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+                    ),
+                ),
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+            ),
+        ],
+    )
+    def test_get_protocol_version_fallback_behavior(self, test_input, expected):
+        assert Connection.get_protocol_version(test_input) == expected
+
+    @pytest.mark.parametrize(
+        "test_input,expected",
+        [
+            (
+                None,
+                False,
+            ),
+            (
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                False,
+            ),
+            (
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+                True,
+            ),
+        ],
+    )
+    def test_parameters_enabled(self, test_input, expected):
+        assert Connection.server_parameterized_queries_enabled(test_input) == expected
 
 
 class TestTSparkParameterConversion(object):
