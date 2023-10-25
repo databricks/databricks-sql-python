@@ -9,7 +9,7 @@ packages = [{ include = "databricks", from = "src" }]
 include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
-python = "^3.7.1"
+python = "^3.8.0"
 thrift = "^0.16.0"
 pandas = [
     { version = ">=1.2.5,<1.4.0", python = ">=3.7,<3.8" },
@@ -30,6 +30,10 @@ sqlalchemy = "2.0.21"
 openpyxl = "^3.0.10"
 alembic = "^1.0.11"
 urllib3 = ">=1.0"
+httpx = {version = "^0.25.0", optional = true }
+
+[tool.poetry.extras]
+async = ["httpx"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
