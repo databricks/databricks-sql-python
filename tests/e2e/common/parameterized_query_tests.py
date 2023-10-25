@@ -8,7 +8,7 @@ from databricks.sql import Error
 import pytz
 import pytest
 
-from databricks.sql.exc import DatabaseError
+from databricks.sql.exc import NotSupportedError
 from databricks.sql.utils import (
     DbSqlParameter,
     DbSqlType,
@@ -44,7 +44,7 @@ class PySQLParameterizedQueryTestSuiteMixin:
     def test_protocol_too_low(self, mock_parameterized_queries_enabled):
         params = {"p": None}
         with pytest.raises(
-            Error,
+            NotSupportedError,
             match="Parameterized operations are not supported by this server. DBR 14.1 is required.",
         ):
             result = self._get_one_result(self.QUERY, params)

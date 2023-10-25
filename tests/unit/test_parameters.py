@@ -46,7 +46,7 @@ class TestSessionHandleChecks(object):
             ),
         ],
     )
-    def test_get_session_handle(self, test_input, expected):
+    def test_get_protocol_version_fallback_behavior(self, test_input, expected):
         assert Connection.get_protocol_version(test_input) == expected
 
     @pytest.mark.parametrize(
