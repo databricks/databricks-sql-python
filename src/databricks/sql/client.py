@@ -228,11 +228,13 @@ class Connection:
     def get_session_id(self):
         return self.thrift_backend.handle_to_id(self._session_handle)
 
-    # Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
-    # precedence over the serverProtocolVersion defined in the OpenSessionResponse.
     @staticmethod
     def get_protocol_version(openSessionResp):
-        if (
+        """
+        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
+        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
+        """
+                if (
             openSessionResp.sessionHandle
             and hasattr(openSessionResp.sessionHandle, "serverProtocolVersion")
             and openSessionResp.sessionHandle.serverProtocolVersion
