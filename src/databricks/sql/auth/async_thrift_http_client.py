@@ -13,6 +13,7 @@ import warnings
 from http.client import HTTPResponse
 from io import BytesIO
 
+import httpx 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
