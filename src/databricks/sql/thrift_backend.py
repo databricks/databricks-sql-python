@@ -17,6 +17,7 @@ import thrift.transport.TTransport
 import urllib3.exceptions
 
 import databricks.sql.auth.thrift_http_client
+import databricks.sql.auth.async_thrift_http_client
 from databricks.sql.auth.thrift_http_client import CommandType
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
@@ -212,7 +213,7 @@ class ThriftBackend:
 
             additional_transport_args["retry_policy"] = self.retry_policy
 
-        self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
+        self._transport = databricks.sql.auth.async_thrift_http_client.THttpClient(
             auth_provider=self._auth_provider,
             uri_or_host=uri,
             ssl_context=ssl_context,
