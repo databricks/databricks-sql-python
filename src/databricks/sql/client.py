@@ -234,7 +234,7 @@ class Connection:
         Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
         precedence over the serverProtocolVersion defined in the OpenSessionResponse.
         """
-                if (
+        if (
             openSessionResp.sessionHandle
             and hasattr(openSessionResp.sessionHandle, "serverProtocolVersion")
             and openSessionResp.sessionHandle.serverProtocolVersion
