@@ -13,8 +13,7 @@ import warnings
 from http.client import HTTPResponse
 from io import BytesIO
 
-import httpx 
-from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
+import httpx
 
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 
@@ -90,7 +89,8 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.retry_policy = retry_policy
 
         self.__wbuf = BytesIO()
-        self.__resp: Union[None, HTTPResponse] = None
+        self.__rbuf = None
+        self.__resp: Union[None, httpx.Response] = None
         self.__timeout = None
         self.__custom_headers = None
 
@@ -108,43 +108,28 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.retry_policy and self.retry_policy.start_retry_timer()
 
     def open(self):
+        # pretty sure we need this to not default to 1 once I enable async because each request uses one connection
+        limits = httpx.Limits(max_connections=self.max_connections)
 
-        # self.__pool replaces the self.__http used by the original THttpClient
-        if self.scheme == "http":
-            pool_class = HTTPConnectionPool
-        elif self.scheme == "https":
-            pool_class = HTTPSConnectionPool
-
-        _pool_kwargs = {"maxsize": self.max_connections}
-
-        if self.using_proxy():
-            proxy_manager = ProxyManager(
-                self.proxy_uri,
-                num_pools=1,
-                headers={"Proxy-Authorization": self.proxy_auth},
-            )
-            self.__pool = proxy_manager.connection_from_host(
-                host=self.realhost,
-                port=self.realport,
-                scheme=self.scheme,
-                pool_kwargs=_pool_kwargs,
-            )
-        else:
-            self.__pool = pool_class(self.host, self.port, **_pool_kwargs)
+        # httpx automatically handles http(s)
+        # TODO: implement proxy handling (deferred as we don't have any e2e tests for it)
+        # TODO: rename self._pool once POC works
+        self.__pool = httpx.Client(limits=limits)
 
     def close(self):
-        self.__resp and self.__resp.drain_conn()
-        self.__resp and self.__resp.release_conn()
+        self.__resp and self.__resp.close()
+        # must clear out buffer because thrift leaves stray bytes behind
+        # equivalent to urllib3's .drain_conn() method
+        self.__rbuf = None
         self.__resp = None
 
     def read(self, sz):
-        return self.__resp.read(sz)
+        return self.__rbuf.read(sz)
 
     def isOpen(self):
         return self.__resp is not None
 
     def flush(self):
-
         # Pull data out of buffer that will be sent in this request
         data = self.__wbuf.getvalue()
         self.__wbuf = BytesIO()
@@ -167,32 +152,27 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             "Content-Length": str(len(data)),
         }
 
-        if self.using_proxy() and self.scheme == "http" and self.proxy_auth is not None:
-            headers["Proxy-Authorization" : self.proxy_auth]
-
         if self.__custom_headers:
             custom_headers = {key: val for key, val in self.__custom_headers.items()}
             headers.update(**custom_headers)
 
+        target_url_parts = (self.scheme, self.host, self.path, "", "")
+        target_url = urllib.parse.urlunsplit(target_url_parts)
         # HTTP request
         self.__resp = self.__pool.request(
             "POST",
-            url=self.path,
-            body=data,
+            url=target_url,
+            content=data,
             headers=headers,
-            preload_content=False,
             timeout=self.__timeout,
-            retries=self.retry_policy,
         )
 
-        # Get reply to flush the request
-        self.code = self.__resp.status
-        self.message = self.__resp.reason
-        self.headers = self.__resp.headers
+        self.__rbuf = BytesIO(self.__resp.read())
 
-        # Saves the cookie sent by the server response
-        if "Set-Cookie" in self.headers:
-            self.setCustomHeaders(dict("Cookie", self.headers["Set-Cookie"]))
+        # Get reply to flush the request
+        self.code = self.__resp.status_code
+        self.message = self.__resp.reason_phrase
+        self.headers = self.__resp.headers
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
