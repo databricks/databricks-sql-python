@@ -413,6 +413,8 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
 
 
 def test_user_agent_adjustment(db_engine):
+    # If .connect() is called multiple times on an engine, don't keep pre-pending the user agent
+    # https://github.com/databricks/databricks-sql-python/issues/192
     c1 = db_engine.connect()
     c2 = db_engine.connect()
 
