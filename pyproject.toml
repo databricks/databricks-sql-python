@@ -26,10 +26,14 @@ numpy = [
     { version = ">=1.16.6", python = ">=3.7,<3.11" },
     { version = ">=1.23.4", python = ">=3.11" },
 ]
-sqlalchemy = "2.0.21"
+sqlalchemy = { version = ">=2.0.21", optional = true }
 openpyxl = "^3.0.10"
-alembic = "^1.0.11"
+alembic = { version = "^1.0.11", optional = true }
 urllib3 = ">=1.0"
+
+[tool.poetry.extras]
+sqlalchemy = ["sqlalchemy"]
+alembic = ["sqlalchemy", "alembic"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
