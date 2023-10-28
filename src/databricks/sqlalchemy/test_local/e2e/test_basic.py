@@ -46,7 +46,6 @@ def version_agnostic_select(object_to_select, *args, **kwargs):
 
 
 def version_agnostic_connect_arguments(catalog=None, schema=None) -> Tuple[str, dict]:
-
     HOST = os.environ.get("host")
     HTTP_PATH = os.environ.get("http_path")
     ACCESS_TOKEN = os.environ.get("access_token")
@@ -80,7 +79,6 @@ def db_engine() -> Engine:
 
 
 def run_query(db_engine: Engine, query: Union[str, Text]):
-
     if not isinstance(query, Text):
         _query = text(query)  # type: ignore
     else:
@@ -91,7 +89,6 @@ def run_query(db_engine: Engine, query: Union[str, Text]):
 
 @pytest.fixture
 def samples_engine() -> Engine:
-
     conn_string, connect_args = version_agnostic_connect_arguments(
         catalog="samples", schema="nyctaxi"
     )
@@ -138,7 +135,6 @@ def test_connect_args(db_engine):
     reason="DBR is currently limited to 256 parameters per call to .execute(). Test cannot pass."
 )
 def test_pandas_upload(db_engine, metadata_obj):
-
     import pandas as pd
 
     SCHEMA = os.environ.get("schema")
@@ -164,7 +160,6 @@ def test_pandas_upload(db_engine, metadata_obj):
 
 
 def test_create_table_not_null(db_engine, metadata_obj: MetaData):
-
     table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 
     SampleTable = Table(
@@ -191,7 +186,6 @@ def test_create_table_not_null(db_engine, metadata_obj: MetaData):
 
 
 def test_bulk_insert_with_core(db_engine, metadata_obj, session):
-
     import random
 
     # Maximum number of parameter is 256. 256/4 == 64
@@ -266,7 +260,6 @@ def test_create_insert_drop_table_orm(db_engine):
         pass
 
     class SampleObject(Base):
-
         __tablename__ = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 
         name: Mapped[str] = mapped_column(String(255), primary_key=True)
@@ -374,7 +367,6 @@ def test_inspector_smoke_test(samples_engine: Engine):
 
 @pytest.mark.skip(reason="engine.table_names has been removed in sqlalchemy verison 2")
 def test_get_table_names_smoke_test(samples_engine: Engine):
-
     with samples_engine.connect() as conn:
         _names = samples_engine.table_names(schema="nyctaxi", connection=conn)  # type: ignore
         _names is not None, "get_table_names did not succeed"
@@ -388,7 +380,6 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
     """
 
     with samples_engine.connect() as conn:
-
         # 1) Check for table within schema declared at engine creation time
         assert samples_engine.dialect.has_table(connection=conn, table_name="trips")
 
@@ -419,3 +410,24 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
                 )
             finally:
                 conn.execute(text("DROP TABLE test_has_table;"))
+
+
+def test_user_agent_adjustment(db_engine):
+    # If .connect() is called multiple times on an engine, don't keep pre-pending the user agent
+    # https://github.com/databricks/databricks-sql-python/issues/192
+    c1 = db_engine.connect()
+    c2 = db_engine.connect()
+
+    def get_conn_user_agent(conn):
+        return conn.connection.dbapi_connection.thrift_backend._transport._headers.get(
+            "User-Agent"
+        )
+
+    ua1 = get_conn_user_agent(c1)
+    ua2 = get_conn_user_agent(c2)
+    same_ua = ua1 == ua2
+
+    c1.close()
+    c2.close()
+
+    assert same_ua, f"User agents didn't match \n {ua1} \n {ua2}"
