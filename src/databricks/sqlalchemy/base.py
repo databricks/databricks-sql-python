@@ -366,12 +366,21 @@ def receive_do_connect(dialect, conn_rec, cargs, cparams):
     if not dialect.name == "databricks":
         return
 
-    if "_user_agent_entry" in cparams:
-        new_user_agent = f"sqlalchemy + {cparams['_user_agent_entry']}"
-    else:
-        new_user_agent = "sqlalchemy"
+    ua = cparams.get("_user_agent_entry", "")
 
-    cparams["_user_agent_entry"] = new_user_agent
+    def add_sqla_tag_if_not_present(val: str):
+        if not val:
+            output = "sqlalchemy"
+
+        if val and "sqlalchemy" in val:
+            output = val
+
+        else:
+            output = f"sqlalchemy + {val}"
+
+        return output
+
+    cparams["_user_agent_entry"] = add_sqla_tag_if_not_present(ua)
 
     if sqlalchemy.__version__.startswith("1.3"):
         # SQLAlchemy 1.3.x fails to parse the http_path, catalog, and schema from our connection string
