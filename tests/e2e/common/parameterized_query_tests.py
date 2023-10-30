@@ -15,6 +15,7 @@ from databricks.sql.utils import (
     calculate_decimal_cast_string,
 )
 
+from tests.e2e.test_driver import PySQLTestCase
 
 class MyCustomDecimalType(Enum):
     DECIMAL_38_0 = "DECIMAL(38,0)"
@@ -22,7 +23,7 @@ class MyCustomDecimalType(Enum):
     DECIMAL_18_9 = "DECIMAL(18,9)"
 
 
-class PySQLParameterizedQueryTestSuiteMixin:
+class PySqlParameterizedQueryTests(PySQLTestCase):
     """Namespace for tests of server-side parameterized queries"""
 
     QUERY = "SELECT :p AS col"

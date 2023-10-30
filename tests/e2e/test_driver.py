@@ -28,7 +28,7 @@ from tests.e2e.common.decimal_tests import DecimalTestsMixin
 from tests.e2e.common.retry_test_mixins import Client429ResponseMixin, Client503ResponseMixin
 from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSuiteMixin
 from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
-from tests.e2e.common.parameterized_query_tests import PySQLParameterizedQueryTestSuiteMixin
+
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
 log = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ class PySQLLargeQueriesSuite(PySQLTestCase, LargeQueriesMixin):
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core
 # tests
 class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, TimestampTestsMixin,
-                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin, PySQLRetryTestsMixin, PySQLParameterizedQueryTestSuiteMixin, PySQLUCVolumeTestSuiteMixin):
+                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin, PySQLRetryTestsMixin, PySQLUCVolumeTestSuiteMixin):
     validate_row_value_type = True
     validate_result = True
 
@@ -700,6 +700,8 @@ class PySQLUnityCatalogTestSuite(PySQLTestCase):
             cursor.execute("select current_database()")
             self.assertEqual(cursor.fetchone()[0], table_name)
 
+
+from tests.e2e.common.parameterized_query_tests import PySqlParameterizedQueryTests
 
 def main(cli_args):
     global get_args_from_env
