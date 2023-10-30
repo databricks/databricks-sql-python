@@ -19,6 +19,7 @@ from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
     named_parameters_to_tsparkparams,
+    inject_parameters
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -40,6 +41,7 @@ class Connection:
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
+        use_inline_params: Optional[bool] = False,
         **kwargs,
     ) -> None:
         """
@@ -65,6 +67,11 @@ class Connection:
             :param schema: An optional initial schema to use. Requires DBR version 9.0+
 
         Other Parameters:
+            use_inline_params: `boolean`, optional (default is False)
+                When True, parameterized calls to cursor.execute() will try to render parameter values inline with the
+                query text instead of using native bound parameters supported in DBR. This connector will attempt to
+                sanitise parameterized inputs to prevent SQL injection. This option should be considered dangerous and
+                is maintained here for certain legacy use-cases before Databricks had native parameter support.
             auth_type: `str`, optional
                 `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
                 This is currently in private preview for Databricks accounts on AWS.
@@ -206,6 +213,7 @@ class Connection:
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
+        self.use_inline_params = use_inline_params
 
     def __enter__(self):
         return self
@@ -526,29 +534,24 @@ class Cursor:
             Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
         :returns self
         """
-        if parameters is None:
-            parameters = []
-
-        elif not Connection.server_parameterized_queries_enabled(
-            self.connection.protocol_version
-        ):
-            raise NotSupportedError(
-                "Parameterized operations are not supported by this server. DBR 14.1 is required."
-            )
-        else:
-            parameters = named_parameters_to_tsparkparams(parameters)
-
+        if parameters and self.connection.use_inline_params:
+            _op = inject_parameters(operation, parameters)
+            _params = []
+        if parameters and not self.connection.use_inline_params:
+            _op = operation
+            _params = named_parameters_to_tsparkparams(parameters)
+        
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
-            operation=operation,
+            operation=_op,
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
-            parameters=parameters,
+            parameters=_params,
         )
         self.active_result_set = ResultSet(
             self.connection,
