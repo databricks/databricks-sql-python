@@ -77,7 +77,7 @@ class Connection:
         Other Parameters:
             use_inline_params: `boolean`, optional (default is True)
                 When True, parameterized calls to cursor.execute() will try to render parameter values inline with the
-                query text instead of using native bound parameters supported in DBR. This connector will attempt to
+                query text instead of using native bound parameters supported in DBR 14.1 and above. This connector will attempt to
                 sanitise parameterized inputs to prevent SQL injection. Before you can switch this to False, you must
                 update your queries to use the PEP-249 `named` paramstyle instead of the `pyformat` paramstyle used
                 in INLINE mode.
@@ -608,11 +608,30 @@ class Cursor:
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
-        Parameters should be given in extended param format style: %(...)<s|d|f>.
-        For example:
-            operation = "SELECT * FROM table WHERE field = %(some_value)s"
-            parameters = {"some_value": "foo"}
-            Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
+
+        The parameterisation behaviour of this method depends on which parameter approach is used:
+            - With INLINE mode (default), parameters are rendered inline with the query text
+            - With NATIVE mode, parameters are sent to the server separately for binding
+
+        This behaviour is controlled by the `use_inline_params` argument passed when building a connection.
+
+        The syntax for these approaches is different:
+        
+        If the connection was instantiated with use_inline_params=False, then parameters
+        should be given in PEP-249 `named` paramstyle like :param_name
+
+        If the connection was instantiated with use_inline_params=True (default), then parameters
+        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s
+
+        ```python
+        inline_operation = "SELECT * FROM table WHERE field = %(some_value)s"
+        native_operation = "SELECT * FROM table WHERE field = :some_value"
+        parameters = {"some_value": "foo"}
+        ```
+        
+        Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
+        being sent to the server
+
         :returns self
         """
 
