@@ -30,6 +30,7 @@ class ParameterApproach(Enum):
     NATIVE = 2
     NONE = 3
 
+
 class ResultSetQueue(ABC):
     @abstractmethod
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:

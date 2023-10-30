@@ -37,19 +37,19 @@ both_approaches = pytest.mark.parametrize(
 
 class TestParameterizedQueries(PySQLPytestTestCase):
     """Namespace for tests of this connector's parameterisation behaviour.
-    
+
     databricks-sql-connector can approach parameterisation in two ways:
 
         NATIVE: the connector will use server-side bound parameters implemented by DBR 14.1 and above.
         INLINE: the connector will render parameter values as strings and interpolate them into the query.
 
     Prior to connector version 3.0.0, the connector would always use the INLINE approach. This approach
-    is still the default but this will be changed in a subsequent release. 
+    is still the default but this will be changed in a subsequent release.
 
     The INLINE and NATIVE approaches use different query syntax, which these tests verify.
 
     There is not 1-to-1 feature parity between these approaches. Where possible, we run the same test
-    for @both_approaches.    
+    for @both_approaches.
     """
 
     NATIVE_QUERY = "SELECT :p AS col"
@@ -108,8 +108,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
     @contextmanager
     def conditional_protocol_patch(self, bypass=False):
-        """This fixture will be removed once dogfood advertises its protocol version correctly.
-        """
+        """This fixture will be removed once dogfood advertises its protocol version correctly."""
 
         if bypass:
             yield None
@@ -127,7 +126,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                 pass
 
     def _inline_roundtrip(self, params: dict):
-
         target_column = self.inline_type_map[type(params.get("p"))]
         INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
         SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
@@ -142,8 +140,10 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                 cursor.execute(DELETE_QUERY)
 
         return to_return
-    
-    def _native_roundtrip(self, parameters: Union[Dict, List[Dict]], bypass_patch=False):
+
+    def _native_roundtrip(
+        self, parameters: Union[Dict, List[Dict]], bypass_patch=False
+    ):
         with self.connection(extra_params={"use_inline_params": False}) as conn:
             with conn.cursor() as cursor:
                 with self.conditional_protocol_patch(bypass_patch):
@@ -190,7 +190,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             NotSupportedError,
             match="Parameterized operations are not supported by this server. DBR 14.1 is required.",
         ):
-            result = self._get_one_result(ParameterApproach.NATIVE, params, bypass_patch=True)
+            result = self._get_one_result(
+                ParameterApproach.NATIVE, params, bypass_patch=True
+            )
 
     @both_approaches
     def test_primitive_inferred_none(self, approach: ParameterApproach, inline_table):
@@ -205,7 +207,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         assert result.col == True
 
     @both_approaches
-    def test_primitive_inferred_integer(self, approach: ParameterApproach, inline_table):
+    def test_primitive_inferred_integer(
+        self, approach: ParameterApproach, inline_table
+    ):
         params = {"p": 1}
         result = self._get_one_result(approach, params)
         assert result.col == 1
@@ -224,7 +228,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         assert result.col == date_value
 
     @both_approaches
-    def test_primitive_inferred_timestamp(self, approach: ParameterApproach, inline_table):
+    def test_primitive_inferred_timestamp(
+        self, approach: ParameterApproach, inline_table
+    ):
         # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
         date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
         params = {"p": date_value}
@@ -238,7 +244,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         assert result.col == "Hello"
 
     @both_approaches
-    def test_primitive_inferred_decimal(self, approach: ParameterApproach, inline_table):
+    def test_primitive_inferred_decimal(
+        self, approach: ParameterApproach, inline_table
+    ):
         params = {"p": Decimal("1234.56")}
         result = self._get_one_result(approach, params)
         assert result.col == Decimal("1234.56")
