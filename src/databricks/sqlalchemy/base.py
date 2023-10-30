@@ -59,7 +59,7 @@ class DatabricksDialect(default.DefaultDialect):
     non_native_boolean_check_constraint: bool = False
     supports_identity_columns: bool = True
     supports_schemas: bool = True
-    paramstyle: str = "named"
+    default_paramstyle: str = "named"
     div_is_floordiv: bool = False
     supports_default_values: bool = False
     supports_server_side_cursors: bool = False
@@ -85,6 +85,21 @@ class DatabricksDialect(default.DefaultDialect):
     def dbapi(cls):
         return sql
 
+    def _force_paramstyle_to_native_mode(self):
+        """This method can be removed after databricks-sql-connector wholly switches to NATIVE ParamApproach.
+
+        This is a hack to trick SQLAlchemy into using a different paramstyle
+        than the one declared by this module in src/databricks/sql/__init__.py
+
+        This method is called _after_ the dialect has been initialised, which is important because otherwise
+        our users would need to include a `paramstyle` argument in their SQLAlchemy connection string.
+
+        This dialect is written to support NATIVE queries. Although the INLINE approach can technically work,
+        the same behaviour can be achieved within SQLAlchemy itself using its literal_processor methods.
+        """
+
+        self.paramstyle = self.default_paramstyle
+
     def create_connect_args(self, url):
         # TODO: can schema be provided after HOST?
         # Expected URI format is: databricks+thrift://token:dapi***@***.cloud.databricks.com?http_path=/sql/***
@@ -95,10 +110,13 @@ class DatabricksDialect(default.DefaultDialect):
             "http_path": url.query.get("http_path"),
             "catalog": url.query.get("catalog"),
             "schema": url.query.get("schema"),
+            "use_inline_params": False,
         }
 
         self.schema = kwargs["schema"]
         self.catalog = kwargs["catalog"]
+
+        self._force_paramstyle_to_native_mode()
 
         return [], kwargs
 

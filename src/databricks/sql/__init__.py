@@ -5,7 +5,7 @@ from databricks.sql.exc import *
 # PEP 249 module globals
 apilevel = "2.0"
 threadsafety = 1  # Threads may share the module, but not connections.
-paramstyle = "named"  # Python extended format codes, e.g. ...WHERE name=%(name)s
+paramstyle = "pyformat"  # Python extended format codes, e.g. ...WHERE name=%(name)s
 
 
 class DBAPITypeObject(object):

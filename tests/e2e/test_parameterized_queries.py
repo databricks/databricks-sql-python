@@ -108,7 +108,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
     @contextmanager
     def conditional_protocol_patch(self, bypass=False):
-        """This fixture will be removed once dogfood advertises its protocol version correctly."""
+        """This fixture will be removed once dogfood advertises its protocol version correctly.
+        
+        Note that there is an equivalent patch in sqlalchemy/test/test_suite.py which should be 
+        removed at the same time as this one. That one is encapsulated in a function called
+        start_protocol_patch()"""
 
         if bypass:
             yield None

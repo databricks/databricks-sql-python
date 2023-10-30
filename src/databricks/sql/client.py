@@ -616,7 +616,7 @@ class Cursor:
         This behaviour is controlled by the `use_inline_params` argument passed when building a connection.
 
         The syntax for these approaches is different:
-        
+
         If the connection was instantiated with use_inline_params=False, then parameters
         should be given in PEP-249 `named` paramstyle like :param_name
 
@@ -628,7 +628,7 @@ class Cursor:
         native_operation = "SELECT * FROM table WHERE field = :some_value"
         parameters = {"some_value": "foo"}
         ```
-        
+
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
 
