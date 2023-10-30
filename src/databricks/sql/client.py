@@ -19,16 +19,24 @@ from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
     named_parameters_to_tsparkparams,
-    inject_parameters
+    inject_parameters,
+    ParameterApproach,
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
+from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TSparkParameter,
+)
+
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
+
+NO_NATIVE_PARAMS = []
 
 
 class Connection:
@@ -41,7 +49,7 @@ class Connection:
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
-        use_inline_params: Optional[bool] = False,
+        use_inline_params: Optional[bool] = True,
         **kwargs,
     ) -> None:
         """
@@ -67,11 +75,12 @@ class Connection:
             :param schema: An optional initial schema to use. Requires DBR version 9.0+
 
         Other Parameters:
-            use_inline_params: `boolean`, optional (default is False)
+            use_inline_params: `boolean`, optional (default is True)
                 When True, parameterized calls to cursor.execute() will try to render parameter values inline with the
                 query text instead of using native bound parameters supported in DBR. This connector will attempt to
-                sanitise parameterized inputs to prevent SQL injection. This option should be considered dangerous and
-                is maintained here for certain legacy use-cases before Databricks had native parameter support.
+                sanitise parameterized inputs to prevent SQL injection. Before you can switch this to False, you must
+                update your queries to use the PEP-249 `named` paramstyle instead of the `pyformat` paramstyle used
+                in INLINE mode.
             auth_type: `str`, optional
                 `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
                 This is currently in private preview for Databricks accounts on AWS.
@@ -366,6 +375,78 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
+    def _determine_parameter_approach(self) -> ParameterApproach:
+        """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
+
+        If self.use_inline_params is True then inline mode is used.
+        If self.use_inline_params is False, then check if the server supports them and proceed.
+            Else raise an exception.
+
+        Returns a ParameterApproach enumeration or raises an exception
+        """
+
+        if self.connection.use_inline_params:
+            return ParameterApproach.INLINE
+
+        if self.connection.server_parameterized_queries_enabled(
+            self.connection.protocol_version
+        ):
+            return ParameterApproach.NATIVE
+        else:
+            raise NotSupportedError(
+                "Parameterized operations are not supported by this server. DBR 14.1 is required."
+            )
+
+    def _prepare_inline_parameters(
+        self, stmt: str, params: Union[List, Dict[str, Any]]
+    ) -> Tuple[str, List]:
+        """Return a statement and list of native parameters to be passed to thrift_backend for execution
+
+        :stmt:
+            A string SQL query containing parameter markers of PEP-249 paramstyle `pyformat`.
+            For example `%(param)s`.
+
+        :params:
+            An iterable of parameter values to be rendered inline. If passed as a Dict, the keys
+            must match the names of the markers included in :stmt:. If passed as a List, its length
+            must equal the count of parameter markers in :stmt:.
+
+        Returns a tuple of:
+            stmt: the passed statement with the param markers replaced by literal rendered values
+            params: an empty list representing the native parameters to be passed with this query.
+                The list is always empty because native parameters are never used under the inline approach
+        """
+
+        escaped_values = self.escaper.escape_args(params)
+        rendered_statement = inject_parameters(stmt, escaped_values)
+
+        return rendered_statement, NO_NATIVE_PARAMS
+
+    def _prepare_native_parameters(
+        self, stmt: str, params: Union[List[Any], Dict[str, Any]]
+    ) -> Tuple[str, List[TSparkParameter]]:
+        """Return a statement and a list of native parameters to be passed to thrift_backend for execution
+
+        :stmt:
+            A string SQL query containing parameter markers of PEP-249 paramstyle `named`.
+            For example `:param`.
+
+        :params:
+            An iterable of parameter values to be sent natively. If passed as a Dict, the keys
+            must match the names of the markers included in :stmt:. If passed as a List, its length
+            must equal the count of parameter markers in :stmt:. In list form, any member of the list
+            can be wrapped in a DbsqlParameter class.
+
+        Returns a tuple of:
+            stmt: the passed statement with the param markers replaced by literal rendered values
+            params: a list of TSparkParameters that will be passed in native mode
+        """
+
+        stmt = stmt
+        params = named_parameters_to_tsparkparams(params)
+
+        return stmt, params
+
     def _close_and_clear_active_result_set(self):
         try:
             if self.active_result_set:
@@ -534,24 +615,34 @@ class Cursor:
             Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
         :returns self
         """
-        if parameters and self.connection.use_inline_params:
-            _op = inject_parameters(operation, parameters)
-            _params = []
-        if parameters and not self.connection.use_inline_params:
-            _op = operation
-            _params = named_parameters_to_tsparkparams(parameters)
-        
+
+        if parameters:
+            param_approach = self._determine_parameter_approach()
+        else:
+            param_approach = ParameterApproach.NONE
+            prepared_params = NO_NATIVE_PARAMS
+            prepared_operation = operation
+
+        if param_approach == ParameterApproach.INLINE:
+            prepared_operation, prepared_params = self._prepare_inline_parameters(
+                operation, parameters
+            )
+        if param_approach == ParameterApproach.NATIVE:
+            prepared_operation, prepared_params = self._prepare_native_parameters(
+                operation, parameters
+            )
+
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
-            operation=_op,
+            operation=prepared_operation,
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
-            parameters=_params,
+            parameters=prepared_params,
         )
         self.active_result_set = ResultSet(
             self.connection,

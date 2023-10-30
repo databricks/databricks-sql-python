@@ -25,6 +25,11 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
+class ParameterApproach(Enum):
+    INLINE = 1
+    NATIVE = 2
+    NONE = 3
+
 class ResultSetQueue(ABC):
     @abstractmethod
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
