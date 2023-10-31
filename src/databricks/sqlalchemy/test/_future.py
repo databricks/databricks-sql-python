@@ -34,7 +34,6 @@ from sqlalchemy.testing.suite import (
     QuotedNameArgumentTest,
     RowCountTest,
     SimpleUpdateDeleteTest,
-    TimeTZTest,
     WeCanSetDefaultSchemaWEventsTest,
 )
 
@@ -57,7 +56,6 @@ class FutureFeature(Enum):
     TBL_COMMENTS = "table comment reflection"
     TBL_OPTS = "get_table_options method"
     TEST_DESIGN = "required test-fixture overrides"
-    TIMEZONE = "timezone handling for DateTime() or Time() types"
     TUPLE_LITERAL = "tuple-like IN markers completely"
     UUID = "native Uuid() type"
     VIEW_DEF = "get_view_definition method"
@@ -199,18 +197,6 @@ class LikeFunctionsTest(LikeFunctionsTest):
     def test_regexp_match(self):
         """The defaul dialect doesn't implement _visit_regexp methods so we don't get them automatically."""
         pass
-
-
-
-
-
-# @pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
-@pytest.mark.reviewed
-@pytest.mark.sqlatz
-class TimeTZTest(TimeTZTest):
-    """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
-    and processing in _types.py. Implementation has been deferred.
-    """
 
 
 @pytest.mark.reviewed
