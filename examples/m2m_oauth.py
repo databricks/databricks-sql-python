@@ -4,7 +4,7 @@ from databricks.sdk.core import oauth_service_principal, Config
 from databricks import sql
 
 """
-This example shows how to use OAuth M2M Authentication in Databricks SQL Python. 
+This example shows how to use OAuth M2M (machine-to-machine) for service principal
 
 Pre-requisites:
 - Create service principal and OAuth secret in Account Console
