@@ -24,7 +24,6 @@ from sqlalchemy.testing.suite import (
     CollateTest,
     ComputedColumnTest,
     ComputedReflectionTest,
-    DateTimeTZTest,
     DifficultParametersTest,
     FutureWeCanSetDefaultSchemaWEventsTest,
     IdentityColumnTest,
@@ -202,20 +201,12 @@ class LikeFunctionsTest(LikeFunctionsTest):
         pass
 
 
+
+
+
+# @pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
 @pytest.mark.reviewed
-@pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
-class DateTimeTZTest(DateTimeTZTest):
-    """When I initially implemented DateTime type handling, I started using TIMESTAMP_NTZ because
-    that's the default behaviour of the DateTime() type and the other tests passed. I simply missed
-    this group of tests. Will need to modify the compilation and result_processor for our type override
-    so that we can pass both DateTimeTZTest and DateTimeTest. Currently, only DateTimeTest passes.
-    """
-
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
+@pytest.mark.sqlatz
 class TimeTZTest(TimeTZTest):
     """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
     and processing in _types.py. Implementation has been deferred.

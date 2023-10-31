@@ -19,6 +19,7 @@ from databricks.sqlalchemy.test._regression import (
 # These are test suites that are fully skipped with a SkipReason
 from sqlalchemy.testing.suite import (
     AutocommitIsolationTest,
+    DateTimeTZTest,
     ExceptionTest,
     HasIndexTest,
     HasSequenceTest,
@@ -51,6 +52,7 @@ class SkipReason(Enum):
     STRING_FEAT = "required STRING type features"
     SYMBOL_CHARSET = "symbols expected by test"
     TEMP_TBL = "temporary tables"
+    TIMEZONE_OPT = "timezone-optional TIMESTAMP fields"
     TRANSACTIONS = "transactions"
     UNIQUE = "UNIQUE constraints"
 
@@ -415,3 +417,18 @@ class CTETest(CTETest):
         This suggests a limitation of the platform. But a workaround may be possible if customers require it.
         """
         pass
+
+
+@pytest.mark.reviewed
+@pytest.mark.skip(render_skip_reason(SkipReason.TIMEZONE_OPT, True))
+class DateTimeTZTest(DateTimeTZTest):
+    """Test whether the sqlalchemy.DateTime() type can _optionally_ include timezone info.
+    This dialect maps DateTime() → TIMESTAMP, which _always_ includes tzinfo.
+
+    Users can use databricks.sqlalchemy.TIMESTAMP_NTZ for a tzinfo-less timestamp. The SQLA docs
+    acknowledge this is expected for some dialects.
+
+    https://docs.sqlalchemy.org/en/20/core/type_basics.html#sqlalchemy.types.DateTime
+    """
+
+    pass
