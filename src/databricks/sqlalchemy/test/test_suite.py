@@ -9,3 +9,4 @@ from sqlalchemy.testing.suite import *
 from databricks.sqlalchemy.test._regression import *
 from databricks.sqlalchemy.test._unsupported import *
 from databricks.sqlalchemy.test._future import *
+from databricks.sqlalchemy.test._extra import TinyIntegerTest
