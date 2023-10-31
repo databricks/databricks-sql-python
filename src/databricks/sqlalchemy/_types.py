@@ -1,11 +1,29 @@
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from itertools import product
-from typing import Union
+from typing import Any, Union
 
 import sqlalchemy
+from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.ext.compiler import compiles
 
 from databricks.sql.utils import ParamEscaper
+
+
+def process_literal_param_hack(value: Any):
+    """This method is supposed to accept a Python type and return a string representation of that type.
+    But due to some weirdness in the way SQLAlchemy's literal rendering works, we have to return
+    the value itself because, by the time it reaches our custom type code, it's already been converted
+    into a string.
+
+    TimeTest
+    DateTimeTest
+    DateTimeTZTest
+
+    This dynamic only seems to affect the literal rendering of datetime and time objects.
+
+    All fail without this hack in-place. I'm not sure why. But it works.
+    """
+    return value
 
 
 @compiles(sqlalchemy.types.Enum, "databricks")
@@ -63,7 +81,7 @@ def compile_numeric_databricks(type_, compiler, **kw):
 @compiles(sqlalchemy.types.DateTime, "databricks")
 def compile_datetime_databricks(type_, compiler, **kw):
     """
-    We need to override the default DateTime compilation rendering because Databricks uses "TIMESTAMP" instead of "DATETIME"
+    We need to override the default DateTime compilation rendering because Databricks uses "TIMESTAMP_NTZ" instead of "DATETIME"
     """
     return "TIMESTAMP_NTZ"
 
@@ -86,13 +104,15 @@ def compile_array_databricks(type_, compiler, **kw):
     return f"ARRAY<{inner}>"
 
 
-class DatabricksDateTimeNoTimezoneType(sqlalchemy.types.TypeDecorator):
-    """The decimal that pysql creates when it receives the contents of a TIMESTAMP_NTZ
-    includes a timezone of 'Etc/UTC'.  But since SQLAlchemy's test suite assumes that
-    the sqlalchemy.types.DateTime type will return a datetime.datetime _without_ any
-    timezone set, we need to strip the timezone off the value received from pysql.
+class TIMESTAMP_NTZ(sqlalchemy.types.TypeDecorator):
+    """Represents values comprising values of fields year, month, day, hour, minute, and second.
+    All operations are performed without taking any time zone into account.
 
-    It's not clear if DBR sends a timezone to pysql or if pysql is adding it. This could be a bug.
+    Our dialect maps sqlalchemy.types.DateTime() to TIMESTAMP_NTZ, which means that all DateTime()
+    objects are stored without tzinfo. To read and write timezone-aware datetimes use
+    databricks.sql.TIMESTAMP directly.
+
+    https://docs.databricks.com/en/sql/language-manual/data-types/timestamp-ntz-type.html
     """
 
     impl = sqlalchemy.types.DateTime
@@ -103,6 +123,58 @@ class DatabricksDateTimeNoTimezoneType(sqlalchemy.types.TypeDecorator):
         if value is None:
             return None
         return value.replace(tzinfo=None)
+
+
+class TIMESTAMP(sqlalchemy.types.TypeDecorator):
+    """Represents values comprising values of fields year, month, day, hour, minute, and second.
+    All operations are performed without taking any time zone into account.
+
+    Our dialect maps sqlalchemy.types.DateTime() to TIMESTAMP_NTZ, which means that all DateTime()
+    objects are stored without tzinfo. To read and write timezone-aware datetimes use
+    databricks.sql.TIMESTAMP directly.
+
+    ```python
+    # This won't work
+    `Column(sqlalchemy.DateTime(timezone=True))`
+    
+    # But this does
+    `Column(TIMESTAMP)`
+    ````
+
+    https://docs.databricks.com/en/sql/language-manual/data-types/timestamp-ntz-type.html
+    """
+
+    impl = sqlalchemy.types.DateTime
+
+    cache_ok = True
+
+    def process_result_value(self, value: Union[None, datetime], dialect):
+        if value is None:
+            return None
+
+        if not value.tzinfo:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    def process_bind_param(
+        self, value: Union[datetime, None], dialect
+    ) -> Union[None, str]:
+        """pysql can pass datetime.datetime() objects directly to DBR"""
+        return value
+
+    def process_literal_param(
+        self, value: Union[datetime, None], dialect: Dialect
+    ) -> str:
+        """ """
+        return process_literal_param_hack(value)
+
+
+@compiles(TIMESTAMP, "databricks")
+def compile_timestamp_databricks(type_, compiler, **kw):
+    """
+    We need to override the default DateTime compilation rendering because Databricks uses "TIMESTAMP_NTZ" instead of "DATETIME"
+    """
+    return "TIMESTAMP"
 
 
 class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
@@ -160,19 +232,8 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
 
     # mypy doesn't like this workaround because TypeEngine wants process_literal_param to return a string
     def process_literal_param(self, value, dialect) -> time:  # type: ignore
-        """It's not clear to me why this is necessary. Without it, SQLAlchemy's Timetest:test_literal fails
-        because the string literal renderer receives a str() object and calls .isoformat() on it.
-
-        Whereas this method receives a datetime.time() object which is subsequently passed to that
-        same renderer. And that works.
-
-        UPDATE: After coping with the literal_processor override in DatabricksStringType, I suspect a similar
-        mechanism is at play. Two different processors are are called in sequence. This is likely a byproduct
-        of Databricks not having a true TIME type. I think the string representation of Time() types is
-        somehow affecting the literal rendering process. But as long as this passes the tests, I'm not
-        worried about it.
-        """
-        return value
+        """ """
+        return process_literal_param_hack(value)
 
     def process_result_value(
         self, value: Union[None, str], dialect

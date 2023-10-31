@@ -66,7 +66,7 @@ class DatabricksDialect(default.DefaultDialect):
     supports_sequences: bool = False
 
     colspecs = {
-        sqlalchemy.types.DateTime: dialect_type_impl.DatabricksDateTimeNoTimezoneType,
+        sqlalchemy.types.DateTime: dialect_type_impl.TIMESTAMP_NTZ,
         sqlalchemy.types.Time: dialect_type_impl.DatabricksTimeType,
         sqlalchemy.types.String: dialect_type_impl.DatabricksStringType,
     }
