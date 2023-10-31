@@ -212,3 +212,15 @@ class DatabricksStringType(sqlalchemy.types.TypeDecorator):
             return "%s" % _step2
 
         return process
+
+
+class TINYINT(sqlalchemy.types.TypeDecorator):
+    """Represents 1-byte signed integers
+
+    Acts like a sqlalchemy SmallInteger() in Python but writes to a TINYINT field in Databricks
+
+    https://docs.databricks.com/en/sql/language-manual/data-types/tinyint-type.html
+    """
+
+    impl = sqlalchemy.types.SmallInteger
+    cache_ok = True

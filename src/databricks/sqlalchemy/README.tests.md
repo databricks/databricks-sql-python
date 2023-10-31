@@ -17,6 +17,8 @@ We maintain three files of test cases that we import from the SQLAlchemy source 
 
 In some cases, only certain tests in class should be skipped with a `SkipReason` or `FutureFeature` justification. In those cases, we import the class into `_regression.py`, then import it from there into one or both of `_future.py` and `_unsupported.py`. If a class needs to be "touched" by regression, unsupported, and future, the class will be imported in that order. If an entire class should be skipped, then we do not import it into `_regression.py` at all.
 
+We maintain `_extra.py` with test cases that depend on SQLAlchemy's reusable dialect test fixtures but which are specific to Databricks (e.g TinyIntegerTest).
+
 ## Running the reusable dialect tests
 
 ```
