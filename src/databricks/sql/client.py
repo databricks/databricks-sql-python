@@ -376,9 +376,12 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def _determine_parameter_approach(self) -> ParameterApproach:
+    def _determine_parameter_approach(
+        self, params: Optional[Union[List, Dict[str, Any]]] = None
+    ) -> ParameterApproach:
         """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
 
+        If params is None then ParameterApproach.NONE is returned.
         If self.use_inline_params is True then inline mode is used.
         If self.use_inline_params is False, then check if the server supports them and proceed.
             Else raise an exception.
@@ -387,6 +390,9 @@ class Cursor:
 
         If inline approach is used when the server supports native approach, a warning is logged
         """
+
+        if params is None:
+            return ParameterApproach.NONE
 
         server_supports_native_approach = (
             self.connection.server_parameterized_queries_enabled(
@@ -415,7 +421,7 @@ class Cursor:
             )
 
     def _prepare_inline_parameters(
-        self, stmt: str, params: Union[List, Dict[str, Any]]
+        self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]
     ) -> Tuple[str, List]:
         """Return a statement and list of native parameters to be passed to thrift_backend for execution
 
@@ -440,7 +446,7 @@ class Cursor:
         return rendered_statement, NO_NATIVE_PARAMS
 
     def _prepare_native_parameters(
-        self, stmt: str, params: Union[List[Any], Dict[str, Any]]
+        self, stmt: str, params: Optional[Union[List[Any], Dict[str, Any]]]
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
 
@@ -455,12 +461,12 @@ class Cursor:
             can be wrapped in a DbsqlParameter class.
 
         Returns a tuple of:
-            stmt: the passed statement with the param markers replaced by literal rendered values
+            stmt: the passed statement` with the param markers replaced by literal rendered values
             params: a list of TSparkParameters that will be passed in native mode
         """
 
         stmt = stmt
-        params = named_parameters_to_tsparkparams(params)
+        params = named_parameters_to_tsparkparams(params)  # type: ignore
 
         return stmt, params
 
@@ -621,7 +627,7 @@ class Cursor:
     def execute(
         self,
         operation: str,
-        parameters: Optional[Union[List[Any], Dict[str, str]]] = None,
+        parameters: Optional[Union[List[Any], Dict[str, Any]]] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -652,18 +658,16 @@ class Cursor:
         :returns self
         """
 
-        if parameters:
-            param_approach = self._determine_parameter_approach()
-        else:
-            param_approach = ParameterApproach.NONE
+        param_approach = self._determine_parameter_approach(parameters)
+        if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
             prepared_operation = operation
 
-        if param_approach == ParameterApproach.INLINE:
+        elif param_approach == ParameterApproach.INLINE:
             prepared_operation, prepared_params = self._prepare_inline_parameters(
                 operation, parameters
             )
-        if param_approach == ParameterApproach.NATIVE:
+        elif param_approach == ParameterApproach.NATIVE:
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 operation, parameters
             )
