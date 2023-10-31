@@ -109,8 +109,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     @contextmanager
     def conditional_protocol_patch(self, bypass=False):
         """This fixture will be removed once dogfood advertises its protocol version correctly.
-        
-        Note that there is an equivalent patch in sqlalchemy/test/test_suite.py which should be 
+
+        Note that there is an equivalent patch in sqlalchemy/test/test_suite.py which should be
         removed at the same time as this one. That one is encapsulated in a function called
         start_protocol_patch()"""
 
@@ -135,7 +135,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
-        with self.connection(extra_params={"use_inline_params": True}) as conn:
+        with self.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(INSERT_QUERY, parameters=params)
             with conn.cursor() as cursor:
@@ -197,6 +197,28 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             result = self._get_one_result(
                 ParameterApproach.NATIVE, params, bypass_patch=True
             )
+
+    @pytest.mark.parametrize("explicit_inline", (True, False))
+    def test_use_inline_by_default_with_warning(self, explicit_inline, caplog):
+        """
+        use_inline_params should be True by default.
+        If a user explicitly sets use_inline_params, don't warn them about it.
+        """
+
+        extra_args = {"use_inline_params": True} if explicit_inline else {}
+
+        with self.connection(extra_args) as conn:
+            with conn.cursor() as cursor:
+                with self.conditional_protocol_patch():
+                    cursor.execute("SELECT %(p)s", parameters={"p": 1})
+                    if explicit_inline:
+                        assert (
+                            "Consider using native parameters." not in caplog.text
+                        ), "Log message should be suppressed"
+                    else:
+                        assert (
+                            "Consider using native parameters." in caplog.text
+                        ), "Log message should not be supressed"
 
     @both_approaches
     def test_primitive_inferred_none(self, approach: ParameterApproach, inline_table):

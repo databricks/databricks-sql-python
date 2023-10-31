@@ -49,7 +49,6 @@ class Connection:
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
-        use_inline_params: Optional[bool] = True,
         **kwargs,
     ) -> None:
         """
@@ -222,7 +221,9 @@ class Connection:
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
-        self.use_inline_params = use_inline_params
+
+        self._suppress_inline_warning = "use_inline_params" in kwargs
+        self.use_inline_params = kwargs.get("use_inline_params", True)
 
     def __enter__(self):
         return self
@@ -383,14 +384,30 @@ class Cursor:
             Else raise an exception.
 
         Returns a ParameterApproach enumeration or raises an exception
+
+        If inline approach is used when the server supports native approach, a warning is logged
         """
 
+        server_supports_native_approach = (
+            self.connection.server_parameterized_queries_enabled(
+                self.connection.protocol_version
+            )
+        )
+
         if self.connection.use_inline_params:
+            if (
+                server_supports_native_approach
+                and not self.connection._suppress_inline_warning
+            ):
+                logger.warning(
+                    "This query will be executed with inline parameters."
+                    "Consider using native parameters."
+                    "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
+                    "To suppress this warning, pass use_inline_params=True when creating the connection."
+                )
             return ParameterApproach.INLINE
 
-        if self.connection.server_parameterized_queries_enabled(
-            self.connection.protocol_version
-        ):
+        elif server_supports_native_approach:
             return ParameterApproach.NATIVE
         else:
             raise NotSupportedError(
