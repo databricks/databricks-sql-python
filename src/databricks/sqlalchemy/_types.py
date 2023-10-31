@@ -1,10 +1,9 @@
-import sqlalchemy
-from sqlalchemy.ext.compiler import compiles
-
+from datetime import datetime, time
+from itertools import product
 from typing import Union
 
-from datetime import datetime, time
-
+import sqlalchemy
+from sqlalchemy.ext.compiler import compiles
 
 from databricks.sql.utils import ParamEscaper
 
@@ -112,14 +111,52 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
     impl = sqlalchemy.types.Time
     cache_ok = True
 
-    TIME_WITH_MICROSECONDS_FMT = "%H:%M:%S.%f"
-    TIME_NO_MICROSECONDS_FMT = "%H:%M:%S"
+    BASE_FMT = "%H:%M:%S"
+    MICROSEC_PART = ".%f"
+    TIMEZONE_PART = "%z"
+
+    def _generate_fmt_string(self, ms: bool, tz: bool) -> str:
+        """Return a format string for datetime.strptime() that includes or excludes microseconds and timezone."""
+        _ = lambda x, y: x if y else ""
+        return f"{self.BASE_FMT}{_(self.MICROSEC_PART,ms)}{_(self.TIMEZONE_PART,tz)}"
+
+    @property
+    def allowed_fmt_strings(self):
+        """Time strings can be read with or without microseconds and with or without a timezone."""
+
+        if not hasattr(self, "_allowed_fmt_strings"):
+            ms_switch = tz_switch = [True, False]
+            self._allowed_fmt_strings = [
+                self._generate_fmt_string(x, y)
+                for x, y in product(ms_switch, tz_switch)
+            ]
+
+        return self._allowed_fmt_strings
+
+    def _parse_result_string(self, value: str) -> time:
+        """Parse a string into a time object. Try all allowed formats until one works."""
+        for fmt in self.allowed_fmt_strings:
+            try:
+                # We use timetz() here because we want to preserve the timezone information
+                # Calling .time() will strip the timezone information
+                return datetime.strptime(value, fmt).timetz()
+            except ValueError:
+                pass
+
+        raise ValueError(f"Could not parse time string {value}")
+
+    def _determine_fmt_string(self, value: time) -> str:
+        """Determine which format string to use to render a time object as a string."""
+        ms_bool = value.microsecond > 0
+        tz_bool = value.tzinfo is not None
+        return self._generate_fmt_string(ms_bool, tz_bool)
 
     def process_bind_param(self, value: Union[time, None], dialect) -> Union[None, str]:
         """Values sent to the database are converted to %:H:%M:%S strings."""
         if value is None:
             return None
-        return value.strftime(self.TIME_WITH_MICROSECONDS_FMT)
+        fmt_string = self._determine_fmt_string(value)
+        return value.strftime(fmt_string)
 
     # mypy doesn't like this workaround because TypeEngine wants process_literal_param to return a string
     def process_literal_param(self, value, dialect) -> time:  # type: ignore
@@ -144,13 +181,7 @@ class DatabricksTimeType(sqlalchemy.types.TypeDecorator):
         if value is None:
             return None
 
-        try:
-            _parsed = datetime.strptime(value, self.TIME_WITH_MICROSECONDS_FMT)
-        except ValueError:
-            # If the string doesn't have microseconds, try parsing it without them
-            _parsed = datetime.strptime(value, self.TIME_NO_MICROSECONDS_FMT)
-
-        return _parsed.time()
+        return self._parse_result_string(value)
 
 
 class DatabricksStringType(sqlalchemy.types.TypeDecorator):
