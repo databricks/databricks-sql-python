@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
-NO_NATIVE_PARAMS = []
+NO_NATIVE_PARAMS: List = []
 
 
 class Connection:

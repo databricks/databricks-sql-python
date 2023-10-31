@@ -633,7 +633,7 @@ def calculate_decimal_cast_string(input: Decimal) -> str:
     return f"DECIMAL({overall},{after})"
 
 
-def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]]):
+def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]]) -> List[TSparkParameter]:
     tspark_params = []
     if isinstance(parameters, dict):
         dbsql_params = named_parameters_to_dbsqlparams_v1(parameters)
