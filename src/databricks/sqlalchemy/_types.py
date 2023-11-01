@@ -1,6 +1,6 @@
 from datetime import datetime, time, timezone
 from itertools import product
-from typing import Any, Union
+from typing import Any, Union, Optional
 
 import sqlalchemy
 from sqlalchemy.engine.interfaces import Dialect
@@ -136,7 +136,7 @@ class TIMESTAMP(sqlalchemy.types.TypeDecorator):
     ```python
     # This won't work
     `Column(sqlalchemy.DateTime(timezone=True))`
-    
+
     # But this does
     `Column(TIMESTAMP)`
     ````
@@ -158,7 +158,7 @@ class TIMESTAMP(sqlalchemy.types.TypeDecorator):
 
     def process_bind_param(
         self, value: Union[datetime, None], dialect
-    ) -> Union[None, str]:
+    ) -> Optional[datetime]:
         """pysql can pass datetime.datetime() objects directly to DBR"""
         return value
 
