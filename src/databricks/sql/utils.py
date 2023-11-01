@@ -25,6 +25,12 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
+class ParameterApproach(Enum):
+    INLINE = 1
+    NATIVE = 2
+    NONE = 3
+
+
 class ResultSetQueue(ABC):
     @abstractmethod
     def next_n_rows(self, num_rows: int) -> pyarrow.Table:
@@ -627,7 +633,9 @@ def calculate_decimal_cast_string(input: Decimal) -> str:
     return f"DECIMAL({overall},{after})"
 
 
-def named_parameters_to_tsparkparams(parameters: Union[List[Any], Dict[str, str]]):
+def named_parameters_to_tsparkparams(
+    parameters: Union[List[Any], Dict[str, str]]
+) -> List[TSparkParameter]:
     tspark_params = []
     if isinstance(parameters, dict):
         dbsql_params = named_parameters_to_dbsqlparams_v1(parameters)
