@@ -6,6 +6,7 @@
 - Add integration tests for Databricks UC Volumes ingestion queries
 - Add `_retry_max_redirects` config
 - Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
+- Fix: our logger would raise an uncaught exception under certain oauth error conditions
 
 ## 2.9.3 (2023-08-24)
 

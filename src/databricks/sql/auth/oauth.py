@@ -125,7 +125,7 @@ class OAuthManager:
                     logger.info(f"Port {port} is in use")
                     last_error = e
             except Exception as e:
-                logger.error("unexpected error", e)
+                logger.error("unexpected error: %s", e)
         if self.redirect_port is None:
             logger.error(
                 f"Tried all the ports {self.port_range} for oauth redirect, but can't find free port"
