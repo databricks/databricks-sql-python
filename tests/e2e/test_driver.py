@@ -28,7 +28,7 @@ from tests.e2e.common.decimal_tests import DecimalTestsMixin
 from tests.e2e.common.retry_test_mixins import Client429ResponseMixin, Client503ResponseMixin
 from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSuiteMixin
 from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
-from tests.e2e.common.parameterized_query_tests import PySQLParameterizedQueryTestSuiteMixin
+
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
 log = logging.getLogger(__name__)
@@ -101,6 +101,60 @@ class PySQLTestCase(TestCase):
         for act, exp in zip(actual, expected):
             self.assertSequenceEqual(act, exp)
 
+class PySQLPytestTestCase():
+    """A mirror of PySQLTest case that doesn't inherit from unittest.TestCase
+    so that we can use pytest.mark.parameterize
+    """
+    error_type = Error
+    conf_to_disable_rate_limit_retries = {"_retry_stop_after_attempts_count": 1}
+    conf_to_disable_temporarily_unavailable_retries = {"_retry_stop_after_attempts_count": 1}
+    arguments = os.environ if get_args_from_env else {}
+    arraysize = 1000
+    buffer_size_bytes = 104857600
+
+    def connection_params(self, arguments):
+        params = {
+            "server_hostname": arguments["host"],
+            "http_path": arguments["http_path"],
+            **self.auth_params(arguments)
+        }
+
+        return params
+
+    def auth_params(self, arguments):
+        return {
+            "_username": arguments.get("rest_username"),
+            "_password": arguments.get("rest_password"),
+            "access_token": arguments.get("access_token")
+        }
+
+    @contextmanager
+    def connection(self, extra_params=()):
+        connection_params = dict(self.connection_params(self.arguments), **dict(extra_params))
+
+        log.info("Connecting with args: {}".format(connection_params))
+        conn = sql.connect(**connection_params)
+
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    @contextmanager
+    def cursor(self, extra_params=()):
+        with self.connection(extra_params) as conn:
+            cursor = conn.cursor(arraysize=self.arraysize, buffer_size_bytes=self.buffer_size_bytes)
+            try:
+                yield cursor
+            finally:
+                cursor.close()
+
+    def assertEqualRowValues(self, actual, expected):
+        self.assertEqual(len(actual) if actual else 0, len(expected) if expected else 0)
+        for act, exp in zip(actual, expected):
+            self.assertSequenceEqual(act, exp)
+
+
 
 class PySQLLargeQueriesSuite(PySQLTestCase, LargeQueriesMixin):
     def get_some_rows(self, cursor, fetchmany_size):
@@ -144,7 +198,7 @@ class PySQLLargeQueriesSuite(PySQLTestCase, LargeQueriesMixin):
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core
 # tests
 class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, TimestampTestsMixin,
-                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin, PySQLRetryTestsMixin, PySQLParameterizedQueryTestSuiteMixin, PySQLUCVolumeTestSuiteMixin):
+                         PySQLTestCase, PySQLStagingIngestionTestSuiteMixin, PySQLRetryTestsMixin, PySQLUCVolumeTestSuiteMixin):
     validate_row_value_type = True
     validate_result = True
 
@@ -341,7 +395,7 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
             assert rows[0]["col_1"] == "you're"
 
             # Test escape syntax in parameter
-            cursor.execute("SELECT * FROM {} WHERE {}.col_1 LIKE :var".format(table_name, table_name), parameters={"var": "you're"})
+            cursor.execute("SELECT * FROM {} WHERE {}.col_1 LIKE %(var)s".format(table_name, table_name), parameters={"var": "you're"})
             rows = cursor.fetchall()
             assert rows[0]["col_1"] == "you're"
 
@@ -699,6 +753,7 @@ class PySQLUnityCatalogTestSuite(PySQLTestCase):
             self.assertEqual(cursor.fetchone()[0], self.arguments["catA"])
             cursor.execute("select current_database()")
             self.assertEqual(cursor.fetchone()[0], table_name)
+
 
 
 def main(cli_args):

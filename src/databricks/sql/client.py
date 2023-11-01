@@ -19,15 +19,24 @@ from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
     named_parameters_to_tsparkparams,
+    inject_parameters,
+    ParameterApproach,
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
+from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TSparkParameter,
+)
+
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
+
+NO_NATIVE_PARAMS: List = []
 
 
 class Connection:
@@ -65,6 +74,12 @@ class Connection:
             :param schema: An optional initial schema to use. Requires DBR version 9.0+
 
         Other Parameters:
+            use_inline_params: `boolean`, optional (default is True)
+                When True, parameterized calls to cursor.execute() will try to render parameter values inline with the
+                query text instead of using native bound parameters supported in DBR 14.1 and above. This connector will attempt to
+                sanitise parameterized inputs to prevent SQL injection. Before you can switch this to False, you must
+                update your queries to use the PEP-249 `named` paramstyle instead of the `pyformat` paramstyle used
+                in INLINE mode.
             auth_type: `str`, optional
                 `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
                 This is currently in private preview for Databricks accounts on AWS.
@@ -206,6 +221,9 @@ class Connection:
         self.open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
+
+        self._suppress_inline_warning = "use_inline_params" in kwargs
+        self.use_inline_params = kwargs.get("use_inline_params", True)
 
     def __enter__(self):
         return self
@@ -357,6 +375,100 @@ class Cursor:
                 yield row
         else:
             raise Error("There is no active result set")
+
+    def _determine_parameter_approach(
+        self, params: Optional[Union[List, Dict[str, Any]]] = None
+    ) -> ParameterApproach:
+        """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
+
+        If params is None then ParameterApproach.NONE is returned.
+        If self.use_inline_params is True then inline mode is used.
+        If self.use_inline_params is False, then check if the server supports them and proceed.
+            Else raise an exception.
+
+        Returns a ParameterApproach enumeration or raises an exception
+
+        If inline approach is used when the server supports native approach, a warning is logged
+        """
+
+        if params is None:
+            return ParameterApproach.NONE
+
+        server_supports_native_approach = (
+            self.connection.server_parameterized_queries_enabled(
+                self.connection.protocol_version
+            )
+        )
+
+        if self.connection.use_inline_params:
+            if (
+                server_supports_native_approach
+                and not self.connection._suppress_inline_warning
+            ):
+                logger.warning(
+                    "This query will be executed with inline parameters."
+                    "Consider using native parameters."
+                    "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
+                    "To suppress this warning, pass use_inline_params=True when creating the connection."
+                )
+            return ParameterApproach.INLINE
+
+        elif server_supports_native_approach:
+            return ParameterApproach.NATIVE
+        else:
+            raise NotSupportedError(
+                "Parameterized operations are not supported by this server. DBR 14.1 is required."
+            )
+
+    def _prepare_inline_parameters(
+        self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]
+    ) -> Tuple[str, List]:
+        """Return a statement and list of native parameters to be passed to thrift_backend for execution
+
+        :stmt:
+            A string SQL query containing parameter markers of PEP-249 paramstyle `pyformat`.
+            For example `%(param)s`.
+
+        :params:
+            An iterable of parameter values to be rendered inline. If passed as a Dict, the keys
+            must match the names of the markers included in :stmt:. If passed as a List, its length
+            must equal the count of parameter markers in :stmt:.
+
+        Returns a tuple of:
+            stmt: the passed statement with the param markers replaced by literal rendered values
+            params: an empty list representing the native parameters to be passed with this query.
+                The list is always empty because native parameters are never used under the inline approach
+        """
+
+        escaped_values = self.escaper.escape_args(params)
+        rendered_statement = inject_parameters(stmt, escaped_values)
+
+        return rendered_statement, NO_NATIVE_PARAMS
+
+    def _prepare_native_parameters(
+        self, stmt: str, params: Optional[Union[List[Any], Dict[str, Any]]]
+    ) -> Tuple[str, List[TSparkParameter]]:
+        """Return a statement and a list of native parameters to be passed to thrift_backend for execution
+
+        :stmt:
+            A string SQL query containing parameter markers of PEP-249 paramstyle `named`.
+            For example `:param`.
+
+        :params:
+            An iterable of parameter values to be sent natively. If passed as a Dict, the keys
+            must match the names of the markers included in :stmt:. If passed as a List, its length
+            must equal the count of parameter markers in :stmt:. In list form, any member of the list
+            can be wrapped in a DbsqlParameter class.
+
+        Returns a tuple of:
+            stmt: the passed statement` with the param markers replaced by literal rendered values
+            params: a list of TSparkParameters that will be passed in native mode
+        """
+
+        stmt = stmt
+        params = named_parameters_to_tsparkparams(params)  # type: ignore
+
+        return stmt, params
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -515,40 +627,62 @@ class Cursor:
     def execute(
         self,
         operation: str,
-        parameters: Optional[Union[List[Any], Dict[str, str]]] = None,
+        parameters: Optional[Union[List[Any], Dict[str, Any]]] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
-        Parameters should be given in extended param format style: %(...)<s|d|f>.
-        For example:
-            operation = "SELECT * FROM table WHERE field = %(some_value)s"
-            parameters = {"some_value": "foo"}
-            Will result in the query "SELECT * FROM table WHERE field = 'foo' being sent to the server
+
+        The parameterisation behaviour of this method depends on which parameter approach is used:
+            - With INLINE mode (default), parameters are rendered inline with the query text
+            - With NATIVE mode, parameters are sent to the server separately for binding
+
+        This behaviour is controlled by the `use_inline_params` argument passed when building a connection.
+
+        The syntax for these approaches is different:
+
+        If the connection was instantiated with use_inline_params=False, then parameters
+        should be given in PEP-249 `named` paramstyle like :param_name
+
+        If the connection was instantiated with use_inline_params=True (default), then parameters
+        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s
+
+        ```python
+        inline_operation = "SELECT * FROM table WHERE field = %(some_value)s"
+        native_operation = "SELECT * FROM table WHERE field = :some_value"
+        parameters = {"some_value": "foo"}
+        ```
+
+        Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
+        being sent to the server
+
         :returns self
         """
-        if parameters is None:
-            parameters = []
 
-        elif not Connection.server_parameterized_queries_enabled(
-            self.connection.protocol_version
-        ):
-            raise NotSupportedError(
-                "Parameterized operations are not supported by this server. DBR 14.1 is required."
+        param_approach = self._determine_parameter_approach(parameters)
+        if param_approach == ParameterApproach.NONE:
+            prepared_params = NO_NATIVE_PARAMS
+            prepared_operation = operation
+
+        elif param_approach == ParameterApproach.INLINE:
+            prepared_operation, prepared_params = self._prepare_inline_parameters(
+                operation, parameters
             )
-        else:
-            parameters = named_parameters_to_tsparkparams(parameters)
+        elif param_approach == ParameterApproach.NATIVE:
+            prepared_operation, prepared_params = self._prepare_native_parameters(
+                operation, parameters
+            )
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
-            operation=operation,
+            operation=prepared_operation,
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
-            parameters=parameters,
+            parameters=prepared_params,
         )
         self.active_result_set = ResultSet(
             self.connection,
