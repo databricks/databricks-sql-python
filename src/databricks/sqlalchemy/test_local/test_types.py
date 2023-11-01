@@ -4,7 +4,7 @@ import pytest
 import sqlalchemy
 
 from databricks.sqlalchemy.base import DatabricksDialect
-from databricks.sqlalchemy._types import TINYINT
+from databricks.sqlalchemy._types import TINYINT, TIMESTAMP, TIMESTAMP_NTZ
 
 
 class DatabricksDataType(enum.Enum):
@@ -129,6 +129,8 @@ uppercase_type_map = {
     sqlalchemy.types.SMALLINT: DatabricksDataType.SMALLINT,
     sqlalchemy.types.TIMESTAMP: DatabricksDataType.TIMESTAMP,
     TINYINT: DatabricksDataType.TINYINT,
+    TIMESTAMP: DatabricksDataType.TIMESTAMP,
+    TIMESTAMP_NTZ: DatabricksDataType.TIMESTAMP_NTZ,
 }
 
 

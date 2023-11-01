@@ -1,6 +1,8 @@
 """Additional tests authored by Databricks that use SQLAlchemy's test fixtures
 """
 
+import datetime
+
 from sqlalchemy.testing.suite.test_types import (
     _LiteralRoundTripFixture,
     fixtures,
@@ -10,8 +12,10 @@ from sqlalchemy.testing.suite.test_types import (
     Table,
     Column,
     config,
+    _DateFixture,
+    literal,
 )
-from databricks.sqlalchemy import TINYINT
+from databricks.sqlalchemy import TINYINT, TIMESTAMP
 
 
 class TinyIntegerTest(_LiteralRoundTripFixture, fixtures.TestBase):
@@ -46,3 +50,21 @@ class TinyIntegerTest(_LiteralRoundTripFixture, fixtures.TestBase):
             assert isinstance(row[0], int)
 
         return run
+
+
+class DateTimeTZTestCustom(_DateFixture, fixtures.TablesTest):
+    """This test confirms that when a user uses the TIMESTAMP
+    type to store a datetime object, it retains its timezone
+    """
+
+    __backend__ = True
+    datatype = TIMESTAMP
+    data = datetime.datetime(2012, 10, 15, 12, 57, 18, tzinfo=datetime.timezone.utc)
+
+    @testing.requires.datetime_implicit_bound
+    def test_select_direct(self, connection):
+
+        # We need to pass the TIMESTAMP type to the literal function
+        # so that the value is processed correctly.
+        result = connection.scalar(select(literal(self.data, TIMESTAMP)))
+        eq_(result, self.data)
