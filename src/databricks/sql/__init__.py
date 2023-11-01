@@ -8,7 +8,7 @@ threadsafety = 1  # Threads may share the module, but not connections.
 
 # Python extended format codes, e.g. ...WHERE name=%(name)s
 # Note that when we switch to ParameterApproach.NATIVE, paramstyle will be `named`
-paramstyle = "pyformat"  
+paramstyle = "pyformat"
 
 
 class DBAPITypeObject(object):
