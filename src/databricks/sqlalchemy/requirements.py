@@ -228,3 +228,10 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         UPPERCASE as case insensitive names."""
 
         return sqlalchemy.testing.exclusions.open()
+
+    @property
+    def time_timezone(self):
+        """target dialect supports representation of Python
+        datetime.time() with tzinfo with Time(timezone=True)."""
+
+        return sqlalchemy.testing.exclusions.open()
