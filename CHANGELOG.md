@@ -1,11 +1,12 @@
 # Release History
 
-## 2.9.4 (Unreleased)
+## 3.0.0 (Unreleased)
 
 - Other: Introduce SQLAlchemy dialect compliance test suite and enumerate all excluded tests
 - Add integration tests for Databricks UC Volumes ingestion queries
 - Add `_retry_max_redirects` config
 - Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
+- Remove support for Python 3.7
 
 ## 2.9.3 (2023-08-24)
 
