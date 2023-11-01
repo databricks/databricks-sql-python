@@ -6,32 +6,32 @@ import databricks.sql as sql
 from databricks.sql import Error
 
 @pytest.fixture(scope="module", autouse=True)
-def check_staging_ingestion_user():
-    """This fixture verifies that a staging ingestion user email address
-    is present in the environment and raises an exception if not. The fixture
-    only evaluates when the test _isn't skipped_.
+def check_catalog_and_schema():
+    """This fixture verifies that a catalog and schema are present in the environment.
+    The fixture only evaluates when the test _isn't skipped_.
     """
 
-    staging_ingestion_user = os.getenv("staging_ingestion_user")
+    _catalog = os.getenv("catalog")
+    _schema = os.getenv("schema")
 
-    if staging_ingestion_user is None:
+    if _catalog is None or _schema is None:
         raise ValueError(
-            "To run this test you must designate a `staging_ingestion_user` environment variable. This will be the user associated with the personal access token."
+            f"UC Volume tests require values for the `catalog` and `schema` environment variables. Found catalog {_catalog} schema {_schema}"
         )
 
-class PySQLStagingIngestionTestSuiteMixin:
-    """Simple namespace for ingestion tests. These should be run against DBR >12.x
+class PySQLUCVolumeTestSuiteMixin:
+    """Simple namespace for UC Volume tests.
 
-    In addition to connection credentials (host, path, token) this suite requires an env var
-    named staging_ingestion_user"""
+    In addition to connection credentials (host, path, token) this suite requires env vars
+    named catalog and schema"""
 
-    staging_ingestion_user = os.getenv("staging_ingestion_user")
+    catalog, schema = os.getenv("catalog"), os.getenv("schema")
 
 
-    def test_staging_ingestion_life_cycle(self):
-        """PUT a file into the staging location
-        GET the file from the staging location
-        REMOVE the file from the staging location
+    def test_uc_volume_life_cycle(self):
+        """PUT a file into the UC Volume
+        GET the file from the UC Volume
+        REMOVE the file from the UC Volume
         Try to GET the file again expecting to raise an exception
         """
 
@@ -47,7 +47,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
 
             cursor = conn.cursor()
-            query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+            query = f"PUT '{temp_path}' INTO '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv' OVERWRITE"
             cursor.execute(query)
 
         # GET should succeed
@@ -56,7 +56,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         with self.connection(extra_params={"staging_allowed_local_path": new_temp_path}) as conn:
             cursor = conn.cursor()
-            query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+            query = f"GET '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
 
         with open(new_fh, "rb") as fp:
@@ -67,7 +67,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         # REMOVE should succeed
 
         remove_query = (
-            f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv'"
+            f"REMOVE '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv'"
         )
 
         with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
@@ -78,14 +78,14 @@ class PySQLStagingIngestionTestSuiteMixin:
 
             with pytest.raises(Error, match="Staging operation over HTTP was unsuccessful: 404"):
                 cursor = conn.cursor()
-                query = f"GET 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+                query = f"GET '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv' TO '{new_temp_path}'"
                 cursor.execute(query)
 
         os.remove(temp_path)
         os.remove(new_temp_path)
 
 
-    def test_staging_ingestion_put_fails_without_staging_allowed_local_path(self):
+    def test_uc_volume_put_fails_without_staging_allowed_local_path(self):
         """PUT operations are not supported unless the connection was built with
         a parameter called staging_allowed_local_path
         """
@@ -100,10 +100,10 @@ class PySQLStagingIngestionTestSuiteMixin:
         with pytest.raises(Error, match="You must provide at least one staging_allowed_local_path"):
             with self.connection() as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{temp_path}' INTO '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_put_fails_if_localFile_not_in_staging_allowed_local_path(self):
+    def test_uc_volume_put_fails_if_localFile_not_in_staging_allowed_local_path(self):
 
 
         fh, temp_path = tempfile.mkstemp()
@@ -121,13 +121,14 @@ class PySQLStagingIngestionTestSuiteMixin:
         with pytest.raises(Error, match="Local file operations are restricted to paths within the configured staging_allowed_local_path"):
             with self.connection(extra_params={"staging_allowed_local_path": base_path}) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{temp_path}' INTO '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_put_fails_if_file_exists_and_overwrite_not_set(self):
+    def test_uc_volume_put_fails_if_file_exists_and_overwrite_not_set(self):
         """PUT a file into the staging location twice. First command should succeed. Second should fail.
         """
 
+        
         fh, temp_path = tempfile.mkstemp()
 
         original_text = "hello world!".encode("utf-8")
@@ -138,12 +139,12 @@ class PySQLStagingIngestionTestSuiteMixin:
         def perform_put():
             with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/12/15/file1.csv'"
+                query = f"PUT '{temp_path}' INTO '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv'"
                 cursor.execute(query)
 
         def perform_remove():
             remove_query = (
-                f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/12/15/file1.csv'"
+                f"REMOVE '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv'"
             )
 
             with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
@@ -164,53 +165,8 @@ class PySQLStagingIngestionTestSuiteMixin:
         # Clean up after ourselves
         perform_remove()
         
-    def test_staging_ingestion_fails_to_modify_another_staging_user(self):
-        """The server should only allow modification of the staging_ingestion_user's files
-        """
 
-        some_other_user = "mary.poppins@databricks.com"
-
-        fh, temp_path = tempfile.mkstemp()
-
-        original_text = "hello world!".encode("utf-8")
-
-        with open(fh, "wb") as fp:
-            fp.write(original_text)
-
-        def perform_put():
-            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
-                cursor = conn.cursor()
-                query = f"PUT '{temp_path}' INTO 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv' OVERWRITE"
-                cursor.execute(query)
-
-        def perform_remove():
-            remove_query = (
-                f"REMOVE 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv'"
-            )
-
-            with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
-                cursor = conn.cursor()
-                cursor.execute(remove_query)
-
-        def perform_get():
-            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
-                cursor = conn.cursor()
-                query = f"GET 'stage://tmp/{some_other_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
-                cursor.execute(query)
-
-        # PUT should fail with permissions error
-        with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
-            perform_put()
-
-        # REMOVE should fail with permissions error
-        with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
-            perform_remove()
-
-        # GET should fail with permissions error
-        with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
-            perform_get()
-
-    def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(self):
+    def test_uc_volume_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(self):
         """
         This test confirms that staging_allowed_local_path and target_file are resolved into absolute paths.
         """
@@ -224,30 +180,30 @@ class PySQLStagingIngestionTestSuiteMixin:
         with pytest.raises(Error, match="Local file operations are restricted to paths within the configured staging_allowed_local_path"):
             with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{target_file}' INTO '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(self):
+    def test_uc_volume_empty_local_path_fails_to_parse_at_server(self):
         staging_allowed_local_path = "/var/www/html"
         target_file = ""
 
         with pytest.raises(Error, match="EMPTY_LOCAL_FILE_IN_STAGING_ACCESS_QUERY"):
             with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{target_file}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{target_file}' INTO '/Volumes/{self.catalog}/{self.schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_invalid_staging_path_fails_at_server(self):
+    def test_uc_volume_invalid_volume_path_fails_at_server(self):
         staging_allowed_local_path = "/var/www/html"
         target_file = "index.html"
 
-        with pytest.raises(Error, match="INVALID_STAGING_PATH_IN_STAGING_ACCESS_QUERY"):
+        with pytest.raises(Error, match="NOT_FOUND: CATALOG"):
             with self.connection(extra_params={"staging_allowed_local_path": staging_allowed_local_path}) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{self.staging_ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{target_file}' INTO '/Volumes/RANDOMSTRINGOFCHARACTERS/{self.catalog}/{self.schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_supports_multiple_staging_allowed_local_path_values(self):
+    def test_uc_volume_supports_multiple_staging_allowed_local_path_values(self):
         """staging_allowed_local_path may be either a path-like object or a list of path-like objects.
 
         This test confirms that two configured base paths:
@@ -266,8 +222,8 @@ class PySQLStagingIngestionTestSuiteMixin:
             with open(fh, "wb") as fp:
                 original_text = "hello world!".encode("utf-8")
                 fp.write(original_text)
-            put_query = f"PUT '{temp_path}' INTO 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/{id(temp_path)}.csv' OVERWRITE"
-            remove_query = f"REMOVE 'stage://tmp/{self.staging_ingestion_user}/tmp/11/15/{id(temp_path)}.csv'"
+            put_query = f"PUT '{temp_path}' INTO '/Volumes/{self.catalog}/{self.schema}/e2etests/{id(temp_path)}.csv' OVERWRITE"
+            remove_query = f"REMOVE '/Volumes/{self.catalog}/{self.schema}/e2etests/{id(temp_path)}.csv'"
             return fh, temp_path, put_query, remove_query
 
         fh1, temp_path1, put_query1, remove_query1 = generate_file_and_path_and_queries()

@@ -107,6 +107,8 @@ End-to-end tests require a Databricks account. Before you can run them, you must
 export host=""
 export http_path=""
 export access_token=""
+export catalog=""
+export schema=""
 ```
 
 Or you can write these into a file called `test.env` in the root of the repository:
@@ -141,6 +143,11 @@ The `PySQLLargeQueriesSuite` namespace contains long-running query tests and is 
 The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR version > 12.x which supports staging ingestion commands.
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
+
+#### SQLAlchemy dialect tests
+
+See README.tests.md for details.
+
 ### Code formatting
 
 This project uses [Black](https://pypi.org/project/black/).

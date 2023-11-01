@@ -2,11 +2,18 @@
 
 ## 2.9.4 (Unreleased)
 
+- Other: Introduce SQLAlchemy dialect compliance test suite and enumerate all excluded tests
+- Add integration tests for Databricks UC Volumes ingestion queries
+- Add `_retry_max_redirects` config
+- Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
+
 ## 2.9.3 (2023-08-24)
 
 - Fix: Connections failed when urllib3~=1.0.0 is installed (#206)
 
 ## 2.9.2 (2023-08-17)
+
+__Note: this release was yanked from Pypi on 13 September 2023 due to compatibility issues with environments where `urllib3<=2.0.0` were installed. The log changes are incorporated into version 2.9.3 and greater.__
 
 - Other: Add `examples/v3_retries_query_execute.py` (#199)
 - Other: suppress log message when `_enable_v3_retries` is not `True` (#199)
@@ -14,11 +21,13 @@
 
 ## 2.9.1 (2023-08-11)
 
+__Note: this release was yanked from Pypi on 13 September 2023 due to compatibility issues with environments where `urllib3<=2.0.0` were installed.__
+
 - Other: Explicitly pin urllib3 to ^2.0.0 (#191)
 
 ## 2.9.0 (2023-08-10)
 
-- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `enable_v3_retries=True` when creating `databricks.sql.client` (#182)
+- Replace retry handling with DatabricksRetryPolicy. This is disabled by default. To enable, set `_enable_v3_retries=True` when creating `databricks.sql.client` (#182)
 - Other: Fix typo in README quick start example (#186)
 - Other: Add autospec to Client mocks and tidy up `make_request` (#188)
 

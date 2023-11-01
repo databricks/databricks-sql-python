@@ -34,12 +34,11 @@ more about customer use cases there. That said, the following behaviours have be
 
 # Known Gaps
     - MAP, ARRAY, and STRUCT types: this dialect can read these types out as strings. But you cannot
-      define a SQLAlchemy model with databricks.sqlalchemy.dialect.types.DatabricksMap (e.g.) because
+      define a SQLAlchemy model with databricks.sqlalchemy.types.DatabricksMap (e.g.) because
       we haven't implemented them yet.
     - Constraints: with the addition of information_schema to Unity Catalog, Databricks SQL supports
       foreign key and primary key constraints. This dialect can write these constraints but the ability
       for alembic to reflect and modify them programmatically has not been tested.
-    - Delta IDENTITY columns are not yet supported.
 """
 
 import os
