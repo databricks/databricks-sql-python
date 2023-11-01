@@ -56,6 +56,7 @@ class DateTimeTZTestCustom(_DateFixture, fixtures.TablesTest):
     """This test confirms that when a user uses the TIMESTAMP
     type to store a datetime object, it retains its timezone
     """
+
     __backend__ = True
     datatype = TIMESTAMP
     data = datetime.datetime(2012, 10, 15, 12, 57, 18, tzinfo=datetime.timezone.utc)
