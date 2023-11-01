@@ -45,6 +45,7 @@ from sqlalchemy.testing.suite import (
     TimeMicrosecondsTest,
     TimestampMicrosecondsTest,
     TimeTest,
+    TimeTZTest,
     TrueDivTest,
     UnicodeTextTest,
     UnicodeVarcharTest,
@@ -299,4 +300,9 @@ class IdentityAutoincrementTest(IdentityAutoincrementTest):
 
 @pytest.mark.reviewed
 class LikeFunctionsTest(LikeFunctionsTest):
+    pass
+
+
+@pytest.mark.reviewed
+class TimeTZTest(TimeTZTest):
     pass
