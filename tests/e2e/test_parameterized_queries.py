@@ -130,6 +130,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                 pass
 
     def _inline_roundtrip(self, params: dict):
+        """This INSERT, SELECT, DELETE dance is necessary because simply selecting
+        ```
+        "SELECT %(param)s"
+        ```
+        in INLINE mode would always return a str and the nature of the test is to
+        confirm that types are maintained.
+        """
         target_column = self.inline_type_map[type(params.get("p"))]
         INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
         SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
