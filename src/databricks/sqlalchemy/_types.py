@@ -108,9 +108,9 @@ class TIMESTAMP_NTZ(sqlalchemy.types.TypeDecorator):
     """Represents values comprising values of fields year, month, day, hour, minute, and second.
     All operations are performed without taking any time zone into account.
 
-    Our dialect maps sqlalchemy.types.DateTime() to TIMESTAMP_NTZ, which means that all DateTime()
+    Our dialect maps sqlalchemy.types.DateTime() to this type, which means that all DateTime()
     objects are stored without tzinfo. To read and write timezone-aware datetimes use
-    databricks.sql.TIMESTAMP directly.
+    databricks.sql.TIMESTAMP instead.
 
     https://docs.databricks.com/en/sql/language-manual/data-types/timestamp-ntz-type.html
     """
@@ -126,12 +126,12 @@ class TIMESTAMP_NTZ(sqlalchemy.types.TypeDecorator):
 
 
 class TIMESTAMP(sqlalchemy.types.TypeDecorator):
-    """Represents values comprising values of fields year, month, day, hour, minute, and second.
-    All operations are performed without taking any time zone into account.
+    """Represents values comprising values of fields year, month, day, hour, minute, and second,
+    with the session local time-zone.
 
     Our dialect maps sqlalchemy.types.DateTime() to TIMESTAMP_NTZ, which means that all DateTime()
     objects are stored without tzinfo. To read and write timezone-aware datetimes use
-    databricks.sql.TIMESTAMP directly.
+    this type instead.
 
     ```python
     # This won't work
@@ -141,7 +141,7 @@ class TIMESTAMP(sqlalchemy.types.TypeDecorator):
     `Column(TIMESTAMP)`
     ````
 
-    https://docs.databricks.com/en/sql/language-manual/data-types/timestamp-ntz-type.html
+    https://docs.databricks.com/en/sql/language-manual/data-types/timestamp-type.html
     """
 
     impl = sqlalchemy.types.DateTime
