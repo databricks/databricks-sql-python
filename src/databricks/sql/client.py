@@ -529,8 +529,8 @@ class Cursor:
         Execute the operation once for every set of passed in parameters.
 
         This will issue N sequential request to the database where N is the length of the provided sequence.
-        No optimizations of the query (like batching) will be performed. 
-        
+        No optimizations of the query (like batching) will be performed.
+
         Only the final result set is retained.
 
         :returns self
