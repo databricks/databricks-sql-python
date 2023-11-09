@@ -38,10 +38,16 @@ approach_paramstyle_combinations = [
     (ParameterApproach.NATIVE, ParamStyle.NAMED),
 ]
 
-class MyCustomDecimalType(Enum):
+class T(Enum):
     DECIMAL_38_0 = "DECIMAL(38,0)"
     DECIMAL_38_2 = "DECIMAL(38,2)"
     DECIMAL_18_9 = "DECIMAL(18,9)"
+
+decimal_value_custom_type_combinations = [
+    (Decimal("123456789.123456789"), T.DECIMAL_18_9),
+    (Decimal("123456789123456789123456789123456789.12"), T.DECIMAL_38_2),
+    (Decimal("12345678912345678912345678912345678912"), T.DECIMAL_38_0)
+]
 
 
 class Primitive(Enum):
@@ -276,39 +282,14 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
 
 
-
-
-
-
-
-
-
-    def test_dbsqlparam_custom_explicit_decimal_38_0(self):
-        # This DECIMAL can be contained in a DECIMAL(38,0) column in Databricks
-        value = Decimal("12345678912345678912345678912345678912")
-        params = [
-            DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_38_0)
-        ]
+    @pytest.mark.parametrize("value, dbsqltype", decimal_value_custom_type_combinations)
+    def test_dbsqlparam_custom_type(self, value, dbsqltype):
+        params = [DbSqlParameter(name="p", value=value, type=dbsqltype)]
         result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == value
 
-    def test_dbsqlparam_custom_explicit_decimal_38_2(self):
-        # This DECIMAL can be contained in a DECIMAL(38,2) column in Databricks
-        value = Decimal("123456789123456789123456789123456789.12")
-        params = [
-            DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_38_2)
-        ]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == value
 
-    def test_dbsqlparam_custom_explicit_decimal_18_9(self):
-        # This DECIMAL can be contained in a DECIMAL(18,9) column in Databricks
-        value = Decimal("123456789.123456789")
-        params = [
-            DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_18_9)
-        ]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == value
+
 
     def test_calculate_decimal_cast_string(self):
         assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
