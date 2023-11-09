@@ -130,15 +130,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         return to_return
 
-    def _native_roundtrip(
-        self, parameters: Union[Dict, List[Dict]], bypass_patch=False
-    ):
+    def _native_roundtrip(self, parameters: Union[Dict, List[Dict]]):
         with self.connection(extra_params={"use_inline_params": False}) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(self.NATIVE_QUERY, parameters=parameters)
                 return cursor.fetchone()
 
-    def _get_one_result(self, approach: ParameterApproach, params, bypass_patch=False):
+    def _get_one_result(self, approach: ParameterApproach, params):
         """When approach is INLINE then we use %(param)s paramstyle and a connection with use_inline_params=True
         When approach is NATIVE then we use :param paramstyle and a connection with use_inline_params=False
         """
@@ -146,7 +144,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         if approach == ParameterApproach.INLINE:
             return self._inline_roundtrip(params)
         elif approach == ParameterApproach.NATIVE:
-            return self._native_roundtrip(params, bypass_patch)
+            return self._native_roundtrip(params)
 
     def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
         return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
