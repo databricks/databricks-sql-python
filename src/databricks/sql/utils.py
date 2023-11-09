@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import re
 from abc import ABC, abstractmethod
 from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
@@ -385,6 +386,39 @@ class ParamEscaper:
 
 def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
+
+
+def transform_paramstyle(operation: str) -> str:
+    """
+    Transform a paramstyle string to a format string.
+
+    Performs a regex substitution such that any occurence of `%(param)s` will be replaced with `:param`
+    as long as `param` is a key in the parameters dictionary.
+
+    This utility function is built to assist users in the transition between the default paramstyle in
+    this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
+
+    Args:
+        operation (str): The operation or SQL text to transform.
+
+    Returns:
+        str
+    """
+
+    _output_operation = operation
+
+    PYFORMAT_PARAMSTYLE_REGEX = r"%\((\w+)\)s"
+    pat = re.compile(PYFORMAT_PARAMSTYLE_REGEX)
+    NAMED_PARAMSTYLE_FMT = ":{}"
+    PYFORMAT_PARAMSTYLE_FMT = "%({})s"
+
+    pyformat_markers = pat.findall(operation)
+    for marker in pyformat_markers:
+        pyformat_marker = PYFORMAT_PARAMSTYLE_FMT.format(marker)
+        named_marker = NAMED_PARAMSTYLE_FMT.format(marker)
+        _output_operation = _output_operation.replace(pyformat_marker, named_marker)
+
+    return _output_operation
 
 
 def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:

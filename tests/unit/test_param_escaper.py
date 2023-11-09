@@ -174,3 +174,22 @@ class TestFullQueryEscaping(object):
 
         with pytest.raises(Exception):
             inject_parameters(INPUT, pe.escape_args(args))
+
+
+class TestInlineToNativeTransformer(object):
+    @pytest.mark.parametrize(
+        ("label", "input", "expected"),
+        (
+            ("no effect", "SELECT 1", "SELECT 1"),
+            ("one marker", "%(param)s", ":param"),
+            ("multiple markers", "%(foo)s %(bar)s %(baz)s", ":foo :bar :baz"),
+            (
+                "sql query",
+                "SELECT * FROM table WHERE field = %(param)s AND other_field IN (%(list)s)",
+                "SELECT * FROM table WHERE field = :param AND other_field IN (:list)",
+            ),
+        ),
+    )
+    def test_transformer(self, label, input, expected):
+        output = transform_paramstyle(input)
+        assert output == expected
