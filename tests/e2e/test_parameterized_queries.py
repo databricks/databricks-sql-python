@@ -43,7 +43,20 @@ class MyCustomDecimalType(Enum):
     DECIMAL_18_9 = "DECIMAL(18,9)"
 
 
+class Primitive(Enum):
+    """These are the inferrable types. This Enum is used for parametrized tests.
 
+    Notably, this doesn't contain a DOUBLE type because the double test cannot
+    be parameterized as it requires an extra quantize step.
+    """
+    NONE = None
+    BOOL = True
+    INT = 1
+    STRING = "Hello"
+    DECIMAL = Decimal("1234.56")
+    DATE = datetime.date(2023, 9, 6)
+    TIMESTAMP = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
+    DOUBLE = 3.14
 
 both_paramstyles = pytest.mark.parametrize(
     "paramstyle", (ParamStyle.PYFORMAT, ParamStyle.NAMED)
@@ -209,52 +222,39 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                         ), "Log message should not be supressed"
 
     
-    @pytest.mark.parametrize("primitive_value", (None, True, 1, "Hello", Decimal("1234.56"), datetime.date(2023, 9, 6), datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)))
+
+    def _eq(self, actual, expected: Primitive):
+        """This is a helper function to make the test code more readable.
+
+        If primitive is Primitive.DOUBLE than an extra quantize step is performed before
+        making the assertion.
+        """
+        if expected == Primitive.DOUBLE:
+            return self._quantize(actual) == self._quantize(expected.value)
+        
+        return actual == expected.value
+
+    @pytest.mark.parametrize("primitive", Primitive)
     @pytest.mark.parametrize("approach,paramstyle", approach_paramstyle_combinations)
-    def test_primitive_with_inferrence(self, approach, paramstyle, primitive_value):
+    def test_primitive_with_inferrence(self, approach, paramstyle, primitive: Primitive):
         """When ParameterApproach.INLINE is passed, inferrence will not be used.
         When ParameterApproach.NATIVE is passed, primitive inputs will be inferred.
-
-        Here we test the following primitive types:
-            - None
-            - bool
-            - int
-            - string
-            - Decimal
-            - datetime.date
-            - datetime.datetime
-
-        The same type for doubles is tested in test_primitive_double_with_inferrence
         """
 
-        params = {"p": primitive_value}
+        params = {"p": primitive.value}
         result = self._get_one_result(params, approach, paramstyle)
-        assert result.col == primitive_value
+
+        assert self._eq(result.col, primitive)
     
 
-    @pytest.mark.parametrize("approach,paramstyle", approach_paramstyle_combinations)
-    def test_primitive_double_with_inferrence(self, approach, paramstyle):
-        """This test is like test_primitive_with_inferrence but we need to quantize the output because
-        of arithmetic rounding.
-        """
-        params = {"p": 3.14}
-        result = self._get_one_result(params, approach, paramstyle)
-        assert self._quantize(result.col) == self._quantize(3.14)
 
-
-
+    @pytest.mark.parametrize("primitive", Primitive)
     @both_paramstyles
-    @pytest.mark.parametrize("primitive_value", (None, True, 1, "Hello", Decimal("1234.56"), datetime.date(2023, 9, 6), datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)))
-    def test_dbsqlparam_with_inferrence(self, paramstyle, primitive_value):
-        params = [DbSqlParameter(name="p", value=primitive_value, type=None)]
+    def test_dbsqlparam_with_inferrence(self, paramstyle, primitive: Primitive):
+        params = [DbSqlParameter(name="p", value=primitive.value, type=None)]
         result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
-        assert result.col == primitive_value
+        assert self._eq(result.col, primitive)
 
-    @both_paramstyles
-    def test_dbsqlparam_double_with_inferrence(self, paramstyle):
-        params = [DbSqlParameter(name="p", value=3.14, type=None)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
-        assert self._quantize(result.col) == self._quantize(3.14)
 
 
 
