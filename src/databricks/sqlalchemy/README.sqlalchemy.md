@@ -196,7 +196,7 @@ users = Table(
     "users",
     metadata_obj,
     Column("id", BigInteger, primary_key=True),
-    Column("name", String(), ForeignKey("user.user_id"), nullable=False),
+    Column("name", String(), nullable=False),
     Column("email", String()),
     Column("manager_id", ForeignKey("users.id", name="fk_users_manager_id_x_users_id", use_alter=True))
 )
