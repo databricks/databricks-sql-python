@@ -1,27 +1,23 @@
 import datetime
+from contextlib import contextmanager
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Tuple, Union
-from unittest.mock import Mock, patch, MagicMock
-from databricks.sql import Error
-from databricks.sql.utils import TYPE_INFERRENCE_LOOKUP_TABLE, DbSqlType
+from typing import Dict, List, Union
+from unittest.mock import patch
 
-from databricks.sql.thrift_api.TCLIService import ttypes
-from contextlib import contextmanager
-
-import pytz
 import pytest
+import pytz
 
+from databricks.sql import Error
 from databricks.sql.exc import NotSupportedError
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.utils import (
+    TYPE_INFERRENCE_LOOKUP_TABLE,
     DbSqlParameter,
     DbSqlType,
-    calculate_decimal_cast_string,
     ParameterApproach,
+    calculate_decimal_cast_string,
 )
-
-from functools import wraps
-
 from tests.e2e.test_driver import PySQLPytestTestCase
 
 
@@ -31,31 +27,9 @@ class ParamStyle(Enum):
     NONE = 3
 
 
-# We don't test inline approach with named paramstyle because it's never supported
-approach_paramstyle_combinations = [
-    (ParameterApproach.INLINE, ParamStyle.PYFORMAT),
-    (ParameterApproach.NATIVE, ParamStyle.PYFORMAT),
-    (ParameterApproach.NATIVE, ParamStyle.NAMED),
-]
-
-class T(Enum):
-    DECIMAL_38_0 = "DECIMAL(38,0)"
-    DECIMAL_38_2 = "DECIMAL(38,2)"
-    DECIMAL_18_9 = "DECIMAL(18,9)"
-
-decimal_value_custom_type_combinations = [
-    (Decimal("123456789.123456789"), T.DECIMAL_18_9),
-    (Decimal("123456789123456789123456789123456789.12"), T.DECIMAL_38_2),
-    (Decimal("12345678912345678912345678912345678912"), T.DECIMAL_38_0)
-]
-
-
 class Primitive(Enum):
-    """These are the inferrable types. This Enum is used for parametrized tests.
+    """These are the inferrable types. This Enum is used for parametrized tests."""
 
-    Notably, this doesn't contain a DOUBLE type because the double test cannot
-    be parameterized as it requires an extra quantize step.
-    """
     NONE = None
     BOOL = True
     INT = 1
@@ -65,6 +39,30 @@ class Primitive(Enum):
     TIMESTAMP = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
     DOUBLE = 3.14
 
+
+class T(Enum):
+    """This is a utility Enum for the explicit dbsqlparam tests"""
+
+    DECIMAL_38_0 = "DECIMAL(38,0)"
+    DECIMAL_38_2 = "DECIMAL(38,2)"
+    DECIMAL_18_9 = "DECIMAL(18,9)"
+
+
+# We don't test inline approach with named paramstyle because it's never supported
+approach_paramstyle_combinations = [
+    (ParameterApproach.INLINE, ParamStyle.PYFORMAT),
+    (ParameterApproach.NATIVE, ParamStyle.PYFORMAT),
+    (ParameterApproach.NATIVE, ParamStyle.NAMED),
+]
+
+# Each of these decimals requries the specified type string to be expressed in delta table
+decimal_value_custom_type_combinations = [
+    (Decimal("123456789.123456789"), T.DECIMAL_18_9),
+    (Decimal("123456789123456789123456789123456789.12"), T.DECIMAL_38_2),
+    (Decimal("12345678912345678912345678912345678912"), T.DECIMAL_38_0),
+]
+
+# This generates a list of tuples of (Primtive, DbSqlType)
 primitive_dbsqltype_combinations = [
     (prim, TYPE_INFERRENCE_LOOKUP_TABLE.get(type(prim))) for prim in Primitive
 ]
@@ -176,7 +174,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     def _native_roundtrip(
         self,
         parameters: Union[Dict, List[Dict]],
-        approach: ParameterApproach,
         paramstyle: ParamStyle,
     ):
         if paramstyle == ParamStyle.NAMED:
@@ -203,10 +200,59 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             return self._inline_roundtrip(params, paramstyle=ParamStyle.PYFORMAT)
         elif approach == ParameterApproach.NATIVE:
             # native mode can use either ParamStyle.NAMED or ParamStyle.PYFORMAT
-            return self._native_roundtrip(params, approach=ParameterApproach.NATIVE, paramstyle=paramstyle)
+            return self._native_roundtrip(params, paramstyle=paramstyle)
 
     def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
         return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
+
+    def _eq(self, actual, expected: Primitive):
+        """This is a helper function to make the test code more readable.
+
+        If primitive is Primitive.DOUBLE than an extra quantize step is performed before
+        making the assertion.
+        """
+        if expected == Primitive.DOUBLE:
+            return self._quantize(actual) == self._quantize(expected.value)
+
+        return actual == expected.value
+
+    @pytest.mark.parametrize("primitive", Primitive)
+    @pytest.mark.parametrize("approach,paramstyle", approach_paramstyle_combinations)
+    def test_primitive_with_inferrence(
+        self, approach, paramstyle, primitive: Primitive
+    ):
+        """When ParameterApproach.INLINE is passed, inferrence will not be used.
+        When ParameterApproach.NATIVE is passed, primitive inputs will be inferred.
+        """
+
+        params = {"p": primitive.value}
+        result = self._get_one_result(params, approach, paramstyle)
+
+        assert self._eq(result.col, primitive)
+
+    @pytest.mark.parametrize("primitive", Primitive)
+    @both_paramstyles
+    def test_dbsqlparam_with_inferrence(self, paramstyle, primitive: Primitive):
+        params = [DbSqlParameter(name="p", value=primitive.value, type=None)]
+        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
+        assert self._eq(result.col, primitive)
+
+    @pytest.mark.parametrize("primitive,dbsqltype", primitive_dbsqltype_combinations)
+    @both_paramstyles
+    def test_dbsqlparam_explicit(
+        self, paramstyle, primitive: Primitive, dbsqltype: DbSqlType
+    ):
+        params = [DbSqlParameter(name="p", value=primitive.value, type=dbsqltype)]
+        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
+        assert self._eq(result.col, primitive)
+
+    @pytest.mark.parametrize("value, dbsqltype", decimal_value_custom_type_combinations)
+    def test_dbsqlparam_custom_type(self, value, dbsqltype):
+        params = [DbSqlParameter(name="p", value=value, type=dbsqltype)]
+        result = self._get_one_result(
+            params, ParameterApproach.NATIVE, ParamStyle.NAMED
+        )
+        assert result.col == value
 
     @pytest.mark.parametrize("explicit_inline", (True, False))
     def test_use_inline_by_default_with_warning(self, explicit_inline, caplog):
@@ -232,76 +278,10 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                             "Consider using native parameters." in caplog.text
                         ), "Log message should not be supressed"
 
-    
 
-    def _eq(self, actual, expected: Primitive):
-        """This is a helper function to make the test code more readable.
-
-        If primitive is Primitive.DOUBLE than an extra quantize step is performed before
-        making the assertion.
-        """
-        if expected == Primitive.DOUBLE:
-            return self._quantize(actual) == self._quantize(expected.value)
-        
-        return actual == expected.value
-
-    @pytest.mark.parametrize("primitive", Primitive)
-    @pytest.mark.parametrize("approach,paramstyle", approach_paramstyle_combinations)
-    def test_primitive_with_inferrence(self, approach, paramstyle, primitive: Primitive):
-        """When ParameterApproach.INLINE is passed, inferrence will not be used.
-        When ParameterApproach.NATIVE is passed, primitive inputs will be inferred.
-        """
-
-        params = {"p": primitive.value}
-        result = self._get_one_result(params, approach, paramstyle)
-
-        assert self._eq(result.col, primitive)
-    
-
-
-    @pytest.mark.parametrize("primitive", Primitive)
-    @both_paramstyles
-    def test_dbsqlparam_with_inferrence(self, paramstyle, primitive: Primitive):
-        params = [DbSqlParameter(name="p", value=primitive.value, type=None)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
-        assert self._eq(result.col, primitive)
-
-
-
-    @pytest.mark.parametrize("primitive,dbsqltype", primitive_dbsqltype_combinations)
-    @both_paramstyles
-    def test_dbsqlparam_explicit(self, paramstyle, primitive: Primitive, dbsqltype: DbSqlType):
-        params = [DbSqlParameter(name="p", value=primitive.value, type=dbsqltype)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
-        assert self._eq(result.col, primitive)
-        
- 
-
-
-
-
-
-
-    @pytest.mark.parametrize("value, dbsqltype", decimal_value_custom_type_combinations)
-    def test_dbsqlparam_custom_type(self, value, dbsqltype):
-        params = [DbSqlParameter(name="p", value=value, type=dbsqltype)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == value
-
-
-
-
-    def test_calculate_decimal_cast_string(self):
-        assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
-        assert (
-            calculate_decimal_cast_string(
-                Decimal("123456789123456789.123456789123456789")
-            )
-            == "DECIMAL(36,18)"
-        )
-
-
-# Need a test case for the situation where a user has the same parameter name twice in a query.
-# Does the string interpolation require the value to be passed twice or just once?
-# Just need it to backwards compatible:
-# "SELECT %(value)s WHERE %(value)s = %(value)s" % {"value": 1} <- does this work?
+def test_calculate_decimal_cast_string():
+    assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
+    assert (
+        calculate_decimal_cast_string(Decimal("123456789123456789.123456789123456789"))
+        == "DECIMAL(36,18)"
+    )
