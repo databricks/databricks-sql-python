@@ -413,12 +413,8 @@ class Cursor:
                 )
             return ParameterApproach.INLINE
 
-        elif server_supports_native_approach:
-            return ParameterApproach.NATIVE
         else:
-            raise NotSupportedError(
-                "Parameterized operations are not supported by this server. DBR 14.1 is required."
-            )
+            return ParameterApproach.NATIVE
 
     def _prepare_inline_parameters(
         self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]

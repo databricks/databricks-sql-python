@@ -94,35 +94,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             with conn.cursor() as cursor:
                 cursor.execute(query)
 
-    def compute_says_it_doesnt_support_native_params(self):
-        """we test against dogfood. dogfood exposes a protocol version that suggests it can't handle
-        native queries, even though it does. for test coverage, we can mock the local protocol check.
-        but we want to remove this mock once dogfood properly advertises its version.
-        """
-
-        with self.connection() as conn:
-            return (
-                conn.protocol_version
-                < ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
-            )
-
     @contextmanager
-    def conditional_protocol_patch(self, bypass=False):
-        """This fixture will be removed once dogfood advertises its protocol version correctly.
-
-        Note that there is an equivalent patch in sqlalchemy/test/test_suite.py which should be
-        removed at the same time as this one. That one is encapsulated in a function called
-        start_protocol_patch()"""
-
-        if bypass:
-            yield None
-
-        if not self.compute_says_it_doesnt_support_native_params():
-            yield None
+    def patch_server_supports_native_params(self, supports_native_params: bool = True):
+        """Applies a patch so we can test the connector's behaviour under different SPARK_CLI_SERVICE_PROTOCOL_VERSION conditions."""
 
         with patch(
             "databricks.sql.client.Connection.server_parameterized_queries_enabled",
-            return_value=True,
+            return_value=supports_native_params,
         ) as mock_parameterized_queries_enabled:
             try:
                 yield mock_parameterized_queries_enabled
@@ -157,9 +135,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     ):
         with self.connection(extra_params={"use_inline_params": False}) as conn:
             with conn.cursor() as cursor:
-                with self.conditional_protocol_patch(bypass_patch):
-                    cursor.execute(self.NATIVE_QUERY, parameters=parameters)
-                    return cursor.fetchone()
+                cursor.execute(self.NATIVE_QUERY, parameters=parameters)
+                return cursor.fetchone()
 
     def _get_one_result(self, approach: ParameterApproach, params, bypass_patch=False):
         """When approach is INLINE then we use %(param)s paramstyle and a connection with use_inline_params=True
@@ -174,41 +151,10 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
         return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
 
-    def test_compute_says_it_doesnt_support_native_params(self):
-        """This is a canary test case that will should be removed when it begins to fail.
-
-        It asserts that the target compute resource returns a protocol_version that _should_ mean it can't support
-        ParameterApproach.NATIVE.
-
-        We added this test case because the DBR we use for testing returns a protocol version that is too
-        low to support the native approach, but it does in fact support this approach. Without this patch
-        we'd have no way to run tests of the native approach because the connector would raise an exception.
-
-        Once the target compute accurately advertises the right protocol version, this test will begin
-        to fail and we can remove the conditional_protocol_patch.
-        """
-        assert (
-            self.compute_says_it_doesnt_support_native_params()
-        ), "Compute no longer says it doesn't support native params. Remove conditional_protocol_patch from this file."
-
-    @patch(
-        "databricks.sql.client.Connection.server_parameterized_queries_enabled",
-        return_value=False,
-    )
-    def test_protocol_too_low(self, mock_parameterized_queries_enabled):
-        params = {"p": None}
-        with pytest.raises(
-            NotSupportedError,
-            match="Parameterized operations are not supported by this server. DBR 14.1 is required.",
-        ):
-            result = self._get_one_result(
-                ParameterApproach.NATIVE, params, bypass_patch=True
-            )
-
     @pytest.mark.parametrize("explicit_inline", (True, False))
     def test_use_inline_by_default_with_warning(self, explicit_inline, caplog):
         """
-        use_inline_params should be True by default.
+        use_inline_params should be True by default. Warn the user if server supports native parameters.
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
@@ -216,7 +162,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         with self.connection(extra_args) as conn:
             with conn.cursor() as cursor:
-                with self.conditional_protocol_patch():
+                with self.patch_server_supports_native_params(
+                    supports_native_params=True
+                ):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
                     if explicit_inline:
                         assert (
