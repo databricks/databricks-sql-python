@@ -390,10 +390,7 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
 
 def transform_paramstyle(operation: str) -> str:
     """
-    Transform a paramstyle string to a format string.
-
     Performs a regex substitution such that any occurence of `%(param)s` will be replaced with `:param`
-    as long as `param` is a key in the parameters dictionary.
 
     This utility function is built to assist users in the transition between the default paramstyle in
     this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
@@ -578,7 +575,8 @@ def resolve_databricks_sql_integer_type(integer):
 
     Note: TINYINT is never inferred here because it is a rarely used type and clauses like LIMIT and OFFSET
     cannot accept TINYINT bound parameter values. If you need to bind a TINYINT value, you can explicitly
-    declare its type in a DbsqlParameter object, which will bypass this inference logic."""
+    declare its type in a DbsqlParameter object, which will bypass this inference logic.
+    """
     if -128 <= integer <= 127:
         # If DBR is ever updated to permit TINYINT values passed to LIMIT and OFFSET
         # then we can change this line to return DbSqlType.TINYINT
@@ -599,8 +597,9 @@ TYPE_INFERRENCE_LOOKUP_TABLE = {
     Decimal: DbSqlType.DECIMAL,
     type(None): DbSqlType.VOID,
 }
-def infer_types(params: list[DbSqlParameter]):
 
+
+def infer_types(params: list[DbSqlParameter]):
     new_params = []
 
     # cycle through each parameter we've been passed
