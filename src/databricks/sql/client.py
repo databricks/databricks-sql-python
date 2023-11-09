@@ -21,6 +21,7 @@ from databricks.sql.utils import (
     named_parameters_to_tsparkparams,
     inject_parameters,
     ParameterApproach,
+    transform_paramstyle
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -664,8 +665,9 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
+            transformed_operation = transform_paramstyle(operation)
             prepared_operation, prepared_params = self._prepare_native_parameters(
-                operation, parameters
+                transformed_operation, parameters
             )
 
         self._check_not_closed()

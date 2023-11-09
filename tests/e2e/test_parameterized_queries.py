@@ -24,6 +24,12 @@ from functools import wraps
 from tests.e2e.test_driver import PySQLPytestTestCase
 
 
+class ParamStyle(Enum):
+    NAMED = 1
+    PYFORMAT = 2
+    NONE = 3
+
+
 class MyCustomDecimalType(Enum):
     DECIMAL_38_0 = "DECIMAL(38,0)"
     DECIMAL_38_2 = "DECIMAL(38,2)"
@@ -31,7 +37,16 @@ class MyCustomDecimalType(Enum):
 
 
 both_approaches = pytest.mark.parametrize(
-    "approach", (ParameterApproach.INLINE, ParameterApproach.NATIVE)
+    "approach,paramstyle",
+    (
+        (ParameterApproach.INLINE, ParamStyle.PYFORMAT),
+        (ParameterApproach.NATIVE, ParamStyle.PYFORMAT),
+        (ParameterApproach.NATIVE, ParamStyle.NAMED),
+    ),
+)
+
+both_paramstyles = pytest.mark.parametrize(
+    "paramstyle", (ParamStyle.PYFORMAT, ParamStyle.NAMED)
 )
 
 
@@ -52,7 +67,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     for @both_approaches.
     """
 
-    NATIVE_QUERY = "SELECT :p AS col"
+    NAMED_PARAMSTYLE_QUERY = "SELECT :p AS col"
+    PYFORMAT_PARAMSTYLE_QUERY = "SELECT %(p)s AS col"
 
     inline_type_map = {
         int: "int_col",
@@ -107,13 +123,16 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             finally:
                 pass
 
-    def _inline_roundtrip(self, params: dict):
+    def _inline_roundtrip(self, params: dict, paramstyle: ParamStyle):
         """This INSERT, SELECT, DELETE dance is necessary because simply selecting
         ```
         "SELECT %(param)s"
         ```
         in INLINE mode would always return a str and the nature of the test is to
         confirm that types are maintained.
+
+        :paramstyle:
+            This is a no-op but is included to make the test-code easier to read.
         """
         target_column = self.inline_type_map[type(params.get("p"))]
         INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
@@ -130,21 +149,37 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         return to_return
 
-    def _native_roundtrip(self, parameters: Union[Dict, List[Dict]]):
+    def _native_roundtrip(
+        self,
+        parameters: Union[Dict, List[Dict]],
+        approach: ParameterApproach,
+        paramstyle: ParamStyle,
+    ):
+        if paramstyle == ParamStyle.NAMED:
+            _query = self.NAMED_PARAMSTYLE_QUERY
+        elif paramstyle == ParamStyle.PYFORMAT:
+            _query = self.PYFORMAT_PARAMSTYLE_QUERY
         with self.connection(extra_params={"use_inline_params": False}) as conn:
             with conn.cursor() as cursor:
-                cursor.execute(self.NATIVE_QUERY, parameters=parameters)
+                cursor.execute(_query, parameters=parameters)
                 return cursor.fetchone()
 
-    def _get_one_result(self, approach: ParameterApproach, params):
+    def _get_one_result(
+        self,
+        params,
+        approach: ParameterApproach = ParameterApproach.NONE,
+        paramstyle: ParamStyle = ParamStyle.NONE,
+    ):
         """When approach is INLINE then we use %(param)s paramstyle and a connection with use_inline_params=True
         When approach is NATIVE then we use :param paramstyle and a connection with use_inline_params=False
         """
 
         if approach == ParameterApproach.INLINE:
-            return self._inline_roundtrip(params)
+            # inline mode always uses ParamStyle.PYFORMAT
+            return self._inline_roundtrip(params, paramstyle=ParamStyle.PYFORMAT)
         elif approach == ParameterApproach.NATIVE:
-            return self._native_roundtrip(params)
+            # native mode can use either ParamStyle.NAMED or ParamStyle.PYFORMAT
+            return self._native_roundtrip(params, approach=ParameterApproach.NATIVE, paramstyle=paramstyle)
 
     def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
         return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
@@ -174,150 +209,160 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                         ), "Log message should not be supressed"
 
     @both_approaches
-    def test_primitive_inferred_none(self, approach: ParameterApproach, inline_table):
+    def test_primitive_inferred_none(
+        self, approach: ParameterApproach, paramstyle: ParamStyle, inline_table
+    ):
         params = {"p": None}
-        result = self._get_one_result(approach, params)
+        result = self._get_one_result(params, approach, paramstyle)
         assert result.col == None
 
     @both_approaches
-    def test_primitive_inferred_bool(self, approach: ParameterApproach, inline_table):
+    def test_primitive_inferred_bool(
+        self, approach: ParameterApproach, paramstyle: ParamStyle, inline_table
+    ):
         params = {"p": True}
-        result = self._get_one_result(approach, params)
+        result = self._get_one_result(params, approach, paramstyle)
         assert result.col == True
 
     @both_approaches
     def test_primitive_inferred_integer(
-        self, approach: ParameterApproach, inline_table
+        self, approach: ParameterApproach, paramstyle: ParamStyle, inline_table
     ):
         params = {"p": 1}
-        result = self._get_one_result(approach, params)
+        result = self._get_one_result(params, approach, paramstyle)
         assert result.col == 1
 
-    def test_primitive_inferred_double(self):
+    @both_paramstyles
+    def test_primitive_inferred_double(self, paramstyle: ParamStyle):
         params = {"p": 3.14}
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
         assert self._quantize(result.col) == self._quantize(3.14)
 
     @both_approaches
-    def test_primitive_inferred_date(self, approach: ParameterApproach, inline_table):
+    def test_primitive_inferred_date(
+        self, approach: ParameterApproach, paramstyle: ParamStyle, inline_table
+    ):
         # DATE in Databricks is mapped into a datetime.date object in Python
         date_value = datetime.date(2023, 9, 6)
         params = {"p": date_value}
-        result = self._get_one_result(approach, params)
+        result = self._get_one_result(params, approach, paramstyle)
         assert result.col == date_value
 
     @both_approaches
     def test_primitive_inferred_timestamp(
-        self, approach: ParameterApproach, inline_table
+        self, approach: ParameterApproach, paramstyle: ParamStyle, inline_table
     ):
         # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
         date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
         params = {"p": date_value}
-        result = self._get_one_result(approach, params)
+        result = self._get_one_result(params, approach, paramstyle)
         assert result.col == date_value
 
     @both_approaches
-    def test_primitive_inferred_string(self, approach: ParameterApproach, inline_table):
+    def test_primitive_inferred_string(
+        self, approach: ParameterApproach, paramstyle: ParamStyle, inline_table
+    ):
         params = {"p": "Hello"}
-        result = self._get_one_result(approach, params)
+        result = self._get_one_result(params, approach, paramstyle)
         assert result.col == "Hello"
 
     @both_approaches
     def test_primitive_inferred_decimal(
-        self, approach: ParameterApproach, inline_table
+        self, approach: ParameterApproach, paramstyle: ParamStyle, inline_table
     ):
         params = {"p": Decimal("1234.56")}
-        result = self._get_one_result(approach, params)
+        result = self._get_one_result(params, approach, paramstyle)
         assert result.col == Decimal("1234.56")
 
-    def test_dbsqlparam_inferred_none(self):
+    @both_paramstyles
+    def test_dbsqlparam_inferred_none(self, paramstyle):
         params = [DbSqlParameter(name="p", value=None, type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
         assert result.col == None
 
     def test_dbsqlparam_inferred_bool(self):
         params = [DbSqlParameter(name="p", value=True, type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == True
 
     def test_dbsqlparam_inferred_integer(self):
         params = [DbSqlParameter(name="p", value=1, type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == 1
 
     def test_dbsqlparam_inferred_double(self):
         params = [DbSqlParameter(name="p", value=3.14, type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert self._quantize(result.col) == self._quantize(3.14)
 
     def test_dbsqlparam_inferred_date(self):
         # DATE in Databricks is mapped into a datetime.date object in Python
         date_value = datetime.date(2023, 9, 6)
         params = [DbSqlParameter(name="p", value=date_value, type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == date_value
 
     def test_dbsqlparam_inferred_timestamp(self):
         # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
         date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
         params = [DbSqlParameter(name="p", value=date_value, type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == date_value
 
     def test_dbsqlparam_inferred_string(self):
         params = [DbSqlParameter(name="p", value="Hello", type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == "Hello"
 
     def test_dbsqlparam_inferred_decimal(self):
         params = [DbSqlParameter(name="p", value=Decimal("1234.56"), type=None)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == Decimal("1234.56")
 
     def test_dbsqlparam_explicit_none(self):
         params = [DbSqlParameter(name="p", value=None, type=DbSqlType.VOID)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == None
 
     def test_dbsqlparam_explicit_bool(self):
         params = [DbSqlParameter(name="p", value=True, type=DbSqlType.BOOLEAN)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == True
 
     def test_dbsqlparam_explicit_integer(self):
         params = [DbSqlParameter(name="p", value=1, type=DbSqlType.INTEGER)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == 1
 
     def test_dbsqlparam_explicit_double(self):
         params = [DbSqlParameter(name="p", value=3.14, type=DbSqlType.FLOAT)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert self._quantize(result.col) == self._quantize(3.14)
 
     def test_dbsqlparam_explicit_date(self):
         # DATE in Databricks is mapped into a datetime.date object in Python
         date_value = datetime.date(2023, 9, 6)
         params = [DbSqlParameter(name="p", value=date_value, type=DbSqlType.DATE)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == date_value
 
     def test_dbsqlparam_explicit_timestamp(self):
         # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
         date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
         params = [DbSqlParameter(name="p", value=date_value, type=DbSqlType.TIMESTAMP)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == date_value
 
     def test_dbsqlparam_explicit_string(self):
         params = [DbSqlParameter(name="p", value="Hello", type=DbSqlType.STRING)]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == "Hello"
 
     def test_dbsqlparam_explicit_decimal(self):
         params = [
             DbSqlParameter(name="p", value=Decimal("1234.56"), type=DbSqlType.DECIMAL)
         ]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == Decimal("1234.56")
 
     def test_dbsqlparam_custom_explicit_decimal_38_0(self):
@@ -326,7 +371,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         params = [
             DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_38_0)
         ]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == value
 
     def test_dbsqlparam_custom_explicit_decimal_38_2(self):
@@ -335,7 +380,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         params = [
             DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_38_2)
         ]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == value
 
     def test_dbsqlparam_custom_explicit_decimal_18_9(self):
@@ -344,7 +389,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         params = [
             DbSqlParameter(name="p", value=value, type=MyCustomDecimalType.DECIMAL_18_9)
         ]
-        result = self._get_one_result(ParameterApproach.NATIVE, params)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert result.col == value
 
     def test_calculate_decimal_cast_string(self):
