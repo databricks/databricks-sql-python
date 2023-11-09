@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Dict, List, Tuple, Union
 from unittest.mock import Mock, patch, MagicMock
 from databricks.sql import Error
+from databricks.sql.utils import TYPE_INFERRENCE_LOOKUP_TABLE, DbSqlType
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 from contextlib import contextmanager
@@ -57,6 +58,10 @@ class Primitive(Enum):
     DATE = datetime.date(2023, 9, 6)
     TIMESTAMP = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
     DOUBLE = 3.14
+
+primitive_dbsqltype_combinations = [
+    (prim, TYPE_INFERRENCE_LOOKUP_TABLE.get(type(prim))) for prim in Primitive
+]
 
 both_paramstyles = pytest.mark.parametrize(
     "paramstyle", (ParamStyle.PYFORMAT, ParamStyle.NAMED)
@@ -257,6 +262,14 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
 
 
+    @pytest.mark.parametrize("primitive,dbsqltype", primitive_dbsqltype_combinations)
+    @both_paramstyles
+    def test_dbsqlparam_explicit(self, paramstyle, primitive: Primitive, dbsqltype: DbSqlType):
+        params = [DbSqlParameter(name="p", value=primitive.value, type=dbsqltype)]
+        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
+        assert self._eq(result.col, primitive)
+        
+ 
 
 
 
@@ -269,53 +282,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
 
 
-
-
-    def test_dbsqlparam_explicit_none(self):
-        params = [DbSqlParameter(name="p", value=None, type=DbSqlType.VOID)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == None
-
-    def test_dbsqlparam_explicit_bool(self):
-        params = [DbSqlParameter(name="p", value=True, type=DbSqlType.BOOLEAN)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == True
-
-    def test_dbsqlparam_explicit_integer(self):
-        params = [DbSqlParameter(name="p", value=1, type=DbSqlType.INTEGER)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == 1
-
-    def test_dbsqlparam_explicit_double(self):
-        params = [DbSqlParameter(name="p", value=3.14, type=DbSqlType.FLOAT)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert self._quantize(result.col) == self._quantize(3.14)
-
-    def test_dbsqlparam_explicit_date(self):
-        # DATE in Databricks is mapped into a datetime.date object in Python
-        date_value = datetime.date(2023, 9, 6)
-        params = [DbSqlParameter(name="p", value=date_value, type=DbSqlType.DATE)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == date_value
-
-    def test_dbsqlparam_explicit_timestamp(self):
-        # TIMESTAMP in Databricks is mapped into a datetime.datetime object in Python
-        date_value = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
-        params = [DbSqlParameter(name="p", value=date_value, type=DbSqlType.TIMESTAMP)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == date_value
-
-    def test_dbsqlparam_explicit_string(self):
-        params = [DbSqlParameter(name="p", value="Hello", type=DbSqlType.STRING)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == "Hello"
-
-    def test_dbsqlparam_explicit_decimal(self):
-        params = [
-            DbSqlParameter(name="p", value=Decimal("1234.56"), type=DbSqlType.DECIMAL)
-        ]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
-        assert result.col == Decimal("1234.56")
 
     def test_dbsqlparam_custom_explicit_decimal_38_0(self):
         # This DECIMAL can be contained in a DECIMAL(38,0) column in Databricks

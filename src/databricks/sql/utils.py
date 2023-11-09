@@ -589,17 +589,17 @@ def resolve_databricks_sql_integer_type(integer):
         return DbSqlType.BIGINT
 
 
+TYPE_INFERRENCE_LOOKUP_TABLE = {
+    str: DbSqlType.STRING,
+    int: DbSqlType.INTEGER,
+    float: DbSqlType.FLOAT,
+    datetime.datetime: DbSqlType.TIMESTAMP,
+    datetime.date: DbSqlType.DATE,
+    bool: DbSqlType.BOOLEAN,
+    Decimal: DbSqlType.DECIMAL,
+    type(None): DbSqlType.VOID,
+}
 def infer_types(params: list[DbSqlParameter]):
-    type_lookup_table = {
-        str: DbSqlType.STRING,
-        int: DbSqlType.INTEGER,
-        float: DbSqlType.FLOAT,
-        datetime.datetime: DbSqlType.TIMESTAMP,
-        datetime.date: DbSqlType.DATE,
-        bool: DbSqlType.BOOLEAN,
-        Decimal: DbSqlType.DECIMAL,
-        type(None): DbSqlType.VOID,
-    }
 
     new_params = []
 
@@ -613,7 +613,7 @@ def infer_types(params: list[DbSqlParameter]):
             _type = param.type
         else:
             # figure out what type to use
-            _type = type_lookup_table.get(type(_value), None)
+            _type = TYPE_INFERRENCE_LOOKUP_TABLE.get(type(_value), None)
             if not _type:
                 raise ValueError(
                     f"Could not infer parameter type from {type(param.value)} - {param.value}"
