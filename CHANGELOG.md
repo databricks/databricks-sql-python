@@ -2,6 +2,8 @@
 
 ## 3.0.0 (Unreleased)
 
+- Remove support for Python 3.7
+- Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
 - Completely rewritten SQLAlchemy dialect
   - Adds support for SQLAlchemy >= 2.0 and drops support for SQLAlchemy 1.x
   - Full e2e test coverage of all supported features
@@ -17,8 +19,6 @@
     - Caching metadata calls
 - Add integration tests for Databricks UC Volumes ingestion queries
 - Add `_retry_max_redirects` config
-- Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
-- Remove support for Python 3.7
 
 ## 2.9.3 (2023-08-24)
 
