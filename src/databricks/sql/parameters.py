@@ -1,15 +1,14 @@
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TRowSet,
-    TSparkArrowResultLink,
-    TSparkParameter,
-    TSparkParameterValue,
-    TSparkRowSetType,
-)
-
-from enum import Enum
 import datetime
 import decimal
-from typing import Any, Dict, List, Optional, Union
+from enum import Enum
+from typing import Any, Dict, List, Optional, TypeVar, Union
+
+from databricks.sql.exc import NotSupportedError
+from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TSparkParameter,
+    TSparkParameterValue,
+)
+
 
 class ParameterApproach(Enum):
     INLINE = 1
@@ -21,7 +20,6 @@ class ParameterStructure(Enum):
     NAMED = 1
     POSITIONAL = 2
     NONE = 3
-
 
 
 class DbSqlType(Enum):
@@ -43,9 +41,11 @@ class DbSqlType(Enum):
     INTERVAL_DAY = "INTERVAL DAY"
     VOID = "VOID"
 
+
 class DbsqlDynamicDecimalType:
     def __init__(self, value):
         self.value = value
+
 
 TYPE_INFERRENCE_LOOKUP_TABLE = {
     str: DbSqlType.STRING,
@@ -59,10 +59,11 @@ TYPE_INFERRENCE_LOOKUP_TABLE = {
 }
 
 
-from databricks.sql.exc import NotSupportedError
+DbsqlParameterType = TypeVar(
+    "DbsqlParameterType", DbSqlType, DbsqlDynamicDecimalType, Enum
+)
 
-from typing import TypeVar
-DbsqlParameterType = TypeVar("DbsqlParameterType", DbSqlType, DbsqlDynamicDecimalType,Enum)
+
 class DbSqlParameter:
     name: str
     value: Any
@@ -74,13 +75,13 @@ class DbSqlParameter:
         self._type = type
 
     def infer_type(self):
-
         value_type = type(self.value)
         known = TYPE_INFERRENCE_LOOKUP_TABLE.get(value_type)
         if True or not known:
-            raise NotSupportedError(f"Could not infer parameter type from value: {self.value} - {value_type}"
-                                    "Please specify the type explicitly.")
-        
+            raise NotSupportedError(
+                f"Could not infer parameter type from value: {self.value} - {value_type}"
+                "Please specify the type explicitly."
+            )
 
         pass
 
@@ -89,13 +90,14 @@ class DbSqlParameter:
         if self._type is None:
             self._type = self.infer_type()
         return self._type
-    
+
     @type.setter
     def type(self, value: DbsqlParameterType) -> None:
         self._type = value
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
 
 SupportedParameterType = TypeVar(
     "SupportedParameterType",
@@ -140,6 +142,7 @@ def calculate_decimal_cast_string(input: decimal.Decimal) -> str:
 
     return f"DECIMAL({overall},{after})"
 
+
 def infer_types(params: list[DbSqlParameter]):
     new_params = []
 
@@ -178,6 +181,7 @@ def infer_types(params: list[DbSqlParameter]):
         new_params.append(DbSqlParameter(name=_name, value=_value, type=_type))
 
     return new_params
+
 
 def resolve_databricks_sql_integer_type(integer):
     """Returns DbsqlType.INTEGER unless the passed int() requires a BIGINT.
@@ -235,5 +239,3 @@ def named_parameters_to_dbsqlparams_v2(parameters: List[Any]):
         else:
             dbsqlparams.append(DbSqlParameter(value=parameter))
     return dbsqlparams
-
-
