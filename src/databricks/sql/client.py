@@ -548,7 +548,7 @@ class Cursor:
 
         if isinstance(params, dict):
             dbsql_params = self._prepare_dbsql_params_from_dict(params)
-        if isinstance(params, list):
+        if isinstance(params, (list, tuple)):
             dbsql_params = self._prepare_dbsql_params_from_list(params)
 
         output = []
