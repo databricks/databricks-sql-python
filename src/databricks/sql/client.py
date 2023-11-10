@@ -665,7 +665,7 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
-            transformed_operation = transform_paramstyle(operation)
+            transformed_operation = transform_paramstyle(operation, parameters)
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, parameters
             )
