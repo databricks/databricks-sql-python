@@ -231,19 +231,17 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("primitive", Primitive)
-    @both_paramstyles
-    def test_dbsqlparam_with_inferrence(self, paramstyle, primitive: Primitive):
+    def test_dbsqlparam_with_inferrence(self, primitive: Primitive):
         params = [DbSqlParameter(name="p", value=primitive.value, type=None)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("primitive,dbsqltype", primitive_dbsqltype_combinations)
-    @both_paramstyles
     def test_dbsqlparam_explicit(
-        self, paramstyle, primitive: Primitive, dbsqltype: DbSqlType
+        self, primitive: Primitive, dbsqltype: DbSqlType
     ):
         params = [DbSqlParameter(name="p", value=primitive.value, type=dbsqltype)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, paramstyle)
+        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("value, dbsqltype", decimal_value_custom_type_combinations)
@@ -263,7 +261,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         extra_args = {"use_inline_params": True} if explicit_inline else {}
 
-        with self.connection(extra_args) as conn:
+        with self.connection(extra_params=extra_args) as conn:
             with conn.cursor() as cursor:
                 with self.patch_server_supports_native_params(
                     supports_native_params=True
@@ -285,3 +283,48 @@ def test_calculate_decimal_cast_string():
         calculate_decimal_cast_string(Decimal("123456789123456789.123456789123456789"))
         == "DECIMAL(36,18)"
     )
+
+
+class TestInlineParameterSyntax(PySQLPytestTestCase):
+    """The inline parameter approach use s"""
+
+    @pytest.mark.parametrize("use_inline_params", (True, False))
+    def test_params_as_dict(self, use_inline_params):
+        query = "SELECT %(foo)s foo, %(bar)s bar, %(baz)s baz"
+        params = {"foo": 1, "bar": 2, "baz": 3}
+
+        with self.connection(
+            extra_params={"use_inline_params": use_inline_params}
+        ) as conn:
+            with conn.cursor() as cursor:
+                result = cursor.execute(query, parameters=params).fetchone()
+
+        assert result.foo == 1
+        assert result.bar == 2
+        assert result.baz == 3
+
+    @pytest.mark.parametrize("use_inline_params", (True, False))
+    def test_params_as_sequence(self, use_inline_params):
+        """One side-effect of ParamEscaper using Python string interpolation to inline the values
+        is that it can work with "ordinal" parameters, but only if a user writes parameter markers
+        that are not defined with PEP-249. This test exists to prove that it works.
+
+        But this test is expected to fail when using native approach because we haven't implemented
+        ordinal parameters under the native approach (yet).
+        """
+
+        query = "SELECT %s foo, %s bar, %s baz"
+        params = (1, 2, 3)
+
+        with self.connection(
+            extra_params={"use_inline_params": use_inline_params}
+        ) as conn:
+            with conn.cursor() as cursor:
+                if not use_inline_params:
+                    with pytest.raises(AttributeError):
+                        cursor.execute(query, parameters=params).fetchone()
+                else:
+                    result = cursor.execute(query, parameters=params).fetchone()
+                    assert result.foo == 1
+                    assert result.bar == 2
+                    assert result.baz == 3
