@@ -18,6 +18,7 @@ from databricks.sql.parameters import (
     DbsqlParameter,
     DbSqlType,
     ParameterApproach,
+    ParameterStructure,
     calculate_decimal_cast_string,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
@@ -51,10 +52,13 @@ class T(Enum):
 
 
 # We don't test inline approach with named paramstyle because it's never supported
+# We don't test inline approach with positional parameters because it's never supported
 approach_paramstyle_combinations = [
-    (ParameterApproach.INLINE, ParamStyle.PYFORMAT),
-    (ParameterApproach.NATIVE, ParamStyle.PYFORMAT),
-    (ParameterApproach.NATIVE, ParamStyle.NAMED),
+    (ParameterApproach.INLINE, ParamStyle.PYFORMAT, ParameterStructure.NAMED),
+    (ParameterApproach.NATIVE, ParamStyle.PYFORMAT, ParameterStructure.POSITIONAL),
+    (ParameterApproach.NATIVE, ParamStyle.PYFORMAT, ParameterStructure.NAMED),
+    (ParameterApproach.NATIVE, ParamStyle.NAMED, ParameterStructure.POSITIONAL),
+    (ParameterApproach.NATIVE, ParamStyle.NAMED, ParameterStructure.NAMED),
 ]
 
 # Each of these decimals requries the specified type string to be expressed in delta table
@@ -64,7 +68,7 @@ decimal_value_custom_type_combinations = [
     (Decimal("12345678912345678912345678912345678912"), T.DECIMAL_38_0),
 ]
 
-# This generates a list of tuples of (Primtive, DbSqlType)
+# This generates a list of tuples of (Primitive, DbSqlType)
 primitive_dbsqltype_combinations = [
     (prim, TYPE_MAP.get(type(prim))) for prim in Primitive
 ]
@@ -93,6 +97,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
     NAMED_PARAMSTYLE_QUERY = "SELECT :p AS col"
     PYFORMAT_PARAMSTYLE_QUERY = "SELECT %(p)s AS col"
+    POSITIONAL_PARAMSTYLE_QUERY = "SELECT ? AS col"
 
     inline_type_map = {
         int: "int_col",
@@ -177,8 +182,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         self,
         parameters: Union[Dict, List[Dict]],
         paramstyle: ParamStyle,
+        parameter_structure: ParameterStructure,
     ):
-        if paramstyle == ParamStyle.NAMED:
+        if parameter_structure == ParameterStructure.POSITIONAL:
+            _query = self.POSITIONAL_PARAMSTYLE_QUERY
+        elif paramstyle == ParamStyle.NAMED:
             _query = self.NAMED_PARAMSTYLE_QUERY
         elif paramstyle == ParamStyle.PYFORMAT:
             _query = self.PYFORMAT_PARAMSTYLE_QUERY
@@ -192,6 +200,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         params,
         approach: ParameterApproach = ParameterApproach.NONE,
         paramstyle: ParamStyle = ParamStyle.NONE,
+        parameter_structure: ParameterStructure = ParameterStructure.NONE,
     ):
         """When approach is INLINE then we use %(param)s paramstyle and a connection with use_inline_params=True
         When approach is NATIVE then we use :param paramstyle and a connection with use_inline_params=False
@@ -199,10 +208,14 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         if approach == ParameterApproach.INLINE:
             # inline mode always uses ParamStyle.PYFORMAT
+            # inline mode doesn't support positional parameters
             return self._inline_roundtrip(params, paramstyle=ParamStyle.PYFORMAT)
         elif approach == ParameterApproach.NATIVE:
             # native mode can use either ParamStyle.NAMED or ParamStyle.PYFORMAT
-            return self._native_roundtrip(params, paramstyle=paramstyle)
+            # native mode can use either ParameterStructure.NAMED or ParameterStructure.POSITIONAL
+            return self._native_roundtrip(
+                params, paramstyle=paramstyle, parameter_structure=parameter_structure
+            )
 
     def _quantize(self, input: Union[float, int], place_value=2) -> Decimal:
         return Decimal(str(input)).quantize(Decimal("0." + "0" * place_value))
@@ -219,40 +232,78 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         return actual == expected.value
 
     @pytest.mark.parametrize("primitive", Primitive)
-    @pytest.mark.parametrize("approach,paramstyle", approach_paramstyle_combinations)
+    @pytest.mark.parametrize(
+        "approach,paramstyle,parameter_structure", approach_paramstyle_combinations
+    )
     def test_primitive_with_inferrence(
-        self, approach, paramstyle, primitive: Primitive
+        self, approach, paramstyle, parameter_structure, primitive: Primitive
     ):
         """When ParameterApproach.INLINE is passed, inferrence will not be used.
         When ParameterApproach.NATIVE is passed, primitive inputs will be inferred.
         """
 
-        params = {"p": primitive.value}
-        result = self._get_one_result(params, approach, paramstyle)
+        if parameter_structure == ParameterStructure.NAMED:
+            params = {"p": primitive.value}
+        elif parameter_structure == ParameterStructure.POSITIONAL:
+            params = [primitive.value]
+
+        result = self._get_one_result(params, approach, paramstyle, parameter_structure)
 
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("primitive", Primitive)
-    def test_dbsqlparam_with_inferrence(self, primitive: Primitive):
-        params = [DbsqlParameter(name="p", value=primitive.value, type=None)]
+    @pytest.mark.parametrize(
+        "parameter_structure", (ParameterStructure.NAMED, ParameterStructure.POSITIONAL)
+    )
+    def test_dbsqlparam_with_inferrence(
+        self, primitive: Primitive, parameter_structure: ParameterStructure
+    ):
+        dbsql_param = DbsqlParameter(
+            value=primitive.value,
+            name="p" if parameter_structure == ParameterStructure.NAMED else None,
+            type=None,
+        )
+        params = [dbsql_param]
         result = self._get_one_result(
-            params, ParameterApproach.NATIVE, ParamStyle.NAMED
+            params, ParameterApproach.NATIVE, ParamStyle.NAMED, parameter_structure
         )
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("primitive,dbsqltype", primitive_dbsqltype_combinations)
-    def test_dbsqlparam_explicit(self, primitive: Primitive, dbsqltype: DbSqlType):
-        params = [DbsqlParameter(name="p", value=primitive.value, type=dbsqltype)]
+    @pytest.mark.parametrize(
+        "parameter_structure", (ParameterStructure.NAMED, ParameterStructure.POSITIONAL)
+    )
+    def test_dbsqlparam_explicit(
+        self,
+        primitive: Primitive,
+        dbsqltype: DbSqlType,
+        parameter_structure: ParameterStructure,
+    ):
+        dbsql_param = DbsqlParameter(
+            value=primitive.value,
+            name="p" if parameter_structure == ParameterStructure.NAMED else None,
+            type=dbsqltype,
+        )
+
+        params = [dbsql_param]
         result = self._get_one_result(
-            params, ParameterApproach.NATIVE, ParamStyle.NAMED
+            params, ParameterApproach.NATIVE, ParamStyle.NAMED, parameter_structure
         )
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("value, dbsqltype", decimal_value_custom_type_combinations)
-    def test_dbsqlparam_custom_type(self, value, dbsqltype):
-        params = [DbsqlParameter(name="p", value=value, type=dbsqltype)]
+    @pytest.mark.parametrize(
+        "parameter_structure", (ParameterStructure.NAMED, ParameterStructure.POSITIONAL)
+    )
+    def test_dbsqlparam_custom_type(self, value, dbsqltype, parameter_structure):
+        dbsql_param = DbsqlParameter(
+            name="p" if parameter_structure == ParameterStructure.NAMED else None,
+            value=value,
+            type=dbsqltype,
+        )
+        params = [dbsql_param]
         result = self._get_one_result(
-            params, ParameterApproach.NATIVE, ParamStyle.NAMED
+            params, ParameterApproach.NATIVE, ParamStyle.NAMED, parameter_structure
         )
         assert result.col == value
 
@@ -282,9 +333,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                             "Consider using native parameters." not in caplog.text
                         ), "Log message should not be supressed"
 
-    def test_positional_native_params(self):
+    def test_positional_native_params_with_defaults(self):
         query = "SELECT ? col"
-        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+        with self.cursor() as cursor:
             result = cursor.execute(query, parameters=[1]).fetchone()
 
         assert result.col == 1
