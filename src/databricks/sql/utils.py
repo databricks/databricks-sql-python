@@ -405,7 +405,7 @@ def _generate_named_interpolation_values(
     if isinstance(params, dict):
         names = params.keys()
     elif isinstance(params, list):
-        names = _dbsqlparameter_names(params)
+        names = _dbsqlparameter_names(params)  # type: ignore
 
     return {name: f":{name}" for name in names}
 

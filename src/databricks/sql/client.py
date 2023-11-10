@@ -416,7 +416,7 @@ class Cursor:
             raise Error("There is no active result set")
 
     def _determine_parameter_approach(
-        self, params: Optional[Union[List, Dict[str, Any]]] = None
+        self, params: Optional[Union[ListOfParameters, DictOfParameters]] = None
     ) -> ParameterApproach:
         """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
 
@@ -767,7 +767,7 @@ class Cursor:
             )
         elif param_approach == ParameterApproach.NATIVE:
             transformed_operation = transform_paramstyle(
-                operation, parameters, param_structure
+                operation, parameters, param_structure  # type: ignore
             )
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, parameters, param_structure

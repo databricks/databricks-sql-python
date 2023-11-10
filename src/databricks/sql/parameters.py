@@ -1,7 +1,7 @@
 import datetime
 import decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Any, Dict, List, Optional, TypeVar, Union, Type
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -65,20 +65,20 @@ DbsqlParameterType = TypeVar(
 
 
 class DbsqlParameter:
-    def __init__(self, name=None, value=None, type=None):
+    def __init__(self, name=None, value=None, type: Optional[Type[Enum]] = None):
         self.name = name
         self.value = value
         self._type = type
 
     @property
-    def type(self) -> DbsqlParameterType:
+    def type(self) -> Type[Enum]:
         """The DbsqlParameterType of this parameter. If not set, it will be inferred from the value."""
         if self._type is None:
             self._infer_type()
-        return self._type
+        return self._type  # type: ignore
 
     @type.setter
-    def type(self, value: DbsqlParameterType) -> None:
+    def type(self, value: Type[Enum]) -> None:
         self._type = value
 
     def _infer_type(self):
@@ -153,7 +153,7 @@ PrimitiveType = TypeVar(
     datetime.date,
     bool,
     decimal.Decimal,
-    type(None),
+    Type[None],
 )
 
 ListOfParameters = Union[List[DbsqlParameter], List[PrimitiveType]]
