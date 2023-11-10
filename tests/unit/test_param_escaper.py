@@ -1,5 +1,6 @@
 from datetime import date, datetime
 import unittest, pytest, decimal
+from typing import Any, Dict
 
 from databricks.sql.utils import ParamEscaper, inject_parameters, transform_paramstyle
 
@@ -178,18 +179,26 @@ class TestFullQueryEscaping(object):
 
 class TestInlineToNativeTransformer(object):
     @pytest.mark.parametrize(
-        ("label", "input", "expected"),
+        ("label", "query", "params", "expected"),
         (
-            ("no effect", "SELECT 1", "SELECT 1"),
-            ("one marker", "%(param)s", ":param"),
-            ("multiple markers", "%(foo)s %(bar)s %(baz)s", ":foo :bar :baz"),
+            ("no effect", "SELECT 1", {}, "SELECT 1"),
+            ("one marker", "%(param)s", {"param": ""}, ":param"),
+            (
+                "multiple markers",
+                "%(foo)s %(bar)s %(baz)s",
+                {"foo": None, "bar": None, "baz": None},
+                ":foo :bar :baz",
+            ),
             (
                 "sql query",
                 "SELECT * FROM table WHERE field = %(param)s AND other_field IN (%(list)s)",
+                {"param": None, "list": None},
                 "SELECT * FROM table WHERE field = :param AND other_field IN (:list)",
             ),
         ),
     )
-    def test_transformer(self, label, input, expected):
-        output = transform_paramstyle(input)
+    def test_transformer(
+        self, label: str, query: str, params: Dict[str, Any], expected
+    ):
+        output = transform_paramstyle(query, params)
         assert output == expected
