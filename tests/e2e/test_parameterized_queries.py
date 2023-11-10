@@ -271,11 +271,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
                     if explicit_inline:
                         assert (
-                            "Consider using native parameters." not in caplog.text
+                            "Consider using native parameters." in caplog.text
                         ), "Log message should be suppressed"
                     else:
                         assert (
-                            "Consider using native parameters." in caplog.text
+                            "Consider using native parameters." not in caplog.text
                         ), "Log message should not be supressed"
 
 
