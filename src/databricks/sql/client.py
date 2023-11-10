@@ -236,10 +236,10 @@ class Connection:
         self._cursors = []  # type: List[Cursor]
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
-            kwargs.get("use_inline_params")
+            kwargs.get("use_inline_params", False)
         )
 
-    def _set_use_inline_params_with_warning(self, user_value):
+    def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
 
         False: Use native parameters
@@ -247,24 +247,24 @@ class Connection:
         "silent": Use inline parameters and don't log a warning
         """
 
-        if user_value is None:
+        if value is False:
             return False
 
-        if user_value not in [True, False, "silent"]:
+        if value not in [True, "silent"]:
             raise ValueError(
-                f"Invalid value for use_inline_params: {user_value}. "
+                f"Invalid value for use_inline_params: {value}. "
                 + 'Valid values are True, False, and "silent"'
             )
 
-        if user_value is True:
+        if value is True:
             logger.warning(
-                "Parameterised queries executed on with this client will use the inlien parameter approach."
-                "Consider using native parameters."
+                "Parameterised queries executed with this client will use the inline parameter approach."
+                "This approach will be deprecated in a future release. Consider using native parameters."
                 "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
                 'To suppress this warning, set use_inline_params="silent"'
             )
 
-        return user_value
+        return value
 
     def __enter__(self):
         return self
