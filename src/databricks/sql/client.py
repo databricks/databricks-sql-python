@@ -23,10 +23,9 @@ from databricks.sql.utils import (
     transform_paramstyle,
 )
 from databricks.sql.parameters import (
-    named_parameters_to_tsparkparams,
     ParameterApproach,
     ParameterStructure,
-    DbSqlParameter,
+    DbsqlParameter,
     ListOfParameters,
     DictOfParameters,
 
@@ -443,10 +442,10 @@ class Cursor:
             return ParameterApproach.NATIVE
 
     def _only_dbsql_parameters_in_list(self, params: ListOfParameters) -> bool:
-        """Return True if all members of the list are DbSqlParameter instances"""
-        return all([isinstance(i, DbSqlParameter) for i in params])
+        """Return True if all members of the list are DbsqlParameter instances"""
+        return all([isinstance(i, DbsqlParameter) for i in params])
     
-    def _all_dbsql_parameters_are_named(self, params: List[DbSqlParameter]) -> bool:
+    def _all_dbsql_parameters_are_named(self, params: List[DbsqlParameter]) -> bool:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
     
@@ -502,8 +501,31 @@ class Cursor:
 
         return rendered_statement, NO_NATIVE_PARAMS
 
+    def _prepare_dbsql_params_from_list(self, params: ListOfParameters) -> List[DbsqlParameter]:
+        """Return a list of DbsqlParameter objects from the passed list of params"""
+
+        output = []
+        for p in params:
+            if isinstance(p, DbsqlParameter):
+                output.append(p)
+            else:
+                output.append(DbsqlParameter(value=p))
+
+        return output
+
+    def _prepare_dbsql_params_from_dict(self, params: DictOfParameters) -> List[DbsqlParameter]:
+        """Return a  list of DbsqlParameter objects from the passed dictionary
+        """
+
+        output = []
+        for name, value in params.items():
+            output.append(DbsqlParameter(name=name, value=value))
+        
+        return output
+
+    
     def _prepare_native_parameters(
-        self, stmt: str, params: Optional[Union[ListOfParameters, DictOfParameters]]
+        self, stmt: str, params: Optional[Union[ListOfParameters, DictOfParameters]], param_structure: ParameterStructure
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
 
@@ -523,9 +545,18 @@ class Cursor:
         """
 
         stmt = stmt
-        params = named_parameters_to_tsparkparams(params)  # type: ignore
 
-        return stmt, params
+        if isinstance(params, dict):
+            dbsql_params = self._prepare_dbsql_params_from_dict(params)
+        if isinstance(params, list):
+            dbsql_params = self._prepare_dbsql_params_from_list(params)
+
+        output = []
+
+        for p in dbsql_params:
+            output.append(p.as_tspark_param(named=param_structure==ParameterStructure.NAMED))
+
+        return stmt, output
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -730,7 +761,7 @@ class Cursor:
         elif param_approach == ParameterApproach.NATIVE:
             transformed_operation = transform_paramstyle(operation, parameters, param_structure)
             prepared_operation, prepared_params = self._prepare_native_parameters(
-                transformed_operation, parameters
+                transformed_operation, parameters, param_structure
             )
 
         self._check_not_closed()

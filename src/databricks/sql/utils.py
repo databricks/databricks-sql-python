@@ -22,7 +22,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 
-from databricks.sql.parameters import DbSqlType, DbSqlParameter, ListOfParameters, DictOfParameters, ParameterStructure
+from databricks.sql.parameters import DbSqlType, DbsqlParameter, ListOfParameters, DictOfParameters, ParameterStructure
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
@@ -386,7 +386,7 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
 
 
 
-def _dbsqlparameter_names(params: List[DbSqlParameter]) -> list[str]:
+def _dbsqlparameter_names(params: List[DbsqlParameter]) -> list[str]:
     return [p.name for p in params]
 
 def _generate_named_interpolation_values(params: Union[ListOfParameters, DictOfParameters]) -> dict[str, str]:
@@ -414,13 +414,27 @@ def _interpolate_positional_markers(operation: str) -> str:
     ```
     SELECT * FROM table WHERE field = ? and other_field = ?
     ```
+
+    Note that this function doesn't parse the contents of operation! So if you pass a query like
+    
+    ```sql
+    SELECT * FROM table WHERE field LIKE '%some_string'
+    ```
+
+    The output will be invalid SQL:
+
+    ```sql
+    SELECT * FROM table WHERE field LIKE '?ome_string'
+    ```
+
+    This is a limitation that has always affected the INLINE parameter approach to string
+    interpolation. To avoid it, the operation should be written to use `?` directly and not
+    `%s`.
     """
 
-    try:
-        return operation % '?'
-    except TypeError:
-        # TypeError occurs if there are no %s markers in the operation
-        return operation
+
+    return operation.replace("%s", "?")
+
     
 def _interpolate_named_markers(operation: str, parameters: Union[ListOfParameters, DictOfParameters]) -> str:
     """Replace all instances of `%(param)s` in `operation` with `:param`.

@@ -47,7 +47,7 @@ class DbsqlDynamicDecimalType:
         self.value = value
 
 
-TYPE_INFERRENCE_LOOKUP_TABLE = {
+TYPE_MAP = {
     str: DbSqlType.STRING,
     int: DbSqlType.INTEGER,
     float: DbSqlType.FLOAT,
@@ -64,44 +64,90 @@ DbsqlParameterType = TypeVar(
 )
 
 
-class DbSqlParameter:
-    name: str
-    value: Any
-    type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum]
-
+class DbsqlParameter:
     def __init__(self, name="", value=None, type=None):
         self.name = name
         self.value = value
         self._type = type
 
-    def infer_type(self):
-        value_type = type(self.value)
-        known = TYPE_INFERRENCE_LOOKUP_TABLE.get(value_type)
-        if True or not known:
-            raise NotSupportedError(
-                f"Could not infer parameter type from value: {self.value} - {value_type}"
-                "Please specify the type explicitly."
-            )
-
-        pass
-
     @property
     def type(self) -> DbsqlParameterType:
+        """The DbsqlParameterType of this parameter. If not set, it will be inferred from the value.
+        """
         if self._type is None:
-            self._type = self.infer_type()
+            self._infer_type()
         return self._type
 
     @type.setter
     def type(self, value: DbsqlParameterType) -> None:
         self._type = value
+    
+    def _infer_type(self):
+        value_type = type(self.value)
+        known = TYPE_MAP.get(value_type)
+        if not known:
+            raise NotSupportedError(
+                f"Could not infer parameter type from value: {self.value} - {value_type} \n"
+                "Please specify the type explicitly."
+            )
+        self._type = known
+        self._process_type()
+
+    def _process_type(self):
+        """When self._type requires extra processing, this method performs that processing.
+        Otherwise this method is a no-op.
+        """
+
+        if self._type == DbSqlType.DECIMAL:
+            self._process_decimal()
+        if self._type == DbSqlType.INTEGER:
+            self._process_integer()
+        if self._type == DbSqlType.VOID:
+            self._process_void()
+
+    def _process_decimal(self):
+        """When self._type is DbSqlType.DECIMAL, this method calculates the smallest SQL cast argument that
+        can contain self.value and assigns it to self._type.
+        """
+
+        cast_exp = calculate_decimal_cast_string(self.value)
+        self._type = DbsqlDynamicDecimalType(cast_exp)
+
+    def _process_integer(self):
+        """int() requires special handling becone one Python type can be cast to multiple SQL types (INT, BIGINT, TINYINT)"""
+        self._type = resolve_databricks_sql_integer_type(self.value)
+
+    def _process_void(self):
+        """VOID / NULL types must be passed in a unique way as TSparkParameters with no value"""
+        self.value = None
+
+    def as_tspark_param(self, named: bool) -> TSparkParameter:
+        """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
+        if self.type == DbSqlType.VOID:
+            tsp = TSparkParameter(value=None, type=self.type.value)
+        else:
+            tspark_param_value = TSparkParameterValue(stringValue=str(self.value))
+            tsp = TSparkParameter(type=self.type.value, value=tspark_param_value)
+        if named:
+            tsp.name = self.name
+            tsp.ordinal = False
+        elif not named:
+            tsp.ordinal = True
+        return tsp
+
+    def __str__(self):
+        return f"DbsqlParameter(name={self.name}, value={self.value}, type={self.type.value})"
+    
+    def __repr__(self):
+        return self.__str__()
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
 
 
-SupportedParameterType = TypeVar(
-    "SupportedParameterType",
-    DbSqlParameter,
+
+PrimitiveType = TypeVar(
+    "PrimitiveType",
     str,
     int,
     float,
@@ -112,8 +158,8 @@ SupportedParameterType = TypeVar(
     type(None),
 )
 
-ListOfParameters = List[SupportedParameterType]
-DictOfParameters = Dict[str, SupportedParameterType]
+ListOfParameters = Union[List[DbsqlParameter], List[PrimitiveType]]
+DictOfParameters = Dict[str, PrimitiveType]
 
 
 def calculate_decimal_cast_string(input: decimal.Decimal) -> str:
@@ -143,44 +189,7 @@ def calculate_decimal_cast_string(input: decimal.Decimal) -> str:
     return f"DECIMAL({overall},{after})"
 
 
-def infer_types(params: list[DbSqlParameter]):
-    new_params = []
 
-    # cycle through each parameter we've been passed
-    for param in params:
-        _name: str = param.name
-        _value: Any = param.value
-        _type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum, None]
-
-        if param.type:
-            _type = param.type
-        else:
-            # figure out what type to use
-            _type = TYPE_INFERRENCE_LOOKUP_TABLE.get(type(_value), None)
-            if not _type:
-                raise ValueError(
-                    f"Could not infer parameter type from {type(param.value)} - {param.value}"
-                )
-
-        # Decimal require special handling because one column type in Databricks can have multiple precisions
-        if _type == DbSqlType.DECIMAL:
-            cast_exp = calculate_decimal_cast_string(param.value)
-            _type = DbsqlDynamicDecimalType(cast_exp)
-
-        # int() requires special handling because one Python type can be cast to multiple SQL types (INT, BIGINT, TINYINT)
-        if _type == DbSqlType.INTEGER:
-            _type = resolve_databricks_sql_integer_type(param.value)
-
-        # VOID / NULL types must be passed in a unique way as TSparkParameters with no value
-        if _type == DbSqlType.VOID:
-            new_params.append(DbSqlParameter(name=_name, type=DbSqlType.VOID))
-            continue
-        else:
-            _value = str(param.value)
-
-        new_params.append(DbSqlParameter(name=_name, value=_value, type=_type))
-
-    return new_params
 
 
 def resolve_databricks_sql_integer_type(integer):
@@ -200,42 +209,9 @@ def resolve_databricks_sql_integer_type(integer):
         return DbSqlType.BIGINT
 
 
-def named_parameters_to_tsparkparams(
-    parameters: Union[List[Any], Dict[str, str]]
-) -> List[TSparkParameter]:
-    tspark_params = []
-    if isinstance(parameters, dict):
-        dbsql_params = named_parameters_to_dbsqlparams_v1(parameters)
-    else:
-        dbsql_params = named_parameters_to_dbsqlparams_v2(parameters)
-    inferred_type_parameters = infer_types(dbsql_params)
-    for param in inferred_type_parameters:
-        # The only way to pass a VOID/NULL to DBR is to declare TSparkParameter without declaring
-        # its value or type arguments. If we set these to NoneType, the request will fail with a
-        # thrift transport error
-        if param.type == DbSqlType.VOID:
-            this_tspark_param = TSparkParameter(name=param.name)
-        else:
-            this_tspark_param_value = TSparkParameterValue(stringValue=param.value)
-            this_tspark_param = TSparkParameter(
-                type=param.type.value, name=param.name, value=this_tspark_param_value
-            )
-        tspark_params.append(this_tspark_param)
-    return tspark_params
 
 
-def named_parameters_to_dbsqlparams_v1(parameters: Dict[str, str]):
-    dbsqlparams = []
-    for name, parameter in parameters.items():
-        dbsqlparams.append(DbSqlParameter(name=name, value=parameter))
-    return dbsqlparams
 
 
-def named_parameters_to_dbsqlparams_v2(parameters: List[Any]):
-    dbsqlparams = []
-    for parameter in parameters:
-        if isinstance(parameter, DbSqlParameter):
-            dbsqlparams.append(parameter)
-        else:
-            dbsqlparams.append(DbSqlParameter(value=parameter))
-    return dbsqlparams
+
+
