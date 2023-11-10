@@ -250,7 +250,7 @@ class Connection:
 
         if value is True:
             logger.warning(
-                "Parameterised queries executed on with this client will use the inline parameter approach."
+                "Parameterised queries executed with this client will use the inline parameter approach."
                 "This approach will be deprecated in a future release. Consider using native parameters."
                 "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
                 'To suppress this warning, set use_inline_params="silent"'
