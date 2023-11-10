@@ -279,6 +279,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                         ), "Log message should not be supressed"
 
 
+    def test_ordinal_params(self):
+        query = "SELECT ? col"
+        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+            result = cursor.execute(query, parameters=[1]).fetchone()
+
+        assert result.col == 1
+
 def test_calculate_decimal_cast_string():
     assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
     assert (

@@ -7,7 +7,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, TypeVar
 
 import lz4.frame
 import pyarrow
@@ -22,12 +22,20 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 
+from databricks.sql.types import DbSqlType, DbsqlDynamicDecimalType, DbSqlParameter, ListOfParameters, DictOfParameters
+
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
 class ParameterApproach(Enum):
     INLINE = 1
     NATIVE = 2
+    NONE = 3
+
+
+class ParameterStructure(Enum):
+    NAMED = 1
+    POSITIONAL = 2
     NONE = 3
 
 
@@ -387,9 +395,73 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-def transform_paramstyle(operation: str, parameters: Dict[str, Any]) -> str:
+
+def _dbsqlparameter_names(params: List[DbSqlParameter]) -> list[str]:
+    return [p.name for p in params]
+
+def _generate_named_interpolation_values(params: Union[ListOfParameters, DictOfParameters]) -> dict[str, str]:
+    """Returns a dictionary of the form {name: ":name"} for each parameter in params
+    """
+
+    if isinstance(params, dict):
+        names = params.keys()
+    elif isinstance(params, list):
+        names = _dbsqlparameter_names(params)
+        
+    return {name: f":{name}" for name in names}
+
+def _interpolate_positional_markers(operation: str) -> str:
+    """Replace all instances of `%s` in `operation` with `?`.
+
+    If `operation` contains no instances of `%s` then the input string is returned unchanged.
+
+    ```
+    "SELECT * FROM table WHERE field = %s and other_field = %s"
+    ```
+
+    Yields
+
+    ```
+    SELECT * FROM table WHERE field = ? and other_field = ?
+    ```
+    """
+
+    try:
+        return operation % '?'
+    except TypeError:
+        # TypeError occurs if there are no %s markers in the operation
+        return operation
+    
+def _interpolate_named_markers(operation: str, parameters: Union[ListOfParameters, DictOfParameters]) -> str:
+    """Replace all instances of `%(param)s` in `operation` with `:param`.
+
+    If `operation` contains no instances of `%(param)s` then the input string is returned unchanged.
+
+    ```
+    "SELECT * FROM table WHERE field = %(field)s and other_field = %(other_field)s"
+    ```
+
+    Yields
+
+    ```
+    SELECT * FROM table WHERE field = :field and other_field = :other_field
+    ```
+    """
+
+    try:
+        return operation % _generate_named_interpolation_values(parameters)
+    except TypeError:
+        # TypeError occurs if there are no %(param)s markers in the operation
+        return operation
+
+def transform_paramstyle(
+    operation: str,
+    parameters: Union[ListOfParameters, DictOfParameters],
+    param_structure: ParameterStructure,
+) -> str:
     """
     Performs a Python string interpolation such that any occurence of `%(param)s` will be replaced with `:param`
+    If param_structure == ParameterStructure.POSITIONAL, then the markers like `%s` will be replaced with `?` instead.
 
     This utility function is built to assist users in the transition between the default paramstyle in
     this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
@@ -397,16 +469,19 @@ def transform_paramstyle(operation: str, parameters: Dict[str, Any]) -> str:
     This method will fail if parameters is passed as a list.
 
     Args:
-        operation (str): The operation or SQL text to transform.
-        parameters (Dict[str, Any]): The parameters to use for the transformation.
+        operation: The operation or SQL text to transform.
+        parameters: The parameters to use for the transformation.
 
     Returns:
         str
     """
 
-    interpolation_values = {key: f":{key}" for key in parameters.keys()}
+    if param_structure == ParameterStructure.POSITIONAL:
+        output = _interpolate_positional_markers(operation)
+    elif param_structure == ParameterStructure.NAMED:
+        output = _interpolate_named_markers(operation, parameters)
 
-    return operation % interpolation_values
+    return output
 
 
 def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
@@ -505,43 +580,10 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
     return pyarrow.array(result, type=arrow_type)
 
 
-class DbSqlType(Enum):
-    """The values of this enumeration are passed as literals to be used in a CAST
-    evaluation by the thrift server.
-    """
-
-    STRING = "STRING"
-    DATE = "DATE"
-    TIMESTAMP = "TIMESTAMP"
-    FLOAT = "FLOAT"
-    DECIMAL = "DECIMAL"
-    INTEGER = "INTEGER"
-    BIGINT = "BIGINT"
-    SMALLINT = "SMALLINT"
-    TINYINT = "TINYINT"
-    BOOLEAN = "BOOLEAN"
-    INTERVAL_MONTH = "INTERVAL MONTH"
-    INTERVAL_DAY = "INTERVAL DAY"
-    VOID = "VOID"
 
 
-class DbSqlParameter:
-    name: str
-    value: Any
-    type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum]
-
-    def __init__(self, name="", value=None, type=None):
-        self.name = name
-        self.value = value
-        self.type = type
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
 
 
-class DbsqlDynamicDecimalType:
-    def __init__(self, value):
-        self.value = value
 
 
 def named_parameters_to_dbsqlparams_v1(parameters: Dict[str, str]):

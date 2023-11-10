@@ -5,6 +5,7 @@ import pyarrow
 import requests
 import json
 import os
+import decimal
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -21,7 +22,11 @@ from databricks.sql.utils import (
     named_parameters_to_tsparkparams,
     inject_parameters,
     ParameterApproach,
+    ParameterStructure,
     transform_paramstyle,
+    DbSqlParameter,
+    ListOfParameters,
+    DictOfParameters,
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -38,6 +43,7 @@ DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
 NO_NATIVE_PARAMS: List = []
+
 
 
 class Connection:
@@ -433,6 +439,41 @@ class Cursor:
         else:
             return ParameterApproach.NATIVE
 
+    def _only_dbsql_parameters_in_list(self, params: ListOfParameters) -> bool:
+        """Return True if all members of the list are DbSqlParameter instances"""
+        return all([isinstance(i, DbSqlParameter) for i in params])
+    
+    def _all_dbsql_parameters_are_named(self, params: List[DbSqlParameter]) -> bool:
+        """Return True if all members of the list have a non-null .name attribute"""
+        return all([i.name is not None for i in params])
+    
+    def _list_of_params_can_use_named_structure(self, params: ListOfParameters) -> bool:
+        """A list of parameters can use the named ParameterStructure if every member of
+        the list is a DbsqlParameter type and every member has a non-null .name attribute.
+
+        Otherwise, the list can only use the positional ParameterStructure
+        """
+
+        return self._only_dbsql_parameters_in_list(params) and self._all_dbsql_parameters_are_named(params)
+    
+    
+    def _determine_parameter_structure(
+        self,
+        parameters: Optional[Union[ListOfParameters, DictOfParameters]],
+    ) -> ParameterStructure:
+        
+        if parameters is None:
+            return ParameterStructure.NONE
+        
+        if not isinstance(parameters, (list, dict, tuple)):
+            raise TypeError("Parameters must be a list, tuple, or dict")
+        
+        if isinstance(parameters, dict) or self._list_of_params_can_use_named_structure(parameters):
+            return ParameterStructure.NAMED
+        else:
+            return ParameterStructure.POSITIONAL
+
+
     def _prepare_inline_parameters(
         self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]
     ) -> Tuple[str, List]:
@@ -459,7 +500,7 @@ class Cursor:
         return rendered_statement, NO_NATIVE_PARAMS
 
     def _prepare_native_parameters(
-        self, stmt: str, params: Optional[Union[List[Any], Dict[str, Any]]]
+        self, stmt: str, params: Optional[Union[ListOfParameters, DictOfParameters]]
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
 
@@ -640,7 +681,7 @@ class Cursor:
     def execute(
         self,
         operation: str,
-        parameters: Optional[Union[List[Any], Dict[str, Any]]] = None,
+        parameters: Optional[Union[ListOfParameters, DictOfParameters]] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -674,6 +715,7 @@ class Cursor:
         """
 
         param_approach = self._determine_parameter_approach(parameters)
+        param_structure = self._determine_parameter_structure(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
             prepared_operation = operation
@@ -683,10 +725,7 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
-            if isinstance(parameters, dict):
-                transformed_operation = transform_paramstyle(operation, parameters)
-            else:
-                transformed_operation = operation
+            transformed_operation = transform_paramstyle(operation, parameters, param_structure)
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, parameters
             )

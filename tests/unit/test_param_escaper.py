@@ -2,7 +2,7 @@ from datetime import date, datetime
 import unittest, pytest, decimal
 from typing import Any, Dict
 
-from databricks.sql.utils import ParamEscaper, inject_parameters, transform_paramstyle
+from databricks.sql.utils import ParamEscaper, inject_parameters, transform_paramstyle, ParameterStructure
 
 pe = ParamEscaper()
 
@@ -200,5 +200,5 @@ class TestInlineToNativeTransformer(object):
     def test_transformer(
         self, label: str, query: str, params: Dict[str, Any], expected
     ):
-        output = transform_paramstyle(query, params)
+        output = transform_paramstyle(query, params, param_structure=ParameterStructure.NAMED)
         assert output == expected
