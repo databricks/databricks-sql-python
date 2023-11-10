@@ -21,6 +21,7 @@ from databricks.sql.utils import (
     named_parameters_to_tsparkparams,
     inject_parameters,
     ParameterApproach,
+    transform_paramstyle,
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -651,6 +652,8 @@ class Cursor:
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
 
+        Note: if you pass a sequence of parameters in native mode, your query must use the `named` paramstyle
+
         :returns self
         """
 
@@ -664,8 +667,12 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
+            if isinstance(parameters, dict):
+                transformed_operation = transform_paramstyle(operation, parameters)
+            else:
+                transformed_operation = operation
             prepared_operation, prepared_params = self._prepare_native_parameters(
-                operation, parameters
+                transformed_operation, parameters
             )
 
         self._check_not_closed()

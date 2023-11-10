@@ -387,6 +387,28 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
+def transform_paramstyle(operation: str, parameters: Dict[str, Any]) -> str:
+    """
+    Performs a Python string interpolation such that any occurence of `%(param)s` will be replaced with `:param`
+
+    This utility function is built to assist users in the transition between the default paramstyle in
+    this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
+
+    This method will fail if parameters is passed as a list.
+
+    Args:
+        operation (str): The operation or SQL text to transform.
+        parameters (Dict[str, Any]): The parameters to use for the transformation.
+
+    Returns:
+        str
+    """
+
+    interpolation_values = {key: f":{key}" for key in parameters.keys()}
+
+    return operation % interpolation_values
+
+
 def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
@@ -544,7 +566,8 @@ def resolve_databricks_sql_integer_type(integer):
 
     Note: TINYINT is never inferred here because it is a rarely used type and clauses like LIMIT and OFFSET
     cannot accept TINYINT bound parameter values. If you need to bind a TINYINT value, you can explicitly
-    declare its type in a DbsqlParameter object, which will bypass this inference logic."""
+    declare its type in a DbsqlParameter object, which will bypass this inference logic.
+    """
     if -128 <= integer <= 127:
         # If DBR is ever updated to permit TINYINT values passed to LIMIT and OFFSET
         # then we can change this line to return DbSqlType.TINYINT
@@ -555,18 +578,19 @@ def resolve_databricks_sql_integer_type(integer):
         return DbSqlType.BIGINT
 
 
-def infer_types(params: list[DbSqlParameter]):
-    type_lookup_table = {
-        str: DbSqlType.STRING,
-        int: DbSqlType.INTEGER,
-        float: DbSqlType.FLOAT,
-        datetime.datetime: DbSqlType.TIMESTAMP,
-        datetime.date: DbSqlType.DATE,
-        bool: DbSqlType.BOOLEAN,
-        Decimal: DbSqlType.DECIMAL,
-        type(None): DbSqlType.VOID,
-    }
+TYPE_INFERRENCE_LOOKUP_TABLE = {
+    str: DbSqlType.STRING,
+    int: DbSqlType.INTEGER,
+    float: DbSqlType.FLOAT,
+    datetime.datetime: DbSqlType.TIMESTAMP,
+    datetime.date: DbSqlType.DATE,
+    bool: DbSqlType.BOOLEAN,
+    Decimal: DbSqlType.DECIMAL,
+    type(None): DbSqlType.VOID,
+}
 
+
+def infer_types(params: list[DbSqlParameter]):
     new_params = []
 
     # cycle through each parameter we've been passed
@@ -579,7 +603,7 @@ def infer_types(params: list[DbSqlParameter]):
             _type = param.type
         else:
             # figure out what type to use
-            _type = type_lookup_table.get(type(_value), None)
+            _type = TYPE_INFERRENCE_LOOKUP_TABLE.get(type(_value), None)
             if not _type:
                 raise ValueError(
                     f"Could not infer parameter type from {type(param.value)} - {param.value}"
