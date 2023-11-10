@@ -254,14 +254,14 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         )
         assert result.col == value
 
-    @pytest.mark.parametrize("explicit_inline", (True, False))
-    def test_use_inline_by_default_with_warning(self, explicit_inline, caplog):
+    @pytest.mark.parametrize("use_inline_params", (True, False, "silent"))
+    def test_use_inline_off_by_default_with_warning(self, use_inline_params, caplog):
         """
-        use_inline_params should be True by default. Warn the user if server supports native parameters.
+        use_inline_params should be False by default. 
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
-        extra_args = {"use_inline_params": True} if explicit_inline else {}
+        extra_args = {"use_inline_params": use_inline_params} if use_inline_params else {}
 
         with self.connection(extra_args) as conn:
             with conn.cursor() as cursor:
@@ -269,13 +269,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                     supports_native_params=True
                 ):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
-                    if explicit_inline:
-                        assert (
-                            "Consider using native parameters." not in caplog.text
-                        ), "Log message should be suppressed"
-                    else:
+                    if use_inline_params is True:
                         assert (
                             "Consider using native parameters." in caplog.text
+                        ), "Log message should be suppressed"
+                    elif use_inline_params == "silent":
+                        assert (
+                            "Consider using native parameters." not in caplog.text
                         ), "Log message should not be supressed"
 
 

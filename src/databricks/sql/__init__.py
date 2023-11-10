@@ -6,9 +6,7 @@ from databricks.sql.exc import *
 apilevel = "2.0"
 threadsafety = 1  # Threads may share the module, but not connections.
 
-# Python extended format codes, e.g. ...WHERE name=%(name)s
-# Note that when we switch to ParameterApproach.NATIVE, paramstyle will be `named`
-paramstyle = "pyformat"
+paramstyle = "named"
 
 
 class DBAPITypeObject(object):

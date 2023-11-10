@@ -21,7 +21,7 @@ from databricks.sql.utils import (
     named_parameters_to_tsparkparams,
     inject_parameters,
     ParameterApproach,
-    transform_paramstyle
+    transform_paramstyle,
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -63,11 +63,13 @@ class Connection:
                 Http Bearer access token, e.g. Databricks Personal Access Token.
                 Unless if you use auth_type=`databricks-oauth` you need to pass `access_token.
                 Examples:
+                        ```
                          connection = sql.connect(
                             server_hostname='dbc-12345.staging.cloud.databricks.com',
                             http_path='sql/protocolv1/o/6789/12abc567',
                             access_token='dabpi12345678'
                          )
+                        ```
             :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
             :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None.
                 Execute the SQL command `SET -v` to get a full list of available commands.
@@ -75,12 +77,12 @@ class Connection:
             :param schema: An optional initial schema to use. Requires DBR version 9.0+
 
         Other Parameters:
-            use_inline_params: `boolean`, optional (default is True)
+            use_inline_params: `boolean` | str, optional (default is False)
                 When True, parameterized calls to cursor.execute() will try to render parameter values inline with the
                 query text instead of using native bound parameters supported in DBR 14.1 and above. This connector will attempt to
-                sanitise parameterized inputs to prevent SQL injection. Before you can switch this to False, you must
-                update your queries to use the PEP-249 `named` paramstyle instead of the `pyformat` paramstyle used
-                in INLINE mode.
+                sanitise parameterized inputs to prevent SQL injection.  The inline parameter approach is maintained for
+                legacy purposes and will be deprecated in a future release. When this parameter is `True` you will see
+                a warning log message. To suppress this log message, set `use_inline_params="silent"`.
             auth_type: `str`, optional
                 `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
                 This is currently in private preview for Databricks accounts on AWS.
@@ -128,6 +130,7 @@ class Connection:
                 own implementation of OAuthPersistence.
 
                 Examples:
+                ```
                         # for development only
                         from databricks.sql.experimental.oauth_persistence import DevOnlyFilePersistence
 
@@ -137,6 +140,7 @@ class Connection:
                             auth_type="databricks-oauth",
                             experimental_oauth_persistence=DevOnlyFilePersistence("~/dev-oauth.json")
                         )
+                ```
 
 
         """
@@ -223,8 +227,36 @@ class Connection:
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
 
-        self._suppress_inline_warning = "use_inline_params" in kwargs
-        self.use_inline_params = kwargs.get("use_inline_params", True)
+        self.use_inline_params = self._set_use_inline_params_with_warning(
+            kwargs.get("use_inline_params")
+        )
+
+    def _set_use_inline_params_with_warning(self, user_value):
+        """Valid values are True, False, and "silent"
+
+        False: Use native parameters
+        True: Use inline parameters and log a warning
+        "silent": Use inline parameters and don't log a warning
+        """
+
+        if user_value is None:
+            return False
+
+        if user_value not in [True, False, "silent"]:
+            raise ValueError(
+                f"Invalid value for use_inline_params: {user_value}. "
+                + 'Valid values are True, False, and "silent"'
+            )
+
+        if user_value is True:
+            logger.warning(
+                "Parameterised queries executed on with this client will use the inlien parameter approach."
+                "Consider using native parameters."
+                "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
+                'To suppress this warning, set use_inline_params="silent"'
+            )
+
+        return user_value
 
     def __enter__(self):
         return self
@@ -395,23 +427,7 @@ class Cursor:
         if params is None:
             return ParameterApproach.NONE
 
-        server_supports_native_approach = (
-            self.connection.server_parameterized_queries_enabled(
-                self.connection.protocol_version
-            )
-        )
-
         if self.connection.use_inline_params:
-            if (
-                server_supports_native_approach
-                and not self.connection._suppress_inline_warning
-            ):
-                logger.warning(
-                    "This query will be executed with inline parameters."
-                    "Consider using native parameters."
-                    "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
-                    "To suppress this warning, pass use_inline_params=True when creating the connection."
-                )
             return ParameterApproach.INLINE
 
         else:
@@ -635,7 +651,7 @@ class Cursor:
 
         This behaviour is controlled by the `use_inline_params` argument passed when building a connection.
 
-        The syntax for these approaches is different:
+        The paramstyle for these approaches is different:
 
         If the connection was instantiated with use_inline_params=False, then parameters
         should be given in PEP-249 `named` paramstyle like :param_name
@@ -665,7 +681,7 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
-            transformed_operation = transform_paramstyle(operation)
+            transformed_operation = transform_paramstyle(operation, parameters)
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, parameters
             )
