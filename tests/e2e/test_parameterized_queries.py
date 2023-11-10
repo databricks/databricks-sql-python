@@ -163,7 +163,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
-        with self.connection(extra_params={"use_inline_params": True}) as conn:
+        with self.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(INSERT_QUERY, parameters=params)
             with conn.cursor() as cursor:
@@ -254,14 +254,14 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         )
         assert result.col == value
 
-    @pytest.mark.parametrize("use_inline_params", (True, False, "silent"))
-    def test_use_inline_off_by_default_with_warning(self, use_inline_params, caplog):
+    @pytest.mark.parametrize("explicit_inline", (True, False))
+    def test_use_inline_by_default_with_warning(self, explicit_inline, caplog):
         """
-        use_inline_params should be False by default. 
+        use_inline_params should be True by default. Warn the user if server supports native parameters.
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
-        extra_args = {"use_inline_params": use_inline_params} if use_inline_params else {}
+        extra_args = {"use_inline_params": True} if explicit_inline else {}
 
         with self.connection(extra_params=extra_args) as conn:
             with conn.cursor() as cursor:
@@ -269,13 +269,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                     supports_native_params=True
                 ):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
-                    if use_inline_params is True:
-                        assert (
-                            "Consider using native parameters." in caplog.text
-                        ), "Log message should be suppressed"
-                    elif use_inline_params == "silent":
+                    if explicit_inline:
                         assert (
                             "Consider using native parameters." not in caplog.text
+                        ), "Log message should be suppressed"
+                    else:
+                        assert (
+                            "Consider using native parameters." in caplog.text
                         ), "Log message should not be supressed"
 
 
