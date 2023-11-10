@@ -65,7 +65,7 @@ DbsqlParameterType = TypeVar(
 
 
 class DbsqlParameter:
-    def __init__(self, name="", value=None, type=None):
+    def __init__(self, name=None, value=None, type=None):
         self.name = name
         self.value = value
         self._type = type

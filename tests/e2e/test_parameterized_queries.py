@@ -34,7 +34,7 @@ class Primitive(Enum):
 
     NONE = None
     BOOL = True
-    INT = 1
+    INT = 50
     STRING = "Hello"
     DECIMAL = Decimal("1234.56")
     DATE = datetime.date(2023, 9, 6)
@@ -235,15 +235,17 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     @pytest.mark.parametrize("primitive", Primitive)
     def test_dbsqlparam_with_inferrence(self, primitive: Primitive):
         params = [DbsqlParameter(name="p", value=primitive.value, type=None)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
+        result = self._get_one_result(
+            params, ParameterApproach.NATIVE, ParamStyle.NAMED
+        )
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("primitive,dbsqltype", primitive_dbsqltype_combinations)
-    def test_dbsqlparam_explicit(
-        self, primitive: Primitive, dbsqltype: DbSqlType
-    ):
+    def test_dbsqlparam_explicit(self, primitive: Primitive, dbsqltype: DbSqlType):
         params = [DbsqlParameter(name="p", value=primitive.value, type=dbsqltype)]
-        result = self._get_one_result(params, ParameterApproach.NATIVE, ParamStyle.NAMED)
+        result = self._get_one_result(
+            params, ParameterApproach.NATIVE, ParamStyle.NAMED
+        )
         assert self._eq(result.col, primitive)
 
     @pytest.mark.parametrize("value, dbsqltype", decimal_value_custom_type_combinations)
@@ -257,11 +259,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     @pytest.mark.parametrize("use_inline_params", (True, False, "silent"))
     def test_use_inline_off_by_default_with_warning(self, use_inline_params, caplog):
         """
-        use_inline_params should be False by default. 
+        use_inline_params should be False by default.
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
-        extra_args = {"use_inline_params": use_inline_params} if use_inline_params else {}
+        extra_args = (
+            {"use_inline_params": use_inline_params} if use_inline_params else {}
+        )
 
         with self.connection(extra_params=extra_args) as conn:
             with conn.cursor() as cursor:
@@ -278,13 +282,40 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                             "Consider using native parameters." not in caplog.text
                         ), "Log message should not be supressed"
 
-
-    def test_ordinal_params(self):
+    def test_positional_native_params(self):
         query = "SELECT ? col"
         with self.cursor(extra_params={"use_inline_params": False}) as cursor:
             result = cursor.execute(query, parameters=[1]).fetchone()
 
         assert result.col == 1
+
+    @pytest.mark.parametrize(
+        "params",
+        (
+            (
+                DbsqlParameter(value="foo"),
+                DbsqlParameter(value="bar"),
+                DbsqlParameter(value="baz"),
+            ),
+            (
+                DbsqlParameter(value="foo", type=DbSqlType.STRING),
+                DbsqlParameter(value="bar", type=DbSqlType.STRING),
+                DbsqlParameter(value="baz", type=DbSqlType.STRING),
+            ),
+            ("foo", "bar", "baz"),
+        ),
+    )
+    def test_positional_native_multiple(self, params):
+        query = "SELECT ? `foo`, ? `bar`, ? `baz`"
+
+        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+            result = cursor.execute(query, params).fetchone()
+
+        expected = [i.value if isinstance(i, DbsqlParameter) else i for i in params]
+        outcome = [result.foo, result.bar, result.baz]
+
+        assert set(outcome) == set(expected)
+
 
 def test_calculate_decimal_cast_string():
     assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
@@ -312,28 +343,44 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         assert result.bar == 2
         assert result.baz == 3
 
-    @pytest.mark.parametrize("use_inline_params", (True, False))
-    def test_params_as_sequence(self, use_inline_params):
+    def test_params_as_sequence(self):
         """One side-effect of ParamEscaper using Python string interpolation to inline the values
         is that it can work with "ordinal" parameters, but only if a user writes parameter markers
         that are not defined with PEP-249. This test exists to prove that it works.
-
-        But this test is expected to fail when using native approach because we haven't implemented
-        ordinal parameters under the native approach (yet).
         """
 
+        # `%s` is not a valid paramstyle per PEP-249
         query = "SELECT %s foo, %s bar, %s baz"
         params = (1, 2, 3)
 
-        with self.connection(
-            extra_params={"use_inline_params": use_inline_params}
-        ) as conn:
+        with self.connection(extra_params={"use_inline_params": True}) as conn:
             with conn.cursor() as cursor:
-                if False and not use_inline_params:
-                    with pytest.raises(DatabaseError):
-                        cursor.execute(query, parameters=params).fetchone()
-                else:
-                    result = cursor.execute(query, parameters=params).fetchone()
-                    assert result.foo == 1
-                    assert result.bar == 2
-                    assert result.baz == 3
+                result = cursor.execute(query, parameters=params).fetchone()
+                assert result.foo == 1
+                assert result.bar == 2
+                assert result.baz == 3
+
+    def test_inline_ordinals_break_sql(self):
+        """With inline mode, ordinal parameters _work_ but they break the SQL syntax
+        because `%` symbols are used to wildcard match with LIKE statements. This test
+        just proves that's the case.
+        """
+        query = "SELECT 'samsonite', %s WHERE 'samsonite' LIKE '%sonite'"
+        params = ["luggage"]
+        with self.cursor(extra_params={"use_inline_params": True}) as cursor:
+            with pytest.raises(
+                TypeError, match="not enough arguments for format string"
+            ):
+                cursor.execute(query, parameters=params)
+
+    def test_native_ordinals_dont_break_sql(self):
+        """This test accompanies test_inline_ordinals_break_sql to prove that ordinal
+        parameters work in native mode for the exact same query with the correct markers `?`
+        """
+        query = "SELECT 'samsonite', ? WHERE 'samsonite' LIKE '%sonite'"
+        params = ["luggage"]
+        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+            result = cursor.execute(query, parameters=params).fetchone()
+
+        assert result.samsonite == "samsonite"
+        assert result.luggage == "luggage"

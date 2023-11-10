@@ -26,7 +26,8 @@ from databricks.sql.parameters import DbSqlType, DbsqlParameter, ListOfParameter
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
-
+import logging 
+logger = logging.getLogger(__name__)
 
 
 class ResultSetQueue(ABC):
@@ -400,10 +401,12 @@ def _generate_named_interpolation_values(params: Union[ListOfParameters, DictOfP
         
     return {name: f":{name}" for name in names}
 
-def _interpolate_positional_markers(operation: str) -> str:
-    """Replace all instances of `%s` in `operation` with `?`.
+def _may_contain_inline_positional_markers(operation: str) -> bool:
+    """Check for the presence of `%s` in the operation string. 
+    If it's present, the operation may contain positional query markers. Return True.
+    
 
-    If `operation` contains no instances of `%s` then the input string is returned unchanged.
+    If `operation` contains no instances of `%s` then return False.
 
     ```
     "SELECT * FROM table WHERE field = %s and other_field = %s"
@@ -427,13 +430,13 @@ def _interpolate_positional_markers(operation: str) -> str:
     SELECT * FROM table WHERE field LIKE '?ome_string'
     ```
 
-    This is a limitation that has always affected the INLINE parameter approach to string
-    interpolation. To avoid it, the operation should be written to use `?` directly and not
-    `%s`.
+    This is a limitation of conflicting Python Format String Mini Language and SQL syntax
+    has always affected the INLINE parameter approach to string interpolation. To avoid it,
+    the operation should be written to use `?` directly and not `%s`.
     """
 
-
-    return operation.replace("%s", "?")
+    interpolated = operation.replace("%s", "?")
+    return interpolated == operation
 
     
 def _interpolate_named_markers(operation: str, parameters: Union[ListOfParameters, DictOfParameters]) -> str:
@@ -479,9 +482,11 @@ def transform_paramstyle(
     Returns:
         str
     """
-
-    if param_structure == ParameterStructure.POSITIONAL:
-        output = _interpolate_positional_markers(operation)
+    output = operation
+    if param_structure == ParameterStructure.POSITIONAL and _may_contain_inline_positional_markers(operation):
+        logger.warning("It looks like this query may contain un-named query markers like `%s`"
+                       "This format is not supported when use_inline_params=False."
+                       "Use `?` instead or set use_inline_params=True")
     elif param_structure == ParameterStructure.NAMED:
         output = _interpolate_named_markers(operation, parameters)
 
