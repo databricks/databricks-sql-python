@@ -13,7 +13,7 @@ import pytz
 from databricks.sql import Error
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.utils import (
+from databricks.sql.parameters import (
     TYPE_INFERRENCE_LOOKUP_TABLE,
     DbSqlParameter,
     DbSqlType,

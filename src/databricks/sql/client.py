@@ -19,14 +19,17 @@ from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
-    named_parameters_to_tsparkparams,
     inject_parameters,
+    transform_paramstyle,
+)
+from databricks.sql.parameters import (
+    named_parameters_to_tsparkparams,
     ParameterApproach,
     ParameterStructure,
-    transform_paramstyle,
     DbSqlParameter,
     ListOfParameters,
     DictOfParameters,
+
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider

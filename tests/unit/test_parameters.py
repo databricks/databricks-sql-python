@@ -1,4 +1,4 @@
-from databricks.sql.utils import (
+from databricks.sql.parameters import (
     named_parameters_to_tsparkparams,
     infer_types,
     named_parameters_to_dbsqlparams_v1,
@@ -214,3 +214,42 @@ class TestCalculateDecimalCast(object):
         input = Decimal("1234.56")
         output = calculate_decimal_cast_string(input)
         assert output == "DECIMAL(6,2)"
+
+import datetime
+from enum import Enum
+import pytz
+from databricks.sql.utils import DbSqlType
+
+
+class Primitive(Enum):
+    """These are the inferrable types. This Enum is used for parametrized tests."""
+
+    NONE = None
+    BOOL = True
+    INT = 1
+    STRING = "Hello"
+    DECIMAL = Decimal("1234.56")
+    DATE = datetime.date(2023, 9, 6)
+    TIMESTAMP = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
+    DOUBLE = 3.14
+
+class TestDbsqlParameter(object):
+
+    combinations = [
+        (Primitive.NONE, DbSqlType.VOID),
+        (Primitive.BOOL, DbSqlType.BOOLEAN),
+        (Primitive.INT, DbSqlType.INTEGER),
+        (Primitive.STRING, DbSqlType.STRING),
+        (Primitive.DECIMAL, DbSqlType.DECIMAL),
+        (Primitive.DATE, DbSqlType.DATE),
+        (Primitive.TIMESTAMP, DbSqlType.TIMESTAMP),
+        (Primitive.DOUBLE, DbSqlType.FLOAT),
+    ]
+
+    @pytest.mark.parametrize("p, expected_type", combinations)
+    def test_inferrence(self, p: Primitive, expected_type: DbSqlType):
+        """Test that the type is inferred correctly"""
+        dbsql_param = DbSqlParameter(value=p.value)
+        dbsql_param.infer_type()
+        assert dbsql_param.type == expected_type
+
