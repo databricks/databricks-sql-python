@@ -21,7 +21,7 @@ from databricks.sql.utils import (
     named_parameters_to_tsparkparams,
     inject_parameters,
     ParameterApproach,
-    transform_paramstyle
+    transform_paramstyle,
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
