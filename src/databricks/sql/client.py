@@ -231,7 +231,7 @@ class Connection:
             kwargs.get("use_inline_params")
         )
 
-    def _set_use_inline_params_with_warning(self, user_value):
+    def _set_use_inline_params_with_warning(self, user_value: Union[bool, str]):
         """Valid values are True, False, and "silent"
 
         False: Use native parameters
