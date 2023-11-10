@@ -5,6 +5,8 @@ from enum import Enum
 from typing import Dict, List, Union
 from unittest.mock import patch
 
+from databricks.sql.exc import DatabaseError
+
 import pytest
 import pytz
 
@@ -321,7 +323,7 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         ) as conn:
             with conn.cursor() as cursor:
                 if not use_inline_params:
-                    with pytest.raises(AttributeError):
+                    with pytest.raises(DatabaseError):
                         cursor.execute(query, parameters=params).fetchone()
                 else:
                     result = cursor.execute(query, parameters=params).fetchone()
