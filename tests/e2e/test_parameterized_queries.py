@@ -163,7 +163,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
-        with self.connection() as conn:
+        with self.connection(extra_params={"use_inline_params": True}) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(INSERT_QUERY, parameters=params)
             with conn.cursor() as cursor:
