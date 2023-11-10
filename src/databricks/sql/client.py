@@ -668,6 +668,8 @@ class Cursor:
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
 
+        Note: if you pass a sequence of parameters in native mode, your query must use the `named` paramstyle
+
         :returns self
         """
 
@@ -681,7 +683,10 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
-            transformed_operation = transform_paramstyle(operation, parameters)
+            if isinstance(parameters, dict):
+                transformed_operation = transform_paramstyle(operation, parameters)
+            else:
+                transformed_operation = operation
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, parameters
             )

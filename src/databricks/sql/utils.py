@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import decimal
-import re
 from abc import ABC, abstractmethod
 from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
@@ -388,34 +387,26 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-def transform_paramstyle(operation: str) -> str:
+def transform_paramstyle(operation: str, parameters: Dict[str, Any]) -> str:
     """
-    Performs a regex substitution such that any occurence of `%(param)s` will be replaced with `:param`
+    Performs a Python string interpolation such that any occurence of `%(param)s` will be replaced with `:param`
 
     This utility function is built to assist users in the transition between the default paramstyle in
     this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
 
+    This method will fail if parameters is passed as a list.
+
     Args:
         operation (str): The operation or SQL text to transform.
+        parameters (Dict[str, Any]): The parameters to use for the transformation.
 
     Returns:
         str
     """
 
-    _output_operation = operation
+    interpolation_values = {key: f":{key}" for key in parameters.keys()}
 
-    PYFORMAT_PARAMSTYLE_REGEX = r"%\((\w+)\)s"
-    pat = re.compile(PYFORMAT_PARAMSTYLE_REGEX)
-    NAMED_PARAMSTYLE_FMT = ":{}"
-    PYFORMAT_PARAMSTYLE_FMT = "%({})s"
-
-    pyformat_markers = pat.findall(operation)
-    for marker in pyformat_markers:
-        pyformat_marker = PYFORMAT_PARAMSTYLE_FMT.format(marker)
-        named_marker = NAMED_PARAMSTYLE_FMT.format(marker)
-        _output_operation = _output_operation.replace(pyformat_marker, named_marker)
-
-    return _output_operation
+    return operation % interpolation_values
 
 
 def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
