@@ -72,8 +72,7 @@ class DbsqlParameter:
 
     @property
     def type(self) -> DbsqlParameterType:
-        """The DbsqlParameterType of this parameter. If not set, it will be inferred from the value.
-        """
+        """The DbsqlParameterType of this parameter. If not set, it will be inferred from the value."""
         if self._type is None:
             self._infer_type()
         return self._type
@@ -81,7 +80,7 @@ class DbsqlParameter:
     @type.setter
     def type(self, value: DbsqlParameterType) -> None:
         self._type = value
-    
+
     def _infer_type(self):
         value_type = type(self.value)
         known = TYPE_MAP.get(value_type)
@@ -137,13 +136,12 @@ class DbsqlParameter:
 
     def __str__(self):
         return f"DbsqlParameter(name={self.name}, value={self.value}, type={self.type.value})"
-    
+
     def __repr__(self):
         return self.__str__()
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
 
 
 PrimitiveType = TypeVar(
@@ -189,9 +187,6 @@ def calculate_decimal_cast_string(input: decimal.Decimal) -> str:
     return f"DECIMAL({overall},{after})"
 
 
-
-
-
 def resolve_databricks_sql_integer_type(integer):
     """Returns DbsqlType.INTEGER unless the passed int() requires a BIGINT.
 
@@ -207,11 +202,3 @@ def resolve_databricks_sql_integer_type(integer):
         return DbSqlType.INTEGER
     else:
         return DbSqlType.BIGINT
-
-
-
-
-
-
-
-

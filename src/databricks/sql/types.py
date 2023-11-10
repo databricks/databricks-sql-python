@@ -201,5 +201,3 @@ def _create_row(
     row = Row(*values)
     row.__fields__ = fields
     return row
-
-

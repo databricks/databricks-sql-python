@@ -22,11 +22,18 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 
-from databricks.sql.parameters import DbSqlType, DbsqlParameter, ListOfParameters, DictOfParameters, ParameterStructure
+from databricks.sql.parameters import (
+    DbSqlType,
+    DbsqlParameter,
+    ListOfParameters,
+    DictOfParameters,
+    ParameterStructure,
+)
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
-import logging 
+import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -386,25 +393,27 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-
 def _dbsqlparameter_names(params: List[DbsqlParameter]) -> list[str]:
     return [p.name for p in params]
 
-def _generate_named_interpolation_values(params: Union[ListOfParameters, DictOfParameters]) -> dict[str, str]:
-    """Returns a dictionary of the form {name: ":name"} for each parameter in params
-    """
+
+def _generate_named_interpolation_values(
+    params: Union[ListOfParameters, DictOfParameters]
+) -> dict[str, str]:
+    """Returns a dictionary of the form {name: ":name"} for each parameter in params"""
 
     if isinstance(params, dict):
         names = params.keys()
     elif isinstance(params, list):
         names = _dbsqlparameter_names(params)
-        
+
     return {name: f":{name}" for name in names}
 
+
 def _may_contain_inline_positional_markers(operation: str) -> bool:
-    """Check for the presence of `%s` in the operation string. 
+    """Check for the presence of `%s` in the operation string.
     If it's present, the operation may contain positional query markers. Return True.
-    
+
 
     If `operation` contains no instances of `%s` then return False.
 
@@ -419,7 +428,7 @@ def _may_contain_inline_positional_markers(operation: str) -> bool:
     ```
 
     Note that this function doesn't parse the contents of operation! So if you pass a query like
-    
+
     ```sql
     SELECT * FROM table WHERE field LIKE '%some_string'
     ```
@@ -438,8 +447,10 @@ def _may_contain_inline_positional_markers(operation: str) -> bool:
     interpolated = operation.replace("%s", "?")
     return interpolated == operation
 
-    
-def _interpolate_named_markers(operation: str, parameters: Union[ListOfParameters, DictOfParameters]) -> str:
+
+def _interpolate_named_markers(
+    operation: str, parameters: Union[ListOfParameters, DictOfParameters]
+) -> str:
     """Replace all instances of `%(param)s` in `operation` with `:param`.
 
     If `operation` contains no instances of `%(param)s` then the input string is returned unchanged.
@@ -460,6 +471,7 @@ def _interpolate_named_markers(operation: str, parameters: Union[ListOfParameter
     except TypeError:
         # TypeError occurs if there are no %(param)s markers in the operation
         return operation
+
 
 def transform_paramstyle(
     operation: str,
@@ -483,10 +495,15 @@ def transform_paramstyle(
         str
     """
     output = operation
-    if param_structure == ParameterStructure.POSITIONAL and _may_contain_inline_positional_markers(operation):
-        logger.warning("It looks like this query may contain un-named query markers like `%s`"
-                       "This format is not supported when use_inline_params=False."
-                       "Use `?` instead or set use_inline_params=True")
+    if (
+        param_structure == ParameterStructure.POSITIONAL
+        and _may_contain_inline_positional_markers(operation)
+    ):
+        logger.warning(
+            "It looks like this query may contain un-named query markers like `%s`"
+            "This format is not supported when use_inline_params=False."
+            "Use `?` instead or set use_inline_params=True"
+        )
     elif param_structure == ParameterStructure.NAMED:
         output = _interpolate_named_markers(operation, parameters)
 
@@ -587,19 +604,3 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
             result[i] = None
 
     return pyarrow.array(result, type=arrow_type)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

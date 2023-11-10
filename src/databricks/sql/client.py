@@ -28,7 +28,6 @@ from databricks.sql.parameters import (
     DbsqlParameter,
     ListOfParameters,
     DictOfParameters,
-
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -45,7 +44,6 @@ DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
 NO_NATIVE_PARAMS: List = []
-
 
 
 class Connection:
@@ -444,11 +442,11 @@ class Cursor:
     def _only_dbsql_parameters_in_list(self, params: ListOfParameters) -> bool:
         """Return True if all members of the list are DbsqlParameter instances"""
         return all([isinstance(i, DbsqlParameter) for i in params])
-    
+
     def _all_dbsql_parameters_are_named(self, params: List[DbsqlParameter]) -> bool:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
-    
+
     def _list_of_params_can_use_named_structure(self, params: ListOfParameters) -> bool:
         """A list of parameters can use the named ParameterStructure if every member of
         the list is a DbsqlParameter type and every member has a non-null .name attribute.
@@ -456,25 +454,27 @@ class Cursor:
         Otherwise, the list can only use the positional ParameterStructure
         """
 
-        return self._only_dbsql_parameters_in_list(params) and self._all_dbsql_parameters_are_named(params)
-    
-    
+        return self._only_dbsql_parameters_in_list(
+            params
+        ) and self._all_dbsql_parameters_are_named(params)
+
     def _determine_parameter_structure(
         self,
         parameters: Optional[Union[ListOfParameters, DictOfParameters]],
     ) -> ParameterStructure:
-        
+
         if parameters is None:
             return ParameterStructure.NONE
-        
+
         if not isinstance(parameters, (list, dict, tuple)):
             raise TypeError("Parameters must be a list, tuple, or dict")
-        
-        if isinstance(parameters, dict) or self._list_of_params_can_use_named_structure(parameters):
+
+        if isinstance(parameters, dict) or self._list_of_params_can_use_named_structure(
+            parameters
+        ):
             return ParameterStructure.NAMED
         else:
             return ParameterStructure.POSITIONAL
-
 
     def _prepare_inline_parameters(
         self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]
@@ -501,7 +501,9 @@ class Cursor:
 
         return rendered_statement, NO_NATIVE_PARAMS
 
-    def _prepare_dbsql_params_from_list(self, params: ListOfParameters) -> List[DbsqlParameter]:
+    def _prepare_dbsql_params_from_list(
+        self, params: ListOfParameters
+    ) -> List[DbsqlParameter]:
         """Return a list of DbsqlParameter objects from the passed list of params"""
 
         output = []
@@ -513,19 +515,22 @@ class Cursor:
 
         return output
 
-    def _prepare_dbsql_params_from_dict(self, params: DictOfParameters) -> List[DbsqlParameter]:
-        """Return a  list of DbsqlParameter objects from the passed dictionary
-        """
+    def _prepare_dbsql_params_from_dict(
+        self, params: DictOfParameters
+    ) -> List[DbsqlParameter]:
+        """Return a  list of DbsqlParameter objects from the passed dictionary"""
 
         output = []
         for name, value in params.items():
             output.append(DbsqlParameter(name=name, value=value))
-        
+
         return output
 
-    
     def _prepare_native_parameters(
-        self, stmt: str, params: Optional[Union[ListOfParameters, DictOfParameters]], param_structure: ParameterStructure
+        self,
+        stmt: str,
+        params: Optional[Union[ListOfParameters, DictOfParameters]],
+        param_structure: ParameterStructure,
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
 
@@ -554,7 +559,9 @@ class Cursor:
         output = []
 
         for p in dbsql_params:
-            output.append(p.as_tspark_param(named=param_structure==ParameterStructure.NAMED))
+            output.append(
+                p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
+            )
 
         return stmt, output
 
@@ -759,7 +766,9 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
-            transformed_operation = transform_paramstyle(operation, parameters, param_structure)
+            transformed_operation = transform_paramstyle(
+                operation, parameters, param_structure
+            )
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, parameters, param_structure
             )
