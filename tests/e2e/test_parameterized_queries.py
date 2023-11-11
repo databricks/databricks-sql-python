@@ -53,11 +53,12 @@ class T(Enum):
 
 # We don't test inline approach with named paramstyle because it's never supported
 # We don't test inline approach with positional parameters because it's never supported
+# Paramstyle doesn't apply when ParameterStructure.POSITIONAL because question marks are used.
 approach_paramstyle_combinations = [
     (ParameterApproach.INLINE, ParamStyle.PYFORMAT, ParameterStructure.NAMED),
-    (ParameterApproach.NATIVE, ParamStyle.PYFORMAT, ParameterStructure.POSITIONAL),
+    (ParameterApproach.NATIVE, ParamStyle.NONE, ParameterStructure.POSITIONAL),
     (ParameterApproach.NATIVE, ParamStyle.PYFORMAT, ParameterStructure.NAMED),
-    (ParameterApproach.NATIVE, ParamStyle.NAMED, ParameterStructure.POSITIONAL),
+    (ParameterApproach.NATIVE, ParamStyle.NONE, ParameterStructure.POSITIONAL),
     (ParameterApproach.NATIVE, ParamStyle.NAMED, ParameterStructure.NAMED),
 ]
 
