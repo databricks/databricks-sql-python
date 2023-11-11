@@ -484,8 +484,6 @@ def transform_paramstyle(
     This utility function is built to assist users in the transition between the default paramstyle in
     this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
 
-    This method will fail if parameters is passed as a list.
-
     Args:
         operation: The operation or SQL text to transform.
         parameters: The parameters to use for the transformation.

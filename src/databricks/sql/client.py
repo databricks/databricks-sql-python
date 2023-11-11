@@ -736,10 +736,13 @@ class Cursor:
         The paramstyle for these approaches is different:
 
         If the connection was instantiated with use_inline_params=False, then parameters
-        should be given in PEP-249 `named` paramstyle like :param_name
+        should be given in PEP-249 `named` paramstyle like :param_name. Parameters passed by positionally
+        are indicated using a `?` in the query text.
 
         If the connection was instantiated with use_inline_params=True (default), then parameters
-        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s
+        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s. Parameters passed by positionally
+        are indicated using a `%s` marker in the query. Note: this approach is not recommended as it can break
+        your SQL query syntax and will be removed in a future release.
 
         ```python
         inline_operation = "SELECT * FROM table WHERE field = %(some_value)s"
@@ -749,8 +752,6 @@ class Cursor:
 
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
-
-        Note: if you pass a sequence of parameters in native mode, your query must use the `named` paramstyle
 
         :returns self
         """
