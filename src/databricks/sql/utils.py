@@ -480,7 +480,6 @@ def transform_paramstyle(
 ) -> str:
     """
     Performs a Python string interpolation such that any occurence of `%(param)s` will be replaced with `:param`
-    If param_structure == ParameterStructure.POSITIONAL, then the markers like `%s` will be replaced with `?` instead.
 
     This utility function is built to assist users in the transition between the default paramstyle in
     this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
