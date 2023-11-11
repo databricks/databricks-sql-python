@@ -377,7 +377,7 @@ def test_calculate_decimal_cast_string():
 
 
 class TestInlineParameterSyntax(PySQLPytestTestCase):
-    """The inline parameter approach use s"""
+    """The inline parameter approach uses pyformat markers"""
 
     @pytest.mark.parametrize("use_inline_params", (True, False))
     def test_params_as_dict(self, use_inline_params):
@@ -397,7 +397,7 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
     def test_params_as_sequence(self):
         """One side-effect of ParamEscaper using Python string interpolation to inline the values
         is that it can work with "ordinal" parameters, but only if a user writes parameter markers
-        that are not defined with PEP-249. This test exists to prove that it works.
+        that are not defined with PEP-249. This test exists to prove that it works in the ideal case.
         """
 
         # `%s` is not a valid paramstyle per PEP-249
@@ -411,9 +411,9 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
                 assert result.bar == 2
                 assert result.baz == 3
 
-    def test_inline_ordinals_break_sql(self):
-        """With inline mode, ordinal parameters _work_ but they break the SQL syntax
-        because `%` symbols are used to wildcard match with LIKE statements. This test
+    def test_inline_ordinals_can_break_sql(self):
+        """With inline mode, ordinal parameters can break the SQL syntax
+        because `%` symbols are used to wildcard match within LIKE statements. This test
         just proves that's the case.
         """
         query = "SELECT 'samsonite', %s WHERE 'samsonite' LIKE '%sonite'"
@@ -425,8 +425,8 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
                 cursor.execute(query, parameters=params)
 
     def test_native_ordinals_dont_break_sql(self):
-        """This test accompanies test_inline_ordinals_break_sql to prove that ordinal
-        parameters work in native mode for the exact same query with the correct markers `?`
+        """This test accompanies test_inline_ordinals_can_break_sql to prove that ordinal
+        parameters work in native mode for the exact same query, if we use the right marker `?`
         """
         query = "SELECT 'samsonite', ? WHERE 'samsonite' LIKE '%sonite'"
         params = ["luggage"]
