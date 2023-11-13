@@ -1,6 +1,10 @@
 from databricks.sql.parameters import (
     calculate_decimal_cast_string,
     DbsqlDynamicDecimalType,
+    BaseCastExpressionGenerator,
+    TYPE_MAP,
+    InferrableType,
+    DbsqlParameterType
 )
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -92,7 +96,7 @@ import datetime
 from enum import Enum
 import pytz
 from databricks.sql.utils import DbSqlType
-from databricks.sql.parameters import DbsqlDynamicDecimalType
+from databricks.sql.parameters import DbsqlDynamicDecimalType, DbsqlParameterType, DatabricksSupportedType
 
 
 class Primitive(Enum):
@@ -110,14 +114,14 @@ class Primitive(Enum):
 
 class TestDbsqlParameter(object):
     combinations = (
-        [Primitive.NONE, DbSqlType.VOID],
-        [Primitive.INT, DbSqlType.INTEGER],
-        [Primitive.STRING, DbSqlType.STRING],
-        [Primitive.DECIMAL, DbsqlDynamicDecimalType("DECIMAL(6,2)")],
-        [Primitive.DATE, DbSqlType.DATE],
-        [Primitive.TIMESTAMP, DbSqlType.TIMESTAMP],
-        [Primitive.DOUBLE, DbSqlType.FLOAT],
-        [Primitive.BOOL, DbSqlType.BOOLEAN],
+        [Primitive.NONE, DbsqlParameterType.VOID],
+        [Primitive.INT, DbsqlParameterType.INT],
+        [Primitive.STRING, DbsqlParameterType.STRING],
+        [Primitive.DECIMAL, DbsqlParameterType.DECIMAL],
+        [Primitive.DATE, DbsqlParameterType.DATE],
+        [Primitive.TIMESTAMP, DbsqlParameterType.TIMESTAMP],
+        [Primitive.DOUBLE, DbsqlParameterType.FLOAT],
+        [Primitive.BOOL, DbsqlParameterType.BOOLEAN],
     )
 
     @pytest.mark.parametrize("p, expected_type", combinations)
@@ -125,7 +129,7 @@ class TestDbsqlParameter(object):
         """Test that the type is inferred correctly"""
         value = p.value
         dbsql_param = DbsqlParameter(value=value)
-        assert dbsql_param.type.value == expected_type.value
+        assert dbsql_param.type.name == expected_type.value
 
     @pytest.mark.parametrize("named", [True, False])
     @pytest.mark.parametrize("prim, expected_type", combinations)
@@ -144,9 +148,33 @@ class TestDbsqlParameter(object):
 
         expected = TSparkParameter(
             name="my_param" if named else None,
-            type=expected_type.value,
+            type=expected_type.name,
             value=None if prim.value is None else TSparkParameterValue(str(prim.value)),
             ordinal=not named
         )
 
         assert tsp == expected
+
+class TestDbsqlParameterTypes(object):
+    """These tests exist because Python isn't strongly typed.
+    """
+
+    def test_dbsql_parameter_types_are_allowed(self):
+        """The DbsqlParameterType enumeration is frozen in code so that it can be auto-completed
+        in a code editor. But it should never contain keys that are not a supported field type in Databricks."""
+        
+        supported_type_names = [i.name for i in DatabricksSupportedType]
+        for t in DbsqlParameterType:
+            assert t.name in supported_type_names
+
+    def test_dbsql_parameter_type_values(self):
+        """Every member of DbsqlParameterType's value should be a subclass of BaseCastExpressionGenerator
+        """
+
+        dbsql_parameter_type_values = [i.value for i in DbsqlParameterType]
+        for t in dbsql_parameter_type_values:
+            assert isinstance(t, BaseCastExpressionGenerator)
+
+    def test_type_map(self):
+        for t in TYPE_MAP.keys():
+            assert isinstance(t, InferrableType)
