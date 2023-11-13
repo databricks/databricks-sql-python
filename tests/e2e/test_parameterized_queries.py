@@ -425,6 +425,20 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
             ):
                 cursor.execute(query, parameters=params)
 
+    def test_inline_named_dont_break_sql(self):
+        """With inline mode, ordinal parameters can break the SQL syntax
+        because `%` symbols are used to wildcard match within LIKE statements. This test
+        just proves that's the case.
+        """
+        query = """
+        with base as (SELECT 'x(one)sonite' as `col_1`)
+        SELECT col_1 FROM base WHERE col_1 LIKE CONCAT(%(one)s, 'onite')
+        """
+        params = {"one": "%(one)s"}
+        with self.cursor(extra_params={"use_inline_params": True}) as cursor:
+                result = cursor.execute(query, parameters=params).fetchone()
+                print('hello')
+
     def test_native_ordinals_dont_break_sql(self):
         """This test accompanies test_inline_ordinals_can_break_sql to prove that ordinal
         parameters work in native mode for the exact same query, if we use the right marker `?`
