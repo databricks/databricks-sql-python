@@ -353,19 +353,12 @@ def dbsql_parameter_from_primitive(
     return _cls(value=value, name=name)
 
 
-PrimitiveType = TypeVar(
-    "PrimitiveType",
-    str,
-    int,
-    float,
-    datetime.datetime,
-    datetime.date,
-    bool,
-    decimal.Decimal,
-    Type[None],
-)
+PrimitiveType = Union[
+    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
+]
 
-TParameterList = Union[List[Type[DbsqlParameterBase]], List[PrimitiveType]]
+
+TParameterList = List[Union[TDbsqlParameter, PrimitiveType]]
 TParameterDict = Dict[str, PrimitiveType]
 TParameterCollection = Union[TParameterList, TParameterDict]
 
