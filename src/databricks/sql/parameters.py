@@ -48,9 +48,8 @@ class DatabricksSupportedType(Enum):
     STRUCT = auto()
 
 
-
 TInferrable = Union[
-    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, Type[None]
+    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
 ]
 
 TAllowedParameterValue = Union[
@@ -142,50 +141,34 @@ class DbsqlParameterBase:
 
 
 class IntegerParameter(DbsqlParameterBase):
-    def __init__(self, value: int, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.INT.name
 
 
 class StringParameter(DbsqlParameterBase):
-    def __init__(self, value: str, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.STRING.name
 
 
 class BigIntegerParameter(DbsqlParameterBase):
-    def __init__(self, value: int, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.BIGINT.name
 
 
 class BooleanParameter(DbsqlParameterBase):
-    def __init__(self, value: bool, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.BOOLEAN.name
 
 
 class DateParameter(DbsqlParameterBase):
-    def __init__(self, value: datetime.date, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.DATE.name
 
 
 class DoubleParameter(DbsqlParameterBase):
-    def __init__(self, value: float, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.DOUBLE.name
 
 
 class FloatParameter(DbsqlParameterBase):
-    def __init__(self, value: float, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.FLOAT.name
 
 
 class VoidParameter(DbsqlParameterBase):
-    def __init__(self, value: Type[None], name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.VOID.name
 
     def _tspark_param_value(self):
@@ -194,33 +177,23 @@ class VoidParameter(DbsqlParameterBase):
 
 
 class SmallIntParameter(DbsqlParameterBase):
-    def __init__(self, value: int, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.SMALLINT.name
 
 
 class TimestampParameter(DbsqlParameterBase):
-    def __init__(self, value: datetime.datetime, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP.name
 
 
 class TimestampNTZParameter(DbsqlParameterBase):
-    def __init__(self, value: datetime.datetime, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP_NTZ.name
 
 
 class TinyIntParameter(DbsqlParameterBase):
-    def __init__(self, value: int, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.TINYINT.name
 
 
 class DecimalParameter(DbsqlParameterBase):
     CAST_EXPR = "DECIMAL({},{})"
-    def __init__(self, value: decimal.Decimal, name: Optional[str] = None):
-        super().__init__(value=value, name=name)
 
     def __init__(
         self,
@@ -278,7 +251,6 @@ class DecimalParameter(DbsqlParameterBase):
             overall = before + after
 
         return self.CAST_EXPR.format(overall, after)
-
 
 
 TDbsqlParameter = Union[
@@ -349,19 +321,36 @@ def dbsql_parameter_from_primitive(
     without having to explicitly import a subclass of DbsqlParameter.
     """
 
-    t = type(value)
-    fetched = _INFERENCE_TYPE_MAP.get(t)
-    
-    if fetched is not None:
-        direct: TDbsqlParameter = fetched
-        return direct(value=value, name=name)
-    elif isinstance(value, int):
-        return dbsql_parameter_from_int(value, name=name)
+    _cls: Optional[TDbsqlParameter] = None
 
-    raise NotSupportedError(
-        f"Could not infer parameter type from value: {value} - {type(value)} \n"
-        "Please specify the type explicitly."
-    )
+    # This series of isinstance calls are required for mypy not to raise
+    # havoc. We can't use TYPE_INFERRENCE_MAP because mypy doesn't trust
+    # its logic
+
+    if isinstance(value, int):
+        return dbsql_parameter_from_int(value, name=name)
+    if isinstance(value, str):
+        return StringParameter(value=value, name=name)
+    if isinstance(value, float):
+        return FloatParameter(value=value, name=name)
+    if isinstance(value, datetime.datetime):
+        return TimestampParameter(value=value, name=name)
+    if isinstance(value, datetime.date):
+        return DateParameter(value=value, name=name)
+    if isinstance(value, bool):
+        return BooleanParameter(value=value, name=name)
+    if isinstance(value, decimal.Decimal):
+        return DecimalParameter(value=value, name=name)
+    if value is None:
+        return VoidParameter(value=value, name=name)
+
+    if _cls is None:
+        raise NotSupportedError(
+            f"Could not infer parameter type from value: {value} - {type(value)} \n"
+            "Please specify the type explicitly."
+        )
+
+    return _cls(value=value, name=name)
 
 
 PrimitiveType = TypeVar(
