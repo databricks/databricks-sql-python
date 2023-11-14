@@ -30,7 +30,7 @@ from databricks.sql.parameters import (
     TimestampParameter,
     TimestampNTZParameter,
     TinyIntParameter,
-    DbsqlParameterBase
+    DbsqlParameterBase,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
 
@@ -57,14 +57,6 @@ class Primitive(Enum):
     SMALLINT = 51
 
 
-class T(Enum):
-    """This is a utility Enum for the explicit dbsqlparam tests"""
-
-    DECIMAL_38_0 = "DECIMAL(38,0)"
-    DECIMAL_38_2 = "DECIMAL(38,2)"
-    DECIMAL_18_9 = "DECIMAL(18,9)"
-
-
 # We don't test inline approach with named paramstyle because it's never supported
 # We don't test inline approach with positional parameters because it's never supported
 # Paramstyle doesn't apply when ParameterStructure.POSITIONAL because question marks are used.
@@ -75,22 +67,6 @@ approach_paramstyle_combinations = [
     (ParameterApproach.NATIVE, ParamStyle.NONE, ParameterStructure.POSITIONAL),
     (ParameterApproach.NATIVE, ParamStyle.NAMED, ParameterStructure.NAMED),
 ]
-
-# Each of these decimals requries the specified type string to be expressed in delta table
-decimal_value_custom_type_combinations = [
-    (Decimal("123456789.123456789"), T.DECIMAL_18_9),
-    (Decimal("123456789123456789123456789123456789.12"), T.DECIMAL_38_2),
-    (Decimal("12345678912345678912345678912345678912"), T.DECIMAL_38_0),
-]
-
-# This generates a list of tuples of (Primitive, TDbsqlParameter)
-primitive_dbsqltype_combinations = [
-    (prim, _INFERENCE_TYPE_MAP.get(type(prim.value))) for prim in Primitive
-]
-
-both_paramstyles = pytest.mark.parametrize(
-    "paramstyle", (ParamStyle.PYFORMAT, ParamStyle.NAMED)
-)
 
 
 class TestParameterizedQueries(PySQLPytestTestCase):
@@ -187,7 +163,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         :paramstyle:
             This is a no-op but is included to make the test-code easier to read.
         """
-        target_column = self._get_inline_table_column(params.get('p'))
+        target_column = self._get_inline_table_column(params.get("p"))
         INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
         SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
@@ -260,7 +236,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         "approach,paramstyle,parameter_structure", approach_paramstyle_combinations
     )
     def test_primitive_single(
-        self, approach, paramstyle, parameter_structure, primitive: Primitive, inline_table
+        self,
+        approach,
+        paramstyle,
+        parameter_structure,
+        primitive: Primitive,
+        inline_table,
     ):
         """When ParameterApproach.INLINE is passed, inferrence will not be used.
         When ParameterApproach.NATIVE is passed, primitive inputs will be inferred.
@@ -274,7 +255,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         result = self._get_one_result(params, approach, paramstyle, parameter_structure)
 
         assert self._eq(result.col, primitive)
-
 
     @pytest.mark.parametrize(
         "parameter_structure", (ParameterStructure.NAMED, ParameterStructure.POSITIONAL)
