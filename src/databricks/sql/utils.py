@@ -457,8 +457,8 @@ def transform_paramstyle(
     ):
         logger.warning(
             "It looks like this query may contain un-named query markers like `%s`"
-            "This format is not supported when use_inline_params=False."
-            "Use `?` instead or set use_inline_params=True"
+            " This format is not supported when use_inline_params=False."
+            " Use `?` instead or set use_inline_params=True"
         )
     elif param_structure == ParameterStructure.NAMED:
         output = _interpolate_named_markers(operation, parameters)
