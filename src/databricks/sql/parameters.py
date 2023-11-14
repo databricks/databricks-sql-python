@@ -142,7 +142,7 @@ class DbsqlParameterBase:
         return self.CAST_EXPR
 
     def __str__(self):
-        return f"{type(self)}(name={self.name}, value={self.value}, type={self.type.value})"
+        return f"{self.__class__}(name={self.name}, value={self.value})"
 
     def __repr__(self):
         return self.__str__()
@@ -353,19 +353,19 @@ def dbsql_parameter_from_primitive(
     # havoc. We can't use TYPE_INFERRENCE_MAP because mypy doesn't trust
     # its logic
 
-    if isinstance(value, int):
+    if type(value) is int:
         return dbsql_parameter_from_int(value, name=name)
-    elif isinstance(value, str):
+    elif type(value) is str:
         return StringParameter(value=value, name=name)
-    elif isinstance(value, float):
+    elif type(value) is float:
         return FloatParameter(value=value, name=name)
-    elif isinstance(value, datetime.datetime):
+    elif type(value) is datetime.datetime:
         return TimestampParameter(value=value, name=name)
-    elif isinstance(value, datetime.date):
+    elif type(value) is datetime.date:
         return DateParameter(value=value, name=name)
-    elif isinstance(value, bool):
+    elif type(value) is bool:
         return BooleanParameter(value=value, name=name)
-    elif isinstance(value, decimal.Decimal):
+    elif type(value) is decimal.Decimal:
         return DecimalParameter(value=value, name=name)
     elif value is None:
         return VoidParameter(value=value, name=name)

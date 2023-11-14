@@ -11,6 +11,7 @@ import pytest
 import pytz
 
 from databricks.sql.parameters import (
+    IDbsqlParameter,
     ParameterApproach,
     ParameterStructure,
     DecimalParameter,
@@ -338,12 +339,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     @pytest.mark.parametrize(
         "params",
         (
-            (
+            [
                 StringParameter(value="foo"),
                 StringParameter(value="bar"),
                 StringParameter(value="baz"),
-            ),
-            ("foo", "bar", "baz"),
+            ],
+            ["foo", "bar", "baz"],
         ),
     )
     def test_positional_native_multiple(self, params):
@@ -352,7 +353,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         with self.cursor(extra_params={"use_inline_params": False}) as cursor:
             result = cursor.execute(query, params).fetchone()
 
-        expected = [i.value if isinstance(i, DbsqlParameterBase) else i for i in params]
+        expected = [i.value if isinstance(i, IDbsqlParameter) else i for i in params]
         outcome = [result.foo, result.bar, result.baz]
 
         assert set(outcome) == set(expected)
