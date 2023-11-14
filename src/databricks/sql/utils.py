@@ -390,7 +390,7 @@ def _dbsqlparameter_names(params: List[TDbsqlParameter]) -> list[str]:
 
 
 def _generate_named_interpolation_values(
-    params: List[TDbsqlParameter]
+    params: List[TDbsqlParameter],
 ) -> dict[str, str]:
     """Returns a dictionary of the form {name: ":name"} for each parameter in params"""
 
@@ -400,8 +400,7 @@ def _generate_named_interpolation_values(
 
 
 def _may_contain_inline_positional_markers(operation: str) -> bool:
-    """Check for the presence of `%s` in the operation string.
-    """
+    """Check for the presence of `%s` in the operation string."""
 
     interpolated = operation.replace("%s", "?")
     return interpolated != operation

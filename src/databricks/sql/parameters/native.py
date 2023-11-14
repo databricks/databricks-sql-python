@@ -15,8 +15,6 @@ from enum import Enum, auto
 from typing import Dict, List, Union
 
 
-
-
 class ParameterApproach(Enum):
     INLINE = 1
     NATIVE = 2
@@ -54,10 +52,10 @@ class DatabricksSupportedType(Enum):
     MAP = auto()
     STRUCT = auto()
 
+
 TAllowedParameterValue = Union[
     str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
 ]
-
 
 
 class DbsqlParameterBase:
@@ -567,9 +565,6 @@ def dbsql_parameter_from_primitive(
             f"Could not infer parameter type from value: {value} - {type(value)} \n"
             "Please specify the type explicitly."
         )
-    
-
-
 
 
 TDbsqlParameter = Union[
@@ -589,11 +584,9 @@ TDbsqlParameter = Union[
 ]
 
 
-
 TParameterList = List[Union[TDbsqlParameter, TAllowedParameterValue]]
 TParameterDict = Dict[str, TAllowedParameterValue]
 TParameterCollection = Union[TParameterList, TParameterDict]
-
 
 
 _all__ = [
