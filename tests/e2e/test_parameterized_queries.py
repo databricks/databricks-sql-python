@@ -10,16 +10,26 @@ from databricks.sql.exc import DatabaseError
 import pytest
 import pytz
 
-from databricks.sql import Error
-from databricks.sql.exc import NotSupportedError
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.parameters import (
-    TYPE_MAP,
-    DbsqlParameter,
-    DbSqlType,
     ParameterApproach,
     ParameterStructure,
-    calculate_decimal_cast_string,
+    DecimalParameter,
+    _INFERENCE_TYPE_MAP,
+    TDbsqlParameter,
+    StringParameter,
+    VoidParameter,
+    StringParameter,
+    IntegerParameter,
+    BigIntegerParameter,
+    BooleanParameter,
+    DateParameter,
+    DoubleParameter,
+    FloatParameter,
+    SmallIntParameter,
+    TimestampParameter,
+    TimestampNTZParameter,
+    TinyIntParameter,
+    DbsqlParameterBase
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
 
@@ -36,11 +46,14 @@ class Primitive(Enum):
     NONE = None
     BOOL = True
     INT = 50
+    BIGINT = 2147483648
     STRING = "Hello"
     DECIMAL = Decimal("1234.56")
     DATE = datetime.date(2023, 9, 6)
     TIMESTAMP = datetime.datetime(2023, 9, 6, 3, 14, 27, 843, tzinfo=pytz.UTC)
     DOUBLE = 3.14
+    FLOAT = 3.15
+    SMALLINT = 51
 
 
 class T(Enum):
@@ -69,9 +82,9 @@ decimal_value_custom_type_combinations = [
     (Decimal("12345678912345678912345678912345678912"), T.DECIMAL_38_0),
 ]
 
-# This generates a list of tuples of (Primitive, DbSqlType)
+# This generates a list of tuples of (Primitive, TDbsqlParameter)
 primitive_dbsqltype_combinations = [
-    (prim, TYPE_MAP.get(type(prim))) for prim in Primitive
+    (prim, _INFERENCE_TYPE_MAP.get(type(prim.value))) for prim in Primitive
 ]
 
 both_paramstyles = pytest.mark.parametrize(
@@ -227,7 +240,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         If primitive is Primitive.DOUBLE than an extra quantize step is performed before
         making the assertion.
         """
-        if expected == Primitive.DOUBLE:
+        if expected in (Primitive.DOUBLE, Primitive.FLOAT):
             return self._quantize(actual) == self._quantize(expected.value)
 
         return actual == expected.value
@@ -236,7 +249,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     @pytest.mark.parametrize(
         "approach,paramstyle,parameter_structure", approach_paramstyle_combinations
     )
-    def test_primitive_with_inferrence(
+    def test_primitive_single(
         self, approach, paramstyle, parameter_structure, primitive: Primitive
     ):
         """When ParameterApproach.INLINE is passed, inferrence will not be used.
@@ -252,38 +265,35 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         assert self._eq(result.col, primitive)
 
-    @pytest.mark.parametrize("primitive", Primitive)
-    @pytest.mark.parametrize(
-        "parameter_structure", (ParameterStructure.NAMED, ParameterStructure.POSITIONAL)
-    )
-    def test_dbsqlparam_with_inferrence(
-        self, primitive: Primitive, parameter_structure: ParameterStructure
-    ):
-        dbsql_param = DbsqlParameter(
-            value=primitive.value,
-            name="p" if parameter_structure == ParameterStructure.NAMED else None,
-            type=None,
-        )
-        params = [dbsql_param]
-        result = self._get_one_result(
-            params, ParameterApproach.NATIVE, ParamStyle.NAMED, parameter_structure
-        )
-        assert self._eq(result.col, primitive)
 
-    @pytest.mark.parametrize("primitive,dbsqltype", primitive_dbsqltype_combinations)
     @pytest.mark.parametrize(
         "parameter_structure", (ParameterStructure.NAMED, ParameterStructure.POSITIONAL)
     )
-    def test_dbsqlparam_explicit(
+    @pytest.mark.parametrize(
+        "primitive,dbsql_parameter_cls",
+        [
+            (Primitive.NONE, VoidParameter),
+            (Primitive.BOOL, BooleanParameter),
+            (Primitive.INT, IntegerParameter),
+            (Primitive.BIGINT, BigIntegerParameter),
+            (Primitive.STRING, StringParameter),
+            (Primitive.DECIMAL, DecimalParameter),
+            (Primitive.DATE, DateParameter),
+            (Primitive.TIMESTAMP, TimestampParameter),
+            (Primitive.DOUBLE, DoubleParameter),
+            (Primitive.FLOAT, FloatParameter),
+            (Primitive.SMALLINT, SmallIntParameter),
+        ],
+    )
+    def test_dbsqlparameter_single(
         self,
         primitive: Primitive,
-        dbsqltype: DbSqlType,
+        dbsql_parameter_cls: TDbsqlParameter,
         parameter_structure: ParameterStructure,
     ):
-        dbsql_param = DbsqlParameter(
+        dbsql_param = dbsql_parameter_cls(
             value=primitive.value,
             name="p" if parameter_structure == ParameterStructure.NAMED else None,
-            type=dbsqltype,
         )
 
         params = [dbsql_param]
@@ -291,22 +301,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             params, ParameterApproach.NATIVE, ParamStyle.NAMED, parameter_structure
         )
         assert self._eq(result.col, primitive)
-
-    @pytest.mark.parametrize("value, dbsqltype", decimal_value_custom_type_combinations)
-    @pytest.mark.parametrize(
-        "parameter_structure", (ParameterStructure.NAMED, ParameterStructure.POSITIONAL)
-    )
-    def test_dbsqlparam_custom_type(self, value, dbsqltype, parameter_structure):
-        dbsql_param = DbsqlParameter(
-            name="p" if parameter_structure == ParameterStructure.NAMED else None,
-            value=value,
-            type=dbsqltype,
-        )
-        params = [dbsql_param]
-        result = self._get_one_result(
-            params, ParameterApproach.NATIVE, ParamStyle.NAMED, parameter_structure
-        )
-        assert result.col == value
 
     @pytest.mark.parametrize("use_inline_params", (True, False, "silent"))
     def test_use_inline_off_by_default_with_warning(self, use_inline_params, caplog):
@@ -345,14 +339,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         "params",
         (
             (
-                DbsqlParameter(value="foo"),
-                DbsqlParameter(value="bar"),
-                DbsqlParameter(value="baz"),
-            ),
-            (
-                DbsqlParameter(value="foo", type=DbSqlType.STRING),
-                DbsqlParameter(value="bar", type=DbSqlType.STRING),
-                DbsqlParameter(value="baz", type=DbSqlType.STRING),
+                StringParameter(value="foo"),
+                StringParameter(value="bar"),
+                StringParameter(value="baz"),
             ),
             ("foo", "bar", "baz"),
         ),
@@ -363,18 +352,22 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         with self.cursor(extra_params={"use_inline_params": False}) as cursor:
             result = cursor.execute(query, params).fetchone()
 
-        expected = [i.value if isinstance(i, DbsqlParameter) else i for i in params]
+        expected = [i.value if isinstance(i, DbsqlParameterBase) else i for i in params]
         outcome = [result.foo, result.bar, result.baz]
 
         assert set(outcome) == set(expected)
 
 
-def test_calculate_decimal_cast_string():
-    assert calculate_decimal_cast_string(Decimal("10.00")) == "DECIMAL(4,2)"
-    assert (
-        calculate_decimal_cast_string(Decimal("123456789123456789.123456789123456789"))
-        == "DECIMAL(36,18)"
-    )
+@pytest.mark.parametrize(
+    "value,expected",
+    (
+        (Decimal("10.00"), "DECIMAL(4,2)"),
+        (Decimal("123456789123456789.123456789123456789"), "DECIMAL(36,18)"),
+    ),
+)
+def test_calculate_decimal_cast_string(value, expected):
+    p = DecimalParameter(value)
+    assert p._cast_expr() == expected
 
 
 class TestInlineParameterSyntax(PySQLPytestTestCase):
@@ -436,8 +429,8 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         """
         params = {"one": "%(one)s"}
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
-                result = cursor.execute(query, parameters=params).fetchone()
-                print('hello')
+            result = cursor.execute(query, parameters=params).fetchone()
+            print("hello")
 
     def test_native_ordinals_dont_break_sql(self):
         """This test accompanies test_inline_ordinals_can_break_sql to prove that ordinal

@@ -25,9 +25,12 @@ from databricks.sql.utils import (
 from databricks.sql.parameters import (
     ParameterApproach,
     ParameterStructure,
-    DbsqlParameter,
-    ListOfParameters,
-    DictOfParameters,
+    TDbsqlParameter,
+    TParameterDict,
+    TParameterList,
+    DbsqlParameterBase,
+    TParameterCollection,
+    dbsql_parameter_from_primitive
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -416,7 +419,7 @@ class Cursor:
             raise Error("There is no active result set")
 
     def _determine_parameter_approach(
-        self, params: Optional[Union[ListOfParameters, DictOfParameters]] = None
+        self, params: Optional[TParameterCollection] = None
     ) -> ParameterApproach:
         """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
 
@@ -439,15 +442,15 @@ class Cursor:
         else:
             return ParameterApproach.NATIVE
 
-    def _only_dbsql_parameters_in_list(self, params: ListOfParameters) -> bool:
+    def _only_dbsql_parameters_in_list(self, params: TParameterList) -> bool:
         """Return True if all members of the list are DbsqlParameter instances"""
-        return all([isinstance(i, DbsqlParameter) for i in params])
+        return all([isinstance(i, DbsqlParameterBase) for i in params])
 
-    def _all_dbsql_parameters_are_named(self, params: List[DbsqlParameter]) -> bool:
+    def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
 
-    def _list_of_params_can_use_named_structure(self, params: ListOfParameters) -> bool:
+    def _list_of_params_can_use_named_structure(self, params: TParameterList) -> bool:
         """A list of parameters can use the named ParameterStructure if every member of
         the list is a DbsqlParameter type and every member has a non-null .name attribute.
 
@@ -460,7 +463,7 @@ class Cursor:
 
     def _determine_parameter_structure(
         self,
-        parameters: Optional[Union[ListOfParameters, DictOfParameters]],
+        parameters: Optional[TParameterCollection],
     ) -> ParameterStructure:
 
         if parameters is None:
@@ -502,34 +505,30 @@ class Cursor:
         return rendered_statement, NO_NATIVE_PARAMS
 
     def _prepare_dbsql_params_from_list(
-        self, params: ListOfParameters
-    ) -> List[DbsqlParameter]:
+        self, params: TParameterList
+    ) -> List[TDbsqlParameter]:
         """Return a list of DbsqlParameter objects from the passed list of params"""
 
         output = []
         for p in params:
-            if isinstance(p, DbsqlParameter):
+            if isinstance(p, DbsqlParameterBase):
                 output.append(p)
             else:
-                output.append(DbsqlParameter(value=p))
+                output.append(dbsql_parameter_from_primitive(value=p))
 
         return output
 
     def _prepare_dbsql_params_from_dict(
-        self, params: DictOfParameters
-    ) -> List[DbsqlParameter]:
+        self, params: TParameterDict
+    ) -> List[TDbsqlParameter]:
         """Return a  list of DbsqlParameter objects from the passed dictionary"""
 
-        output = []
-        for name, value in params.items():
-            output.append(DbsqlParameter(name=name, value=value))
-
-        return output
+        return [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
 
     def _prepare_native_parameters(
         self,
         stmt: str,
-        params: Optional[Union[ListOfParameters, DictOfParameters]],
+        params: Optional[TParameterCollection],
         param_structure: ParameterStructure,
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
@@ -722,7 +721,7 @@ class Cursor:
     def execute(
         self,
         operation: str,
-        parameters: Optional[Union[ListOfParameters, DictOfParameters]] = None,
+        parameters: Optional[TParameterCollection] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.

@@ -1,8 +1,7 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, TypeVar, Union, Type, TypedDict
-from dataclasses import dataclass
+from typing import Dict, List, Optional, TypeVar, Union, Type
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -61,94 +60,6 @@ InferrableType = TypeVar(
     type(None),
 )
 
-
-@dataclass
-class CastExpression:
-    literal: Union[None, str]
-    as_expr: str
-
-
-class BaseCastExpressionGenerator:
-    def __init__(self, dbsql_supported_type: DatabricksSupportedType):
-        self.default_cast_expr = dbsql_supported_type.name
-
-    def tspark_value(self, value: InferrableType):
-        """Return a TSparkParameterValue object given an inferrable value
-        """
-
-        return TSparkParameterValue(stringValue=str(value))
-
-    def generate(self, dbsql_parameter: "DbsqlParameter") -> CastExpression:
-        """Generate a cast expression given an instance of DbsqlParameter
-
-        This method can be overridden by subclasses to provide custom casting logic based on
-        the value of dbsql_parameter.
-        """
-
-        this_cast_expr = CastExpression(self.tspark_value(dbsql_parameter.value), self.default_cast_expr )
-
-        return this_cast_expr
-
-
-class DecimalCastExpressionGenerator(BaseCastExpressionGenerator):
-    """Override the default cast expression for Decimal types"""
-
-    def __init__(self):
-        pass
-
-    def generate(self, dbsql_parameter: "DbsqlParameter") -> CastExpression:
-        literal = self.tspark_value(dbsql_parameter.value)
-        cast_expr = calculate_decimal_cast_string(literal)
-
-        this_cast_expr = CastExpression(literal, cast_expr)
-
-        return this_cast_expr
-
-
-class VoidCastExpressionGenerator(BaseCastExpressionGenerator):
-    """Override the default cast expression for Void
-
-    We don't send a value for VOID types, so we need to override the default behavior
-    """
-
-    def __init__(self):
-        pass
-
-    def generate(self, dbsql_parameter: "DbsqlParameter") -> CastExpression:
-        literal = None
-        cast_expr = DatabricksSupportedType.VOID.name
-
-        this_cast_expr = CastExpression(literal, cast_expr)
-
-        return this_cast_expr
-
-
-
-class DbsqlParameterType(Enum):
-    """These are the possible values that can be passed to DbsqlParameter.type
-
-    Every name is a DatabricksSupportedType member name. This is a subset of DatabricksSupportedType
-    since parameters are not supported for all types
-
-    Every value is a sub-class of BaseCastExpressionGenerator
-    """
-
-    BIGINT = BaseCastExpressionGenerator(DatabricksSupportedType.BIGINT)
-    BOOLEAN = BaseCastExpressionGenerator(DatabricksSupportedType.BOOLEAN)
-    DATE = BaseCastExpressionGenerator(DatabricksSupportedType.DATE)
-    DECIMAL = DecimalCastExpressionGenerator()
-    DOUBLE = BaseCastExpressionGenerator(DatabricksSupportedType.DOUBLE)
-    FLOAT = BaseCastExpressionGenerator(DatabricksSupportedType.FLOAT)
-    INT = BaseCastExpressionGenerator(DatabricksSupportedType.INT)
-    VOID = VoidCastExpressionGenerator()
-    SMALLINT = BaseCastExpressionGenerator(DatabricksSupportedType.SMALLINT)
-    STRING = BaseCastExpressionGenerator(DatabricksSupportedType.STRING)
-    TIMESTAMP = BaseCastExpressionGenerator(DatabricksSupportedType.TIMESTAMP)
-    TIMESTAMP_NTZ = BaseCastExpressionGenerator(DatabricksSupportedType.TIMESTAMP_NTZ)
-    TINYINT = BaseCastExpressionGenerator(DatabricksSupportedType.TINYINT)
-
-
-
 class DbSqlType(Enum):
     """The values of this enumeration are passed as literals to be used in a CAST
     evaluation by the thrift server.
@@ -169,100 +80,38 @@ class DbSqlType(Enum):
     VOID = "VOID"
 
 
-class DbsqlDynamicDecimalType:
-    def __init__(self, value):
+class DbsqlParameterBase:
+    """Parent class for IntegerParameter, DecimalParameter etc..
+
+    Each each instance that extends this base class should be capable of generating a TSparkParameter
+    It should know how to generate a cast expression based off its DatabricksSupportedType.
+
+    By default the cast expression should render the string value of it's `value` and the literal
+    name of its Databricks Supported Type
+
+    Interface should be:
+
+    from databricks.sql.parameters import DecimalParameter
+    param = DecimalParameter(value, scale=None, precision=None)
+    cursor.execute("SELECT ?",[param])
+
+    Or
+
+    from databricks.sql.parameters import IntegerParameter
+    param = IntegerParameter(42)
+    cursor.execute("SELECT ?", [param])
+    """
+
+    CAST_EXPR: str
+
+    def __init__(self, value: InferrableType, name: Optional[str] = None):
         self.value = value
-
-
-class TypeMap:
-    _TYPE_MAP = {
-        str: DbsqlParameterType.STRING,
-        int: DbsqlParameterType.INT,
-        float: DbsqlParameterType.FLOAT,
-        datetime.datetime: DbsqlParameterType.TIMESTAMP,
-        datetime.date: DbsqlParameterType.DATE,
-        bool: DbsqlParameterType.BOOLEAN,
-        decimal.Decimal: DbsqlParameterType.DECIMAL,
-        type(None): DbsqlParameterType.VOID,
-    }
-
-    def __init__(self):
-        pass
-
-    def get(self, value: InferrableType) -> DbsqlParameterType:
-        
-        if isinstance(value, int):
-            return self.resolve_databricks_sql_integer_type(value)
-        
-        this_type = type(value)
-        
-        return self._TYPE_MAP.get(this_type)
-    
-    @staticmethod
-    def resolve_databricks_sql_integer_type(integer):
-        """Returns DbsqlParameterType.INTE unless the passed int() requires a BIGINT.
-
-        Note: TINYINT is never inferred here because it is a rarely used type and clauses like LIMIT and OFFSET
-        cannot accept TINYINT bound parameter values. If you need to bind a TINYINT value, you can explicitly
-        declare its type in a DbsqlParameter object, which will bypass this inference logic.
-        """
-        if -128 <= integer <= 127:
-            # If DBR is ever updated to permit TINYINT values passed to LIMIT and OFFSET
-            # then we can change this line to return DbsqlParameterType.TINYINT
-            return DbsqlParameterType.INT
-        elif -2147483648 <= integer <= 2147483647:
-            return DbsqlParameterType.INT
-        else:
-            return DbsqlParameterType.BIGINT
-
-TYPE_MAP = {
-    str: DbsqlParameterType.STRING,
-    int: DbsqlParameterType.INT,
-    float: DbsqlParameterType.FLOAT,
-    datetime.datetime: DbsqlParameterType.TIMESTAMP,
-    datetime.date: DbsqlParameterType.DATE,
-    bool: DbsqlParameterType.BOOLEAN,
-    decimal.Decimal: DbsqlParameterType.DECIMAL,
-    type(None): DbsqlParameterType.VOID,
-}
-
-
-class DbsqlParameter:
-    def __init__(
-        self, name=None, value: InferrableType = None, type: Optional[DbsqlParameterType] = None
-    ):
         self.name = name
-        self.value = value
-        self._type = type
-        self._cast_expr: Union[str, None] = None
-        self._type_map = TypeMap()
-
-    @property
-    def type(self) -> DbsqlParameterType:
-        """The DbsqlParameterType of this parameter. If not set, it will be inferred from the value."""
-        if self._type is None:
-            self._infer_type()
-        return self._type  # type: ignore
-
-    @type.setter
-    def type(self, value: Type[Enum]) -> None:
-        self._type = value
-
-    def _infer_type(self):
-        known = self._type_map.get(self.value)
-        if not known:
-            raise NotSupportedError(
-                f"Could not infer parameter type from value: {self.value} - {type(self.value)} \n"
-                "Please specify the type explicitly."
-            )
-        self._type = known
-
 
     def as_tspark_param(self, named: bool) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
 
-        cast_expression: CastExpression = self.type.value.generate(self)
-        tsp = TSparkParameter(value=cast_expression.literal, type=cast_expression.as_expr)
+        tsp = TSparkParameter(value=self._tspark_param_value(), type=self._cast_expr())
 
         if named:
             tsp.name = self.name
@@ -271,14 +120,182 @@ class DbsqlParameter:
             tsp.ordinal = True
         return tsp
 
+    def _tspark_param_value(self):
+        return TSparkParameterValue(stringValue=str(self.value))
+
+    def _cast_expr(self):
+        return self.CAST_EXPR
+
     def __str__(self):
-        return f"DbsqlParameter(name={self.name}, value={self.value}, type={self.type.value})"
+        return f"{type(self)}(name={self.name}, value={self.value}, type={self.type.value})"
 
     def __repr__(self):
         return self.__str__()
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+
+class IntegerParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.INT.name
+
+
+class StringParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.STRING.name
+
+
+class BigIntegerParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.BIGINT.name
+
+
+class BooleanParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.BOOLEAN.name
+
+
+class DateParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.DATE.name
+
+
+class DoubleParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.DOUBLE.name
+
+
+class FloatParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.FLOAT.name
+
+
+class VoidParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.VOID.name
+
+    def _tspark_param_value(self):
+        """For Void types, the TSparkParameter.value should be a Python NoneType"""
+        return None
+
+
+class SmallIntParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.SMALLINT.name
+
+
+class TimestampParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.TIMESTAMP.name
+
+
+class TimestampNTZParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.TIMESTAMP_NTZ.name
+
+
+class TinyIntParameter(DbsqlParameterBase):
+    CAST_EXPR = DatabricksSupportedType.TINYINT.name
+
+
+class DecimalParameter(DbsqlParameterBase):
+    CAST_EXPR = "DECIMAL({},{})"
+
+    def __init__(
+        self,
+        value: decimal.Decimal,
+        name: Optional[str] = None,
+        scale: Optional[int] = None,
+        precision: Optional[int] = None,
+    ):
+        super().__init__(value=value, name=name)
+        self.value = value
+        self.scale = scale
+        self.precision = precision
+
+        if not self.valid_scale_and_precision():
+            raise ValueError(
+                "DecimalParameter requires both or none of scale and precision to be set"
+            )
+
+    def valid_scale_and_precision(self):
+        if (self.scale is None and self.precision is None) or (
+            isinstance(self.scale, int) and isinstance(self.precision, int)
+        ):
+            return True
+        else:
+            return False
+
+    def _cast_expr(self):
+        if self.scale and self.precision:
+            return self.CAST_EXPR.format(self.scale, self.precision)
+        else:
+            return self.calculate_decimal_cast_string(self.value)
+
+    def calculate_decimal_cast_string(self, input: decimal.Decimal) -> str:
+        """Returns the smallest SQL cast argument that can contain the passed decimal
+
+        Example:
+            Input:   Decimal("1234.5678")
+            Output:  DECIMAL(8,4)
+        """
+
+        string_decimal = str(input)
+
+        if string_decimal.startswith("0."):
+            # This decimal is less than 1
+            overall = after = len(string_decimal) - 2
+        elif "." not in string_decimal:
+            # This decimal has no fractional component
+            overall = len(string_decimal)
+            after = 0
+        else:
+            # This decimal has both whole and fractional parts
+            parts = string_decimal.split(".")
+            parts_lengths = [len(i) for i in parts]
+            before, after = parts_lengths[:2]
+            overall = before + after
+
+        return self.CAST_EXPR.format(overall, after)
+
+TDbsqlParameter = TypeVar("TDbsqlParameter", bound=DbsqlParameterBase)
+
+_INFERENCE_TYPE_MAP = {
+    str: StringParameter,
+    float: FloatParameter,
+    datetime.datetime: TimestampParameter,
+    datetime.date: DateParameter,
+    bool: BooleanParameter,
+    decimal.Decimal: DecimalParameter,
+    type(None): VoidParameter,
+}
+
+
+def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
+    """Returns IntegerParameter unless the passed int() requires a BIGINT.
+
+    Note: TinyIntegerParameter is never inferred here because it is a rarely used type and clauses like LIMIT and OFFSET
+    cannot accept TINYINT bound parameter values.
+    """
+    if -128 <= value <= 127:
+        # If DBR is ever updated to permit TINYINT values passed to LIMIT and OFFSET
+        # then we can change this line to return TinyIntParameter
+        return IntegerParameter(value=value, name=name)
+    elif -2147483648 <= value <= 2147483647:
+        return IntegerParameter(value=value, name=name)
+    else:
+        return BigIntegerParameter(value=value, name=name)
+
+
+def dbsql_parameter_from_primitive(value: InferrableType, name: Optional[str] = None) -> TDbsqlParameter:
+    """Returns a DbsqlParameter subclass given an inferrable value
+
+    This is a convenience function that can be used to create a DbsqlParameter subclass
+    without having to explicitly import a subclass of DbsqlParameter.
+    """
+
+    t = type(value)
+    direct: Type[DbsqlParameterBase] = _INFERENCE_TYPE_MAP.get(t)
+
+    if direct is not None:
+        return direct(value=value, name=name)
+    elif isinstance(value, int):
+        return dbsql_parameter_from_int(value, name=name)
+
+    raise NotSupportedError(
+        f"Could not infer parameter type from value: {value} - {type(value)} \n"
+        "Please specify the type explicitly."
+    )
 
 
 PrimitiveType = TypeVar(
@@ -293,8 +310,9 @@ PrimitiveType = TypeVar(
     Type[None],
 )
 
-ListOfParameters = Union[List[DbsqlParameter], List[PrimitiveType]]
-DictOfParameters = Dict[str, PrimitiveType]
+TParameterList = Union[List[Type[DbsqlParameterBase]], List[PrimitiveType]]
+TParameterDict = Dict[str, PrimitiveType]
+TParameterCollection = Union[TParameterList, TParameterDict]
 
 
 def calculate_decimal_cast_string(input: decimal.Decimal) -> str:
@@ -322,6 +340,3 @@ def calculate_decimal_cast_string(input: decimal.Decimal) -> str:
         overall = before + after
 
     return f"DECIMAL({overall},{after})"
-
-
-

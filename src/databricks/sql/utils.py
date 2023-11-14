@@ -17,16 +17,13 @@ from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
     TSparkArrowResultLink,
-    TSparkParameter,
-    TSparkParameterValue,
     TSparkRowSetType,
 )
 
 from databricks.sql.parameters import (
-    DbSqlType,
-    DbsqlParameter,
-    ListOfParameters,
-    DictOfParameters,
+    TDbsqlParameter,
+    TParameterList,
+    TParameterDict,
     ParameterStructure,
 )
 
