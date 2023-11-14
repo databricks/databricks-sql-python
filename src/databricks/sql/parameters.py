@@ -64,35 +64,9 @@ TInferrable = Union[
 ]
 
 TAllowedParameterValue = Union[
-    str,
-    int,
-    float,
-    datetime.datetime,
-    datetime.date,
-    bool,
-    decimal.Decimal,
-    Type[None],
+    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
 ]
 
-
-class DbSqlType(Enum):
-    """The values of this enumeration are passed as literals to be used in a CAST
-    evaluation by the thrift server.
-    """
-
-    STRING = "STRING"
-    DATE = "DATE"
-    TIMESTAMP = "TIMESTAMP"
-    FLOAT = "FLOAT"
-    DECIMAL = "DECIMAL"
-    INTEGER = "INTEGER"
-    BIGINT = "BIGINT"
-    SMALLINT = "SMALLINT"
-    TINYINT = "TINYINT"
-    BOOLEAN = "BOOLEAN"
-    INTERVAL_MONTH = "INTERVAL MONTH"
-    INTERVAL_DAY = "INTERVAL DAY"
-    VOID = "VOID"
 
 
 class DbsqlParameterBase:
@@ -119,7 +93,7 @@ class DbsqlParameterBase:
 
     CAST_EXPR: str
 
-    def __init__(self, value: Any, name: Optional[str] = None):
+    def __init__(self, value: TAllowedParameterValue, name: Optional[str] = None):
         self.value: TAllowedParameterValue = value
         self.name = name
 
@@ -152,34 +126,202 @@ class DbsqlParameterBase:
 
 
 class IntegerParameter(DbsqlParameterBase):
+    """Wrap a Python `int` that will be bound to a Databricks SQL INT column."""
+
+    def __init__(self, value: int, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to an INT.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.INT.name
 
 
 class StringParameter(DbsqlParameterBase):
+    """Wrap a Python `str` that will be bound to a Databricks SQL STRING column."""
+
+    def __init__(self, value: str, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a STRING.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.STRING.name
 
 
 class BigIntegerParameter(DbsqlParameterBase):
+    """Wrap a Python `int` that will be bound to a Databricks SQL BIGINT column."""
+
+    def __init__(self, value: int, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a BIGINT.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.BIGINT.name
 
 
 class BooleanParameter(DbsqlParameterBase):
+    """Wrap a Python `bool` that will be bound to a Databricks SQL BOOLEAN column."""
+
+    def __init__(self, value: bool, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a BOOLEAN.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.BOOLEAN.name
 
 
 class DateParameter(DbsqlParameterBase):
+    """Wrap a Python `date` that will be bound to a Databricks SQL DATE column."""
+
+    def __init__(self, value: datetime.date, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a DATE.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.DATE.name
 
 
 class DoubleParameter(DbsqlParameterBase):
+    """Wrap a Python `float` that will be bound to a Databricks SQL DOUBLE column."""
+
+    def __init__(self, value: float, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a DOUBLE.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.DOUBLE.name
 
 
 class FloatParameter(DbsqlParameterBase):
+    """Wrap a Python `float` that will be bound to a Databricks SQL FLOAT column."""
+
+    def __init__(self, value: float, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a FLOAT.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.FLOAT.name
 
 
 class VoidParameter(DbsqlParameterBase):
+    """Wrap a Python `None` that will be bound to a Databricks SQL VOID type."""
+
+    def __init__(self, value: None, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a VOID.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.VOID.name
 
     def _tspark_param_value(self):
@@ -188,22 +330,109 @@ class VoidParameter(DbsqlParameterBase):
 
 
 class SmallIntParameter(DbsqlParameterBase):
+    """Wrap a Python `int` that will be bound to a Databricks SQL SMALLINT type."""
+
+    def __init__(self, value: int, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a SMALLINT.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.SMALLINT.name
 
 
 class TimestampParameter(DbsqlParameterBase):
+    """Wrap a Python `datetime` that will be bound to a Databricks SQL TIMESTAMP type."""
+
+    def __init__(self, value: datetime.datetime, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a TIMESTAMP.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP.name
 
 
 class TimestampNTZParameter(DbsqlParameterBase):
+    """Wrap a Python `datetime` that will be bound to a Databricks SQL TIMESTAMP_NTZ type."""
+
+    def __init__(self, value: datetime.datetime, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a TIMESTAMP_NTZ.
+            If it contains a timezone, that info will be lost.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP_NTZ.name
 
 
 class TinyIntParameter(DbsqlParameterBase):
+    """Wrap a Python `int` that will be bound to a Databricks SQL TINYINT type."""
+
+    def __init__(self, value: int, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a TINYINT.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        super().__init__(value=value, name=name)
+
     CAST_EXPR = DatabricksSupportedType.TINYINT.name
 
 
 class DecimalParameter(DbsqlParameterBase):
+    """Wrap a Python `Decimal` that will be bound to a Databricks SQL DECIMAL type."""
+
     CAST_EXPR = "DECIMAL({},{})"
 
     def __init__(
@@ -213,8 +442,31 @@ class DecimalParameter(DbsqlParameterBase):
         scale: Optional[int] = None,
         precision: Optional[int] = None,
     ):
+        """
+        If set, `scale` and `precision` must both be set. If neither is set, the value
+        will be casted to the smallest possible DECIMAL type that can contain it.
+
+        :value:
+            The value to bind for this parameter. This will be casted to a DECIMAL.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        :scale:
+            The maximum precision (total number of digits) of the number between 1 and 38.
+        :precision:
+            The number of digits to the right of the decimal point.
+        """
         super().__init__(value=value, name=name)
-        self.value = value
+        self.value: decimal.Decimal = value
         self.scale = scale
         self.precision = precision
 
@@ -265,22 +517,6 @@ class DecimalParameter(DbsqlParameterBase):
 
 
 TDbsqlParameter = Union[
-    Type[IntegerParameter],
-    Type[StringParameter],
-    Type[BigIntegerParameter],
-    Type[BooleanParameter],
-    Type[DateParameter],
-    Type[DoubleParameter],
-    Type[FloatParameter],
-    Type[VoidParameter],
-    Type[SmallIntParameter],
-    Type[TimestampParameter],
-    Type[TimestampNTZParameter],
-    Type[TinyIntParameter],
-    Type[DecimalParameter],
-]
-
-IDbsqlParameter = Union[
     IntegerParameter,
     StringParameter,
     BigIntegerParameter,
@@ -295,32 +531,6 @@ IDbsqlParameter = Union[
     TinyIntParameter,
     DecimalParameter,
 ]
-
-TDbsqlParameterReturn = Union[
-    IntegerParameter,
-    StringParameter,
-    BigIntegerParameter,
-    BooleanParameter,
-    DateParameter,
-    DoubleParameter,
-    FloatParameter,
-    VoidParameter,
-    SmallIntParameter,
-    TimestampParameter,
-    TimestampNTZParameter,
-    TinyIntParameter,
-    DecimalParameter,
-]
-
-_INFERENCE_TYPE_MAP = {
-    str: StringParameter,
-    float: FloatParameter,
-    datetime.datetime: TimestampParameter,
-    datetime.date: DateParameter,
-    bool: BooleanParameter,
-    decimal.Decimal: DecimalParameter,
-    type(None): VoidParameter,
-}
 
 
 def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
@@ -341,15 +551,14 @@ def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
 
 def dbsql_parameter_from_primitive(
     value: IInferrable, name: Optional[str] = None
-) -> IDbsqlParameter:
+) -> TDbsqlParameter:
     """Returns a DbsqlParameter subclass given an inferrable value
 
     This is a convenience function that can be used to create a DbsqlParameter subclass
     without having to explicitly import a subclass of DbsqlParameter.
     """
 
-
-    # This series of isinstance calls are required for mypy not to raise
+    # This series of type checks are required for mypy not to raise
     # havoc. We can't use TYPE_INFERRENCE_MAP because mypy doesn't trust
     # its logic
 
@@ -382,33 +591,6 @@ PrimitiveType = Union[
 ]
 
 
-TParameterList = List[Union[IDbsqlParameter, IInferrable]]
+TParameterList = List[Union[TDbsqlParameter, IInferrable]]
 TParameterDict = Dict[str, PrimitiveType]
 TParameterCollection = Union[TParameterList, TParameterDict]
-
-
-def calculate_decimal_cast_string(input: decimal.Decimal) -> str:
-    """Returns the smallest SQL cast argument that can contain the passed decimal
-
-    Example:
-        Input:   Decimal("1234.5678")
-        Output:  DECIMAL(8,4)
-    """
-
-    string_decimal = str(input)
-
-    if string_decimal.startswith("0."):
-        # This decimal is less than 1
-        overall = after = len(string_decimal) - 2
-    elif "." not in string_decimal:
-        # This decimal has no fractional component
-        overall = len(string_decimal)
-        after = 0
-    else:
-        # This decimal has both whole and fractional parts
-        parts = string_decimal.split(".")
-        parts_lengths = [len(i) for i in parts]
-        before, after = parts_lengths[:2]
-        overall = before + after
-
-    return f"DECIMAL({overall},{after})"

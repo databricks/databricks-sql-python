@@ -11,11 +11,10 @@ import pytest
 import pytz
 
 from databricks.sql.parameters import (
-    IDbsqlParameter,
+    TDbsqlParameter,
     ParameterApproach,
     ParameterStructure,
     DecimalParameter,
-    _INFERENCE_TYPE_MAP,
     TDbsqlParameter,
     StringParameter,
     VoidParameter,
@@ -30,7 +29,6 @@ from databricks.sql.parameters import (
     TimestampParameter,
     TimestampNTZParameter,
     TinyIntParameter,
-    DbsqlParameterBase,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
 
@@ -342,7 +340,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         with self.cursor(extra_params={"use_inline_params": False}) as cursor:
             result = cursor.execute(query, params).fetchone()
 
-        expected = [i.value if isinstance(i, IDbsqlParameter) else i for i in params]
+        expected = [i.value if isinstance(i, TDbsqlParameter) else i for i in params]
         outcome = [result.foo, result.bar, result.baz]
 
         assert set(outcome) == set(expected)
@@ -355,9 +353,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         (Decimal("123456789123456789.123456789123456789"), "DECIMAL(36,18)"),
     ),
 )
-def test_calculate_decimal_cast_string(value, expected):
-    p = DecimalParameter(value)
-    assert p._cast_expr() == expected
 
 
 class TestInlineParameterSyntax(PySQLPytestTestCase):

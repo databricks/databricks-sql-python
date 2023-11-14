@@ -25,7 +25,7 @@ from databricks.sql.utils import (
 from databricks.sql.parameters import (
     ParameterApproach,
     ParameterStructure,
-    IDbsqlParameter,
+    TDbsqlParameter,
     IInferrable,
     TParameterDict,
     TParameterList,
@@ -442,21 +442,21 @@ class Cursor:
         else:
             return ParameterApproach.NATIVE
 
-    def _all_dbsql_parameters_are_named(self, params: List[IDbsqlParameter]) -> bool:
+    def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
 
     def _normalize_tparameterlist(
         self, params: TParameterList
-    ) -> List[IDbsqlParameter]:
+    ) -> List[TDbsqlParameter]:
         """Retains the same order as the input list.
         """
 
-        output: List[IDbsqlParameter] = []
+        output: List[TDbsqlParameter] = []
         for p in params:
             # use of get_args here is a workaround to a bug in mypy
             # https://github.com/python/mypy/issues/12155
-            if isinstance(p, get_args(Type[IDbsqlParameter])):
+            if isinstance(p, get_args(Type[TDbsqlParameter])):
                 output.append(p) # type: ignore
             elif isinstance(p, get_args(Type[IInferrable])):
                 output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
@@ -465,11 +465,11 @@ class Cursor:
 
 
     
-    def _normalize_tparameterdict(self, params: TParameterDict) -> List[IDbsqlParameter]:
+    def _normalize_tparameterdict(self, params: TParameterDict) -> List[TDbsqlParameter]:
         return [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
     
 
-    def _normalize_tparametercollection(self, params: Optional[TParameterCollection]) -> List[IDbsqlParameter]:
+    def _normalize_tparametercollection(self, params: Optional[TParameterCollection]) -> List[TDbsqlParameter]:
         if params is None:
             return []
         if isinstance(params, dict):
@@ -480,7 +480,7 @@ class Cursor:
 
     def _determine_parameter_structure(
         self,
-        parameters: List[IDbsqlParameter],
+        parameters: List[TDbsqlParameter],
     ) -> ParameterStructure:
             
         all_named = self._all_dbsql_parameters_are_named(parameters)
@@ -517,7 +517,7 @@ class Cursor:
     def _prepare_native_parameters(
         self,
         stmt: str,
-        params: List[IDbsqlParameter],
+        params: List[TDbsqlParameter],
         param_structure: ParameterStructure,
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
