@@ -1,13 +1,16 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Dict, List, Optional, TypeVar, Union, Type, Any, overload
+from typing import Optional, TYPE_CHECKING
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TSparkParameterValue,
 )
+
+if TYPE_CHECKING:
+    from databricks.sql.parameters._types import *
 
 
 class ParameterApproach(Enum):
@@ -46,27 +49,6 @@ class DatabricksSupportedType(Enum):
     ARRAY = auto()
     MAP = auto()
     STRUCT = auto()
-
-
-IInferrable = Union[
-    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
-]
-
-TInferrable = Union[
-    Type[str],
-    Type[int],
-    Type[float],
-    Type[datetime.datetime],
-    Type[datetime.date],
-    Type[bool],
-    Type[decimal.Decimal],
-    Type[None],
-]
-
-TAllowedParameterValue = Union[
-    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
-]
-
 
 
 class DbsqlParameterBase:
@@ -516,23 +498,6 @@ class DecimalParameter(DbsqlParameterBase):
         return self.CAST_EXPR.format(overall, after)
 
 
-TDbsqlParameter = Union[
-    IntegerParameter,
-    StringParameter,
-    BigIntegerParameter,
-    BooleanParameter,
-    DateParameter,
-    DoubleParameter,
-    FloatParameter,
-    VoidParameter,
-    SmallIntParameter,
-    TimestampParameter,
-    TimestampNTZParameter,
-    TinyIntParameter,
-    DecimalParameter,
-]
-
-
 def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
     """Returns IntegerParameter unless the passed int() requires a BIGINT.
 
@@ -586,11 +551,18 @@ def dbsql_parameter_from_primitive(
         )
 
 
-PrimitiveType = Union[
-    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
+_all__ = [
+    "IntegerParameter",
+    "StringParameter",
+    "BigIntegerParameter",
+    "BooleanParameter",
+    "DateParameter",
+    "DoubleParameter",
+    "FloatParameter",
+    "VoidParameter",
+    "SmallIntParameter",
+    "TimestampParameter",
+    "TimestampNTZParameter",
+    "TinyIntParameter",
+    "DecimalParameter",
 ]
-
-
-TParameterList = List[Union[TDbsqlParameter, IInferrable]]
-TParameterDict = Dict[str, PrimitiveType]
-TParameterCollection = Union[TParameterList, TParameterDict]
