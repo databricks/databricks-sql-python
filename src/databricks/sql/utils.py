@@ -22,6 +22,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 
 from databricks.sql.parameters import (
     TDbsqlParameter,
+    IDbsqlParameter,
     TParameterList,
     TParameterDict,
     TParameterCollection,
@@ -391,19 +392,16 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-def _dbsqlparameter_names(params: List[TDbsqlParameter]) -> list[str]:
+def _dbsqlparameter_names(params: List[IDbsqlParameter]) -> list[str]:
     return [p.name if p.name else "" for p in params]
 
 
 def _generate_named_interpolation_values(
-    params: TParameterCollection
+    params: List[IDbsqlParameter]
 ) -> dict[str, str]:
     """Returns a dictionary of the form {name: ":name"} for each parameter in params"""
 
-    if isinstance(params, dict):
-        names = params.keys()
-    elif isinstance(params, list):
-        names = _dbsqlparameter_names(params)  # type: ignore
+    names = _dbsqlparameter_names(params)
 
     return {name: f":{name}" for name in names}
 
@@ -447,7 +445,7 @@ def _may_contain_inline_positional_markers(operation: str) -> bool:
 
 
 def _interpolate_named_markers(
-    operation: str, parameters: TParameterCollection
+    operation: str, parameters: List[IDbsqlParameter]
 ) -> str:
     """Replace all instances of `%(param)s` in `operation` with `:param`.
 
@@ -473,7 +471,7 @@ def _interpolate_named_markers(
 
 def transform_paramstyle(
     operation: str,
-    parameters: TParameterCollection,
+    parameters: List[IDbsqlParameter],
     param_structure: ParameterStructure,
 ) -> str:
     """

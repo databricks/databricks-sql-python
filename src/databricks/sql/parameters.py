@@ -1,7 +1,7 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Dict, List, Optional, TypeVar, Union, Type, Any
+from typing import Dict, List, Optional, TypeVar, Union, Type, Any, overload
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -48,8 +48,19 @@ class DatabricksSupportedType(Enum):
     STRUCT = auto()
 
 
-TInferrable = Union[
+IInferrable = Union[
     str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
+]
+
+TInferrable = Union[
+    Type[str],
+    Type[int],
+    Type[float],
+    Type[datetime.datetime],
+    Type[datetime.date],
+    Type[bool],
+    Type[decimal.Decimal],
+    Type[None],
 ]
 
 TAllowedParameterValue = Union[
@@ -269,6 +280,22 @@ TDbsqlParameter = Union[
     Type[DecimalParameter],
 ]
 
+IDbsqlParameter = Union[
+    IntegerParameter,
+    StringParameter,
+    BigIntegerParameter,
+    BooleanParameter,
+    DateParameter,
+    DoubleParameter,
+    FloatParameter,
+    VoidParameter,
+    SmallIntParameter,
+    TimestampParameter,
+    TimestampNTZParameter,
+    TinyIntParameter,
+    DecimalParameter,
+]
+
 TDbsqlParameterReturn = Union[
     IntegerParameter,
     StringParameter,
@@ -313,15 +340,14 @@ def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
 
 
 def dbsql_parameter_from_primitive(
-    value: TInferrable, name: Optional[str] = None
-) -> TDbsqlParameterReturn:
+    value: IInferrable, name: Optional[str] = None
+) -> IDbsqlParameter:
     """Returns a DbsqlParameter subclass given an inferrable value
 
     This is a convenience function that can be used to create a DbsqlParameter subclass
     without having to explicitly import a subclass of DbsqlParameter.
     """
 
-    _cls: Optional[TDbsqlParameter] = None
 
     # This series of isinstance calls are required for mypy not to raise
     # havoc. We can't use TYPE_INFERRENCE_MAP because mypy doesn't trust
@@ -329,28 +355,26 @@ def dbsql_parameter_from_primitive(
 
     if isinstance(value, int):
         return dbsql_parameter_from_int(value, name=name)
-    if isinstance(value, str):
+    elif isinstance(value, str):
         return StringParameter(value=value, name=name)
-    if isinstance(value, float):
+    elif isinstance(value, float):
         return FloatParameter(value=value, name=name)
-    if isinstance(value, datetime.datetime):
+    elif isinstance(value, datetime.datetime):
         return TimestampParameter(value=value, name=name)
-    if isinstance(value, datetime.date):
+    elif isinstance(value, datetime.date):
         return DateParameter(value=value, name=name)
-    if isinstance(value, bool):
+    elif isinstance(value, bool):
         return BooleanParameter(value=value, name=name)
-    if isinstance(value, decimal.Decimal):
+    elif isinstance(value, decimal.Decimal):
         return DecimalParameter(value=value, name=name)
-    if value is None:
+    elif value is None:
         return VoidParameter(value=value, name=name)
 
-    if _cls is None:
+    else:
         raise NotSupportedError(
             f"Could not infer parameter type from value: {value} - {type(value)} \n"
             "Please specify the type explicitly."
         )
-
-    return _cls(value=value, name=name)
 
 
 PrimitiveType = Union[
@@ -358,7 +382,7 @@ PrimitiveType = Union[
 ]
 
 
-TParameterList = List[Union[TDbsqlParameter, PrimitiveType]]
+TParameterList = List[Union[IDbsqlParameter, IInferrable]]
 TParameterDict = Dict[str, PrimitiveType]
 TParameterCollection = Union[TParameterList, TParameterDict]
 

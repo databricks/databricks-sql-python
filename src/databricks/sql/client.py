@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, List, Optional, Any, Union
+from typing import Dict, Tuple, List, Optional, Any, Union, get_args, Type
 
 import pandas
 import pyarrow
@@ -25,12 +25,12 @@ from databricks.sql.utils import (
 from databricks.sql.parameters import (
     ParameterApproach,
     ParameterStructure,
-    TDbsqlParameter,
+    IDbsqlParameter,
+    IInferrable,
     TParameterDict,
     TParameterList,
-    DbsqlParameterBase,
     TParameterCollection,
-    dbsql_parameter_from_primitive
+    dbsql_parameter_from_primitive,
 )
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
@@ -419,7 +419,7 @@ class Cursor:
             raise Error("There is no active result set")
 
     def _determine_parameter_approach(
-        self, params: Optional[TParameterCollection] = None
+        self, params: Optional[TParameterCollection]
     ) -> ParameterApproach:
         """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
 
@@ -442,39 +442,49 @@ class Cursor:
         else:
             return ParameterApproach.NATIVE
 
-    def _only_dbsql_parameters_in_list(self, params: TParameterList) -> bool:
-        """Return True if all members of the list are DbsqlParameter instances"""
-        return all([isinstance(i, DbsqlParameterBase) for i in params])
-
-    def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
+    def _all_dbsql_parameters_are_named(self, params: List[IDbsqlParameter]) -> bool:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
 
-    def _list_of_params_can_use_named_structure(self, params: TParameterList) -> bool:
-        """A list of parameters can use the named ParameterStructure if every member of
-        the list is a DbsqlParameter type and every member has a non-null .name attribute.
-
-        Otherwise, the list can only use the positional ParameterStructure
+    def _normalize_tparameterlist(
+        self, params: TParameterList
+    ) -> List[IDbsqlParameter]:
+        """Retains the same order as the input list.
         """
 
-        return self._only_dbsql_parameters_in_list(
-            params
-        ) and self._all_dbsql_parameters_are_named(params)
+        output: List[IDbsqlParameter] = []
+        for p in params:
+            # use of get_args here is a workaround to a bug in mypy
+            # https://github.com/python/mypy/issues/12155
+            if isinstance(p, get_args(Type[IDbsqlParameter])):
+                output.append(p) # type: ignore
+            elif isinstance(p, get_args(Type[IInferrable])):
+                output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
+        
+        return output
+
+
+    
+    def _normalize_tparameterdict(self, params: TParameterDict) -> List[IDbsqlParameter]:
+        return [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
+    
+
+    def _normalize_tparametercollection(self, params: Optional[TParameterCollection]) -> List[IDbsqlParameter]:
+        if params is None:
+            return []
+        if isinstance(params, dict):
+            return self._normalize_tparameterdict(params)
+        if isinstance(params, list):
+            return self._normalize_tparameterlist(params)
+
 
     def _determine_parameter_structure(
         self,
-        parameters: Optional[TParameterCollection],
+        parameters: List[IDbsqlParameter],
     ) -> ParameterStructure:
-
-        if parameters is None:
-            return ParameterStructure.NONE
-
-        if not isinstance(parameters, (list, dict, tuple)):
-            raise TypeError("Parameters must be a list, tuple, or dict")
-
-        if isinstance(parameters, dict) or self._list_of_params_can_use_named_structure(
-            parameters
-        ):
+            
+        all_named = self._all_dbsql_parameters_are_named(parameters)
+        if all_named:
             return ParameterStructure.NAMED
         else:
             return ParameterStructure.POSITIONAL
@@ -504,31 +514,10 @@ class Cursor:
 
         return rendered_statement, NO_NATIVE_PARAMS
 
-    def _prepare_dbsql_params_from_list(
-        self, params: TParameterList
-    ) -> List[TDbsqlParameter]:
-        """Return a list of DbsqlParameter objects from the passed list of params"""
-
-        output = []
-        for p in params:
-            if isinstance(p, DbsqlParameterBase):
-                output.append(p)
-            else:
-                output.append(dbsql_parameter_from_primitive(value=p))
-
-        return output
-
-    def _prepare_dbsql_params_from_dict(
-        self, params: TParameterDict
-    ) -> List[TDbsqlParameter]:
-        """Return a  list of DbsqlParameter objects from the passed dictionary"""
-
-        return [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
-
     def _prepare_native_parameters(
         self,
         stmt: str,
-        params: Optional[TParameterCollection],
+        params: List[IDbsqlParameter],
         param_structure: ParameterStructure,
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
@@ -549,18 +538,7 @@ class Cursor:
         """
 
         stmt = stmt
-
-        if isinstance(params, dict):
-            dbsql_params = self._prepare_dbsql_params_from_dict(params)
-        if isinstance(params, (list, tuple)):
-            dbsql_params = self._prepare_dbsql_params_from_list(params)
-
-        output = []
-
-        for p in dbsql_params:
-            output.append(
-                p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
-            )
+        output = [p.as_tspark_param(named=param_structure == ParameterStructure.NAMED) for p in params]
 
         return stmt, output
 
@@ -756,7 +734,6 @@ class Cursor:
         """
 
         param_approach = self._determine_parameter_approach(parameters)
-        param_structure = self._determine_parameter_structure(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
             prepared_operation = operation
@@ -766,11 +743,13 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
+            normalized_parameters = self._normalize_tparametercollection(parameters)
+            param_structure = self._determine_parameter_structure(normalized_parameters)
             transformed_operation = transform_paramstyle(
-                operation, parameters, param_structure  # type: ignore
+                operation, normalized_parameters, param_structure  # type: ignore
             )
             prepared_operation, prepared_params = self._prepare_native_parameters(
-                transformed_operation, parameters, param_structure
+                transformed_operation, normalized_parameters, param_structure
             )
 
         self._check_not_closed()
