@@ -1,10 +1,11 @@
-from typing import Dict, Tuple, List, Optional, Any, Union
+from typing import Dict, Tuple, List, Optional, Any, Union, get_args, Type
 
 import pandas
 import pyarrow
 import requests
 import json
 import os
+import decimal
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -18,11 +19,21 @@ from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
-    named_parameters_to_tsparkparams,
     inject_parameters,
-    ParameterApproach,
     transform_paramstyle,
 )
+from databricks.sql.parameters.native import (
+    DbsqlParameterBase,
+    TDbsqlParameter,
+    TParameterDict,
+    TParameterList,
+    TParameterCollection,
+    ParameterStructure,
+    dbsql_parameter_from_primitive,
+    ParameterApproach,
+)
+
+
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -410,7 +421,7 @@ class Cursor:
             raise Error("There is no active result set")
 
     def _determine_parameter_approach(
-        self, params: Optional[Union[List, Dict[str, Any]]] = None
+        self, params: Optional[TParameterCollection]
     ) -> ParameterApproach:
         """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
 
@@ -432,6 +443,52 @@ class Cursor:
 
         else:
             return ParameterApproach.NATIVE
+
+    def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
+        """Return True if all members of the list have a non-null .name attribute"""
+        return all([i.name is not None for i in params])
+
+    def _normalize_tparameterlist(
+        self, params: TParameterList
+    ) -> List[TDbsqlParameter]:
+        """Retains the same order as the input list."""
+
+        output: List[TDbsqlParameter] = []
+        for p in params:
+            if isinstance(p, DbsqlParameterBase):
+                output.append(p)  # type: ignore
+            else:
+                output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
+
+        return output
+
+    def _normalize_tparameterdict(
+        self, params: TParameterDict
+    ) -> List[TDbsqlParameter]:
+        return [
+            dbsql_parameter_from_primitive(value=value, name=name)
+            for name, value in params.items()
+        ]
+
+    def _normalize_tparametercollection(
+        self, params: Optional[TParameterCollection]
+    ) -> List[TDbsqlParameter]:
+        if params is None:
+            return []
+        if isinstance(params, dict):
+            return self._normalize_tparameterdict(params)
+        if isinstance(params, list):
+            return self._normalize_tparameterlist(params)
+
+    def _determine_parameter_structure(
+        self,
+        parameters: List[TDbsqlParameter],
+    ) -> ParameterStructure:
+        all_named = self._all_dbsql_parameters_are_named(parameters)
+        if all_named:
+            return ParameterStructure.NAMED
+        else:
+            return ParameterStructure.POSITIONAL
 
     def _prepare_inline_parameters(
         self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]
@@ -459,7 +516,10 @@ class Cursor:
         return rendered_statement, NO_NATIVE_PARAMS
 
     def _prepare_native_parameters(
-        self, stmt: str, params: Optional[Union[List[Any], Dict[str, Any]]]
+        self,
+        stmt: str,
+        params: List[TDbsqlParameter],
+        param_structure: ParameterStructure,
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
 
@@ -479,9 +539,12 @@ class Cursor:
         """
 
         stmt = stmt
-        params = named_parameters_to_tsparkparams(params)  # type: ignore
+        output = [
+            p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
+            for p in params
+        ]
 
-        return stmt, params
+        return stmt, output
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -640,7 +703,7 @@ class Cursor:
     def execute(
         self,
         operation: str,
-        parameters: Optional[Union[List[Any], Dict[str, Any]]] = None,
+        parameters: Optional[TParameterCollection] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -654,10 +717,13 @@ class Cursor:
         The paramstyle for these approaches is different:
 
         If the connection was instantiated with use_inline_params=False, then parameters
-        should be given in PEP-249 `named` paramstyle like :param_name
+        should be given in PEP-249 `named` paramstyle like :param_name. Parameters passed by positionally
+        are indicated using a `?` in the query text.
 
         If the connection was instantiated with use_inline_params=True (default), then parameters
-        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s
+        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s. Parameters passed by positionally
+        are indicated using a `%s` marker in the query. Note: this approach is not recommended as it can break
+        your SQL query syntax and will be removed in a future release.
 
         ```python
         inline_operation = "SELECT * FROM table WHERE field = %(some_value)s"
@@ -667,8 +733,6 @@ class Cursor:
 
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
-
-        Note: if you pass a sequence of parameters in native mode, your query must use the `named` paramstyle
 
         :returns self
         """
@@ -683,12 +747,13 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
-            if isinstance(parameters, dict):
-                transformed_operation = transform_paramstyle(operation, parameters)
-            else:
-                transformed_operation = operation
+            normalized_parameters = self._normalize_tparametercollection(parameters)
+            param_structure = self._determine_parameter_structure(normalized_parameters)
+            transformed_operation = transform_paramstyle(
+                operation, normalized_parameters, param_structure  # type: ignore
+            )
             prepared_operation, prepared_params = self._prepare_native_parameters(
-                transformed_operation, parameters
+                transformed_operation, normalized_parameters, param_structure
             )
 
         self._check_not_closed()

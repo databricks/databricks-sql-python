@@ -7,7 +7,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, TypeVar
 
 import lz4.frame
 import pyarrow
@@ -17,18 +17,16 @@ from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
     TSparkArrowResultLink,
-    TSparkParameter,
-    TSparkParameterValue,
     TSparkRowSetType,
 )
 
+from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
+
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
+import logging
 
-class ParameterApproach(Enum):
-    INLINE = 1
-    NATIVE = 2
-    NONE = 3
+logger = logging.getLogger(__name__)
 
 
 class ResultSetQueue(ABC):
@@ -387,26 +385,84 @@ def inject_parameters(operation: str, parameters: Dict[str, str]):
     return operation % parameters
 
 
-def transform_paramstyle(operation: str, parameters: Dict[str, Any]) -> str:
+def _dbsqlparameter_names(params: List[TDbsqlParameter]) -> list[str]:
+    return [p.name if p.name else "" for p in params]
+
+
+def _generate_named_interpolation_values(
+    params: List[TDbsqlParameter],
+) -> dict[str, str]:
+    """Returns a dictionary of the form {name: ":name"} for each parameter in params"""
+
+    names = _dbsqlparameter_names(params)
+
+    return {name: f":{name}" for name in names}
+
+
+def _may_contain_inline_positional_markers(operation: str) -> bool:
+    """Check for the presence of `%s` in the operation string."""
+
+    interpolated = operation.replace("%s", "?")
+    return interpolated != operation
+
+
+def _interpolate_named_markers(
+    operation: str, parameters: List[TDbsqlParameter]
+) -> str:
+    """Replace all instances of `%(param)s` in `operation` with `:param`.
+
+    If `operation` contains no instances of `%(param)s` then the input string is returned unchanged.
+
+    ```
+    "SELECT * FROM table WHERE field = %(field)s and other_field = %(other_field)s"
+    ```
+
+    Yields
+
+    ```
+    SELECT * FROM table WHERE field = :field and other_field = :other_field
+    ```
+    """
+
+    try:
+        return operation % _generate_named_interpolation_values(parameters)
+    except TypeError:
+        # TypeError occurs if there are no %(param)s markers in the operation
+        return operation
+
+
+def transform_paramstyle(
+    operation: str,
+    parameters: List[TDbsqlParameter],
+    param_structure: ParameterStructure,
+) -> str:
     """
     Performs a Python string interpolation such that any occurence of `%(param)s` will be replaced with `:param`
 
     This utility function is built to assist users in the transition between the default paramstyle in
     this connector prior to version 3.0.0 (`pyformat`) and the new default paramstyle (`named`).
 
-    This method will fail if parameters is passed as a list.
-
     Args:
-        operation (str): The operation or SQL text to transform.
-        parameters (Dict[str, Any]): The parameters to use for the transformation.
+        operation: The operation or SQL text to transform.
+        parameters: The parameters to use for the transformation.
 
     Returns:
         str
     """
+    output = operation
+    if (
+        param_structure == ParameterStructure.POSITIONAL
+        and _may_contain_inline_positional_markers(operation)
+    ):
+        logger.warning(
+            "It looks like this query may contain un-named query markers like `%s`"
+            " This format is not supported when use_inline_params=False."
+            " Use `?` instead or set use_inline_params=True"
+        )
+    elif param_structure == ParameterStructure.NAMED:
+        output = _interpolate_named_markers(operation, parameters)
 
-    interpolation_values = {key: f":{key}" for key in parameters.keys()}
-
-    return operation % interpolation_values
+    return output
 
 
 def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
@@ -503,179 +559,3 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
             result[i] = None
 
     return pyarrow.array(result, type=arrow_type)
-
-
-class DbSqlType(Enum):
-    """The values of this enumeration are passed as literals to be used in a CAST
-    evaluation by the thrift server.
-    """
-
-    STRING = "STRING"
-    DATE = "DATE"
-    TIMESTAMP = "TIMESTAMP"
-    FLOAT = "FLOAT"
-    DECIMAL = "DECIMAL"
-    INTEGER = "INTEGER"
-    BIGINT = "BIGINT"
-    SMALLINT = "SMALLINT"
-    TINYINT = "TINYINT"
-    BOOLEAN = "BOOLEAN"
-    INTERVAL_MONTH = "INTERVAL MONTH"
-    INTERVAL_DAY = "INTERVAL DAY"
-    VOID = "VOID"
-
-
-class DbSqlParameter:
-    name: str
-    value: Any
-    type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum]
-
-    def __init__(self, name="", value=None, type=None):
-        self.name = name
-        self.value = value
-        self.type = type
-
-    def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-
-class DbsqlDynamicDecimalType:
-    def __init__(self, value):
-        self.value = value
-
-
-def named_parameters_to_dbsqlparams_v1(parameters: Dict[str, str]):
-    dbsqlparams = []
-    for name, parameter in parameters.items():
-        dbsqlparams.append(DbSqlParameter(name=name, value=parameter))
-    return dbsqlparams
-
-
-def named_parameters_to_dbsqlparams_v2(parameters: List[Any]):
-    dbsqlparams = []
-    for parameter in parameters:
-        if isinstance(parameter, DbSqlParameter):
-            dbsqlparams.append(parameter)
-        else:
-            dbsqlparams.append(DbSqlParameter(value=parameter))
-    return dbsqlparams
-
-
-def resolve_databricks_sql_integer_type(integer):
-    """Returns DbsqlType.INTEGER unless the passed int() requires a BIGINT.
-
-    Note: TINYINT is never inferred here because it is a rarely used type and clauses like LIMIT and OFFSET
-    cannot accept TINYINT bound parameter values. If you need to bind a TINYINT value, you can explicitly
-    declare its type in a DbsqlParameter object, which will bypass this inference logic.
-    """
-    if -128 <= integer <= 127:
-        # If DBR is ever updated to permit TINYINT values passed to LIMIT and OFFSET
-        # then we can change this line to return DbSqlType.TINYINT
-        return DbSqlType.INTEGER
-    elif -2147483648 <= integer <= 2147483647:
-        return DbSqlType.INTEGER
-    else:
-        return DbSqlType.BIGINT
-
-
-TYPE_INFERRENCE_LOOKUP_TABLE = {
-    str: DbSqlType.STRING,
-    int: DbSqlType.INTEGER,
-    float: DbSqlType.FLOAT,
-    datetime.datetime: DbSqlType.TIMESTAMP,
-    datetime.date: DbSqlType.DATE,
-    bool: DbSqlType.BOOLEAN,
-    Decimal: DbSqlType.DECIMAL,
-    type(None): DbSqlType.VOID,
-}
-
-
-def infer_types(params: list[DbSqlParameter]):
-    new_params = []
-
-    # cycle through each parameter we've been passed
-    for param in params:
-        _name: str = param.name
-        _value: Any = param.value
-        _type: Union[DbSqlType, DbsqlDynamicDecimalType, Enum, None]
-
-        if param.type:
-            _type = param.type
-        else:
-            # figure out what type to use
-            _type = TYPE_INFERRENCE_LOOKUP_TABLE.get(type(_value), None)
-            if not _type:
-                raise ValueError(
-                    f"Could not infer parameter type from {type(param.value)} - {param.value}"
-                )
-
-        # Decimal require special handling because one column type in Databricks can have multiple precisions
-        if _type == DbSqlType.DECIMAL:
-            cast_exp = calculate_decimal_cast_string(param.value)
-            _type = DbsqlDynamicDecimalType(cast_exp)
-
-        # int() requires special handling because one Python type can be cast to multiple SQL types (INT, BIGINT, TINYINT)
-        if _type == DbSqlType.INTEGER:
-            _type = resolve_databricks_sql_integer_type(param.value)
-
-        # VOID / NULL types must be passed in a unique way as TSparkParameters with no value
-        if _type == DbSqlType.VOID:
-            new_params.append(DbSqlParameter(name=_name, type=DbSqlType.VOID))
-            continue
-        else:
-            _value = str(param.value)
-
-        new_params.append(DbSqlParameter(name=_name, value=_value, type=_type))
-
-    return new_params
-
-
-def calculate_decimal_cast_string(input: Decimal) -> str:
-    """Returns the smallest SQL cast argument that can contain the passed decimal
-
-    Example:
-        Input:   Decimal("1234.5678")
-        Output:  DECIMAL(8,4)
-    """
-
-    string_decimal = str(input)
-
-    if string_decimal.startswith("0."):
-        # This decimal is less than 1
-        overall = after = len(string_decimal) - 2
-    elif "." not in string_decimal:
-        # This decimal has no fractional component
-        overall = len(string_decimal)
-        after = 0
-    else:
-        # This decimal has both whole and fractional parts
-        parts = string_decimal.split(".")
-        parts_lengths = [len(i) for i in parts]
-        before, after = parts_lengths[:2]
-        overall = before + after
-
-    return f"DECIMAL({overall},{after})"
-
-
-def named_parameters_to_tsparkparams(
-    parameters: Union[List[Any], Dict[str, str]]
-) -> List[TSparkParameter]:
-    tspark_params = []
-    if isinstance(parameters, dict):
-        dbsql_params = named_parameters_to_dbsqlparams_v1(parameters)
-    else:
-        dbsql_params = named_parameters_to_dbsqlparams_v2(parameters)
-    inferred_type_parameters = infer_types(dbsql_params)
-    for param in inferred_type_parameters:
-        # The only way to pass a VOID/NULL to DBR is to declare TSparkParameter without declaring
-        # its value or type arguments. If we set these to NoneType, the request will fail with a
-        # thrift transport error
-        if param.type == DbSqlType.VOID:
-            this_tspark_param = TSparkParameter(name=param.name)
-        else:
-            this_tspark_param_value = TSparkParameterValue(stringValue=param.value)
-            this_tspark_param = TSparkParameter(
-                type=param.type.value, name=param.name, value=this_tspark_param_value
-            )
-        tspark_params.append(this_tspark_param)
-    return tspark_params
