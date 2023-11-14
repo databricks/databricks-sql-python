@@ -1,7 +1,7 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Dict, List, Optional, TypeVar, Union, Type
+from typing import Dict, List, Optional, TypeVar, Union, Type, Any
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -48,8 +48,12 @@ class DatabricksSupportedType(Enum):
     STRUCT = auto()
 
 
-InferrableType = TypeVar(
-    "InferrableType",
+
+TInferrable = Union[
+    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, Type[None]
+]
+
+TAllowedParameterValue = Union[
     str,
     int,
     float,
@@ -57,8 +61,9 @@ InferrableType = TypeVar(
     datetime.date,
     bool,
     decimal.Decimal,
-    type(None),
-)
+    Type[None],
+]
+
 
 class DbSqlType(Enum):
     """The values of this enumeration are passed as literals to be used in a CAST
@@ -104,8 +109,8 @@ class DbsqlParameterBase:
 
     CAST_EXPR: str
 
-    def __init__(self, value: InferrableType, name: Optional[str] = None):
-        self.value = value
+    def __init__(self, value: Any, name: Optional[str] = None):
+        self.value: TAllowedParameterValue = value
         self.name = name
 
     def as_tspark_param(self, named: bool) -> TSparkParameter:
@@ -137,34 +142,50 @@ class DbsqlParameterBase:
 
 
 class IntegerParameter(DbsqlParameterBase):
+    def __init__(self, value: int, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.INT.name
 
 
 class StringParameter(DbsqlParameterBase):
+    def __init__(self, value: str, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.STRING.name
 
 
 class BigIntegerParameter(DbsqlParameterBase):
+    def __init__(self, value: int, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.BIGINT.name
 
 
 class BooleanParameter(DbsqlParameterBase):
+    def __init__(self, value: bool, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.BOOLEAN.name
 
 
 class DateParameter(DbsqlParameterBase):
+    def __init__(self, value: datetime.date, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.DATE.name
 
 
 class DoubleParameter(DbsqlParameterBase):
+    def __init__(self, value: float, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.DOUBLE.name
 
 
 class FloatParameter(DbsqlParameterBase):
+    def __init__(self, value: float, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.FLOAT.name
 
 
 class VoidParameter(DbsqlParameterBase):
+    def __init__(self, value: Type[None], name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.VOID.name
 
     def _tspark_param_value(self):
@@ -173,23 +194,33 @@ class VoidParameter(DbsqlParameterBase):
 
 
 class SmallIntParameter(DbsqlParameterBase):
+    def __init__(self, value: int, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.SMALLINT.name
 
 
 class TimestampParameter(DbsqlParameterBase):
+    def __init__(self, value: datetime.datetime, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP.name
 
 
 class TimestampNTZParameter(DbsqlParameterBase):
+    def __init__(self, value: datetime.datetime, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP_NTZ.name
 
 
 class TinyIntParameter(DbsqlParameterBase):
+    def __init__(self, value: int, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
     CAST_EXPR = DatabricksSupportedType.TINYINT.name
 
 
 class DecimalParameter(DbsqlParameterBase):
     CAST_EXPR = "DECIMAL({},{})"
+    def __init__(self, value: decimal.Decimal, name: Optional[str] = None):
+        super().__init__(value=value, name=name)
 
     def __init__(
         self,
@@ -248,7 +279,39 @@ class DecimalParameter(DbsqlParameterBase):
 
         return self.CAST_EXPR.format(overall, after)
 
-TDbsqlParameter = TypeVar("TDbsqlParameter", bound=DbsqlParameterBase)
+
+
+TDbsqlParameter = Union[
+    Type[IntegerParameter],
+    Type[StringParameter],
+    Type[BigIntegerParameter],
+    Type[BooleanParameter],
+    Type[DateParameter],
+    Type[DoubleParameter],
+    Type[FloatParameter],
+    Type[VoidParameter],
+    Type[SmallIntParameter],
+    Type[TimestampParameter],
+    Type[TimestampNTZParameter],
+    Type[TinyIntParameter],
+    Type[DecimalParameter],
+]
+
+TDbsqlParameterReturn = Union[
+    IntegerParameter,
+    StringParameter,
+    BigIntegerParameter,
+    BooleanParameter,
+    DateParameter,
+    DoubleParameter,
+    FloatParameter,
+    VoidParameter,
+    SmallIntParameter,
+    TimestampParameter,
+    TimestampNTZParameter,
+    TinyIntParameter,
+    DecimalParameter,
+]
 
 _INFERENCE_TYPE_MAP = {
     str: StringParameter,
@@ -277,7 +340,9 @@ def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
         return BigIntegerParameter(value=value, name=name)
 
 
-def dbsql_parameter_from_primitive(value: InferrableType, name: Optional[str] = None) -> TDbsqlParameter:
+def dbsql_parameter_from_primitive(
+    value: TInferrable, name: Optional[str] = None
+) -> TDbsqlParameterReturn:
     """Returns a DbsqlParameter subclass given an inferrable value
 
     This is a convenience function that can be used to create a DbsqlParameter subclass
@@ -285,9 +350,10 @@ def dbsql_parameter_from_primitive(value: InferrableType, name: Optional[str] = 
     """
 
     t = type(value)
-    direct: Type[DbsqlParameterBase] = _INFERENCE_TYPE_MAP.get(t)
-
-    if direct is not None:
+    fetched = _INFERENCE_TYPE_MAP.get(t)
+    
+    if fetched is not None:
+        direct: TDbsqlParameter = fetched
         return direct(value=value, name=name)
     elif isinstance(value, int):
         return dbsql_parameter_from_int(value, name=name)
