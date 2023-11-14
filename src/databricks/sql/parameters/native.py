@@ -84,10 +84,6 @@ class DbsqlParameterBase:
 
     CAST_EXPR: str
 
-    def __init__(self, value: TAllowedParameterValue, name: Optional[str] = None):
-        self.value: TAllowedParameterValue = value
-        self.name = name
-
     def as_tspark_param(self, named: bool) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
 
@@ -136,7 +132,8 @@ class IntegerParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.INT.name
 
@@ -161,7 +158,8 @@ class StringParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.STRING.name
 
@@ -186,7 +184,8 @@ class BigIntegerParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.BIGINT.name
 
@@ -211,7 +210,8 @@ class BooleanParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.BOOLEAN.name
 
@@ -236,7 +236,8 @@ class DateParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.DATE.name
 
@@ -261,7 +262,8 @@ class DoubleParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.DOUBLE.name
 
@@ -286,7 +288,8 @@ class FloatParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.FLOAT.name
 
@@ -311,7 +314,8 @@ class VoidParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.VOID.name
 
@@ -340,7 +344,8 @@ class SmallIntParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.SMALLINT.name
 
@@ -365,7 +370,8 @@ class TimestampParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP.name
 
@@ -391,7 +397,8 @@ class TimestampNTZParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.TIMESTAMP_NTZ.name
 
@@ -416,7 +423,8 @@ class TinyIntParameter(DbsqlParameterBase):
 
             The `name` argument to this function would be `my_param`.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
 
     CAST_EXPR = DatabricksSupportedType.TINYINT.name
 
@@ -456,7 +464,8 @@ class DecimalParameter(DbsqlParameterBase):
         :precision:
             The number of digits to the right of the decimal point.
         """
-        super().__init__(value=value, name=name)
+        self.value = value
+        self.name = name
         self.value: decimal.Decimal = value
         self.scale = scale
         self.precision = precision
