@@ -115,15 +115,19 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     POSITIONAL_PARAMSTYLE_QUERY = "SELECT ? AS col"
 
     inline_type_map = {
-        int: "int_col",
-        float: "float_col",
-        Decimal: "decimal_col",
-        str: "string_col",
-        bool: "boolean_col",
-        datetime.date: "date_col",
-        datetime.datetime: "timestamp_col",
-        type(None): "null_col",
+        Primitive.INT: "int_col",
+        Primitive.BIGINT: "bigint_col",
+        Primitive.FLOAT: "float_col",
+        Primitive.DECIMAL: "decimal_col",
+        Primitive.STRING: "string_col",
+        Primitive.BOOL: "boolean_col",
+        Primitive.DATE: "date_col",
+        Primitive.TIMESTAMP: "timestamp_col",
+        Primitive.NONE: "null_col",
     }
+
+    def _get_inline_table_column(self, value):
+        return self.inline_type_map[Primitive(value)]
 
     @pytest.fixture(scope="class")
     def inline_table(self):
@@ -141,6 +145,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             CREATE TABLE IF NOT EXISTS pysql_e2e_inline_param_test_table (
             null_col INT,
             int_col INT,
+            bigint_col BIGINT,
             float_col FLOAT,
             decimal_col DECIMAL(10, 2),
             string_col STRING,
@@ -178,7 +183,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         :paramstyle:
             This is a no-op but is included to make the test-code easier to read.
         """
-        target_column = self.inline_type_map[type(params.get("p"))]
+        target_column = self._get_inline_table_column(params.get('p'))
         INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
         SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
@@ -251,7 +256,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         "approach,paramstyle,parameter_structure", approach_paramstyle_combinations
     )
     def test_primitive_single(
-        self, approach, paramstyle, parameter_structure, primitive: Primitive
+        self, approach, paramstyle, parameter_structure, primitive: Primitive, inline_table
     ):
         """When ParameterApproach.INLINE is passed, inferrence will not be used.
         When ParameterApproach.NATIVE is passed, primitive inputs will be inferred.
