@@ -23,8 +23,8 @@ from databricks.sql.utils import (
     transform_paramstyle,
 )
 from databricks.sql.parameters.native import (
+    DbsqlParameterBase,
     TDbsqlParameter,
-    TAllowedParameterValue,
     TParameterDict,
     TParameterList,
     TParameterCollection,
@@ -455,11 +455,9 @@ class Cursor:
 
         output: List[TDbsqlParameter] = []
         for p in params:
-            # use of get_args here is a workaround to a bug in mypy
-            # https://github.com/python/mypy/issues/12155
-            if isinstance(p, get_args(Type[TDbsqlParameter])):
+            if isinstance(p, DbsqlParameterBase):
                 output.append(p)  # type: ignore
-            elif isinstance(p, get_args(Type[TAllowedParameterValue])):
+            else:
                 output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
 
         return output
