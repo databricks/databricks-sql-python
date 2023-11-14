@@ -401,40 +401,10 @@ def _generate_named_interpolation_values(
 
 def _may_contain_inline_positional_markers(operation: str) -> bool:
     """Check for the presence of `%s` in the operation string.
-    If it's present, the operation may contain positional query markers. Return True.
-
-
-    If `operation` contains no instances of `%s` then return False.
-
-    ```
-    "SELECT * FROM table WHERE field = %s and other_field = %s"
-    ```
-
-    Yields
-
-    ```
-    SELECT * FROM table WHERE field = ? and other_field = ?
-    ```
-
-    Note that this function doesn't parse the contents of operation! So if you pass a query like
-
-    ```sql
-    SELECT * FROM table WHERE field LIKE '%some_string'
-    ```
-
-    The output will be invalid SQL:
-
-    ```sql
-    SELECT * FROM table WHERE field LIKE '?ome_string'
-    ```
-
-    This is a limitation of conflicting Python Format String Mini Language and SQL syntax
-    has always affected the INLINE parameter approach to string interpolation. To avoid it,
-    the operation should be written to use `?` directly and not `%s`.
     """
 
     interpolated = operation.replace("%s", "?")
-    return interpolated == operation
+    return interpolated != operation
 
 
 def _interpolate_named_markers(
