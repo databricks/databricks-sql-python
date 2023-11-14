@@ -350,6 +350,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         assert set(outcome) == set(expected)
 
+    def test_readme_example(self):
+        with self.cursor() as cursor:
+            result = cursor.execute('SELECT :param `p`, * FROM RANGE(10)', {"param": "foo"}).fetchall()
+        
+        assert len(result) == 10
+        assert result[0].p == "foo"
+
 
 class TestInlineParameterSyntax(PySQLPytestTestCase):
     """The inline parameter approach uses pyformat markers"""
