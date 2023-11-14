@@ -1,35 +1,38 @@
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkParameter,
-    TSparkParameterValue,
-    TSessionHandle,
-    TOpenSessionResp,
-)
-import pytest
-
-from databricks.sql.thrift_api.TCLIService import ttypes
-
+import datetime
 from decimal import Decimal
-from databricks.sql.client import Connection
+from enum import Enum
+from typing import Type
 
+import pytest
+import pytz
+
+from databricks.sql.client import Connection
 from databricks.sql.parameters import (
-    DecimalParameter,
-    IntegerParameter,
-    StringParameter,
     BigIntegerParameter,
     BooleanParameter,
     DateParameter,
+    DecimalParameter,
     DoubleParameter,
     FloatParameter,
-    VoidParameter,
+    IntegerParameter,
     SmallIntParameter,
-    TimestampParameter,
+    StringParameter,
     TimestampNTZParameter,
+    TimestampParameter,
     TinyIntParameter,
-    TSparkParameterValue,
+    VoidParameter,
+)
+from databricks.sql.parameters.native import (
     TDbsqlParameter,
+    TSparkParameterValue,
     dbsql_parameter_from_primitive,
 )
-from typing import Type
+from databricks.sql.thrift_api.TCLIService import ttypes
+from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TOpenSessionResp,
+    TSessionHandle,
+    TSparkParameterValue,
+)
 
 
 class TestSessionHandleChecks(object):
@@ -95,11 +98,6 @@ def test_calculate_decimal_cast_string(value, expected):
     assert p._cast_expr() == expected
 
 
-import datetime
-from enum import Enum
-import pytz
-
-
 class Primitive(Enum):
     """These are the inferrable types. This Enum is used for parametrized tests."""
 
@@ -116,91 +114,49 @@ class Primitive(Enum):
     SMALLINT = 51
 
 
-# class TestDbsqlParameter(object):
-#     combinations = (
-#         [Primitive.NONE, DbsqlParameterType.VOID],
-#         [Primitive.INT, DbsqlParameterType.INT],
-#         [Primitive.STRING, DbsqlParameterType.STRING],
-#         [Primitive.DECIMAL, DbsqlParameterType.DECIMAL],
-#         [Primitive.DATE, DbsqlParameterType.DATE],
-#         [Primitive.TIMESTAMP, DbsqlParameterType.TIMESTAMP],
-#         [Primitive.DOUBLE, DbsqlParameterType.FLOAT],
-#         [Primitive.BOOL, DbsqlParameterType.BOOLEAN],
-#     )
-
-#     @pytest.mark.parametrize("p, expected_type", combinations)
-#     def test_inferrence(self, p: Primitive, expected_type: DbSqlType):
-#         """Test that the type is inferred correctly"""
-#         value = p.value
-#         dbsql_param = DbsqlParameter(value=value)
-#         assert dbsql_param.type.name == expected_type.value
-
-#     @pytest.mark.parametrize("named", [True, False])
-#     @pytest.mark.parametrize("prim, expected_type", combinations)
-#     def test_as_tspark_param(self, prim, expected_type, named: bool):
-#         """Test that the generated TSparkParameter looks like what we expect
-
-#         All TSparkParameterValues are sent as strings except for None.
-
-#         For convenience, this test assumes that the type is inferred correctly
-#         which is tested separately in test_inferrence. So if test_inferrence starts
-#         to fail, this test will also fail.
-#         """
-
-#         p = DbsqlParameter(name="my_param", value=prim.value, type=expected_type)
-#         tsp = p.as_tspark_param(named=named)
-
-#         expected = TSparkParameter(
-#             name="my_param" if named else None,
-#             type=expected_type.name,
-#             value=None if prim.value is None else TSparkParameterValue(str(prim.value)),
-#             ordinal=not named,
-#         )
-
-#         assert tsp == expected
-
-
-class TestDbsqlParameterNew:
-    combinations = (
-        (DecimalParameter, Primitive.DECIMAL, "DECIMAL(6,2)"),
-        (IntegerParameter, Primitive.INT, "INT"),
-        (StringParameter, Primitive.STRING, "STRING"),
-        (BigIntegerParameter, Primitive.BIGINT, "BIGINT"),
-        (BooleanParameter, Primitive.BOOL, "BOOLEAN"),
-        (DateParameter, Primitive.DATE, "DATE"),
-        (DoubleParameter, Primitive.DOUBLE, "DOUBLE"),
-        (FloatParameter, Primitive.FLOAT, "FLOAT"),
-        (VoidParameter, Primitive.NONE, "VOID"),
-        (SmallIntParameter, Primitive.INT, "SMALLINT"),
-        (TimestampParameter, Primitive.TIMESTAMP, "TIMESTAMP"),
-        (TimestampNTZParameter, Primitive.TIMESTAMP, "TIMESTAMP_NTZ"),
-        (TinyIntParameter, Primitive.INT, "TINYINT"),
+class TestDbsqlParameter:
+    @pytest.mark.parametrize(
+        "_type, prim, expect_cast_expr",
+        (
+            (DecimalParameter, Primitive.DECIMAL, "DECIMAL(6,2)"),
+            (IntegerParameter, Primitive.INT, "INT"),
+            (StringParameter, Primitive.STRING, "STRING"),
+            (BigIntegerParameter, Primitive.BIGINT, "BIGINT"),
+            (BooleanParameter, Primitive.BOOL, "BOOLEAN"),
+            (DateParameter, Primitive.DATE, "DATE"),
+            (DoubleParameter, Primitive.DOUBLE, "DOUBLE"),
+            (FloatParameter, Primitive.FLOAT, "FLOAT"),
+            (VoidParameter, Primitive.NONE, "VOID"),
+            (SmallIntParameter, Primitive.INT, "SMALLINT"),
+            (TimestampParameter, Primitive.TIMESTAMP, "TIMESTAMP"),
+            (TimestampNTZParameter, Primitive.TIMESTAMP, "TIMESTAMP_NTZ"),
+            (TinyIntParameter, Primitive.INT, "TINYINT"),
+        ),
     )
-
-    @pytest.mark.parametrize("_type, prim, expect_cast_expr", combinations)
     def test_cast_expression(
         self, _type: TDbsqlParameter, prim: Primitive, expect_cast_expr: str
     ):
         p = _type(prim.value)
         assert p._cast_expr() == expect_cast_expr
 
-    tspark_param_value_combinations = (
-        (DecimalParameter, Primitive.DECIMAL),
-        (IntegerParameter, Primitive.INT),
-        (StringParameter, Primitive.STRING),
-        (BigIntegerParameter, Primitive.BIGINT),
-        (BooleanParameter, Primitive.BOOL),
-        (DateParameter, Primitive.DATE),
-        (DoubleParameter, Primitive.DOUBLE),
-        (FloatParameter, Primitive.FLOAT),
-        (VoidParameter, Primitive.NONE),
-        (SmallIntParameter, Primitive.INT),
-        (TimestampParameter, Primitive.TIMESTAMP),
-        (TimestampNTZParameter, Primitive.TIMESTAMP),
-        (TinyIntParameter, Primitive.INT),
+    @pytest.mark.parametrize(
+        "t, prim",
+        (
+            (DecimalParameter, Primitive.DECIMAL),
+            (IntegerParameter, Primitive.INT),
+            (StringParameter, Primitive.STRING),
+            (BigIntegerParameter, Primitive.BIGINT),
+            (BooleanParameter, Primitive.BOOL),
+            (DateParameter, Primitive.DATE),
+            (DoubleParameter, Primitive.DOUBLE),
+            (FloatParameter, Primitive.FLOAT),
+            (VoidParameter, Primitive.NONE),
+            (SmallIntParameter, Primitive.INT),
+            (TimestampParameter, Primitive.TIMESTAMP),
+            (TimestampNTZParameter, Primitive.TIMESTAMP),
+            (TinyIntParameter, Primitive.INT),
+        ),
     )
-
-    @pytest.mark.parametrize("t, prim", tspark_param_value_combinations)
     def test_tspark_param_value(self, t: TDbsqlParameter, prim):
         p: TDbsqlParameter = t(prim.value)
         output = p._tspark_param_value()
@@ -209,6 +165,20 @@ class TestDbsqlParameterNew:
             assert output == None
         else:
             assert output == TSparkParameterValue(stringValue=str(prim.value))
+
+    def test_tspark_param_named(self):
+        p = dbsql_parameter_from_primitive(Primitive.INT.value, name="p")
+        tsp = p.as_tspark_param(named=True)
+
+        assert tsp.name == "p"
+        assert tsp.ordinal is False
+
+    def test_tspark_param_ordinal(self):
+        p = dbsql_parameter_from_primitive(Primitive.INT.value, name="p")
+        tsp = p.as_tspark_param(named=False)
+
+        assert tsp.name is None
+        assert tsp.ordinal is True
 
     @pytest.mark.parametrize(
         "_type, prim",

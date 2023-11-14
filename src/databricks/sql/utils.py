@@ -20,10 +20,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 
-from databricks.sql.parameters import (
-    TDbsqlParameter,
-    ParameterStructure,
-)
+from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 

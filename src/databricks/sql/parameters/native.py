@@ -9,8 +9,12 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameterValue,
 )
 
-if TYPE_CHECKING:
-    from databricks.sql.parameters._types import *
+import datetime
+import decimal
+from enum import Enum, auto
+from typing import Dict, List, Union
+
+
 
 
 class ParameterApproach(Enum):
@@ -49,6 +53,11 @@ class DatabricksSupportedType(Enum):
     ARRAY = auto()
     MAP = auto()
     STRUCT = auto()
+
+TAllowedParameterValue = Union[
+    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
+]
+
 
 
 class DbsqlParameterBase:
@@ -515,8 +524,8 @@ def dbsql_parameter_from_int(value: int, name: Optional[str] = None):
 
 
 def dbsql_parameter_from_primitive(
-    value: IInferrable, name: Optional[str] = None
-) -> TDbsqlParameter:
+    value: TAllowedParameterValue, name: Optional[str] = None
+) -> "TDbsqlParameter":
     """Returns a DbsqlParameter subclass given an inferrable value
 
     This is a convenience function that can be used to create a DbsqlParameter subclass
@@ -549,6 +558,33 @@ def dbsql_parameter_from_primitive(
             f"Could not infer parameter type from value: {value} - {type(value)} \n"
             "Please specify the type explicitly."
         )
+    
+
+
+
+
+TDbsqlParameter = Union[
+    IntegerParameter,
+    StringParameter,
+    BigIntegerParameter,
+    BooleanParameter,
+    DateParameter,
+    DoubleParameter,
+    FloatParameter,
+    VoidParameter,
+    SmallIntParameter,
+    TimestampParameter,
+    TimestampNTZParameter,
+    TinyIntParameter,
+    DecimalParameter,
+]
+
+
+
+TParameterList = List[Union[TDbsqlParameter, TAllowedParameterValue]]
+TParameterDict = Dict[str, TAllowedParameterValue]
+TParameterCollection = Union[TParameterList, TParameterDict]
+
 
 
 _all__ = [

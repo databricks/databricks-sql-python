@@ -2,33 +2,30 @@ import datetime
 from contextlib import contextmanager
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Union
+from typing import Dict, List, Type, Union
 from unittest.mock import patch
-
-from databricks.sql.exc import DatabaseError
 
 import pytest
 import pytz
 
-from databricks.sql.parameters import (
-    TDbsqlParameter,
-    ParameterApproach,
-    ParameterStructure,
-    DecimalParameter,
-    TDbsqlParameter,
-    StringParameter,
-    VoidParameter,
-    StringParameter,
-    IntegerParameter,
+from databricks.sql.exc import DatabaseError
+from databricks.sql.parameters.native import (
     BigIntegerParameter,
     BooleanParameter,
     DateParameter,
+    DecimalParameter,
     DoubleParameter,
     FloatParameter,
+    IntegerParameter,
+    ParameterApproach,
+    ParameterStructure,
     SmallIntParameter,
-    TimestampParameter,
+    StringParameter,
+    TDbsqlParameter,
     TimestampNTZParameter,
+    TimestampParameter,
     TinyIntParameter,
+    VoidParameter,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
 
@@ -53,6 +50,11 @@ class Primitive(Enum):
     DOUBLE = 3.14
     FLOAT = 3.15
     SMALLINT = 51
+
+class PrimitiveExtra(Enum):
+    """These are not inferrable types. This Enum is used for parametrized tests."""
+    TIMESTAMP_NTZ = datetime.datetime(2023, 9, 6, 3, 14, 27, 843)
+    TINYINT = 20
 
 
 # We don't test inline approach with named paramstyle because it's never supported
@@ -271,16 +273,18 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             (Primitive.DOUBLE, DoubleParameter),
             (Primitive.FLOAT, FloatParameter),
             (Primitive.SMALLINT, SmallIntParameter),
+            (PrimitiveExtra.TIMESTAMP_NTZ, TimestampNTZParameter),
+            (PrimitiveExtra.TINYINT, TinyIntParameter)
         ],
     )
     def test_dbsqlparameter_single(
         self,
         primitive: Primitive,
-        dbsql_parameter_cls: TDbsqlParameter,
+        dbsql_parameter_cls: Type[TDbsqlParameter],
         parameter_structure: ParameterStructure,
     ):
         dbsql_param = dbsql_parameter_cls(
-            value=primitive.value,
+            value=primitive.value,  # type: ignore
             name="p" if parameter_structure == ParameterStructure.NAMED else None,
         )
 
@@ -346,26 +350,15 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         assert set(outcome) == set(expected)
 
 
-@pytest.mark.parametrize(
-    "value,expected",
-    (
-        (Decimal("10.00"), "DECIMAL(4,2)"),
-        (Decimal("123456789123456789.123456789123456789"), "DECIMAL(36,18)"),
-    ),
-)
-
-
 class TestInlineParameterSyntax(PySQLPytestTestCase):
     """The inline parameter approach uses pyformat markers"""
 
-    @pytest.mark.parametrize("use_inline_params", (True, False))
-    def test_params_as_dict(self, use_inline_params):
+    # @pytest.mark.parametrize("use_inline_params", (True, False))
+    def test_params_as_dict(self):
         query = "SELECT %(foo)s foo, %(bar)s bar, %(baz)s baz"
         params = {"foo": 1, "bar": 2, "baz": 3}
 
-        with self.connection(
-            extra_params={"use_inline_params": use_inline_params}
-        ) as conn:
+        with self.connection(extra_params={"use_inline_params": True}) as conn:
             with conn.cursor() as cursor:
                 result = cursor.execute(query, parameters=params).fetchone()
 

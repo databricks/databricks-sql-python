@@ -22,16 +22,18 @@ from databricks.sql.utils import (
     inject_parameters,
     transform_paramstyle,
 )
-from databricks.sql.parameters import (
-    ParameterApproach,
-    ParameterStructure,
+from databricks.sql.parameters.native import (
     TDbsqlParameter,
-    IInferrable,
+    TAllowedParameterValue,
     TParameterDict,
     TParameterList,
     TParameterCollection,
+    ParameterStructure,
     dbsql_parameter_from_primitive,
+    ParameterApproach,
 )
+
+
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -449,27 +451,30 @@ class Cursor:
     def _normalize_tparameterlist(
         self, params: TParameterList
     ) -> List[TDbsqlParameter]:
-        """Retains the same order as the input list.
-        """
+        """Retains the same order as the input list."""
 
         output: List[TDbsqlParameter] = []
         for p in params:
             # use of get_args here is a workaround to a bug in mypy
             # https://github.com/python/mypy/issues/12155
             if isinstance(p, get_args(Type[TDbsqlParameter])):
-                output.append(p) # type: ignore
-            elif isinstance(p, get_args(Type[IInferrable])):
+                output.append(p)  # type: ignore
+            elif isinstance(p, get_args(Type[TAllowedParameterValue])):
                 output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
-        
+
         return output
 
+    def _normalize_tparameterdict(
+        self, params: TParameterDict
+    ) -> List[TDbsqlParameter]:
+        return [
+            dbsql_parameter_from_primitive(value=value, name=name)
+            for name, value in params.items()
+        ]
 
-    
-    def _normalize_tparameterdict(self, params: TParameterDict) -> List[TDbsqlParameter]:
-        return [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
-    
-
-    def _normalize_tparametercollection(self, params: Optional[TParameterCollection]) -> List[TDbsqlParameter]:
+    def _normalize_tparametercollection(
+        self, params: Optional[TParameterCollection]
+    ) -> List[TDbsqlParameter]:
         if params is None:
             return []
         if isinstance(params, dict):
@@ -477,12 +482,10 @@ class Cursor:
         if isinstance(params, list):
             return self._normalize_tparameterlist(params)
 
-
     def _determine_parameter_structure(
         self,
         parameters: List[TDbsqlParameter],
     ) -> ParameterStructure:
-            
         all_named = self._all_dbsql_parameters_are_named(parameters)
         if all_named:
             return ParameterStructure.NAMED
@@ -538,7 +541,10 @@ class Cursor:
         """
 
         stmt = stmt
-        output = [p.as_tspark_param(named=param_structure == ParameterStructure.NAMED) for p in params]
+        output = [
+            p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
+            for p in params
+        ]
 
         return stmt, output
 

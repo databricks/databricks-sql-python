@@ -796,7 +796,7 @@ class TTypeQualifiers(object):
         return not (self == other)
 
 
-class TPrimitiveTypeEntry(object):
+class TTAllowedParameterValueEntry(object):
     """
     Attributes:
      - type
@@ -838,7 +838,7 @@ class TPrimitiveTypeEntry(object):
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
-        oprot.writeStructBegin('TPrimitiveTypeEntry')
+        oprot.writeStructBegin('TTAllowedParameterValueEntry')
         if self.type is not None:
             oprot.writeFieldBegin('type', TType.I32, 1)
             oprot.writeI32(self.type)
@@ -1227,7 +1227,7 @@ class TTypeEntry(object):
                 break
             if fid == 1:
                 if ftype == TType.STRUCT:
-                    self.primitiveEntry = TPrimitiveTypeEntry()
+                    self.primitiveEntry = TTAllowedParameterValueEntry()
                     self.primitiveEntry.read(iprot)
                 else:
                     iprot.skip(ftype)
@@ -10502,8 +10502,8 @@ TTypeQualifiers.thrift_spec = (
     None,  # 0
     (1, TType.MAP, 'qualifiers', (TType.STRING, 'UTF8', TType.STRUCT, [TTypeQualifierValue, None], False), None, ),  # 1
 )
-all_structs.append(TPrimitiveTypeEntry)
-TPrimitiveTypeEntry.thrift_spec = (
+all_structs.append(TTAllowedParameterValueEntry)
+TTAllowedParameterValueEntry.thrift_spec = (
     None,  # 0
     (1, TType.I32, 'type', None, None, ),  # 1
     (2, TType.STRUCT, 'typeQualifiers', [TTypeQualifiers, None], None, ),  # 2
@@ -10537,7 +10537,7 @@ TUserDefinedTypeEntry.thrift_spec = (
 all_structs.append(TTypeEntry)
 TTypeEntry.thrift_spec = (
     None,  # 0
-    (1, TType.STRUCT, 'primitiveEntry', [TPrimitiveTypeEntry, None], None, ),  # 1
+    (1, TType.STRUCT, 'primitiveEntry', [TTAllowedParameterValueEntry, None], None, ),  # 1
     (2, TType.STRUCT, 'arrayEntry', [TArrayTypeEntry, None], None, ),  # 2
     (3, TType.STRUCT, 'mapEntry', [TMapTypeEntry, None], None, ),  # 3
     (4, TType.STRUCT, 'structEntry', [TStructTypeEntry, None], None, ),  # 4
