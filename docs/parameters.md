@@ -30,13 +30,13 @@ Variables in your SQL query can use one of three PEP-249 [paramstyles](https://p
 
 ```sql
 -- named paramstyle
-SELECT * FROM TABLE WHERE field = :value
+SELECT * FROM table WHERE field = :value
 
 -- qmark paramstyle
-SELECT * FROM TABLE WHERE field = ?
+SELECT * FROM table WHERE field = ?
 
 -- pyformat paramstyle (legacy)
-SELECT * FROM TABLE WHERE field = %(value)s
+SELECT * FROM table WHERE field = %(value)s
 ```
 
 ## Python Syntax
