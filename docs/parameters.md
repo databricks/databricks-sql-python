@@ -6,6 +6,8 @@ This behaviour is distinct from legacy "inline" parameterized execution in versi
 
 See **[below](#migrating-to-native-parameters)** for details about updating your client code to use native parameters.
 
+See `examples/parameters.py` in this repository for a runnable demo.
+
 ## Requirements
 
 - `databricks-sql-connector>=3.0.0`
