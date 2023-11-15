@@ -81,6 +81,7 @@ class DbsqlParameterBase:
     """
 
     CAST_EXPR: str
+    name: Optional[str]
 
     def as_tspark_param(self, named: bool) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
@@ -462,9 +463,8 @@ class DecimalParameter(DbsqlParameterBase):
         :precision:
             The number of digits to the right of the decimal point.
         """
-        self.value = value
-        self.name = name
         self.value: decimal.Decimal = value
+        self.name = name
         self.scale = scale
         self.precision = precision
 
