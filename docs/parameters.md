@@ -212,7 +212,7 @@ The result of the above two examples is identical.
 
 **Note**: `%s` is not compliant with PEP-249 and only works due to the specific implementation of our inline renderer. 
 
-**Note:** This `%s` syntax overlaps with valid SQL syntax around the usage of `LIKE` DML. For example if your query includes a clause like `WHERE field LIKE '%sequence'`, the parameter inlining function will raise an exception because this string appears to include an inline marker but none is provided.
+**Note:** This `%s` syntax overlaps with valid SQL syntax around the usage of `LIKE` DML. For example if your query includes a clause like `WHERE field LIKE '%sequence'`, the parameter inlining function will raise an exception because this string appears to include an inline marker but none is provided. When `use_inline_params=False`, we will pass `%s` occurrences along to the database, allowing it to be used as expected in `LIKE` statements.
 
 ### Passing sequences as parameter values
 
