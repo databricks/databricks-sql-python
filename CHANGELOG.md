@@ -2,6 +2,7 @@
 
 ## 3.0.0 (Unreleased)
 
+- Add support for native parameterized SQL queries. Requires DBR 14.2 and above. See docs/parameters.md for more info.
 - Other: Introduce SQLAlchemy dialect compliance test suite and enumerate all excluded tests
 - Add integration tests for Databricks UC Volumes ingestion queries
 - Add `_retry_max_redirects` config
