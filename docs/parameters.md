@@ -1,13 +1,15 @@
 # Using Native Parameters
 
-This connector supports native parameterized query execution. By default, when you call `cursor.execute(query, parameters=...)` the values within the `parameters` collection are sent separately to Databricks Runtime to be escaped. This can improve query performance and prevents SQL injection.
+This connector supports native parameterized query execution. When you execute a query that includes variable markers, then you can pass a collection of parameters which are sent separately to Databricks Runtime for safe execution. This prevents SQL injection and can improve query performance.
 
+This behaviour is distinct from legacy "inline" parameterized execution in versions below 3.0.0. The legacy behavior is preserved behind a flag called `use_inline_params`, which will be removed in a future release. See [Using Inline Parameters](#using-inline-parameters) for more information.
+
+See **[below](#migrating-to-native-parameters)** for details about updating your client code to use native parameters.
 
 ## Requirements
 
-Native parameterized query execution requires `databricks-sql-connector>=3.0.0` and a SQL warehouse or all-purpose cluster running Databricks Runtime >=14.2.
-
-This behaviour is distinct from legacy "inline" parameterized execution in versions below 3.0.0. The legacy behavior is preserved in v3 and above for backwards compatibility but will be removed in a future release. See [Using Inline Parameters](#using-inline-parameters) for more information. See [Limitations](#limitations) for a discussion of when to use native versus inline parameters.
+- `databricks-sql-connector>=3.0.0`
+- A SQL warehouse or all-purpose cluster running Databricks Runtime >=14.2
 
 ## Limitations
 
@@ -16,29 +18,36 @@ This behaviour is distinct from legacy "inline" parameterized execution in versi
 
 ## SQL Syntax
 
-There are two ways to demark a parameter in your SQL query: by name or by position. With either approach, each marker that appears in your SQL query will be replaced with the parameterized value supplied to `cursor.execute()`.
+Variables in your SQL query can use one of three PEP-249 [paramstyles](https://peps.python.org/pep-0249/#paramstyle). A parameterized query can use exactly one paramstyle.
 
-When passed by name, the `named` paramstyle defined in PEP-249 should be used.
+|paramstyle|example|comment|
+|-|-|-|
+|`named`|`:param`|Parameters must be named|
+|`qmark`|`?`|Parameter names are ignored|
+|`pyformat`|`%(param)s`|Legacy syntax. Will be deprecated. Parameters must be named.|
+
+#### Example
 
 ```sql
+-- named paramstyle
 SELECT * FROM TABLE WHERE field = :value
-```
 
-When passed by position, the `qmark` paramstyle should be used.
-
-```sql
+-- qmark paramstyle
 SELECT * FROM TABLE WHERE field = ?
-```
 
-A single query cannot mix the `named` and `qmark` paramstyles.
+-- pyformat paramstyle (legacy)
+SELECT * FROM TABLE WHERE field = %(value)s
+```
 
 ## Python Syntax
 
-The Python syntax for `cursor.execute()` conforms to the [PEP-249 specification](https://peps.python.org/pep-0249/#id20). The `parameters` argument of `.execute()` should be a dictionary if using the `named` paramstyle or a list if using the `qmark` paramstyle.
+This connector follows the [PEP-249 interface](https://peps.python.org/pep-0249/#id20). The expected structure of the parameter collection follows the paramstyle of the variables in your query. 
 
 ### `named` paramstyle Usage Example
 
-When parameter values are passed as a dictionary, this connector will use a named approach to bind values to the query text. Therefore, the dictionary's keys must correspond to the `named` markers in your query text. The corresponding dictionary values will be bound to those markers when DBR executes the query. The length of the dictionary must exactly match the count of `named` markers in your query or an exception will be raised.
+When your SQL query uses `named` paramstyle variable markers, you need specify a name for each value that corresponds to a variable marker in your query.
+
+Generally, you do this by passing `parameters` as a dictionary whose keys match the variables in your query. The length of the dictionary must exactly match the count of variable markers or an exception will be raised.
 
 ```python
 from databricks import sql
@@ -50,9 +59,13 @@ with sql.connect(...) as conn:
         result = cursor.execute(query, parameters=parameters).fetchone()
 ```
 
+This paramstyle is a drop-in replacement for the `pyformat` paramstyle which was used in connector versions below 3.0.0. It should be used going forward.
+
 ### `qmark` paramstyle Usage Example
 
-By default, when parameters are passed as a list this connector will use a positional approach to bind values to the query text. The order of values in the list corresponds to the order of the `qmark` markers in your query text. The first value will replace the first `?`, the second value will replace the second `?` etc. The length of the list must exactly match the count of `?` markers in your query or an exception will be raised.
+When your SQL query uses `qmark` paramstyle variable markers, you only need to specify a value for each variable marker in your query.
+
+You do this by passing `parameters` as a list. The order of values in the list corresponds to the order of `qmark` variables in your query. The length of the list must exactly match the count of variable markers in your query or an exception will be raised.
 
 ```python
 from databricks import sql
@@ -66,11 +79,11 @@ with sql.connect(...) as conn:
 
 The result of the above two examples is identical.
 
-### Legacy `pyformat` paramstyle
+### Legacy `pyformat` paramstyle Usage Example
 
-Prior to version 3.0.0, this connector's paramstyle when using named parameters was the PEP-249 `pyformat`. To assist customers transitioning their codebases from `pyformat` to `named`, we added a simple transformer to this connector's query execution code path dynamically replaces `pyformat` markers like `%(param)s` with equivalent `named` markers like `:param`. This happens automatically when `use_inline_params=False` (which is the default).
+Databricks Runtime expects variable markers to use either `named` or `qmark` paramstyles. Historically, this connector used `pyformat` which Databricks Runtime does not support. So to assist assist customers transitioning their codebases from `pyformat` → `named`, we can dynamically rewrite the variable markers before sending the query to Databricks. This happens only when `use_inline_params=False`.
 
-Support for the legacy `pyformat` paramstyle will be removed in a future major release. Users should update their client code to replace `pyformat` markers with `named` markers. 
+ This dynamic rewrite will be deprecated in a future release. New queries should be written using the `named` paramstyle instead. And users should update their client code to replace `pyformat` markers with `named` markers. 
 
 For example:
 
@@ -84,15 +97,16 @@ SELECT field1, field2, %(param1)s FROM table WHERE field4 = %(param2)s
 SELECT field1, field2, :param1 FROM table WHERE field4 = :param2
 ```
 
-**Note:** While named `pyformat` markers are transarently replaced when `use_inline_params=False`, un-named inline `%s`-style markers are ignored for parameterization. If your client code makes extensive use of `%s` markers, these queries will need to be updated to use `?` markers before you can execute them when `use_inline_params=False`. See [When to use inline parameters](#using-inline-parameters) for more information.
+
+**Note:** While named `pyformat` markers are transparently replaced when `use_inline_params=False`, un-named inline `%s`-style markers are ignored. If your client code makes extensive use of `%s` markers, these queries will need to be updated to use `?` markers before you can execute them when `use_inline_params=False`. See [When to use inline parameters](#when-to-use-inline-parameters) for more information.
 
 ### Type inference
 
- Under the covers, parameter values are annotated with a valid Databricks SQL type. As shown in the examples above, this connector accepts primitive Python types like `int`, `str`, and `Decimal`. When this happens, the connector infers the corresponding Databricks SQL type (e.g. `INT`, `STRING`, `DECIMAL`) automatically. This means that the parameters passed to `cursor.execute()` are always wrapped in a `TDbsqlParameter` subtype prior to execution.
+Under the covers, parameter values are annotated with a valid Databricks SQL type. As shown in the examples above, this connector accepts primitive Python types like `int`, `str`, and `Decimal`. When this happens, the connector infers the corresponding Databricks SQL type (e.g. `INT`, `STRING`, `DECIMAL`) automatically. This means that the parameters passed to `cursor.execute()` are always wrapped in a `TDbsqlParameter` subtype prior to execution.
 
-Automatic inferrence is sufficient for most usages. But you can bypass the inference by explicitly setting the Databricks SQL type of a bound parameter in your client code. All supported Databricks SQL types have corresponding `TDbsqlParameter` implementations which you can import from `databricks.sql.parameters`. 
+Automatic inferrence is sufficient for most usages. But you can bypass the inference by explicitly setting the Databricks SQL type in your client code. All supported Databricks SQL types have `TDbsqlParameter` implementations which you can import from `databricks.sql.parameters`. 
 
-`TDbsqlParameter` objects must always be passed within a list. Either paramstyle (`:named` or `?`) may be used. However, if your querye uses the `named` paramstyle, all `TDbsqlParameter` objects must be provided a `name` when they are constructed.
+`TDbsqlParameter` objects must always be passed within a list. Either paramstyle (`:named` or `?`) may be used. However, if your query uses the `named` paramstyle, all `TDbsqlParameter` objects must be provided a `name` when they are constructed.
 
 ```python
 from databricks import sql
@@ -125,13 +139,13 @@ In general, we recommend using `?` markers when passing `TDbsqlParameter`'s dire
 
 # Using Inline Parameters
 
-This connector has implemented the PEP-249 interface from the beginning. So it's `cursor.execute()` method has always supported passing a sequence or mapping of parameter values. Prior to Databricks Runtime introducing native parameter support, however, "parameterized" queries could not be executed in a guaranteed safe manner. Instead, the connector made a best effort to escape parameter values and and render those strings inline with the query.
+Since it's initial release, this connector's `cursor.execute()` method has supported passing a sequence or mapping of parameter values. Prior to Databricks Runtime introducing native parameter support, however, "parameterized" queries could not be executed in a guaranteed safe manner. Instead, the connector made a best effort to escape parameter values and and render those strings inline with the query.
 
 This approach has several drawbacks:
 
 - It's not guaranteed to be safe from SQL injection
 - The server could not boost performance by caching prepared statements
-- The parametter marker syntax conflicted with SQL syntax in some cases
+- The parameter marker syntax conflicted with SQL syntax in some cases
 
 Nevertheless, this behaviour is preserved in version 3.0.0 and above for legacy purposes. It will be removed in a subsequent major release. To enable this legacy code path, you must now construct your connection with `use_inline_params=True`.
 
@@ -139,27 +153,28 @@ Nevertheless, this behaviour is preserved in version 3.0.0 and above for legacy 
 
 Rendering parameters inline is supported on all versions of DBR since these queries are indistinguishable from ad-hoc query text.
 
+
 ## SQL Syntax
 
-There are two ways to demark a parameter in your SQL query: by name or by position. With either approach, each marker that appears in your SQL query will be replaced with an escaped string rendering of the value passed to `cursor.execute()`.
+Variables in your SQL query can look like `%(param)s` or like `%s`. 
 
-When passed by name, the `pyformat` paramstyle defined in PEP-249 should be used.
-
-```sql
-SELECT * FROM TABLE WHERE field = %(value)s
-```
-
-When passed by position, a PEP-249 non-compliant paramstyle (`%s`) is required:
+#### Example
 
 ```sql
-SELECT * FROM TABLE WHERE field = %s
+-- pyformat paramstyle is used for named parameters
+SELECT * FROM table WHERE field = %(value)s
+
+-- %s is used for positional parameters
+SELECT * FROM table WHERE field = %s
 ```
 
 ## Python Syntax
 
-The Python syntax for `cursor.execute()` conforms to the [PEP-249 specification](https://peps.python.org/pep-0249/#id20). The `parameters` argument of `.execute()` should be a dictionary if using the `pyformat` paramstyle or a list if using the `%s` paramstyle.
+This connector follows the [PEP-249 interface](https://peps.python.org/pep-0249/#id20). The expected structure of the parameter collection follows the paramstyle of the variables in your query. 
 
 ### `pyformat` paramstyle Usage Example
+
+Parameters must be passed as a dictionary.
 
 ```python
 from databricks import sql
@@ -179,6 +194,8 @@ SELECT field FROM table WHERE field = 'foo' AND another_field = 20
 
 ### `%s` paramstyle Usage Example
 
+Parameters must be passed as a list.
+
 ```python
 from databricks import sql
 
@@ -191,15 +208,46 @@ with sql.connect(..., use_inline_params=True) as conn:
 
 The result of the above two examples is identical.
 
+**Note**: `%s` is not compliant with PEP-249 and only works due to the specific implementation of our inline renderer. 
+
 **Note:** This `%s` syntax overlaps with valid SQL syntax around the usage of `LIKE` DML. For example if your query includes a clause like `WHERE field LIKE '%sequence'`, the parameter inlining function will raise an exception because this string appears to include an inline marker but none is provided.
 
-### When to Use Inline Parameters
+### Passing sequences as parameter values
+
+Parameter values can also be passed as a sequence. This is typically used when writing `WHERE ... IN` clauses:
+
+```python
+from databricks import sql
+
+with sql.connect(..., use_inline_params=True) as conn:
+    with conn.cursor() as cursor():
+        query = "SELECT field FROM table WHERE field IN %(value_list)s"
+        parameters = {"value_list": [1,2,3,4,5]}
+        result = cursor.execute(query, parameters=parameters).fetchone()
+```
+
+Output:
+
+```sql
+SELECT field FROM table WHERE field IN (1,2,3,4,5)
+```
+
+**Note**: this behavior is not specified by PEP-249 and only works due to the specific implementation of our inline renderer.
+
+### Migrating to native parameters
+
+Native parameters are meant to be a drop-in replacement for inline parameters. In most use-cases, upgrading to `databricks-sql-connector>=3.0.0` will grant an immediate improvement to safety. And future improvements to parameterization (such as support for binding complex types like `STRUCT`, `MAP`, and `ARRAY`) will only be available when `use_inline_params=False`.
+
+To completely migrate, you need to [revise your SQL queries](#legacy-pyformat-paramstyle-usage-example) to use the new paramstyles.
+
+
+### When to use inline parameters
 
 You should only set `use_inline_params=True` in the following cases:
+
 1. Your client code passes more than 255 parameters in a single query execution
 2. Your client code passes parameter values greater than 1MB in a single query execution
-3. Your client code makes extensive use of `%s` positional parameter markers
+3. Your client code makes extensive use of [`%s` positional parameter markers](#s-paramstyle-usage-example)
+4. Your client code uses [passes sequences as parameter values](#passing-sequences-as-parameter-values)
 
-We expect limitations (1) andd (2) to be addressed in a future Databricks Runtime release.
-
-Native parameters are meant to be a drop-in replacement to inline parameters for most use-cases. With no immediate changes to your client code, upgrading to connector version 3.0.0 and above will grant pre-v3 queries an immediate improvement to safety. And future improvements to parameterization (such as support for binding complex types like `STRUCT`, `MAP`, and `ARRAY`) will only be available when `use_inline_params=False`.
+We expect limitations (1) and (2) to be addressed in a future Databricks Runtime release.
