@@ -7,7 +7,8 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Union, TypeVar
+from typing import Any, Dict, List, Union
+import re
 
 import lz4.frame
 import pyarrow
@@ -424,11 +425,20 @@ def _interpolate_named_markers(
     ```
     """
 
-    try:
-        return operation % _generate_named_interpolation_values(parameters)
-    except TypeError:
-        # TypeError occurs if there are no %(param)s markers in the operation
-        return operation
+    _output_operation = operation
+
+    PYFORMAT_PARAMSTYLE_REGEX = r"%\((\w+)\)s"
+    pat = re.compile(PYFORMAT_PARAMSTYLE_REGEX)
+    NAMED_PARAMSTYLE_FMT = ":{}"
+    PYFORMAT_PARAMSTYLE_FMT = "%({})s"
+
+    pyformat_markers = pat.findall(operation)
+    for marker in pyformat_markers:
+        pyformat_marker = PYFORMAT_PARAMSTYLE_FMT.format(marker)
+        named_marker = NAMED_PARAMSTYLE_FMT.format(marker)
+        _output_operation = _output_operation.replace(pyformat_marker, named_marker)
+
+    return _output_operation
 
 
 def transform_paramstyle(

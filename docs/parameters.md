@@ -212,7 +212,7 @@ The result of the above two examples is identical.
 
 **Note**: `%s` is not compliant with PEP-249 and only works due to the specific implementation of our inline renderer. 
 
-**Note:** This `%s` syntax overlaps with valid SQL syntax around the usage of `LIKE` DML. For example if your query includes a clause like `WHERE field LIKE '%sequence'`, the parameter inlining function will raise an exception because this string appears to include an inline marker but none is provided. When `use_inline_params=False`, we will pass `%s` occurrences along to the database, allowing it to be used as expected in `LIKE` statements.
+**Note:** This `%s` syntax overlaps with valid SQL syntax around the usage of `LIKE` DML. For example if your query includes a clause like `WHERE field LIKE '%sequence'`, the parameter inlining function will raise an exception because this string appears to include an inline marker but none is provided. This means that connector versions below 3.0.0 it has been impossible to execute a query that included both parameters and LIKE wildcards. When `use_inline_params=False`, we will pass `%s` occurrences along to the database, allowing it to be used as expected in `LIKE` statements.
 
 ### Passing sequences as parameter values
 
@@ -238,7 +238,7 @@ SELECT field FROM table WHERE field IN (1,2,3,4,5)
 
 ### Migrating to native parameters
 
-Native parameters are meant to be a drop-in replacement for inline parameters. In most use-cases, upgrading to `databricks-sql-connector>=3.0.0` will grant an immediate improvement to safety. And future improvements to parameterization (such as support for binding complex types like `STRUCT`, `MAP`, and `ARRAY`) will only be available when `use_inline_params=False`.
+Native parameters are meant to be a drop-in replacement for inline parameters. In most use-cases, upgrading to `databricks-sql-connector>=3.0.0` will grant an immediate improvement to safety. Plus, native parameters allow you to use SQL LIKE wildcards (`%`) in your queries which is impossible with inline parameters. Future improvements to parameterization (such as support for binding complex types like `STRUCT`, `MAP`, and `ARRAY`) will only be available when `use_inline_params=False`.
 
 To completely migrate, you need to [revise your SQL queries](#legacy-pyformat-paramstyle-usage-example) to use the new paramstyles.
 

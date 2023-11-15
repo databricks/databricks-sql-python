@@ -429,3 +429,24 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
 
         assert result.samsonite == "samsonite"
         assert result.luggage == "luggage"
+
+    def test_inline_like_wildcard_breaks(self):
+        """One flaw with the ParameterEscaper is that it fails if a query contains
+        a SQL LIKE wildcard %. This test proves that's the case.
+        """
+        query = "SELECT 1 `col` WHERE 'foo' LIKE '%'"
+        params ={"param": 'bar'}
+        with self.cursor(extra_params={"use_inline_params": True}) as cursor:
+            with pytest.raises(ValueError, match="unsupported format character"):
+                result = cursor.execute(query, parameters=params).fetchone()
+
+    def test_native_like_wildcard_works(self):
+        """This is a mirror of test_inline_like_wildcard_breaks that proves that LIKE 
+        wildcards work under the native approach.
+        """
+        query = "SELECT 1 `col` WHERE 'foo' LIKE '%'"
+        params ={"param": 'bar'}
+        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+            result = cursor.execute(query, parameters=params).fetchone()
+        
+        assert result.col == 1

@@ -196,6 +196,24 @@ class TestInlineToNativeTransformer(object):
                 {"param": None, "list": None},
                 "SELECT * FROM table WHERE field = :param AND other_field IN (:list)",
             ),
+            (
+                "query with like wildcard",
+                'select * from table where field like "%"',
+                {},
+                'select * from table where field like "%"'
+            ),
+            (
+                "query with named param and like wildcard",
+                'select :param from table where field like "%"',
+                {"param": None},
+                'select :param from table where field like "%"'
+            ),
+            (
+                "query with doubled wildcards",
+                'select 1 where '' like "%%"',
+                {"param": None},
+                'select 1 where '' like "%%"',
+            )
         ),
     )
     def test_transformer(
