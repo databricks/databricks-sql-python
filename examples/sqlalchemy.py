@@ -1,6 +1,6 @@
 """
 databricks-sql-connector includes a SQLAlchemy 2.0 dialect compatible with Databricks SQL. To install
-it's dependencies you can run `pip install databricks-sql-connector[sqlalchemy]`.
+its dependencies you can run `pip install databricks-sql-connector[sqlalchemy]`.
 
 The expected connection string format which you can pass to create_engine() is:
 
