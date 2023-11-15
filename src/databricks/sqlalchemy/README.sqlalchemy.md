@@ -149,7 +149,7 @@ When calling `Base.metadata.create_all()`, the executed DDL will include `GENERA
 
 ## Parameters
 
-`databricks-sql-connector` supports two approaches to parameterizing SQL queries: native and inline. Our SQLAlchemy 2.0 dialect always uses the native approach and is therefore limited to DBR 14.1 and above. If you are writing parameterized queries to be executed by SQLAlchemy, you must use the "named" paramstyle (`:param`). Read more about parameterization in `README.parameters.md`.
+`databricks-sql-connector` supports two approaches to parameterizing SQL queries: native and inline. Our SQLAlchemy 2.0 dialect always uses the native approach and is therefore limited to DBR 14.2 and above. If you are writing parameterized queries to be executed by SQLAlchemy, you must use the "named" paramstyle (`:param`). Read more about parameterization in `docs/parameters.md`.
 
 ## Usage with pandas
 
