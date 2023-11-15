@@ -141,7 +141,7 @@ In general, we recommend using `?` markers when passing `TDbsqlParameter`'s dire
 
 # Using Inline Parameters
 
-Since it's initial release, this connector's `cursor.execute()` method has supported passing a sequence or mapping of parameter values. Prior to Databricks Runtime introducing native parameter support, however, "parameterized" queries could not be executed in a guaranteed safe manner. Instead, the connector made a best effort to escape parameter values and and render those strings inline with the query.
+Since its initial release, this connector's `cursor.execute()` method has supported passing a sequence or mapping of parameter values. Prior to Databricks Runtime introducing native parameter support, however, "parameterized" queries could not be executed in a guaranteed safe manner. Instead, the connector made a best effort to escape parameter values and and render those strings inline with the query.
 
 This approach has several drawbacks:
 
@@ -250,6 +250,6 @@ You should only set `use_inline_params=True` in the following cases:
 1. Your client code passes more than 255 parameters in a single query execution
 2. Your client code passes parameter values greater than 1MB in a single query execution
 3. Your client code makes extensive use of [`%s` positional parameter markers](#s-paramstyle-usage-example)
-4. Your client code uses [passes sequences as parameter values](#passing-sequences-as-parameter-values)
+4. Your client code uses [sequences as parameter values](#passing-sequences-as-parameter-values)
 
 We expect limitations (1) and (2) to be addressed in a future Databricks Runtime release.
