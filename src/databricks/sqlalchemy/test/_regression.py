@@ -5,11 +5,9 @@ from sqlalchemy.testing.suite import (
     ArgSignatureTest,
     BooleanTest,
     CastTypeDecoratorTest,
-    ComponentReflectionTest,
     ComponentReflectionTestExtra,
     CompositeKeyReflectionTest,
     CompoundSelectTest,
-    CTETest,
     DateHistoricTest,
     DateTest,
     DateTimeCoercedToDateTimeTest,
@@ -51,6 +49,11 @@ from sqlalchemy.testing.suite import (
     UnicodeVarcharTest,
     UuidTest,
     ValuesExpressionTest,
+)
+
+from databricks.sqlalchemy.test.overrides._ctetest import CTETest
+from databricks.sqlalchemy.test.overrides._componentreflectiontest import (
+    ComponentReflectionTest,
 )
 
 
