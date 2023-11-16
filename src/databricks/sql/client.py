@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, List, Optional, Any, Union, get_args, Type
+from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
 import pyarrow
@@ -26,7 +26,7 @@ from databricks.sql.parameters.native import (
     DbsqlParameterBase,
     TDbsqlParameter,
     TParameterDict,
-    TParameterList,
+    TParameterSequence,
     TParameterCollection,
     ParameterStructure,
     dbsql_parameter_from_primitive,
@@ -448,8 +448,8 @@ class Cursor:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
 
-    def _normalize_tparameterlist(
-        self, params: TParameterList
+    def _normalize_tparametersequence(
+        self, params: TParameterSequence
     ) -> List[TDbsqlParameter]:
         """Retains the same order as the input list."""
 
@@ -477,8 +477,8 @@ class Cursor:
             return []
         if isinstance(params, dict):
             return self._normalize_tparameterdict(params)
-        if isinstance(params, list):
-            return self._normalize_tparameterlist(params)
+        if isinstance(params, Sequence):
+            return self._normalize_tparametersequence(list(params))
 
     def _determine_parameter_structure(
         self,
@@ -491,7 +491,7 @@ class Cursor:
             return ParameterStructure.POSITIONAL
 
     def _prepare_inline_parameters(
-        self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]
+        self, stmt: str, params: Optional[Union[Sequence, Dict[str, Any]]]
     ) -> Tuple[str, List]:
         """Return a statement and list of native parameters to be passed to thrift_backend for execution
 

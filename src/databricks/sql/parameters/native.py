@@ -1,7 +1,7 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, Sequence
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -584,9 +584,9 @@ TDbsqlParameter = Union[
 ]
 
 
-TParameterList = List[Union[TDbsqlParameter, TAllowedParameterValue]]
+TParameterSequence = Sequence[Union[TDbsqlParameter, TAllowedParameterValue]]
 TParameterDict = Dict[str, TAllowedParameterValue]
-TParameterCollection = Union[TParameterList, TParameterDict]
+TParameterCollection = Union[TParameterSequence, TParameterDict]
 
 
 _all__ = [
