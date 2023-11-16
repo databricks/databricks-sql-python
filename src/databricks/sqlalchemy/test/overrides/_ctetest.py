@@ -11,7 +11,7 @@ from sqlalchemy import Integer
 from sqlalchemy import String
 
 
-class CTETest(CTETest):
+class CTETest(CTETest): # type: ignore
     @classmethod
     def define_tables(cls, metadata):
         Table(
