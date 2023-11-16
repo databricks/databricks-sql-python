@@ -119,7 +119,6 @@ class PySQLRetryTestsMixin:
 
     # For testing purposes
     _retry_policy = {
-        "_enable_v3_retries": True,
         "_retry_delay_min": 0.1,
         "_retry_delay_max": 5,
         "_retry_stop_after_attempts_count": 5,
@@ -424,3 +423,19 @@ class PySQLRetryTestsMixin:
                 expected_message_was_found = target in log
 
         assert expected_message_was_found, "Did not find expected log messages"
+
+    def test_retry_legacy_behavior_warns_user(self):
+        with self.assertLogs(
+            "databricks.sql",
+            level="WARN",
+        ) as cm:
+            with self.connection(
+                extra_params={**self._retry_policy, "_enable_v3_retries": False}
+            ):
+                expected_message_was_found = False
+                for log in cm.output:
+                    if expected_message_was_found:
+                        break
+                    target = "Legacy retry behavior is enabled for this connection."
+                    expected_message_was_found = target in log
+            assert expected_message_was_found, "Did not find expected log messages"
