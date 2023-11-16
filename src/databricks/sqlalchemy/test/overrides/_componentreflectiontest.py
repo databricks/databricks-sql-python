@@ -18,7 +18,7 @@ from sqlalchemy import testing
 from sqlalchemy.testing.suite.test_reflection import ComponentReflectionTest
 
 
-class ComponentReflectionTest(ComponentReflectionTest): # type: ignore
+class ComponentReflectionTest(ComponentReflectionTest):  # type: ignore
     @classmethod
     def define_reflected_tables(cls, metadata, schema):
         if schema:
