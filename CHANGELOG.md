@@ -2,11 +2,23 @@
 
 ## 3.0.0 (Unreleased)
 
-- Other: Introduce SQLAlchemy dialect compliance test suite and enumerate all excluded tests
+- Remove support for Python 3.7
+- Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
+- Completely rewritten SQLAlchemy dialect
+  - Adds support for SQLAlchemy >= 2.0 and drops support for SQLAlchemy 1.x
+  - Full e2e test coverage of all supported features
+  - Detailed usage notes in `README.sqlalchemy.md`
+  - Adds support for:
+    - New types: `TIME`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `TINYINT`
+    - `Numeric` type scale and precision, like `Numeric(10,2)`
+    - Reading and writing `PrimaryKeyConstraint` and `ForeignKeyConstraint`
+    - Reading and writing composite keys
+    - Reading and writing from views
+    - Writing `Identity` to tables (i.e. autoincrementing primary keys)
+    - `LIMIT` and `OFFSET` for paging through results
+    - Caching metadata calls
 - Add integration tests for Databricks UC Volumes ingestion queries
 - Add `_retry_max_redirects` config
-- Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
-- Remove support for Python 3.7
 
 ## 2.9.3 (2023-08-24)
 
