@@ -22,10 +22,6 @@ try:
 except ImportError:
     from sqlalchemy.ext.declarative import declarative_base
 
-from databricks.sqlalchemy.test.test_suite import start_protocol_patch
-
-start_protocol_patch()
-
 
 USER_AGENT_TOKEN = "PySQL e2e Tests"
 

@@ -11,7 +11,7 @@ You are welcome to file an issue here for general use cases. You can also contac
 
 ## Requirements
 
-Python 3.7 or above is required.
+Python 3.8 or above is required.
 
 ## Documentation
 
@@ -47,8 +47,7 @@ connection = sql.connect(
   access_token=access_token)
 
 cursor = connection.cursor()
-
-cursor.execute('SELECT * FROM RANGE(10)')
+cursor.execute('SELECT :param `p`, * FROM RANGE(10)', {"param": "foo"})
 result = cursor.fetchall()
 for row in result:
   print(row)
