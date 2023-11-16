@@ -298,6 +298,26 @@ class ComponentReflectionTest(ComponentReflectionTest):
     def test_get_multi_pk_constraint(self):
         pass
 
+    @pytest.mark.skip(render_future_feature(FutureFeature.CHECK))
+    def test_get_multi_check_constraints(self):
+        pass
+
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_get_comments(self):
+        pass
+
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_get_comments_with_schema(self):
+        pass
+
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_comments_unicode(self):
+        pass
+
+    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
+    def test_comments_unicode_full(self):
+        pass
+
 
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(render_future_feature(FutureFeature.CHECK))
