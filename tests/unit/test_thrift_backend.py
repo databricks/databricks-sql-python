@@ -66,7 +66,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             thrift_backend.make_request(mock_method, Mock())
 
     def _make_type_desc(self, type):
-        return ttypes.TTypeDesc(types=[ttypes.TTypeEntry(ttypes.TPrimitiveTypeEntry(type=type))])
+        return ttypes.TTypeDesc(types=[ttypes.TTypeEntry(ttypes.TTAllowedParameterValueEntry(type=type))])
 
     def _make_fake_thrift_backend(self):
         thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
@@ -270,7 +270,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 columnName="column 1",
                 typeDesc=ttypes.TTypeDesc(types=[
                     ttypes.TTypeEntry(
-                        ttypes.TPrimitiveTypeEntry(
+                        ttypes.TTAllowedParameterValueEntry(
                             type=ttypes.TTypeId.DECIMAL_TYPE,
                             typeQualifiers=ttypes.TTypeQualifiers(
                                 qualifiers={

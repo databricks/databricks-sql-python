@@ -292,6 +292,22 @@ class ComponentReflectionTest(ComponentReflectionTest):
     def test_reflect_table_temp_table(self):
         pass
 
+    @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
+    def test_get_indexes(self):
+        pass
+
+    @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
+    def test_multi_indexes(self):
+        pass
+
+    @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
+    def get_noncol_index(self):
+        pass
+
+    @pytest.mark.skip(render_skip_reason(SkipReason.UNIQUE))
+    def test_get_unique_constraints(self):
+        pass
+
 
 class NumericTest(NumericTest):
     @pytest.mark.skip(render_skip_reason(SkipReason.DECIMAL_FEAT))

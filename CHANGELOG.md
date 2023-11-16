@@ -3,7 +3,7 @@
 ## 3.0.0 (Unreleased)
 
 - Remove support for Python 3.7
-- Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
+- Add support for native parameterized SQL queries. Requires DBR 14.2 and above. See docs/parameters.md for more info.
 - Completely rewritten SQLAlchemy dialect
   - Adds support for SQLAlchemy >= 2.0 and drops support for SQLAlchemy 1.x
   - Full e2e test coverage of all supported features
@@ -17,6 +17,7 @@
     - Writing `Identity` to tables (i.e. autoincrementing primary keys)
     - `LIMIT` and `OFFSET` for paging through results
     - Caching metadata calls
+- Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
 - Add integration tests for Databricks UC Volumes ingestion queries
 - Add `_retry_max_redirects` config
 
