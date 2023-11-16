@@ -8,7 +8,6 @@ from unittest.mock import patch
 import pytest
 import pytz
 
-from databricks.sql.exc import DatabaseError
 from databricks.sql.parameters.native import (
     BigIntegerParameter,
     BooleanParameter,
@@ -361,7 +360,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 class TestInlineParameterSyntax(PySQLPytestTestCase):
     """The inline parameter approach uses pyformat markers"""
 
-    # @pytest.mark.parametrize("use_inline_params", (True, False))
     def test_params_as_dict(self):
         query = "SELECT %(foo)s foo, %(bar)s bar, %(baz)s baz"
         params = {"foo": 1, "bar": 2, "baz": 3}
