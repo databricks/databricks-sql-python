@@ -1,6 +1,6 @@
 # Release History
 
-## 3.0.0 (Unreleased)
+## 3.0.0 (2023-11-17)
 
 - Remove support for Python 3.7
 - Add support for native parameterized SQL queries. Requires DBR 14.2 and above. See docs/parameters.md for more info.
