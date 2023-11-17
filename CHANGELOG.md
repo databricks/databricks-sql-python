@@ -22,6 +22,7 @@
 - Retries:
   - Add `_retry_max_redirects` config
   - Set `_enable_v3_retries=True` and warn if users override it
+- Security: bump minimum pyarrow version to 14.0.1 (CVE-2023-47248)
 
 ## 2.9.3 (2023-08-24)
 
