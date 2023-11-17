@@ -19,7 +19,9 @@
     - Caching metadata calls
 - Enable cloud fetch by default. To disable, set `use_cloud_fetch=False` when building `databricks.sql.client`.
 - Add integration tests for Databricks UC Volumes ingestion queries
-- Add `_retry_max_redirects` config
+- Retries:
+  - Add `_retry_max_redirects` config
+  - Set `_enable_v3_retries=True` and warn if users override it
 
 ## 2.9.3 (2023-08-24)
 
