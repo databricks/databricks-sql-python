@@ -402,9 +402,6 @@ class ThriftBackend:
 
                 response = method(request)
 
-                # Calling `close()` here releases the active HTTP connection back to the pool
-                self._transport.close()
-
                 # We need to call type(response) here because thrift doesn't implement __name__ attributes for thrift responses
                 logger.debug(
                     "Received response: {}(<REDACTED>)".format(type(response).__name__)
@@ -466,6 +463,10 @@ class ThriftBackend:
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
+            finally:
+                # Calling `close()` here releases the active HTTP connection back to the pool
+                self._transport.close()
+
             return RequestErrorInfo(
                 error=error,
                 error_message=error_message,
