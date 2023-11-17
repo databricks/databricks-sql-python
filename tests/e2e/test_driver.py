@@ -31,6 +31,8 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
+from databricks.sql.exc import SessionAlreadyClosedError
+
 log = logging.getLogger(__name__)
 
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
@@ -699,10 +701,9 @@ class PySQLCoreTestSuite(SmokeTestMixin, CoreTestMixin, DecimalTestsMixin, Times
             conn.close()
             
             # When connection closes, any cursor operations should no longer exist at the server
-            with self.assertRaises(thrift.Thrift.TApplicationException) as cm:
+            with self.assertRaises(SessionAlreadyClosedError) as cm:
                 op_status_at_server = ars.thrift_backend._client.GetOperationStatus(status_request)
-                if hasattr(cm, "exception"):
-                    assert "RESOURCE_DOES_NOT_EXIST" in cm.exception.message
+
 
 
     def test_closing_a_closed_connection_doesnt_fail(self):
