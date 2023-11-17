@@ -30,6 +30,7 @@ class CommandType(Enum):
     EXECUTE_STATEMENT = "ExecuteStatement"
     CLOSE_SESSION = "CloseSession"
     CLOSE_OPERATION = "CloseOperation"
+    GET_OPERATION_STATUS = "GetOperationStatus"
     OTHER = "Other"
 
     @classmethod
@@ -314,9 +315,9 @@ class DatabricksRetryPolicy(Retry):
             2. The request received a 501 (Not Implemented) status code
                Because this request can never succeed.
             3. The request received a 404 (Not Found) code and the request CommandType
-               was CloseSession or CloseOperation. This code indicates that the session
-               or cursor was already closed. Further retries will always return the same
-               code.
+               was GetOperationStatus, CloseSession or CloseOperation. This code indicates
+               that the command, session or cursor was already closed. Further retries will
+               always return the same code.
             4. The request CommandType was ExecuteStatement and the HTTP code does not
                appear in the default status_forcelist or force_dangerous_codes list. By
                default, this means ExecuteStatement is only retried for codes 429 and 503.
@@ -342,6 +343,13 @@ class DatabricksRetryPolicy(Retry):
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):  # type: ignore
             return False, "Only POST requests are retried"
+
+        # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
+        if status_code == 404 and self.command_type == CommandType.GET_OPERATION_STATUS:
+            return (
+                False,
+                "GetOperationStatus received 404 code from Databricks. Operation was canceled.",
+            )
 
         # Request failed with 404 because CloseSession returns 404 if you repeat the request.
         if (

@@ -129,7 +129,7 @@ class ThriftBackend:
         #  (defaults to 900)
         # _enable_v3_retries
         # Whether to use the DatabricksRetryPolicy implemented in urllib3
-        # (defaults to False)
+        # (defaults to True)
         # _retry_max_redirects
         #  An integer representing the maximum number of redirects to follow for a request.
         #  This number must be <= _retry_stop_after_attempts_count.
@@ -185,7 +185,13 @@ class ThriftBackend:
         self._auth_provider = auth_provider
 
         # Connector version 3 retry approach
-        self.enable_v3_retries = kwargs.get("_enable_v3_retries", False)
+        self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
+
+        if not self.enable_v3_retries:
+            logger.warning(
+                "Legacy retry behavior is enabled for this connection."
+                " This behaviour is deprecated and will be removed in a future release."
+            )
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}
@@ -396,9 +402,6 @@ class ThriftBackend:
 
                 response = method(request)
 
-                # Calling `close()` here releases the active HTTP connection back to the pool
-                self._transport.close()
-
                 # We need to call type(response) here because thrift doesn't implement __name__ attributes for thrift responses
                 logger.debug(
                     "Received response: {}(<REDACTED>)".format(type(response).__name__)
@@ -460,6 +463,10 @@ class ThriftBackend:
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
+            finally:
+                # Calling `close()` here releases the active HTTP connection back to the pool
+                self._transport.close()
+
             return RequestErrorInfo(
                 error=error,
                 error_message=error_message,
