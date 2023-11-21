@@ -709,18 +709,18 @@ class Cursor:
         Execute a query and wait for execution to complete.
 
         The parameterisation behaviour of this method depends on which parameter approach is used:
-            - With INLINE mode (default), parameters are rendered inline with the query text
-            - With NATIVE mode, parameters are sent to the server separately for binding
+            - With INLINE mode, parameters are rendered inline with the query text
+            - With NATIVE mode (default), parameters are sent to the server separately for binding
 
         This behaviour is controlled by the `use_inline_params` argument passed when building a connection.
 
         The paramstyle for these approaches is different:
 
-        If the connection was instantiated with use_inline_params=False, then parameters
+        If the connection was instantiated with use_inline_params=False (default), then parameters
         should be given in PEP-249 `named` paramstyle like :param_name. Parameters passed by positionally
         are indicated using a `?` in the query text.
 
-        If the connection was instantiated with use_inline_params=True (default), then parameters
+        If the connection was instantiated with use_inline_params=True, then parameters
         should be given in PEP-249 `pyformat` paramstyle like %(param_name)s. Parameters passed by positionally
         are indicated using a `%s` marker in the query. Note: this approach is not recommended as it can break
         your SQL query syntax and will be removed in a future release.
