@@ -6,7 +6,11 @@ import time
 import uuid
 import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
-from typing import List, Union
+from typing import List, Union, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from databricks.sql.client import Cursor
+    from databricks.sql.parameters.native import TSparkParameter
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -17,7 +21,7 @@ import thrift.transport.TTransport
 import urllib3.exceptions
 
 import databricks.sql.auth.thrift_http_client
-from databricks.sql.auth.thrift_http_client import CommandType
+from databricks.sql.auth.retry import CommandType, thrift_method_to_command_type
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
@@ -66,6 +70,57 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
     "_retry_delay_default": (float, 5, 1, 60),
 }
+
+# Aliases
+ThriftRequest = Union[
+    ttypes.TOpenSessionReq,
+    ttypes.TCloseSessionReq,
+    ttypes.TGetInfoReq,
+    ttypes.TExecuteStatementReq,
+    ttypes.TGetTypeInfoReq,
+    ttypes.TGetCatalogsReq,
+    ttypes.TGetSchemasReq,
+    ttypes.TGetTablesReq,
+    ttypes.TGetTableTypesReq,
+    ttypes.TGetColumnsReq,
+    ttypes.TGetFunctionsReq,
+    ttypes.TGetPrimaryKeysReq,
+    ttypes.TGetCrossReferenceReq,
+    ttypes.TGetOperationStatusReq,
+    ttypes.TCancelOperationReq,
+    ttypes.TCloseOperationReq,
+    ttypes.TGetResultSetMetadataReq,
+    ttypes.TFetchResultsReq,
+    ttypes.TGetDelegationTokenReq,
+    ttypes.TCancelDelegationTokenReq,
+    ttypes.TRenewDelegationTokenReq,
+]
+
+ThriftResponse = Union[
+    ttypes.TOpenSessionResp,
+    ttypes.TCloseSessionResp,
+    ttypes.TGetInfoResp,
+    ttypes.TExecuteStatementResp,
+    ttypes.TGetTypeInfoResp,
+    ttypes.TGetCatalogsResp,
+    ttypes.TGetSchemasResp,
+    ttypes.TGetTablesResp,
+    ttypes.TGetTableTypesResp,
+    ttypes.TGetColumnsResp,
+    ttypes.TGetFunctionsResp,
+    ttypes.TGetPrimaryKeysResp,
+    ttypes.TGetCrossReferenceResp,
+    ttypes.TGetOperationStatusResp,
+    ttypes.TCancelOperationResp,
+    ttypes.TCloseOperationResp,
+    ttypes.TGetResultSetMetadataResp,
+    ttypes.TFetchResultsResp,
+    ttypes.TGetDelegationTokenResp,
+    ttypes.TCancelDelegationTokenResp,
+    ttypes.TRenewDelegationTokenResp,
+]
+
+ThriftMethod = Callable[[ThriftRequest], ThriftResponse]
 
 
 class ThriftBackend:
@@ -341,6 +396,75 @@ class ThriftBackend:
         )
         time.sleep(error_info.retry_delay)
 
+    def async_make_request(
+        self, thrift_method: ThriftMethod, thrift_request: ThriftRequest
+    ) -> ThriftResponse:
+        """Rewrite of make_request that doesn't implement its own retry loop.
+        TODO: Rewrite this docstring once the work is complete
+        """
+
+        if not self.enable_v3_retries:
+            raise OperationalError(
+                "async_make_request requires v3 retry policy to be enabled"
+            )
+
+        ct = thrift_method_to_command_type(thrift_method)
+        self._transport.set_retry_command_type(ct)
+        self._transport.startRetryTimer()
+
+        response = thrift_method(thrift_request)
+
+        return response
+
+    def async_execute_statement(
+        self,
+        statement: str,
+        session_handle: UUID,
+        max_rows: int,
+        max_bytes: int,
+        lz4_compression: bool,
+        cursor: "Cursor",
+        use_cloud_fetch: bool = True,
+        parameters: Optional[List[TSparkParameter]] = [],
+    ) -> "DbsqlAsyncExecution":
+        
+        spark_arrow_types = ttypes.TSparkArrowTypes(
+            timestampAsArrow=self._use_arrow_native_timestamps,
+            decimalAsArrow=self._use_arrow_native_decimals,
+            complexTypesAsArrow=self._use_arrow_native_complex_types,
+            # TODO: The current Arrow type used for intervals can not be deserialised in PyArrow
+            # DBR should be changed to use month_day_nano_interval
+            intervalTypesAsArrow=False,
+        )
+        req = ttypes.TExecuteStatementReq(
+            sessionHandle=session_handle,
+            statement=statement,
+            runAsync=True,
+            getDirectResults=ttypes.TSparkGetDirectResults(
+                maxRows=max_rows, maxBytes=max_bytes
+            ),
+            canReadArrowResult=True,
+            canDecompressLZ4Result=lz4_compression,
+            canDownloadResult=use_cloud_fetch,
+            confOverlay={
+                # We want to receive proper Timestamp arrow types.
+                "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
+            },
+            useArrowNativeTypes=spark_arrow_types,
+            parameters=parameters,
+        )
+
+        resp: ttypes.TExecuteStatementResp = self.async_make_request(self._client.ExecuteStatement, req)
+
+        query_id = guid = uuid.UUID(hex=self.guid_to_hex_id(resp.operationHandle.operationId.guid))
+        
+        # operationStatus -> TOperationstate
+        status = _toperationstate_to_ae_status(resp.directResults.operationStatus)
+
+        ae = DbsqlAsyncExecution(thrift_backend=self, query_id=query_id, status=status)
+
+        return ae
+
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
     def make_request(self, method, request):
@@ -573,7 +697,9 @@ class ThriftBackend:
                 canUseMultipleCatalogs=True,
                 configuration=session_configuration,
             )
-            response = self.make_request(self._client.OpenSession, open_session_req)
+            response = self.async_make_request(
+                self._client.OpenSession, open_session_req
+            )
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
             return response
@@ -635,7 +761,10 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
+            (
+                arrow_table,
+                num_rows,
+            ) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -1049,3 +1178,93 @@ class ThriftBackend:
             logger.debug(f"Unable to convert bytes to UUID: {bytes} -- {str(e)}")
             this_uuid = guid
         return str(this_uuid)
+
+
+import time
+from databricks.sql.client import Connection, ResultSet
+
+from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql.thrift_api.TCLIService import ttypes
+
+from uuid import UUID
+from typing import Union, Optional
+from enum import Enum
+
+
+class DbsqlAsyncExecutionStatus(Enum):
+    """An enum that represents the status of an async execution"""
+
+    PENDING = 0
+    RUNNING = 1
+    FINISHED = 2
+    CANCELED = 3
+    FETCHED = 4
+    ABORTED = 5
+
+
+def _toperationstate_to_ae_status(
+    input: ttypes.TOperationState,
+) -> DbsqlAsyncExecutionStatus:
+    
+    x = ttypes.TOperationState
+
+    if input in [x.INITIALIZED_STATE, x.PENDING_STATE, x.RUNNING_STATE]:
+        return DbsqlAsyncExecutionStatus.RUNNING
+    if input == x.CANCELED_STATE:
+        return DbsqlAsyncExecutionStatus.CANCELED
+    if input == x.FINISHED_STATE:
+        return DbsqlAsyncExecutionStatus.FINISHED
+    if input in [x.CLOSED_STATE, x.ERROR_STATE, x.UKNOWN_STATE, x.TIMEDOUT_STATE]:
+        return DbsqlAsyncExecutionStatus.ABORTED
+    
+
+
+class DbsqlAsyncExecution:
+    """
+    A class that represents an async execution of a query. Exposes just two methods:
+    get_result_or_status and cancel
+    """
+    _thrift_backend: ThriftBackend
+    _result_set: Optional[ResultSet]
+
+    def __init__(self, thrift_backend: ThriftBackend, query_id: UUID, status: DbsqlAsyncExecutionStatus):
+        self._thrift_backend = thrift_backend
+        self.query_id = query_id
+        self.status = status
+
+
+    status: DbsqlAsyncExecutionStatus
+    query_id: UUID
+
+    def get_result_or_status(self) -> Union[ResultSet, DbsqlAsyncExecutionStatus]:
+        """Get the result of the async execution. If execution has not completed, return False."""
+
+        if self.status == DbsqlAsyncExecutionStatus.FINISHED:
+            self._thrift_fetch_result()
+        if self.status == DbsqlAsyncExecutionStatus.FETCHED:
+            return self._result_set
+        else:
+            self._thrift_get_operation_status()
+            return self.status
+
+    def cancel(self) -> None:
+        """Cancel the query"""
+        self._thrift_cancel_operation()
+
+    def _thrift_cancel_operation(self) -> None:
+        """Execute TCancelOperation"""
+
+        _output = self._thrift_backend.cancel_command(self.query_id)
+        self.status = DbsqlAsyncExecutionStatus.CANCELED
+
+
+    def _thrift_get_operation_status(self) -> None:
+        """Execute GetOperationStatusReq and map thrift execution status to DbsqlAsyncExecutionStatus"""
+
+        _output = self._thrift_backend._poll_for_status(self.query_id)
+        self.status = _getoperationstatus_to_exec_status(_output)
+
+    def _thrift_fetch_result(self) -> None:
+        """Execute TFetchResultReq and store the result"""
+        self._result_set = self._thrift_backend.fetch_results(self.query_id)[0]
+        self.status == DbsqlAsyncExecutionStatus.FETCHED
