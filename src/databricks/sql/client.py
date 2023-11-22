@@ -1089,3 +1089,4 @@ class ResultSet:
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
+
