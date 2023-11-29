@@ -61,6 +61,7 @@ class Connection:
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
+        _use_arrow_native_complex_types: Optional[bool] = True,
         **kwargs,
     ) -> None:
         """
@@ -152,8 +153,13 @@ class Connection:
                             experimental_oauth_persistence=DevOnlyFilePersistence("~/dev-oauth.json")
                         )
                 ```
-
-
+            :param _use_arrow_native_complex_types: `bool`, optional
+                Controls whether a complex type field value is returned as a string or as a native Arrow type. Defaults to True.
+                When True:
+                    MAP is returned as List[Tuple[str, Any]]
+                    STRUCT is returned as Dict[str, Any]
+                    ARRAY is returned as numpy.ndarray
+                When False, complex types are returned as a strings. These are generally deserializable as JSON.
         """
 
         # Internal arguments in **kwargs:
@@ -184,9 +190,6 @@ class Connection:
         # _disable_pandas
         #  In case the deserialisation through pandas causes any issues, it can be disabled with
         #  this flag.
-        # _use_arrow_native_complex_types
-        # DBR will return native Arrow types for structs, arrays and maps instead of Arrow strings
-        # (True by default)
         # _use_arrow_native_decimals
         # Databricks runtime will return native Arrow types for decimals instead of Arrow strings
         # (True by default)
@@ -225,6 +228,7 @@ class Connection:
             http_path,
             (http_headers or []) + base_headers,
             auth_provider,
+            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
             **kwargs,
         )
 
