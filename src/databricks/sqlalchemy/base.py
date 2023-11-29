@@ -82,7 +82,7 @@ class DatabricksDialect(default.DefaultDialect):
     EMPTY_FK = EMPTY_INDEX = []
 
     @classmethod
-    def dbapi(cls):
+    def import_dbapi(cls):
         return sql
 
     def _force_paramstyle_to_native_mode(self):
