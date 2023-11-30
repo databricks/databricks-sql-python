@@ -5,6 +5,8 @@ import sqlalchemy
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.engine.interfaces import ReflectedColumn
 
+from databricks.sqlalchemy import _types as type_overrides
+
 """
 This module contains helper functions that can parse the contents
 of metadata and exceptions received from DBR. These are mostly just
@@ -293,7 +295,8 @@ GET_COLUMNS_TYPE_MAP = {
     "struct": sqlalchemy.types.String,
     "uniontype": sqlalchemy.types.String,
     "decimal": sqlalchemy.types.Numeric,
-    "timestamp": sqlalchemy.types.DateTime,
+    "timestamp": type_overrides.TIMESTAMP,
+    "timestamp_ntz": type_overrides.TIMESTAMP_NTZ,
     "date": sqlalchemy.types.Date,
 }
 

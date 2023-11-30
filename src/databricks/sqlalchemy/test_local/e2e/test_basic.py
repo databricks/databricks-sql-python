@@ -1,21 +1,24 @@
-import os, datetime, decimal
-import pytest
+import datetime
+import decimal
+import os
+from typing import Tuple, Union
 from unittest import skipIf
+
+import pytest
 from sqlalchemy import (
-    create_engine,
-    select,
-    insert,
     Column,
     MetaData,
     Table,
     Text,
+    create_engine,
+    insert,
+    select,
     text,
 )
-from sqlalchemy.orm import Session, DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.types import SMALLINT, Integer, BOOLEAN, String, DECIMAL, Date
 from sqlalchemy.engine import Engine
-
-from typing import Tuple, Union
+from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.types import BOOLEAN, DECIMAL, Date, DateTime, Integer, String
 
 try:
     from sqlalchemy.orm import declarative_base
@@ -344,8 +347,6 @@ def test_dialect_type_mappings(db_engine, metadata_obj: MetaData):
 def test_inspector_smoke_test(samples_engine: Engine):
     """It does not appear that 3L namespace is supported here"""
 
-    from sqlalchemy.engine.reflection import Inspector
-
     schema, table = "nyctaxi", "trips"
 
     try:
@@ -431,3 +432,34 @@ def test_user_agent_adjustment(db_engine):
     c2.close()
 
     assert same_ua, f"User agents didn't match \n {ua1} \n {ua2}"
+
+
+@pytest.fixture
+def sample_table(metadata_obj: MetaData, db_engine: Engine):
+    """This fixture creates a sample table and cleans it up after the test is complete."""
+    from databricks.sqlalchemy._parse import GET_COLUMNS_TYPE_MAP
+
+    table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
+
+    args = [
+        Column(colname, coltype) for colname, coltype in GET_COLUMNS_TYPE_MAP.items()
+    ]
+
+    SampleTable = Table(table_name, metadata_obj, *args)
+
+    metadata_obj.create_all(db_engine)
+
+    yield table_name
+
+    metadata_obj.drop_all(db_engine)
+
+
+def test_get_columns(db_engine, sample_table: str):
+    """Created after PECO-1297 and Github Issue #295 to verify that get_columsn behaves like it should for all known SQLAlchemy types"""
+
+    inspector = Inspector.from_engine(db_engine)
+
+    # this raises an exception if `parse_column_info_from_tgetcolumnsresponse` fails a lookup
+    columns = inspector.get_columns(sample_table)
+
+    assert True
