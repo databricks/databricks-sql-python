@@ -1,5 +1,9 @@
 # Release History
 
+## 3.0.1 (unreleased)
+
+- Fix: SQLAlchemy dialect could not reflect TIMESTAMP_NTZ columns (#296)
+
 ## 3.0.0 (2023-11-17)
 
 - Remove support for Python 3.7
