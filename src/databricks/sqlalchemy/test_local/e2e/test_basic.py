@@ -431,3 +431,35 @@ def test_user_agent_adjustment(db_engine):
     c2.close()
 
     assert same_ua, f"User agents didn't match \n {ua1} \n {ua2}"
+@pytest.fixture
+def sample_table(metadata_obj: MetaData, db_engine: Engine):
+    """Creates a sample table and returns its table name"""
+
+    table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
+
+    SampleTable = Table(
+        table_name,
+        metadata_obj,
+        Column("string_example", String(255)),
+        Column("integer_example", Integer),
+        Column("boolean_example", BOOLEAN),
+        Column("decimal_example", DECIMAL(10, 2)),
+        Column("date_example", Date),
+        Column("datetime_example", DateTime)
+    )
+
+    metadata_obj.create_all(db_engine)
+
+    yield table_name
+
+    metadata_obj.drop_all(db_engine)
+
+def test_get_columns(db_engine, metadata_obj: MetaData, sample_table: str):
+    """Confirms that we get back the same time we declared in a model and inserted using Core"""
+
+    
+    from sqlalchemy.engine.reflection import Inspector
+
+    inspector = Inspector.from_engine(db_engine)
+
+    columns = inspector.get_columns(sample_table)
