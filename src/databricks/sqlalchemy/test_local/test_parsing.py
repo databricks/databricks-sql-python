@@ -152,4 +152,3 @@ FMT_SAMPLE_DT_OUTPUT = [
 def test_filter_dict_by_value(match, output):
     result = match_dte_rows_by_value(FMT_SAMPLE_DT_OUTPUT, match)
     assert result == output
-
