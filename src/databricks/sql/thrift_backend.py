@@ -426,7 +426,7 @@ class ThriftBackend:
         cursor: "Cursor",
         use_cloud_fetch: bool = True,
         parameters: Optional[List[TSparkParameter]] = [],
-    ) -> "DbsqlAsyncExecution":
+    ) -> "AsyncExecution":
         
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
@@ -461,7 +461,7 @@ class ThriftBackend:
         # operationStatus -> TOperationstate
         status = _toperationstate_to_ae_status(resp.directResults.operationStatus)
 
-        ae = DbsqlAsyncExecution(thrift_backend=self, query_id=query_id, status=status)
+        ae = AsyncExecution(thrift_backend=self, query_id=query_id, status=status)
 
         return ae
 
@@ -1191,7 +1191,7 @@ from typing import Union, Optional
 from enum import Enum
 
 
-class DbsqlAsyncExecutionStatus(Enum):
+class AsyncExecutionStatus(Enum):
     """An enum that represents the status of an async execution"""
 
     PENDING = 0
@@ -1204,22 +1204,22 @@ class DbsqlAsyncExecutionStatus(Enum):
 
 def _toperationstate_to_ae_status(
     input: ttypes.TOperationState,
-) -> DbsqlAsyncExecutionStatus:
+) -> AsyncExecutionStatus:
     
     x = ttypes.TOperationState
 
     if input in [x.INITIALIZED_STATE, x.PENDING_STATE, x.RUNNING_STATE]:
-        return DbsqlAsyncExecutionStatus.RUNNING
+        return AsyncExecutionStatus.RUNNING
     if input == x.CANCELED_STATE:
-        return DbsqlAsyncExecutionStatus.CANCELED
+        return AsyncExecutionStatus.CANCELED
     if input == x.FINISHED_STATE:
-        return DbsqlAsyncExecutionStatus.FINISHED
+        return AsyncExecutionStatus.FINISHED
     if input in [x.CLOSED_STATE, x.ERROR_STATE, x.UKNOWN_STATE, x.TIMEDOUT_STATE]:
-        return DbsqlAsyncExecutionStatus.ABORTED
+        return AsyncExecutionStatus.ABORTED
     
 
 
-class DbsqlAsyncExecution:
+class AsyncExecution:
     """
     A class that represents an async execution of a query. Exposes just two methods:
     get_result_or_status and cancel
@@ -1227,21 +1227,21 @@ class DbsqlAsyncExecution:
     _thrift_backend: ThriftBackend
     _result_set: Optional[ResultSet]
 
-    def __init__(self, thrift_backend: ThriftBackend, query_id: UUID, status: DbsqlAsyncExecutionStatus):
+    def __init__(self, thrift_backend: ThriftBackend, query_id: UUID, status: AsyncExecutionStatus):
         self._thrift_backend = thrift_backend
         self.query_id = query_id
         self.status = status
 
 
-    status: DbsqlAsyncExecutionStatus
+    status: AsyncExecutionStatus
     query_id: UUID
 
-    def get_result_or_status(self) -> Union[ResultSet, DbsqlAsyncExecutionStatus]:
+    def get_result_or_status(self) -> Union[ResultSet, AsyncExecutionStatus]:
         """Get the result of the async execution. If execution has not completed, return False."""
 
-        if self.status == DbsqlAsyncExecutionStatus.FINISHED:
+        if self.status == AsyncExecutionStatus.FINISHED:
             self._thrift_fetch_result()
-        if self.status == DbsqlAsyncExecutionStatus.FETCHED:
+        if self.status == AsyncExecutionStatus.FETCHED:
             return self._result_set
         else:
             self._thrift_get_operation_status()
@@ -1255,7 +1255,7 @@ class DbsqlAsyncExecution:
         """Execute TCancelOperation"""
 
         _output = self._thrift_backend.cancel_command(self.query_id)
-        self.status = DbsqlAsyncExecutionStatus.CANCELED
+        self.status = AsyncExecutionStatus.CANCELED
 
 
     def _thrift_get_operation_status(self) -> None:
@@ -1267,4 +1267,4 @@ class DbsqlAsyncExecution:
     def _thrift_fetch_result(self) -> None:
         """Execute TFetchResultReq and store the result"""
         self._result_set = self._thrift_backend.fetch_results(self.query_id)[0]
-        self.status == DbsqlAsyncExecutionStatus.FETCHED
+        self.status == AsyncExecutionStatus.FETCHED
