@@ -7,7 +7,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import re
 
 import lz4.frame
@@ -473,6 +473,33 @@ def transform_paramstyle(
         output = _interpolate_named_markers(operation, parameters)
 
     return output
+
+NO_NATIVE_PARAMS: List = []
+
+def prepare_inline_parameters(
+    stmt: str, params: Optional[Union[Sequence, Dict[str, Any]]]
+) -> Tuple[str, List]:
+    """Return a statement and list of native parameters to be passed to thrift_backend for execution
+
+    :stmt:
+        A string SQL query containing parameter markers of PEP-249 paramstyle `pyformat`.
+        For example `%(param)s`.
+
+    :params:
+        An iterable of parameter values to be rendered inline. If passed as a Dict, the keys
+        must match the names of the markers included in :stmt:. If passed as a List, its length
+        must equal the count of parameter markers in :stmt:.
+
+    Returns a tuple of:
+        stmt: the passed statement with the param markers replaced by literal rendered values
+        params: an empty list representing the native parameters to be passed with this query.
+            The list is always empty because native parameters are never used under the inline approach
+    """
+
+    escaped_values = ParamEscaper().escape_args(params)
+    rendered_statement = inject_parameters(stmt, escaped_values)
+
+    return rendered_statement, NO_NATIVE_PARAMS
 
 
 def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:

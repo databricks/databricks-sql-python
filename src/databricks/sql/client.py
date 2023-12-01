@@ -21,6 +21,8 @@ from databricks.sql.utils import (
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
+    prepare_inline_parameters,
+    NO_NATIVE_PARAMS
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -49,7 +51,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
-NO_NATIVE_PARAMS: List = []
 
 
 class Connection:
@@ -433,7 +434,6 @@ class Cursor:
         self.executing_command_id = None
         self.thrift_backend = thrift_backend
         self.active_op_handle = None
-        self.escaper = ParamEscaper()
         self.lastrowid = None
 
     def __enter__(self):
@@ -494,31 +494,6 @@ class Cursor:
             return ParameterStructure.NAMED
         else:
             return ParameterStructure.POSITIONAL
-
-    def _prepare_inline_parameters(
-        self, stmt: str, params: Optional[Union[Sequence, Dict[str, Any]]]
-    ) -> Tuple[str, List]:
-        """Return a statement and list of native parameters to be passed to thrift_backend for execution
-
-        :stmt:
-            A string SQL query containing parameter markers of PEP-249 paramstyle `pyformat`.
-            For example `%(param)s`.
-
-        :params:
-            An iterable of parameter values to be rendered inline. If passed as a Dict, the keys
-            must match the names of the markers included in :stmt:. If passed as a List, its length
-            must equal the count of parameter markers in :stmt:.
-
-        Returns a tuple of:
-            stmt: the passed statement with the param markers replaced by literal rendered values
-            params: an empty list representing the native parameters to be passed with this query.
-                The list is always empty because native parameters are never used under the inline approach
-        """
-
-        escaped_values = self.escaper.escape_args(params)
-        rendered_statement = inject_parameters(stmt, escaped_values)
-
-        return rendered_statement, NO_NATIVE_PARAMS
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -717,7 +692,7 @@ class Cursor:
             prepared_operation = operation
 
         elif param_approach == ParameterApproach.INLINE:
-            prepared_operation, prepared_params = self._prepare_inline_parameters(
+            prepared_operation, prepared_params = prepare_inline_parameters(
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
