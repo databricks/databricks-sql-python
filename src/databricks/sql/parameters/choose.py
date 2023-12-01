@@ -26,14 +26,12 @@ def determine_parameter_approach(
 ) -> ParameterApproach:
     """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
 
-    If params is None then ParameterApproach.NONE is returned.
-    If self.use_inline_params is True then inline mode is used.
-    If self.use_inline_params is False, then check if the server supports them and proceed.
-        Else raise an exception.
+    Args:
+        connection: the connection to be used for the query
+        params: the parameters to be used for the query
 
-    Returns a ParameterApproach enumeration or raises an exception
-
-    If inline approach is used when the server supports native approach, a warning is logged
+    Returns:
+        The ParameterApproach that should be used for the query
     """
 
     if params is None:
