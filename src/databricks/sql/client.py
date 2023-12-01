@@ -31,6 +31,7 @@ from databricks.sql.parameters.native import (
     ParameterStructure,
     dbsql_parameter_from_primitive,
     ParameterApproach,
+    prepare_native_parameters,
 )
 
 
@@ -272,7 +273,7 @@ class Connection:
             )
 
         return value
-    
+
     def _determine_parameter_approach(
         self, params: Optional[TParameterCollection]
     ) -> ParameterApproach:
@@ -448,7 +449,6 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-
     def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
@@ -519,37 +519,6 @@ class Cursor:
         rendered_statement = inject_parameters(stmt, escaped_values)
 
         return rendered_statement, NO_NATIVE_PARAMS
-
-    def _prepare_native_parameters(
-        self,
-        stmt: str,
-        params: List[TDbsqlParameter],
-        param_structure: ParameterStructure,
-    ) -> Tuple[str, List[TSparkParameter]]:
-        """Return a statement and a list of native parameters to be passed to thrift_backend for execution
-
-        :stmt:
-            A string SQL query containing parameter markers of PEP-249 paramstyle `named`.
-            For example `:param`.
-
-        :params:
-            An iterable of parameter values to be sent natively. If passed as a Dict, the keys
-            must match the names of the markers included in :stmt:. If passed as a List, its length
-            must equal the count of parameter markers in :stmt:. In list form, any member of the list
-            can be wrapped in a DbsqlParameter class.
-
-        Returns a tuple of:
-            stmt: the passed statement` with the param markers replaced by literal rendered values
-            params: a list of TSparkParameters that will be passed in native mode
-        """
-
-        stmt = stmt
-        output = [
-            p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
-            for p in params
-        ]
-
-        return stmt, output
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -757,7 +726,7 @@ class Cursor:
             transformed_operation = transform_paramstyle(
                 operation, normalized_parameters, param_structure  # type: ignore
             )
-            prepared_operation, prepared_params = self._prepare_native_parameters(
+            prepared_operation, prepared_params = prepare_native_parameters(
                 transformed_operation, normalized_parameters, param_structure
             )
 

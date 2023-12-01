@@ -1,7 +1,7 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -566,6 +566,36 @@ def dbsql_parameter_from_primitive(
             "Please specify the type explicitly."
         )
 
+
+def prepare_native_parameters(
+    stmt: str,
+    params: List["TDbsqlParameter"],
+    param_structure: ParameterStructure,
+) -> Tuple[str, List[TSparkParameter]]:
+    """Return a statement and a list of native parameters to be passed to thrift_backend for execution
+
+    :stmt:
+        A string SQL query containing parameter markers of PEP-249 paramstyle `named`.
+        For example `:param`.
+
+    :params:
+        An iterable of parameter values to be sent natively. If passed as a Dict, the keys
+        must match the names of the markers included in :stmt:. If passed as a List, its length
+        must equal the count of parameter markers in :stmt:. In list form, any member of the list
+        can be wrapped in a DbsqlParameter class.
+
+    Returns a tuple of:
+        stmt: the passed statement` with the param markers replaced by literal rendered values
+        params: a list of TSparkParameters that will be passed in native mode
+    """
+
+    stmt = stmt
+    output = [
+        p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
+        for p in params
+    ]
+
+    return stmt, output
 
 TDbsqlParameter = Union[
     IntegerParameter,
