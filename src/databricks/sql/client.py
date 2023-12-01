@@ -18,8 +18,8 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import (
     ExecuteResponse,
-    ParamEscaper,
-    inject_parameters,
+)
+from databricks.sql.parameters.inline import (
     transform_paramstyle,
     prepare_inline_parameters,
     NO_NATIVE_PARAMS
