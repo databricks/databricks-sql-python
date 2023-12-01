@@ -272,6 +272,30 @@ class Connection:
             )
 
         return value
+    
+    def _determine_parameter_approach(
+        self, params: Optional[TParameterCollection]
+    ) -> ParameterApproach:
+        """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
+
+        If params is None then ParameterApproach.NONE is returned.
+        If self.use_inline_params is True then inline mode is used.
+        If self.use_inline_params is False, then check if the server supports them and proceed.
+            Else raise an exception.
+
+        Returns a ParameterApproach enumeration or raises an exception
+
+        If inline approach is used when the server supports native approach, a warning is logged
+        """
+
+        if params is None:
+            return ParameterApproach.NONE
+
+        if self.use_inline_params:
+            return ParameterApproach.INLINE
+
+        else:
+            return ParameterApproach.NATIVE
 
     def __enter__(self):
         return self
@@ -424,29 +448,6 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def _determine_parameter_approach(
-        self, params: Optional[TParameterCollection]
-    ) -> ParameterApproach:
-        """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
-
-        If params is None then ParameterApproach.NONE is returned.
-        If self.use_inline_params is True then inline mode is used.
-        If self.use_inline_params is False, then check if the server supports them and proceed.
-            Else raise an exception.
-
-        Returns a ParameterApproach enumeration or raises an exception
-
-        If inline approach is used when the server supports native approach, a warning is logged
-        """
-
-        if params is None:
-            return ParameterApproach.NONE
-
-        if self.connection.use_inline_params:
-            return ParameterApproach.INLINE
-
-        else:
-            return ParameterApproach.NATIVE
 
     def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
         """Return True if all members of the list have a non-null .name attribute"""
@@ -741,7 +742,7 @@ class Cursor:
         :returns self
         """
 
-        param_approach = self._determine_parameter_approach(parameters)
+        param_approach = self.connection._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
             prepared_operation = operation
