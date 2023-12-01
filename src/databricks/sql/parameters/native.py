@@ -597,6 +597,52 @@ def prepare_native_parameters(
 
     return stmt, output
 
+def _all_dbsql_parameters_are_named(params: List["TDbsqlParameter"]) -> bool:
+    """Return True if all members of the list have a non-null .name attribute"""
+    return all([i.name is not None for i in params])
+
+def _normalize_tparameterdict(
+    params: "TParameterDict"
+) -> List["TDbsqlParameter"]:
+    return [
+        dbsql_parameter_from_primitive(value=value, name=name)
+        for name, value in params.items()
+    ]
+
+def _normalize_tparametersequence(
+    params: "TParameterSequence"
+) -> List["TDbsqlParameter"]:
+    """Retains the same order as the input list."""
+
+    output: List[TDbsqlParameter] = []
+    for p in params:
+        if isinstance(p, DbsqlParameterBase):
+            output.append(p)  # type: ignore
+        else:
+            output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
+
+    return output
+
+def _normalize_tparametercollection(
+    params: Optional["TParameterCollection"]
+) -> List["TDbsqlParameter"]:
+    if params is None:
+        return []
+    if isinstance(params, dict):
+        return _normalize_tparameterdict(params)
+    if isinstance(params, Sequence):
+        return _normalize_tparametersequence(list(params))
+
+def _determine_parameter_structure(
+    
+    parameters: List["TDbsqlParameter"],
+) -> ParameterStructure:
+    all_named = _all_dbsql_parameters_are_named(parameters)
+    if all_named:
+        return ParameterStructure.NAMED
+    else:
+        return ParameterStructure.POSITIONAL
+
 TDbsqlParameter = Union[
     IntegerParameter,
     StringParameter,

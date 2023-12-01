@@ -22,7 +22,7 @@ from databricks.sql.utils import (
 from databricks.sql.parameters.inline import (
     transform_paramstyle,
     prepare_inline_parameters,
-    NO_NATIVE_PARAMS
+    NO_NATIVE_PARAMS,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -35,6 +35,9 @@ from databricks.sql.parameters.native import (
     ParameterApproach,
     prepare_native_parameters,
 )
+
+
+from databricks.sql.parameters.choose import prepare_parameters_and_statement
 
 
 from databricks.sql.types import Row
@@ -50,7 +53,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
-
 
 
 class Connection:
@@ -449,52 +451,6 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
-        """Return True if all members of the list have a non-null .name attribute"""
-        return all([i.name is not None for i in params])
-
-    def _normalize_tparametersequence(
-        self, params: TParameterSequence
-    ) -> List[TDbsqlParameter]:
-        """Retains the same order as the input list."""
-
-        output: List[TDbsqlParameter] = []
-        for p in params:
-            if isinstance(p, DbsqlParameterBase):
-                output.append(p)  # type: ignore
-            else:
-                output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
-
-        return output
-
-    def _normalize_tparameterdict(
-        self, params: TParameterDict
-    ) -> List[TDbsqlParameter]:
-        return [
-            dbsql_parameter_from_primitive(value=value, name=name)
-            for name, value in params.items()
-        ]
-
-    def _normalize_tparametercollection(
-        self, params: Optional[TParameterCollection]
-    ) -> List[TDbsqlParameter]:
-        if params is None:
-            return []
-        if isinstance(params, dict):
-            return self._normalize_tparameterdict(params)
-        if isinstance(params, Sequence):
-            return self._normalize_tparametersequence(list(params))
-
-    def _determine_parameter_structure(
-        self,
-        parameters: List[TDbsqlParameter],
-    ) -> ParameterStructure:
-        all_named = self._all_dbsql_parameters_are_named(parameters)
-        if all_named:
-            return ParameterStructure.NAMED
-        else:
-            return ParameterStructure.POSITIONAL
-
     def _close_and_clear_active_result_set(self):
         try:
             if self.active_result_set:
@@ -686,24 +642,9 @@ class Cursor:
         :returns self
         """
 
-        param_approach = self.connection._determine_parameter_approach(parameters)
-        if param_approach == ParameterApproach.NONE:
-            prepared_params = NO_NATIVE_PARAMS
-            prepared_operation = operation
-
-        elif param_approach == ParameterApproach.INLINE:
-            prepared_operation, prepared_params = prepare_inline_parameters(
-                operation, parameters
-            )
-        elif param_approach == ParameterApproach.NATIVE:
-            normalized_parameters = self._normalize_tparametercollection(parameters)
-            param_structure = self._determine_parameter_structure(normalized_parameters)
-            transformed_operation = transform_paramstyle(
-                operation, normalized_parameters, param_structure  # type: ignore
-            )
-            prepared_operation, prepared_params = prepare_native_parameters(
-                transformed_operation, normalized_parameters, param_structure
-            )
+        prepared_operation, prepared_params = prepare_parameters_and_statement(
+            operation, parameters, self.connection
+        )
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
