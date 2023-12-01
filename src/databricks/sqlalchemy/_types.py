@@ -6,7 +6,7 @@ import sqlalchemy
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.ext.compiler import compiles
 
-from databricks.sql.utils import ParamEscaper
+from databricks.sql.parameters.inline import ParamEscaper
 
 
 def process_literal_param_hack(value: Any):

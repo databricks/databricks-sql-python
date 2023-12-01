@@ -1,53 +1,27 @@
-from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
+import decimal
+import json
+import os
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas
 import pyarrow
 import requests
-import json
-import os
-import decimal
 
-from databricks.sql import __version__
 from databricks.sql import *
+from databricks.sql import __version__
+from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.exc import (
+    CursorAlreadyClosedError,
     OperationalError,
     SessionAlreadyClosedError,
-    CursorAlreadyClosedError,
 )
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence
+from databricks.sql.parameters.choose import prepare_parameters_and_statement
+from databricks.sql.parameters.native import TParameterCollection
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import (
-    ExecuteResponse,
-)
-from databricks.sql.parameters.inline import (
-    transform_paramstyle,
-    prepare_inline_parameters,
-    NO_NATIVE_PARAMS,
-)
-from databricks.sql.parameters.native import (
-    DbsqlParameterBase,
-    TDbsqlParameter,
-    TParameterDict,
-    TParameterSequence,
-    TParameterCollection,
-    ParameterStructure,
-    dbsql_parameter_from_primitive,
-    ParameterApproach,
-    prepare_native_parameters,
-)
-
-
-from databricks.sql.parameters.choose import prepare_parameters_and_statement
-
-
 from databricks.sql.types import Row
-from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
-from databricks.sql.experimental.oauth_persistence import OAuthPersistence
-
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkParameter,
-)
-
+from databricks.sql.utils import ExecuteResponse
 
 logger = logging.getLogger(__name__)
 
@@ -276,30 +250,6 @@ class Connection:
             )
 
         return value
-
-    def _determine_parameter_approach(
-        self, params: Optional[TParameterCollection]
-    ) -> ParameterApproach:
-        """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
-
-        If params is None then ParameterApproach.NONE is returned.
-        If self.use_inline_params is True then inline mode is used.
-        If self.use_inline_params is False, then check if the server supports them and proceed.
-            Else raise an exception.
-
-        Returns a ParameterApproach enumeration or raises an exception
-
-        If inline approach is used when the server supports native approach, a warning is logged
-        """
-
-        if params is None:
-            return ParameterApproach.NONE
-
-        if self.use_inline_params:
-            return ParameterApproach.INLINE
-
-        else:
-            return ParameterApproach.NATIVE
 
     def __enter__(self):
         return self

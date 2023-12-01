@@ -163,7 +163,9 @@ def transform_paramstyle(
 
     return output
 
+
 NO_NATIVE_PARAMS: List = []
+
 
 def prepare_inline_parameters(
     stmt: str, params: Optional[Union[Sequence, Dict[str, Any]]]

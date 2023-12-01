@@ -1,7 +1,7 @@
 import datetime
 import decimal
 import os
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 from unittest import skipIf
 
 import pytest
@@ -441,7 +441,7 @@ def sample_table(metadata_obj: MetaData, db_engine: Engine):
 
     table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 
-    args = [
+    args: List[Column] = [
         Column(colname, coltype) for colname, coltype in GET_COLUMNS_TYPE_MAP.items()
     ]
 
