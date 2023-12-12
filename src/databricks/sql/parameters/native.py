@@ -1,7 +1,7 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
@@ -565,6 +565,85 @@ def dbsql_parameter_from_primitive(
             f"Could not infer parameter type from value: {value} - {type(value)} \n"
             "Please specify the type explicitly."
         )
+
+
+def prepare_native_parameters(
+    stmt: str,
+    params: List["TDbsqlParameter"],
+    param_structure: ParameterStructure,
+) -> Tuple[str, List[TSparkParameter]]:
+    """Return a statement and a list of native parameters to be passed to thrift_backend for execution
+
+    :stmt:
+        A string SQL query containing parameter markers of PEP-249 paramstyle `named`.
+        For example `:param`.
+
+    :params:
+        An iterable of parameter values to be sent natively. If passed as a Dict, the keys
+        must match the names of the markers included in :stmt:. If passed as a List, its length
+        must equal the count of parameter markers in :stmt:. In list form, any member of the list
+        can be wrapped in a DbsqlParameter class.
+
+    Returns a tuple of:
+        stmt: the passed statement` with the param markers replaced by literal rendered values
+        params: a list of TSparkParameters that will be passed in native mode
+    """
+
+    stmt = stmt
+    output = [
+        p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
+        for p in params
+    ]
+
+    return stmt, output
+
+
+def _all_dbsql_parameters_are_named(params: List["TDbsqlParameter"]) -> bool:
+    """Return True if all members of the list have a non-null .name attribute"""
+    return all([i.name is not None for i in params])
+
+
+def _normalize_tparameterdict(params: "TParameterDict") -> List["TDbsqlParameter"]:
+    return [
+        dbsql_parameter_from_primitive(value=value, name=name)
+        for name, value in params.items()
+    ]
+
+
+def _normalize_tparametersequence(
+    params: "TParameterSequence",
+) -> List["TDbsqlParameter"]:
+    """Retains the same order as the input list."""
+
+    output: List[TDbsqlParameter] = []
+    for p in params:
+        if isinstance(p, DbsqlParameterBase):
+            output.append(p)  # type: ignore
+        else:
+            output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
+
+    return output
+
+
+def _normalize_tparametercollection(
+    params: Optional["TParameterCollection"],
+) -> List["TDbsqlParameter"]:
+    if params is None:
+        return []
+    if isinstance(params, dict):
+        return _normalize_tparameterdict(params)
+    if isinstance(params, Sequence):
+        return _normalize_tparametersequence(list(params))
+
+
+def _determine_parameter_structure(
+    parameters: List["TDbsqlParameter"],
+) -> ParameterStructure:
+    all_named = _all_dbsql_parameters_are_named(parameters)
+    if all_named:
+        return ParameterStructure.NAMED
+    else:
+        return ParameterStructure.POSITIONAL
 
 
 TDbsqlParameter = Union[

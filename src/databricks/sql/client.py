@@ -1,54 +1,32 @@
-from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
+import decimal
+import json
+import os
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas
 import pyarrow
 import requests
-import json
-import os
-import decimal
 
-from databricks.sql import __version__
 from databricks.sql import *
+from databricks.sql import __version__
+from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.exc import (
+    CursorAlreadyClosedError,
     OperationalError,
     SessionAlreadyClosedError,
-    CursorAlreadyClosedError,
 )
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence
+from databricks.sql.parameters.choose import prepare_parameters_and_statement
+from databricks.sql.parameters.native import TParameterCollection
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import (
-    ExecuteResponse,
-    ParamEscaper,
-    inject_parameters,
-    transform_paramstyle,
-)
-from databricks.sql.parameters.native import (
-    DbsqlParameterBase,
-    TDbsqlParameter,
-    TParameterDict,
-    TParameterSequence,
-    TParameterCollection,
-    ParameterStructure,
-    dbsql_parameter_from_primitive,
-    ParameterApproach,
-)
-
-
 from databricks.sql.types import Row
-from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
-from databricks.sql.experimental.oauth_persistence import OAuthPersistence
-
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkParameter,
-)
-
+from databricks.sql.utils import ExecuteResponse
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
-
-NO_NATIVE_PARAMS: List = []
 
 
 class Connection:
@@ -408,7 +386,6 @@ class Cursor:
         self.executing_command_id = None
         self.thrift_backend = thrift_backend
         self.active_op_handle = None
-        self.escaper = ParamEscaper()
         self.lastrowid = None
 
     def __enter__(self):
@@ -423,132 +400,6 @@ class Cursor:
                 yield row
         else:
             raise Error("There is no active result set")
-
-    def _determine_parameter_approach(
-        self, params: Optional[TParameterCollection]
-    ) -> ParameterApproach:
-        """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
-
-        If params is None then ParameterApproach.NONE is returned.
-        If self.use_inline_params is True then inline mode is used.
-        If self.use_inline_params is False, then check if the server supports them and proceed.
-            Else raise an exception.
-
-        Returns a ParameterApproach enumeration or raises an exception
-
-        If inline approach is used when the server supports native approach, a warning is logged
-        """
-
-        if params is None:
-            return ParameterApproach.NONE
-
-        if self.connection.use_inline_params:
-            return ParameterApproach.INLINE
-
-        else:
-            return ParameterApproach.NATIVE
-
-    def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
-        """Return True if all members of the list have a non-null .name attribute"""
-        return all([i.name is not None for i in params])
-
-    def _normalize_tparametersequence(
-        self, params: TParameterSequence
-    ) -> List[TDbsqlParameter]:
-        """Retains the same order as the input list."""
-
-        output: List[TDbsqlParameter] = []
-        for p in params:
-            if isinstance(p, DbsqlParameterBase):
-                output.append(p)  # type: ignore
-            else:
-                output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
-
-        return output
-
-    def _normalize_tparameterdict(
-        self, params: TParameterDict
-    ) -> List[TDbsqlParameter]:
-        return [
-            dbsql_parameter_from_primitive(value=value, name=name)
-            for name, value in params.items()
-        ]
-
-    def _normalize_tparametercollection(
-        self, params: Optional[TParameterCollection]
-    ) -> List[TDbsqlParameter]:
-        if params is None:
-            return []
-        if isinstance(params, dict):
-            return self._normalize_tparameterdict(params)
-        if isinstance(params, Sequence):
-            return self._normalize_tparametersequence(list(params))
-
-    def _determine_parameter_structure(
-        self,
-        parameters: List[TDbsqlParameter],
-    ) -> ParameterStructure:
-        all_named = self._all_dbsql_parameters_are_named(parameters)
-        if all_named:
-            return ParameterStructure.NAMED
-        else:
-            return ParameterStructure.POSITIONAL
-
-    def _prepare_inline_parameters(
-        self, stmt: str, params: Optional[Union[Sequence, Dict[str, Any]]]
-    ) -> Tuple[str, List]:
-        """Return a statement and list of native parameters to be passed to thrift_backend for execution
-
-        :stmt:
-            A string SQL query containing parameter markers of PEP-249 paramstyle `pyformat`.
-            For example `%(param)s`.
-
-        :params:
-            An iterable of parameter values to be rendered inline. If passed as a Dict, the keys
-            must match the names of the markers included in :stmt:. If passed as a List, its length
-            must equal the count of parameter markers in :stmt:.
-
-        Returns a tuple of:
-            stmt: the passed statement with the param markers replaced by literal rendered values
-            params: an empty list representing the native parameters to be passed with this query.
-                The list is always empty because native parameters are never used under the inline approach
-        """
-
-        escaped_values = self.escaper.escape_args(params)
-        rendered_statement = inject_parameters(stmt, escaped_values)
-
-        return rendered_statement, NO_NATIVE_PARAMS
-
-    def _prepare_native_parameters(
-        self,
-        stmt: str,
-        params: List[TDbsqlParameter],
-        param_structure: ParameterStructure,
-    ) -> Tuple[str, List[TSparkParameter]]:
-        """Return a statement and a list of native parameters to be passed to thrift_backend for execution
-
-        :stmt:
-            A string SQL query containing parameter markers of PEP-249 paramstyle `named`.
-            For example `:param`.
-
-        :params:
-            An iterable of parameter values to be sent natively. If passed as a Dict, the keys
-            must match the names of the markers included in :stmt:. If passed as a List, its length
-            must equal the count of parameter markers in :stmt:. In list form, any member of the list
-            can be wrapped in a DbsqlParameter class.
-
-        Returns a tuple of:
-            stmt: the passed statement` with the param markers replaced by literal rendered values
-            params: a list of TSparkParameters that will be passed in native mode
-        """
-
-        stmt = stmt
-        output = [
-            p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
-            for p in params
-        ]
-
-        return stmt, output
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -741,24 +592,9 @@ class Cursor:
         :returns self
         """
 
-        param_approach = self._determine_parameter_approach(parameters)
-        if param_approach == ParameterApproach.NONE:
-            prepared_params = NO_NATIVE_PARAMS
-            prepared_operation = operation
-
-        elif param_approach == ParameterApproach.INLINE:
-            prepared_operation, prepared_params = self._prepare_inline_parameters(
-                operation, parameters
-            )
-        elif param_approach == ParameterApproach.NATIVE:
-            normalized_parameters = self._normalize_tparametercollection(parameters)
-            param_structure = self._determine_parameter_structure(normalized_parameters)
-            transformed_operation = transform_paramstyle(
-                operation, normalized_parameters, param_structure  # type: ignore
-            )
-            prepared_operation, prepared_params = self._prepare_native_parameters(
-                transformed_operation, normalized_parameters, param_structure
-            )
+        prepared_operation, prepared_params = prepare_parameters_and_statement(
+            operation, parameters, self.connection
+        )
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
