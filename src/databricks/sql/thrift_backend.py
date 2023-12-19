@@ -138,7 +138,7 @@ class ThriftBackend:
             uri = kwargs.get("_connection_uri")
         elif server_hostname and http_path:
             uri = "{host}:{port}/{path}".format(
-                host=server_hostname, port=port, path=http_path.lstrip("/")
+                host=server_hostname.rstrip("/"), port=port, path=http_path.lstrip("/")
             )
             if not uri.startswith("https://"):
                 uri = "https://" + uri
