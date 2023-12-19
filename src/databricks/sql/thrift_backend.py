@@ -1,36 +1,40 @@
+from decimal import Decimal
 import errno
 import logging
 import math
-import threading
 import time
 import uuid
-from decimal import Decimal
+import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union
 
 import pyarrow
-import thrift.protocol.TBinaryProtocol
 import thrift.transport.THttpClient
+import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
 import thrift.transport.TTransport
+
 import urllib3.exceptions
 
 import databricks.sql.auth.thrift_http_client
-from databricks.sql import *
-from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.auth.thrift_http_client import CommandType
-from databricks.sql.exc import MaxRetryDurationError
+from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
-from databricks.sql.thrift_api.TCLIService.TCLIService import Client as TCLIServiceClient
+from databricks.sql import *
+from databricks.sql.exc import MaxRetryDurationError
+from databricks.sql.thrift_api.TCLIService.TCLIService import (
+    Client as TCLIServiceClient,
+)
+
 from databricks.sql.utils import (
     ExecuteResponse,
-    NoRetryReason,
-    RequestErrorInfo,
-    ResultSetQueueFactory,
     _bound,
+    RequestErrorInfo,
+    NoRetryReason,
+    ResultSetQueueFactory,
     convert_arrow_based_set_to_arrow_table,
-    convert_column_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
+    convert_column_based_set_to_arrow_table,
 )
 
 logger = logging.getLogger(__name__)
