@@ -39,6 +39,21 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         )
         return text
 
+    def visit_set_column_comment(self, create, **kw):
+        return "ALTER TABLE %s ALTER COLUMN %s COMMENT %s" % (
+            self.preparer.format_table(create.element.table),
+            self.preparer.format_column(create.element),
+            self.sql_compiler.render_literal_value(
+                create.element.comment, sqltypes.String()
+            ),
+        )
+
+    def visit_drop_column_comment(self, create, **kw):
+        return "ALTER TABLE %s ALTER COLUMN %s COMMENT ''" % (
+            self.preparer.format_table(create.element.table),
+            self.preparer.format_column(create.element),
+        )
+
     def get_column_specification(self, column, **kwargs):
         # Emit a log message if a user attempts to set autoincrement=True on a column.
         # See comments in test_suite.py. We may implement implicit IDENTITY using this
