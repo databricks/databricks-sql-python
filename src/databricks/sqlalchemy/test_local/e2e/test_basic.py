@@ -188,6 +188,26 @@ def test_create_table_not_null(db_engine, metadata_obj: MetaData):
     metadata_obj.drop_all(db_engine)
 
 
+def test_column_comment(db_engine, metadata_obj: MetaData):
+    table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
+
+    SampleTable = Table(
+        table_name,
+        metadata_obj,
+        Column("name", String(255), comment="some comment")
+    )
+
+    metadata_obj.create_all(db_engine)
+
+    columns = db_engine.dialect.get_columns(
+        connection=db_engine.connect(), table_name=table_name
+    )
+
+    assert columns[0].get('comment') == "some comment"
+
+    metadata_obj.drop_all(db_engine)
+
+
 def test_bulk_insert_with_core(db_engine, metadata_obj, session):
     import random
 

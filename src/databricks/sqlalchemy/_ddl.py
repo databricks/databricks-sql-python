@@ -1,5 +1,5 @@
 import re
-from sqlalchemy.sql import compiler
+from sqlalchemy.sql import compiler, sqltypes
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,16 +40,22 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         return text
 
     def get_column_specification(self, column, **kwargs):
-        """Currently we override this method only to emit a log message if a user attempts to set
-        autoincrement=True on a column. See comments in test_suite.py. We may implement implicit
-        IDENTITY using this feature in the future, similar to the Microsoft SQL Server dialect.
-        """
+        # Emit a log message if a user attempts to set autoincrement=True on a column.
+        # See comments in test_suite.py. We may implement implicit IDENTITY using this
+        # feature in the future, similar to the Microsoft SQL Server dialect.
         if column is column.table._autoincrement_column or column.autoincrement is True:
             logger.warn(
                 "Databricks dialect ignores SQLAlchemy's autoincrement semantics. Use explicit Identity() instead."
             )
 
-        return super().get_column_specification(column, **kwargs)
+        colspec = super().get_column_specification(column, **kwargs)
+        if column.comment is not None:
+            literal = self.sql_compiler.render_literal_value(
+                column.comment, sqltypes.STRINGTYPE
+            )
+            colspec += " COMMENT " + literal
+
+        return colspec
 
 
 class DatabricksStatementCompiler(compiler.SQLCompiler):
