@@ -6,7 +6,7 @@ import time
 import uuid
 import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
-from typing import List, Union, Callable, TYPE_CHECKING
+from typing import List, Union, Callable, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -419,14 +419,29 @@ class ThriftBackend:
     def async_execute_statement(
         self,
         statement: str,
-        session_handle: UUID,
+        session_handle: uuid.UUID,
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
         cursor: "Cursor",
         use_cloud_fetch: bool = True,
-        parameters: Optional[List[TSparkParameter]] = [],
+        parameters: Optional[List["TSparkParameter"]] = [],
     ) -> "AsyncExecution":
+        """Send an ExecuteStatement command to the server, and return an AsyncExecution object.
+
+        Args:
+            statement: The SQL statement to execute.
+            session_handle: The session handle to use for the query.
+            max_rows: <unknown exactly what this controls> is it the same as including a LIMIT clause? Or is the maximum rows per batch?
+            max_bytes: <similar unknown as max_rows>
+            lz4_compression: Whether to use LZ4 compression for the results over the wire
+            cursor: The cursor that is executing this statement --> I don't think we need this here
+            use_cloud_fetch: Whether to use cloud fetch for the results
+            parameters: The parameters to use for the query
+
+        Returns:
+            An AsyncExecution object that can be used to poll and fetch results.
+        """
         
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
@@ -1178,93 +1193,3 @@ class ThriftBackend:
             logger.debug(f"Unable to convert bytes to UUID: {bytes} -- {str(e)}")
             this_uuid = guid
         return str(this_uuid)
-
-
-import time
-from databricks.sql.client import Connection, ResultSet
-
-from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.thrift_api.TCLIService import ttypes
-
-from uuid import UUID
-from typing import Union, Optional
-from enum import Enum
-
-
-class AsyncExecutionStatus(Enum):
-    """An enum that represents the status of an async execution"""
-
-    PENDING = 0
-    RUNNING = 1
-    FINISHED = 2
-    CANCELED = 3
-    FETCHED = 4
-    ABORTED = 5
-
-
-def _toperationstate_to_ae_status(
-    input: ttypes.TOperationState,
-) -> AsyncExecutionStatus:
-    
-    x = ttypes.TOperationState
-
-    if input in [x.INITIALIZED_STATE, x.PENDING_STATE, x.RUNNING_STATE]:
-        return AsyncExecutionStatus.RUNNING
-    if input == x.CANCELED_STATE:
-        return AsyncExecutionStatus.CANCELED
-    if input == x.FINISHED_STATE:
-        return AsyncExecutionStatus.FINISHED
-    if input in [x.CLOSED_STATE, x.ERROR_STATE, x.UKNOWN_STATE, x.TIMEDOUT_STATE]:
-        return AsyncExecutionStatus.ABORTED
-    
-
-
-class AsyncExecution:
-    """
-    A class that represents an async execution of a query. Exposes just two methods:
-    get_result_or_status and cancel
-    """
-    _thrift_backend: ThriftBackend
-    _result_set: Optional[ResultSet]
-
-    def __init__(self, thrift_backend: ThriftBackend, query_id: UUID, status: AsyncExecutionStatus):
-        self._thrift_backend = thrift_backend
-        self.query_id = query_id
-        self.status = status
-
-
-    status: AsyncExecutionStatus
-    query_id: UUID
-
-    def get_result_or_status(self) -> Union[ResultSet, AsyncExecutionStatus]:
-        """Get the result of the async execution. If execution has not completed, return False."""
-
-        if self.status == AsyncExecutionStatus.FINISHED:
-            self._thrift_fetch_result()
-        if self.status == AsyncExecutionStatus.FETCHED:
-            return self._result_set
-        else:
-            self._thrift_get_operation_status()
-            return self.status
-
-    def cancel(self) -> None:
-        """Cancel the query"""
-        self._thrift_cancel_operation()
-
-    def _thrift_cancel_operation(self) -> None:
-        """Execute TCancelOperation"""
-
-        _output = self._thrift_backend.cancel_command(self.query_id)
-        self.status = AsyncExecutionStatus.CANCELED
-
-
-    def _thrift_get_operation_status(self) -> None:
-        """Execute GetOperationStatusReq and map thrift execution status to DbsqlAsyncExecutionStatus"""
-
-        _output = self._thrift_backend._poll_for_status(self.query_id)
-        self.status = _getoperationstatus_to_exec_status(_output)
-
-    def _thrift_fetch_result(self) -> None:
-        """Execute TFetchResultReq and store the result"""
-        self._result_set = self._thrift_backend.fetch_results(self.query_id)[0]
-        self.status == AsyncExecutionStatus.FETCHED

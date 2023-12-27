@@ -22,6 +22,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.types import Row
 from databricks.sql.utils import ExecuteResponse
+from databricks.sql.ae import AsyncExecution, AsyncExecutionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -622,6 +623,40 @@ class Cursor:
             )
 
         return self
+    
+    def execute_async(self, query: str, parameters: Optional[TParameterCollection] = None) -> AsyncExecution:
+        """Begin executing without waiting for it to complete.
+
+        Args:
+            query: The query text to be executed
+            parameters: Parameters that will be bound to the variable markers contained in the query text. The format
+            of these variable markers depends on whether the connection was instantiated with use_inline_params=True. See
+            :class:`client.Connection` for more details.
+
+        Returns:
+            An AsyncExecution object that can be used to poll for status and retrieve results.
+        """
+
+        # this code is copied from `execute`
+        prepared_operation, prepared_params = prepare_parameters_and_statement(
+            query, parameters, self.connection
+        )
+
+        self._check_not_closed()
+        self._close_and_clear_active_result_set()
+        ae: AsyncExecution = self.thrift_backend.async_execute_statement(
+            operation=prepared_operation,
+            session_handle=self.connection._session_handle,
+            max_rows=self.arraysize,
+            max_bytes=self.buffer_size_bytes,
+            lz4_compression=self.connection.lz4_compression,
+            cursor=self,
+            use_cloud_fetch=self.connection.use_cloud_fetch,
+            parameters=prepared_params,
+        )
+
+        # should we log this?
+        return ae
 
     def executemany(self, operation, seq_of_parameters):
         """
