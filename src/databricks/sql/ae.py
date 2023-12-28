@@ -4,6 +4,7 @@ from typing import Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.thrift_backend import ThriftBackend
+    from databricks.sql.client import Connection
     from databricks.sql.client import ResultSet
 
 
@@ -46,11 +47,11 @@ class AsyncExecution:
     A class that represents an async execution of a query. Exposes just two methods:
     get_result_or_status and cancel
     """
-    _thrift_backend: "ThriftBackend"
+    _connection: "Connection"
     _result_set: Optional["ResultSet"]
 
-    def __init__(self, thrift_backend: "ThriftBackend", query_id: UUID, status: AsyncExecutionStatus):
-        self._thrift_backend = thrift_backend
+    def __init__(self, connection: "Connection", query_id: UUID, status: AsyncExecutionStatus):
+        self._connection = connection
         self.query_id = query_id
         self.status = status
 
@@ -76,14 +77,14 @@ class AsyncExecution:
     def _thrift_cancel_operation(self) -> None:
         """Execute TCancelOperation"""
 
-        _output = self._thrift_backend.cancel_command(self.query_id)
+        _output = self._connection.thrift_backend.cancel_command(self.query_id)
         self.status = AsyncExecutionStatus.CANCELED
 
 
     def _thrift_get_operation_status(self) -> None:
         """Execute GetOperationStatusReq and map thrift execution status to DbsqlAsyncExecutionStatus"""
 
-        _output = self._thrift_backend._poll_for_status(self.query_id)
+        _output = self._connection.thrift_backend._poll_for_status(self.query_id)
         self.status = _toperationstate_to_ae_status(_output)
 
     def _thrift_fetch_result(self) -> None:
