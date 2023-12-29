@@ -8,9 +8,13 @@ import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union, Callable, TYPE_CHECKING, Optional
 
+
+from databricks.sql.ae import _toperationstate_to_ae_status, AsyncExecution
+
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.parameters.native import TSparkParameter
+    from databricks.sql.ae import AsyncExecution
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -442,7 +446,7 @@ class ThriftBackend:
         Returns:
             An AsyncExecution object that can be used to poll and fetch results.
         """
-        
+
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
             decimalAsArrow=self._use_arrow_native_decimals,
@@ -469,14 +473,27 @@ class ThriftBackend:
             parameters=parameters,
         )
 
-        resp: ttypes.TExecuteStatementResp = self.async_make_request(self._client.ExecuteStatement, req)
+        # this could return directresults...
+        # if it is, I need to deposit the results in it
+        resp: ttypes.TExecuteStatementResp = self.async_make_request(
+            self._client.ExecuteStatement, req
+        )
 
-        query_id = guid = uuid.UUID(hex=self.guid_to_hex_id(resp.operationHandle.operationId.guid))
-        
+        query_id = guid = uuid.UUID(
+            hex=self.guid_to_hex_id(resp.operationHandle.operationId.guid)
+        )
+
         # operationStatus -> TOperationstate
-        status = _toperationstate_to_ae_status(resp.directResults.operationStatus)
+        status = _toperationstate_to_ae_status(
+            resp.directResults.operationStatus.operationState
+        )
 
-        ae = AsyncExecution(thrift_backend=self, query_id=query_id, status=status)
+        ae = AsyncExecution(
+            connection=cursor.connection,
+            query_id=query_id,
+            status=status,
+            execute_statement_response=resp,
+        )
 
         return ae
 

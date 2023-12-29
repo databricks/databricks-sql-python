@@ -13,9 +13,11 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
         with self.connection() as conn:
             ae = conn.execute_async("select :param `col`", {"param": 1})
-            while ae.status == AsyncExecutionStatus.RUNNING:
-                result = ae.get_result_or_status()
+            while ae.is_running:
+                ae.get_result_or_status()
                 time.sleep(1)
+            
+            result = ae.get_result_or_status().fetchone()
 
         assert result.col == 1
     
