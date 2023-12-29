@@ -1,17 +1,17 @@
 from enum import Enum
 from typing import Optional, Union, TYPE_CHECKING
+from databricks.sql.results import ResultSet
 
 
 if TYPE_CHECKING:
     from databricks.sql.thrift_backend import ThriftBackend
     from databricks.sql.client import Connection
-    from databricks.sql.client import ResultSet
+    from databricks.sql.results import ResultSet
 
 
 from uuid import UUID
 
 from databricks.sql.thrift_api.TCLIService import ttypes
-
 
 
 class AsyncExecutionStatus(Enum):
@@ -28,7 +28,6 @@ class AsyncExecutionStatus(Enum):
 def _toperationstate_to_ae_status(
     input: ttypes.TOperationState,
 ) -> AsyncExecutionStatus:
-    
     x = ttypes.TOperationState
 
     if input in [x.INITIALIZED_STATE, x.PENDING_STATE, x.RUNNING_STATE]:
@@ -39,7 +38,6 @@ def _toperationstate_to_ae_status(
         return AsyncExecutionStatus.FINISHED
     if input in [x.CLOSED_STATE, x.ERROR_STATE, x.UKNOWN_STATE, x.TIMEDOUT_STATE]:
         return AsyncExecutionStatus.ABORTED
-    
 
 
 class AsyncExecution:
@@ -47,14 +45,22 @@ class AsyncExecution:
     A class that represents an async execution of a query. Exposes just two methods:
     get_result_or_status and cancel
     """
+
     _connection: "Connection"
     _result_set: Optional["ResultSet"]
+    _execute_statement_response: Optional[ttypes.TExecuteStatementResp]
 
-    def __init__(self, connection: "Connection", query_id: UUID, status: AsyncExecutionStatus):
+    def __init__(
+        self,
+        connection: "Connection",
+        query_id: UUID,
+        status: AsyncExecutionStatus,
+        execute_statement_response: Optional[ttypes.TExecuteStatementResp] = None,
+    ):
         self._connection = connection
+        self._execute_statement_response = execute_statement_response
         self.query_id = query_id
         self.status = status
-
 
     status: AsyncExecutionStatus
     query_id: UUID
@@ -80,7 +86,6 @@ class AsyncExecution:
         _output = self._connection.thrift_backend.cancel_command(self.query_id)
         self.status = AsyncExecutionStatus.CANCELED
 
-
     def _thrift_get_operation_status(self) -> None:
         """Execute GetOperationStatusReq and map thrift execution status to DbsqlAsyncExecutionStatus"""
 
@@ -89,5 +94,37 @@ class AsyncExecution:
 
     def _thrift_fetch_result(self) -> None:
         """Execute TFetchResultReq and store the result"""
-        self._result_set = self._thrift_backend.fetch_results(self.query_id)[0]
-        self.status == AsyncExecutionStatus.FETCHED
+
+        # A cursor is required here to hook into the thrift_backend result fetching API
+        # TODO: need to rewrite this to use a generic result fetching API so we can
+        # support JSON and Thrift binary result formats in addition to arrow.
+
+        # in the case of direct results this creates a second cursor...how can I avoid that?
+        with self._connection.cursor() as cursor:
+            er = self._connection.thrift_backend._handle_execute_response(
+                self._execute_statement_response, cursor
+            )
+
+        self._result_set = ResultSet(
+            connection=self._connection,
+            execute_response=er,
+            thrift_backend=self._connection.thrift_backend,
+        )
+
+        self.status = AsyncExecutionStatus.FETCHED
+
+        #  I need to figure out how to handle connections in this object
+        # because I don't need a connection object to handle checking for the status of a query
+        # but I do need one to fetch the results... I could fix this by refactoring the logic
+        # to accept an injected connection.
+        #
+        # I could also teach AsyncExecutionStatus how to build its own connection (but where would it
+        # get the server hostname and etc?) double check the design document for this. Get some sleep.
+        # you should have this working on 28 december 2023.
+
+    @property
+    def is_running(self) -> bool:
+        return self.status in [
+            AsyncExecutionStatus.RUNNING,
+            AsyncExecutionStatus.PENDING,
+        ]
