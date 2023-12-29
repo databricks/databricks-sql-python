@@ -1,4 +1,3 @@
-
 from typing import List, Optional, TYPE_CHECKING
 
 import pandas
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
 
 # TODO: this is duplicated from client.py to avoid ImportError. Fix this.
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
+
 
 class ResultSet:
     def __init__(

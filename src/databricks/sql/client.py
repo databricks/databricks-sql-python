@@ -24,6 +24,7 @@ from databricks.sql.types import Row
 from databricks.sql.utils import ExecuteResponse
 
 from databricks.sql.results import ResultSet
+
 if TYPE_CHECKING:
     from databricks.sql.ae import AsyncExecution, AsyncExecutionStatus
 
@@ -363,8 +364,10 @@ class Connection:
 
     def rollback(self):
         raise NotSupportedError("Transactions are not supported on Databricks")
-    
-    def execute_async(self, query: str, parameters: Optional[TParameterCollection] = None) -> "AsyncExecution":
+
+    def execute_async(
+        self, query: str, parameters: Optional[TParameterCollection] = None
+    ) -> "AsyncExecution":
         """Begin executing without waiting for it to complete.
 
         Args:
@@ -659,7 +662,6 @@ class Cursor:
             )
 
         return self
-    
 
     def executemany(self, operation, seq_of_parameters):
         """
@@ -923,7 +925,3 @@ class Cursor:
     def setoutputsize(self, size, column=None):
         """Does nothing by default"""
         pass
-
-
-
-

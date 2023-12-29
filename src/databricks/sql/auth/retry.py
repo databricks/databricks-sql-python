@@ -48,6 +48,7 @@ def thrift_method_to_command_type(method: Callable) -> CommandType:
     ct = CommandType.get(_name)
     return ct
 
+
 class DatabricksRetryPolicy(Retry):
     """
     Implements our v3 retry policy by extending urllib3's robust default retry behaviour.
