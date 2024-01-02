@@ -1,7 +1,10 @@
 # Release History
 
-## 3.0.1 (unreleased)
+## 3.0.1 (2023-12-01)
 
+- Other: updated docstring comment about default parameterization approach (#287)
+- Other: added tests for reading complex types and revised docstrings and type hints (#293)
+- Fix: SQLAlchemy dialect raised DeprecationWarning due to `dbapi` classmethod (#294)
 - Fix: SQLAlchemy dialect could not reflect TIMESTAMP_NTZ columns (#296)
 
 ## 3.0.0 (2023-11-17)
