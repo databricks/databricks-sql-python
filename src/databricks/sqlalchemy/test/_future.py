@@ -13,9 +13,7 @@ from databricks.sqlalchemy.test._unsupported import (
     ComponentReflectionTest,
     ComponentReflectionTestExtra,
     CTETest,
-    FutureTableDDLTest,
     InsertBehaviorTest,
-    TableDDLTest,
 )
 from sqlalchemy.testing.suite import (
     ArrayTest,
@@ -251,36 +249,7 @@ class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsT
     pass
 
 
-class FutureTableDDLTest(FutureTableDDLTest):
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_add_table_comment(self):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_drop_table_comment(self):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-
-class TableDDLTest(TableDDLTest):
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_add_table_comment(self, connection):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_drop_table_comment(self, connection):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-
 class ComponentReflectionTest(ComponentReflectionTest):
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_get_multi_table_comment(self):
-        """There are 84 permutations of this test that are skipped."""
-        pass
-
     @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_OPTS, True))
     def test_multi_get_table_options_tables(self):
         """It's not clear what the expected ouput from this method would even _be_. Requires research."""
@@ -300,14 +269,6 @@ class ComponentReflectionTest(ComponentReflectionTest):
 
     @pytest.mark.skip(render_future_feature(FutureFeature.CHECK))
     def test_get_multi_check_constraints(self):
-        pass
-
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_get_comments(self):
-        pass
-
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_get_comments_with_schema(self):
         pass
 
     @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))

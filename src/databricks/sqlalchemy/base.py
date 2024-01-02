@@ -1,9 +1,9 @@
-import re
-from typing import Any, List, Optional, Dict, Union, Collection, Iterable, Tuple
+from typing import Any, List, Optional, Dict, Union, Iterable, Tuple
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
 import databricks.sqlalchemy._types as dialect_type_impl
 from databricks import sql
+from databricks.sqlalchemy._information_schema import tables
 from databricks.sqlalchemy._parse import (
     _describe_table_extended_result_to_dict_list,
     _match_table_not_found_string,
@@ -15,15 +15,16 @@ from databricks.sqlalchemy._parse import (
 )
 
 import sqlalchemy
-from sqlalchemy import DDL, event
+from sqlalchemy import DDL, event, select, bindparam, exc
 from sqlalchemy.engine import Connection, Engine, default, reflection
-from sqlalchemy.engine.reflection import ObjectKind
 from sqlalchemy.engine.interfaces import (
     ReflectedForeignKeyConstraint,
     ReflectedPrimaryKeyConstraint,
     ReflectedColumn,
+    ReflectedTableComment,
     TableKey,
 )
+from sqlalchemy.engine.reflection import ReflectionDefaults, ObjectKind, ObjectScope
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 try:
@@ -285,7 +286,7 @@ class DatabricksDialect(default.DefaultDialect):
         views_result = self.get_view_names(connection=connection, schema=schema)
 
         # In Databricks, SHOW TABLES FROM <schema> returns both tables and views.
-        # Potential optimisation: rewrite this to instead query informtation_schema
+        # Potential optimisation: rewrite this to instead query information_schema
         tables_minus_views = [
             row.tableName for row in tables_result if row.tableName not in views_result
         ]
@@ -328,7 +329,7 @@ class DatabricksDialect(default.DefaultDialect):
     def get_temp_view_names(
         self, connection: Connection, schema: Optional[str] = None, **kw: Any
     ) -> List[str]:
-        """A wrapper around get_view_names taht fetches only the names of temporary views"""
+        """A wrapper around get_view_names that fetches only the names of temporary views"""
         return self.get_view_names(connection, schema, only_temp=True)
 
     def do_rollback(self, dbapi_connection):
@@ -374,6 +375,87 @@ class DatabricksDialect(default.DefaultDialect):
         result = connection.execute(stmt)
         schema_list = [row[0] for row in result]
         return schema_list
+
+    def get_multi_table_comment(
+        self,
+        connection,
+        schema=None,
+        filter_names=None,
+        scope=ObjectScope.ANY,
+        kind=ObjectKind.ANY,
+        **kw,
+    ) -> Iterable[Tuple[TableKey, ReflectedTableComment]]:
+        result = []
+        _schema = schema or self.schema
+        if ObjectScope.DEFAULT in scope:
+            query = (
+                select(tables.c.table_name, tables.c.comment)
+                .select_from(tables)
+                .where(
+                    tables.c.table_catalog == self.catalog,
+                    tables.c.table_schema == _schema,
+                )
+            )
+
+            if ObjectKind.ANY not in kind:
+                where_in = set()
+                if ObjectKind.TABLE in kind:
+                    where_in.update(
+                        ["BASE TABLE", "MANAGED", "EXTERNAL", "STREAMING_TABLE"]
+                    )
+                if ObjectKind.VIEW in kind:
+                    where_in.update(["VIEW"])
+                if ObjectKind.MATERIALIZED_VIEW in kind:
+                    where_in.update(["MATERIALIZED_VIEW"])
+                query = query.where(tables.c.table_type.in_(where_in))
+
+            if filter_names:
+                query = query.where(tables.c.table_name.in_(bindparam("filter_names")))
+                result = connection.execute(
+                    query, {"filter_names": [f.lower() for f in filter_names]}
+                )
+            else:
+                result = connection.execute(query)
+
+        if ObjectScope.TEMPORARY in scope and ObjectKind.VIEW in kind:
+            result = list(result)
+            temp_views = self.get_view_names(connection, schema, only_temp=True)
+            if filter_names:
+                temp_views = set(temp_views).intersection(
+                    [f.lower() for f in filter_names]
+                )
+            result.extend(zip(temp_views, [None] * len(temp_views)))
+
+        # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects
+        return (
+            (
+                (schema, table),
+                {"text": comment}
+                if comment is not None
+                else ReflectionDefaults.table_comment(),
+            )
+            for table, comment in result
+        )  # type: ignore
+
+    def get_table_comment(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: Optional[str] = None,
+        **kw: Any,
+    ) -> ReflectedTableComment:
+        data = self.get_multi_table_comment(
+            connection,
+            schema,
+            [table_name],
+            **kw,
+        )
+        try:
+            return dict(data)[(schema, table_name.lower())]
+        except KeyError:
+            raise exc.NoSuchTableError(
+                f"{schema}.{table_name}" if schema else table_name
+            ) from None
 
 
 @event.listens_for(Engine, "do_connect")

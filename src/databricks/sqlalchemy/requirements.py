@@ -160,6 +160,11 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         return sqlalchemy.testing.exclusions.open()
 
     @property
+    def comment_reflection(self):
+        """Indicates if the database support table comment reflection"""
+        return sqlalchemy.testing.exclusions.open()
+
+    @property
     def temp_table_reflection(self):
         """ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
         This happens because we cannot skip individual combinations used in ComponentReflection test.
