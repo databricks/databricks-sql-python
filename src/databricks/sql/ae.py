@@ -113,15 +113,6 @@ class AsyncExecution:
 
         self.status = AsyncExecutionStatus.FETCHED
 
-        #  I need to figure out how to handle connections in this object
-        # because I don't need a connection object to handle checking for the status of a query
-        # but I do need one to fetch the results... I could fix this by refactoring the logic
-        # to accept an injected connection.
-        #
-        # I could also teach AsyncExecutionStatus how to build its own connection (but where would it
-        # get the server hostname and etc?) double check the design document for this. Get some sleep.
-        # you should have this working on 28 december 2023.
-
     @property
     def is_running(self) -> bool:
         return self.status in [
