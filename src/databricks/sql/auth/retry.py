@@ -2,7 +2,7 @@ import logging
 import time
 import typing
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Callable
 
 # We only use this import for type hinting
 try:
@@ -41,6 +41,12 @@ class CommandType(Enum):
             return getattr(cls, str(valid_command))
         else:
             return cls.OTHER
+
+
+def thrift_method_to_command_type(method: Callable) -> CommandType:
+    _name = method.__name__
+    ct = CommandType.get(_name)
+    return ct
 
 
 class DatabricksRetryPolicy(Retry):

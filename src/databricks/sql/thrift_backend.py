@@ -6,7 +6,15 @@ import time
 import uuid
 import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
-from typing import List, Union
+from typing import List, Union, Callable, TYPE_CHECKING, Optional
+
+
+from databricks.sql.ae import _toperationstate_to_ae_status, AsyncExecution
+
+if TYPE_CHECKING:
+    from databricks.sql.client import Cursor
+    from databricks.sql.parameters.native import TSparkParameter
+    from databricks.sql.ae import AsyncExecution
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -17,7 +25,7 @@ import thrift.transport.TTransport
 import urllib3.exceptions
 
 import databricks.sql.auth.thrift_http_client
-from databricks.sql.auth.thrift_http_client import CommandType
+from databricks.sql.auth.retry import CommandType, thrift_method_to_command_type
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
@@ -66,6 +74,57 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
     "_retry_delay_default": (float, 5, 1, 60),
 }
+
+# Aliases
+ThriftRequest = Union[
+    ttypes.TOpenSessionReq,
+    ttypes.TCloseSessionReq,
+    ttypes.TGetInfoReq,
+    ttypes.TExecuteStatementReq,
+    ttypes.TGetTypeInfoReq,
+    ttypes.TGetCatalogsReq,
+    ttypes.TGetSchemasReq,
+    ttypes.TGetTablesReq,
+    ttypes.TGetTableTypesReq,
+    ttypes.TGetColumnsReq,
+    ttypes.TGetFunctionsReq,
+    ttypes.TGetPrimaryKeysReq,
+    ttypes.TGetCrossReferenceReq,
+    ttypes.TGetOperationStatusReq,
+    ttypes.TCancelOperationReq,
+    ttypes.TCloseOperationReq,
+    ttypes.TGetResultSetMetadataReq,
+    ttypes.TFetchResultsReq,
+    ttypes.TGetDelegationTokenReq,
+    ttypes.TCancelDelegationTokenReq,
+    ttypes.TRenewDelegationTokenReq,
+]
+
+ThriftResponse = Union[
+    ttypes.TOpenSessionResp,
+    ttypes.TCloseSessionResp,
+    ttypes.TGetInfoResp,
+    ttypes.TExecuteStatementResp,
+    ttypes.TGetTypeInfoResp,
+    ttypes.TGetCatalogsResp,
+    ttypes.TGetSchemasResp,
+    ttypes.TGetTablesResp,
+    ttypes.TGetTableTypesResp,
+    ttypes.TGetColumnsResp,
+    ttypes.TGetFunctionsResp,
+    ttypes.TGetPrimaryKeysResp,
+    ttypes.TGetCrossReferenceResp,
+    ttypes.TGetOperationStatusResp,
+    ttypes.TCancelOperationResp,
+    ttypes.TCloseOperationResp,
+    ttypes.TGetResultSetMetadataResp,
+    ttypes.TFetchResultsResp,
+    ttypes.TGetDelegationTokenResp,
+    ttypes.TCancelDelegationTokenResp,
+    ttypes.TRenewDelegationTokenResp,
+]
+
+ThriftMethod = Callable[[ThriftRequest], ThriftResponse]
 
 
 class ThriftBackend:
@@ -341,6 +400,103 @@ class ThriftBackend:
         )
         time.sleep(error_info.retry_delay)
 
+    def async_make_request(
+        self, thrift_method: ThriftMethod, thrift_request: ThriftRequest
+    ) -> ThriftResponse:
+        """Rewrite of make_request that doesn't implement its own retry loop.
+        TODO: Rewrite this docstring once the work is complete
+        """
+
+        if not self.enable_v3_retries:
+            raise OperationalError(
+                "async_make_request requires v3 retry policy to be enabled"
+            )
+
+        ct = thrift_method_to_command_type(thrift_method)
+        self._transport.set_retry_command_type(ct)
+        self._transport.startRetryTimer()
+
+        response = thrift_method(thrift_request)
+
+        return response
+
+    def async_execute_statement(
+        self,
+        statement: str,
+        session_handle: uuid.UUID,
+        max_rows: int,
+        max_bytes: int,
+        lz4_compression: bool,
+        cursor: "Cursor",
+        use_cloud_fetch: bool = True,
+        parameters: Optional[List["TSparkParameter"]] = [],
+    ) -> "AsyncExecution":
+        """Send an ExecuteStatement command to the server, and return an AsyncExecution object.
+
+        Args:
+            statement: The SQL statement to execute.
+            session_handle: The session handle to use for the query.
+            max_rows: <unknown exactly what this controls> is it the same as including a LIMIT clause? Or is the maximum rows per batch?
+            max_bytes: <similar unknown as max_rows>
+            lz4_compression: Whether to use LZ4 compression for the results over the wire
+            cursor: The cursor that is executing this statement --> I don't think we need this here
+            use_cloud_fetch: Whether to use cloud fetch for the results
+            parameters: The parameters to use for the query
+
+        Returns:
+            An AsyncExecution object that can be used to poll and fetch results.
+        """
+
+        spark_arrow_types = ttypes.TSparkArrowTypes(
+            timestampAsArrow=self._use_arrow_native_timestamps,
+            decimalAsArrow=self._use_arrow_native_decimals,
+            complexTypesAsArrow=self._use_arrow_native_complex_types,
+            # TODO: The current Arrow type used for intervals can not be deserialised in PyArrow
+            # DBR should be changed to use month_day_nano_interval
+            intervalTypesAsArrow=False,
+        )
+        req = ttypes.TExecuteStatementReq(
+            sessionHandle=session_handle,
+            statement=statement,
+            runAsync=True,
+            getDirectResults=ttypes.TSparkGetDirectResults(
+                maxRows=max_rows, maxBytes=max_bytes
+            ),
+            canReadArrowResult=True,
+            canDecompressLZ4Result=lz4_compression,
+            canDownloadResult=use_cloud_fetch,
+            confOverlay={
+                # We want to receive proper Timestamp arrow types.
+                "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
+            },
+            useArrowNativeTypes=spark_arrow_types,
+            parameters=parameters,
+        )
+
+        # this could return directresults...
+        # if it is, I need to deposit the results in it
+        resp: ttypes.TExecuteStatementResp = self.async_make_request(
+            self._client.ExecuteStatement, req
+        )
+
+        query_id = guid = uuid.UUID(
+            hex=self.guid_to_hex_id(resp.operationHandle.operationId.guid)
+        )
+
+        # operationStatus -> TOperationstate
+        status = _toperationstate_to_ae_status(
+            resp.directResults.operationStatus.operationState
+        )
+
+        ae = AsyncExecution(
+            connection=cursor.connection,
+            query_id=query_id,
+            status=status,
+            execute_statement_response=resp,
+        )
+
+        return ae
+
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
     def make_request(self, method, request):
@@ -573,7 +729,9 @@ class ThriftBackend:
                 canUseMultipleCatalogs=True,
                 configuration=session_configuration,
             )
-            response = self.make_request(self._client.OpenSession, open_session_req)
+            response = self.async_make_request(
+                self._client.OpenSession, open_session_req
+            )
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
             return response
