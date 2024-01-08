@@ -403,8 +403,10 @@ class Connection:
             thrift_backend=self.thrift_backend,
             resp=execute_statement_resp,
         )
-    
-    def get_async_execution(self, query_id: Union[str, UUID], query_secret: Union[str, UUID]) -> "AsyncExecution":
+
+    def get_async_execution(
+        self, query_id: Union[str, UUID], query_secret: Union[str, UUID]
+    ) -> "AsyncExecution":
         """Get an AsyncExecution object for an existing query.
 
         Args:
