@@ -101,12 +101,6 @@ class AsyncExecution:
         if self.status == AsyncExecutionStatus.FETCHED:
             return self._result_set
 
-    def poll_for_status(self) -> None:
-        """Check the thrift server for the status of this operation and set self.status
-
-        This will result in an error if the operation has been canceled or aborted at the server"""
-        self._thrift_get_operation_status()
-
     def cancel(self) -> None:
         """Cancel the query"""
         self._thrift_cancel_operation()
@@ -117,11 +111,13 @@ class AsyncExecution:
         _output = self._thrift_backend.async_cancel_command(self.t_operation_handle)
         self.status = AsyncExecutionStatus.CANCELED
 
-    def _thrift_get_operation_status(self) -> None:
-        """Execute GetOperationStatusReq and map thrift execution status to DbsqlAsyncExecutionStatus"""
+    def poll_for_status(self) -> None:
+        """Check the thrift server for the status of this operation and set self.status
+
+        This will result in an error if the operation has been canceled or aborted at the server"""
 
         _output = self._thrift_backend._poll_for_status(self.t_operation_handle)
-        self.status = _toperationstate_to_ae_status(_output)
+        self.status = _toperationstate_to_ae_status(_output.operationState)
 
     def _thrift_fetch_result(self) -> None:
         """Execute TFetchResultReq and store the result"""
