@@ -148,3 +148,11 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with self.connection() as conn:
             with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
                 ae = conn.get_async_execution("foo", "bar")
+
+    def test_serialize(self, long_running_ae: AsyncExecution):
+        serialized = long_running_ae.serialize()
+        query_id, query_secret = serialized.split(":")
+
+        with self.connection() as conn:
+            ae = conn.get_async_execution(query_id, query_secret)
+            assert ae.is_running

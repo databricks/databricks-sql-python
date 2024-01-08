@@ -115,6 +115,12 @@ class AsyncExecution:
         _output = self._thrift_backend.async_cancel_command(self.t_operation_handle)
         self.status = AsyncExecutionStatus.CANCELED
 
+    def serialize(self) -> str:
+        """Return a string representing the query_id and secret of this AsyncExecution.
+        
+        Use this to preserve a reference to the query_id and query_secret."""
+        return f"{self.query_id}:{self.query_secret}"
+
     def poll_for_status(self) -> None:
         """Check the thrift server for the status of this operation and set self.status
 
