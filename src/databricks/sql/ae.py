@@ -54,12 +54,14 @@ class AsyncExecution:
         self,
         connection: "Connection",
         query_id: UUID,
+        query_secret: UUID,
         status: AsyncExecutionStatus,
         execute_statement_response: Optional[ttypes.TExecuteStatementResp] = None,
     ):
         self._connection = connection
         self._execute_statement_response = execute_statement_response
         self.query_id = query_id
+        self.query_secret = query_secret
         self.status = status
 
     status: AsyncExecutionStatus
@@ -68,6 +70,8 @@ class AsyncExecution:
     def get_result_or_status(self) -> Union["ResultSet", AsyncExecutionStatus]:
         """Get the result of the async execution. If execution has not completed, return False."""
 
+        if self.status == AsyncExecutionStatus.CANCELED:
+            return self.status
         if self.status == AsyncExecutionStatus.FINISHED:
             self._thrift_fetch_result()
         if self.status == AsyncExecutionStatus.FETCHED:
@@ -83,13 +87,13 @@ class AsyncExecution:
     def _thrift_cancel_operation(self) -> None:
         """Execute TCancelOperation"""
 
-        _output = self._connection.thrift_backend.cancel_command(self.query_id)
+        _output = self._connection.thrift_backend.async_cancel_command(self.t_operation_handle)
         self.status = AsyncExecutionStatus.CANCELED
 
     def _thrift_get_operation_status(self) -> None:
         """Execute GetOperationStatusReq and map thrift execution status to DbsqlAsyncExecutionStatus"""
 
-        _output = self._connection.thrift_backend._poll_for_status(self.query_id)
+        _output = self._connection.thrift_backend._poll_for_status(self.t_operation_handle)
         self.status = _toperationstate_to_ae_status(_output)
 
     def _thrift_fetch_result(self) -> None:
@@ -119,3 +123,18 @@ class AsyncExecution:
             AsyncExecutionStatus.RUNNING,
             AsyncExecutionStatus.PENDING,
         ]
+    
+    @property
+    def t_operation_handle(self) -> ttypes.TOperationHandle:
+        """Return the current AsyncExecution as a Thrift TOperationHandle
+        """
+
+        handle = ttypes.TOperationHandle(
+            operationId=ttypes.THandleIdentifier(
+                guid=self.query_id.bytes, secret=self.query_secret.bytes
+            ),
+            operationType=ttypes.TOperationType.EXECUTE_STATEMENT,
+            hasResultSet=True
+        )
+
+        return handle
