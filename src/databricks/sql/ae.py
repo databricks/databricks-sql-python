@@ -104,7 +104,7 @@ class AsyncExecution:
     def poll_for_status(self) -> None:
         """Check the thrift server for the status of this operation and set self.status
 
-        This will result in an error if the operaiton has been canceled or aborted at the server"""
+        This will result in an error if the operation has been canceled or aborted at the server"""
         self._thrift_get_operation_status()
 
     def cancel(self) -> None:
