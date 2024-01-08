@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Optional, Union, TYPE_CHECKING
+from databricks.sql.exc import RequestError
 from databricks.sql.results import ResultSet
 
 from dataclasses import dataclass
@@ -119,7 +120,11 @@ class AsyncExecution:
 
         This will result in an error if the operation has been canceled or aborted at the server"""
 
-        _output = self._thrift_backend._poll_for_status(self.t_operation_handle)
+        try:
+            _output = self._thrift_backend._poll_for_status(self.t_operation_handle)
+        except RequestError as e:
+            if "RESOURCE_DOES_NOT_EXIST" in e.message:
+                raise AsyncExecutionException("Query not found: %s" % self.query_id) from e
         self.status = _toperationstate_to_ae_status(_output.operationState)
 
     def _thrift_fetch_result(self) -> None:

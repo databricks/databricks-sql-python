@@ -137,3 +137,14 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
         result = long_ish_ae.get_result().fetchone()
         assert len(result) == 1
+
+    def test_get_async_execution_with_bogus_query_id(self):
+
+        with self.connection() as conn:
+            with pytest.raises(AsyncExecutionException, match="Query not found"):
+                ae = conn.get_async_execution("bedc786d-64da-45d4-99da-5d3603525803", "ba469f82-cf3f-454e-b575-f4dcd58dd692")
+
+    def test_get_async_execution_with_badly_formed_query_id(self):
+        with self.connection() as conn:
+            with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
+                ae = conn.get_async_execution("foo", "bar")
