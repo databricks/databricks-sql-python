@@ -15,6 +15,10 @@ from uuid import UUID
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 
+class AsyncExecutionException(Exception):
+    pass
+
+
 @dataclass
 class FakeCursor:
     active_op_handle: Optional[ttypes.TOperationHandle]
@@ -50,8 +54,7 @@ def _toperationstate_to_ae_status(
 
 class AsyncExecution:
     """
-    A class that represents an async execution of a query. Exposes just two methods:
-    get_result_or_status and cancel
+    A class that represents an async execution of a query.
 
     AsyncExecutions are effectively connectionless. But because thrift_backend is entangled
     with client.py, the AsyncExecution needs access to both a Connection and a ThriftBackend
@@ -83,18 +86,20 @@ class AsyncExecution:
     status: AsyncExecutionStatus
     query_id: UUID
 
-    def get_result_or_status(self) -> Union["ResultSet", AsyncExecutionStatus]:
-        """Get the result of the async execution. If execution has not completed, return False."""
+    def get_result(self) -> "ResultSet":
+        """Get a result set for this async execution
+
+        Raises an exception if the query is still running or has been canceled.
+        """
 
         if self.status == AsyncExecutionStatus.CANCELED:
-            return self.status
+            raise AsyncExecutionException("Query was canceled: %s" % self.query_id)
+        if self.is_running:
+            raise AsyncExecutionException("Query is still running: %s" % self.query_id)
         if self.status == AsyncExecutionStatus.FINISHED:
             self._thrift_fetch_result()
         if self.status == AsyncExecutionStatus.FETCHED:
             return self._result_set
-        else:
-            self._thrift_get_operation_status()
-            return self.status
 
     def cancel(self) -> None:
         """Cancel the query"""
@@ -106,11 +111,13 @@ class AsyncExecution:
         _output = self._thrift_backend.async_cancel_command(self.t_operation_handle)
         self.status = AsyncExecutionStatus.CANCELED
 
-    def _thrift_get_operation_status(self) -> None:
-        """Execute GetOperationStatusReq and map thrift execution status to DbsqlAsyncExecutionStatus"""
+    def poll_for_status(self) -> None:
+        """Check the thrift server for the status of this operation and set self.status
+
+        This will result in an error if the operation has been canceled or aborted at the server"""
 
         _output = self._thrift_backend._poll_for_status(self.t_operation_handle)
-        self.status = _toperationstate_to_ae_status(_output)
+        self.status = _toperationstate_to_ae_status(_output.operationState)
 
     def _thrift_fetch_result(self) -> None:
         """Execute TFetchResultReq and store the result"""
