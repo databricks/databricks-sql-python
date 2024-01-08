@@ -9,12 +9,10 @@ from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union, Callable, TYPE_CHECKING, Optional
 
 
-from databricks.sql.ae import _toperationstate_to_ae_status, AsyncExecution
-
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.parameters.native import TSparkParameter
-    from databricks.sql.ae import AsyncExecution
+
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -430,7 +428,7 @@ class ThriftBackend:
         cursor: "Cursor",
         use_cloud_fetch: bool = True,
         parameters: Optional[List["TSparkParameter"]] = [],
-    ) -> "AsyncExecution":
+    ) -> ttypes.TExecuteStatementResp:
         """Send an ExecuteStatement command to the server, and return an AsyncExecution object.
 
         Args:
@@ -479,28 +477,7 @@ class ThriftBackend:
             self._client.ExecuteStatement, req
         )
 
-        query_id = guid = uuid.UUID(
-            hex=self.guid_to_hex_id(resp.operationHandle.operationId.guid)
-        )
-
-        secret = uuid.UUID(
-            hex=self.guid_to_hex_id(resp.operationHandle.operationId.secret)
-        )
-
-        # operationStatus -> TOperationstate
-        status = _toperationstate_to_ae_status(
-            resp.directResults.operationStatus.operationState
-        )
-
-        ae = AsyncExecution(
-            connection=cursor.connection,
-            query_id=query_id,
-            query_secret=secret,
-            status=status,
-            execute_statement_response=resp,
-        )
-
-        return ae
+        return resp
 
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
@@ -1187,9 +1164,7 @@ class ThriftBackend:
         req = ttypes.TCancelOperationReq(active_op_handle)
         self.make_request(self._client.CancelOperation, req)
 
-    def async_cancel_command(
-        self, op_handle: ttypes.TOperationHandle
-    ) -> None:
+    def async_cancel_command(self, op_handle: ttypes.TOperationHandle) -> None:
         """Cancel a query using the thrift operation handle
 
         Args:
