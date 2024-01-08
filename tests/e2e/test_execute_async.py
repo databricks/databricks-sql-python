@@ -8,6 +8,8 @@ from databricks.sql.ae import (
 import pytest
 import time
 
+import threading
+
 LONG_RUNNING_QUERY = """
 SELECT SUM(A.id - B.id)
 FROM range(1000000000) A CROSS JOIN range(100000000) B 
@@ -26,7 +28,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
             # cancellation is idempotent
             ae.cancel()
 
-    def test_basic_api(self):
+    def test_execute_async(self):
         """This is a WIP test of the basic API defined in PECO-1263"""
         # This is taken directly from the design doc
 
@@ -53,6 +55,33 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with pytest.raises(AsyncExecutionException, match="Query was canceled"):
             long_running_ae.get_result()
 
+    def test_get_async_execution(self, long_running_ae: AsyncExecution):
+        query_id, query_secret = str(long_running_ae.query_id), str(
+            long_running_ae.query_secret
+        )
+
+        with self.connection() as conn:
+            ae = conn.get_async_execution(query_id, query_secret)
+            assert ae.is_running
+
+    def test_get_async_execution_across_threads(self, long_running_ae: AsyncExecution):
+        query_id, query_secret = str(long_running_ae.query_id), str(
+            long_running_ae.query_secret
+        )
+
+        def cancel_query_in_separate_thread(query_id, query_secret):
+            with self.connection() as conn:
+                ae = conn.get_async_execution(query_id, query_secret)
+                ae.cancel()
+
+        threading.Thread(
+            target=cancel_query_in_separate_thread, args=(query_id, query_secret)
+        ).start()
+
+        time.sleep(5)
+
+        long_running_ae.poll_for_status()
+        assert long_running_ae.status == AsyncExecutionStatus.CANCELED
 
     def test_staging_operation(self):
         """We need to test what happens with a staging operation since this query won't have a result set

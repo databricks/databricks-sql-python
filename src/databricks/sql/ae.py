@@ -73,7 +73,7 @@ class AsyncExecution:
         connection: "Connection",
         query_id: UUID,
         query_secret: UUID,
-        status: AsyncExecutionStatus,
+        status: Optional[AsyncExecutionStatus] = None,
         execute_statement_response: Optional[ttypes.TExecuteStatementResp] = None,
     ):
         self._connection = connection
@@ -82,6 +82,9 @@ class AsyncExecution:
         self.query_id = query_id
         self.query_secret = query_secret
         self.status = status
+
+        if self.status is None:
+            self.poll_for_status()
 
     status: AsyncExecutionStatus
     query_id: UUID
