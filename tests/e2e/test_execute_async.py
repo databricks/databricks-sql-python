@@ -4,6 +4,12 @@ from databricks.sql.ae import AsyncExecutionStatus as AsyncExecutionStatus
 
 import time
 
+LONG_RUNNING_QUERY =  """
+SELECT SUM(A.id - B.id)
+FROM range(1000000000) A CROSS JOIN range(100000000) B 
+GROUP BY (A.id - B.id)
+"""
+
 class TestExecuteAsync(PySQLPytestTestCase):
 
     def test_basic_api(self):
@@ -20,6 +26,20 @@ class TestExecuteAsync(PySQLPytestTestCase):
             result = ae.get_result_or_status().fetchone()
 
         assert result.col == 1
+
+    def test_cancel_running_query(self):
+        """Start a long-running query and cancel it
+        """
+
+        with self.connection() as conn:
+            ae = conn.execute_async(LONG_RUNNING_QUERY)
+            time.sleep(2)
+            ae.cancel()
+
+            status = ae.get_result_or_status()
+
+        assert ae.status == AsyncExecutionStatus.CANCELED
+
     
 
     def test_staging_operation(self):

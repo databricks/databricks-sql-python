@@ -483,6 +483,10 @@ class ThriftBackend:
             hex=self.guid_to_hex_id(resp.operationHandle.operationId.guid)
         )
 
+        secret = uuid.UUID(
+            hex=self.guid_to_hex_id(resp.operationHandle.operationId.secret)
+        )
+
         # operationStatus -> TOperationstate
         status = _toperationstate_to_ae_status(
             resp.directResults.operationStatus.operationState
@@ -491,6 +495,7 @@ class ThriftBackend:
         ae = AsyncExecution(
             connection=cursor.connection,
             query_id=query_id,
+            query_secret=secret,
             status=status,
             execute_statement_response=resp,
         )
@@ -793,7 +798,10 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
+            (
+                arrow_table,
+                num_rows,
+            ) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -1178,6 +1186,17 @@ class ThriftBackend:
         )
         req = ttypes.TCancelOperationReq(active_op_handle)
         self.make_request(self._client.CancelOperation, req)
+
+    def async_cancel_command(
+        self, op_handle: ttypes.TOperationHandle
+    ) -> None:
+        """Cancel a query using the thrift operation handle
+
+        Args:
+            op_handle: The operation handle to cancel
+        """
+        req = ttypes.TCancelOperationReq(op_handle)
+        self.async_make_request(self._client.CancelOperation, req)
 
     @staticmethod
     def handle_to_id(session_handle):
