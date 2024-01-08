@@ -25,8 +25,8 @@ from databricks.sql.utils import ExecuteResponse
 
 from databricks.sql.results import ResultSet
 
-if TYPE_CHECKING:
-    from databricks.sql.ae import AsyncExecution, AsyncExecutionStatus
+
+from databricks.sql.ae import AsyncExecution, AsyncExecutionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +386,7 @@ class Connection:
         )
 
         with self.cursor() as cursor:
-            ae: "AsyncExecution" = self.thrift_backend.async_execute_statement(
+            execute_statement_resp = self.thrift_backend.async_execute_statement(
                 statement=prepared_operation,
                 session_handle=self._session_handle,
                 max_rows=cursor.arraysize,
@@ -397,8 +397,11 @@ class Connection:
                 parameters=prepared_params,
             )
 
-        # should we log this?
-        return ae
+        return AsyncExecution.from_thrift_response(
+            connection=self,
+            thrift_backend=self.thrift_backend,
+            resp=execute_statement_resp,
+        )
 
 
 class Cursor:
