@@ -83,7 +83,9 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with pytest.raises(AsyncExecutionException, match="Query was canceled"):
             long_running_ae.get_result()
 
-    def test_get_async_execution_can_check_status(self, long_running_ae: AsyncExecution):
+    def test_get_async_execution_can_check_status(
+        self, long_running_ae: AsyncExecution
+    ):
         query_id, query_secret = str(long_running_ae.query_id), str(
             long_running_ae.query_secret
         )
@@ -92,7 +94,9 @@ class TestExecuteAsync(PySQLPytestTestCase):
             ae = conn.get_async_execution(query_id, query_secret)
             assert ae.is_running
 
-    def test_get_async_execution_can_cancel_across_threads(self, long_running_ae: AsyncExecution):
+    def test_get_async_execution_can_cancel_across_threads(
+        self, long_running_ae: AsyncExecution
+    ):
         query_id, query_secret = str(long_running_ae.query_id), str(
             long_running_ae.query_secret
         )
@@ -139,14 +143,18 @@ class TestExecuteAsync(PySQLPytestTestCase):
         assert len(result) == 1
 
     def test_get_async_execution_with_bogus_query_id(self):
-
         with self.connection() as conn:
             with pytest.raises(AsyncExecutionException, match="Query not found"):
-                ae = conn.get_async_execution("bedc786d-64da-45d4-99da-5d3603525803", "ba469f82-cf3f-454e-b575-f4dcd58dd692")
+                ae = conn.get_async_execution(
+                    "bedc786d-64da-45d4-99da-5d3603525803",
+                    "ba469f82-cf3f-454e-b575-f4dcd58dd692",
+                )
 
     def test_get_async_execution_with_badly_formed_query_id(self):
         with self.connection() as conn:
-            with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
+            with pytest.raises(
+                ValueError, match="badly formed hexadecimal UUID string"
+            ):
                 ae = conn.get_async_execution("foo", "bar")
 
     def test_serialize(self, long_running_ae: AsyncExecution):
@@ -158,8 +166,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
             assert ae.is_running
 
     def test_get_async_execution_no_results_when_direct_results_were_sent(self):
-        """It remains to be seen whether results can be fetched repeatedly from a "picked up" execution.
-        """
+        """It remains to be seen whether results can be fetched repeatedly from a "picked up" execution."""
 
         with self.connection() as conn:
             ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
@@ -171,13 +178,6 @@ class TestExecuteAsync(PySQLPytestTestCase):
                 ae_late = conn.get_async_execution(query_id, query_secret)
 
     def test_get_async_execution_and_fetch_results(self, long_ish_ae: AsyncExecution):
-        """This tests currently _fails_ because of how result fetching is factored.
-
-        Currently, thrift_backend.py can't fetch results unless it has a TExecuteStatementResp object.
-        But with async executions, we don't have the original TExecuteStatementResp. So we'll need to build
-        a way to "fake" this until we can refactor thrift_backend.py to be more testable.
-        """
-
         query_id, query_secret = long_ish_ae.serialize().split(":")
 
         with self.connection() as conn:
@@ -191,4 +191,25 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
             assert len(result) == 1
 
-        
+    def test_get_async_execution_twice(self):
+        """This test demonstrates that the original AsyncExecution object can fetch a result
+        and a separate AsyncExecution object can also fetch a result.
+        """
+        with self.connection() as conn_1, self.connection() as conn_2:
+            ae_1 = conn_1.execute_async(LONG_ISH_QUERY)
+
+            query_id, query_secret = ae_1.serialize().split(":")
+            ae_2 = conn_2.get_async_execution(query_id, query_secret)
+
+            while ae_1.is_running:
+                time.sleep(1)
+                ae_1.poll_for_status()
+
+            result_1 = ae_1.get_result().fetchone()
+            assert len(result_1) == 1
+
+            ae_2.poll_for_status()
+            assert ae_2.status == AsyncExecutionStatus.FINISHED
+
+            result_2 = ae_2.get_result().fetchone()
+            assert len(result_2) == 1

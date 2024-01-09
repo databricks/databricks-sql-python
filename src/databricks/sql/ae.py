@@ -25,6 +25,12 @@ class FakeCursor:
     active_op_handle: Optional[ttypes.TOperationHandle]
 
 
+@dataclass
+class FakeExecuteStatementResponse:
+    directResults: bool
+    operationHandle: ttypes.TOperationHandle
+
+
 class AsyncExecutionStatus(Enum):
     """An enum that represents the status of an async execution"""
 
@@ -66,7 +72,9 @@ class AsyncExecution:
     _connection: "Connection"
     _thrift_backend: "ThriftBackend"
     _result_set: Optional["ResultSet"]
-    _execute_statement_response: Optional[ttypes.TExecuteStatementResp]
+    _execute_statement_response: Optional[
+        Union[FakeExecuteStatementResponse, ttypes.TExecuteStatementResp]
+    ]
 
     def __init__(
         self,
@@ -75,17 +83,25 @@ class AsyncExecution:
         query_id: UUID,
         query_secret: UUID,
         status: Optional[AsyncExecutionStatus] = None,
-        execute_statement_response: Optional[ttypes.TExecuteStatementResp] = None,
+        execute_statement_response: Optional[
+            Union[FakeExecuteStatementResponse, ttypes.TExecuteStatementResp]
+        ] = None,
     ):
         self._connection = connection
         self._thrift_backend = thrift_backend
-        self._execute_statement_response = execute_statement_response
         self.query_id = query_id
         self.query_secret = query_secret
         self.status = status
 
         if self.status is None:
             self.poll_for_status()
+
+        if execute_statement_response:
+            self._execute_statement_response = execute_statement_response
+        else:
+            self._execute_statement_response = FakeExecuteStatementResponse(
+                directResults=False, operationHandle=self.t_operation_handle
+            )
 
     status: AsyncExecutionStatus
     query_id: UUID
@@ -124,7 +140,8 @@ class AsyncExecution:
     def poll_for_status(self) -> None:
         """Check the thrift server for the status of this operation and set self.status
 
-        This will result in an error if the operation has been canceled or aborted at the server"""
+        This will result in an error if the operation has been canceled or aborted at the server
+        """
 
         try:
             _output = self._thrift_backend._poll_for_status(self.t_operation_handle)
