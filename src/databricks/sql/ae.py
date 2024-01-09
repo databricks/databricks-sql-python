@@ -117,7 +117,7 @@ class AsyncExecution:
 
     def serialize(self) -> str:
         """Return a string representing the query_id and secret of this AsyncExecution.
-        
+
         Use this to preserve a reference to the query_id and query_secret."""
         return f"{self.query_id}:{self.query_secret}"
 
@@ -130,7 +130,10 @@ class AsyncExecution:
             _output = self._thrift_backend._poll_for_status(self.t_operation_handle)
         except RequestError as e:
             if "RESOURCE_DOES_NOT_EXIST" in e.message:
-                raise AsyncExecutionException("Query not found: %s" % self.query_id) from e
+                raise AsyncExecutionException(
+                    "Query not found: %s. Result may have already been fetched."
+                    % self.query_id
+                ) from e
         self.status = _toperationstate_to_ae_status(_output.operationState)
 
     def _thrift_fetch_result(self) -> None:

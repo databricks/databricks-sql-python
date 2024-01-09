@@ -20,7 +20,7 @@ GT_ONE_MINUTE_VALUE = 100000000
 # Arrived at this value through some manual testing on a serverless SQL warehouse
 # The goal here is to have a query that takes longer than five seconds (therefore bypassing directResults)
 # but not so long that I can't attempt to fetch its results in a reasonable amount of time
-GT_FIVE_SECONDS_VALUE = 75000
+GT_FIVE_SECONDS_VALUE = 90000
 
 LONG_RUNNING_QUERY = BASE_LONG_QUERY.format(val=GT_ONE_MINUTE_VALUE)
 LONG_ISH_QUERY = BASE_LONG_QUERY.format(val=GT_FIVE_SECONDS_VALUE)
@@ -83,7 +83,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with pytest.raises(AsyncExecutionException, match="Query was canceled"):
             long_running_ae.get_result()
 
-    def test_get_async_execution(self, long_running_ae: AsyncExecution):
+    def test_get_async_execution_can_check_status(self, long_running_ae: AsyncExecution):
         query_id, query_secret = str(long_running_ae.query_id), str(
             long_running_ae.query_secret
         )
@@ -92,7 +92,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
             ae = conn.get_async_execution(query_id, query_secret)
             assert ae.is_running
 
-    def test_get_async_execution_across_threads(self, long_running_ae: AsyncExecution):
+    def test_get_async_execution_can_cancel_across_threads(self, long_running_ae: AsyncExecution):
         query_id, query_secret = str(long_running_ae.query_id), str(
             long_running_ae.query_secret
         )
@@ -156,3 +156,39 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with self.connection() as conn:
             ae = conn.get_async_execution(query_id, query_secret)
             assert ae.is_running
+
+    def test_get_async_execution_no_results_when_direct_results_were_sent(self):
+        """It remains to be seen whether results can be fetched repeatedly from a "picked up" execution.
+        """
+
+        with self.connection() as conn:
+            ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
+            query_id, query_secret = ae.serialize().split(":")
+            ae.get_result()
+
+        with self.connection() as conn:
+            with pytest.raises(AsyncExecutionException, match="Query not found"):
+                ae_late = conn.get_async_execution(query_id, query_secret)
+
+    def test_get_async_execution_and_fetch_results(self, long_ish_ae: AsyncExecution):
+        """This tests currently _fails_ because of how result fetching is factored.
+
+        Currently, thrift_backend.py can't fetch results unless it has a TExecuteStatementResp object.
+        But with async executions, we don't have the original TExecuteStatementResp. So we'll need to build
+        a way to "fake" this until we can refactor thrift_backend.py to be more testable.
+        """
+
+        query_id, query_secret = long_ish_ae.serialize().split(":")
+
+        with self.connection() as conn:
+            ae = conn.get_async_execution(query_id, query_secret)
+
+            while ae.is_running:
+                time.sleep(1)
+                ae.poll_for_status()
+
+            result = ae.get_result().fetchone()
+
+            assert len(result) == 1
+
+        
