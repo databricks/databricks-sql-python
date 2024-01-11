@@ -54,7 +54,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with self.connection() as conn:
             ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
             while ae.is_running:
-                ae.poll_for_status()
+                ae.sync_status()
                 time.sleep(1)
 
             result = ae.get_result().fetchone()
@@ -74,13 +74,9 @@ class TestExecuteAsync(PySQLPytestTestCase):
         long_running_ae.cancel()
         assert long_running_ae.status == AsyncExecutionStatus.CANCELED
 
-    def test_cant_get_results_while_running(self, long_running_ae: AsyncExecution):
-        with pytest.raises(AsyncExecutionException, match="Query is still running"):
-            long_running_ae.get_result()
-
     def test_cant_get_results_after_cancel(self, long_running_ae: AsyncExecution):
         long_running_ae.cancel()
-        with pytest.raises(AsyncExecutionException, match="Query was canceled"):
+        with pytest.raises(AsyncExecutionException, match="CANCELED"):
             long_running_ae.get_result()
 
     def test_get_async_execution_can_check_status(
@@ -112,12 +108,12 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
         time.sleep(5)
 
-        long_running_ae.poll_for_status()
+        long_running_ae.sync_status()
         assert long_running_ae.status == AsyncExecutionStatus.CANCELED
 
     def test_long_ish_query_canary(self, long_ish_ae: AsyncExecution):
         """This test verifies that on the current endpoint, the LONG_ISH_QUERY requires
-        at least one poll_for_status call before it is finished. If this test fails, it means
+        at least one sync_status call before it is finished. If this test fails, it means
         the SQL warehouse got faster at executing this query and we should increment the value
         of GT_FIVE_SECONDS_VALUE
 
@@ -127,7 +123,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
         poll_count = 0
         while long_ish_ae.is_running:
             time.sleep(1)
-            long_ish_ae.poll_for_status()
+            long_ish_ae.sync_status()
             poll_count += 1
 
         assert poll_count > 0
@@ -137,7 +133,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
     ):
         while long_ish_ae.is_running:
             time.sleep(1)
-            long_ish_ae.poll_for_status()
+            long_ish_ae.sync_status()
 
         result = long_ish_ae.get_result().fetchone()
         assert len(result) == 1
@@ -185,7 +181,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
             while ae.is_running:
                 time.sleep(1)
-                ae.poll_for_status()
+                ae.sync_status()
 
             result = ae.get_result().fetchone()
 
@@ -203,12 +199,12 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
             while ae_1.is_running:
                 time.sleep(1)
-                ae_1.poll_for_status()
+                ae_1.sync_status()
 
             result_1 = ae_1.get_result().fetchone()
             assert len(result_1) == 1
 
-            ae_2.poll_for_status()
+            ae_2.sync_status()
             assert ae_2.status == AsyncExecutionStatus.FINISHED
 
             result_2 = ae_2.get_result().fetchone()

@@ -427,9 +427,9 @@ class Connection:
         else:
             _qs = UUID(hex=query_secret)
 
-        return AsyncExecution(
-            thrift_backend=self.thrift_backend,
+        return AsyncExecution.from_query_id_and_secret(
             connection=self,
+            thrift_backend=self.thrift_backend,
             query_id=_qid,
             query_secret=_qs,
         )
