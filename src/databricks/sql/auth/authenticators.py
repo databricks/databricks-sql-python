@@ -69,6 +69,7 @@ class DatabricksOAuthProvider(AuthProvider):
         redirect_port_range: List[int],
         client_id: str,
         scopes: List[str],
+        custom_oauth_manager,
     ):
         try:
             cloud_type = infer_cloud_from_host(hostname)
@@ -84,7 +85,10 @@ class DatabricksOAuthProvider(AuthProvider):
             # Convert to the corresponding scopes in the corresponding IdP
             cloud_scopes = idp_endpoint.get_scopes_mapping(scopes)
 
-            self.oauth_manager = OAuthManager(
+            if not custom_oauth_manager:
+                custom_oauth_manager = OAuthManager
+
+            self.oauth_manager = custom_oauth_manager(
                 port_range=redirect_port_range,
                 client_id=client_id,
                 idp_endpoint=idp_endpoint,

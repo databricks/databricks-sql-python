@@ -33,6 +33,7 @@ class ClientContext:
         tls_client_cert_file: str = None,
         oauth_persistence=None,
         credentials_provider=None,
+        custom_oauth_manager=None,
     ):
         self.hostname = hostname
         self.username = username
@@ -46,11 +47,13 @@ class ClientContext:
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
         self.credentials_provider = credentials_provider
+        self.custom_oauth_manager=custom_oauth_manager
 
 
 def get_auth_provider(cfg: ClientContext):
     if cfg.credentials_provider:
         return ExternalAuthProvider(cfg.credentials_provider)
+
     if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
         assert cfg.oauth_redirect_port_range is not None
         assert cfg.oauth_client_id is not None
@@ -62,6 +65,7 @@ def get_auth_provider(cfg: ClientContext):
             cfg.oauth_redirect_port_range,
             cfg.oauth_client_id,
             cfg.oauth_scopes,
+            cfg.custom_oauth_manager,
         )
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
@@ -112,5 +116,8 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
+        # customization start
+        custom_oauth_manager=kwargs.get("custom_oauth_manager"),
+        # customization end
     )
     return get_auth_provider(cfg)
