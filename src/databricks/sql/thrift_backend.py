@@ -6,7 +6,7 @@ import time
 import uuid
 import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
-from typing import List, Union
+from typing import List, Union, Optional, Dict
 
 import pyarrow
 import thrift.transport.THttpClient
@@ -217,6 +217,9 @@ class ThriftBackend:
             )
 
             additional_transport_args["retry_policy"] = self.retry_policy
+
+        if "proxies" in kwargs:
+            additional_transport_args["proxies"] = kwargs["proxies"]
 
         self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
             auth_provider=self._auth_provider,
