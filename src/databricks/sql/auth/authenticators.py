@@ -86,6 +86,7 @@ class DatabricksOAuthProvider(AuthProvider):
             cloud_scopes = idp_endpoint.get_scopes_mapping(scopes)
 
             if not custom_oauth_manager:
+                logging.info("Use default OAuthManager because {}", custom_oauth_manager)
                 custom_oauth_manager = OAuthManager
 
             self.oauth_manager = custom_oauth_manager(
@@ -93,6 +94,7 @@ class DatabricksOAuthProvider(AuthProvider):
                 client_id=client_id,
                 idp_endpoint=idp_endpoint,
             )
+
             self._hostname = hostname
             self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(cloud_scopes)
             self._oauth_persistence = oauth_persistence
