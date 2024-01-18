@@ -1,6 +1,9 @@
 from enum import Enum
 from typing import Optional, Union, TYPE_CHECKING
+from databricks.sql.exc import RequestError
 from databricks.sql.results import ResultSet
+
+from datetime import datetime
 
 from dataclasses import dataclass
 
@@ -19,9 +22,21 @@ class AsyncExecutionException(Exception):
     pass
 
 
+class AsyncExecutionUnrecoverableResultException(AsyncExecutionException):
+    """Raised when a result can never be retrieved for this query id."""
+
+    pass
+
+
 @dataclass
 class FakeCursor:
     active_op_handle: Optional[ttypes.TOperationHandle]
+
+
+@dataclass
+class FakeExecuteStatementResponse:
+    directResults: bool
+    operationHandle: ttypes.TOperationHandle
 
 
 class AsyncExecutionStatus(Enum):
@@ -35,6 +50,7 @@ class AsyncExecutionStatus(Enum):
 
     # todo: when is this ever evaluated?
     ABORTED = 5
+    UNKNOWN = 6
 
 
 def _toperationstate_to_ae_status(
@@ -54,18 +70,17 @@ def _toperationstate_to_ae_status(
 
 class AsyncExecution:
     """
-    A class that represents an async execution of a query.
-
-    AsyncExecutions are effectively connectionless. But because thrift_backend is entangled
-    with client.py, the AsyncExecution needs access to both a Connection and a ThriftBackend
-
-    This will need to be refactored for cleanliness in the future.
+    A handle for a query execution on Databricks.
     """
 
     _connection: "Connection"
     _thrift_backend: "ThriftBackend"
     _result_set: Optional["ResultSet"]
-    _execute_statement_response: Optional[ttypes.TExecuteStatementResp]
+    _execute_statement_response: Optional[
+        Union[FakeExecuteStatementResponse, ttypes.TExecuteStatementResp]
+    ]
+    _last_sync_timestamp: Optional[datetime] = None
+    _result_set: Optional["ResultSet"] = None
 
     def __init__(
         self,
@@ -73,33 +88,59 @@ class AsyncExecution:
         connection: "Connection",
         query_id: UUID,
         query_secret: UUID,
-        status: AsyncExecutionStatus,
-        execute_statement_response: Optional[ttypes.TExecuteStatementResp] = None,
+        status: Optional[AsyncExecutionStatus] = AsyncExecutionStatus.UNKNOWN,
+        execute_statement_response: Optional[
+            Union[FakeExecuteStatementResponse, ttypes.TExecuteStatementResp]
+        ] = None,
     ):
         self._connection = connection
         self._thrift_backend = thrift_backend
-        self._execute_statement_response = execute_statement_response
         self.query_id = query_id
         self.query_secret = query_secret
         self.status = status
 
+        if execute_statement_response:
+            self._execute_statement_response = execute_statement_response
+        else:
+            self._execute_statement_response = FakeExecuteStatementResponse(
+                directResults=False, operationHandle=self.t_operation_handle
+            )
+
     status: AsyncExecutionStatus
     query_id: UUID
 
-    def get_result(self) -> "ResultSet":
-        """Get a result set for this async execution
+    def get_result(
+        self,
+    ) -> "ResultSet":
+        """Attempt to get the result of this query and set self.status to FETCHED.
 
-        Raises an exception if the query is still running or has been canceled.
+        IMPORTANT: Generally, you'll call this method only after checking that the query is finished.
+        But you can call it at any time. If you call this method while the query is still running,
+        your code will block indefinitely until the query completes! This will be changed in a
+        subsequent release (PECO-1291)
+
+        If you have already called get_result successfully, this method will return the same ResultSet
+        as before without making an additional roundtrip to the server.
+
+        Raises an AsyncExecutionUnrecoverableResultException if the query was canceled or aborted
+            at the server, so a result will never be available.
         """
 
-        if self.status == AsyncExecutionStatus.CANCELED:
-            raise AsyncExecutionException("Query was canceled: %s" % self.query_id)
-        if self.is_running:
-            raise AsyncExecutionException("Query is still running: %s" % self.query_id)
-        if self.status == AsyncExecutionStatus.FINISHED:
-            self._thrift_fetch_result()
-        if self.status == AsyncExecutionStatus.FETCHED:
-            return self._result_set
+        # this isn't recoverable
+        if self.status in [AsyncExecutionStatus.ABORTED, AsyncExecutionStatus.CANCELED]:
+            raise AsyncExecutionUnrecoverableResultException(
+                "Result for %s is not recoverable. Query status is %s"
+                % (self.query_id, self.status),
+            )
+
+        return self._get_result_set()
+
+    def _get_result_set(self) -> "ResultSet":
+        if self._result_set is None:
+            self._result_set = self._thrift_fetch_result()
+            self.status = AsyncExecutionStatus.FETCHED
+
+        return self._result_set
 
     def cancel(self) -> None:
         """Cancel the query"""
@@ -111,34 +152,44 @@ class AsyncExecution:
         _output = self._thrift_backend.async_cancel_command(self.t_operation_handle)
         self.status = AsyncExecutionStatus.CANCELED
 
-    def poll_for_status(self) -> None:
-        """Check the thrift server for the status of this operation and set self.status
+    def _thrift_get_operation_status(self) -> ttypes.TGetOperationStatusResp:
+        """Execute TGetOperationStatusReq
 
-        This will result in an error if the operation has been canceled or aborted at the server"""
+        Raises an AsyncExecutionError if the query_id:query_secret pair is not found on the server.
+        """
+        try:
+            return self._thrift_backend._poll_for_status(self.t_operation_handle)
+        except RequestError as e:
+            if "RESOURCE_DOES_NOT_EXIST" in e.message:
+                raise AsyncExecutionException(
+                    "Query not found: %s" % self.query_id
+                ) from e
 
-        _output = self._thrift_backend._poll_for_status(self.t_operation_handle)
-        self.status = _toperationstate_to_ae_status(_output.operationState)
+    def serialize(self) -> str:
+        """Return a string representing the query_id and secret of this AsyncExecution.
 
-    def _thrift_fetch_result(self) -> None:
-        """Execute TFetchResultReq and store the result"""
+        Use this to preserve a reference to the query_id and query_secret."""
+        return f"{self.query_id}:{self.query_secret}"
 
-        # A cursor is required here to hook into the thrift_backend result fetching API
-        # TODO: need to rewrite this to use a generic result fetching API so we can
-        # support JSON and Thrift binary result formats in addition to arrow.
+    def sync_status(self) -> None:
+        """Synchronise the status of this AsyncExecution with the server query execution state."""
 
-        # in the case of direct results this creates a second cursor...how can I avoid that?
+        resp = self._thrift_get_operation_status()
+        self.status = _toperationstate_to_ae_status(resp.operationState)
+        self._last_sync_timestamp = datetime.now()
+
+    def _thrift_fetch_result(self) -> "ResultSet":
+        """Execute TFetchResultReq"""
 
         er = self._thrift_backend._handle_execute_response(
             self._execute_statement_response, FakeCursor(None)
         )
 
-        self._result_set = ResultSet(
+        return ResultSet(
             connection=self._connection,
             execute_response=er,
             thrift_backend=self._connection.thrift_backend,
         )
-
-        self.status = AsyncExecutionStatus.FETCHED
 
     @property
     def is_running(self) -> bool:
@@ -146,6 +197,14 @@ class AsyncExecution:
             AsyncExecutionStatus.RUNNING,
             AsyncExecutionStatus.PENDING,
         ]
+
+    @property
+    def is_canceled(self) -> bool:
+        return self.status == AsyncExecutionStatus.CANCELED
+
+    @property
+    def is_finished(self) -> bool:
+        return self.status == AsyncExecutionStatus.FINISHED
 
     @property
     def t_operation_handle(self) -> ttypes.TOperationHandle:
@@ -160,6 +219,11 @@ class AsyncExecution:
         )
 
         return handle
+
+    @property
+    def last_sync_timestamp(self) -> Optional[datetime]:
+        """The timestamp of the last time self.status was synced with the server"""
+        return self._last_sync_timestamp
 
     @classmethod
     def from_thrift_response(
@@ -180,3 +244,28 @@ class AsyncExecution:
             ),
             execute_statement_response=resp,
         )
+
+    @classmethod
+    def from_query_id_and_secret(
+        cls,
+        connection: "Connection",
+        thrift_backend: "ThriftBackend",
+        query_id: UUID,
+        query_secret: UUID,
+    ) -> "AsyncExecution":
+        """Return a valid AsyncExecution object from a query_id and query_secret.
+
+        Raises an AsyncExecutionException if the query_id:query_secret pair is not found on the server.
+        """
+
+        # build a copy of this execution
+        ae = cls(
+            connection=connection,
+            thrift_backend=thrift_backend,
+            query_id=query_id,
+            query_secret=query_secret,
+        )
+        # check to make sure this is a valid one
+        ae.sync_status()
+
+        return ae
