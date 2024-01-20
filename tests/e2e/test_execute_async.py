@@ -162,7 +162,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
             assert ae.is_running
 
     def test_get_async_execution_no_results_when_direct_results_were_sent(self):
-        """It remains to be seen whether results can be fetched repeatedly from a "picked up" execution."""
+        """When DirectResults are sent, they cannot be fetched from a separate thread."""
 
         with self.connection() as conn:
             ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
