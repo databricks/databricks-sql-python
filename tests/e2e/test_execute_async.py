@@ -82,28 +82,24 @@ class TestExecuteAsync(PySQLPytestTestCase):
     def test_get_async_execution_can_check_status(
         self, long_running_ae: AsyncExecution
     ):
-        query_id, query_secret = str(long_running_ae.query_id), str(
-            long_running_ae.query_secret
-        )
+        query_id = long_running_ae.serialize()
 
         with self.connection() as conn:
-            ae = conn.get_async_execution(query_id, query_secret)
+            ae = conn.get_async_execution(query_id)
             assert ae.is_running
 
     def test_get_async_execution_can_cancel_across_threads(
         self, long_running_ae: AsyncExecution
     ):
-        query_id, query_secret = str(long_running_ae.query_id), str(
-            long_running_ae.query_secret
-        )
+        query_id = long_running_ae.serialize()
 
-        def cancel_query_in_separate_thread(query_id, query_secret):
+        def cancel_query_in_separate_thread(query_id):
             with self.connection() as conn:
-                ae = conn.get_async_execution(query_id, query_secret)
+                ae = conn.get_async_execution(query_id)
                 ae.cancel()
 
         threading.Thread(
-            target=cancel_query_in_separate_thread, args=(query_id, query_secret)
+            target=cancel_query_in_separate_thread, args=(query_id)
         ).start()
 
         time.sleep(5)
@@ -154,11 +150,10 @@ class TestExecuteAsync(PySQLPytestTestCase):
                 ae = conn.get_async_execution("foo", "bar")
 
     def test_serialize(self, long_running_ae: AsyncExecution):
-        serialized = long_running_ae.serialize()
-        query_id, query_secret = serialized.split(":")
+        query_id = long_running_ae.serialize()
 
         with self.connection() as conn:
-            ae = conn.get_async_execution(query_id, query_secret)
+            ae = conn.get_async_execution(query_id)
             assert ae.is_running
 
     def test_get_async_execution_no_results_when_direct_results_were_sent(self):
@@ -166,18 +161,18 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
         with self.connection() as conn:
             ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
-            query_id, query_secret = ae.serialize().split(":")
+            query_id = ae.serialize()
             ae.get_result()
 
         with self.connection() as conn:
             with pytest.raises(AsyncExecutionException, match="Query not found"):
-                ae_late = conn.get_async_execution(query_id, query_secret)
+                ae_late = conn.get_async_execution(query_id)
 
     def test_get_async_execution_and_fetch_results(self, long_ish_ae: AsyncExecution):
-        query_id, query_secret = long_ish_ae.serialize().split(":")
+        query_id = long_ish_ae.serialize()
 
         with self.connection() as conn:
-            ae = conn.get_async_execution(query_id, query_secret)
+            ae = conn.get_async_execution(query_id)
 
             while ae.is_running:
                 time.sleep(1)
@@ -194,8 +189,8 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with self.connection() as conn_1, self.connection() as conn_2:
             ae_1 = conn_1.execute_async(LONG_ISH_QUERY)
 
-            query_id, query_secret = ae_1.serialize().split(":")
-            ae_2 = conn_2.get_async_execution(query_id, query_secret)
+            query_id = ae_1.serialize()
+            ae_2 = conn_2.get_async_execution(query_id)
 
             while ae_1.is_running:
                 time.sleep(1)

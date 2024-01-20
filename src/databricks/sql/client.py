@@ -405,13 +405,12 @@ class Connection:
         )
 
     def get_async_execution(
-        self, query_id: Union[str, UUID], query_secret: Union[str, UUID]
+        self, query_id: Union[str, UUID]
     ) -> "AsyncExecution":
         """Get an AsyncExecution object for an existing query.
 
         Args:
             query_id: The query id of the query to retrieve
-            query_secret: The query secret of the query to retrieve
 
         Returns:
             An AsyncExecution object that can be used to poll for status and retrieve results.
@@ -422,16 +421,10 @@ class Connection:
         else:
             _qid = UUID(hex=query_id)
 
-        if isinstance(query_secret, UUID):
-            _qs = query_secret
-        else:
-            _qs = UUID(hex=query_secret)
-
         return AsyncExecution.from_query_id_and_secret(
             connection=self,
             thrift_backend=self.thrift_backend,
             query_id=_qid,
-            query_secret=_qs,
         )
 
 

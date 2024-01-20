@@ -87,7 +87,6 @@ class AsyncExecution:
         thrift_backend: "ThriftBackend",
         connection: "Connection",
         query_id: UUID,
-        query_secret: UUID,
         status: Optional[AsyncExecutionStatus] = AsyncExecutionStatus.UNKNOWN,
         execute_statement_response: Optional[
             Union[FakeExecuteStatementResponse, ttypes.TExecuteStatementResp]
@@ -96,7 +95,6 @@ class AsyncExecution:
         self._connection = connection
         self._thrift_backend = thrift_backend
         self.query_id = query_id
-        self.query_secret = query_secret
         self.status = status
 
         if execute_statement_response:
@@ -155,7 +153,7 @@ class AsyncExecution:
     def _thrift_get_operation_status(self) -> ttypes.TGetOperationStatusResp:
         """Execute TGetOperationStatusReq
 
-        Raises an AsyncExecutionError if the query_id:query_secret pair is not found on the server.
+        Raises an AsyncExecutionError if the query_id is not found on the server.
         """
         try:
             return self._thrift_backend._poll_for_status(self.t_operation_handle)
@@ -166,10 +164,10 @@ class AsyncExecution:
                 ) from e
 
     def serialize(self) -> str:
-        """Return a string representing the query_id and secret of this AsyncExecution.
+        """Return a hex string representing the query_id of this AsyncExecution.
 
-        Use this to preserve a reference to the query_id and query_secret."""
-        return f"{self.query_id}:{self.query_secret}"
+        Use this to preserve a reference to the query_id"""
+        return f"{self.query_id}"
 
     def sync_status(self) -> None:
         """Synchronise the status of this AsyncExecution with the server query execution state."""
@@ -212,7 +210,7 @@ class AsyncExecution:
 
         handle = ttypes.TOperationHandle(
             operationId=ttypes.THandleIdentifier(
-                guid=self.query_id.bytes, secret=self.query_secret.bytes
+                guid=self.query_id.bytes, secret=UUID(int=0).bytes
             ),
             operationType=ttypes.TOperationType.EXECUTE_STATEMENT,
             hasResultSet=True,
@@ -238,7 +236,6 @@ class AsyncExecution:
             connection=connection,
             thrift_backend=thrift_backend,
             query_id=UUID(bytes=resp.operationHandle.operationId.guid),
-            query_secret=UUID(bytes=resp.operationHandle.operationId.secret),
             status=_toperationstate_to_ae_status(
                 resp.directResults.operationStatus.operationState
             ),
@@ -251,11 +248,10 @@ class AsyncExecution:
         connection: "Connection",
         thrift_backend: "ThriftBackend",
         query_id: UUID,
-        query_secret: UUID,
     ) -> "AsyncExecution":
-        """Return a valid AsyncExecution object from a query_id and query_secret.
+        """Return a valid AsyncExecution object from a query_id.
 
-        Raises an AsyncExecutionException if the query_id:query_secret pair is not found on the server.
+        Raises an AsyncExecutionException if the query_id pair is not found on the server.
         """
 
         # build a copy of this execution
@@ -263,7 +259,6 @@ class AsyncExecution:
             connection=connection,
             thrift_backend=thrift_backend,
             query_id=query_id,
-            query_secret=query_secret,
         )
         # check to make sure this is a valid one
         ae.sync_status()
