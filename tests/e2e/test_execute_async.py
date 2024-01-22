@@ -166,6 +166,9 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
         with self.connection() as conn:
             ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
+            assert (
+                not ae.is_available
+            ), "Queries that return direct results should not be available"
             query_id, query_secret = ae.serialize().split(":")
             ae.get_result()
 
@@ -193,9 +196,13 @@ class TestExecuteAsync(PySQLPytestTestCase):
         """
         with self.connection() as conn_1, self.connection() as conn_2:
             ae_1 = conn_1.execute_async(LONG_ISH_QUERY)
+            assert (
+                ae_1.is_available
+            ), "A long query does not return direct results so is_available should be True"
 
             query_id, query_secret = ae_1.serialize().split(":")
             ae_2 = conn_2.get_async_execution(query_id, query_secret)
+            assert ae_2.is_available
 
             while ae_1.is_running:
                 time.sleep(1)

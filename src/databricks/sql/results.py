@@ -9,6 +9,7 @@ from databricks.sql import __version__
 from databricks.sql.exc import (
     CursorAlreadyClosedError,
 )
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.utils import ExecuteResponse
 
@@ -223,3 +224,14 @@ class ResultSet:
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
+
+
+def execute_response_contains_direct_results(
+    execute_response: ttypes.TExecuteStatementResp,
+) -> bool:
+    """
+    Returns True if the thrift TExecuteStatementResp contains metadata
+    This indicates the statement has finished executing at the server.
+    """
+
+    return bool(execute_response.directResults.resultSetMetadata)
