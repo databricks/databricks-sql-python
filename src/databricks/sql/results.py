@@ -9,6 +9,7 @@ from databricks.sql import __version__
 from databricks.sql.exc import (
     CursorAlreadyClosedError,
 )
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.utils import ExecuteResponse
 
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
     from databricks.sql.ae import AsyncExecution, AsyncExecutionStatus
     from databricks.sql.client import Connection
     from databricks.sql.thrift_backend import ThriftBackend
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # TODO: this is duplicated from client.py to avoid ImportError. Fix this.
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
@@ -223,3 +228,28 @@ class ResultSet:
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
+
+
+def execute_response_contains_direct_results(
+    execute_response: ttypes.TExecuteStatementResp,
+) -> bool:
+    """
+    Returns True if the thrift TExecuteStatementResp returned a direct result.
+    
+    When directResults is used the server just batches these rpcs together,
+    if the entire result can be returned in a single round-trip:
+
+        struct TSparkDirectResults {
+        1: optional TGetOperationStatusResp operationStatus
+        2: optional TGetResultSetMetadataResp resultSetMetadata
+        3: optional TFetchResultsResp resultSet
+        4: optional TCloseOperationResp closeOperation
+        }
+    """
+
+    has_op_status = execute_response.directResults.operationStatus
+    has_result_set = execute_response.directResults.resultSet
+    has_metadata = execute_response.directResults.resultSetMetadata
+    has_close_op = execute_response.directResults.closeOperation
+
+    return has_op_status and has_result_set and has_metadata and has_close_op

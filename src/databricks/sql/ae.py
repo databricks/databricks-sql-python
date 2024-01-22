@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional, Union, TYPE_CHECKING
 from databricks.sql.exc import RequestError
-from databricks.sql.results import ResultSet
+from databricks.sql.results import ResultSet, execute_response_contains_direct_results
 
 from datetime import datetime
 
@@ -81,6 +81,7 @@ class AsyncExecution:
     ]
     _last_sync_timestamp: Optional[datetime] = None
     _result_set: Optional["ResultSet"] = None
+    _returned_as_direct_result: bool = False
 
     def __init__(
         self,
@@ -101,6 +102,8 @@ class AsyncExecution:
 
         if execute_statement_response:
             self._execute_statement_response = execute_statement_response
+            if execute_response_contains_direct_results(execute_statement_response):
+                self._returned_as_direct_result = True
         else:
             self._execute_statement_response = FakeExecuteStatementResponse(
                 directResults=False, operationHandle=self.t_operation_handle
@@ -224,6 +227,17 @@ class AsyncExecution:
     def last_sync_timestamp(self) -> Optional[datetime]:
         """The timestamp of the last time self.status was synced with the server"""
         return self._last_sync_timestamp
+
+    @property
+    def returned_as_direct_result(self) -> bool:
+        """When direct results were returned, this query_id cannot be picked up
+            with `Connection.get_async_execution()`
+
+        Only returns True if the query returned its results directly when `execute_async`
+            was called.
+        """
+
+        return self._returned_as_direct_result
 
     @classmethod
     def from_thrift_response(
