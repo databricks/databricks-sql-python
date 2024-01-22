@@ -71,8 +71,11 @@ http_path = os.getenv("DATABRICKS_HTTP_PATH")
 access_token = os.getenv("DATABRICKS_TOKEN")
 
 with sql.connect(server_hostname=host, http_path=http_path, access_token=access_token) as connection:
-    query = connection.execute_async("SELECT :param `p`, * FROM RANGE(10" {"param": "foo"})
-    query_id_and_secret = query.serialize()
+    query = connection.execute_async("SELECT :param `p`, * FROM RANGE(1000000000)" {"param": "foo"})
+    
+    # see note in this document about queries that return direct results
+    if query.returned_as_direct_result:
+        assert False, "Queries that return direct results cannot be picked up with get_async_execution()"
 
 # The connection created above has now closed
 
