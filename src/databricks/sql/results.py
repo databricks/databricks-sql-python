@@ -18,6 +18,10 @@ if TYPE_CHECKING:
     from databricks.sql.client import Connection
     from databricks.sql.thrift_backend import ThriftBackend
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # TODO: this is duplicated from client.py to avoid ImportError. Fix this.
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 
