@@ -19,7 +19,7 @@ To run a query asynchronously, use `databricks.sql.client.Connection.execute_asy
 - `AsyncExecution.status` is the last-known status of this query run, expressed as an `AsyncExecutionStatus` enumeration value. For example, `RUNNING`, `FINISHED`, or `CANCELED`. When you first call `execute_async()` the resulting status will usually be `RUNNING`. Calling `sync_status()` will refresh the value of this property. In most usages, you do not need to access `.status` directly and can instead use `.is_running`, `.is_canceled`, and `.is_finished` instead.
 - `AsyncExecution.query_id` is the `UUID` for this query run. You can use this to look-up the query in the Databricks SQL query history.
 - `AsyncExecution.query_secret` is the `UUID` secret for this query run. Both the `query_id` and `secret` are needed to fetch results for a running query.
-- `AsyncExecution.is_available` is a boolean that indicates whether this execution can be picked up from another `Connection` or thread. See [below](#note-about-direct-result-queries) for more information.
+- `AsyncExecution.returned_as_direct_result` is a boolean that indicates whether this returned a direct result. See [below](#note-about-direct-result-queries) for more information.
 
 **Methods**
 - `AsyncExecution.sync_status()` performs a network round-trip to synchronize `.status`.
@@ -89,6 +89,6 @@ with sql.connect(server_hostname=host, http_path=http_path, access_token=access_
 
 # Note about direct result queries
 
-To minimise network roundtrips for small queries, Databricks will eagerly return a query result if the query completes within five seconds. This means that `execute_async()` may take up to five seconds to return control back to your calling code. When this happens, `AsyncExecution.is_available` will evaluate `False` and the query result will have already been cached in this `AsyncExecution` object. Calling `get_results()` will not invoke a network round-trip.
+To minimise network roundtrips for small queries, Databricks will eagerly return a query result if the query completes within five seconds and its results can be sent in a single response. This means that `execute_async()` may take up to five seconds to return control back to your calling code. When this happens, `AsyncExecution.returned_as_direct_result` will evaluate `True` and the query result will have already been cached in this `AsyncExecution` object. Calling `get_results()` will not invoke a network round-trip because the query will not be available at the server.
 
-Queries that execute in this fashion cannot be picked up with `get_async_execution()` and their results are not persisted on the server to be fetched by a separate thread. Therefore, before calling `.serialize()` to persist a `query_id:query_secret` pair, you should check if `AsyncExecution.is_available == True` first. 
+Queries that execute in this fashion cannot be picked up with `get_async_execution()` and their results are not persisted on the server to be fetched by a separate thread. Therefore, before calling `.serialize()` to persist a `query_id:query_secret` pair, you should check if `AsyncExecution.returned_as_direct_result == True` first. 
