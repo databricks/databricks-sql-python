@@ -282,7 +282,7 @@ def get_pk_strings_from_dte_output(
 GET_COLUMNS_TYPE_MAP = {
     "boolean": sqlalchemy.types.Boolean,
     "smallint": sqlalchemy.types.SmallInteger,
-    "tinyint": sqlalchemy.types.SmallInteger,
+    "tinyint": type_overrides.TINYINT,
     "int": sqlalchemy.types.Integer,
     "bigint": sqlalchemy.types.BigInteger,
     "float": sqlalchemy.types.Float,
