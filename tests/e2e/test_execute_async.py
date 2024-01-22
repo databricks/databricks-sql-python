@@ -189,9 +189,8 @@ class TestExecuteAsync(PySQLPytestTestCase):
         """
         with self.connection() as conn_1, self.connection() as conn_2:
             ae_1 = conn_1.execute_async(LONG_ISH_QUERY)
-            assert (
-                not ae_1.returned_as_direct_result
-            ), "A long query does not return direct results so is_available should be True"
+            assert not ae_1.returned_as_direct_result
+  
 
             query_id, query_secret = ae_1.serialize().split(":")
             ae_2 = conn_2.get_async_execution(query_id, query_secret)
