@@ -1,5 +1,9 @@
 # Release History
 
+## 3.1.0 (TBD)
+
+- Add `execute_async` and `get_async_execution` methods to `Connection` 
+
 ## 3.0.1 (2023-12-01)
 
 - Other: updated docstring comment about default parameterization approach (#287)
