@@ -68,7 +68,7 @@ class TestExecuteAsync(PySQLPytestTestCase):
 
         with self.connection() as conn:
             ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
-            assert not ae.is_running
+            assert ae.returned_as_direct_result
 
     def test_cancel_running_query(self, long_running_ae: AsyncExecution):
         long_running_ae.cancel()
@@ -112,21 +112,14 @@ class TestExecuteAsync(PySQLPytestTestCase):
         assert long_running_ae.status == AsyncExecutionStatus.CANCELED
 
     def test_long_ish_query_canary(self, long_ish_ae: AsyncExecution):
-        """This test verifies that on the current endpoint, the LONG_ISH_QUERY requires
-        at least one sync_status call before it is finished. If this test fails, it means
-        the SQL warehouse got faster at executing this query and we should increment the value
-        of GT_FIVE_SECONDS_VALUE
+        """This test verifies that on the current endpoint, the LONG_ISH_QUERY does not return direct results.
 
         It would be easier to do this if Databricks SQL had a SLEEP() function :/
+
+        We could acheive something similar by overriding the directResults setting in our ExecuteStatementReq
         """
 
-        poll_count = 0
-        while long_ish_ae.is_running:
-            time.sleep(1)
-            long_ish_ae.sync_status()
-            poll_count += 1
-
-        assert poll_count > 0
+        assert not long_ish_ae.returned_as_direct_result
 
     def test_get_async_execution_and_get_results_without_direct_results(
         self, long_ish_ae: AsyncExecution
@@ -162,12 +155,12 @@ class TestExecuteAsync(PySQLPytestTestCase):
             assert ae.is_running
 
     def test_get_async_execution_no_results_when_direct_results_were_sent(self):
-        """It remains to be seen whether results can be fetched repeatedly from a "picked up" execution."""
+        """Queries that return direct results cannot be picked up with `get_async_execution()`."""
 
         with self.connection() as conn:
             ae = conn.execute_async(DIRECT_RESULTS_QUERY, {"param": 1})
             assert (
-                not ae.is_available
+                ae.returned_as_direct_result
             ), "Queries that return direct results should not be available"
             query_id, query_secret = ae.serialize().split(":")
             ae.get_result()
@@ -197,12 +190,12 @@ class TestExecuteAsync(PySQLPytestTestCase):
         with self.connection() as conn_1, self.connection() as conn_2:
             ae_1 = conn_1.execute_async(LONG_ISH_QUERY)
             assert (
-                ae_1.is_available
+                not ae_1.returned_as_direct_result
             ), "A long query does not return direct results so is_available should be True"
 
             query_id, query_secret = ae_1.serialize().split(":")
             ae_2 = conn_2.get_async_execution(query_id, query_secret)
-            assert ae_2.is_available
+            assert not ae_2.returned_as_direct_result
 
             while ae_1.is_running:
                 time.sleep(1)
