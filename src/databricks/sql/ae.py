@@ -81,7 +81,7 @@ class AsyncExecution:
     ]
     _last_sync_timestamp: Optional[datetime] = None
     _result_set: Optional["ResultSet"] = None
-    _is_available: bool = True
+    _returned_as_direct_result: bool = False
 
     def __init__(
         self,
@@ -103,7 +103,7 @@ class AsyncExecution:
         if execute_statement_response:
             self._execute_statement_response = execute_statement_response
             if execute_response_contains_direct_results(execute_statement_response):
-                self._is_available = False
+                self._returned_as_direct_result = True
         else:
             self._execute_statement_response = FakeExecuteStatementResponse(
                 directResults=False, operationHandle=self.t_operation_handle
@@ -229,13 +229,15 @@ class AsyncExecution:
         return self._last_sync_timestamp
 
     @property
-    def is_available(self) -> bool:
-        """Indicates whether the result of this query can be fetched from a separate thread.
+    def returned_as_direct_result(self) -> bool:
+        """When direct results were returned, this query_id cannot be picked up
+            with `Connection.get_async_execution()`
 
-        Only returns False if the query returned its results directly when `execute_async` was called.
+        Only returns True if the query returned its results directly when `execute_async`
+            was called.
         """
 
-        return self._is_available
+        return self._returned_as_direct_result
 
     @classmethod
     def from_thrift_response(
