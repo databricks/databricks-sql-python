@@ -10,6 +10,7 @@ from databricks.sqlalchemy._parse import (
     build_pk_dict,
     get_fk_strings_from_dte_output,
     get_pk_strings_from_dte_output,
+    get_comment_from_dte_output,
     parse_column_info_from_tgetcolumnsresponse,
 )
 
@@ -387,16 +388,16 @@ class DatabricksDialect(default.DefaultDialect):
             table_name=table_name,
             schema_name=schema,
         )
-        # Type ignore is because mypy knows that self._describe_table_extended *can*
-        # return None (even though it never will since expect_result defaults to True)
-        comment_row: Dict[str, str] = next(
-            filter(lambda r: r["col_name"] == "Comment", result), None
-        )  # type: ignore
-        return (
-            {"text": comment_row["data_type"]}
-            if comment_row
-            else ReflectionDefaults.table_comment()
-        )
+
+        if result is None:
+            return ReflectionDefaults.table_comment()
+
+        comment = get_comment_from_dte_output(result)
+
+        if comment:
+            return dict(text=comment)
+        else:
+            return ReflectionDefaults.table_comment()
 
 
 @event.listens_for(Engine, "do_connect")
