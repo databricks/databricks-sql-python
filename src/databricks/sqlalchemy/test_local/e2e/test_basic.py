@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.schema import DropColumnComment, SetColumnComment
 from sqlalchemy.types import BOOLEAN, DECIMAL, Date, DateTime, Integer, String
 
 try:
@@ -184,6 +185,41 @@ def test_create_table_not_null(db_engine, metadata_obj: MetaData):
 
     assert name_column_description.get("nullable") is True
     assert some_bool_column_description.get("nullable") is False
+
+    metadata_obj.drop_all(db_engine)
+
+
+def test_column_comment(db_engine, metadata_obj: MetaData):
+    table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
+
+    column = Column("name", String(255), comment="some comment")
+    SampleTable = Table(table_name, metadata_obj, column)
+
+    metadata_obj.create_all(db_engine)
+    connection = db_engine.connect()
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == "some comment"
+
+    column.comment = "other comment"
+    connection.execute(SetColumnComment(column))
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == "other comment"
+
+    connection.execute(DropColumnComment(column))
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == ""
 
     metadata_obj.drop_all(db_engine)
 

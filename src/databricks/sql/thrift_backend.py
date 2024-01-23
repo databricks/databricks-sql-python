@@ -141,9 +141,11 @@ class ThriftBackend:
         if kwargs.get("_connection_uri"):
             uri = kwargs.get("_connection_uri")
         elif server_hostname and http_path:
-            uri = "https://{host}:{port}/{path}".format(
-                host=server_hostname, port=port, path=http_path.lstrip("/")
+            uri = "{host}:{port}/{path}".format(
+                host=server_hostname.rstrip("/"), port=port, path=http_path.lstrip("/")
             )
+            if not uri.startswith("https://"):
+                uri = "https://" + uri
         else:
             raise ValueError("No valid connection settings.")
 
