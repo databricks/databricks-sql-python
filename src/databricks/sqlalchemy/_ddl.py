@@ -55,9 +55,11 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         )
 
     def get_column_specification(self, column, **kwargs):
-        # Emit a log message if a user attempts to set autoincrement=True on a column.
-        # See comments in test_suite.py. We may implement implicit IDENTITY using this
-        # feature in the future, similar to the Microsoft SQL Server dialect.
+        """
+        Emit a log message if a user attempts to set autoincrement=True on a column.
+        See comments in test_suite.py. We may implement implicit IDENTITY using this
+        feature in the future, similar to the Microsoft SQL Server dialect.
+        """
         if column is column.table._autoincrement_column or column.autoincrement is True:
             logger.warn(
                 "Databricks dialect ignores SQLAlchemy's autoincrement semantics. Use explicit Identity() instead."
