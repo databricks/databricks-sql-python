@@ -55,7 +55,6 @@ class SkipReason(Enum):
     TIMEZONE_OPT = "timezone-optional TIMESTAMP fields"
     TRANSACTIONS = "transactions"
     UNIQUE = "UNIQUE constraints"
-    DROP_TBL = "drop table comment"
 
 
 def render_skip_reason(rsn: SkipReason, setup_error=False, extra=False) -> str:
@@ -223,13 +222,6 @@ class UuidTest(UuidTest):
 
 
 class FutureTableDDLTest(FutureTableDDLTest):
-    @pytest.mark.skip(reason=render_skip_reason(SkipReason.DROP_TBL))
-    def test_drop_table_comment(self, connection):
-        """The DropTableComment statement is supported but it sets the comment to ''
-        instead of None so this test can't pass.
-        """
-        pass
-
     @pytest.mark.skip(render_skip_reason(SkipReason.INDEXES))
     def test_create_index_if_not_exists(self):
         """We could use requirements.index_reflection and requirements.index_ddl_if_exists
@@ -246,13 +238,6 @@ class FutureTableDDLTest(FutureTableDDLTest):
 
 
 class TableDDLTest(TableDDLTest):
-    @pytest.mark.skip(reason=render_skip_reason(SkipReason.DROP_TBL))
-    def test_drop_table_comment(self, connection):
-        """The DropTableComment statement is supported but it sets the comment to ''
-        instead of None so this test can't pass.
-        """
-        pass
-
     @pytest.mark.skip(reason=render_skip_reason(SkipReason.INDEXES))
     def test_create_index_if_not_exists(self, connection):
         """We could use requirements.index_reflection and requirements.index_ddl_if_exists
