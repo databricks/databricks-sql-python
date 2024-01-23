@@ -2,14 +2,16 @@ import pytest
 from sqlalchemy import Column, MetaData, String, Table, create_engine
 from sqlalchemy.schema import CreateTable, DropColumnComment, SetColumnComment
 
-
-class TestTableCommentDDL:
+class DDLTestBase:
     engine = create_engine(
         "databricks://token:****@****?http_path=****&catalog=****&schema=****"
     )
 
     def compile(self, stmt):
         return str(stmt.compile(bind=self.engine))
+
+
+class TestColumnCommentDDL(DDLTestBase):
 
     @pytest.fixture
     def metadata(self) -> MetaData:
@@ -45,3 +47,6 @@ class TestTableCommentDDL:
         stmt = DropColumnComment(column)
         output = self.compile(stmt)
         assert output == "ALTER TABLE foobar ALTER COLUMN foo COMMENT ''"
+
+class TestTableCommentDDL(DDLTestBase):
+    pass
