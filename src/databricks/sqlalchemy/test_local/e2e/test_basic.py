@@ -219,7 +219,7 @@ def test_column_comment(db_engine, metadata_obj: MetaData):
         connection=connection, table_name=table_name
     )
 
-    assert columns[0].get("comment") == ""
+    assert columns[0].get("comment") == None
 
     metadata_obj.drop_all(db_engine)
 
