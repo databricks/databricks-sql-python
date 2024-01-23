@@ -36,7 +36,7 @@ class EndpointTest(unittest.TestCase):
                           CloudType.AZURE,
                           azure_host,
                           f"https://{azure_host}/oidc/oauth2/v2.0/authorize",
-                          "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
+                          f"https://{azure_host}/oidc/.well-known/openid-configuration",
                           [azure_scope, "offline_access"],
                           [azure_scope]
                       )]

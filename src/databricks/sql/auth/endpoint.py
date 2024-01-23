@@ -91,7 +91,10 @@ class AzureOAuthEndpointCollection(OAuthEndpointCollection):
         return f"{get_databricks_oidc_url(hostname)}/oauth2/v2.0/authorize"
 
     def get_openid_config_url(self, hostname: str):
-        return "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
+        # This well known openid url wil return Azure well-known openid configuration response
+        # or Databricks OAuth well-known URL
+        idp_url = get_databricks_oidc_url(hostname)
+        return f"{idp_url}/.well-known/openid-configuration"
 
 
 class AwsOAuthEndpointCollection(OAuthEndpointCollection):
