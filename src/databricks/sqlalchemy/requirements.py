@@ -163,6 +163,13 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     def comment_reflection(self):
         """Indicates if the database support table comment reflection"""
         return sqlalchemy.testing.exclusions.open()
+    
+    @property
+    def comment_reflection_full_unicode(self):
+        """Indicates if the database support table comment reflection in the
+        full unicode range, including emoji etc.
+        """
+        return sqlalchemy.testing.exclusions.open()
 
     @property
     def temp_table_reflection(self):

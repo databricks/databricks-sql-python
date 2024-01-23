@@ -51,7 +51,6 @@ class FutureFeature(Enum):
     PROVISION = "event-driven engine configuration"
     REGEXP = "_visit_regexp"
     SANE_ROWCOUNT = "sane_rowcount support"
-    TBL_COMMENTS = "table comment reflection"
     TBL_OPTS = "get_table_options method"
     TEST_DESIGN = "required test-fixture overrides"
     TUPLE_LITERAL = "tuple-like IN markers completely"
@@ -271,13 +270,7 @@ class ComponentReflectionTest(ComponentReflectionTest):
     def test_get_multi_check_constraints(self):
         pass
 
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_comments_unicode(self):
-        pass
 
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_comments_unicode_full(self):
-        pass
 
 
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
