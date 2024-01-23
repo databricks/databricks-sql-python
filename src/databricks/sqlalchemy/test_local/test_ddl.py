@@ -13,8 +13,7 @@ class TestTableCommentDDL:
 
     @pytest.fixture
     def metadata(self) -> MetaData:
-        """Assemble a metadata object with one table containing one column.
-        """
+        """Assemble a metadata object with one table containing one column."""
         metadata = MetaData()
 
         column = Column("foo", String, comment="bar")
