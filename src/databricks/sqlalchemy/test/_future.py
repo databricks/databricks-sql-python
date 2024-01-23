@@ -271,8 +271,6 @@ class ComponentReflectionTest(ComponentReflectionTest):
         pass
 
 
-
-
 class ComponentReflectionTestExtra(ComponentReflectionTestExtra):
     @pytest.mark.skip(render_future_feature(FutureFeature.CHECK))
     def test_get_check_constraints(self):
