@@ -16,7 +16,13 @@ class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
 
 class DatabricksDDLCompiler(compiler.DDLCompiler):
     def post_create_table(self, table):
-        return " USING DELTA"
+        post = " USING DELTA"
+        if table.comment:
+            comment = self.sql_compiler.render_literal_value(
+                table.comment, sqltypes.String()
+            )
+            post += " COMMENT " + comment
+        return post
 
     def visit_unique_constraint(self, constraint, **kw):
         logger.warning("Databricks does not support unique constraints")
@@ -61,7 +67,7 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
         feature in the future, similar to the Microsoft SQL Server dialect.
         """
         if column is column.table._autoincrement_column or column.autoincrement is True:
-            logger.warn(
+            logger.warning(
                 "Databricks dialect ignores SQLAlchemy's autoincrement semantics. Use explicit Identity() instead."
             )
 
