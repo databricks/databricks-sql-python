@@ -520,7 +520,7 @@ class TestCommentReflection:
     def inspector(self, engine: Engine) -> Inspector:
         return Inspector.from_engine(engine)
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def table(self, engine):
         md = MetaData()
         tbl = Table(
@@ -536,8 +536,9 @@ class TestCommentReflection:
         md.drop_all(bind=engine)
 
     def test_table_comment_reflection(self, inspector: Inspector, table: Table):
-        tbl_name = table.name
-
-        comment = inspector.get_table_comment(tbl_name)
-
+        comment = inspector.get_table_comment(table.name)
         assert comment == {"text": "table comment"}
+
+    def test_column_comment(self, inspector: Inspector, table: Table):
+        result = inspector.get_columns(table.name)[0].get("comment")
+        assert result == "column comment"
