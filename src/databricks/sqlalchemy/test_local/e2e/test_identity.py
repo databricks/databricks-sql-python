@@ -31,6 +31,11 @@ class IdentityTestBase:
 
 
 class TestIdentityBehaviorORM(IdentityTestBase):
+    """This test is expected to fail.
+    
+    Identity INSERT with sqla orm doesn't work because we have no way to fetch
+    the last inserted id.
+    """
     class Base(DeclarativeBase):
         pass
 
@@ -59,6 +64,7 @@ class TestIdentityBehaviorORM(IdentityTestBase):
 class TestIdentityColumnBehavior(IdentityTestBase):
     @pytest.fixture
     def table(self, engine):
+        # We declare generated value columns by passing `Identity()` to the `Column()` constructor
         md = MetaData()
         tbl = Table(
             "foo",
