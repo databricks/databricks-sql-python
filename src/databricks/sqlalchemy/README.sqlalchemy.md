@@ -131,18 +131,35 @@ class SomeModel(Base):
 
 ## `Identity()` and `autoincrement`
 
-Identity and generated value support is currently limited in this dialect.
+Identity and generated value support is only supported in SQLAlchemy core with this dialect.
 
-When defining models, SQLAlchemy types can accept an [`autoincrement`](https://docs.sqlalchemy.org/en/20/core/metadata.html#sqlalchemy.schema.Column.params.autoincrement) argument. In our dialect, this argument is currently ignored. To create an auto-incrementing field in your model you can pass in an explicit [`Identity()`](https://docs.sqlalchemy.org/en/20/core/defaults.html#identity-ddl) instead.
+When defining models, SQLAlchemy types can accept an [`autoincrement`](https://docs.sqlalchemy.org/en/20/core/metadata.html#sqlalchemy.schema.Column.params.autoincrement) argument. In our dialect, this argument is currently ignored. To create an auto-incrementing field in your model you can pass in an explicit [`Identity()`](https://docs.sqlalchemy.org/en/20/core/defaults.html#identity-ddl) to your `Column()` instead.
 
 Furthermore, in Databricks Runtime, only `BIGINT` fields can be configured to auto-increment. So in SQLAlchemy, you must use the `BigInteger()` type.
 
 ```python
-from sqlalchemy import Identity, String
+from sqlalchemy import Table, MetaData, create_engine, String, BigInteger, Identity
 
-class SomeModel(Base):
-    id      = BigInteger(Identity())
-    value   = String()
+engine = create_engine("databricks://...")
+tbl = Table(
+    "foo",
+    Column("bar", String),
+    Column("id", BigInteger, Identity())
+)
+
+connection = engine.begin()
+
+tbl.create(connection)
+
+insert_stmt = tbl1.insert().values(bar="hello world")
+connection.execute(insert_stmt)
+
+select_stmt = tbl1.select()
+result = connnection.execute(select_stmt).first()
+
+assert result.id == 1
+
+connection.close()
 ```
 
 When calling `Base.metadata.create_all()`, the executed DDL will include `GENERATED ALWAYS AS IDENTITY` for the `id` column. This is useful when using SQLAlchemy to generate tables. However, as of this writing, `Identity()` constructs are not captured when SQLAlchemy reflects a table's metadata (support for this is planned).
