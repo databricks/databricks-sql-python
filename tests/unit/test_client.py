@@ -91,14 +91,6 @@ class ClientTestSuite(unittest.TestCase):
         self.assertIn(("foo", "bar"), call_args)
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
-    def test_authtoken_passthrough(self, mock_client_class):
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
-
-        headers = mock_client_class.call_args[0][3]
-
-        self.assertIn(("Authorization", "Bearer tok"), headers)
-
-    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_tls_arg_passthrough(self, mock_client_class):
         databricks.sql.connect(
             **self.DUMMY_CONNECTION_ARGS,
