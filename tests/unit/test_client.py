@@ -77,7 +77,7 @@ class ClientTestSuite(unittest.TestCase):
 
         for args in connection_args:
             connection = databricks.sql.connect(**args)
-            host, port, http_path, _ = mock_client_class.call_args[0]
+            host, port, http_path, *_ = mock_client_class.call_args[0]
             self.assertEqual(args["server_hostname"], host)
             self.assertEqual(args["http_path"], http_path)
             connection.close()
