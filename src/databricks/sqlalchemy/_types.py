@@ -316,3 +316,7 @@ class TINYINT(sqlalchemy.types.TypeDecorator):
 
     impl = sqlalchemy.types.SmallInteger
     cache_ok = True
+
+@compiles(TINYINT, "databricks")
+def compile_tinyint(type_, compiler, **kw):
+    return "TINYINT"
