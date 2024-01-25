@@ -7,6 +7,8 @@ import itertools
 from decimal import Decimal
 from datetime import datetime, date
 
+from databricks.sql.thrift_api.TCLIService.ttypes import TOpenSessionResp
+
 
 import databricks.sql
 import databricks.sql.client as client
@@ -33,13 +35,16 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value
-        instance.open_session.return_value = b'\x22'
+
+        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
+        mock_open_session_resp.sessionHandle.sessionId = b'\x22'
+        instance.open_session.return_value = mock_open_session_resp
 
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         connection.close()
 
         # Check the close session request has an id of x22
-        close_session_id = instance.close_session.call_args[0][0]
+        close_session_id = instance.close_session.call_args[0][0].sessionId
         self.assertEqual(close_session_id, b'\x22')
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
@@ -228,13 +233,16 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_context_manager_closes_connection(self, mock_client_class):
         instance = mock_client_class.return_value
-        instance.open_session.return_value = b'\x22'
+
+        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
+        mock_open_session_resp.sessionHandle.sessionId = b'\x22'
+        instance.open_session.return_value = mock_open_session_resp
 
         with databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS) as connection:
             pass
 
         # Check the close session request has an id of x22
-        close_session_id = instance.close_session.call_args[0][0]
+        close_session_id = instance.close_session.call_args[0][0].sessionId
         self.assertEqual(close_session_id, b'\x22')
 
     def dict_product(self, dicts):
@@ -510,7 +518,10 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_finalizer_closes_abandoned_connection(self, mock_client_class):
         instance = mock_client_class.return_value
-        instance.open_session.return_value = b'\x22'
+        
+        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
+        mock_open_session_resp.sessionHandle.sessionId = b'\x22'
+        instance.open_session.return_value = mock_open_session_resp
 
         databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
 
@@ -518,13 +529,16 @@ class ClientTestSuite(unittest.TestCase):
         gc.collect()
 
         # Check the close session request has an id of x22
-        close_session_id = instance.close_session.call_args[0][0]
+        close_session_id = instance.close_session.call_args[0][0].sessionId
         self.assertEqual(close_session_id, b'\x22')
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_cursor_keeps_connection_alive(self, mock_client_class):
         instance = mock_client_class.return_value
-        instance.open_session.return_value = b'\x22'
+
+        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
+        mock_open_session_resp.sessionHandle.sessionId = b'\x22'
+        instance.open_session.return_value = mock_open_session_resp
 
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         cursor = connection.cursor()
