@@ -305,6 +305,7 @@ def get_comment_from_dte_output(dte_output: List[Dict[str, str]]) -> Optional[st
 GET_COLUMNS_TYPE_MAP = {
     "boolean": sqlalchemy.types.Boolean,
     "smallint": sqlalchemy.types.SmallInteger,
+    "tinyint": type_overrides.TINYINT,
     "int": sqlalchemy.types.Integer,
     "bigint": sqlalchemy.types.BigInteger,
     "float": sqlalchemy.types.Float,

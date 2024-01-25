@@ -111,7 +111,7 @@ class TestCamelCaseTypesCompilation(CompilationTestBase):
         )
 
     def test_numeric_renders_as_decimal_with_precision_and_scale(self):
-        return self._assert_compiled_value_explicit(
+        self._assert_compiled_value_explicit(
             sqlalchemy.types.Numeric(10, 2), "DECIMAL(10, 2)"
         )
 
@@ -146,8 +146,9 @@ class TestUppercaseTypesCompilation(CompilationTestBase):
         if isinstance(type_, type(sqlalchemy.types.ARRAY)):
             # ARRAY cannot be initialised without passing an item definition so we test separately
             # I preserve it in the uppercase_type_map for clarity
-            return True
-        return self._assert_compiled_value(type_, expected)
+            assert True
+        else:
+            self._assert_compiled_value(type_, expected)
 
     def test_array_string_renders_as_array_of_string(self):
         """SQLAlchemy's ARRAY type requires an item definition. And their docs indicate that they've only tested
@@ -155,6 +156,6 @@ class TestUppercaseTypesCompilation(CompilationTestBase):
 
         https://docs.sqlalchemy.org/en/20/core/type_basics.html#sqlalchemy.types.ARRAY
         """
-        return self._assert_compiled_value_explicit(
+        self._assert_compiled_value_explicit(
             sqlalchemy.types.ARRAY(sqlalchemy.types.String), "ARRAY<STRING>"
         )
