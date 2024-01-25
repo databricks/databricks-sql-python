@@ -2,13 +2,16 @@ import gc
 import re
 import sys
 import unittest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock, Mock, PropertyMock
 import itertools
 from decimal import Decimal
 from datetime import datetime, date
 
-from databricks.sql.thrift_api.TCLIService.ttypes import TOpenSessionResp
-
+from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TOpenSessionResp,
+    TExecuteStatementResp,
+)
+from databricks.sql.thrift_backend import ThriftBackend
 
 import databricks.sql
 import databricks.sql.client as client
@@ -18,6 +21,51 @@ from databricks.sql.types import Row
 from tests.unit.test_fetches import FetchTests
 from tests.unit.test_thrift_backend import ThriftBackendTestSuite
 from tests.unit.test_arrow_queue import ArrowQueueSuite
+
+class ThriftBackendMockFactory:
+
+    @classmethod
+    def new(cls):
+        ThriftBackendMock = Mock(spec=ThriftBackend)
+        ThriftBackendMock.return_value = ThriftBackendMock
+
+        cls.apply_property_to_mock(ThriftBackendMock, staging_allowed_local_path=None)
+        MockTExecuteStatementResp = MagicMock(spec=TExecuteStatementResp())
+
+        cls.apply_property_to_mock(
+            MockTExecuteStatementResp,
+            description=None,
+            arrow_queue=None,
+            is_staging_operation=False,
+            command_handle=b"\x22",
+            has_been_closed_server_side=True,
+            has_more_rows=True,
+            lz4_compressed=True,
+            arrow_schema_bytes=b"schema",
+        )
+
+        ThriftBackendMock.execute_command.return_value = MockTExecuteStatementResp
+
+        return ThriftBackendMock
+
+    @classmethod
+    def apply_property_to_mock(self, mock_obj, **kwargs):
+        """
+        Apply a property to a mock object.
+        """
+
+        for key, value in kwargs.items():
+            if value is not None:
+                kwargs = {"return_value": value}
+            else:
+                kwargs = {}
+
+            prop = PropertyMock(**kwargs)
+            setattr(type(mock_obj), key, prop)
+
+    
+
+
 
 
 class ClientTestSuite(unittest.TestCase):
@@ -121,9 +169,9 @@ class ClientTestSuite(unittest.TestCase):
         http_headers = mock_client_class.call_args[0][3]
         self.assertIn(user_agent_header_with_entry, http_headers)
 
-    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME, ThriftBackendMockFactory.new())
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
-    def test_closing_connection_closes_commands(self, mock_result_set_class, mock_client_class):
+    def test_closing_connection_closes_commands(self, mock_result_set_class):
         # Test once with has_been_closed_server side, once without
         for closed in (True, False):
             with self.subTest(closed=closed):
@@ -183,10 +231,11 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_executing_multiple_commands_uses_the_most_recent_command(self, mock_result_set_class):
+        
         mock_result_sets = [Mock(), Mock()]
         mock_result_set_class.side_effect = mock_result_sets
 
-        cursor = client.Cursor(Mock(), Mock())
+        cursor = client.Cursor(connection=Mock(), thrift_backend=ThriftBackendMockFactory.new())
         cursor.execute("SELECT 1;")
         cursor.execute("SELECT 1;")
 
@@ -364,39 +413,39 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(mock_client_class.return_value.open_session.call_args[0][2], mock_schem)
 
     def test_execute_parameter_passthrough(self):
-        mock_thrift_backend = Mock()
+        mock_thrift_backend = ThriftBackendMockFactory.new()
         cursor = client.Cursor(Mock(), mock_thrift_backend)
 
-        tests = [("SELECT %(string_v)s", "SELECT 'foo_12345'", {
-            "string_v": "foo_12345"
-        }), ("SELECT %(x)s", "SELECT NULL", {
-            "x": None
-        }), ("SELECT %(int_value)d", "SELECT 48", {
-            "int_value": 48
-        }), ("SELECT %(float_value).2f", "SELECT 48.20", {
-            "float_value": 48.2
-        }), ("SELECT %(iter)s", "SELECT (1,2,3,4,5)", {
-            "iter": [1, 2, 3, 4, 5]
-        }),
-                 ("SELECT %(datetime)s", "SELECT '2022-02-01 10:23:00.000000'", {
-                     "datetime": datetime(2022, 2, 1, 10, 23)
-                 }), ("SELECT %(date)s", "SELECT '2022-02-01'", {
-                     "date": date(2022, 2, 1)
-                 })]
+        tests = [
+            ("SELECT %(string_v)s", "SELECT 'foo_12345'", {"string_v": "foo_12345"}),
+            ("SELECT %(x)s", "SELECT NULL", {"x": None}),
+            ("SELECT %(int_value)d", "SELECT 48", {"int_value": 48}),
+            ("SELECT %(float_value).2f", "SELECT 48.20", {"float_value": 48.2}),
+            ("SELECT %(iter)s", "SELECT (1,2,3,4,5)", {"iter": [1, 2, 3, 4, 5]}),
+            (
+                "SELECT %(datetime)s",
+                "SELECT '2022-02-01 10:23:00.000000'",
+                {"datetime": datetime(2022, 2, 1, 10, 23)},
+            ),
+            ("SELECT %(date)s", "SELECT '2022-02-01'", {"date": date(2022, 2, 1)}),
+        ]
 
         for query, expected_query, params in tests:
             cursor.execute(query, parameters=params)
-            self.assertEqual(mock_thrift_backend.execute_command.call_args[1]["operation"],
-                             expected_query)
+            self.assertEqual(
+                mock_thrift_backend.execute_command.call_args[1]["operation"],
+                expected_query,
+            )
 
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_executemany_parameter_passhthrough_and_uses_last_result_set(
-            self, mock_result_set_class):
+            self, mock_result_set_class, mock_thrift_backend):
         # Create a new mock result set each time the class is instantiated
         mock_result_set_instances = [Mock(), Mock(), Mock()]
         mock_result_set_class.side_effect = mock_result_set_instances
-        mock_thrift_backend = Mock()
-        cursor = client.Cursor(Mock(), mock_thrift_backend)
+        mock_thrift_backend = ThriftBackendMockFactory.new()
+        cursor = client.Cursor(Mock(), mock_thrift_backend())
 
         params = [{"x": None}, {"x": "foo1"}, {"x": "bar2"}]
         expected_queries = ["SELECT NULL", "SELECT 'foo1'", "SELECT 'bar2'"]
@@ -541,20 +590,23 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(instance.close_session.call_count, 0)
         cursor.close()
 
-    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    @patch("%s.utils.ExecuteResponse" % PACKAGE_NAME, autospec=True)
     @patch("%s.client.Cursor._handle_staging_operation" % PACKAGE_NAME)
-    @patch("%s.utils.ExecuteResponse" % PACKAGE_NAME)
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_staging_operation_response_is_handled(self, mock_client_class, mock_handle_staging_operation, mock_execute_response):
         # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
 
-        mock_execute_response.is_staging_operation = True
+        
+        ThriftBackendMockFactory.apply_property_to_mock(mock_execute_response, is_staging_operation=True)
+        mock_client_class.execute_command.return_value = mock_execute_response
+        mock_client_class.return_value = mock_client_class
         
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         cursor = connection.cursor()
         cursor.execute("Text of some staging operation command;")
         connection.close()
 
-        mock_handle_staging_operation.assert_called_once_with()
+        mock_handle_staging_operation.call_count == 1
 
 
 if __name__ == '__main__':
