@@ -2,7 +2,8 @@
 
 # 3.1.0 (TBD)
 
-- SQLAlchemy: Added support for table and column comments (thanks @cbornet!)
+- SQLAlchemy dialect now supports table and column comments (thanks @cbornet!)
+- Fix: SQLAlchemy dialect now correctly reflects TINYINT types (thanks @TimTheinAtTabs!)
 - Fix: `server_hostname` URIs that included `https://` would raise an exception
 
 ## 3.0.1 (2023-12-01)
