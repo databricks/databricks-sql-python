@@ -7,6 +7,7 @@ import itertools
 from decimal import Decimal
 from datetime import datetime, date
 
+
 import databricks.sql
 import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
