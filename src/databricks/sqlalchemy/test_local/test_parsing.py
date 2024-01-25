@@ -6,6 +6,7 @@ from databricks.sqlalchemy._parse import (
     build_fk_dict,
     build_pk_dict,
     match_dte_rows_by_value,
+    get_comment_from_dte_output,
     DatabricksSqlAlchemyParseException,
 )
 
@@ -105,6 +106,7 @@ RAW_SAMPLE_DTE_OUTPUT = [
     ["Type", "MANAGED"],
     ["Location", "s3://us-west-2-****-/19a85dee-****/tables/ccb7***"],
     ["Provider", "delta"],
+    ["Comment", "some comment"],
     ["Owner", "some.user@example.com"],
     ["Is_managed_location", "true"],
     ["Predictive Optimization", "ENABLE (inherited from CATALOG main)"],
@@ -152,3 +154,7 @@ FMT_SAMPLE_DT_OUTPUT = [
 def test_filter_dict_by_value(match, output):
     result = match_dte_rows_by_value(FMT_SAMPLE_DT_OUTPUT, match)
     assert result == output
+
+
+def test_get_comment_from_dte_output():
+    assert get_comment_from_dte_output(FMT_SAMPLE_DT_OUTPUT) == "some comment"
