@@ -1,7 +1,7 @@
 import datetime
 import decimal
 import os
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 from unittest import skipIf
 
 import pytest
@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.schema import DropColumnComment, SetColumnComment
 from sqlalchemy.types import BOOLEAN, DECIMAL, Date, DateTime, Integer, String
 
 try:
@@ -184,6 +185,41 @@ def test_create_table_not_null(db_engine, metadata_obj: MetaData):
 
     assert name_column_description.get("nullable") is True
     assert some_bool_column_description.get("nullable") is False
+
+    metadata_obj.drop_all(db_engine)
+
+
+def test_column_comment(db_engine, metadata_obj: MetaData):
+    table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
+
+    column = Column("name", String(255), comment="some comment")
+    SampleTable = Table(table_name, metadata_obj, column)
+
+    metadata_obj.create_all(db_engine)
+    connection = db_engine.connect()
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == "some comment"
+
+    column.comment = "other comment"
+    connection.execute(SetColumnComment(column))
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == "other comment"
+
+    connection.execute(DropColumnComment(column))
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == None
 
     metadata_obj.drop_all(db_engine)
 
@@ -441,7 +477,7 @@ def sample_table(metadata_obj: MetaData, db_engine: Engine):
 
     table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 
-    args = [
+    args: List[Column] = [
         Column(colname, coltype) for colname, coltype in GET_COLUMNS_TYPE_MAP.items()
     ]
 
@@ -463,3 +499,46 @@ def test_get_columns(db_engine, sample_table: str):
     columns = inspector.get_columns(sample_table)
 
     assert True
+
+
+class TestCommentReflection:
+    @pytest.fixture(scope="class")
+    def engine(self):
+        HOST = os.environ.get("host")
+        HTTP_PATH = os.environ.get("http_path")
+        ACCESS_TOKEN = os.environ.get("access_token")
+        CATALOG = os.environ.get("catalog")
+        SCHEMA = os.environ.get("schema")
+
+        connection_string = f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}"
+        connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+
+        engine = create_engine(connection_string, connect_args=connect_args)
+        return engine
+
+    @pytest.fixture
+    def inspector(self, engine: Engine) -> Inspector:
+        return Inspector.from_engine(engine)
+
+    @pytest.fixture(scope="class")
+    def table(self, engine):
+        md = MetaData()
+        tbl = Table(
+            "foo",
+            md,
+            Column("bar", String, comment="column comment"),
+            comment="table comment",
+        )
+        md.create_all(bind=engine)
+
+        yield tbl
+
+        md.drop_all(bind=engine)
+
+    def test_table_comment_reflection(self, inspector: Inspector, table: Table):
+        comment = inspector.get_table_comment(table.name)
+        assert comment == {"text": "table comment"}
+
+    def test_column_comment(self, inspector: Inspector, table: Table):
+        result = inspector.get_columns(table.name)[0].get("comment")
+        assert result == "column comment"
