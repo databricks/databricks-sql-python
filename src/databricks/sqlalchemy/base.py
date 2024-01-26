@@ -1,4 +1,17 @@
-from typing import Any, List, Optional, Dict, Union
+import re
+from typing import Any, Dict, List, Optional, Union
+
+import sqlalchemy
+from sqlalchemy import DDL, event
+from sqlalchemy.engine import Connection, Engine, default, reflection
+from sqlalchemy.engine.interfaces import (
+    ReflectedColumn,
+    ReflectedForeignKeyConstraint,
+    ReflectedPrimaryKeyConstraint,
+    ReflectedTableComment,
+)
+from sqlalchemy.engine.reflection import ReflectionDefaults
+from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
 import databricks.sqlalchemy._types as dialect_type_impl
@@ -8,23 +21,11 @@ from databricks.sqlalchemy._parse import (
     _match_table_not_found_string,
     build_fk_dict,
     build_pk_dict,
+    get_comment_from_dte_output,
     get_fk_strings_from_dte_output,
     get_pk_strings_from_dte_output,
-    get_comment_from_dte_output,
     parse_column_info_from_tgetcolumnsresponse,
 )
-
-import sqlalchemy
-from sqlalchemy import DDL, event
-from sqlalchemy.engine import Connection, Engine, default, reflection
-from sqlalchemy.engine.interfaces import (
-    ReflectedForeignKeyConstraint,
-    ReflectedPrimaryKeyConstraint,
-    ReflectedColumn,
-    ReflectedTableComment,
-)
-from sqlalchemy.engine.reflection import ReflectionDefaults
-from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 try:
     import alembic
@@ -400,6 +401,21 @@ class DatabricksDialect(default.DefaultDialect):
             return ReflectionDefaults.table_comment()
 
 
+SQLALCHEMY_TAG = f"sqlalchemy/{sqlalchemy.__version__}"
+sqlalchemy_version_tag_pat = r"sqlalchemy/(\d+\.\d+\.\d+)"
+
+
+def add_sqla_tag_if_not_present(val: str):
+    if val is None or val == "":
+        output = SQLALCHEMY_TAG
+    elif re.search(sqlalchemy_version_tag_pat, val):
+        output = val
+    else:
+        output = f"{SQLALCHEMY_TAG} + {val}"
+
+    return output
+
+
 @event.listens_for(Engine, "do_connect")
 def receive_do_connect(dialect, conn_rec, cargs, cparams):
     """Helpful for DS on traffic from clients using SQLAlchemy in particular"""
@@ -409,19 +425,6 @@ def receive_do_connect(dialect, conn_rec, cargs, cparams):
         return
 
     ua = cparams.get("_user_agent_entry", "")
-
-    def add_sqla_tag_if_not_present(val: str):
-        tag = f"sqlalchemy/{sqlalchemy.__version__}"
-        if not val:
-            output = tag
-
-        if val and tag in val:
-            output = val
-
-        else:
-            output = f"{tag} + {val}"
-
-        return output
 
     cparams["_user_agent_entry"] = add_sqla_tag_if_not_present(ua)
 

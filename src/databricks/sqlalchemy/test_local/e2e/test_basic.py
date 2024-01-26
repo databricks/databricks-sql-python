@@ -1,10 +1,12 @@
 import datetime
 import decimal
 import os
-from typing import Tuple, Union, List
+import re
+from typing import List, Tuple, Union
 from unittest import skipIf
 
 import pytest
+import sqlalchemy
 from sqlalchemy import (
     Column,
     MetaData,
@@ -19,7 +21,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.schema import DropColumnComment, SetColumnComment
-from sqlalchemy.types import BOOLEAN, DECIMAL, Date, DateTime, Integer, String
+from sqlalchemy.types import BOOLEAN, DECIMAL, Date, Integer, String
+
+from databricks.sqlalchemy.base import (
+    SQLALCHEMY_TAG,
+    add_sqla_tag_if_not_present,
+    sqlalchemy_version_tag_pat,
+)
 
 try:
     from sqlalchemy.orm import declarative_base
@@ -436,6 +444,13 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
 
 
 class TestUserAgent:
+    @pytest.fixture(scope="class")
+    def expected_sqlalchemy_tag(self):
+        import sqlalchemy
+
+        user_agent_tag = f"sqlalchemy/{sqlalchemy.__version__}"
+        return user_agent_tag
+
     def get_conn_user_agent(self, conn):
         return conn.connection.dbapi_connection.thrift_backend._transport._headers.get(
             "User-Agent"
@@ -459,8 +474,6 @@ class TestUserAgent:
     def test_sqlalchemy_user_agent_includes_version(self, db_engine):
         """So that we know when we can safely deprecate support for sqlalchemy 1.x"""
 
-        import sqlalchemy
-
         version_str = sqlalchemy.__version__
         c = db_engine.connect()
         ua = self.get_conn_user_agent(c)
@@ -478,6 +491,32 @@ class TestUserAgent:
         user_agent = connection_headers["User-Agent"]
 
         assert USER_AGENT_TOKEN in user_agent
+
+    @pytest.mark.parametrize(
+        "input, expected",
+        (
+            (None, "{}"),
+            ("", "{}"),
+            ("sqlalchemy connection", "{} + sqlalchemy connection"),
+            (
+                "reusable dialect compliance tests",
+                "{} + reusable dialect compliance tests",
+            ),
+        ),
+    )
+    def test_user_agent_insertion_behavior(
+        self, input: Union[str, None], expected: str, expected_sqlalchemy_tag: str
+    ):
+        assert add_sqla_tag_if_not_present(input) == expected.format(
+            expected_sqlalchemy_tag
+        )
+
+    @pytest.mark.parametrize(
+        "input",
+        ("sqlalchemy/1.4.0", "sqlalchemy/1.3.0", "sqlalchemy/2.0.0", SQLALCHEMY_TAG),
+    )
+    def test_sqlalchemy_tag_regexes_properly(self, input):
+        assert re.search(sqlalchemy_version_tag_pat, input)
 
 
 @pytest.fixture
