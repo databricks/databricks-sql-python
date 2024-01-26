@@ -435,19 +435,17 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
                 conn.execute(text("DROP TABLE test_has_table;"))
 
 
-class TestSQLAlchemyUserAgent:
-
+class TestUserAgent:
     def get_conn_user_agent(self, conn):
         return conn.connection.dbapi_connection.thrift_backend._transport._headers.get(
             "User-Agent"
         )
-    
+
     def test_user_agent_adjustment(self, db_engine):
         # If .connect() is called multiple times on an engine, don't keep pre-pending the user agent
         # https://github.com/databricks/databricks-sql-python/issues/192
         c1 = db_engine.connect()
         c2 = db_engine.connect()
-
 
         ua1 = self.get_conn_user_agent(c1)
         ua2 = self.get_conn_user_agent(c2)
@@ -459,10 +457,10 @@ class TestSQLAlchemyUserAgent:
         assert same_ua, f"User agents didn't match \n {ua1} \n {ua2}"
 
     def test_sqlalchemy_user_agent_includes_version(self, db_engine):
-        """So that we know when we can safely deprecate support for sqlalchemy 1.x
-        """
+        """So that we know when we can safely deprecate support for sqlalchemy 1.x"""
 
         import sqlalchemy
+
         version_str = sqlalchemy.__version__
         c = db_engine.connect()
         ua = self.get_conn_user_agent(c)
