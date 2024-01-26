@@ -1,5 +1,4 @@
-import re
-from typing import Any, List, Optional, Dict, Union, Collection, Iterable, Tuple
+from typing import Any, List, Optional, Dict, Union
 
 import databricks.sqlalchemy._ddl as dialect_ddl_impl
 import databricks.sqlalchemy._types as dialect_type_impl
@@ -11,19 +10,20 @@ from databricks.sqlalchemy._parse import (
     build_pk_dict,
     get_fk_strings_from_dte_output,
     get_pk_strings_from_dte_output,
+    get_comment_from_dte_output,
     parse_column_info_from_tgetcolumnsresponse,
 )
 
 import sqlalchemy
 from sqlalchemy import DDL, event
 from sqlalchemy.engine import Connection, Engine, default, reflection
-from sqlalchemy.engine.reflection import ObjectKind
 from sqlalchemy.engine.interfaces import (
     ReflectedForeignKeyConstraint,
     ReflectedPrimaryKeyConstraint,
     ReflectedColumn,
-    TableKey,
+    ReflectedTableComment,
 )
+from sqlalchemy.engine.reflection import ReflectionDefaults
 from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 
 try:
@@ -285,7 +285,7 @@ class DatabricksDialect(default.DefaultDialect):
         views_result = self.get_view_names(connection=connection, schema=schema)
 
         # In Databricks, SHOW TABLES FROM <schema> returns both tables and views.
-        # Potential optimisation: rewrite this to instead query informtation_schema
+        # Potential optimisation: rewrite this to instead query information_schema
         tables_minus_views = [
             row.tableName for row in tables_result if row.tableName not in views_result
         ]
@@ -328,7 +328,7 @@ class DatabricksDialect(default.DefaultDialect):
     def get_temp_view_names(
         self, connection: Connection, schema: Optional[str] = None, **kw: Any
     ) -> List[str]:
-        """A wrapper around get_view_names taht fetches only the names of temporary views"""
+        """A wrapper around get_view_names that fetches only the names of temporary views"""
         return self.get_view_names(connection, schema, only_temp=True)
 
     def do_rollback(self, dbapi_connection):
@@ -374,6 +374,30 @@ class DatabricksDialect(default.DefaultDialect):
         result = connection.execute(stmt)
         schema_list = [row[0] for row in result]
         return schema_list
+
+    @reflection.cache
+    def get_table_comment(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: Optional[str] = None,
+        **kw: Any,
+    ) -> ReflectedTableComment:
+        result = self._describe_table_extended(
+            connection=connection,
+            table_name=table_name,
+            schema_name=schema,
+        )
+
+        if result is None:
+            return ReflectionDefaults.table_comment()
+
+        comment = get_comment_from_dte_output(result)
+
+        if comment:
+            return dict(text=comment)
+        else:
+            return ReflectionDefaults.table_comment()
 
 
 @event.listens_for(Engine, "do_connect")
