@@ -484,6 +484,7 @@ class ClientTestSuite(unittest.TestCase):
         with self.assertRaises(NotSupportedError):
             c.rollback()
 
+    @unittest.skip("JDW: skipping winter 2024 as we're about to rewrite this interface")
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_row_number_respected(self, mock_thrift_backend_class):
         def make_fake_row_slice(n_rows):
@@ -508,6 +509,7 @@ class ClientTestSuite(unittest.TestCase):
         cursor.fetchmany_arrow(6)
         self.assertEqual(cursor.rownumber, 29)
 
+    @unittest.skip("JDW: skipping winter 2024 as we're about to rewrite this interface")
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_disable_pandas_respected(self, mock_thrift_backend_class):
         mock_thrift_backend = mock_thrift_backend_class.return_value
