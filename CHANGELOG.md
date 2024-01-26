@@ -1,6 +1,6 @@
 # Release History
 
-# 3.1.0 (TBD)
+# 3.0.2 (2024-01-24)
 
 - SQLAlchemy dialect now supports table and column comments (thanks @cbornet!)
 - Fix: SQLAlchemy dialect now correctly reflects TINYINT types (thanks @TimTheinAtTabs!)
