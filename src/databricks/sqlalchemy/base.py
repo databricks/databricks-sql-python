@@ -411,7 +411,7 @@ def receive_do_connect(dialect, conn_rec, cargs, cparams):
     ua = cparams.get("_user_agent_entry", "")
 
     def add_sqla_tag_if_not_present(val: str):
-        tag = f"sqlalchemy=={sqlalchemy.__version__}"
+        tag = f"sqlalchemy/{sqlalchemy.__version__}"
         if not val:
             output = tag
 
