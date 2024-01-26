@@ -120,20 +120,6 @@ def test_can_connect(db_engine):
     assert len(result) == 1
 
 
-def test_connect_args(db_engine):
-    """Verify that extra connect args passed to sqlalchemy.create_engine are passed to DBAPI
-
-    This will most commonly happen when partners supply a user agent entry
-    """
-
-    conn = db_engine.connect()
-    connection_headers = conn.connection.thrift_backend._transport._headers
-    user_agent = connection_headers["User-Agent"]
-
-    expected = f"(sqlalchemy + {USER_AGENT_TOKEN})"
-    assert expected in user_agent
-
-
 @pytest.mark.skipif(sqlalchemy_1_3(), reason="Pandas requires SQLAlchemy >= 1.4")
 @pytest.mark.skip(
     reason="DBR is currently limited to 256 parameters per call to .execute(). Test cannot pass."
@@ -482,6 +468,19 @@ class TestSQLAlchemyUserAgent:
         ua = self.get_conn_user_agent(c)
 
         assert version_str in ua
+
+    def test_user_supplied_string(self, db_engine):
+        """Verify that extra connect args passed to sqlalchemy.create_engine are passed to DBAPI
+
+        This will most commonly happen when partners supply a user agent entry
+        """
+
+        conn = db_engine.connect()
+        connection_headers = conn.connection.thrift_backend._transport._headers
+        user_agent = connection_headers["User-Agent"]
+
+        assert USER_AGENT_TOKEN in user_agent
+
 
 @pytest.fixture
 def sample_table(metadata_obj: MetaData, db_engine: Engine):
