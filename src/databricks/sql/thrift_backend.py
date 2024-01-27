@@ -37,6 +37,8 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
+from databricks.sql.results import ThriftConfig, ArrowResultFetcher
+
 logger = logging.getLogger(__name__)
 
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
@@ -840,31 +842,16 @@ class ThriftBackend:
     ):
         assert session_handle is not None
 
-        spark_arrow_types = ttypes.TSparkArrowTypes(
-            timestampAsArrow=self._use_arrow_native_timestamps,
-            decimalAsArrow=self._use_arrow_native_decimals,
-            complexTypesAsArrow=self._use_arrow_native_complex_types,
-            # TODO: The current Arrow type used for intervals can not be deserialised in PyArrow
-            # DBR should be changed to use month_day_nano_interval
-            intervalTypesAsArrow=False,
+        config = ThriftConfig(
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            use_arrow_native_complex_types=self._use_arrow_native_complex_types,
+            use_arrow_native_decimals=self._use_arrow_native_decimals,
+            use_arrow_native_timestamps=self._use_arrow_native_timestamps,
         )
-        req = ttypes.TExecuteStatementReq(
-            sessionHandle=session_handle,
-            statement=operation,
-            runAsync=True,
-            getDirectResults=ttypes.TSparkGetDirectResults(
-                maxRows=max_rows, maxBytes=max_bytes
-            ),
-            canReadArrowResult=True,
-            canDecompressLZ4Result=lz4_compression,
-            canDownloadResult=use_cloud_fetch,
-            confOverlay={
-                # We want to receive proper Timestamp arrow types.
-                "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
-            },
-            useArrowNativeTypes=spark_arrow_types,
-            parameters=parameters,
-        )
+        arf = ArrowResultFetcher(config)
+        req = arf.prepare_execute_statement(session_handle, operation, parameters)
+
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)
 
