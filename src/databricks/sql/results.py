@@ -91,3 +91,22 @@ class ArrowResultFetcher(ExecuteStatementInjector):
             canDownloadResult=self.config.use_cloud_fetch,
             confOverlay=self.config.config_overlay,
         )
+
+
+class SparkResultFetcher(ArrowResultFetcher):
+
+    def prepare_execute_statement(self, session_handle: TSessionHandle, operation: str, parameters: List[TSparkParameter] | None) -> TExecuteStatementReq:
+        
+        
+        execute_statement = TExecuteStatementReq()
+        return self.apply(execute_statement,
+                          sessionHandle=session_handle,
+            statement=operation,
+            parameters=parameters,
+            runAsync=self.config.runAsync,
+            canReadArrowResult=False,
+            canDecompressLZ4Result=self.config.lz4_compression,
+            canDownloadResult=self.config.use_cloud_fetch,
+            confOverlay=self.config.config_overlay,
+        )
+        

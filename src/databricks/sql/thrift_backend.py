@@ -37,7 +37,7 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
-from databricks.sql.results import ThriftConfig, ArrowResultFetcher
+from databricks.sql.results import ThriftConfig, ArrowResultFetcher, SparkResultFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -639,7 +639,10 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
+            (
+                arrow_table,
+                num_rows,
+            ) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -849,8 +852,8 @@ class ThriftBackend:
             use_arrow_native_decimals=self._use_arrow_native_decimals,
             use_arrow_native_timestamps=self._use_arrow_native_timestamps,
         )
-        arf = ArrowResultFetcher(config)
-        req = arf.prepare_execute_statement(session_handle, operation, parameters)
+        srf = SparkResultFetcher(config)
+        req = srf.prepare_execute_statement(session_handle, operation, parameters)
 
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)
