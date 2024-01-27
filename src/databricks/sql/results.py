@@ -5,6 +5,8 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkArrowTypes,
     TSparkGetDirectResults,
     TSessionHandle,
+    TRow,
+    TTableSchema
 )
 
 from dataclasses import dataclass, field
@@ -110,3 +112,11 @@ class SparkResultFetcher(ArrowResultFetcher):
             confOverlay=self.config.config_overlay,
         )
         
+
+# need to tighten this type annotation
+def row_from_thrift_row(thrift_row: TRow, schema: TTableSchema) -> Dict:
+
+
+    # thrift row is broken into columns
+
+    return {idx: column for idx, column in enumerate(thrift_row.columns)}

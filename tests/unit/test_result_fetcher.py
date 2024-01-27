@@ -8,6 +8,8 @@ from datetime import timedelta
 import pickle
 import enum
 
+from databricks.sql.results import row_from_thrift_row
+
 
 class DatabricksDataType(enum.Enum):
     """https://docs.databricks.com/en/sql/language-manual/sql-ref-datatypes.html"""
@@ -118,3 +120,10 @@ class TestSparkRowConversion(PySQLPytestTestCase):
 
     def test_hive_schema_type(self, hive_schema: TTableSchema):
         assert isinstance(hive_schema, TTableSchema)
+
+    def test_row_foo(self, hive_schema: TTableSchema, row_set: TRowSet):
+
+        
+        resp = row_from_thrift_row(hive_schema, row_set)
+
+        assert resp
