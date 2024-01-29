@@ -6,6 +6,7 @@ from unittest import skipIf
 
 import pytest
 from sqlalchemy import (
+    DDL,
     Column,
     MetaData,
     Table,
@@ -20,6 +21,7 @@ from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.schema import DropColumnComment, SetColumnComment
 from sqlalchemy.types import BOOLEAN, DECIMAL, Date, DateTime, Integer, String
+
 
 try:
     from sqlalchemy.orm import declarative_base
@@ -135,16 +137,13 @@ def test_connect_args(db_engine):
 
 
 @pytest.mark.skipif(sqlalchemy_1_3(), reason="Pandas requires SQLAlchemy >= 1.4")
-@pytest.mark.skip(
-    reason="DBR is currently limited to 256 parameters per call to .execute(). Test cannot pass."
-)
 def test_pandas_upload(db_engine, metadata_obj):
     import pandas as pd
 
     SCHEMA = os.environ.get("schema")
     try:
         df = pd.read_excel(
-            "src/databricks/sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx"
+            "src/databricks/sqlalchemy/test_local/e2e/MOCK_DATA.xlsx"
         )
         df.to_sql(
             "mock_data",
@@ -160,7 +159,8 @@ def test_pandas_upload(db_engine, metadata_obj):
     except Exception as e:
         raise e
     finally:
-        db_engine.execute("DROP TABLE mock_data")
+        with db_engine.connect() as connection:
+            connection.execute(DDL("DROP TABLE mock_data"))
 
 
 def test_create_table_not_null(db_engine, metadata_obj: MetaData):

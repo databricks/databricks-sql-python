@@ -59,7 +59,7 @@ class DatabricksDialect(default.DefaultDialect):
     non_native_boolean_check_constraint: bool = False
     supports_identity_columns: bool = True
     supports_schemas: bool = True
-    default_paramstyle: str = "named"
+    default_paramstyle: str = "pyformat"
     div_is_floordiv: bool = False
     supports_default_values: bool = False
     supports_server_side_cursors: bool = False
@@ -110,7 +110,7 @@ class DatabricksDialect(default.DefaultDialect):
             "http_path": url.query.get("http_path"),
             "catalog": url.query.get("catalog"),
             "schema": url.query.get("schema"),
-            "use_inline_params": False,
+            "use_inline_params": True,
         }
 
         self.schema = kwargs["schema"]
