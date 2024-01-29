@@ -1,6 +1,6 @@
 # Release History
 
-# 3.0.3 (TBD)
+# 3.0.3b1 (2024-01-29)
 
 - Fix: Thrift connections would fail if installed `urllib3` was below version `1.26.0`
 
