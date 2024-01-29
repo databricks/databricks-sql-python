@@ -1,5 +1,9 @@
 # Release History
 
+# 3.0.3 (TBD)
+
+- Fix: Thrift connections would fail if installed `urllib3` was below version `1.26.0`
+
 # 3.0.2 (2024-01-25)
 
 - SQLAlchemy dialect now supports table and column comments (thanks @cbornet!)
