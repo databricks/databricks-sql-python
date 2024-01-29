@@ -118,19 +118,35 @@ class DatabricksRetryPolicy(Retry):
             _total: int = urllib3_kwargs.pop("total")
             _attempts_remaining = _total
 
-        _urllib_kwargs_we_care_about = dict(
-            total=_attempts_remaining,
-            respect_retry_after_header=True,
-            backoff_factor=self.delay_min,
-            allowed_methods=["POST"],
-            status_forcelist=[429, 503, *self.force_dangerous_codes],
-        )
+        _urllib_kwargs_we_care_about = {
+            "total": _attempts_remaining,
+            "respect_retry_after_header": True,
+            "backoff_factor": self.delay_min,
+            self._allowed_methods_alias: ["POST"],
+            "status_forcelist": [429, 503, *self.force_dangerous_codes],
+        }
 
         urllib3_kwargs.update(**_urllib_kwargs_we_care_about)
 
         super().__init__(
             **urllib3_kwargs,  # type: ignore
         )
+
+    @property
+    def _allowed_methods_alias(self) -> str:
+        """Returns `allowed_methods` if installed urllib3 is >=1.26.0
+        Returns `method_whitelist` otherwise."""
+
+        if not hasattr(self, "__allowed_methods_alias"):
+            import urllib3
+            from distutils.version import LooseVersion
+
+            if LooseVersion(urllib3.__version__) >= LooseVersion("1.26"):
+                self.__allowed_methods_alias = "allowed_methods"
+            else:
+                self.__allowed_methods_alias = "method_whitelist"
+
+        return self.__allowed_methods_alias
 
     @classmethod
     def __private_init__(
@@ -201,22 +217,22 @@ class DatabricksRetryPolicy(Retry):
         # Gather urllib3's current retry state _before_ increment was called
         # These arguments match the function signature for Retry.__init__
         # Note: if we update urllib3 we may need to add/remove arguments from this dict
-        urllib3_init_params = dict(
-            total=self.total,
-            connect=self.connect,
-            read=self.read,
-            redirect=self.redirect,
-            status=self.status,
-            other=self.other,
-            allowed_methods=self.allowed_methods,
-            status_forcelist=self.status_forcelist,
-            backoff_factor=self.backoff_factor,  # type: ignore
-            raise_on_redirect=self.raise_on_redirect,
-            raise_on_status=self.raise_on_status,
-            history=self.history,
-            remove_headers_on_redirect=self.remove_headers_on_redirect,
-            respect_retry_after_header=self.respect_retry_after_header,
-        )
+        urllib3_init_params = {
+            "total": self.total,
+            "connect": self.connect,
+            "read": self.read,
+            "redirect": self.redirect,
+            "status": self.status,
+            "other": self.other,
+            self._allowed_methods_alias: self.allowed_methods,
+            "status_forcelist": self.status_forcelist,
+            "backoff_factor": self.backoff_factor,  # type: ignore
+            "raise_on_redirect": self.raise_on_redirect,
+            "raise_on_status": self.raise_on_status,
+            "history": self.history,
+            "remove_headers_on_redirect": self.remove_headers_on_redirect,
+            "respect_retry_after_header": self.respect_retry_after_header,
+        }
 
         # Update urllib3's current state to reflect the incremented counters
         urllib3_init_params.update(**urllib3_incremented_counters)
