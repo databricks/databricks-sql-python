@@ -2,6 +2,7 @@
 
 # 3.0.3 (TBD)
 
+- Add support in-house OAuth on GCP (#338)
 - Revised docstrings and examples for OAuth (#339)
 
 # 3.0.2 (2024-01-25)
