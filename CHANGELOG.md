@@ -1,5 +1,9 @@
 # Release History
 
+# 3.0.3 (TBD)
+
+- Revised docstrings and examples for OAuth (#339)
+
 # 3.0.2 (2024-01-25)
 
 - SQLAlchemy dialect now supports table and column comments (thanks @cbornet!)
