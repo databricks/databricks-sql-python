@@ -213,6 +213,18 @@ class ThriftBackendTestSuite(unittest.TestCase):
                          "https://hostname:123/path_value")
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
+    def test_host_with_https_does_not_duplicate(self, t_http_client_class):
+        ThriftBackend("https://hostname", 123, "path_value", [], auth_provider=AuthProvider())
+        self.assertEqual(t_http_client_class.call_args[1]["uri_or_host"],
+                         "https://hostname:123/path_value")
+        
+    @patch("databricks.sql.auth.thrift_http_client.THttpClient")
+    def test_host_with_trailing_backslash_does_not_duplicate(self, t_http_client_class):
+        ThriftBackend("https://hostname/", 123, "path_value", [], auth_provider=AuthProvider())
+        self.assertEqual(t_http_client_class.call_args[1]["uri_or_host"],
+                         "https://hostname:123/path_value")        
+
+    @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_socket_timeout_is_propagated(self, t_http_client_class):
         ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=129)
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 129 * 1000)
