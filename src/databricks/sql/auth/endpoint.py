@@ -35,9 +35,7 @@ DATABRICKS_AZURE_DOMAINS = [
     ".databricks.azure.cn",
     ".databricks.azure.us",
 ]
-DATABRICKS_GCP_DOMAINS = [
-    ".gcp.databricks.com"
-]
+DATABRICKS_GCP_DOMAINS = [".gcp.databricks.com"]
 
 
 # Infer cloud type from Databricks SQL instance hostname
