@@ -1,14 +1,7 @@
-"""Bring Your Own Identity Provider with fined grained OAuth scopes is currently public preview on
-Databricks in AWS. databricks-sql-connector supports user to machine OAuth login which means the
-end user has to be present to login in a browser which will be popped up by the Python process. You
-must enable OAuth in your Databricks account to run this example. More information on how to enable
-OAuth in your Databricks Account in AWS can be found here:
-
-https://docs.databricks.com/administration-guide/account-settings-e2/single-sign-on.html
+"""databricks-sql-connector supports user to machine OAuth login which means the
+end user has to be present to login in a browser which will be popped up by the Python process.
 
 Pre-requisites:
-- You have a Databricks account in AWS.
-- You have configured OAuth in Databricks account in AWS using the link above.
 - You have installed a browser (Chrome, Firefox, Safari, Internet Explorer, etc) that will be
   accessible on the machine for performing OAuth login.
 
@@ -18,12 +11,6 @@ implemented by the end user for persisting the OAuth token. The SampleOAuthPersi
 shows which methods you may implement.
 
 For this example, the DevOnlyFilePersistence class is provided. Do not use this in production.
-
-Bring Your Own Identity Provider is in public preview. The API may change prior to becoming GA. 
-You can monitor these two links to find out when it will become generally available:
-
-  1. https://docs.databricks.com/administration-guide/account-settings-e2/single-sign-on.html 
-  2. https://docs.databricks.com/dev-tools/python-sql-connector.html
 """
 
 import os

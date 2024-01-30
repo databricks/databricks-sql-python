@@ -97,10 +97,6 @@ class Connection:
                 a warning log message. To suppress this log message, set `use_inline_params="silent"`.
             auth_type: `str`, optional
                 `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
-                This is currently in private preview for Databricks accounts on AWS.
-                This supports User to Machine OAuth authentication for Databricks on AWS with
-                any IDP configured. This is only for interactive python applications and open a browser window.
-                Note this is beta (private preview)
 
             oauth_client_id: `str`, optional
                 custom oauth client_id. If not specified, it will use the built-in client_id of databricks-sql-python.
