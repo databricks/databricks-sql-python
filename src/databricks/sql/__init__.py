@@ -10,6 +10,7 @@ paramstyle = "named"
 
 import re
 
+
 class RedactUrlQueryParamsFilter(logging.Filter):
     pattern = re.compile(r"(\?|&)([\w-]+)=([^&]+)")
     mask = r"\1\2=<REDACTED>"
@@ -32,6 +33,7 @@ class RedactUrlQueryParamsFilter(logging.Filter):
             )
 
         return True
+
 
 logging.getLogger("urllib3.connectionpool").addFilter(RedactUrlQueryParamsFilter())
 
