@@ -25,7 +25,11 @@ class RedactUrlQueryParamsFilter(logging.Filter):
         record.msg = self.redact(str(record.msg))
         if isinstance(record.args, dict):
             for k in record.args.keys():
-                record.args[k] = self.redact(record.args[k])
+                record.args[k] = (
+                    self.redact(record.args[k])
+                    if isinstance(record.arg[k], str)
+                    else record.args[k]
+                )
         else:
             record.args = tuple(
                 (self.redact(arg) if isinstance(arg, str) else arg)
