@@ -1,8 +1,9 @@
 # Release History
 
-# 3.0.3 (TBD)
+# 3.0.3 (2024-02-02)
 
 - Revised docstrings and examples for OAuth (#339)
+- Redact the URL query parameters from the urllib3.connectionpool logs (#341)
 
 # 3.0.2 (2024-01-25)
 
