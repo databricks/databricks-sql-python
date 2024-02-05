@@ -7,7 +7,7 @@ from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider,
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.auth.oauth import OAuthManager
 from databricks.sql.auth.authenticators import DatabricksOAuthProvider
-from databricks.sql.auth.endpoint import CloudType, AwsOAuthEndpointCollection, AzureOAuthEndpointCollection
+from databricks.sql.auth.endpoint import CloudType, InHouseOAuthEndpointCollection, AzureOAuthEndpointCollection
 from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
 from databricks.sql.experimental.oauth_persistence import OAuthPersistenceCache
 
@@ -55,9 +55,10 @@ class Auth(unittest.TestCase):
         mock_get_tokens.return_value = (access_token, refresh_token)
         mock_check_and_refresh.return_value = (access_token, refresh_token, False)
 
-        params = [(CloudType.AWS, "foo.cloud.databricks.com", AwsOAuthEndpointCollection, "offline_access sql"),
+        params = [(CloudType.AWS, "foo.cloud.databricks.com", InHouseOAuthEndpointCollection, "offline_access sql"),
                   (CloudType.AZURE, "foo.1.azuredatabricks.net", AzureOAuthEndpointCollection,
-                   f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_APP}/user_impersonation offline_access")]
+                   f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_APP}/user_impersonation offline_access"),
+                  (CloudType.GCP, "foo.gcp.databricks.com", InHouseOAuthEndpointCollection, "offline_access sql")]
 
         for cloud_type, host, expected_endpoint_type, expected_scopes in params:
             with self.subTest(cloud_type.value):
