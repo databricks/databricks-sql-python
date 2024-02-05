@@ -88,9 +88,10 @@ def normalize_host_name(hostname: str):
 
 
 def get_client_id_and_redirect_port(hostname: str):
+    cloud_type = infer_cloud_from_host(hostname)
     return (
         (PYSQL_OAUTH_CLIENT_ID, PYSQL_OAUTH_REDIRECT_PORT_RANGE)
-        if infer_cloud_from_host(hostname) == CloudType.AWS
+        if cloud_type == CloudType.AWS or cloud_type == CloudType.GCP
         else (PYSQL_OAUTH_AZURE_CLIENT_ID, PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE)
     )
 

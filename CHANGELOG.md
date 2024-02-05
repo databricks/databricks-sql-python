@@ -2,6 +2,7 @@
 
 # 3.0.3 (2024-02-02)
 
+- Add support in-house OAuth on GCP (#338)
 - Revised docstrings and examples for OAuth (#339)
 - Redact the URL query parameters from the urllib3.connectionpool logs (#341)
 

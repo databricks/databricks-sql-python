@@ -21,6 +21,7 @@ class OAuthScope:
 class CloudType(Enum):
     AWS = "aws"
     AZURE = "azure"
+    GCP = "gcp"
 
 
 DATABRICKS_AWS_DOMAINS = [
@@ -34,6 +35,7 @@ DATABRICKS_AZURE_DOMAINS = [
     ".databricks.azure.cn",
     ".databricks.azure.us",
 ]
+DATABRICKS_GCP_DOMAINS = [".gcp.databricks.com"]
 
 
 # Infer cloud type from Databricks SQL instance hostname
@@ -45,6 +47,8 @@ def infer_cloud_from_host(hostname: str) -> Optional[CloudType]:
         return CloudType.AZURE
     elif any(e for e in DATABRICKS_AWS_DOMAINS if host.endswith(e)):
         return CloudType.AWS
+    elif any(e for e in DATABRICKS_GCP_DOMAINS if host.endswith(e)):
+        return CloudType.GCP
     else:
         return None
 
@@ -94,7 +98,7 @@ class AzureOAuthEndpointCollection(OAuthEndpointCollection):
         return "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
 
-class AwsOAuthEndpointCollection(OAuthEndpointCollection):
+class InHouseOAuthEndpointCollection(OAuthEndpointCollection):
     def get_scopes_mapping(self, scopes: List[str]) -> List[str]:
         # No scope mapping in AWS
         return scopes.copy()
@@ -109,8 +113,8 @@ class AwsOAuthEndpointCollection(OAuthEndpointCollection):
 
 
 def get_oauth_endpoints(cloud: CloudType) -> Optional[OAuthEndpointCollection]:
-    if cloud == CloudType.AWS:
-        return AwsOAuthEndpointCollection()
+    if cloud == CloudType.AWS or cloud == CloudType.GCP:
+        return InHouseOAuthEndpointCollection()
     elif cloud == CloudType.AZURE:
         return AzureOAuthEndpointCollection()
     else:
