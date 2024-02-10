@@ -156,8 +156,11 @@ class CloudFetchQueue(ResultSetQueue):
         self.lz4_compressed = lz4_compressed
         self.description = description
 
+        # self.download_manager = ResultFileDownloadManager(
+        #     self.max_download_threads, self.lz4_compressed
+        # )
         self.download_manager = ResultFileDownloadManager(
-            self.max_download_threads, self.lz4_compressed
+            1, self.lz4_compressed
         )
         self.download_manager.add_file_links(result_links)
 
