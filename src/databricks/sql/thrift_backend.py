@@ -975,6 +975,7 @@ class ThriftBackend:
         arrow_schema_bytes,
         description,
     ):
+        logger.debug("ThriftBackend fetch_results")
         assert op_handle is not None
 
         req = ttypes.TFetchResultsReq(
