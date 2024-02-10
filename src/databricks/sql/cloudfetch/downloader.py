@@ -1,14 +1,16 @@
 import logging
 from dataclasses import dataclass
-
 import requests
 import lz4.frame
 import threading
 import time
-
+import os
+from threading import get_ident
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_CLOUD_FILE_TIMEOUT = int(os.getenv("DATABRICKS_CLOUD_FILE_TIMEOUT", 60))
 
 
 @dataclass
@@ -20,13 +22,17 @@ class DownloadableResultSettings:
         is_lz4_compressed (bool): Whether file is expected to be lz4 compressed.
         link_expiry_buffer_secs (int): Time in seconds to prevent download of a link before it expires. Default 0 secs.
         download_timeout (int): Timeout for download requests. Default 60 secs.
-        max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
+        download_max_retries (int): Number of consecutive download retries before shutting down.
+        max_retries (int): Number of consecutive download retries before shutting down.
+        backoff_factor (int): Factor to increase wait time between retries.
+
     """
 
     is_lz4_compressed: bool
     link_expiry_buffer_secs: int = 0
-    download_timeout: int = 60
-    max_consecutive_file_download_retries: int = 0
+    download_timeout: int = DEFAULT_CLOUD_FILE_TIMEOUT
+    max_retries: int = 5
+    backoff_factor: int = 2
 
 
 class ResultSetDownloadHandler(threading.Thread):
@@ -57,16 +63,21 @@ class ResultSetDownloadHandler(threading.Thread):
             else None
         )
         try:
+            logger.debug(
+                f"waiting for at most {timeout} seconds for download file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
+            )
+
             if not self.is_download_finished.wait(timeout=timeout):
                 self.is_download_timedout = True
                 logger.debug(
-                    "Cloud fetch download timed out after {} seconds for link representing rows {} to {}".format(
-                        self.settings.download_timeout,
-                        self.result_link.startRowOffset,
-                        self.result_link.startRowOffset + self.result_link.rowCount,
-                    )
+                    f"cloud fetch download timed out after {self.settings.download_timeout} seconds for link representing rows {self.result_link.startRowOffset} to {self.result_link.startRowOffset + self.result_link.rowCount}"
                 )
-                return False
+                # there are some weird cases when the is_download_finished is not set, but the file is downloaded successfully
+                return self.is_file_downloaded_successfully
+
+            logger.debug(
+                f"finish waiting for download file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
+            )
         except Exception as e:
             logger.error(e)
             return False
@@ -81,23 +92,35 @@ class ResultSetDownloadHandler(threading.Thread):
         """
         self._reset()
 
-        # Check if link is already expired or is expiring
-        if ResultSetDownloadHandler.check_link_expired(
-            self.result_link, self.settings.link_expiry_buffer_secs
-        ):
-            self.is_link_expired = True
-            return
-
-        session = requests.Session()
-        session.timeout = self.settings.download_timeout
-
         try:
-            # Get the file via HTTP request
-            response = session.get(self.result_link.fileLink)
-
-            if not response.ok:
-                self.is_file_downloaded_successfully = False
+            # Check if link is already expired or is expiring
+            if ResultSetDownloadHandler.check_link_expired(
+                self.result_link, self.settings.link_expiry_buffer_secs
+            ):
+                self.is_link_expired = True
                 return
+
+            logger.debug(
+                f"started to download file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
+            )
+
+            # Get the file via HTTP request
+            response = http_get_with_retry(
+                url=self.result_link.fileLink,
+                max_retries=self.settings.max_retries,
+                backoff_factor=self.settings.backoff_factor,
+                download_timeout=self.settings.download_timeout,
+            )
+
+            if not response:
+                logger.error(
+                    f"failed downloading file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
+                )
+                return
+
+            logger.debug(
+                f"success downloading file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
+            )
 
             # Save (and decompress if needed) the downloaded file
             compressed_data = response.content
@@ -109,15 +132,22 @@ class ResultSetDownloadHandler(threading.Thread):
             self.result_file = decompressed_data
 
             # The size of the downloaded file should match the size specified from TSparkArrowResultLink
-            self.is_file_downloaded_successfully = (
-                len(self.result_file) == self.result_link.bytesNum
+            success = len(self.result_file) == self.result_link.bytesNum
+            logger.debug(
+                f"download successful file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
             )
+            self.is_file_downloaded_successfully = success
         except Exception as e:
+            logger.debug(
+                f"exception downloading file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
+            )
             logger.error(e)
             self.is_file_downloaded_successfully = False
 
         finally:
-            session and session.close()
+            logger.debug(
+                f"signal finished file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
+            )
             # Awaken threads waiting for this to be true which signals the run is complete
             self.is_download_finished.set()
 
@@ -145,6 +175,7 @@ class ResultSetDownloadHandler(threading.Thread):
             link.expiryTime < current_time
             or link.expiryTime - current_time < expiry_buffer_secs
         ):
+            logger.debug("link expired")
             return True
         return False
 
@@ -171,3 +202,34 @@ class ResultSetDownloadHandler(threading.Thread):
                 uncompressed_data += data
                 start += num_bytes
         return uncompressed_data
+
+
+def http_get_with_retry(url, max_retries=5, backoff_factor=2, download_timeout=60):
+    attempts = 0
+
+    while attempts < max_retries:
+        try:
+            session = requests.Session()
+            session.timeout = download_timeout
+            response = session.get(url)
+
+            # Check if the response status code is in the 2xx range for success
+            if response.status_code == 200:
+                return response
+            else:
+                logger.error(response)
+        except requests.RequestException as e:
+            print(f"request failed with exception: {e}")
+        finally:
+            session.close()
+        # Exponential backoff before the next attempt
+        wait_time = backoff_factor**attempts
+        logger.info(f"retrying in {wait_time} seconds...")
+        time.sleep(wait_time)
+
+        attempts += 1
+
+    logger.error(
+        f"exceeded maximum number of retries ({max_retries}) while downloading result."
+    )
+    return None
