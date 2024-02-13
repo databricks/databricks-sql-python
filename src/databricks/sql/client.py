@@ -96,7 +96,8 @@ class Connection:
                 legacy purposes and will be deprecated in a future release. When this parameter is `True` you will see
                 a warning log message. To suppress this log message, set `use_inline_params="silent"`.
             auth_type: `str`, optional
-                `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
+                `databricks-oauth` : to use Databricks OAuth with fine-grained permission scopes, set to `databricks-oauth`.
+                `azure-oauth` : to use Microsoft Entra ID OAuth flow, set to `azure-oauth`.
 
             oauth_client_id: `str`, optional
                 custom oauth client_id. If not specified, it will use the built-in client_id of databricks-sql-python.
@@ -107,9 +108,9 @@ class Connection:
 
             experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
                 This has to be a class implementing `OAuthPersistence`.
-                When `auth_type` is set to `databricks-oauth` without persisting the oauth token in a persistence storage
-                the oauth tokens will only be maintained in memory and if the python process restarts the end user
-                will have to login again.
+                When `auth_type` is set to `databricks-oauth` or `azure-oauth` without persisting the oauth token in a
+                persistence storage the oauth tokens will only be maintained in memory and if the python process
+                restarts the end user will have to login again.
                 Note this is beta (private preview)
 
                 For persisting the oauth token in a prod environment you should subclass and implement OAuthPersistence
