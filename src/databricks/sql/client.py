@@ -605,12 +605,15 @@ class Cursor:
                     "Local file operations are restricted to paths within the configured staging_allowed_local_path"
                 )
 
-        # TODO: Experiment with DBR sending real headers.
-        # The specification says headers will be in JSON format but the current null value is actually an empty list []
+        # May be real headers, or could be json string
+        headers = (
+            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
+        )
+
         handler_args = {
             "presigned_url": row.presignedUrl,
             "local_file": abs_localFile,
-            "headers": json.loads(row.headers or "{}"),
+            "headers": dict(headers) or {},
         }
 
         logger.debug(

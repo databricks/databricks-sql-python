@@ -1,5 +1,5 @@
 name: Code Quality Checks
-on: 
+on:
   push:
     branches:
       - main
@@ -157,7 +157,7 @@ jobs:
       - name: Install library
         run: poetry install --no-interaction
       #----------------------------------------------
-      #              black the code
+      #              mypy the code
       #----------------------------------------------
       - name: Mypy
         run: poetry run mypy --install-types --non-interactive src
