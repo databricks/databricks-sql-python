@@ -64,16 +64,16 @@ def test_extract_3l_namespace_from_bad_constraint_string():
         extract_three_level_identifier_from_constraint_string(input)
 
 
-@pytest.mark.parametrize("schema", [None, "some_schema"])
-def test_build_fk_dict(schema):
+@pytest.mark.parametrize("tschema", [None, "some_schema"])
+def test_build_fk_dict(tschema):
     fk_constraint_string = "FOREIGN KEY (`parent_user_id`) REFERENCES `main`.`some_schema`.`users` (`user_id`)"
 
-    result = build_fk_dict("some_fk_name", fk_constraint_string, schema_name=schema)
+    result = build_fk_dict("some_fk_name", fk_constraint_string, schema_name=tschema)
 
     assert result == {
         "name": "some_fk_name",
         "constrained_columns": ["parent_user_id"],
-        "referred_schema": schema,
+        "referred_schema": tschema,
         "referred_table": "users",
         "referred_columns": ["user_id"],
     }
