@@ -81,6 +81,9 @@ class ResultSetQueueFactory(ABC):
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
+            logger.debug(
+                f"built cloud fetch queue for {len(t_row_set.resultLinks)} links."
+            )
             return CloudFetchQueue(
                 arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
@@ -156,11 +159,11 @@ class CloudFetchQueue(ResultSetQueue):
         self.lz4_compressed = lz4_compressed
         self.description = description
 
-        # self.download_manager = ResultFileDownloadManager(
-        #     self.max_download_threads, self.lz4_compressed
-        # )
+        logger.debug(
+            f"creating cloud fetch queue for {len(result_links)} links and max_download_threads {self.max_download_threads}."
+        )
         self.download_manager = ResultFileDownloadManager(
-            1, self.lz4_compressed
+            self.max_download_threads, self.lz4_compressed
         )
         self.download_manager.add_file_links(result_links)
 

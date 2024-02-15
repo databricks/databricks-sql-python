@@ -115,3 +115,7 @@ class SessionAlreadyClosedError(RequestError):
 
 class CursorAlreadyClosedError(RequestError):
     """Thrown if CancelOperation receives a code 404. ThriftBackend should gracefully proceed as this is expected."""
+
+
+class ResultSetDownloadError(RequestError):
+    """Thrown if there was an error during the download of a result set"""
