@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import time
 from typing import List
 from unittest.mock import MagicMock, PropertyMock, patch
 
@@ -165,6 +166,33 @@ class PySQLRetryTestsMixin:
                 with self.connection(extra_params=self._retry_policy) as conn:
                     pass
             assert mock_obj.return_value.getresponse.call_count == 6
+
+    def test_retry_exponential_backoff(self):
+        """GIVEN the retry policy is configured for reasonable exponential backoff
+        WHEN the server sends nothing but 429 responses with retry-afters
+        THEN the connector will use those retry-afters as a floor
+        """
+        retry_policy = self._retry_policy.copy()
+        retry_policy["_retry_delay_min"] = 1
+
+        time_start = time.time()
+        with mocked_server_response(status=429, headers={"Retry-After": "3"}) as mock_obj:
+            with pytest.raises(RequestError) as cm:
+                with self.connection(extra_params=retry_policy) as conn:
+                    pass
+
+            duration = time.time() - time_start
+            assert isinstance(cm.value.args[1], MaxRetryDurationError)
+
+            # With setting delay_min to 1, the expected retry delays should be:
+            # 3, 3, 4
+            # The first 2 retries are allowed, the 3rd retry puts the total duration over the limit
+            # of 10 seconds
+            assert mock_obj.return_value.getresponse.call_count == 3
+            assert duration > 6
+
+            # Should be less than 7, but this is a safe margin for CI/CD slowness
+            assert duration < 10
 
     def test_retry_max_duration_not_exceeded(self):
         """GIVEN the max attempt duration of 10 seconds
