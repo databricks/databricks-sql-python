@@ -283,8 +283,10 @@ class DatabricksRetryPolicy(Retry):
         """
         retry_after = self.get_retry_after(response)
         if retry_after:
-            self.check_proposed_wait(retry_after)
-            time.sleep(retry_after)
+            backoff = self.get_backoff_time()
+            proposed_wait = max(backoff, retry_after)
+            self.check_proposed_wait(proposed_wait)
+            time.sleep(proposed_wait)
             return True
 
         return False
