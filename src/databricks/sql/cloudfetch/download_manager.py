@@ -35,8 +35,6 @@ class ResultFileDownloadManager:
         self.download_handlers: List[ResultSetDownloadHandler] = []
         self.thread_pool = ThreadPoolExecutor(max_workers=max_download_threads + 1)
         self.downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
-        self.fetch_need_retry = False
-        self.num_consecutive_result_file_download_retries = 0
 
     def add_file_links(
         self, t_spark_arrow_result_links: List[TSparkArrowResultLink]

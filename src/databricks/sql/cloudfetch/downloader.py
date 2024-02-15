@@ -24,13 +24,17 @@ class DownloadableResultSettings:
         is_lz4_compressed (bool): Whether file is expected to be lz4 compressed.
         link_expiry_buffer_secs (int): Time in seconds to prevent download of a link before it expires. Default 0 secs.
         download_timeout (int): Timeout for download requests. Default 60 secs.
-        max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
+        download_max_retries (int): Number of consecutive download retries before shutting down.
+        max_retries (int): Number of consecutive download retries before shutting down.
+        backoff_factor (int): Factor to increase wait time between retries.
+
     """
 
     is_lz4_compressed: bool
     link_expiry_buffer_secs: int = 0
     download_timeout: int = DEFAULT_CLOUD_FILE_TIMEOUT
-    max_consecutive_file_download_retries: int = 0
+    max_retries: int = 5
+    backoff_factor: int = 2
 
 
 class ResultSetDownloadHandler(threading.Thread):
@@ -70,7 +74,8 @@ class ResultSetDownloadHandler(threading.Thread):
                 logger.debug(
                     f"cloud fetch download timed out after {self.settings.download_timeout} seconds for link representing rows {self.result_link.startRowOffset} to {self.result_link.startRowOffset + self.result_link.rowCount}"
                 )
-                return False
+                # there are some weird cases when the is_download_finished is not set, but the file is downloaded successfully
+                return self.is_file_downloaded_successfully
 
             logger.debug(
                 f"finish waiting for download file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
@@ -103,7 +108,12 @@ class ResultSetDownloadHandler(threading.Thread):
             )
 
             # Get the file via HTTP request
-            response = http_get_with_retry(url=self.result_link.fileLink, download_timeout=self.settings.download_timeout)
+            response = http_get_with_retry(
+                url=self.result_link.fileLink, 
+                max_retries=self.settings.max_retries,
+                backoff_factor=self.settings.backoff_factor,
+                download_timeout=self.settings.download_timeout,
+            )
 
             if not response:
                 logger.error(

@@ -5,7 +5,7 @@ import logging
 
 
 logger = logging.getLogger("databricks.sql")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 fh = logging.FileHandler('pysqllogs.log')
 fh.setFormatter(logging.Formatter("%(asctime)s %(process)d %(thread)d %(message)s"))
 fh.setLevel(logging.DEBUG)
@@ -20,8 +20,8 @@ with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
   with connection.cursor(
     # arraysize=100
     ) as cursor:
-    cursor.execute("SELECT * FROM range(0, 10000000) AS t1 LEFT JOIN (SELECT 1) AS t2")
-    # cursor.execute("SELECT * FROM andre.plotly_iot_dashboard.bronze_sensors limit 1000001")
+    # cursor.execute("SELECT * FROM range(0, 10000000) AS t1 LEFT JOIN (SELECT 1) AS t2")
+    cursor.execute("SELECT * FROM andre.plotly_iot_dashboard.bronze_sensors limit 1000001")
     try:
       result = cursor.fetchall()
       print(f"result length: {len(result)}")
