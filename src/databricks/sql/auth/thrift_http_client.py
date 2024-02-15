@@ -14,7 +14,7 @@ from http.client import HTTPResponse
 from io import BytesIO
 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
-
+from urllib3.util import make_headers
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 
 
@@ -120,7 +120,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             proxy_manager = ProxyManager(
                 self.proxy_uri,
                 num_pools=1,
-                headers={"Proxy-Authorization": self.proxy_auth},
+                proxy_headers=self.proxy_auth,
             )
             self.__pool = proxy_manager.connection_from_host(
                 host=self.realhost,
@@ -201,8 +201,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             urllib.parse.unquote(proxy.username),
             urllib.parse.unquote(proxy.password),
         )
-        cr = base64.b64encode(ap.encode()).strip()
-        return "Basic " + six.ensure_str(cr)
+        return make_headers(proxy_basic_auth=ap)
 
     def set_retry_command_type(self, value: CommandType):
         """Pass the provided CommandType to the retry policy"""
