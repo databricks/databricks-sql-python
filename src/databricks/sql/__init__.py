@@ -7,6 +7,38 @@ apilevel = "2.0"
 threadsafety = 1  # Threads may share the module, but not connections.
 paramstyle = "pyformat"  # Python extended format codes, e.g. ...WHERE name=%(name)s
 
+import re
+
+
+class RedactUrlQueryParamsFilter(logging.Filter):
+    pattern = re.compile(r"(\?|&)([\w-]+)=([^&\s]+)")
+    mask = r"\1\2=<REDACTED>"
+
+    def __init__(self):
+        super().__init__()
+
+    def redact(self, string):
+        return re.sub(self.pattern, self.mask, str(string))
+
+    def filter(self, record):
+        record.msg = self.redact(str(record.msg))
+        if isinstance(record.args, dict):
+            for k in record.args.keys():
+                record.args[k] = (
+                    self.redact(record.args[k])
+                    if isinstance(record.arg[k], str)
+                    else record.args[k]
+                )
+        else:
+            record.args = tuple(
+                (self.redact(arg) if isinstance(arg, str) else arg)
+                for arg in record.args
+            )
+
+        return True
+
+
+logging.getLogger("urllib3.connectionpool").addFilter(RedactUrlQueryParamsFilter())
 
 class DBAPITypeObject(object):
     def __init__(self, *values):
