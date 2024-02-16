@@ -5,7 +5,7 @@ import lz4.frame
 import threading
 import time
 import os
-from threading import get_ident
+import re
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class ResultSetDownloadHandler(threading.Thread):
 
             if not self.is_download_finished.wait(timeout=timeout):
                 self.is_download_timedout = True
-                logger.debug(
+                logger.error(
                     f"cloud fetch download timed out after {self.settings.download_timeout} seconds for link representing rows {self.result_link.startRowOffset} to {self.result_link.startRowOffset + self.result_link.rowCount}"
                 )
                 # there are some weird cases when the is_download_finished is not set, but the file is downloaded successfully
@@ -138,7 +138,7 @@ class ResultSetDownloadHandler(threading.Thread):
             )
             self.is_file_downloaded_successfully = success
         except Exception as e:
-            logger.debug(
+            logger.error(
                 f"exception downloading file: startRow {self.result_link.startRowOffset}, rowCount {self.result_link.rowCount}, endRow {self.result_link.startRowOffset + self.result_link.rowCount}"
             )
             logger.error(e)
@@ -206,7 +206,10 @@ class ResultSetDownloadHandler(threading.Thread):
 
 def http_get_with_retry(url, max_retries=5, backoff_factor=2, download_timeout=60):
     attempts = 0
+    pattern = re.compile(r"(\?|&)([\w-]+)=([^&\s]+)")
+    mask = r"\1\2=<REDACTED>"
 
+    # TODO: introduce connection pooling. I am seeing weird errors without it.
     while attempts < max_retries:
         try:
             session = requests.Session()
@@ -219,7 +222,8 @@ def http_get_with_retry(url, max_retries=5, backoff_factor=2, download_timeout=6
             else:
                 logger.error(response)
         except requests.RequestException as e:
-            print(f"request failed with exception: {e}")
+            # if this is not redacted, it will print the pre-signed URL
+            logger.error(f"request failed with exception: {re.sub(pattern, mask, str(e))}")
         finally:
             session.close()
         # Exponential backoff before the next attempt

@@ -6,7 +6,7 @@ import logging
 logger = logging.getLogger("databricks.sql")
 logger.setLevel(logging.DEBUG)
 fh = logging.FileHandler("pysqllogs.log")
-fh.setFormatter(logging.Formatter("%(asctime)s %(process)d %(thread)d %(message)s"))
+fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(process)d %(thread)d %(message)s"))
 fh.setLevel(logging.DEBUG)
 logger.addHandler(fh)
 
