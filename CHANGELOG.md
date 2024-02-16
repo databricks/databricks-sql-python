@@ -2,6 +2,11 @@
 
 ## 2.9.4 (Unreleased)
 
+## 2.9.4b1 (2024-02-16)
+
+- Fix: Cloud fetch file download errors (#356)
+- Fix: Redact the URL query parameters from the urllib3.connectionpool logs (#341)
+
 ## 2.9.3 (2023-08-24)
 
 - Fix: Connections failed when urllib3~=1.0.0 is installed (#206)
