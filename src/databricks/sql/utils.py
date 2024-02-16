@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any, Dict, List, Union
 import re
 
+import logging
 import lz4.frame
 import pyarrow
 
@@ -24,6 +25,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
+logger = logging.getLogger(__name__)
 
 import logging
 
@@ -81,6 +83,9 @@ class ResultSetQueueFactory(ABC):
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
+            logger.debug(
+                f"built cloud fetch queue for {len(t_row_set.resultLinks)} links."
+            )
             return CloudFetchQueue(
                 arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
@@ -156,6 +161,9 @@ class CloudFetchQueue(ResultSetQueue):
         self.lz4_compressed = lz4_compressed
         self.description = description
 
+        logger.debug(
+            f"creating cloud fetch queue for {len(result_links)} links and max_download_threads {self.max_download_threads}."
+        )
         self.download_manager = ResultFileDownloadManager(
             self.max_download_threads, self.lz4_compressed
         )
