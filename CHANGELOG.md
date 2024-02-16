@@ -1,12 +1,13 @@
 # Release History
 
-# 3.0.4 (TBD)
+# 3.1.0 (2024-02-16)
 
-- Revert retry-after behavior to be exponential backoff
+- Revert retry-after behavior to be exponential backoff (#349)
+- Support Databricks OAuth on Azure (#351)
+- Support Databricks OAuth on GCP (#338)
 
 # 3.0.3 (2024-02-02)
 
-- Add support in-house OAuth on GCP (#338)
 - Revised docstrings and examples for OAuth (#339)
 - Redact the URL query parameters from the urllib3.connectionpool logs (#341)
 
