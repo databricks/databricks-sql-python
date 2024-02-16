@@ -41,20 +41,6 @@ jobs:
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
-      #------------------------------------------------------------------------------------------------
-      # Here we use version-increment to fetch the latest tagged version (we won't increment it though)
-      #------------------------------------------------------------------------------------------------
-      - name: Get next version
-        uses: reecetech/version-increment@2022.2.4
-        id: version
-        with:
-          scheme: semver
-          increment: patch
-      #-----------------------------------------------------------------------------
-      # Tell poetry to use the `current-version` that was found by the previous step
-      #-----------------------------------------------------------------------------
-      - name: Update pyproject.toml
-        run: poetry version ${{ steps.version.outputs.current-version }}
       #----------------------------------------------
       # Attempt push to test-pypi
       #----------------------------------------------

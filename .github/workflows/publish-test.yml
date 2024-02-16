@@ -40,20 +40,6 @@ jobs:
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
       #----------------------------------------------
-      # Get the current version and increment it (test-pypi requires a unique version number)
-      #----------------------------------------------
-      - name: Get next version
-        uses: reecetech/version-increment@2022.2.4
-        id: version
-        with:
-          scheme: semver
-          increment: patch
-      #----------------------------------------------
-      # Tell poetry to update the version number
-      #----------------------------------------------
-      - name: Update pyproject.toml
-        run: poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
-      #----------------------------------------------
       # Attempt push to test-pypi
       #----------------------------------------------
       - name: Build and publish to pypi
