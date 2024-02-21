@@ -226,6 +226,9 @@ class CloudFetchQueue(ResultSetQueue):
         # The server rarely prepares the exact number of rows requested by the client in cloud fetch.
         # Subsequently, we drop the extraneous rows in the last file if more rows are retrieved than requested
         if arrow_table.num_rows > downloaded_file.row_count:
+            logger.debug(
+                f"received {arrow_table.num_rows} rows, expected {downloaded_file.row_count} rows. Dropping extraneous rows."
+            )
             self.start_row_index += downloaded_file.row_count
             return arrow_table.slice(0, downloaded_file.row_count)
 

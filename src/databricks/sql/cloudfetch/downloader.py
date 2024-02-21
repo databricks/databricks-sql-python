@@ -10,7 +10,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLOUD_FILE_TIMEOUT = int(os.getenv("DATABRICKS_CLOUD_FILE_TIMEOUT", 60))
+DEFAULT_CLOUD_FILE_TIMEOUT = int(os.getenv("DATABRICKS_CLOUD_FILE_TIMEOUT", 180))
 
 
 @dataclass
@@ -221,7 +221,7 @@ def http_get_with_retry(url, max_retries=5, backoff_factor=2, download_timeout=6
                 return response
             else:
                 logger.error(response)
-        except requests.RequestException as e:
+        except Exception as e:
             # if this is not redacted, it will print the pre-signed URL
             logger.error(f"request failed with exception: {re.sub(pattern, mask, str(e))}")
         finally:
