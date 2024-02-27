@@ -629,7 +629,7 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(cursor.query_id.upper(), operation_id.upper())
 
         cursor.close()
-        self.assertEqual(cursor.query_id.upper(), operation_id.upper())
+        self.assertIsNone(cursor.query_id)
 
 
 if __name__ == '__main__':
