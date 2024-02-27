@@ -6,6 +6,7 @@ import requests
 import json
 import os
 import decimal
+from uuid import UUID
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -1006,6 +1007,12 @@ class Cursor:
         self.open = False
         if self.active_result_set:
             self._close_and_clear_active_result_set()
+
+    @property
+    def query_id(self) -> Optional[str]:
+        if self.active_op_handle is not None:
+            return str(UUID(bytes=self.active_op_handle.operationId.guid))
+        return None
 
     @property
     def description(self) -> Optional[List[Tuple]]:
