@@ -6,6 +6,7 @@ import requests
 import json
 import os
 import decimal
+from uuid import UUID
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -1004,8 +1005,21 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
+        self.active_op_handle = None
         if self.active_result_set:
             self._close_and_clear_active_result_set()
+
+    @property
+    def query_id(self) -> Optional[str]:
+        """
+        This attribute is an identifier of last executed query.
+
+        This attribute will be ``None`` if the cursor has not had an operation
+        invoked via the execute method yet, or if cursor was closed.
+        """
+        if self.active_op_handle is not None:
+            return str(UUID(bytes=self.active_op_handle.operationId.guid))
+        return None
 
     @property
     def description(self) -> Optional[List[Tuple]]:
