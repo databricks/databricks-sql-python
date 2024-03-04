@@ -6,10 +6,14 @@ from unittest.mock import patch, MagicMock, Mock, PropertyMock
 import itertools
 from decimal import Decimal
 from datetime import datetime, date
+from uuid import UUID
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOpenSessionResp,
     TExecuteStatementResp,
+    TOperationHandle,
+    THandleIdentifier,
+    TOperationType
 )
 from databricks.sql.thrift_backend import ThriftBackend
 
@@ -609,6 +613,23 @@ class ClientTestSuite(unittest.TestCase):
         connection.close()
 
         mock_handle_staging_operation.call_count == 1
+
+    @patch("%s.client.ThriftBackend" % PACKAGE_NAME, ThriftBackendMockFactory.new())
+    def test_access_current_query_id(self):
+        operation_id = 'EE6A8778-21FC-438B-92D8-96AC51EE3821'
+
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        cursor = connection.cursor()
+
+        self.assertIsNone(cursor.query_id)
+
+        cursor.active_op_handle = TOperationHandle(
+            operationId=THandleIdentifier(guid=UUID(operation_id).bytes, secret=0x00),
+            operationType=TOperationType.EXECUTE_STATEMENT)
+        self.assertEqual(cursor.query_id.upper(), operation_id.upper())
+
+        cursor.close()
+        self.assertIsNone(cursor.query_id)
 
 
 if __name__ == '__main__':
