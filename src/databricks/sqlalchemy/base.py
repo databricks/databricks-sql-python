@@ -64,6 +64,7 @@ class DatabricksDialect(default.DefaultDialect):
     supports_default_values: bool = False
     supports_server_side_cursors: bool = False
     supports_sequences: bool = False
+    supports_native_boolean: bool = True
 
     colspecs = {
         sqlalchemy.types.DateTime: dialect_type_impl.TIMESTAMP_NTZ,
