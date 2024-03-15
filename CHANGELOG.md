@@ -1,5 +1,9 @@
 # Release History
 
+# 3.1.1 (2024-02-21)
+
+- Fix: Cloud fetch file download errors (#356)
+
 # 3.1.0 (2024-02-16)
 
 - Revert retry-after behavior to be exponential backoff (#349)

@@ -8,6 +8,7 @@ from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
     DownloadableResultSettings,
 )
+from databricks.sql.exc import ResultSetDownloadError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,6 @@ class ResultFileDownloadManager:
         self.download_handlers: List[ResultSetDownloadHandler] = []
         self.thread_pool = ThreadPoolExecutor(max_workers=max_download_threads + 1)
         self.downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
-        self.fetch_need_retry = False
-        self.num_consecutive_result_file_download_retries = 0
 
     def add_file_links(
         self, t_spark_arrow_result_links: List[TSparkArrowResultLink]
@@ -81,13 +80,15 @@ class ResultFileDownloadManager:
 
         # Find next file
         idx = self._find_next_file_index(next_row_offset)
+        # is this correct?
         if idx is None:
             self._shutdown_manager()
+            logger.debug("could not find next file index")
             return None
         handler = self.download_handlers[idx]
 
         # Check (and wait) for download status
-        if self._check_if_download_successful(handler):
+        if handler.is_file_download_successful():
             # Buffer should be empty so set buffer to new ArrowQueue with result_file
             result = DownloadedFile(
                 handler.result_file,
@@ -97,9 +98,11 @@ class ResultFileDownloadManager:
             self.download_handlers.pop(idx)
             # Return True upon successful download to continue loop and not force a retry
             return result
-        # Download was not successful for next download item, force a retry
+        # Download was not successful for next download item. Fail
         self._shutdown_manager()
-        return None
+        raise ResultSetDownloadError(
+            f"Download failed for result set starting at {next_row_offset}"
+        )
 
     def _remove_past_handlers(self, next_row_offset: int):
         # Any link in which its start to end range doesn't include the next row to be fetched does not need downloading
@@ -132,33 +135,6 @@ class ResultFileDownloadManager:
             and handler.result_link.startRowOffset == next_row_offset
         ]
         return next_indices[0] if len(next_indices) > 0 else None
-
-    def _check_if_download_successful(self, handler: ResultSetDownloadHandler):
-        # Check (and wait until download finishes) if download was successful
-        if not handler.is_file_download_successful():
-            if handler.is_link_expired:
-                self.fetch_need_retry = True
-                return False
-            elif handler.is_download_timedout:
-                # Consecutive file retries should not exceed threshold in settings
-                if (
-                    self.num_consecutive_result_file_download_retries
-                    >= self.downloadable_result_settings.max_consecutive_file_download_retries
-                ):
-                    self.fetch_need_retry = True
-                    return False
-                self.num_consecutive_result_file_download_retries += 1
-
-                # Re-submit handler run to thread pool and recursively check download status
-                self.thread_pool.submit(handler.run)
-                return self._check_if_download_successful(handler)
-            else:
-                self.fetch_need_retry = True
-                return False
-
-        self.num_consecutive_result_file_download_retries = 0
-        self.fetch_need_retry = False
-        return True
 
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool

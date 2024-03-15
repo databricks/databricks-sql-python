@@ -393,7 +393,9 @@ class ThriftBackend:
             try:
                 this_method_name = getattr(method, "__name__")
 
-                logger.debug("Sending request: {}(<REDACTED>)".format(this_method_name))
+                logger.debug(
+                    "sending thrift request: {}(<REDACTED>)".format(this_method_name)
+                )
                 unsafe_logger.debug("Sending request: {}".format(request))
 
                 # These three lines are no-ops if the v3 retry policy is not in use
@@ -406,7 +408,9 @@ class ThriftBackend:
 
                 # We need to call type(response) here because thrift doesn't implement __name__ attributes for thrift responses
                 logger.debug(
-                    "Received response: {}(<REDACTED>)".format(type(response).__name__)
+                    "received thrift response: {}(<REDACTED>)".format(
+                        type(response).__name__
+                    )
                 )
                 unsafe_logger.debug("Received response: {}".format(response))
                 return response
@@ -764,6 +768,7 @@ class ThriftBackend:
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         if direct_results and direct_results.resultSet:
+            logger.debug(f"received direct results")
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
 
@@ -776,6 +781,7 @@ class ThriftBackend:
                 description=description,
             )
         else:
+            logger.debug(f"must fetch results")
             arrow_queue_opt = None
         return ExecuteResponse(
             arrow_queue=arrow_queue_opt,
@@ -839,6 +845,10 @@ class ThriftBackend:
         parameters=[],
     ):
         assert session_handle is not None
+
+        logger.debug(
+            f"executing: cloud fetch: {use_cloud_fetch}, max rows: {max_rows}, max bytes: {max_bytes}"
+        )
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
@@ -955,6 +965,7 @@ class ThriftBackend:
         return self._handle_execute_response(resp, cursor)
 
     def _handle_execute_response(self, resp, cursor):
+        logger.debug(f"got execute response")
         cursor.active_op_handle = resp.operationHandle
         self._check_direct_results_for_error(resp.directResults)
 
@@ -975,6 +986,7 @@ class ThriftBackend:
         arrow_schema_bytes,
         description,
     ):
+        logger.debug("started to fetch results")
         assert op_handle is not None
 
         req = ttypes.TFetchResultsReq(
