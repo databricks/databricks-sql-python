@@ -1,5 +1,9 @@
 # Release History
 
+# x.x.x (TBD)
+
+- Don't retry requests that fail with code 403
+
 # 3.1.0 (2024-02-16)
 
 - Revert retry-after behavior to be exponential backoff (#349)
