@@ -407,3 +407,17 @@ class PySQLRetryTestsMixin:
     def test_retry_legacy_behavior_warns_user(self, caplog):
         with self.connection(extra_params={**self._retry_policy, "_enable_v3_retries": False}):
             assert "Legacy retry behavior is enabled for this connection." in caplog.text
+
+
+    def test_403_not_retried(self):
+        """GIVEN the server returns a code 403
+        WHEN the connector receives this response
+        THEN nothing is retried and an exception is raised
+        """
+
+        # Code 403 is a Forbidden error
+        with mocked_server_response(status=403):
+            with pytest.raises(RequestError) as cm:
+                with self.connection(extra_params=self._retry_policy) as conn:
+                    pass
+                assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
