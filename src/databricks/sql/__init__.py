@@ -40,6 +40,7 @@ class RedactUrlQueryParamsFilter(logging.Filter):
 
 logging.getLogger("urllib3.connectionpool").addFilter(RedactUrlQueryParamsFilter())
 
+
 class DBAPITypeObject(object):
     def __init__(self, *values):
         self.values = values
@@ -60,7 +61,7 @@ DATETIME = DBAPITypeObject("timestamp")
 DATE = DBAPITypeObject("date")
 ROWID = DBAPITypeObject()
 
-__version__ = "2.9.4"
+__version__ = "2.9.5"
 USER_AGENT_NAME = "PyDatabricksSqlConnector"
 
 # These two functions are pyhive legacy

@@ -223,7 +223,9 @@ def http_get_with_retry(url, max_retries=5, backoff_factor=2, download_timeout=6
                 logger.error(response)
         except Exception as e:
             # if this is not redacted, it will print the pre-signed URL
-            logger.error(f"request failed with exception: {re.sub(pattern, mask, str(e))}")
+            logger.error(
+                f"request failed with exception: {re.sub(pattern, mask, str(e))}"
+            )
         finally:
             session.close()
         # Exponential backoff before the next attempt
