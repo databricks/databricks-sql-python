@@ -2,7 +2,11 @@
 
 # x.x.x (TBD)
 
-- Don't retry requests that fail with code 403
+# 3.1.1 (2024-03-19)
+
+- Don't retry requests that fail with code 403 (#373)
+- Assume a default retry-after for 429/503 (#371)
+- Fix boolean literals (#357)
 
 # 3.1.0 (2024-02-16)
 

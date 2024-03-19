@@ -32,8 +32,7 @@ class RedactUrlQueryParamsFilter(logging.Filter):
                 )
         else:
             record.args = tuple(
-                (self.redact(arg) if isinstance(arg, str) else arg)
-                for arg in record.args
+                (self.redact(arg) if isinstance(arg, str) else arg) for arg in record.args
             )
 
         return True
@@ -62,7 +61,7 @@ DATETIME = DBAPITypeObject("timestamp")
 DATE = DBAPITypeObject("date")
 ROWID = DBAPITypeObject()
 
-__version__ = "3.1.0"
+__version__ = "3.1.1"
 USER_AGENT_NAME = "PyDatabricksSqlConnector"
 
 # These two functions are pyhive legacy
