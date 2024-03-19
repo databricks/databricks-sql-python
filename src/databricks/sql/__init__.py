@@ -32,7 +32,8 @@ class RedactUrlQueryParamsFilter(logging.Filter):
                 )
         else:
             record.args = tuple(
-                (self.redact(arg) if isinstance(arg, str) else arg) for arg in record.args
+                (self.redact(arg) if isinstance(arg, str) else arg)
+                for arg in record.args
             )
 
         return True
