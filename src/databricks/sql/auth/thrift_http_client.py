@@ -191,7 +191,8 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
         # Saves the cookie sent by the server response
         if "Set-Cookie" in self.headers:
-            self.setCustomHeaders(dict("Cookie", self.headers["Set-Cookie"]))
+            self._headers["Cookie"] = self.headers["Set-Cookie"]
+            self.setCustomHeaders(self._headers)
 
     @staticmethod
     def basic_proxy_auth_header(proxy):
