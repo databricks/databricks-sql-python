@@ -2,8 +2,6 @@ import datetime
 
 from databricks.sql.exc import *
 
-from .client import Connection
-
 # PEP 249 module globals
 apilevel = "2.0"
 threadsafety = 1  # Threads may share the module, but not connections.
@@ -11,6 +9,12 @@ threadsafety = 1  # Threads may share the module, but not connections.
 paramstyle = "named"
 
 import re
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Use this import purely for type annotations, a la https://mypy.readthedocs.io/en/latest/runtime_troubles.html#import-cycles
+    from .client import Connection
 
 
 class RedactUrlQueryParamsFilter(logging.Filter):
@@ -80,5 +84,7 @@ def TimestampFromTicks(ticks):
     return Timestamp(*time.localtime(ticks)[:6])
 
 
-def connect(server_hostname, http_path, access_token=None, **kwargs) -> Connection:
+def connect(server_hostname, http_path, access_token=None, **kwargs) -> "Connection":
+    from .client import Connection
+
     return Connection(server_hostname, http_path, access_token, **kwargs)
