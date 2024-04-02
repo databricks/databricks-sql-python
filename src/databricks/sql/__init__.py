@@ -10,6 +10,12 @@ paramstyle = "named"
 
 import re
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Use this import purely for type annotations, a la https://mypy.readthedocs.io/en/latest/runtime_troubles.html#import-cycles
+    from .client import Connection
+
 
 class RedactUrlQueryParamsFilter(logging.Filter):
     pattern = re.compile(r"(\?|&)([\w-]+)=([^&]+)")
@@ -78,7 +84,7 @@ def TimestampFromTicks(ticks):
     return Timestamp(*time.localtime(ticks)[:6])
 
 
-def connect(server_hostname, http_path, access_token=None, **kwargs):
+def connect(server_hostname, http_path, access_token=None, **kwargs) -> "Connection":
     from .client import Connection
 
     return Connection(server_hostname, http_path, access_token, **kwargs)
