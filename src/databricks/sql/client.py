@@ -271,7 +271,8 @@ class Connection:
 
         return value
 
-    def __enter__(self):
+    # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
+    def __enter__(self) -> "Connection":
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -409,7 +410,8 @@ class Cursor:
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
-    def __enter__(self):
+    # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
+    def __enter__(self) -> "Cursor":
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
