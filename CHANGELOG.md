@@ -1,5 +1,9 @@
 # Release History
 
+## 2.9.6 (2024-04-18)
+
+- Fix: Remove cookie handling code (#379)
+
 ## 2.9.5 (2024-03-19)
 
 - Fix: retry-after has a default value of 1 (#371)
