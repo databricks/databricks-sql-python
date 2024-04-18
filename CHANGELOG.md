@@ -1,6 +1,9 @@
 # Release History
 
-# x.x.x (TBD)
+# 3.1.2 (2024-04-18)
+
+- Remove broken cookie code (#379)
+- Small typing fixes (#382, #384 thanks @wyattscarpenter)
 
 # 3.1.1 (2024-03-19)
 
