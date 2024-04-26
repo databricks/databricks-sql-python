@@ -14,7 +14,7 @@ thrift = "^0.16.0"
 pandas = [
     { version = ">=1.2.5,<2.2.0", python = ">=3.8" }
 ]
-pyarrow = ">=14.0.1,<16"
+pyarrow = ">=14.0.1,<17"
 
 lz4 = "^4.0.2"
 requests = "^2.18.1"
