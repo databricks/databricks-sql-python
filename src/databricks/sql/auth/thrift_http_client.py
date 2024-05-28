@@ -78,7 +78,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.proxy_uri: str = proxy
             self.host = parsed.hostname
             self.port = parsed.port
-            self.proxy_auth = self.basic_proxy_auth_header(parsed)
+            self.proxy_auth = self.basic_proxy_auth_headers(parsed)
         else:
             self.realhost = self.realport = self.proxy_auth = None
 
@@ -167,7 +167,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         }
 
         if self.using_proxy() and self.scheme == "http" and self.proxy_auth is not None:
-            headers["Proxy-Authorization" : self.proxy_auth]
+            headers.update(self.proxy_auth)
 
         if self.__custom_headers:
             custom_headers = {key: val for key, val in self.__custom_headers.items()}
@@ -190,7 +190,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.headers = self.__resp.headers
 
     @staticmethod
-    def basic_proxy_auth_header(proxy):
+    def basic_proxy_auth_headers(proxy):
         if proxy is None or not proxy.username:
             return None
         ap = "%s:%s" % (
