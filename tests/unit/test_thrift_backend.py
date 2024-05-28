@@ -167,11 +167,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         parsed_proxy = urlparse(fake_proxy_spec)
 
         try:
-            result = THttpClient.basic_proxy_auth_header(parsed_proxy)
+            result = THttpClient.basic_proxy_auth_headers(parsed_proxy)
         except TypeError as e:
             assert False
 
-        assert isinstance(result, type(str()))
+        assert isinstance(result, type(dict()))
+        assert isinstance(result.get('proxy-authorization'), type(str()))
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch("databricks.sql.thrift_backend.create_default_context")
