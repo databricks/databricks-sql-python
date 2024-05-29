@@ -1,10 +1,12 @@
-from typing import Dict, Tuple, List, Optional, Any, Union
+from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
 import pyarrow
 import requests
 import json
 import os
+import decimal
+from uuid import UUID
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -18,10 +20,21 @@ from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
-    named_parameters_to_tsparkparams,
     inject_parameters,
+    transform_paramstyle,
+)
+from databricks.sql.parameters.native import (
+    DbsqlParameterBase,
+    TDbsqlParameter,
+    TParameterDict,
+    TParameterSequence,
+    TParameterCollection,
+    ParameterStructure,
+    dbsql_parameter_from_primitive,
     ParameterApproach,
 )
+
+
 from databricks.sql.types import Row
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
@@ -49,6 +62,7 @@ class Connection:
         session_configuration: Dict[str, Any] = None,
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
+        _use_arrow_native_complex_types: Optional[bool] = True,
         **kwargs,
     ) -> None:
         """
@@ -62,11 +76,13 @@ class Connection:
                 Http Bearer access token, e.g. Databricks Personal Access Token.
                 Unless if you use auth_type=`databricks-oauth` you need to pass `access_token.
                 Examples:
+                        ```
                          connection = sql.connect(
                             server_hostname='dbc-12345.staging.cloud.databricks.com',
                             http_path='sql/protocolv1/o/6789/12abc567',
                             access_token='dabpi12345678'
                          )
+                        ```
             :param http_headers: An optional list of (k, v) pairs that will be set as Http headers on every request
             :param session_configuration: An optional dictionary of Spark session parameters. Defaults to None.
                 Execute the SQL command `SET -v` to get a full list of available commands.
@@ -74,18 +90,15 @@ class Connection:
             :param schema: An optional initial schema to use. Requires DBR version 9.0+
 
         Other Parameters:
-            use_inline_params: `boolean`, optional (default is True)
+            use_inline_params: `boolean` | str, optional (default is False)
                 When True, parameterized calls to cursor.execute() will try to render parameter values inline with the
                 query text instead of using native bound parameters supported in DBR 14.1 and above. This connector will attempt to
-                sanitise parameterized inputs to prevent SQL injection. Before you can switch this to False, you must
-                update your queries to use the PEP-249 `named` paramstyle instead of the `pyformat` paramstyle used
-                in INLINE mode.
+                sanitise parameterized inputs to prevent SQL injection.  The inline parameter approach is maintained for
+                legacy purposes and will be deprecated in a future release. When this parameter is `True` you will see
+                a warning log message. To suppress this log message, set `use_inline_params="silent"`.
             auth_type: `str`, optional
-                `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
-                This is currently in private preview for Databricks accounts on AWS.
-                This supports User to Machine OAuth authentication for Databricks on AWS with
-                any IDP configured. This is only for interactive python applications and open a browser window.
-                Note this is beta (private preview)
+                `databricks-oauth` : to use Databricks OAuth with fine-grained permission scopes, set to `databricks-oauth`.
+                `azure-oauth` : to use Microsoft Entra ID OAuth flow, set to `azure-oauth`.
 
             oauth_client_id: `str`, optional
                 custom oauth client_id. If not specified, it will use the built-in client_id of databricks-sql-python.
@@ -96,9 +109,9 @@ class Connection:
 
             experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
                 This has to be a class implementing `OAuthPersistence`.
-                When `auth_type` is set to `databricks-oauth` without persisting the oauth token in a persistence storage
-                the oauth tokens will only be maintained in memory and if the python process restarts the end user
-                will have to login again.
+                When `auth_type` is set to `databricks-oauth` or `azure-oauth` without persisting the oauth token in a
+                persistence storage the oauth tokens will only be maintained in memory and if the python process
+                restarts the end user will have to login again.
                 Note this is beta (private preview)
 
                 For persisting the oauth token in a prod environment you should subclass and implement OAuthPersistence
@@ -127,6 +140,7 @@ class Connection:
                 own implementation of OAuthPersistence.
 
                 Examples:
+                ```
                         # for development only
                         from databricks.sql.experimental.oauth_persistence import DevOnlyFilePersistence
 
@@ -136,8 +150,14 @@ class Connection:
                             auth_type="databricks-oauth",
                             experimental_oauth_persistence=DevOnlyFilePersistence("~/dev-oauth.json")
                         )
-
-
+                ```
+            :param _use_arrow_native_complex_types: `bool`, optional
+                Controls whether a complex type field value is returned as a string or as a native Arrow type. Defaults to True.
+                When True:
+                    MAP is returned as List[Tuple[str, Any]]
+                    STRUCT is returned as Dict[str, Any]
+                    ARRAY is returned as numpy.ndarray
+                When False, complex types are returned as a strings. These are generally deserializable as JSON.
         """
 
         # Internal arguments in **kwargs:
@@ -168,9 +188,6 @@ class Connection:
         # _disable_pandas
         #  In case the deserialisation through pandas causes any issues, it can be disabled with
         #  this flag.
-        # _use_arrow_native_complex_types
-        # DBR will return native Arrow types for structs, arrays and maps instead of Arrow strings
-        # (True by default)
         # _use_arrow_native_decimals
         # Databricks runtime will return native Arrow types for decimals instead of Arrow strings
         # (True by default)
@@ -209,6 +226,7 @@ class Connection:
             http_path,
             (http_headers or []) + base_headers,
             auth_provider,
+            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
             **kwargs,
         )
 
@@ -222,10 +240,39 @@ class Connection:
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
 
-        self._suppress_inline_warning = "use_inline_params" in kwargs
-        self.use_inline_params = kwargs.get("use_inline_params", True)
+        self.use_inline_params = self._set_use_inline_params_with_warning(
+            kwargs.get("use_inline_params", False)
+        )
 
-    def __enter__(self):
+    def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
+        """Valid values are True, False, and "silent"
+
+        False: Use native parameters
+        True: Use inline parameters and log a warning
+        "silent": Use inline parameters and don't log a warning
+        """
+
+        if value is False:
+            return False
+
+        if value not in [True, "silent"]:
+            raise ValueError(
+                f"Invalid value for use_inline_params: {value}. "
+                + 'Valid values are True, False, and "silent"'
+            )
+
+        if value is True:
+            logger.warning(
+                "Parameterised queries executed with this client will use the inline parameter approach."
+                "This approach will be deprecated in a future release. Consider using native parameters."
+                "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
+                'To suppress this warning, set use_inline_params="silent"'
+            )
+
+        return value
+
+    # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
+    def __enter__(self) -> "Connection":
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -363,7 +410,8 @@ class Cursor:
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
-    def __enter__(self):
+    # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
+    def __enter__(self) -> "Cursor":
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -377,7 +425,7 @@ class Cursor:
             raise Error("There is no active result set")
 
     def _determine_parameter_approach(
-        self, params: Optional[Union[List, Dict[str, Any]]] = None
+        self, params: Optional[TParameterCollection]
     ) -> ParameterApproach:
         """Encapsulates the logic for choosing whether to send parameters in native vs inline mode
 
@@ -394,34 +442,60 @@ class Cursor:
         if params is None:
             return ParameterApproach.NONE
 
-        server_supports_native_approach = (
-            self.connection.server_parameterized_queries_enabled(
-                self.connection.protocol_version
-            )
-        )
-
         if self.connection.use_inline_params:
-            if (
-                server_supports_native_approach
-                and not self.connection._suppress_inline_warning
-            ):
-                logger.warning(
-                    "This query will be executed with inline parameters."
-                    "Consider using native parameters."
-                    "Learn more: https://github.com/databricks/databricks-sql-python/tree/main/docs/parameters.md"
-                    "To suppress this warning, pass use_inline_params=True when creating the connection."
-                )
             return ParameterApproach.INLINE
 
-        elif server_supports_native_approach:
-            return ParameterApproach.NATIVE
         else:
-            raise NotSupportedError(
-                "Parameterized operations are not supported by this server. DBR 14.1 is required."
-            )
+            return ParameterApproach.NATIVE
+
+    def _all_dbsql_parameters_are_named(self, params: List[TDbsqlParameter]) -> bool:
+        """Return True if all members of the list have a non-null .name attribute"""
+        return all([i.name is not None for i in params])
+
+    def _normalize_tparametersequence(
+        self, params: TParameterSequence
+    ) -> List[TDbsqlParameter]:
+        """Retains the same order as the input list."""
+
+        output: List[TDbsqlParameter] = []
+        for p in params:
+            if isinstance(p, DbsqlParameterBase):
+                output.append(p)  # type: ignore
+            else:
+                output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
+
+        return output
+
+    def _normalize_tparameterdict(
+        self, params: TParameterDict
+    ) -> List[TDbsqlParameter]:
+        return [
+            dbsql_parameter_from_primitive(value=value, name=name)
+            for name, value in params.items()
+        ]
+
+    def _normalize_tparametercollection(
+        self, params: Optional[TParameterCollection]
+    ) -> List[TDbsqlParameter]:
+        if params is None:
+            return []
+        if isinstance(params, dict):
+            return self._normalize_tparameterdict(params)
+        if isinstance(params, Sequence):
+            return self._normalize_tparametersequence(list(params))
+
+    def _determine_parameter_structure(
+        self,
+        parameters: List[TDbsqlParameter],
+    ) -> ParameterStructure:
+        all_named = self._all_dbsql_parameters_are_named(parameters)
+        if all_named:
+            return ParameterStructure.NAMED
+        else:
+            return ParameterStructure.POSITIONAL
 
     def _prepare_inline_parameters(
-        self, stmt: str, params: Optional[Union[List, Dict[str, Any]]]
+        self, stmt: str, params: Optional[Union[Sequence, Dict[str, Any]]]
     ) -> Tuple[str, List]:
         """Return a statement and list of native parameters to be passed to thrift_backend for execution
 
@@ -446,7 +520,10 @@ class Cursor:
         return rendered_statement, NO_NATIVE_PARAMS
 
     def _prepare_native_parameters(
-        self, stmt: str, params: Optional[Union[List[Any], Dict[str, Any]]]
+        self,
+        stmt: str,
+        params: List[TDbsqlParameter],
+        param_structure: ParameterStructure,
     ) -> Tuple[str, List[TSparkParameter]]:
         """Return a statement and a list of native parameters to be passed to thrift_backend for execution
 
@@ -466,9 +543,12 @@ class Cursor:
         """
 
         stmt = stmt
-        params = named_parameters_to_tsparkparams(params)  # type: ignore
+        output = [
+            p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
+            for p in params
+        ]
 
-        return stmt, params
+        return stmt, output
 
     def _close_and_clear_active_result_set(self):
         try:
@@ -529,12 +609,15 @@ class Cursor:
                     "Local file operations are restricted to paths within the configured staging_allowed_local_path"
                 )
 
-        # TODO: Experiment with DBR sending real headers.
-        # The specification says headers will be in JSON format but the current null value is actually an empty list []
+        # May be real headers, or could be json string
+        headers = (
+            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
+        )
+
         handler_args = {
             "presigned_url": row.presignedUrl,
             "local_file": abs_localFile,
-            "headers": json.loads(row.headers or "{}"),
+            "headers": dict(headers) or {},
         }
 
         logger.debug(
@@ -627,24 +710,27 @@ class Cursor:
     def execute(
         self,
         operation: str,
-        parameters: Optional[Union[List[Any], Dict[str, Any]]] = None,
+        parameters: Optional[TParameterCollection] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
 
         The parameterisation behaviour of this method depends on which parameter approach is used:
-            - With INLINE mode (default), parameters are rendered inline with the query text
-            - With NATIVE mode, parameters are sent to the server separately for binding
+            - With INLINE mode, parameters are rendered inline with the query text
+            - With NATIVE mode (default), parameters are sent to the server separately for binding
 
         This behaviour is controlled by the `use_inline_params` argument passed when building a connection.
 
-        The syntax for these approaches is different:
+        The paramstyle for these approaches is different:
 
-        If the connection was instantiated with use_inline_params=False, then parameters
-        should be given in PEP-249 `named` paramstyle like :param_name
+        If the connection was instantiated with use_inline_params=False (default), then parameters
+        should be given in PEP-249 `named` paramstyle like :param_name. Parameters passed by positionally
+        are indicated using a `?` in the query text.
 
-        If the connection was instantiated with use_inline_params=True (default), then parameters
-        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s
+        If the connection was instantiated with use_inline_params=True, then parameters
+        should be given in PEP-249 `pyformat` paramstyle like %(param_name)s. Parameters passed by positionally
+        are indicated using a `%s` marker in the query. Note: this approach is not recommended as it can break
+        your SQL query syntax and will be removed in a future release.
 
         ```python
         inline_operation = "SELECT * FROM table WHERE field = %(some_value)s"
@@ -668,8 +754,13 @@ class Cursor:
                 operation, parameters
             )
         elif param_approach == ParameterApproach.NATIVE:
+            normalized_parameters = self._normalize_tparametercollection(parameters)
+            param_structure = self._determine_parameter_structure(normalized_parameters)
+            transformed_operation = transform_paramstyle(
+                operation, normalized_parameters, param_structure  # type: ignore
+            )
             prepared_operation, prepared_params = self._prepare_native_parameters(
-                operation, parameters
+                transformed_operation, normalized_parameters, param_structure
             )
 
         self._check_not_closed()
@@ -701,8 +792,10 @@ class Cursor:
 
     def executemany(self, operation, seq_of_parameters):
         """
-        Prepare a database operation (query or command) and then execute it against all parameter
-        sequences or mappings found in the sequence ``seq_of_parameters``.
+        Execute the operation once for every set of passed in parameters.
+
+        This will issue N sequential request to the database where N is the length of the provided sequence.
+        No optimizations of the query (like batching) will be performed.
 
         Only the final result set is retained.
 
@@ -914,8 +1007,21 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
+        self.active_op_handle = None
         if self.active_result_set:
             self._close_and_clear_active_result_set()
+
+    @property
+    def query_id(self) -> Optional[str]:
+        """
+        This attribute is an identifier of last executed query.
+
+        This attribute will be ``None`` if the cursor has not had an operation
+        invoked via the execute method yet, or if cursor was closed.
+        """
+        if self.active_op_handle is not None:
+            return str(UUID(bytes=self.active_op_handle.operationId.guid))
+        return None
 
     @property
     def description(self) -> Optional[List[Tuple]]:

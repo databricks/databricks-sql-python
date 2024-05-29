@@ -1,9 +1,9 @@
 #
 # It implements all the cloud specific OAuth configuration/metadata
 #
-#   Azure: It uses AAD
+#   Azure:  It uses Databricks internal IdP or Azure AD
 #   AWS: It uses Databricks internal IdP
-#   GCP: Not support yet
+#   GCP: It uses Databricks internal IdP
 #
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -21,6 +21,7 @@ class OAuthScope:
 class CloudType(Enum):
     AWS = "aws"
     AZURE = "azure"
+    GCP = "gcp"
 
 
 DATABRICKS_AWS_DOMAINS = [
@@ -34,6 +35,10 @@ DATABRICKS_AZURE_DOMAINS = [
     ".databricks.azure.cn",
     ".databricks.azure.us",
 ]
+DATABRICKS_GCP_DOMAINS = [".gcp.databricks.com"]
+
+# Domain supported by Databricks InHouse OAuth
+DATABRICKS_OAUTH_AZURE_DOMAINS = [".azuredatabricks.net"]
 
 
 # Infer cloud type from Databricks SQL instance hostname
@@ -45,8 +50,18 @@ def infer_cloud_from_host(hostname: str) -> Optional[CloudType]:
         return CloudType.AZURE
     elif any(e for e in DATABRICKS_AWS_DOMAINS if host.endswith(e)):
         return CloudType.AWS
+    elif any(e for e in DATABRICKS_GCP_DOMAINS if host.endswith(e)):
+        return CloudType.GCP
     else:
         return None
+
+
+def is_supported_databricks_oauth_host(hostname: str) -> bool:
+    host = hostname.lower().replace("https://", "").split("/")[0]
+    domains = (
+        DATABRICKS_AWS_DOMAINS + DATABRICKS_GCP_DOMAINS + DATABRICKS_OAUTH_AZURE_DOMAINS
+    )
+    return any(e for e in domains if host.endswith(e))
 
 
 def get_databricks_oidc_url(hostname: str):
@@ -94,7 +109,7 @@ class AzureOAuthEndpointCollection(OAuthEndpointCollection):
         return "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
 
-class AwsOAuthEndpointCollection(OAuthEndpointCollection):
+class InHouseOAuthEndpointCollection(OAuthEndpointCollection):
     def get_scopes_mapping(self, scopes: List[str]) -> List[str]:
         # No scope mapping in AWS
         return scopes.copy()
@@ -108,10 +123,18 @@ class AwsOAuthEndpointCollection(OAuthEndpointCollection):
         return f"{idp_url}/.well-known/oauth-authorization-server"
 
 
-def get_oauth_endpoints(cloud: CloudType) -> Optional[OAuthEndpointCollection]:
-    if cloud == CloudType.AWS:
-        return AwsOAuthEndpointCollection()
+def get_oauth_endpoints(
+    hostname: str, use_azure_auth: bool
+) -> Optional[OAuthEndpointCollection]:
+    cloud = infer_cloud_from_host(hostname)
+
+    if cloud in [CloudType.AWS, CloudType.GCP]:
+        return InHouseOAuthEndpointCollection()
     elif cloud == CloudType.AZURE:
-        return AzureOAuthEndpointCollection()
+        return (
+            InHouseOAuthEndpointCollection()
+            if is_supported_databricks_oauth_host(hostname) and not use_azure_auth
+            else AzureOAuthEndpointCollection()
+        )
     else:
         return None

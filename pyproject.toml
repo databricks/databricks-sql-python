@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sql-connector"
-version = "2.9.3"
+version = "3.1.2"
 description = "Databricks SQL Connector for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
@@ -9,27 +9,24 @@ packages = [{ include = "databricks", from = "src" }]
 include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
-python = "^3.7.1"
+python = "^3.8.0"
 thrift = "^0.16.0"
 pandas = [
-    { version = ">=1.2.5,<1.4.0", python = ">=3.7,<3.8" },
-    { version = ">=1.2.5,<3.0.0", python = ">=3.8" },
+    { version = ">=1.2.5,<2.2.0", python = ">=3.8" }
 ]
-pyarrow = [
-    { version = ">=6.0.0", python = ">=3.7,<3.11" },
-    { version = ">=10.0.1", python = ">=3.11" },
-]
+pyarrow = ">=14.0.1,<17"
+
 lz4 = "^4.0.2"
 requests = "^2.18.1"
 oauthlib = "^3.1.0"
 numpy = [
-    { version = ">=1.16.6", python = ">=3.7,<3.11" },
+    { version = ">=1.16.6", python = ">=3.8,<3.11" },
     { version = ">=1.23.4", python = ">=3.11" },
 ]
 sqlalchemy = { version = ">=2.0.21", optional = true }
 openpyxl = "^3.0.10"
 alembic = { version = "^1.0.11", optional = true }
-urllib3 = ">=1.0"
+urllib3 = ">=1.26"
 
 [tool.poetry.extras]
 sqlalchemy = ["sqlalchemy"]
@@ -61,6 +58,7 @@ exclude = ['ttypes\.py$', 'TCLIService\.py$']
 exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
 
 [tool.pytest.ini_options]
+markers = {"reviewed" = "Test case has been reviewed by Databricks"}
 minversion = "6.0"
 log_cli = "false"
 log_cli_level = "INFO"

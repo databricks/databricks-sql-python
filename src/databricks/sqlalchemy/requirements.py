@@ -160,6 +160,18 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
         return sqlalchemy.testing.exclusions.open()
 
     @property
+    def comment_reflection(self):
+        """Indicates if the database support table comment reflection"""
+        return sqlalchemy.testing.exclusions.open()
+
+    @property
+    def comment_reflection_full_unicode(self):
+        """Indicates if the database support table comment reflection in the
+        full unicode range, including emoji etc.
+        """
+        return sqlalchemy.testing.exclusions.open()
+
+    @property
     def temp_table_reflection(self):
         """ComponentReflection test is intricate and simply cannot function without this exclusion being defined here.
         This happens because we cannot skip individual combinations used in ComponentReflection test.
@@ -226,5 +238,12 @@ class Requirements(sqlalchemy.testing.requirements.SuiteRequirements):
     def denormalized_names(self):
         """Target database must have 'denormalized', i.e.
         UPPERCASE as case insensitive names."""
+
+        return sqlalchemy.testing.exclusions.open()
+
+    @property
+    def time_timezone(self):
+        """target dialect supports representation of Python
+        datetime.time() with tzinfo with Time(timezone=True)."""
 
         return sqlalchemy.testing.exclusions.open()

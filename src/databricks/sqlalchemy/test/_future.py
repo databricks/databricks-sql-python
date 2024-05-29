@@ -13,9 +13,7 @@ from databricks.sqlalchemy.test._unsupported import (
     ComponentReflectionTest,
     ComponentReflectionTestExtra,
     CTETest,
-    FutureTableDDLTest,
     InsertBehaviorTest,
-    TableDDLTest,
 )
 from sqlalchemy.testing.suite import (
     ArrayTest,
@@ -24,7 +22,6 @@ from sqlalchemy.testing.suite import (
     CollateTest,
     ComputedColumnTest,
     ComputedReflectionTest,
-    DateTimeTZTest,
     DifficultParametersTest,
     FutureWeCanSetDefaultSchemaWEventsTest,
     IdentityColumnTest,
@@ -35,7 +32,6 @@ from sqlalchemy.testing.suite import (
     QuotedNameArgumentTest,
     RowCountTest,
     SimpleUpdateDeleteTest,
-    TimeTZTest,
     WeCanSetDefaultSchemaWEventsTest,
 )
 
@@ -55,10 +51,8 @@ class FutureFeature(Enum):
     PROVISION = "event-driven engine configuration"
     REGEXP = "_visit_regexp"
     SANE_ROWCOUNT = "sane_rowcount support"
-    TBL_COMMENTS = "table comment reflection"
     TBL_OPTS = "get_table_options method"
     TEST_DESIGN = "required test-fixture overrides"
-    TIMEZONE = "timezone handling for DateTime() or Time() types"
     TUPLE_LITERAL = "tuple-like IN markers completely"
     UUID = "native Uuid() type"
     VIEW_DEF = "get_view_definition method"
@@ -203,26 +197,6 @@ class LikeFunctionsTest(LikeFunctionsTest):
 
 
 @pytest.mark.reviewed
-@pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
-class DateTimeTZTest(DateTimeTZTest):
-    """When I initially implemented DateTime type handling, I started using TIMESTAMP_NTZ because
-    that's the default behaviour of the DateTime() type and the other tests passed. I simply missed
-    this group of tests. Will need to modify the compilation and result_processor for our type override
-    so that we can pass both DateTimeTZTest and DateTimeTest. Currently, only DateTimeTest passes.
-    """
-
-    pass
-
-
-@pytest.mark.reviewed
-@pytest.mark.skip(render_future_feature(FutureFeature.TIMEZONE, True))
-class TimeTZTest(TimeTZTest):
-    """Similar to DateTimeTZTest, this should be possible for the dialect since we can override type compilation
-    and processing in _types.py. Implementation has been deferred.
-    """
-
-
-@pytest.mark.reviewed
 @pytest.mark.skip(render_future_feature(FutureFeature.COLLATE))
 class CollateTest(CollateTest):
     """This is supported in Databricks. Not implemented here."""
@@ -274,36 +248,7 @@ class FutureWeCanSetDefaultSchemaWEventsTest(FutureWeCanSetDefaultSchemaWEventsT
     pass
 
 
-class FutureTableDDLTest(FutureTableDDLTest):
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_add_table_comment(self):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_drop_table_comment(self):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-
-class TableDDLTest(TableDDLTest):
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_add_table_comment(self, connection):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_drop_table_comment(self, connection):
-        """We could use requirements.comment_reflection here to disable this but prefer a more meaningful skip message"""
-        pass
-
-
 class ComponentReflectionTest(ComponentReflectionTest):
-    @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_COMMENTS))
-    def test_get_multi_table_comment(self):
-        """There are 84 permutations of this test that are skipped."""
-        pass
-
     @pytest.mark.skip(reason=render_future_feature(FutureFeature.TBL_OPTS, True))
     def test_multi_get_table_options_tables(self):
         """It's not clear what the expected ouput from this method would even _be_. Requires research."""
@@ -319,6 +264,10 @@ class ComponentReflectionTest(ComponentReflectionTest):
 
     @pytest.mark.skip(render_future_feature(FutureFeature.MULTI_PK))
     def test_get_multi_pk_constraint(self):
+        pass
+
+    @pytest.mark.skip(render_future_feature(FutureFeature.CHECK))
+    def test_get_multi_check_constraints(self):
         pass
 
 

@@ -30,6 +30,7 @@ class CommandType(Enum):
     EXECUTE_STATEMENT = "ExecuteStatement"
     CLOSE_SESSION = "CloseSession"
     CLOSE_OPERATION = "CloseOperation"
+    GET_OPERATION_STATUS = "GetOperationStatus"
     OTHER = "Other"
 
     @classmethod
@@ -282,8 +283,10 @@ class DatabricksRetryPolicy(Retry):
         """
         retry_after = self.get_retry_after(response)
         if retry_after:
-            self.check_proposed_wait(retry_after)
-            time.sleep(retry_after)
+            backoff = self.get_backoff_time()
+            proposed_wait = max(backoff, retry_after)
+            self.check_proposed_wait(proposed_wait)
+            time.sleep(proposed_wait)
             return True
 
         return False
@@ -314,14 +317,15 @@ class DatabricksRetryPolicy(Retry):
             2. The request received a 501 (Not Implemented) status code
                Because this request can never succeed.
             3. The request received a 404 (Not Found) code and the request CommandType
-               was CloseSession or CloseOperation. This code indicates that the session
-               or cursor was already closed. Further retries will always return the same
-               code.
+               was GetOperationStatus, CloseSession or CloseOperation. This code indicates
+               that the command, session or cursor was already closed. Further retries will
+               always return the same code.
             4. The request CommandType was ExecuteStatement and the HTTP code does not
                appear in the default status_forcelist or force_dangerous_codes list. By
                default, this means ExecuteStatement is only retried for codes 429 and 503.
                This limit prevents automatically retrying non-idempotent commands that could
                be destructive.
+            5. The request received a 403 response, because this can never succeed.
 
 
         Q: What about OSErrors and Redirects?
@@ -335,6 +339,11 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 200:
             return False, "200 codes are not retried"
 
+        if status_code == 403:
+            raise NonRecoverableNetworkError(
+                "Received 403 - FORBIDDEN. Confirm your authentication credentials."
+            )
+
         # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
         if status_code == 501:
             raise NonRecoverableNetworkError("Received code 501 from server.")
@@ -342,6 +351,13 @@ class DatabricksRetryPolicy(Retry):
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):  # type: ignore
             return False, "Only POST requests are retried"
+
+        # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
+        if status_code == 404 and self.command_type == CommandType.GET_OPERATION_STATUS:
+            return (
+                False,
+                "GetOperationStatus received 404 code from Databricks. Operation was canceled.",
+            )
 
         # Request failed with 404 because CloseSession returns 404 if you repeat the request.
         if (

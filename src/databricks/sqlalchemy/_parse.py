@@ -5,6 +5,8 @@ import sqlalchemy
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.engine.interfaces import ReflectedColumn
 
+from databricks.sqlalchemy import _types as type_overrides
+
 """
 This module contains helper functions that can parse the contents
 of metadata and exceptions received from DBR. These are mostly just
@@ -249,6 +251,20 @@ def match_dte_rows_by_value(dte_output: List[Dict[str, str]], match: str) -> Lis
     return output_rows
 
 
+def match_dte_rows_by_key(dte_output: List[Dict[str, str]], match: str) -> List[dict]:
+    """Return a list of dictionaries containing only the col_name:data_type pairs where the `col_name`
+    value contains the match argument.
+    """
+
+    output_rows = []
+
+    for row_dict in dte_output:
+        if match in row_dict["col_name"]:
+            output_rows.append(row_dict)
+
+    return output_rows
+
+
 def get_fk_strings_from_dte_output(dte_output: List[Dict[str, str]]) -> List[dict]:
     """If the DESCRIBE TABLE EXTENDED output contains foreign key constraints, return a list of dictionaries,
     one dictionary per defined constraint
@@ -273,6 +289,15 @@ def get_pk_strings_from_dte_output(
     return output
 
 
+def get_comment_from_dte_output(dte_output: List[Dict[str, str]]) -> Optional[str]:
+    """Returns the value of the first "Comment" col_name data in dte_output"""
+    output = match_dte_rows_by_key(dte_output, "Comment")
+    if not output:
+        return None
+    else:
+        return output[0]["data_type"]
+
+
 # The keys of this dictionary are the values we expect to see in a
 # TGetColumnsRequest's .TYPE_NAME attribute.
 # These are enumerated in ttypes.py as class TTypeId.
@@ -280,6 +305,7 @@ def get_pk_strings_from_dte_output(
 GET_COLUMNS_TYPE_MAP = {
     "boolean": sqlalchemy.types.Boolean,
     "smallint": sqlalchemy.types.SmallInteger,
+    "tinyint": type_overrides.TINYINT,
     "int": sqlalchemy.types.Integer,
     "bigint": sqlalchemy.types.BigInteger,
     "float": sqlalchemy.types.Float,
@@ -293,7 +319,8 @@ GET_COLUMNS_TYPE_MAP = {
     "struct": sqlalchemy.types.String,
     "uniontype": sqlalchemy.types.String,
     "decimal": sqlalchemy.types.Numeric,
-    "timestamp": sqlalchemy.types.DateTime,
+    "timestamp": type_overrides.TIMESTAMP,
+    "timestamp_ntz": type_overrides.TIMESTAMP_NTZ,
     "date": sqlalchemy.types.Date,
 }
 
@@ -351,6 +378,7 @@ def parse_column_info_from_tgetcolumnsresponse(thrift_resp_row) -> ReflectedColu
         "type": final_col_type,
         "nullable": bool(thrift_resp_row.NULLABLE),
         "default": thrift_resp_row.COLUMN_DEF,
+        "comment": thrift_resp_row.REMARKS or None,
     }
 
     # TODO: figure out how to return sqlalchemy.interfaces in a way that mypy respects

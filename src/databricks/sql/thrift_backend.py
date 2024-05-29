@@ -129,7 +129,7 @@ class ThriftBackend:
         #  (defaults to 900)
         # _enable_v3_retries
         # Whether to use the DatabricksRetryPolicy implemented in urllib3
-        # (defaults to False)
+        # (defaults to True)
         # _retry_max_redirects
         #  An integer representing the maximum number of redirects to follow for a request.
         #  This number must be <= _retry_stop_after_attempts_count.
@@ -141,9 +141,11 @@ class ThriftBackend:
         if kwargs.get("_connection_uri"):
             uri = kwargs.get("_connection_uri")
         elif server_hostname and http_path:
-            uri = "https://{host}:{port}/{path}".format(
-                host=server_hostname, port=port, path=http_path.lstrip("/")
+            uri = "{host}:{port}/{path}".format(
+                host=server_hostname.rstrip("/"), port=port, path=http_path.lstrip("/")
             )
+            if not uri.startswith("https://"):
+                uri = "https://" + uri
         else:
             raise ValueError("No valid connection settings.")
 
@@ -185,7 +187,13 @@ class ThriftBackend:
         self._auth_provider = auth_provider
 
         # Connector version 3 retry approach
-        self.enable_v3_retries = kwargs.get("_enable_v3_retries", False)
+        self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
+
+        if not self.enable_v3_retries:
+            logger.warning(
+                "Legacy retry behavior is enabled for this connection."
+                " This behaviour is deprecated and will be removed in a future release."
+            )
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}
@@ -368,8 +376,8 @@ class ThriftBackend:
             # encapsulate retry checks, returns None || delay-in-secs
             # Retry IFF 429/503 code + Retry-After header set
             http_code = getattr(self._transport, "code", None)
-            retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
-            if http_code in [429, 503] and retry_after:
+            retry_after = getattr(self._transport, "headers", {}).get("Retry-After", 1)
+            if http_code in [429, 503]:
                 # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
                 return bound_retry_delay(attempt, int(retry_after))
             return None
@@ -395,9 +403,6 @@ class ThriftBackend:
                     self._transport.startRetryTimer()
 
                 response = method(request)
-
-                # Calling `close()` here releases the active HTTP connection back to the pool
-                self._transport.close()
 
                 # We need to call type(response) here because thrift doesn't implement __name__ attributes for thrift responses
                 logger.debug(
@@ -460,6 +465,10 @@ class ThriftBackend:
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
+            finally:
+                # Calling `close()` here releases the active HTTP connection back to the pool
+                self._transport.close()
+
             return RequestErrorInfo(
                 error=error,
                 error_message=error_message,
