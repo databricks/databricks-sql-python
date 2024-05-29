@@ -1,5 +1,9 @@
 # Release History
 
+# (Unreleased)
+
+- Fix: our logger would raise an uncaught exception under certain oauth error conditions
+
 # 3.1.2 (2024-04-18)
 
 - Remove broken cookie code (#379)
