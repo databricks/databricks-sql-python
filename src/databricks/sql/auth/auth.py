@@ -8,12 +8,11 @@ from databricks.sql.auth.authenticators import (
     ExternalAuthProvider,
     DatabricksOAuthProvider,
 )
-from databricks.sql.auth.endpoint import infer_cloud_from_host, CloudType
-from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 
 class AuthType(Enum):
     DATABRICKS_OAUTH = "databricks-oauth"
+    AZURE_OAUTH = "azure-oauth"
     # other supported types (access_token, user/pass) can be inferred
     # we can add more types as needed later
 
@@ -51,7 +50,7 @@ class ClientContext:
 def get_auth_provider(cfg: ClientContext):
     if cfg.credentials_provider:
         return ExternalAuthProvider(cfg.credentials_provider)
-    if cfg.auth_type == AuthType.DATABRICKS_OAUTH.value:
+    if cfg.auth_type in [AuthType.DATABRICKS_OAUTH.value, AuthType.AZURE_OAUTH.value]:
         assert cfg.oauth_redirect_port_range is not None
         assert cfg.oauth_client_id is not None
         assert cfg.oauth_scopes is not None
@@ -62,6 +61,7 @@ def get_auth_provider(cfg: ClientContext):
             cfg.oauth_redirect_port_range,
             cfg.oauth_client_id,
             cfg.oauth_scopes,
+            cfg.auth_type,
         )
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
@@ -87,19 +87,22 @@ def normalize_host_name(hostname: str):
     return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
 
 
-def get_client_id_and_redirect_port(hostname: str):
+def get_client_id_and_redirect_port(use_azure_auth: bool):
     return (
         (PYSQL_OAUTH_CLIENT_ID, PYSQL_OAUTH_REDIRECT_PORT_RANGE)
-        if infer_cloud_from_host(hostname) == CloudType.AWS
+        if not use_azure_auth
         else (PYSQL_OAUTH_AZURE_CLIENT_ID, PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE)
     )
 
 
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
-    (client_id, redirect_port_range) = get_client_id_and_redirect_port(hostname)
+    auth_type = kwargs.get("auth_type")
+    (client_id, redirect_port_range) = get_client_id_and_redirect_port(
+        auth_type == AuthType.AZURE_OAUTH.value
+    )
     cfg = ClientContext(
         hostname=normalize_host_name(hostname),
-        auth_type=kwargs.get("auth_type"),
+        auth_type=auth_type,
         access_token=kwargs.get("access_token"),
         username=kwargs.get("_username"),
         password=kwargs.get("_password"),

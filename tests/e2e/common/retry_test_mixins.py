@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import time
 from typing import List
 from unittest.mock import MagicMock, PropertyMock, patch
 
@@ -25,7 +26,7 @@ class Client429ResponseMixin:
                 self.assertEqual(rows[0][0], 1)
 
     def test_client_should_not_retry_429_if_RateLimitRetry_is_0(self):
-        with self.assertRaises(self.error_type) as cm:
+        with pytest.raises(self.error_type) as cm:
             with self.cursor(self.conf_to_disable_rate_limit_retries) as cursor:
                 for _ in range(10):
                     cursor.execute("SELECT 1")
@@ -51,16 +52,14 @@ class Client503ResponseMixin:
             cursor.fetchall()
 
     def _test_retry_disabled_with_message(self, error_msg_substring, exception_type):
-        with self.assertRaises(exception_type) as cm:
+        with pytest.raises(exception_type) as cm:
             with self.connection(self.conf_to_disable_temporarily_unavailable_retries):
                 pass
-        self.assertIn(error_msg_substring, str(cm.exception))
+        assert error_msg_substring in str(cm.exception)
 
 
 @contextmanager
-def mocked_server_response(
-    status: int = 200, headers: dict = {}, redirect_location: str = None
-):
+def mocked_server_response(status: int = 200, headers: dict = {}, redirect_location: str = None):
     """Context manager for patching urllib3 responses"""
 
     # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
@@ -98,9 +97,7 @@ def mock_sequential_server_responses(responses: List[dict]):
     # Each resp should have these members:
 
     for resp in responses:
-        _mock = MagicMock(
-            headers=resp["headers"], msg=resp["headers"], status=resp["status"]
-        )
+        _mock = MagicMock(headers=resp["headers"], msg=resp["headers"], status=resp["status"])
         _mock.get_redirect_location.return_value = (
             False if resp["redirect_location"] is None else resp["redirect_location"]
         )
@@ -152,7 +149,7 @@ class PySQLRetryTestsMixin:
             "urllib3.connectionpool.HTTPSConnectionPool._validate_conn",
         ) as mock_validate_conn:
             mock_validate_conn.side_effect = OSError("Some arbitrary network error")
-            with self.assertRaises(MaxRetryError) as cm:
+            with pytest.raises(MaxRetryError) as cm:
                 with self.connection(extra_params=self._retry_policy) as conn:
                     pass
 
@@ -165,10 +162,37 @@ class PySQLRetryTestsMixin:
             before raising an exception
         """
         with mocked_server_response(status=404) as mock_obj:
-            with self.assertRaises(MaxRetryError) as cm:
+            with pytest.raises(MaxRetryError) as cm:
                 with self.connection(extra_params=self._retry_policy) as conn:
                     pass
             assert mock_obj.return_value.getresponse.call_count == 6
+
+    def test_retry_exponential_backoff(self):
+        """GIVEN the retry policy is configured for reasonable exponential backoff
+        WHEN the server sends nothing but 429 responses with retry-afters
+        THEN the connector will use those retry-afters as a floor
+        """
+        retry_policy = self._retry_policy.copy()
+        retry_policy["_retry_delay_min"] = 1
+
+        time_start = time.time()
+        with mocked_server_response(status=429, headers={"Retry-After": "3"}) as mock_obj:
+            with pytest.raises(RequestError) as cm:
+                with self.connection(extra_params=retry_policy) as conn:
+                    pass
+
+            duration = time.time() - time_start
+            assert isinstance(cm.value.args[1], MaxRetryDurationError)
+
+            # With setting delay_min to 1, the expected retry delays should be:
+            # 3, 3, 4
+            # The first 2 retries are allowed, the 3rd retry puts the total duration over the limit
+            # of 10 seconds
+            assert mock_obj.return_value.getresponse.call_count == 3
+            assert duration > 6
+
+            # Should be less than 7, but this is a safe margin for CI/CD slowness
+            assert duration < 10
 
     def test_retry_max_duration_not_exceeded(self):
         """GIVEN the max attempt duration of 10 seconds
@@ -176,10 +200,10 @@ class PySQLRetryTestsMixin:
         THEN the connector raises a MaxRetryDurationError
         """
         with mocked_server_response(status=429, headers={"Retry-After": "60"}):
-            with self.assertRaises(RequestError) as cm:
+            with pytest.raises(RequestError) as cm:
                 with self.connection(extra_params=self._retry_policy) as conn:
                     pass
-            assert isinstance(cm.exception.args[1], MaxRetryDurationError)
+            assert isinstance(cm.value.args[1], MaxRetryDurationError)
 
     def test_retry_abort_non_recoverable_error(self):
         """GIVEN the server returns a code 501
@@ -189,10 +213,10 @@ class PySQLRetryTestsMixin:
 
         # Code 501 is a Not Implemented error
         with mocked_server_response(status=501):
-            with self.assertRaises(RequestError) as cm:
+            with pytest.raises(RequestError) as cm:
                 with self.connection(extra_params=self._retry_policy) as conn:
                     pass
-                assert isinstance(cm.exception.args[1], NonRecoverableNetworkError)
+                assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
 
     def test_retry_abort_unsafe_execute_statement_retry_condition(self):
         """GIVEN the server sends a code other than 429 or 503
@@ -203,9 +227,9 @@ class PySQLRetryTestsMixin:
             with conn.cursor() as cursor:
                 # Code 502 is a Bad Gateway, which we commonly see in production under heavy load
                 with mocked_server_response(status=502):
-                    with self.assertRaises(RequestError) as cm:
+                    with pytest.raises(RequestError) as cm:
                         cursor.execute("Not a real query")
-                        assert isinstance(cm.exception.args[1], UnsafeToRetryError)
+                        assert isinstance(cm.value.args[1], UnsafeToRetryError)
 
     def test_retry_dangerous_codes(self):
         """GIVEN the server sends a dangerous code and the user forced this to be retryable
@@ -227,14 +251,12 @@ class PySQLRetryTestsMixin:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
                     with mocked_server_response(status=dangerous_code):
-                        with self.assertRaises(RequestError) as cm:
+                        with pytest.raises(RequestError) as cm:
                             cursor.execute("Not a real query")
-                            assert isinstance(cm.exception.args[1], UnsafeToRetryError)
+                            assert isinstance(cm.value.args[1], UnsafeToRetryError)
 
         # Prove that these codes are retried if forced by the user
-        with self.connection(
-            extra_params={**self._retry_policy, **additional_settings}
-        ) as conn:
+        with self.connection(extra_params={**self._retry_policy, **additional_settings}) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
                     with mocked_server_response(status=dangerous_code):
@@ -262,7 +284,7 @@ class PySQLRetryTestsMixin:
                         cursor.execute("This query never reaches the server")
                     assert mock_obj.return_value.getresponse.call_count == 2
 
-    def test_retry_abort_close_session_on_404(self):
+    def test_retry_abort_close_session_on_404(self, caplog):
         """GIVEN the connector sends a CloseSession command
         WHEN server sends a 404 (which is normally retried)
         THEN nothing is retried because 404 means the session already closed
@@ -277,22 +299,10 @@ class PySQLRetryTestsMixin:
 
         with self.connection(extra_params={**self._retry_policy}) as conn:
             with mock_sequential_server_responses(responses):
-                with self.assertLogs(
-                    "databricks.sql",
-                    level="INFO",
-                ) as cm:
-                    conn.close()
-                    expected_message_was_found = False
-                    for log in cm.output:
-                        if expected_message_was_found:
-                            break
-                        target = "Session was closed by a prior request"
-                        expected_message_was_found = target in log
-            self.assertTrue(
-                expected_message_was_found, "Did not find expected log messages"
-            )
+                conn.close()
+                assert "Session was closed by a prior request" in caplog.text
 
-    def test_retry_abort_close_operation_on_404(self):
+    def test_retry_abort_close_operation_on_404(self, caplog):
         """GIVEN the connector sends a CancelOperation command
         WHEN server sends a 404 (which is normally retried)
         THEN nothing is retried because 404 means the operation was already canceled
@@ -315,20 +325,8 @@ class PySQLRetryTestsMixin:
                     # This call guarantees we have an open cursor at the server
                     curs.execute("SELECT 1")
                     with mock_sequential_server_responses(responses):
-                        with self.assertLogs(
-                            "databricks.sql",
-                            level="INFO",
-                        ) as cm:
-                            curs.close()
-                        expected_message_was_found = False
-                        for log in cm.output:
-                            if expected_message_was_found:
-                                break
-                            target = "Operation was canceled by a prior request"
-                            expected_message_was_found = target in log
-                self.assertTrue(
-                    expected_message_was_found, "Did not find expected log messages"
-                )
+                        curs.close()
+                        assert "Operation was canceled by a prior request" in caplog.text
 
     def test_retry_max_redirects_raises_too_many_redirects_exception(self):
         """GIVEN the connector is configured with a custom max_redirects
@@ -339,10 +337,8 @@ class PySQLRetryTestsMixin:
         max_redirects, expected_call_count = 1, 2
 
         # Code 302 is a redirect
-        with mocked_server_response(
-            status=302, redirect_location="/foo.bar"
-        ) as mock_obj:
-            with self.assertRaises(MaxRetryError) as cm:
+        with mocked_server_response(status=302, redirect_location="/foo.bar") as mock_obj:
+            with pytest.raises(MaxRetryError) as cm:
                 with self.connection(
                     extra_params={
                         **self._retry_policy,
@@ -350,7 +346,7 @@ class PySQLRetryTestsMixin:
                     }
                 ):
                     pass
-            assert "too many redirects" == str(cm.exception.reason)
+            assert "too many redirects" == str(cm.value.reason)
             # Total call count should be 2 (original + 1 retry)
             assert mock_obj.return_value.getresponse.call_count == expected_call_count
 
@@ -363,10 +359,8 @@ class PySQLRetryTestsMixin:
         _stop_after_attempts_count is enforced.
         """
         # Code 302 is a redirect
-        with mocked_server_response(
-            status=302, redirect_location="/foo.bar/"
-        ) as mock_obj:
-            with self.assertRaises(MaxRetryError) as cm:
+        with mocked_server_response(status=302, redirect_location="/foo.bar/") as mock_obj:
+            with pytest.raises(MaxRetryError) as cm:
                 with self.connection(
                     extra_params={
                         **self._retry_policy,
@@ -391,51 +385,39 @@ class PySQLRetryTestsMixin:
 
         with pytest.raises(RequestError) as cm:
             with mock_sequential_server_responses(responses):
-                with self.connection(
-                    extra_params={**self._retry_policy, **additional_settings}
-                ):
+                with self.connection(extra_params={**self._retry_policy, **additional_settings}):
                     pass
 
         # The error should be the result of the 500, not because of too many requests.
         assert "too many redirects" not in str(cm.value.message)
         assert "Error during request to server" in str(cm.value.message)
 
-    def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(self):
-        with self.assertLogs(
-            "databricks.sql",
-            level="WARN",
-        ) as cm:
-            with self.connection(
-                extra_params={
-                    **self._retry_policy,
-                    **{
-                        "_retry_max_redirects": 100,
-                        "_retry_stop_after_attempts_count": 1,
-                    },
-                }
-            ):
-                pass
-            expected_message_was_found = False
-            for log in cm.output:
-                if expected_message_was_found:
-                    break
-                target = "it will have no affect!"
-                expected_message_was_found = target in log
+    def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(self, caplog):
+        with self.connection(
+            extra_params={
+                **self._retry_policy,
+                **{
+                    "_retry_max_redirects": 100,
+                    "_retry_stop_after_attempts_count": 1,
+                },
+            }
+        ):
+            assert "it will have no affect!" in caplog.text
 
-        assert expected_message_was_found, "Did not find expected log messages"
+    def test_retry_legacy_behavior_warns_user(self, caplog):
+        with self.connection(extra_params={**self._retry_policy, "_enable_v3_retries": False}):
+            assert "Legacy retry behavior is enabled for this connection." in caplog.text
 
-    def test_retry_legacy_behavior_warns_user(self):
-        with self.assertLogs(
-            "databricks.sql",
-            level="WARN",
-        ) as cm:
-            with self.connection(
-                extra_params={**self._retry_policy, "_enable_v3_retries": False}
-            ):
-                expected_message_was_found = False
-                for log in cm.output:
-                    if expected_message_was_found:
-                        break
-                    target = "Legacy retry behavior is enabled for this connection."
-                    expected_message_was_found = target in log
-            assert expected_message_was_found, "Did not find expected log messages"
+
+    def test_403_not_retried(self):
+        """GIVEN the server returns a code 403
+        WHEN the connector receives this response
+        THEN nothing is retried and an exception is raised
+        """
+
+        # Code 403 is a Forbidden error
+        with mocked_server_response(status=403):
+            with pytest.raises(RequestError) as cm:
+                with self.connection(extra_params=self._retry_policy) as conn:
+                    pass
+                assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
