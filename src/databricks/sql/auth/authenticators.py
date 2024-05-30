@@ -18,6 +18,7 @@ class AuthProvider:
 
 HeaderFactory = Callable[[], Dict[str, str]]
 
+
 # In order to keep compatibility with SDK
 class CredentialsProvider(abc.ABC):
     """CredentialsProvider is the protocol (call-side interface)
@@ -69,16 +70,13 @@ class DatabricksOAuthProvider(AuthProvider):
         redirect_port_range: List[int],
         client_id: str,
         scopes: List[str],
+        auth_type: str = "databricks-oauth",
     ):
         try:
-            cloud_type = infer_cloud_from_host(hostname)
-            if not cloud_type:
-                raise NotImplementedError("Cannot infer the cloud type from hostname")
-
-            idp_endpoint = get_oauth_endpoints(cloud_type)
+            idp_endpoint = get_oauth_endpoints(hostname, auth_type == "azure-oauth")
             if not idp_endpoint:
                 raise NotImplementedError(
-                    f"OAuth is not supported for cloud ${cloud_type.value}"
+                    f"OAuth is not supported for host ${hostname}"
                 )
 
             # Convert to the corresponding scopes in the corresponding IdP

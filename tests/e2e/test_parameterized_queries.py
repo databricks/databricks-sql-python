@@ -51,8 +51,10 @@ class Primitive(Enum):
     FLOAT = 3.15
     SMALLINT = 51
 
+
 class PrimitiveExtra(Enum):
     """These are not inferrable types. This Enum is used for parametrized tests."""
+
     TIMESTAMP_NTZ = datetime.datetime(2023, 9, 6, 3, 14, 27, 843)
     TINYINT = 20
 
@@ -108,7 +110,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         return self.inline_type_map[Primitive(value)]
 
     @pytest.fixture(scope="class")
-    def inline_table(self):
+    def inline_table(self, connection_details):
+        self.arguments = connection_details.copy()
         """This table is necessary to verify that a parameter sent with INLINE
         approach can actually write to its analogous data type.
 
@@ -164,8 +167,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             This is a no-op but is included to make the test-code easier to read.
         """
         target_column = self._get_inline_table_column(params.get("p"))
-        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
+        INSERT_QUERY = (
+            f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
+        )
+        SELECT_QUERY = (
+            f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
+        )
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
@@ -274,7 +281,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             (Primitive.FLOAT, FloatParameter),
             (Primitive.SMALLINT, SmallIntParameter),
             (PrimitiveExtra.TIMESTAMP_NTZ, TimestampNTZParameter),
-            (PrimitiveExtra.TINYINT, TinyIntParameter)
+            (PrimitiveExtra.TINYINT, TinyIntParameter),
         ],
     )
     def test_dbsqlparameter_single(
@@ -301,15 +308,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
-        extra_args = (
-            {"use_inline_params": use_inline_params} if use_inline_params else {}
-        )
+        extra_args = {"use_inline_params": use_inline_params} if use_inline_params else {}
 
         with self.connection(extra_params=extra_args) as conn:
             with conn.cursor() as cursor:
-                with self.patch_server_supports_native_params(
-                    supports_native_params=True
-                ):
+                with self.patch_server_supports_native_params(supports_native_params=True):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
                     if use_inline_params is True:
                         assert (
@@ -351,8 +354,10 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
     def test_readme_example(self):
         with self.cursor() as cursor:
-            result = cursor.execute('SELECT :param `p`, * FROM RANGE(10)', {"param": "foo"}).fetchall()
-        
+            result = cursor.execute(
+                "SELECT :param `p`, * FROM RANGE(10)", {"param": "foo"}
+            ).fetchall()
+
         assert len(result) == 10
         assert result[0].p == "foo"
 
@@ -397,9 +402,7 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         query = "SELECT 'samsonite', %s WHERE 'samsonite' LIKE '%sonite'"
         params = ["luggage"]
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
-            with pytest.raises(
-                TypeError, match="not enough arguments for format string"
-            ):
+            with pytest.raises(TypeError, match="not enough arguments for format string"):
                 cursor.execute(query, parameters=params)
 
     def test_inline_named_dont_break_sql(self):
@@ -433,18 +436,18 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         a SQL LIKE wildcard %. This test proves that's the case.
         """
         query = "SELECT 1 `col` WHERE 'foo' LIKE '%'"
-        params ={"param": 'bar'}
+        params = {"param": "bar"}
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
             with pytest.raises(ValueError, match="unsupported format character"):
                 result = cursor.execute(query, parameters=params).fetchone()
 
     def test_native_like_wildcard_works(self):
-        """This is a mirror of test_inline_like_wildcard_breaks that proves that LIKE 
+        """This is a mirror of test_inline_like_wildcard_breaks that proves that LIKE
         wildcards work under the native approach.
         """
         query = "SELECT 1 `col` WHERE 'foo' LIKE '%'"
-        params ={"param": 'bar'}
+        params = {"param": "bar"}
         with self.cursor(extra_params={"use_inline_params": False}) as cursor:
             result = cursor.execute(query, parameters=params).fetchone()
-        
+
         assert result.col == 1

@@ -35,8 +35,10 @@ class LargeQueriesMixin:
 
         num_fetches = max(math.ceil(n / 10000), 1)
         latency_ms = int((time.time() - start_time) * 1000 / num_fetches), 1
-        print('Fetched {} rows with an avg latency of {} per fetch, '.format(n, latency_ms) +
-              'assuming 10K fetch size.')
+        print(
+            "Fetched {} rows with an avg latency of {} per fetch, ".format(n, latency_ms)
+            + "assuming 10K fetch size."
+        )
 
     def test_query_with_large_wide_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
@@ -50,14 +52,15 @@ class LargeQueriesMixin:
         self.arraysize = 1000
         with self.cursor() as cursor:
             for lz4_compression in [False, True]:
-                cursor.connection.lz4_compression=lz4_compression
+                cursor.connection.lz4_compression = lz4_compression
                 uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
-                cursor.execute("SELECT id, {uuids} FROM RANGE({rows})".format(uuids=uuids, rows=rows))
-                self.assertEqual(lz4_compression, cursor.active_result_set.lz4_compressed)
+                cursor.execute(
+                    "SELECT id, {uuids} FROM RANGE({rows})".format(uuids=uuids, rows=rows)
+                )
+                assert lz4_compression == cursor.active_result_set.lz4_compressed
                 for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
-                    self.assertEqual(row[0], row_id)  # Verify no rows are dropped in the middle.
-                    self.assertEqual(len(row[1]), 36)
-
+                    assert row[0] == row_id  # Verify no rows are dropped in the middle.
+                    assert len(row[1]) == 36
 
     def test_query_with_large_narrow_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
@@ -71,10 +74,10 @@ class LargeQueriesMixin:
         with self.cursor() as cursor:
             cursor.execute("SELECT * FROM RANGE({rows})".format(rows=rows))
             for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
-                self.assertEqual(row[0], row_id)
+                assert row[0] == row_id
 
     def test_long_running_query(self):
-        """ Incrementally increase query size until it takes at least 5 minutes,
+        """Incrementally increase query size until it takes at least 5 minutes,
         and asserts that the query completes successfully.
         """
         minutes = 60
@@ -85,20 +88,24 @@ class LargeQueriesMixin:
         scale_factor = 1
         with self.cursor() as cursor:
             while duration < min_duration:
-                self.assertLess(scale_factor, 512, msg="Detected infinite loop")
+                assert scale_factor < 512, "Detected infinite loop"
                 start = time.time()
 
-                cursor.execute("""SELECT count(*)
+                cursor.execute(
+                    """SELECT count(*)
                         FROM RANGE({scale}) x
                         JOIN RANGE({scale0}) y
                         ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%" 
-                        """.format(scale=scale_factor * scale0, scale0=scale0))
+                        """.format(
+                        scale=scale_factor * scale0, scale0=scale0
+                    )
+                )
 
-                n, = cursor.fetchone()
-                self.assertEqual(n, 0)
+                (n,) = cursor.fetchone()
+                assert n == 0
 
                 duration = time.time() - start
                 current_fraction = duration / min_duration
-                print('Took {} s with scale factor={}'.format(duration, scale_factor))
+                print("Took {} s with scale factor={}".format(duration, scale_factor))
                 # Extrapolate linearly to reach 5 min and add 50% padding to push over the limit
                 scale_factor = math.ceil(1.5 * scale_factor / current_fraction)

@@ -6,6 +6,7 @@ import requests
 import json
 import os
 import decimal
+from uuid import UUID
 
 from databricks.sql import __version__
 from databricks.sql import *
@@ -96,11 +97,8 @@ class Connection:
                 legacy purposes and will be deprecated in a future release. When this parameter is `True` you will see
                 a warning log message. To suppress this log message, set `use_inline_params="silent"`.
             auth_type: `str`, optional
-                `databricks-oauth` : to use oauth with fine-grained permission scopes, set to `databricks-oauth`.
-                This is currently in private preview for Databricks accounts on AWS.
-                This supports User to Machine OAuth authentication for Databricks on AWS with
-                any IDP configured. This is only for interactive python applications and open a browser window.
-                Note this is beta (private preview)
+                `databricks-oauth` : to use Databricks OAuth with fine-grained permission scopes, set to `databricks-oauth`.
+                `azure-oauth` : to use Microsoft Entra ID OAuth flow, set to `azure-oauth`.
 
             oauth_client_id: `str`, optional
                 custom oauth client_id. If not specified, it will use the built-in client_id of databricks-sql-python.
@@ -111,9 +109,9 @@ class Connection:
 
             experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
                 This has to be a class implementing `OAuthPersistence`.
-                When `auth_type` is set to `databricks-oauth` without persisting the oauth token in a persistence storage
-                the oauth tokens will only be maintained in memory and if the python process restarts the end user
-                will have to login again.
+                When `auth_type` is set to `databricks-oauth` or `azure-oauth` without persisting the oauth token in a
+                persistence storage the oauth tokens will only be maintained in memory and if the python process
+                restarts the end user will have to login again.
                 Note this is beta (private preview)
 
                 For persisting the oauth token in a prod environment you should subclass and implement OAuthPersistence
@@ -273,7 +271,8 @@ class Connection:
 
         return value
 
-    def __enter__(self):
+    # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
+    def __enter__(self) -> "Connection":
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -411,7 +410,8 @@ class Cursor:
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
-    def __enter__(self):
+    # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
+    def __enter__(self) -> "Cursor":
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -609,12 +609,15 @@ class Cursor:
                     "Local file operations are restricted to paths within the configured staging_allowed_local_path"
                 )
 
-        # TODO: Experiment with DBR sending real headers.
-        # The specification says headers will be in JSON format but the current null value is actually an empty list []
+        # May be real headers, or could be json string
+        headers = (
+            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
+        )
+
         handler_args = {
             "presigned_url": row.presignedUrl,
             "local_file": abs_localFile,
-            "headers": json.loads(row.headers or "{}"),
+            "headers": dict(headers) or {},
         }
 
         logger.debug(
@@ -1004,8 +1007,21 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
+        self.active_op_handle = None
         if self.active_result_set:
             self._close_and_clear_active_result_set()
+
+    @property
+    def query_id(self) -> Optional[str]:
+        """
+        This attribute is an identifier of last executed query.
+
+        This attribute will be ``None`` if the cursor has not had an operation
+        invoked via the execute method yet, or if cursor was closed.
+        """
+        if self.active_op_handle is not None:
+            return str(UUID(bytes=self.active_op_handle.operationId.guid))
+        return None
 
     @property
     def description(self) -> Optional[List[Tuple]]:

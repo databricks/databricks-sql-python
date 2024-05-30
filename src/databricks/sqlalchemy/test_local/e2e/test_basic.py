@@ -1,8 +1,7 @@
 import datetime
 import decimal
-import os
 import re
-from typing import List, Tuple, Union
+from typing import Tuple, Union, List
 from unittest import skipIf
 
 import pytest
@@ -57,12 +56,12 @@ def version_agnostic_select(object_to_select, *args, **kwargs):
         return select(object_to_select, *args, **kwargs)
 
 
-def version_agnostic_connect_arguments(catalog=None, schema=None) -> Tuple[str, dict]:
-    HOST = os.environ.get("host")
-    HTTP_PATH = os.environ.get("http_path")
-    ACCESS_TOKEN = os.environ.get("access_token")
-    CATALOG = catalog or os.environ.get("catalog")
-    SCHEMA = schema or os.environ.get("schema")
+def version_agnostic_connect_arguments(connection_details) -> Tuple[str, dict]:
+    HOST = connection_details["host"]
+    HTTP_PATH = connection_details["http_path"]
+    ACCESS_TOKEN = connection_details["access_token"]
+    CATALOG = connection_details["catalog"]
+    SCHEMA = connection_details["schema"]
 
     ua_connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
 
@@ -85,8 +84,8 @@ def version_agnostic_connect_arguments(catalog=None, schema=None) -> Tuple[str, 
 
 
 @pytest.fixture
-def db_engine() -> Engine:
-    conn_string, connect_args = version_agnostic_connect_arguments()
+def db_engine(connection_details) -> Engine:
+    conn_string, connect_args = version_agnostic_connect_arguments(connection_details)
     return create_engine(conn_string, connect_args=connect_args)
 
 
@@ -100,10 +99,11 @@ def run_query(db_engine: Engine, query: Union[str, Text]):
 
 
 @pytest.fixture
-def samples_engine() -> Engine:
-    conn_string, connect_args = version_agnostic_connect_arguments(
-        catalog="samples", schema="nyctaxi"
-    )
+def samples_engine(connection_details) -> Engine:
+    details = connection_details.copy()
+    details["catalog"] = "samples"
+    details["schema"] = "nyctaxi"
+    conn_string, connect_args = version_agnostic_connect_arguments(details)
     return create_engine(conn_string, connect_args=connect_args)
 
 
@@ -135,7 +135,7 @@ def test_can_connect(db_engine):
 def test_pandas_upload(db_engine, metadata_obj):
     import pandas as pd
 
-    SCHEMA = os.environ.get("schema")
+    SCHEMA = "default"
     try:
         df = pd.read_excel(
             "src/databricks/sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx"
@@ -403,7 +403,9 @@ def test_get_table_names_smoke_test(samples_engine: Engine):
         _names is not None, "get_table_names did not succeed"
 
 
-def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
+def test_has_table_across_schemas(
+    db_engine: Engine, samples_engine: Engine, catalog: str, schema: str
+):
     """For this test to pass these conditions must be met:
     - Table samples.nyctaxi.trips must exist
     - Table samples.tpch.customer must exist
@@ -420,9 +422,6 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
         )
 
         # 3) Check for a table within a different catalog
-        other_catalog = os.environ.get("catalog")
-        other_schema = os.environ.get("schema")
-
         # Create a table in a different catalog
         with db_engine.connect() as conn:
             conn.execute(text("CREATE TABLE test_has_table (numbers_are_cool INT);"))
@@ -436,8 +435,8 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
                 assert samples_engine.dialect.has_table(
                     connection=conn,
                     table_name="test_has_table",
-                    schema=other_schema,
-                    catalog=other_catalog,
+                    schema=schema,
+                    catalog=catalog,
                 )
             finally:
                 conn.execute(text("DROP TABLE test_has_table;"))
@@ -552,12 +551,12 @@ def test_get_columns(db_engine, sample_table: str):
 
 class TestCommentReflection:
     @pytest.fixture(scope="class")
-    def engine(self):
-        HOST = os.environ.get("host")
-        HTTP_PATH = os.environ.get("http_path")
-        ACCESS_TOKEN = os.environ.get("access_token")
-        CATALOG = os.environ.get("catalog")
-        SCHEMA = os.environ.get("schema")
+    def engine(self, connection_details: dict):
+        HOST = connection_details["host"]
+        HTTP_PATH = connection_details["http_path"]
+        ACCESS_TOKEN = connection_details["access_token"]
+        CATALOG = connection_details["catalog"]
+        SCHEMA = connection_details["schema"]
 
         connection_string = f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}"
         connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}

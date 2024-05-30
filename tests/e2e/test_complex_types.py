@@ -1,4 +1,3 @@
-
 import pytest
 from numpy import ndarray
 
@@ -7,7 +6,8 @@ from tests.e2e.test_driver import PySQLPytestTestCase
 
 class TestComplexTypes(PySQLPytestTestCase):
     @pytest.fixture(scope="class")
-    def table_fixture(self):
+    def table_fixture(self, connection_details):
+        self.arguments = connection_details.copy()
         """A pytest fixture that creates a table with a complex type, inserts a record, yields, and then drops the table"""
 
         with self.cursor() as cursor:
@@ -53,9 +53,7 @@ class TestComplexTypes(PySQLPytestTestCase):
     @pytest.mark.parametrize("field", [("array_col"), ("map_col"), ("struct_col")])
     def test_read_complex_types_as_string(self, field, table_fixture):
         """Confirms the return type of a complex type that is returned as a string"""
-        with self.cursor(
-            extra_params={"_use_arrow_native_complex_types": False}
-        ) as cursor:
+        with self.cursor(extra_params={"_use_arrow_native_complex_types": False}) as cursor:
             result = cursor.execute(
                 "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
             ).fetchone()
