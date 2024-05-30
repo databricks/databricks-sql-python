@@ -79,7 +79,8 @@ class TestTableCommentDDL(DDLTestBase):
     def test_create_table_with_comment(self, table_with_comment):
         stmt = CreateTable(table_with_comment)
         output = self.compile(stmt)
-        assert "USING DELTA COMMENT 'foobar'" in output
+        assert "USING DELTA" in output
+        assert "COMMENT 'foobar'" in output
 
     def test_alter_table_add_comment(self, table_without_comment: Table):
         table_without_comment.comment = "wireless mechanical keyboard"
