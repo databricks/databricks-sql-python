@@ -16,13 +16,15 @@ class DatabricksIdentifierPreparer(compiler.IdentifierPreparer):
 
 class DatabricksDDLCompiler(compiler.DDLCompiler):
     def post_create_table(self, table):
-        post = " USING DELTA"
+        post = [" USING DELTA"]
         if table.comment:
             comment = self.sql_compiler.render_literal_value(
                 table.comment, sqltypes.String()
             )
-            post += " COMMENT " + comment
-        return post
+            post.append("COMMENT " + comment)
+
+        post.append("TBLPROPERTIES('delta.feature.allowColumnDefaults' = 'enabled')")
+        return "\n".join(post)
 
     def visit_unique_constraint(self, constraint, **kw):
         logger.warning("Databricks does not support unique constraints")
