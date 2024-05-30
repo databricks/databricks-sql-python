@@ -24,7 +24,7 @@ class DatabricksDDLCompiler(compiler.DDLCompiler):
             post.append("COMMENT " + comment)
 
         post.append("TBLPROPERTIES('delta.feature.allowColumnDefaults' = 'enabled')")
-        return '\n'.join(post)
+        return "\n".join(post)
 
     def visit_unique_constraint(self, constraint, **kw):
         logger.warning("Databricks does not support unique constraints")
