@@ -406,7 +406,7 @@ SQLALCHEMY_TAG = f"sqlalchemy/{sqlalchemy.__version__}"
 sqlalchemy_version_tag_pat = r"sqlalchemy/(\d+\.\d+\.\d+)"
 
 
-def add_sqla_tag_if_not_present(val: str):
+def add_sqla_tag_if_not_present(val: Optional[str] = None):
     if val is None or val == "":
         output = SQLALCHEMY_TAG
     elif re.search(sqlalchemy_version_tag_pat, val):
