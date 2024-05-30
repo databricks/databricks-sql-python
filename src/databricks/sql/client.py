@@ -653,7 +653,12 @@ class Cursor:
             raise Error("Cannot perform PUT without specifying a local_file")
 
         with open(local_file, "rb") as fh:
-            r = requests.put(url=presigned_url, data=fh, headers=headers, proxies=self.connection.proxies)
+            r = requests.put(
+                url=presigned_url,
+                data=fh,
+                headers=headers,
+                proxies=self.connection.proxies,
+            )
 
         # fmt: off
         # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
@@ -687,7 +692,9 @@ class Cursor:
         if local_file is None:
             raise Error("Cannot perform GET without specifying a local_file")
 
-        r = requests.get(url=presigned_url, headers=headers, proxies=self.connection.proxies)
+        r = requests.get(
+            url=presigned_url, headers=headers, proxies=self.connection.proxies
+        )
 
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
@@ -702,7 +709,9 @@ class Cursor:
     def _handle_staging_remove(self, presigned_url: str, headers: dict = None):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        r = requests.delete(url=presigned_url, headers=headers, proxies=self.connection.proxies)
+        r = requests.delete(
+            url=presigned_url, headers=headers, proxies=self.connection.proxies
+        )
 
         if not r.ok:
             raise Error(

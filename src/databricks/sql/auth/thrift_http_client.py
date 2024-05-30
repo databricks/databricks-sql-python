@@ -61,7 +61,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.path = parsed.path
             if parsed.query:
                 self.path += "?%s" % parsed.query
-                
+
         if proxies is None:
             proxies = urllib.request.getproxies()
         try:
