@@ -1,7 +1,6 @@
 import datetime
 import decimal
-import os
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 from unittest import skipIf
 
 import pytest
@@ -18,7 +17,8 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
-from sqlalchemy.types import BOOLEAN, DECIMAL, Date, DateTime, Integer, String
+from sqlalchemy.schema import DropColumnComment, SetColumnComment
+from sqlalchemy.types import BOOLEAN, DECIMAL, Date, Integer, String
 
 try:
     from sqlalchemy.orm import declarative_base
@@ -48,12 +48,12 @@ def version_agnostic_select(object_to_select, *args, **kwargs):
         return select(object_to_select, *args, **kwargs)
 
 
-def version_agnostic_connect_arguments(catalog=None, schema=None) -> Tuple[str, dict]:
-    HOST = os.environ.get("host")
-    HTTP_PATH = os.environ.get("http_path")
-    ACCESS_TOKEN = os.environ.get("access_token")
-    CATALOG = catalog or os.environ.get("catalog")
-    SCHEMA = schema or os.environ.get("schema")
+def version_agnostic_connect_arguments(connection_details) -> Tuple[str, dict]:
+    HOST = connection_details["host"]
+    HTTP_PATH = connection_details["http_path"]
+    ACCESS_TOKEN = connection_details["access_token"]
+    CATALOG = connection_details["catalog"]
+    SCHEMA = connection_details["schema"]
 
     ua_connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
 
@@ -76,8 +76,8 @@ def version_agnostic_connect_arguments(catalog=None, schema=None) -> Tuple[str, 
 
 
 @pytest.fixture
-def db_engine() -> Engine:
-    conn_string, connect_args = version_agnostic_connect_arguments()
+def db_engine(connection_details) -> Engine:
+    conn_string, connect_args = version_agnostic_connect_arguments(connection_details)
     return create_engine(conn_string, connect_args=connect_args)
 
 
@@ -91,10 +91,11 @@ def run_query(db_engine: Engine, query: Union[str, Text]):
 
 
 @pytest.fixture
-def samples_engine() -> Engine:
-    conn_string, connect_args = version_agnostic_connect_arguments(
-        catalog="samples", schema="nyctaxi"
-    )
+def samples_engine(connection_details) -> Engine:
+    details = connection_details.copy()
+    details["catalog"] = "samples"
+    details["schema"] = "nyctaxi"
+    conn_string, connect_args = version_agnostic_connect_arguments(details)
     return create_engine(conn_string, connect_args=connect_args)
 
 
@@ -140,7 +141,7 @@ def test_connect_args(db_engine):
 def test_pandas_upload(db_engine, metadata_obj):
     import pandas as pd
 
-    SCHEMA = os.environ.get("schema")
+    SCHEMA = "default"
     try:
         df = pd.read_excel(
             "src/databricks/sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx"
@@ -184,6 +185,41 @@ def test_create_table_not_null(db_engine, metadata_obj: MetaData):
 
     assert name_column_description.get("nullable") is True
     assert some_bool_column_description.get("nullable") is False
+
+    metadata_obj.drop_all(db_engine)
+
+
+def test_column_comment(db_engine, metadata_obj: MetaData):
+    table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
+
+    column = Column("name", String(255), comment="some comment")
+    SampleTable = Table(table_name, metadata_obj, column)
+
+    metadata_obj.create_all(db_engine)
+    connection = db_engine.connect()
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == "some comment"
+
+    column.comment = "other comment"
+    connection.execute(SetColumnComment(column))
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == "other comment"
+
+    connection.execute(DropColumnComment(column))
+
+    columns = db_engine.dialect.get_columns(
+        connection=connection, table_name=table_name
+    )
+
+    assert columns[0].get("comment") == None
 
     metadata_obj.drop_all(db_engine)
 
@@ -373,7 +409,9 @@ def test_get_table_names_smoke_test(samples_engine: Engine):
         _names is not None, "get_table_names did not succeed"
 
 
-def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
+def test_has_table_across_schemas(
+    db_engine: Engine, samples_engine: Engine, catalog: str, schema: str
+):
     """For this test to pass these conditions must be met:
     - Table samples.nyctaxi.trips must exist
     - Table samples.tpch.customer must exist
@@ -390,9 +428,6 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
         )
 
         # 3) Check for a table within a different catalog
-        other_catalog = os.environ.get("catalog")
-        other_schema = os.environ.get("schema")
-
         # Create a table in a different catalog
         with db_engine.connect() as conn:
             conn.execute(text("CREATE TABLE test_has_table (numbers_are_cool INT);"))
@@ -406,8 +441,8 @@ def test_has_table_across_schemas(db_engine: Engine, samples_engine: Engine):
                 assert samples_engine.dialect.has_table(
                     connection=conn,
                     table_name="test_has_table",
-                    schema=other_schema,
-                    catalog=other_catalog,
+                    schema=schema,
+                    catalog=catalog,
                 )
             finally:
                 conn.execute(text("DROP TABLE test_has_table;"))
@@ -441,7 +476,7 @@ def sample_table(metadata_obj: MetaData, db_engine: Engine):
 
     table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 
-    args = [
+    args: List[Column] = [
         Column(colname, coltype) for colname, coltype in GET_COLUMNS_TYPE_MAP.items()
     ]
 
@@ -463,3 +498,46 @@ def test_get_columns(db_engine, sample_table: str):
     columns = inspector.get_columns(sample_table)
 
     assert True
+
+
+class TestCommentReflection:
+    @pytest.fixture(scope="class")
+    def engine(self, connection_details: dict):
+        HOST = connection_details["host"]
+        HTTP_PATH = connection_details["http_path"]
+        ACCESS_TOKEN = connection_details["access_token"]
+        CATALOG = connection_details["catalog"]
+        SCHEMA = connection_details["schema"]
+
+        connection_string = f"databricks://token:{ACCESS_TOKEN}@{HOST}?http_path={HTTP_PATH}&catalog={CATALOG}&schema={SCHEMA}"
+        connect_args = {"_user_agent_entry": USER_AGENT_TOKEN}
+
+        engine = create_engine(connection_string, connect_args=connect_args)
+        return engine
+
+    @pytest.fixture
+    def inspector(self, engine: Engine) -> Inspector:
+        return Inspector.from_engine(engine)
+
+    @pytest.fixture(scope="class")
+    def table(self, engine):
+        md = MetaData()
+        tbl = Table(
+            "foo",
+            md,
+            Column("bar", String, comment="column comment"),
+            comment="table comment",
+        )
+        md.create_all(bind=engine)
+
+        yield tbl
+
+        md.drop_all(bind=engine)
+
+    def test_table_comment_reflection(self, inspector: Inspector, table: Table):
+        comment = inspector.get_table_comment(table.name)
+        assert comment == {"text": "table comment"}
+
+    def test_column_comment(self, inspector: Inspector, table: Table):
+        result = inspector.get_columns(table.name)[0].get("comment")
+        assert result == "column comment"

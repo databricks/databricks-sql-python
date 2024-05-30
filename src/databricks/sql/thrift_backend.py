@@ -141,9 +141,11 @@ class ThriftBackend:
         if kwargs.get("_connection_uri"):
             uri = kwargs.get("_connection_uri")
         elif server_hostname and http_path:
-            uri = "https://{host}:{port}/{path}".format(
-                host=server_hostname, port=port, path=http_path.lstrip("/")
+            uri = "{host}:{port}/{path}".format(
+                host=server_hostname.rstrip("/"), port=port, path=http_path.lstrip("/")
             )
+            if not uri.startswith("https://"):
+                uri = "https://" + uri
         else:
             raise ValueError("No valid connection settings.")
 
@@ -377,8 +379,8 @@ class ThriftBackend:
             # encapsulate retry checks, returns None || delay-in-secs
             # Retry IFF 429/503 code + Retry-After header set
             http_code = getattr(self._transport, "code", None)
-            retry_after = getattr(self._transport, "headers", {}).get("Retry-After")
-            if http_code in [429, 503] and retry_after:
+            retry_after = getattr(self._transport, "headers", {}).get("Retry-After", 1)
+            if http_code in [429, 503]:
                 # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
                 return bound_retry_delay(attempt, int(retry_after))
             return None
