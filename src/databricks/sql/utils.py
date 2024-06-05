@@ -156,6 +156,19 @@ class CloudFetchQueue(ResultSetQueue):
         self.lz4_compressed = lz4_compressed
         self.description = description
 
+        logger.debug(
+            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
+                start_row_offset
+            )
+        )
+        if result_links is not None:
+            for result_link in result_links:
+                logger.debug(
+                    "- start row offset: {}, row count: {}".format(
+                        result_link.startRowOffset, result_link.rowCount
+                    )
+                )
+
         self.download_manager = ResultFileDownloadManager(
             self.max_download_threads, self.lz4_compressed
         )
@@ -175,8 +188,10 @@ class CloudFetchQueue(ResultSetQueue):
             pyarrow.Table
         """
         if not self.table:
+            logger.debug("CloudFetchQueue: no more rows available")
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
+        logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
         results = self.table.slice(0, 0)
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
@@ -190,6 +205,8 @@ class CloudFetchQueue(ResultSetQueue):
                 self.table = self._create_next_table()
                 self.table_row_index = 0
             num_rows -= table_slice.num_rows
+
+        logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
         return results
 
     def remaining_rows(self) -> pyarrow.Table:
@@ -214,11 +231,21 @@ class CloudFetchQueue(ResultSetQueue):
         return results
 
     def _create_next_table(self) -> Union[pyarrow.Table, None]:
+        logger.debug(
+            "CloudFetchQueue: Trying to get downloaded file for row {}".format(
+                self.start_row_index
+            )
+        )
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
         downloaded_file = self.download_manager.get_next_downloaded_file(
             self.start_row_index
         )
         if not downloaded_file:
+            logger.debug(
+                "CloudFetchQueue: Cannot find downloaded file for row {}".format(
+                    self.start_row_index
+                )
+            )
             # None signals no more Arrow tables can be built from the remaining handlers if any remain
             return None
         arrow_table = create_arrow_table_from_arrow_file(
@@ -228,12 +255,18 @@ class CloudFetchQueue(ResultSetQueue):
         # The server rarely prepares the exact number of rows requested by the client in cloud fetch.
         # Subsequently, we drop the extraneous rows in the last file if more rows are retrieved than requested
         if arrow_table.num_rows > downloaded_file.row_count:
-            self.start_row_index += downloaded_file.row_count
-            return arrow_table.slice(0, downloaded_file.row_count)
+            arrow_table = arrow_table.slice(0, downloaded_file.row_count)
 
         # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
         assert downloaded_file.row_count == arrow_table.num_rows
         self.start_row_index += arrow_table.num_rows
+
+        logger.debug(
+            "CloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
+                arrow_table.num_rows, self.start_row_index
+            )
+        )
+
         return arrow_table
 
     def _create_empty_table(self) -> pyarrow.Table:
