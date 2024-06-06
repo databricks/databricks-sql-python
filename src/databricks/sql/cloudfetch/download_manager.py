@@ -49,6 +49,11 @@ class ResultFileDownloadManager:
         for link in t_spark_arrow_result_links:
             if link.rowCount <= 0:
                 continue
+            logger.debug(
+                "ResultFileDownloadManager.add_file_links: start offset {}, row count: {}".format(
+                    link.startRowOffset, link.rowCount
+                )
+            )
             self.download_handlers.append(
                 ResultSetDownloadHandler(self.downloadable_result_settings, link)
             )
@@ -88,6 +93,12 @@ class ResultFileDownloadManager:
 
         # Check (and wait) for download status
         if self._check_if_download_successful(handler):
+            link = handler.result_link
+            logger.debug(
+                "ResultFileDownloadManager: file found for row index {}: start {}, row count: {}".format(
+                    next_row_offset, link.startRowOffset, link.rowCount
+                )
+            )
             # Buffer should be empty so set buffer to new ArrowQueue with result_file
             result = DownloadedFile(
                 handler.result_file,
@@ -97,15 +108,32 @@ class ResultFileDownloadManager:
             self.download_handlers.pop(idx)
             # Return True upon successful download to continue loop and not force a retry
             return result
+        else:
+            logger.debug(
+                "ResultFileDownloadManager: cannot find file for row index {}".format(
+                    next_row_offset
+                )
+            )
+
         # Download was not successful for next download item, force a retry
         self._shutdown_manager()
         return None
 
     def _remove_past_handlers(self, next_row_offset: int):
+        logger.debug(
+            "ResultFileDownloadManager: removing past handlers, current offset: {}".format(
+                next_row_offset
+            )
+        )
         # Any link in which its start to end range doesn't include the next row to be fetched does not need downloading
         i = 0
         while i < len(self.download_handlers):
             result_link = self.download_handlers[i].result_link
+            logger.debug(
+                "- checking result link: start {}, row count: {}, current offset: {}".format(
+                    result_link.startRowOffset, result_link.rowCount, next_row_offset
+                )
+            )
             if result_link.startRowOffset + result_link.rowCount > next_row_offset:
                 i += 1
                 continue
@@ -113,10 +141,16 @@ class ResultFileDownloadManager:
 
     def _schedule_downloads(self):
         # Schedule downloads for all download handlers if not already scheduled.
+        logger.debug("ResultFileDownloadManager: schedule downloads")
         for handler in self.download_handlers:
             if handler.is_download_scheduled:
                 continue
             try:
+                logger.debug(
+                    "- start: {}, row count: {}".format(
+                        handler.result_link.startRowOffset, handler.result_link.rowCount
+                    )
+                )
                 self.thread_pool.submit(handler.run)
             except Exception as e:
                 logger.error(e)
@@ -124,13 +158,28 @@ class ResultFileDownloadManager:
             handler.is_download_scheduled = True
 
     def _find_next_file_index(self, next_row_offset: int):
+        logger.debug(
+            "ResultFileDownloadManager: trying to find file for row {}".format(
+                next_row_offset
+            )
+        )
         # Get the handler index of the next file in order
         next_indices = [
             i
             for i, handler in enumerate(self.download_handlers)
             if handler.is_download_scheduled
+            # TODO: shouldn't `next_row_offset` be tested against the range, not just start row offset?
             and handler.result_link.startRowOffset == next_row_offset
         ]
+
+        for i in next_indices:
+            link = self.download_handlers[i].result_link
+            logger.debug(
+                "- found file: start {}, row count {}".format(
+                    link.startRowOffset, link.rowCount
+                )
+            )
+
         return next_indices[0] if len(next_indices) > 0 else None
 
     def _check_if_download_successful(self, handler: ResultSetDownloadHandler):
