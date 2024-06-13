@@ -1,8 +1,12 @@
 # Release History
 
-# (Unreleased)
+# 3.2.0 (2024-06-06)
 
-- Fix: our logger would raise an uncaught exception under certain oauth error conditions
+- Update proxy authentication (databricks/databricks-sql-python#354 by @amir-haroun)
+- Relax `pyarrow` pin (databricks/databricks-sql-python#389 by @dhirschfeld)
+- Fix error logging in OAuth manager (databricks/databricks-sql-python#269 by @susodapop)
+- SQLAlchemy: enable delta.feature.allowColumnDefaults for all tables (databricks/databricks-sql-python#343 by @dhirschfeld)
+- Update `thrift` dependency (databricks/databricks-sql-python#397 by @m1n0)
 
 # 3.1.2 (2024-04-18)
 
