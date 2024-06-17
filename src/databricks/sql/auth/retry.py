@@ -340,7 +340,13 @@ class DatabricksRetryPolicy(Retry):
             return False, "200 codes are not retried"
 
         # Invalid Credentials error. Don't retry
-        if status_code == 403 or status_code == 401:
+        if status_code == 401:
+            raise NonRecoverableNetworkError(
+                "Received 401 - FORBIDDEN. Invalid authentication credentials."
+            )
+
+        # Invalid Credentials error. Don't retry
+        if status_code == 403:
             raise NonRecoverableNetworkError(
                 "Received 403 - FORBIDDEN. Confirm your authentication credentials."
             )
