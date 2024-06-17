@@ -105,6 +105,10 @@ class NonRecoverableNetworkError(RequestError):
     """Thrown if an HTTP code 501 is received"""
 
 
+class AuthenticationFailureError(RequestError):
+    """Thrown if an HTTP code 401 is received"""
+
+
 class UnsafeToRetryError(RequestError):
     """Thrown if ExecuteStatement request receives a code other than 200, 429, or 503"""
 

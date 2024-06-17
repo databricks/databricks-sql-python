@@ -19,6 +19,7 @@ from databricks.sql.exc import (
     MaxRetryDurationError,
     NonRecoverableNetworkError,
     OperationalError,
+    AuthenticationFailureError,
     SessionAlreadyClosedError,
     UnsafeToRetryError,
 )
@@ -326,7 +327,7 @@ class DatabricksRetryPolicy(Retry):
                This limit prevents automatically retrying non-idempotent commands that could
                be destructive.
             5. The request received a 403 response, because this can never succeed.
-
+            6. The request received a 401 response, because the User credentials are invalid
 
         Q: What about OSErrors and Redirects?
         A: urllib3 automatically retries in both scenarios
@@ -339,6 +340,11 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 200:
             return False, "200 codes are not retried"
 
+        # Don't retry as there is an authentication error
+        if status_code == 401:
+            raise AuthenticationFailureError(
+                "Received 401 - UNAUTHORIZED. Authentication is required and has failed or has not yet been provided."
+            )
         if status_code == 403:
             raise NonRecoverableNetworkError(
                 "Received 403 - FORBIDDEN. Confirm your authentication credentials."
