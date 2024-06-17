@@ -19,7 +19,6 @@ from databricks.sql.exc import (
     MaxRetryDurationError,
     NonRecoverableNetworkError,
     OperationalError,
-    AuthenticationFailureError,
     SessionAlreadyClosedError,
     UnsafeToRetryError,
 )
@@ -340,12 +339,8 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 200:
             return False, "200 codes are not retried"
 
-        # Don't retry as there is an authentication error
-        if status_code == 401:
-            raise AuthenticationFailureError(
-                "Received 401 - UNAUTHORIZED. Authentication is required and has failed or has not yet been provided."
-            )
-        if status_code == 403:
+        # Invalid Credentials error. Don't retry
+        if status_code == 403 or status_code == 401:
             raise NonRecoverableNetworkError(
                 "Received 403 - FORBIDDEN. Confirm your authentication credentials."
             )
