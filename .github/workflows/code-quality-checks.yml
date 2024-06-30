@@ -160,4 +160,5 @@ jobs:
       #              mypy the code
       #----------------------------------------------
       - name: Mypy
+        run: mkdir .mypy_cache # Workaround for bad error message "error: --install-types failed (no mypy cache directory)"; see https://github.com/python/mypy/issues/10768#issuecomment-2178450153
         run: poetry run mypy --install-types --non-interactive src/databricks
