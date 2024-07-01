@@ -655,7 +655,7 @@ class Cursor:
 
         # fmt: off
         # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
-            
+
         OK = requests.codes.ok                  # 200
         CREATED = requests.codes.created        # 201
         ACCEPTED = requests.codes.accepted      # 202

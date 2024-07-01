@@ -74,7 +74,7 @@ If you set your `user.name` and `user.email` git configs, you can sign your comm
 This project uses [Poetry](https://python-poetry.org/) for dependency management, tests, and linting.
 
 1. Clone this respository
-2. Run `poetry install` 
+2. Run `poetry install`
 
 ### Run tests
 
@@ -167,4 +167,4 @@ Modify the dependency specification (syntax can be found [here](https://python-p
 - `poetry update`
 - `rm poetry.lock && poetry install`
 
-Sometimes `poetry update` can freeze or run forever. Deleting the `poetry.lock` file and calling `poetry install` is guaranteed to update everything but is usually _slower_ than `poetry update` **if `poetry update` works at all**. 
+Sometimes `poetry update` can freeze or run forever. Deleting the `poetry.lock` file and calling `poetry install` is guaranteed to update everything but is usually _slower_ than `poetry update` **if `poetry update` works at all**.

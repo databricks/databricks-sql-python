@@ -219,7 +219,7 @@ class TestInlineToNativeTransformer(object):
     def test_transformer(
         self, label: str, query: str, params: Dict[str, Any], expected: str
     ):
-        
+
         _params = [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
         output = transform_paramstyle(query, _params, param_structure=ParameterStructure.NAMED)
         assert output == expected
