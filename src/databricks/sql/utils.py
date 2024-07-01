@@ -170,9 +170,8 @@ class CloudFetchQueue(ResultSetQueue):
                 )
 
         self.download_manager = ResultFileDownloadManager(
-            self.max_download_threads, self.lz4_compressed
+            result_links or [], self.max_download_threads, self.lz4_compressed
         )
-        self.download_manager.add_file_links(result_links)
 
         self.table = self._create_next_table()
         self.table_row_index = 0
