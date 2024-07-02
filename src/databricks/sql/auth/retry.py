@@ -326,7 +326,7 @@ class DatabricksRetryPolicy(Retry):
                This limit prevents automatically retrying non-idempotent commands that could
                be destructive.
             5. The request received a 403 response, because this can never succeed.
-
+            6. The request received a 401 response, because the User credentials are invalid
 
         Q: What about OSErrors and Redirects?
         A: urllib3 automatically retries in both scenarios
@@ -339,6 +339,13 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 200:
             return False, "200 codes are not retried"
 
+        # Invalid Credentials error. Don't retry
+        if status_code == 401:
+            raise NonRecoverableNetworkError(
+                "Received 401 - FORBIDDEN. Invalid authentication credentials."
+            )
+
+        # Invalid Credentials error. Don't retry
         if status_code == 403:
             raise NonRecoverableNetworkError(
                 "Received 403 - FORBIDDEN. Confirm your authentication credentials."
