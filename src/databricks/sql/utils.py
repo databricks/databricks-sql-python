@@ -7,7 +7,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 import re
 
 import lz4.frame
@@ -134,7 +134,7 @@ class CloudFetchQueue(ResultSetQueue):
         schema_bytes,
         max_download_threads: int,
         start_row_offset: int = 0,
-        result_links: List[TSparkArrowResultLink] = None,
+        result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
         description: List[List[Any]] = None,
     ):
@@ -168,11 +168,10 @@ class CloudFetchQueue(ResultSetQueue):
                         result_link.startRowOffset, result_link.rowCount
                     )
                 )
-
         self.download_manager = ResultFileDownloadManager(
             self.max_download_threads, self.lz4_compressed
         )
-        self.download_manager.add_file_links(result_links)
+        self.download_manager.add_file_links(result_links or [])
 
         self.table = self._create_next_table()
         self.table_row_index = 0
