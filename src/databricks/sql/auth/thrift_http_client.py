@@ -1,7 +1,7 @@
 import base64
 import logging
 import urllib.parse
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 import six
 import thrift
@@ -31,6 +31,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         ssl_context=None,
         max_connections: int = 1,
         retry_policy: Union[DatabricksRetryPolicy, int] = 0,
+        proxies: Optional[Dict[str, str]] = None,
     ):
         if port is not None:
             warnings.warn(
@@ -60,8 +61,11 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.path = parsed.path
             if parsed.query:
                 self.path += "?%s" % parsed.query
+
+        if proxies is None:
+            proxies = urllib.request.getproxies()
         try:
-            proxy = urllib.request.getproxies()[self.scheme]
+            proxy = proxies[self.scheme]
         except KeyError:
             proxy = None
         else:
