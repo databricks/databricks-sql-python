@@ -1,7 +1,7 @@
 <!-- We welcome contributions. All patches must include a sign-off. Please see CONTRIBUTING.md for details -->
 
 
-## What type of PR is this? 
+## What type of PR is this?
 <!-- Check all that apply, delete what doesn't apply. -->
 
 - [ ] Refactor
@@ -13,8 +13,8 @@
 
 ## How is this tested?
 
-- [ ] Unit tests 
-- [ ] E2E Tests 
+- [ ] Unit tests
+- [ ] E2E Tests
 - [ ] Manually
 - [ ] N/A
 

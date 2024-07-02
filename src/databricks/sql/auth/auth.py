@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List
+from typing import Optional, List
 
 from databricks.sql.auth.authenticators import (
     AuthProvider,
@@ -21,15 +21,15 @@ class ClientContext:
     def __init__(
         self,
         hostname: str,
-        username: str = None,
-        password: str = None,
-        access_token: str = None,
-        auth_type: str = None,
-        oauth_scopes: List[str] = None,
-        oauth_client_id: str = None,
-        oauth_redirect_port_range: List[int] = None,
-        use_cert_as_auth: str = None,
-        tls_client_cert_file: str = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        access_token: Optional[str] = None,
+        auth_type: Optional[str] = None,
+        oauth_scopes: Optional[List[str]] = None,
+        oauth_client_id: Optional[str] = None,
+        oauth_redirect_port_range: Optional[List[int]] = None,
+        use_cert_as_auth: Optional[str] = None,
+        tls_client_cert_file: Optional[str] = None,
         oauth_persistence=None,
         credentials_provider=None,
     ):

@@ -7,7 +7,7 @@ We provide example scripts so you can see the connector in action for basic usag
     - DATABRICKS_TOKEN
 
 Follow the quick start in our [README](../README.md) to install `databricks-sql-connector` and see
-how to find the hostname, http path, and access token. Note that for the OAuth examples below a 
+how to find the hostname, http path, and access token. Note that for the OAuth examples below a
 personal access token is not needed.
 
 
@@ -38,7 +38,7 @@ To run all of these examples you can clone the entire repository to your disk. O
 - **`set_user_agent.py`** shows how to customize the user agent header used for Thrift commands. In
 this example the string `ExamplePartnerTag` will be added to the the user agent on every request.
 - **`staging_ingestion.py`** shows how the connector handles Databricks' experimental staging ingestion commands `GET`, `PUT`, and `REMOVE`.
-- **`sqlalchemy.py`** shows a basic example of connecting to Databricks with [SQLAlchemy 2.0](https://www.sqlalchemy.org/). 
+- **`sqlalchemy.py`** shows a basic example of connecting to Databricks with [SQLAlchemy 2.0](https://www.sqlalchemy.org/).
 - **`custom_cred_provider.py`** shows how to pass a custom credential provider to bypass connector authentication. Please install databricks-sdk prior to running this example.
 - **`v3_retries_query_execute.py`** shows how to enable v3 retries in connector version 2.9.x including how to enable retries for non-default retry cases.
 - **`parameters.py`** shows how to use parameters in native and inline modes.

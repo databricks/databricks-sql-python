@@ -181,7 +181,7 @@ with engine.connect() as conn:
     df.to_sql('squares',conn)
 ```
 
-## [`PrimaryKey()`](https://docs.sqlalchemy.org/en/20/core/constraints.html#sqlalchemy.schema.PrimaryKeyConstraint) and [`ForeignKey()`](https://docs.sqlalchemy.org/en/20/core/constraints.html#defining-foreign-keys) 
+## [`PrimaryKey()`](https://docs.sqlalchemy.org/en/20/core/constraints.html#sqlalchemy.schema.PrimaryKeyConstraint) and [`ForeignKey()`](https://docs.sqlalchemy.org/en/20/core/constraints.html#defining-foreign-keys)
 
 Unity Catalog workspaces in Databricks support PRIMARY KEY and FOREIGN KEY constraints. _Note that Databricks Runtime does not enforce the integrity of FOREIGN KEY constraints_. You can establish a primary key by setting `primary_key=True` when defining a column.
 
@@ -201,4 +201,3 @@ users = Table(
     Column("manager_id", ForeignKey("users.id", name="fk_users_manager_id_x_users_id", use_alter=True))
 )
 ```
-

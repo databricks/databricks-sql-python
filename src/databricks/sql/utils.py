@@ -48,7 +48,7 @@ class ResultSetQueueFactory(ABC):
         arrow_schema_bytes: bytes,
         max_download_threads: int,
         lz4_compressed: bool = True,
-        description: List[List[Any]] = None,
+        description: Optional[List[List[Any]]] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -136,7 +136,7 @@ class CloudFetchQueue(ResultSetQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: List[List[Any]] = None,
+        description: Optional[List[List[Any]]] = None,
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.

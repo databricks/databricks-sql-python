@@ -1,7 +1,7 @@
 """The default test setup uses self-referential foreign keys and indexes for a test table.
 We override to remove these assumptions.
 
-Note that test_multi_foreign_keys currently does not pass for all combinations due to 
+Note that test_multi_foreign_keys currently does not pass for all combinations due to
 an ordering issue. The dialect returns the expected information. But this test makes assertions
 on the order of the returned results. We can't guarantee that order at the moment.
 

@@ -24,7 +24,7 @@ staging_allowed_local_path of the connection.
 
 Additionally, the connection can only manipulate files within the cloud storage location of the authenticated user.
 
-To run this script: 
+To run this script:
 
 1. Set the INGESTION_USER constant to the account email address of the authenticated user
 2. Set the FILEPATH constant to the path of a file that will be uploaded (this example assumes its a CSV file)
