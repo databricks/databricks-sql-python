@@ -25,14 +25,14 @@ class ResultFileDownloadManager:
             if link.rowCount <= 0:
                 continue
             logger.debug(
-                "ResultFileDownloadManager.add_file_links: start offset {}, row count: {}".format(
+                "ResultFileDownloadManager: adding file link, start offset {}, row count: {}".format(
                     link.startRowOffset, link.rowCount
                 )
             )
             self._pending_links.append(link)
 
         self._download_tasks: List[Future[DownloadedFile]] = []
-        self._max_download_threads: int = max_download_threads + 1
+        self._max_download_threads: int = max_download_threads
         self._thread_pool = ThreadPoolExecutor(max_workers=self._max_download_threads)
 
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)

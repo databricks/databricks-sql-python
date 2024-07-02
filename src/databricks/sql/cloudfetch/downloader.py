@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 
 import requests
+from requests.adapters import HTTPAdapter, Retry
 import lz4.frame
 import time
 
@@ -10,6 +11,17 @@ from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
 
 logger = logging.getLogger(__name__)
+
+# TODO: Ideally, we should use a common retry policy (DatabricksRetryPolicy) for all the requests across the library.
+#       But DatabricksRetryPolicy should be updated first - currently it can work only with Thrift requests
+retryPolicy = Retry(
+    total=5,  # max retry attempts
+    backoff_factor=1,  # min delay, 1 second
+    backoff_max=60,  # max delay, 60 seconds
+    # retry all status codes below 100, 429 (Too Many Requests), and all codes above 500,
+    # excluding 501 Not implemented
+    status_forcelist=[*range(0, 101), 429, 500, *range(502, 1000)],
+)
 
 
 @dataclass
@@ -63,23 +75,26 @@ class ResultSetDownloadHandler:
         file, and signals to waiting threads that the download is finished and whether it was successful.
         """
 
+        logger.debug(
+            "ResultSetDownloadHandler: starting file download, offset {}, row count {}".format(
+                self.link.startRowOffset, self.link.rowCount
+            )
+        )
+
         # Check if link is already expired or is expiring
         ResultSetDownloadHandler._validate_link(
             self.link, self.settings.link_expiry_buffer_secs
         )
 
         session = requests.Session()
-        session.timeout = self.settings.download_timeout
-        # TODO: Retry:
-        # from requests.adapters import HTTPAdapter, Retry
-        # retries = Retry(total=5,
-        #         backoff_factor=0.1,
-        #         status_forcelist=[ 500, 502, 503, 504 ])
-        # session.mount('http://', HTTPAdapter(max_retries=retries))
+        session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
+        session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
 
         try:
             # Get the file via HTTP request
-            response = session.get(self.link.fileLink)
+            response = session.get(
+                self.link.fileLink, timeout=self.settings.download_timeout
+            )
             response.raise_for_status()
 
             # Save (and decompress if needed) the downloaded file
@@ -110,7 +125,8 @@ class ResultSetDownloadHandler:
                 self.link.rowCount,
             )
         finally:
-            session and session.close()
+            if session:
+                session.close()
 
     @staticmethod
     def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int):
