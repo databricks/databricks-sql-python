@@ -161,6 +161,5 @@ jobs:
       #----------------------------------------------
       - name: Mypy
         run: |
-          cd src # Need to be in the actual databricks/ folder or mypy does the wrong thing.
           mkdir .mypy_cache # Workaround for bad error message "error: --install-types failed (no mypy cache directory)"; see https://github.com/python/mypy/issues/10768#issuecomment-2178450153
-          poetry run mypy --config-file ../pyproject.toml --install-types --non-interactive --namespace-packages databricks
+          poetry run mypy --install-types --non-interactive src
