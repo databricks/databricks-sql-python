@@ -4,7 +4,7 @@ The complete list of requirements is provided by SQLAlchemy here:
 https://github.com/sqlalchemy/sqlalchemy/blob/main/lib/sqlalchemy/testing/requirements.py
 
 When SQLAlchemy skips a test because a requirement is closed() it gives a generic skip message.
-To make these failures more actionable, we only define requirements in this file that we wish to 
+To make these failures more actionable, we only define requirements in this file that we wish to
 force to be open(). If a test should be skipped on Databricks, it will be specifically marked skip
 in test_suite.py with a Databricks-specific reason.
 

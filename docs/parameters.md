@@ -43,7 +43,7 @@ SELECT * FROM table WHERE field = %(value)s
 
 ## Python Syntax
 
-This connector follows the [PEP-249 interface](https://peps.python.org/pep-0249/#id20). The expected structure of the parameter collection follows the paramstyle of the variables in your query. 
+This connector follows the [PEP-249 interface](https://peps.python.org/pep-0249/#id20). The expected structure of the parameter collection follows the paramstyle of the variables in your query.
 
 ### `named` paramstyle Usage Example
 
@@ -85,7 +85,7 @@ The result of the above two examples is identical.
 
 Databricks Runtime expects variable markers to use either `named` or `qmark` paramstyles. Historically, this connector used `pyformat` which Databricks Runtime does not support. So to assist assist customers transitioning their codebases from `pyformat` → `named`, we can dynamically rewrite the variable markers before sending the query to Databricks. This happens only when `use_inline_params=False`.
 
- This dynamic rewrite will be deprecated in a future release. New queries should be written using the `named` paramstyle instead. And users should update their client code to replace `pyformat` markers with `named` markers. 
+ This dynamic rewrite will be deprecated in a future release. New queries should be written using the `named` paramstyle instead. And users should update their client code to replace `pyformat` markers with `named` markers.
 
 For example:
 
@@ -106,7 +106,7 @@ SELECT field1, field2, :param1 FROM table WHERE field4 = :param2
 
 Under the covers, parameter values are annotated with a valid Databricks SQL type. As shown in the examples above, this connector accepts primitive Python types like `int`, `str`, and `Decimal`. When this happens, the connector infers the corresponding Databricks SQL type (e.g. `INT`, `STRING`, `DECIMAL`) automatically. This means that the parameters passed to `cursor.execute()` are always wrapped in a `TDbsqlParameter` subtype prior to execution.
 
-Automatic inferrence is sufficient for most usages. But you can bypass the inference by explicitly setting the Databricks SQL type in your client code. All supported Databricks SQL types have `TDbsqlParameter` implementations which you can import from `databricks.sql.parameters`. 
+Automatic inferrence is sufficient for most usages. But you can bypass the inference by explicitly setting the Databricks SQL type in your client code. All supported Databricks SQL types have `TDbsqlParameter` implementations which you can import from `databricks.sql.parameters`.
 
 `TDbsqlParameter` objects must always be passed within a list. Either paramstyle (`:named` or `?`) may be used. However, if your query uses the `named` paramstyle, all `TDbsqlParameter` objects must be provided a `name` when they are constructed.
 
@@ -158,7 +158,7 @@ Rendering parameters inline is supported on all versions of DBR since these quer
 
 ## SQL Syntax
 
-Variables in your SQL query can look like `%(param)s` or like `%s`. 
+Variables in your SQL query can look like `%(param)s` or like `%s`.
 
 #### Example
 
@@ -172,7 +172,7 @@ SELECT * FROM table WHERE field = %s
 
 ## Python Syntax
 
-This connector follows the [PEP-249 interface](https://peps.python.org/pep-0249/#id20). The expected structure of the parameter collection follows the paramstyle of the variables in your query. 
+This connector follows the [PEP-249 interface](https://peps.python.org/pep-0249/#id20). The expected structure of the parameter collection follows the paramstyle of the variables in your query.
 
 ### `pyformat` paramstyle Usage Example
 
@@ -210,7 +210,7 @@ with sql.connect(..., use_inline_params=True) as conn:
 
 The result of the above two examples is identical.
 
-**Note**: `%s` is not compliant with PEP-249 and only works due to the specific implementation of our inline renderer. 
+**Note**: `%s` is not compliant with PEP-249 and only works due to the specific implementation of our inline renderer.
 
 **Note:** This `%s` syntax overlaps with valid SQL syntax around the usage of `LIKE` DML. For example if your query includes a clause like `WHERE field LIKE '%sequence'`, the parameter inlining function will raise an exception because this string appears to include an inline marker but none is provided. This means that connector versions below 3.0.0 it has been impossible to execute a query that included both parameters and LIKE wildcards. When `use_inline_params=False`, we will pass `%s` occurrences along to the database, allowing it to be used as expected in `LIKE` statements.
 
