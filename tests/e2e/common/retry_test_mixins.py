@@ -421,3 +421,16 @@ class PySQLRetryTestsMixin:
                 with self.connection(extra_params=self._retry_policy) as conn:
                     pass
                 assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
+
+    def test_401_not_retried(self):
+        """GIVEN the server returns a code 401
+        WHEN the connector receives this response
+        THEN nothing is retried and an exception is raised
+        """
+
+        # Code 401 is an Unauthorized error
+        with mocked_server_response(status=401):
+            with pytest.raises(RequestError) as cm:
+                with self.connection(extra_params=self._retry_policy):
+                    pass
+                assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
