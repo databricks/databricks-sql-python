@@ -1,5 +1,9 @@
 # Release History
 
+# x.x.x (TBD)
+
+- Don't retry requests that fail with code 401
+
 # 3.2.0 (2024-06-06)
 
 - Update proxy authentication (databricks/databricks-sql-python#354 by @amir-haroun)
