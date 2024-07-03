@@ -325,7 +325,8 @@ class DatabricksRetryPolicy(Retry):
                default, this means ExecuteStatement is only retried for codes 429 and 503.
                This limit prevents automatically retrying non-idempotent commands that could
                be destructive.
-            5. The request received a 403 response, because this can never succeed.
+            5. The request received a 401 response, because this can never succeed.
+            6. The request received a 403 response, because this can never succeed.
 
 
         Q: What about OSErrors and Redirects?
@@ -338,6 +339,11 @@ class DatabricksRetryPolicy(Retry):
         # Request succeeded. Don't retry.
         if status_code == 200:
             return False, "200 codes are not retried"
+
+        if status_code == 401:
+            raise NonRecoverableNetworkError(
+                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials."
+            )
 
         if status_code == 403:
             raise NonRecoverableNetworkError(
