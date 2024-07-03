@@ -28,7 +28,7 @@ class TestIndividualFormatters(object):
         assert pe.escape_string("golly bob howdy") == "'golly bob howdy'"
 
     def test_escape_string_that_includes_special_characters(self):
-        """Tests for how special characters are treated.
+        r"""Tests for how special characters are treated.
 
         When passed a string, the `escape_string` method wraps it in single quotes
         and escapes any special characters with a back stroke (\)
@@ -219,7 +219,7 @@ class TestInlineToNativeTransformer(object):
     def test_transformer(
         self, label: str, query: str, params: Dict[str, Any], expected: str
     ):
-        
+
         _params = [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
         output = transform_paramstyle(query, _params, param_structure=ParameterStructure.NAMED)
         assert output == expected
