@@ -5,7 +5,7 @@ The contents of the `test/` directory follow the SQLAlchemy developers' [guidanc
 - Any test can be skipped by subclassing its parent class, re-declaring the test-case and adding a `pytest.mark.skip` directive.
 - Any test that is decorated with a `@requires` decorator can be skipped by marking the indicated requirement as `.closed()` in `requirements.py`
 
-We prefer to skip test cases directly with the first method wherever possible. We only mark requirements as `closed()` if there is no easier option to avoid a test failure. This principally occurs in test cases where the same test in the suite is parametrized, and some parameter combinations are conditionally skipped depending on `requirements.py`. If we skip the entire test method, then we skip _all_ permutations, not just the combinations we don't support. 
+We prefer to skip test cases directly with the first method wherever possible. We only mark requirements as `closed()` if there is no easier option to avoid a test failure. This principally occurs in test cases where the same test in the suite is parametrized, and some parameter combinations are conditionally skipped depending on `requirements.py`. If we skip the entire test method, then we skip _all_ permutations, not just the combinations we don't support.
 
 ## Regression, Unsupported, and Future test cases
 
@@ -25,7 +25,7 @@ We maintain `_extra.py` with test cases that depend on SQLAlchemy's reusable dia
 poetry shell
 cd src/databricks/sqlalchemy/test
 python -m pytest test_suite.py --dburi \
-  "databricks://token:$access_token@$host?http_path=$http_path&catalog=$catalog&schema=$schema" 
+  "databricks://token:$access_token@$host?http_path=$http_path&catalog=$catalog&schema=$schema"
 ```
 
 Whatever schema you pass in the `dburi` argument should be empty. Some tests also require the presence of an empty schema named `test_schema`. Note that we plan to implement our own `provision.py` which SQLAlchemy can automatically use to create an empty schema for testing. But for now this is a manual process.

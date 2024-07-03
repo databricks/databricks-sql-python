@@ -23,10 +23,10 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAut
 class SampleOAuthPersistence(OAuthPersistence):
   def persist(self, hostname: str, oauth_token: OAuthToken):
     """To be implemented by the end user to persist in the preferred storage medium.
-    
+
     OAuthToken has two properties:
         1. OAuthToken.access_token
-        2. OAuthToken.refresh_token 
+        2. OAuthToken.refresh_token
 
     Both should be persisted.
     """
