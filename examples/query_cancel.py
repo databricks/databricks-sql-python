@@ -19,13 +19,13 @@ with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
           print("It looks like this query was cancelled.")
 
     exec_thread = threading.Thread(target=execute_really_long_query)
-    
+
     print("\n Beginning to execute long query")
     exec_thread.start()
-    
+
     # Make sure the query has started before cancelling
     print("\n Waiting 15 seconds before canceling", end="", flush=True)
-    
+
     seconds_waited = 0
     while seconds_waited < 15:
       seconds_waited += 1
@@ -34,7 +34,7 @@ with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
 
     print("\n Cancelling the cursor's operation. This can take a few seconds.")
     cursor.cancel()
-    
+
     print("\n Now checking the cursor status:")
     exec_thread.join(5)
 
@@ -42,7 +42,7 @@ with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
     print("\n The previous command was successfully canceled")
 
     print("\n Now reusing the cursor to run a separate query.")
-    
+
     # We can still execute a new command on the cursor
     cursor.execute("SELECT * FROM range(3)")
 
