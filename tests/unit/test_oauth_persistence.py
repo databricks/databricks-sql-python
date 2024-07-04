@@ -1,8 +1,6 @@
 
 import unittest
 
-from databricks.sql.auth.auth import AccessTokenAuthProvider, BasicAuthProvider, AuthProvider
-from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import DevOnlyFilePersistence, OAuthToken
 import tempfile
 import os
