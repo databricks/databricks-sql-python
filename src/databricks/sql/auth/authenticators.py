@@ -45,21 +45,6 @@ class AccessTokenAuthProvider(AuthProvider):
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class BasicAuthProvider(AuthProvider):
-    def __init__(self, username: str, password: str):
-        auth_credentials = f"{username}:{password}".encode("UTF-8")
-        auth_credentials_base64 = base64.standard_b64encode(auth_credentials).decode(
-            "UTF-8"
-        )
-
-        self.__authorization_header_value = f"Basic {auth_credentials_base64}"
-
-    def add_headers(self, request_headers: Dict[str, str]):
-        request_headers["Authorization"] = self.__authorization_header_value
-
-
-# Private API: this is an evolving interface and it will change in the future.
-# Please must not depend on it in your applications.
 class DatabricksOAuthProvider(AuthProvider):
     SCOPE_DELIM = " "
 
