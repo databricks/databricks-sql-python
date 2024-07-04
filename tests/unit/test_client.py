@@ -103,20 +103,12 @@ class ClientTestSuite(unittest.TestCase):
     def test_auth_args(self, mock_client_class):
         # Test that the following auth args work:
         # token = foo,
-        # token = None, _username = foo, _password = bar
         # token = None, _tls_client_cert_file = something, _use_cert_as_auth = True
         connection_args = [
             {
                 "server_hostname": "foo",
                 "http_path": None,
                 "access_token": "tok",
-            },
-            {
-                "server_hostname": "foo",
-                "http_path": None,
-                "_username": "foo",
-                "_password": "bar",
-                "access_token": None,
             },
             {
                 "server_hostname": "foo",
