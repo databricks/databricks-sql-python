@@ -4,7 +4,6 @@ from typing import Optional, List
 from databricks.sql.auth.authenticators import (
     AuthProvider,
     AccessTokenAuthProvider,
-    BasicAuthProvider,
     ExternalAuthProvider,
     DatabricksOAuthProvider,
 )
@@ -13,7 +12,7 @@ from databricks.sql.auth.authenticators import (
 class AuthType(Enum):
     DATABRICKS_OAUTH = "databricks-oauth"
     AZURE_OAUTH = "azure-oauth"
-    # other supported types (access_token, user/pass) can be inferred
+    # other supported types (access_token) can be inferred
     # we can add more types as needed later
 
 
@@ -21,8 +20,6 @@ class ClientContext:
     def __init__(
         self,
         hostname: str,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
         access_token: Optional[str] = None,
         auth_type: Optional[str] = None,
         oauth_scopes: Optional[List[str]] = None,
@@ -34,8 +31,6 @@ class ClientContext:
         credentials_provider=None,
     ):
         self.hostname = hostname
-        self.username = username
-        self.password = password
         self.access_token = access_token
         self.auth_type = auth_type
         self.oauth_scopes = oauth_scopes
@@ -65,8 +60,6 @@ def get_auth_provider(cfg: ClientContext):
         )
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
-    elif cfg.username is not None and cfg.password is not None:
-        return BasicAuthProvider(cfg.username, cfg.password)
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
         # no op authenticator. authentication is performed using ssl certificate outside of headers
         return AuthProvider()
@@ -100,12 +93,16 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
     (client_id, redirect_port_range) = get_client_id_and_redirect_port(
         auth_type == AuthType.AZURE_OAUTH.value
     )
+    if kwargs.get("username") or kwargs.get("password"):
+        raise ValueError(
+            "Username/password authentication is no longer supported. "
+            "Please use OAuth or access token instead."
+        )
+
     cfg = ClientContext(
         hostname=normalize_host_name(hostname),
         auth_type=auth_type,
         access_token=kwargs.get("access_token"),
-        username=kwargs.get("_username"),
-        password=kwargs.get("_password"),
         use_cert_as_auth=kwargs.get("_use_cert_as_auth"),
         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
         oauth_scopes=PYSQL_OAUTH_SCOPES,
