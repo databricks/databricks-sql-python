@@ -342,8 +342,6 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 200:
             return False, "200 codes are not retried"
 
-
-
         # Invalid Credentials error. Don't retry
         if status_code == 401:
             raise NonRecoverableNetworkError(
