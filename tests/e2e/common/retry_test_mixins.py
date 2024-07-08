@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 import time
-from typing import List
+from typing import Optional, List
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -59,7 +59,7 @@ class Client503ResponseMixin:
 
 
 @contextmanager
-def mocked_server_response(status: int = 200, headers: dict = {}, redirect_location: str = None):
+def mocked_server_response(status: int = 200, headers: dict = {}, redirect_location: Optional[str] = None):
     """Context manager for patching urllib3 responses"""
 
     # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
@@ -419,5 +419,18 @@ class PySQLRetryTestsMixin:
         with mocked_server_response(status=403):
             with pytest.raises(RequestError) as cm:
                 with self.connection(extra_params=self._retry_policy) as conn:
+                    pass
+                assert isinstance(cm.value.args[1], NonRecoverableNetworkError)
+
+    def test_401_not_retried(self):
+        """GIVEN the server returns a code 401
+        WHEN the connector receives this response
+        THEN nothing is retried and an exception is raised
+        """
+
+        # Code 401 is an Unauthorized error
+        with mocked_server_response(status=401):
+            with pytest.raises(RequestError) as cm:
+                with self.connection(extra_params=self._retry_policy):
                     pass
                 assert isinstance(cm.value.args[1], NonRecoverableNetworkError)

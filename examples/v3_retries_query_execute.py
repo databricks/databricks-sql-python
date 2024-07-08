@@ -5,7 +5,7 @@ import os
 # This flag will be deprecated in databricks-sql-connector~=3.0.0 as it will become the default.
 #
 # The new retry behaviour is defined in src/databricks/sql/auth/retry.py
-# 
+#
 # The new retry behaviour allows users to force the connector to automatically retry requests that fail with codes
 # that are not retried by default (in most cases only codes 429 and 503 are retried by default). Additional HTTP
 # codes to retry are specified as a list passed to `_retry_dangerous_codes`.
@@ -16,7 +16,7 @@ import os
 # the SQL gateway / load balancer. So there is no risk that retrying the request would result in a doubled
 # (or tripled etc) command execution. These codes are always accompanied by a Retry-After header, which we honour.
 #
-# However, if your use-case emits idempotent queries such as SELECT statements, it can be helpful to retry 
+# However, if your use-case emits idempotent queries such as SELECT statements, it can be helpful to retry
 # for 502 (Bad Gateway) codes etc. In these cases, there is a possibility that the initial command _did_ reach
 # Databricks compute and retrying it could result in additional executions. Retrying under these conditions uses
 # an exponential back-off since a Retry-After header is not present.
