@@ -8,7 +8,7 @@ databricks://token:dapi***@***.cloud.databricks.com?http_path=/sql/***&catalog=*
 
 Our dialect implements the majority of SQLAlchemy 2.0's API. Because of the extent of SQLAlchemy's
 capabilities it isn't feasible to provide examples of every usage in a single script, so we only
-provide a basic one here. Learn more about usage in README.sqlalchemy.md in this repo. 
+provide a basic one here. Learn more about usage in README.sqlalchemy.md in this repo.
 """
 
 # fmt: off
@@ -89,17 +89,17 @@ Base.metadata.create_all(engine)
 
 # Output SQL is:
 # CREATE TABLE pysql_sqlalchemy_example_table (
-#         bigint_col BIGINT NOT NULL, 
-#         string_col STRING, 
-#         tinyint_col SMALLINT, 
-#         int_col INT, 
-#         numeric_col DECIMAL(10, 2), 
-#         boolean_col BOOLEAN, 
-#         date_col DATE, 
-#         datetime_col TIMESTAMP, 
-#         datetime_col_ntz TIMESTAMP_NTZ, 
-#         time_col STRING, 
-#         uuid_col STRING, 
+#         bigint_col BIGINT NOT NULL,
+#         string_col STRING,
+#         tinyint_col SMALLINT,
+#         int_col INT,
+#         numeric_col DECIMAL(10, 2),
+#         boolean_col BOOLEAN,
+#         date_col DATE,
+#         datetime_col TIMESTAMP,
+#         datetime_col_ntz TIMESTAMP_NTZ,
+#         time_col STRING,
+#         uuid_col STRING,
 #         PRIMARY KEY (bigint_col)
 # ) USING DELTA
 

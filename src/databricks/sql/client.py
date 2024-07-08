@@ -59,7 +59,7 @@ class Connection:
         http_path: str,
         access_token: Optional[str] = None,
         http_headers: Optional[List[Tuple[str, str]]] = None,
-        session_configuration: Dict[str, Any] = None,
+        session_configuration: Optional[Dict[str, Any]] = None,
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
         _use_arrow_native_complex_types: Optional[bool] = True,
@@ -163,10 +163,8 @@ class Connection:
         # Internal arguments in **kwargs:
         # _user_agent_entry
         #   Tag to add to User-Agent header. For use by partners.
-        # _username, _password
-        #   Username and password Basic authentication (no official support)
         # _use_cert_as_auth
-        #  Use a TLS cert instead of a token or username / password (internal use only)
+        #  Use a TLS cert instead of a token
         # _enable_ssl
         #  Connect over HTTP instead of HTTPS
         # _port
@@ -460,9 +458,9 @@ class Cursor:
         output: List[TDbsqlParameter] = []
         for p in params:
             if isinstance(p, DbsqlParameterBase):
-                output.append(p)  # type: ignore
+                output.append(p)
             else:
-                output.append(dbsql_parameter_from_primitive(value=p))  # type: ignore
+                output.append(dbsql_parameter_from_primitive(value=p))
 
         return output
 
@@ -640,7 +638,7 @@ class Cursor:
             )
 
     def _handle_staging_put(
-        self, presigned_url: str, local_file: str, headers: dict = None
+        self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
         """Make an HTTP PUT request
 
@@ -655,7 +653,7 @@ class Cursor:
 
         # fmt: off
         # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
-            
+
         OK = requests.codes.ok                  # 200
         CREATED = requests.codes.created        # 201
         ACCEPTED = requests.codes.accepted      # 202
@@ -675,7 +673,7 @@ class Cursor:
             )
 
     def _handle_staging_get(
-        self, local_file: str, presigned_url: str, headers: dict = None
+        self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
         """Make an HTTP GET request, create a local file with the received data
 
@@ -697,7 +695,9 @@ class Cursor:
         with open(local_file, "wb") as fp:
             fp.write(r.content)
 
-    def _handle_staging_remove(self, presigned_url: str, headers: dict = None):
+    def _handle_staging_remove(
+        self, presigned_url: str, headers: Optional[dict] = None
+    ):
         """Make an HTTP DELETE request to the presigned_url"""
 
         r = requests.delete(url=presigned_url, headers=headers)
@@ -757,7 +757,7 @@ class Cursor:
             normalized_parameters = self._normalize_tparametercollection(parameters)
             param_structure = self._determine_parameter_structure(normalized_parameters)
             transformed_operation = transform_paramstyle(
-                operation, normalized_parameters, param_structure  # type: ignore
+                operation, normalized_parameters, param_structure
             )
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, normalized_parameters, param_structure
@@ -861,7 +861,7 @@ class Cursor:
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
-        table_types: List[str] = None,
+        table_types: Optional[List[str]] = None,
     ) -> "Cursor":
         """
         Get tables corresponding to the catalog_name, schema_name and table_name.

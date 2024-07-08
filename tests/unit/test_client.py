@@ -67,7 +67,7 @@ class ThriftBackendMockFactory:
             prop = PropertyMock(**kwargs)
             setattr(type(mock_obj), key, prop)
 
-    
+
 
 
 
@@ -103,20 +103,12 @@ class ClientTestSuite(unittest.TestCase):
     def test_auth_args(self, mock_client_class):
         # Test that the following auth args work:
         # token = foo,
-        # token = None, _username = foo, _password = bar
         # token = None, _tls_client_cert_file = something, _use_cert_as_auth = True
         connection_args = [
             {
                 "server_hostname": "foo",
                 "http_path": None,
                 "access_token": "tok",
-            },
-            {
-                "server_hostname": "foo",
-                "http_path": None,
-                "_username": "foo",
-                "_password": "bar",
-                "access_token": None,
             },
             {
                 "server_hostname": "foo",
@@ -235,7 +227,7 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_executing_multiple_commands_uses_the_most_recent_command(self, mock_result_set_class):
-        
+
         mock_result_sets = [Mock(), Mock()]
         mock_result_set_class.side_effect = mock_result_sets
 
@@ -565,7 +557,7 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_finalizer_closes_abandoned_connection(self, mock_client_class):
         instance = mock_client_class.return_value
-        
+
         mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
         mock_open_session_resp.sessionHandle.sessionId = b'\x22'
         instance.open_session.return_value = mock_open_session_resp
@@ -602,11 +594,11 @@ class ClientTestSuite(unittest.TestCase):
     def test_staging_operation_response_is_handled(self, mock_client_class, mock_handle_staging_operation, mock_execute_response):
         # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
 
-        
+
         ThriftBackendMockFactory.apply_property_to_mock(mock_execute_response, is_staging_operation=True)
         mock_client_class.execute_command.return_value = mock_execute_response
         mock_client_class.return_value = mock_client_class
-        
+
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         cursor = connection.cursor()
         cursor.execute("Text of some staging operation command;")

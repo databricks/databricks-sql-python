@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple, Union
 # We only use this import for type hinting
 try:
     # If urllib3~=2.0 is installed
-    from urllib3 import BaseHTTPResponse  # type: ignore
+    from urllib3 import BaseHTTPResponse
 except ImportError:
     # If urllib3~=1.0 is installed
     from urllib3 import HTTPResponse as BaseHTTPResponse
@@ -129,7 +129,7 @@ class DatabricksRetryPolicy(Retry):
         urllib3_kwargs.update(**_urllib_kwargs_we_care_about)
 
         super().__init__(
-            **urllib3_kwargs,  # type: ignore
+            **urllib3_kwargs,
         )
 
     @classmethod
@@ -162,7 +162,9 @@ class DatabricksRetryPolicy(Retry):
         new_object.command_type = command_type
         return new_object
 
-    def new(self, **urllib3_incremented_counters: typing.Any) -> Retry:
+    def new(
+        self, **urllib3_incremented_counters: typing.Any
+    ) -> "DatabricksRetryPolicy":
         """This method is responsible for passing the entire Retry state to its next iteration.
 
         urllib3 calls Retry.new() between successive requests as part of its `.increment()` method
@@ -210,7 +212,7 @@ class DatabricksRetryPolicy(Retry):
             other=self.other,
             allowed_methods=self.allowed_methods,
             status_forcelist=self.status_forcelist,
-            backoff_factor=self.backoff_factor,  # type: ignore
+            backoff_factor=self.backoff_factor,
             raise_on_redirect=self.raise_on_redirect,
             raise_on_status=self.raise_on_status,
             history=self.history,
@@ -222,7 +224,7 @@ class DatabricksRetryPolicy(Retry):
         urllib3_init_params.update(**urllib3_incremented_counters)
 
         # Include urllib3's current state in our __init__ params
-        databricks_init_params["urllib3_kwargs"].update(**urllib3_init_params)  # type: ignore
+        databricks_init_params["urllib3_kwargs"].update(**urllib3_init_params)  # type: ignore[attr-defined]
 
         return type(self).__private_init__(
             retry_start_time=self._retry_start_time,
@@ -274,7 +276,7 @@ class DatabricksRetryPolicy(Retry):
                 f"Retry request would exceed Retry policy max retry duration of {self.stop_after_attempts_duration} seconds"
             )
 
-    def sleep_for_retry(self, response: BaseHTTPResponse) -> bool:  # type: ignore
+    def sleep_for_retry(self, response: BaseHTTPResponse) -> bool:
         """Sleeps for the duration specified in the response Retry-After header, if present
 
         A MaxRetryDurationError will be raised if doing so would exceed self.max_attempts_duration
@@ -325,7 +327,8 @@ class DatabricksRetryPolicy(Retry):
                default, this means ExecuteStatement is only retried for codes 429 and 503.
                This limit prevents automatically retrying non-idempotent commands that could
                be destructive.
-            5. The request received a 403 response, because this can never succeed.
+            5. The request received a 401 response, because this can never succeed.
+            6. The request received a 403 response, because this can never succeed.
 
 
         Q: What about OSErrors and Redirects?
@@ -339,6 +342,11 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 200:
             return False, "200 codes are not retried"
 
+        if status_code == 401:
+            raise NonRecoverableNetworkError(
+                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials."
+            )
+
         if status_code == 403:
             raise NonRecoverableNetworkError(
                 "Received 403 - FORBIDDEN. Confirm your authentication credentials."
@@ -349,7 +357,7 @@ class DatabricksRetryPolicy(Retry):
             raise NonRecoverableNetworkError("Received code 501 from server.")
 
         # Request failed and this method is not retryable. We only retry POST requests.
-        if not self._is_method_retryable(method):  # type: ignore
+        if not self._is_method_retryable(method):
             return False, "Only POST requests are retried"
 
         # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
