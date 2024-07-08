@@ -27,6 +27,7 @@ sqlalchemy = { version = ">=2.0.21", optional = true }
 openpyxl = "^3.0.10"
 alembic = { version = "^1.0.11", optional = true }
 urllib3 = ">=1.26"
+certifi = "2024.7.4"
 
 [tool.poetry.extras]
 sqlalchemy = ["sqlalchemy"]
