@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 retryPolicy = Retry(
     total=5,  # max retry attempts
     backoff_factor=1,  # min delay, 1 second
-    backoff_max=60,  # max delay, 60 seconds
+    # TODO: `backoff_max` is supported since `urllib3` v2.0.0, but we allow >= 1.26.
+    #       The default value (120 seconds) used since v1.26 looks reasonable enough
+    # backoff_max=60,  # max delay, 60 seconds
     # retry all status codes below 100, 429 (Too Many Requests), and all codes above 500,
     # excluding 501 Not implemented
     status_forcelist=[*range(0, 101), 429, 500, *range(502, 1000)],
