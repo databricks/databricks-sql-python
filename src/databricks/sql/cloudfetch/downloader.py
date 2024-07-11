@@ -95,7 +95,9 @@ class ResultSetDownloadHandler:
         try:
             # Get the file via HTTP request
             response = session.get(
-                self.link.fileLink, timeout=self.settings.download_timeout
+                self.link.fileLink,
+                timeout=self.settings.download_timeout,
+                verify=False,
             )
             response.raise_for_status()
 
