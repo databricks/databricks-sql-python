@@ -1,10 +1,10 @@
 import pyarrow
 import unittest
 from unittest.mock import MagicMock, patch
+from ssl import create_default_context
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 import databricks.sql.utils as utils
-
 
 class CloudFetchQueueSuite(unittest.TestCase):
 
@@ -47,7 +47,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_initializer_adds_links(self, mock_create_next_table):
         schema_bytes = MagicMock()
         result_links = self.create_result_links(10)
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=result_links, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=result_links,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
 
         assert len(queue.download_manager._pending_links) == 10
         assert len(queue.download_manager._download_tasks) == 0
@@ -56,7 +61,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_initializer_no_links_to_add(self):
         schema_bytes = MagicMock()
         result_links = []
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=result_links, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=result_links,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
 
         assert len(queue.download_manager._pending_links) == 0
         assert len(queue.download_manager._download_tasks) == 0
@@ -64,7 +74,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
 
     @patch("databricks.sql.cloudfetch.download_manager.ResultFileDownloadManager.get_next_downloaded_file", return_value=None)
     def test_create_next_table_no_download(self, mock_get_next_downloaded_file):
-        queue = utils.CloudFetchQueue(MagicMock(), result_links=[], max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            MagicMock(),
+            result_links=[],
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
 
         assert queue._create_next_table() is None
         mock_get_next_downloaded_file.assert_called_with(0)
@@ -75,7 +90,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_initializer_create_next_table_success(self, mock_get_next_downloaded_file, mock_create_arrow_table):
         mock_create_arrow_table.return_value = self.make_arrow_table()
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         expected_result = self.make_arrow_table()
 
         mock_get_next_downloaded_file.assert_called_with(0)
@@ -94,7 +115,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_next_n_rows_0_rows(self, mock_create_next_table):
         mock_create_next_table.return_value = self.make_arrow_table()
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
@@ -108,7 +135,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_next_n_rows_partial_table(self, mock_create_next_table):
         mock_create_next_table.return_value = self.make_arrow_table()
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
@@ -122,7 +155,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_next_n_rows_more_than_one_table(self, mock_create_next_table):
         mock_create_next_table.return_value = self.make_arrow_table()
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
@@ -136,7 +175,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_next_n_rows_only_one_table_returned(self, mock_create_next_table):
         mock_create_next_table.side_effect = [self.make_arrow_table(), None]
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
@@ -149,7 +194,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_next_n_rows_empty_table(self, mock_create_next_table):
         schema_bytes = self.get_schema_bytes()
         description = MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table is None
 
         result = queue.next_n_rows(100)
@@ -160,7 +211,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_remaining_rows_empty_table_fully_returned(self, mock_create_next_table):
         mock_create_next_table.side_effect = [self.make_arrow_table(), None, 0]
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         queue.table_row_index = 4
@@ -173,7 +230,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_remaining_rows_partial_table_fully_returned(self, mock_create_next_table):
         mock_create_next_table.side_effect = [self.make_arrow_table(), None]
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         queue.table_row_index = 2
@@ -186,7 +249,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_remaining_rows_one_table_fully_returned(self, mock_create_next_table):
         mock_create_next_table.side_effect = [self.make_arrow_table(), None]
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         assert queue.table_row_index == 0
@@ -199,7 +268,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_remaining_rows_multiple_tables_fully_returned(self, mock_create_next_table):
         mock_create_next_table.side_effect = [self.make_arrow_table(), self.make_arrow_table(), None]
         schema_bytes, description = MagicMock(), MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
         queue.table_row_index = 3
@@ -213,7 +288,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_remaining_rows_empty_table(self, mock_create_next_table):
         schema_bytes = self.get_schema_bytes()
         description = MagicMock()
-        queue = utils.CloudFetchQueue(schema_bytes, result_links=[], description=description, max_download_threads=10)
+        queue = utils.CloudFetchQueue(
+            schema_bytes,
+            result_links=[],
+            description=description,
+            max_download_threads=10,
+            ssl_context=create_default_context(),
+        )
         assert queue.table is None
 
         result = queue.remaining_rows()
