@@ -1,5 +1,6 @@
 import logging
 
+from ssl import SSLContext
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import List, Union
 
@@ -19,6 +20,7 @@ class ResultFileDownloadManager:
         links: List[TSparkArrowResultLink],
         max_download_threads: int,
         lz4_compressed: bool,
+        ssl_context: SSLContext,
     ):
         self._pending_links: List[TSparkArrowResultLink] = []
         for link in links:
@@ -36,6 +38,7 @@ class ResultFileDownloadManager:
         self._thread_pool = ThreadPoolExecutor(max_workers=self._max_download_threads)
 
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
+        self._ssl_context = ssl_context
 
     def get_next_downloaded_file(
         self, next_row_offset: int
@@ -89,7 +92,11 @@ class ResultFileDownloadManager:
             logger.debug(
                 "- start: {}, row count: {}".format(link.startRowOffset, link.rowCount)
             )
-            handler = ResultSetDownloadHandler(self._downloadable_result_settings, link)
+            handler = ResultSetDownloadHandler(
+                settings=self._downloadable_result_settings,
+                link=link,
+                ssl_context=self._ssl_context,
+            )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
 
