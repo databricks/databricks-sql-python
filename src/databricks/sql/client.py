@@ -171,6 +171,8 @@ class Connection:
         #  Which port to connect to
         # _skip_routing_headers:
         #  Don't set routing headers if set to True (for use when connecting directly to server)
+        # _tls_no_verify
+        #   Set to True (Boolean) to completely disable SSL verification.
         # _tls_verify_hostname
         #   Set to False (Boolean) to disable SSL hostname verification, but check certificate.
         # _tls_trusted_ca_file
