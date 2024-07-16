@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
+from ssl import create_default_context
+
 import databricks.sql.cloudfetch.download_manager as download_manager
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
@@ -11,7 +13,12 @@ class DownloadManagerTests(unittest.TestCase):
     """
 
     def create_download_manager(self, links, max_download_threads=10, lz4_compressed=True):
-        return download_manager.ResultFileDownloadManager(links, max_download_threads, lz4_compressed)
+        return download_manager.ResultFileDownloadManager(
+            links,
+            max_download_threads,
+            lz4_compressed,
+            ssl_context=create_default_context(),
+        )
 
     def create_result_link(
             self,

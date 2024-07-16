@@ -361,7 +361,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_op_handle = Mock()
         cursor.active_op_handle = mock_op_handle
         cursor.cancel()
-        self.assertTrue(mock_thrift_backend.cancel_command.called_with(mock_op_handle))
+        mock_thrift_backend.cancel_command.assert_called_with(mock_op_handle)
 
     @patch("databricks.sql.client.logger")
     def test_cancel_command_will_issue_warning_for_cancel_with_no_executing_command(
