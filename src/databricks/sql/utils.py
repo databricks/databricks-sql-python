@@ -9,6 +9,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 import re
+from ssl import SSLContext
 
 import lz4.frame
 import pyarrow
@@ -47,6 +48,7 @@ class ResultSetQueueFactory(ABC):
         t_row_set: TRowSet,
         arrow_schema_bytes: bytes,
         max_download_threads: int,
+        ssl_context: SSLContext,
         lz4_compressed: bool = True,
         description: Optional[List[List[Any]]] = None,
     ) -> ResultSetQueue:
@@ -60,6 +62,7 @@ class ResultSetQueueFactory(ABC):
             lz4_compressed (bool): Whether result data has been lz4 compressed.
             description (List[List[Any]]): Hive table schema description.
             max_download_threads (int): Maximum number of downloader thread pool threads.
+            ssl_context (SSLContext): SSLContext object for CloudFetchQueue
 
         Returns:
             ResultSetQueue
@@ -82,12 +85,13 @@ class ResultSetQueueFactory(ABC):
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
-                arrow_schema_bytes,
+                schema_bytes=arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
                 result_links=t_row_set.resultLinks,
                 lz4_compressed=lz4_compressed,
                 description=description,
                 max_download_threads=max_download_threads,
+                ssl_context=ssl_context,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -133,6 +137,7 @@ class CloudFetchQueue(ResultSetQueue):
         self,
         schema_bytes,
         max_download_threads: int,
+        ssl_context: SSLContext,
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
@@ -155,6 +160,7 @@ class CloudFetchQueue(ResultSetQueue):
         self.result_links = result_links
         self.lz4_compressed = lz4_compressed
         self.description = description
+        self._ssl_context = ssl_context
 
         logger.debug(
             "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
@@ -169,7 +175,10 @@ class CloudFetchQueue(ResultSetQueue):
                     )
                 )
         self.download_manager = ResultFileDownloadManager(
-            result_links or [], self.max_download_threads, self.lz4_compressed
+            links=result_links or [],
+            max_download_threads=self.max_download_threads,
+            lz4_compressed=self.lz4_compressed,
+            ssl_context=self._ssl_context,
         )
 
         self.table = self._create_next_table()

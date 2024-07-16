@@ -184,6 +184,8 @@ class ThriftBackend:
                 password=tls_client_cert_key_password,
             )
 
+        self._ssl_context = ssl_context
+
         self._auth_provider = auth_provider
 
         # Connector version 3 retry approach
@@ -223,7 +225,7 @@ class ThriftBackend:
         self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
             auth_provider=self._auth_provider,
             uri_or_host=uri,
-            ssl_context=ssl_context,
+            ssl_context=self._ssl_context,
             **additional_transport_args,  # type: ignore
         )
 
@@ -774,6 +776,7 @@ class ThriftBackend:
                 max_download_threads=self.max_download_threads,
                 lz4_compressed=lz4_compressed,
                 description=description,
+                ssl_context=self._ssl_context,
             )
         else:
             arrow_queue_opt = None
@@ -1005,6 +1008,7 @@ class ThriftBackend:
             max_download_threads=self.max_download_threads,
             lz4_compressed=lz4_compressed,
             description=description,
+            ssl_context=self._ssl_context,
         )
 
         return queue, resp.hasMoreRows
