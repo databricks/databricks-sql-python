@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
+from ssl import SSLContext, CERT_NONE
 import lz4.frame
 import time
 
@@ -65,9 +66,11 @@ class ResultSetDownloadHandler:
         self,
         settings: DownloadableResultSettings,
         link: TSparkArrowResultLink,
+        ssl_context: SSLContext,
     ):
         self.settings = settings
         self.link = link
+        self._ssl_context = ssl_context
 
     def run(self) -> DownloadedFile:
         """
@@ -92,10 +95,14 @@ class ResultSetDownloadHandler:
         session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
         session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
 
+        ssl_verify = self._ssl_context.verify_mode != CERT_NONE
+
         try:
             # Get the file via HTTP request
             response = session.get(
-                self.link.fileLink, timeout=self.settings.download_timeout
+                self.link.fileLink,
+                timeout=self.settings.download_timeout,
+                verify=ssl_verify,
             )
             response.raise_for_status()
 
