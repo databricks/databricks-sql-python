@@ -1,8 +1,18 @@
 # Release History
 
-# x.x.x (TBD)
+# 3.3.0 (2024-07-18)
 
-- Don't retry requests that fail with code 401
+- Don't retry requests that fail with HTTP code 401 (databricks/databricks-sql-python#408 by @Hodnebo)
+- Remove username/password (aka "basic") auth option (databricks/databricks-sql-python#409 by @jackyhu-db)
+- Refactor CloudFetch handler to fix numerous issues with it (databricks/databricks-sql-python#405 by @kravets-levko)
+- Add option to disable SSL verification for CloudFetch links (databricks/databricks-sql-python#414 by @kravets-levko)
+
+Databricks-managed passwords reached end of life on July 10, 2024. Therefore, Basic auth support was removed from
+the library. See https://docs.databricks.com/en/security/auth-authz/password-deprecation.html
+
+The existing option `_tls_no_verify=True` of `sql.connect(...)` will now also disable SSL cert verification
+(but not the SSL itself) for CloudFetch links. This option should be used as a workaround only, when other ways
+to fix SSL certificate errors didn't work.
 
 # 3.2.0 (2024-06-06)
 
