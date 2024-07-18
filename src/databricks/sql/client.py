@@ -1164,7 +1164,7 @@ class ResultSet:
             timestamp_as_object=True,
         )
 
-        res = df.to_numpy(na_value=None)
+        res = df.to_numpy(na_value=None, dtype='object')
         return [ResultRow(*v) for v in res]
 
     @property
