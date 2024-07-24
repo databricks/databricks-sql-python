@@ -22,6 +22,8 @@ from databricks.sql.utils import (
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
+    ArrowQueue,
+    ColumnQueue
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -1135,11 +1137,11 @@ class ResultSet:
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
-
+        print("Table\n",table)
         result = []
         for row_index in range(len(table[0])):
             curr_row = []
-            for col_index in range(len(table)-1, -1, -1):
+            for col_index in range(len(table)):
                 curr_row.append(table[col_index][row_index])
             result.append(ResultRow(*curr_row))
 
@@ -1246,10 +1248,11 @@ class ResultSet:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
+        if isinstance(self.results, ColumnQueue):
+            return self._convert_columnar_table(self.fetchall_columnar())
+        else:
+            return self._convert_arrow_table(self.fetchall_arrow())
 
-        return self._convert_columnar_table(self.fetchall_columnar())
-
-        return self._convert_arrow_table(self.fetchall_arrow())
 
     def fetchmany(self, size: int) -> List[Row]:
         """
