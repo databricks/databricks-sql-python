@@ -3117,7 +3117,7 @@ class TDBSqlResultFormat(object):
     """
 
 
-    def __init__(self, arrowFormat=None, csvFormat=None, jsonArrayFormat=None,):
+    def __init__(self, arrowFormat=None, csvFormat=None, jsonArrayFormat=None):
         self.arrowFormat = arrowFormat
         self.csvFormat = csvFormat
         self.jsonArrayFormat = jsonArrayFormat

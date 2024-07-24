@@ -777,6 +777,9 @@ class Cursor:
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
         )
+
+        print("Line 781")
+        print(execute_response)
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
@@ -1129,6 +1132,20 @@ class ResultSet:
         self.results = results
         self.has_more_rows = has_more_rows
 
+    def _convert_columnar_table(self, table):
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+
+        result = []
+        for row_index in range(len(table[0])):
+            curr_row = []
+            for col_index in range(len(table)-1, -1, -1):
+                curr_row.append(table[col_index][row_index])
+            result.append(ResultRow(*curr_row))
+
+        return result
+
+
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1209,6 +1226,11 @@ class ResultSet:
 
         return results
 
+    def fetchall_columnar(self):
+        results = self.results.remaining_rows()
+        self._next_row_index += len(results[0])
+        return results
+
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
@@ -1224,6 +1246,9 @@ class ResultSet:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
+
+        return self._convert_columnar_table(self.fetchall_columnar())
+
         return self._convert_arrow_table(self.fetchall_arrow())
 
     def fetchmany(self, size: int) -> List[Row]:
