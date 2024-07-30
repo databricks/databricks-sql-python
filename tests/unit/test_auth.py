@@ -178,3 +178,10 @@ class Auth(unittest.TestCase):
         with self.assertRaises(ValueError) as e:
             get_python_sql_connector_auth_provider("foo.cloud.databricks.com", **kwargs)
         self.assertIn("Username/password authentication is no longer supported", str(e.exception))
+
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_default_auth(self, mock__initial_get_token):
+        hostname = "foo.cloud.databricks.com"
+        auth_provider = get_python_sql_connector_auth_provider(hostname)
+        self.assertTrue(type(auth_provider).__name__, "DatabricksOAuthProvider")
+

@@ -64,7 +64,21 @@ def get_auth_provider(cfg: ClientContext):
         # no op authenticator. authentication is performed using ssl certificate outside of headers
         return AuthProvider()
     else:
-        raise RuntimeError("No valid authentication settings!")
+        if (
+            cfg.oauth_redirect_port_range is not None
+            and cfg.oauth_client_id is not None
+            and cfg.oauth_scopes is not None
+        ):
+            return DatabricksOAuthProvider(
+                cfg.hostname,
+                cfg.oauth_persistence,
+                cfg.oauth_redirect_port_range,
+                cfg.oauth_client_id,
+                cfg.oauth_scopes,
+                cfg.auth_type,
+            )
+        else:
+            raise RuntimeError("No valid authentication settings!")
 
 
 PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
