@@ -9,7 +9,7 @@ from databricks.sql.auth.auth import (
     ExternalAuthProvider,
     AuthType,
 )
-from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.auth import get_python_sql_connector_auth_provider, PYSQL_OAUTH_CLIENT_ID
 from databricks.sql.auth.oauth import OAuthManager
 from databricks.sql.auth.authenticators import DatabricksOAuthProvider
 from databricks.sql.auth.endpoint import (
@@ -184,4 +184,5 @@ class Auth(unittest.TestCase):
         hostname = "foo.cloud.databricks.com"
         auth_provider = get_python_sql_connector_auth_provider(hostname)
         self.assertTrue(type(auth_provider).__name__, "DatabricksOAuthProvider")
+        self.assertTrue(auth_provider._client_id,PYSQL_OAUTH_CLIENT_ID)
 

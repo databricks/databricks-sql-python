@@ -75,7 +75,6 @@ def get_auth_provider(cfg: ClientContext):
                 cfg.oauth_redirect_port_range,
                 cfg.oauth_client_id,
                 cfg.oauth_scopes,
-                cfg.auth_type,
             )
         else:
             raise RuntimeError("No valid authentication settings!")
