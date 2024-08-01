@@ -37,6 +37,8 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
+from src.databricks.sql.thrift_api.TCLIService.ttypes import TDBSqlResultFormat
+
 logger = logging.getLogger(__name__)
 
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
@@ -734,6 +736,7 @@ class ThriftBackend:
         else:
             t_result_set_metadata_resp = self._get_metadata_resp(resp.operationHandle)
 
+        print(f"Line 739 - {t_result_set_metadata_resp.resultFormat}")
         if t_result_set_metadata_resp.resultFormat not in [
             ttypes.TSparkRowSetType.ARROW_BASED_SET,
             ttypes.TSparkRowSetType.COLUMN_BASED_SET,
@@ -858,15 +861,25 @@ class ThriftBackend:
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
-            canReadArrowResult=True,
+            canReadArrowResult=False,
             canDecompressLZ4Result=lz4_compression,
             canDownloadResult=use_cloud_fetch,
             confOverlay={
                 # We want to receive proper Timestamp arrow types.
                 "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
             },
-            useArrowNativeTypes=spark_arrow_types,
-            parameters=parameters,
+            # useArrowNativeTypes=spark_arrow_types,
+            # canReadArrowResult=True,
+            # # canDecompressLZ4Result=lz4_compression,
+            # canDecompressLZ4Result=False,
+            # canDownloadResult=False,
+            # # confOverlay={
+            # #     # We want to receive proper Timestamp arrow types.
+            # #     "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
+            # # },
+            # resultDataFormat=TDBSqlResultFormat(None,None,True),
+            # # useArrowNativeTypes=spark_arrow_types,
+             parameters=parameters,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
         return self._handle_execute_response(resp, cursor)
