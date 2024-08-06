@@ -8,19 +8,19 @@ from decimal import Decimal
 from datetime import datetime, date
 from uuid import UUID
 
-from databricks.sql.thrift_api.TCLIService.ttypes import (
+from databricks.sql import (
     TOpenSessionResp,
     TExecuteStatementResp,
     TOperationHandle,
     THandleIdentifier,
     TOperationType
 )
-from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql import ThriftBackend
 
 import databricks.sql
 import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
-from databricks.sql.types import Row
+from databricks.sql import Row
 
 from tests.unit.test_fetches import FetchTests
 from tests.unit.test_thrift_backend import ThriftBackendTestSuite

@@ -5,7 +5,7 @@ import requests
 from ssl import create_default_context
 
 import databricks.sql.cloudfetch.downloader as downloader
-from databricks.sql.exc import Error
+from databricks.sql import Error
 
 
 def create_response(**kwargs) -> requests.Response:

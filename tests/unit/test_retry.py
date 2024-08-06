@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 import pytest
 from requests import Request
 from urllib3 import HTTPResponse
-from databricks.sql.auth.retry import DatabricksRetryPolicy, RequestHistory
+from databricks.sql import DatabricksRetryPolicy, RequestHistory
 
 
 class TestRetry:

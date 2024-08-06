@@ -14,7 +14,10 @@ import re
 from ssl import SSLContext
 
 import lz4.frame
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 from databricks.sql import OperationalError, exc
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
@@ -155,7 +158,7 @@ class ColumnQueue(ResultSetQueue):
 class ArrowQueue(ResultSetQueue):
     def __init__(
         self,
-        arrow_table: pyarrow.Table,
+        arrow_table: "pyarrow.Table",
         n_valid_rows: int,
         start_row_index: int = 0,
     ):
@@ -170,7 +173,7 @@ class ArrowQueue(ResultSetQueue):
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
 
-    def next_n_rows(self, num_rows: int) -> pyarrow.Table:
+    def next_n_rows(self, num_rows: int) -> 'pyarrow.Table':
         """Get upto the next n rows of the Arrow dataframe"""
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
         # Note that the table.slice API is not the same as Python's slice
@@ -179,7 +182,7 @@ class ArrowQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
-    def remaining_rows(self) -> pyarrow.Table:
+    def remaining_rows(self) -> 'pyarrow.Table':
         slice = self.arrow_table.slice(
             self.cur_row_index, self.n_valid_rows - self.cur_row_index
         )
@@ -239,7 +242,7 @@ class CloudFetchQueue(ResultSetQueue):
         self.table = self._create_next_table()
         self.table_row_index = 0
 
-    def next_n_rows(self, num_rows: int) -> pyarrow.Table:
+    def next_n_rows(self, num_rows: int) -> 'pyarrow.Table':
         """
         Get up to the next n rows of the cloud fetch Arrow dataframes.
 
@@ -271,7 +274,7 @@ class CloudFetchQueue(ResultSetQueue):
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
         return results
 
-    def remaining_rows(self) -> pyarrow.Table:
+    def remaining_rows(self) -> 'pyarrow.Table':
         """
         Get all remaining rows of the cloud fetch Arrow dataframes.
 
@@ -292,7 +295,7 @@ class CloudFetchQueue(ResultSetQueue):
             self.table_row_index = 0
         return results
 
-    def _create_next_table(self) -> Union[pyarrow.Table, None]:
+    def _create_next_table(self) -> Union['pyarrow.Table', None]:
         logger.debug(
             "CloudFetchQueue: Trying to get downloaded file for row {}".format(
                 self.start_row_index
@@ -331,7 +334,7 @@ class CloudFetchQueue(ResultSetQueue):
 
         return arrow_table
 
-    def _create_empty_table(self) -> pyarrow.Table:
+    def _create_empty_table(self) -> 'pyarrow.Table':
         # Create a 0-row table with just the schema bytes
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
@@ -570,7 +573,7 @@ def transform_paramstyle(
     return output
 
 
-def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
+def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> 'pyarrow.Table':
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
@@ -597,7 +600,7 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     return arrow_table, n_rows
 
 
-def convert_decimals_in_arrow_table(table, description) -> pyarrow.Table:
+def convert_decimals_in_arrow_table(table, description) -> 'pyarrow.Table':
     for i, col in enumerate(table.itercolumns()):
         if description[i][1] == "decimal":
             decimal_col = col.to_pandas().apply(

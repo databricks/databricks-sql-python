@@ -17,7 +17,7 @@ import os
 from typing import Optional
 
 from databricks import sql
-from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken, DevOnlyFilePersistence
+from databricks.sql import OAuthPersistence, OAuthToken, DevOnlyFilePersistence
 
 
 class SampleOAuthPersistence(OAuthPersistence):

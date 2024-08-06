@@ -9,7 +9,7 @@ ENDPOINT_TEST_KEY = "is_endpoint_test"
 
 def pysql_supports_arrow():
     """Import databricks.sql and test whether Cursor has fetchall_arrow."""
-    from databricks.sql.client import Cursor
+    from databricks.sql import Cursor
     return hasattr(Cursor, 'fetchall_arrow')
 
 

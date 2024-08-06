@@ -4,7 +4,7 @@ This example demonstrates how to use parameters in both native (default) and inl
 
 from decimal import Decimal
 from databricks import sql
-from databricks.sql.parameters import *
+from databricks.sql import *
 
 import os
 from databricks import sql

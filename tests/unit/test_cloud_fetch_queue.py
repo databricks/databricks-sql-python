@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from ssl import create_default_context
 
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
+from databricks.sql import TSparkArrowResultLink
 import databricks.sql.utils as utils
 
 class CloudFetchQueueSuite(unittest.TestCase):

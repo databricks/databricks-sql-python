@@ -1,9 +1,9 @@
 from datetime import date, datetime
 import unittest, pytest, decimal
 from typing import Any, Dict
-from databricks.sql.parameters.native import dbsql_parameter_from_primitive
+from databricks.sql import dbsql_parameter_from_primitive
 
-from databricks.sql.utils import ParamEscaper, inject_parameters, transform_paramstyle, ParameterStructure
+from databricks.sql import ParamEscaper, inject_parameters, transform_paramstyle, ParameterStructure
 
 pe = ParamEscaper()
 

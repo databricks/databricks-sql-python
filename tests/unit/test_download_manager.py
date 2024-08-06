@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 from ssl import create_default_context
 
 import databricks.sql.cloudfetch.download_manager as download_manager
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
+from databricks.sql import TSparkArrowResultLink
 
 
 class DownloadManagerTests(unittest.TestCase):

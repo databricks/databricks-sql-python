@@ -11,7 +11,7 @@ import sys
 # # Add the parent directory to sys.path
 # sys.path.append(target_folder_path)
 
-from src.databricks import sql
+from databricks import sql
 
 # from dotenv import load_dotenv
 
@@ -22,7 +22,7 @@ from src.databricks import sql
 # load_dotenv()
 
 host = "e2-dogfood.staging.cloud.databricks.com"
-http_path = "/sql/1.0/warehouses/dd43ee29fedd958d"
+http_path = "/sql/1.0/warehouses/58aa1b363649e722"
 
 access_token = ""
 connection = sql.connect(

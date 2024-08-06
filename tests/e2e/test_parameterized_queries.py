@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 import pytz
 
-from databricks.sql.parameters.native import (
+from databricks.sql import (
     BigIntegerParameter,
     BooleanParameter,
     DateParameter,

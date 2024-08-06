@@ -112,7 +112,7 @@ Automatic inferrence is sufficient for most usages. But you can bypass the infer
 
 ```python
 from databricks import sql
-from databricks.sql.parameters import StringParameter, IntegerParameter
+from databricks.sql import StringParameter, IntegerParameter
 
 # with `named` markers
 with sql.connect(...) as conn:

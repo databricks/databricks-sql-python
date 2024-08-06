@@ -1,7 +1,7 @@
 
 import unittest
 
-from databricks.sql.experimental.oauth_persistence import DevOnlyFilePersistence, OAuthToken
+from databricks.sql import DevOnlyFilePersistence, OAuthToken
 import tempfile
 import os
 

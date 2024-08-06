@@ -65,8 +65,8 @@ or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/123456789
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+See [CONTRIBUTING.md](../CONTRIBUTING.md)
 
 ## License
 
-[Apache License 2.0](LICENSE)
+[Apache License 2.0](../LICENSE)

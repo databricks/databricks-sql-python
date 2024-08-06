@@ -1,7 +1,11 @@
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 import requests
 import json
 import os
@@ -982,14 +986,14 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def fetchall_arrow(self) -> pyarrow.Table:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
             raise Error("There is no active result set")
 
-    def fetchmany_arrow(self, size) -> pyarrow.Table:
+    def fetchmany_arrow(self, size) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
@@ -1160,20 +1164,23 @@ class ResultSet:
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
         # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
+        try:
+            dtype_mapping = {
+                pyarrow.int8(): pandas.Int8Dtype(),
+                pyarrow.int16(): pandas.Int16Dtype(),
+                pyarrow.int32(): pandas.Int32Dtype(),
+                pyarrow.int64(): pandas.Int64Dtype(),
+                pyarrow.uint8(): pandas.UInt8Dtype(),
+                pyarrow.uint16(): pandas.UInt16Dtype(),
+                pyarrow.uint32(): pandas.UInt32Dtype(),
+                pyarrow.uint64(): pandas.UInt64Dtype(),
+                pyarrow.bool_(): pandas.BooleanDtype(),
+                pyarrow.float32(): pandas.Float32Dtype(),
+                pyarrow.float64(): pandas.Float64Dtype(),
+                pyarrow.string(): pandas.StringDtype(),
+            }
+        except AttributeError:
+            print("pyarrow is not present")
 
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
@@ -1190,7 +1197,7 @@ class ResultSet:
     def rownumber(self):
         return self._next_row_index
 
-    def fetchmany_arrow(self, size: int) -> pyarrow.Table:
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
 
@@ -1215,7 +1222,7 @@ class ResultSet:
 
         return results
 
-    def fetchall_arrow(self) -> pyarrow.Table:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows

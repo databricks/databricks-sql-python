@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "databricks-sql-connector"
-version = "3.3.0"
-description = "Databricks SQL Connector for Python"
+name = "databricks-sql-connector-core"
+version = "1.0.0"
+description = "Databricks SQL Connector core for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
 readme = "README.md"
@@ -14,15 +14,15 @@ thrift = ">=0.16.0,<0.21.0"
 pandas = [
     { version = ">=1.2.5,<2.2.0", python = ">=3.8" }
 ]
-pyarrow = ">=14.0.1,<17"
+#pyarrow = ">=14.0.1,<17"
 
 lz4 = "^4.0.2"
 requests = "^2.18.1"
 oauthlib = "^3.1.0"
-numpy = [
-    { version = "^1.16.6", python = ">=3.8,<3.11" },
-    { version = "^1.23.4", python = ">=3.11" },
-]
+#numpy = [
+#    { version = "^1.16.6", python = ">=3.8,<3.11" },
+#    { version = "^1.23.4", python = ">=3.11" },
+#]
 sqlalchemy = { version = ">=2.0.21", optional = true }
 openpyxl = "^3.0.10"
 alembic = { version = "^1.0.11", optional = true }
@@ -56,11 +56,11 @@ exclude = ['ttypes\.py$', 'TCLIService\.py$']
 
 [tool.black]
 exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
-
-[tool.pytest.ini_options]
-markers = {"reviewed" = "Test case has been reviewed by Databricks"}
-minversion = "6.0"
-log_cli = "false"
-log_cli_level = "INFO"
-testpaths = ["tests", "src/databricks/sqlalchemy/test_local"]
-env_files = ["test.env"]
+#
+#[tool.pytest.ini_options]
+#markers = {"reviewed" = "Test case has been reviewed by Databricks"}
+#minversion = "6.0"
+#log_cli = "false"
+#log_cli_level = "INFO"
+#testpaths = ["tests", "src/databricks/sqlalchemy/test_local"]
+#env_files = ["test.env"]

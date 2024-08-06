@@ -7,7 +7,7 @@ import time
 import pytest
 
 import databricks.sql.client as client
-from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from databricks.sql import ExecuteResponse, ArrowQueue
 
 
 class FetchBenchmarkTests(unittest.TestCase):

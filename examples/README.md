@@ -6,7 +6,7 @@ We provide example scripts so you can see the connector in action for basic usag
     - DATABRICKS_HTTP_PATH
     - DATABRICKS_TOKEN
 
-Follow the quick start in our [README](../README.md) to install `databricks-sql-connector` and see
+Follow the quick start in our [README](../databricks_sql_connector_core/README.md) to install `databricks-sql-connector` and see
 how to find the hostname, http path, and access token. Note that for the OAuth examples below a
 personal access token is not needed.
 
@@ -17,13 +17,13 @@ To run all of these examples you can clone the entire repository to your disk. O
 
 ### Clone the repo
 1. Clone this repository to your local system
-2. Follow the quick start in the [README](../README.md) to install the connector and obtain authentication credentials.
+2. Follow the quick start in the [README](../databricks_sql_connector_core/README.md) to install the connector and obtain authentication credentials.
 3. `cd examples/`
 4. Then run any script using the `python` CLI. For example `python query_execute.py`
 
 ### Fetch with `curl`
 
-1. Follow the quick start in the [README](../README.md) to install the connector and obtain authentication credentials.
+1. Follow the quick start in the [README](../databricks_sql_connector_core/README.md) to install the connector and obtain authentication credentials.
 2. Use the GitHub UI to find the URL to the **Raw** version of one of these examples. For example: `https://raw.githubusercontent.com/databricks/databricks-sql-python/main/examples/query_execute.py`
 3. `curl` this URL to your local file-system: `curl https://raw.githubusercontent.com/databricks/databricks-sql-python/main/examples/query_execute.py > query_execute.py`
 4. Then run the script with the `python` CLI. `python query_execute.py`

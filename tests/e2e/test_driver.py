@@ -46,7 +46,7 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
-from databricks.sql.exc import SessionAlreadyClosedError
+from databricks.sql import SessionAlreadyClosedError
 
 log = logging.getLogger(__name__)
 
@@ -696,7 +696,7 @@ class TestPySQLCoreSuite(
 
     def test_close_connection_closes_cursors(self):
 
-        from databricks.sql.thrift_api.TCLIService import ttypes
+        from databricks.sql import ttypes
 
         with self.connection() as conn:
             cursor = conn.cursor()

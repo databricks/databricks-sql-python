@@ -8,7 +8,10 @@ import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union
 
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 import thrift.transport.THttpClient
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
@@ -37,7 +40,7 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
-from src.databricks.sql.thrift_api.TCLIService.ttypes import TDBSqlResultFormat
+# from databricks.sql import TDBSqlResultFormat
 
 logger = logging.getLogger(__name__)
 
@@ -654,6 +657,10 @@ class ThriftBackend:
 
     @staticmethod
     def _hive_schema_to_arrow_schema(t_table_schema):
+
+        if pyarrow is None:
+            raise ImportError("pyarrow is required to convert Hive schema to Arrow schema")
+
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -760,12 +767,17 @@ class ThriftBackend:
         description = self._hive_schema_to_description(
             t_result_set_metadata_resp.schema
         )
-        schema_bytes = (
-            t_result_set_metadata_resp.arrowSchema
-            or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
-            .serialize()
-            .to_pybytes()
-        )
+
+        if pyarrow:
+            schema_bytes = (
+                t_result_set_metadata_resp.arrowSchema
+                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                .serialize()
+                .to_pybytes()
+            )
+        else:
+            schema_bytes = None
+
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         if direct_results and direct_results.resultSet:

@@ -9,10 +9,10 @@ import pyarrow
 
 import databricks.sql
 from databricks.sql import utils
-from databricks.sql.thrift_api.TCLIService import ttypes
+from databricks.sql import ttypes
 from databricks.sql import *
-from databricks.sql.auth.authenticators import AuthProvider
-from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql import AuthProvider
+from databricks.sql import ThriftBackend
 
 
 def retry_policy_factory():
@@ -160,7 +160,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     def test_proxy_headers_are_set(self):
 
-        from databricks.sql.auth.thrift_http_client import THttpClient
+        from databricks.sql import THttpClient
         from urllib.parse import urlparse
 
         fake_proxy_spec = "https://someuser:somepassword@8.8.8.8:12340"
@@ -1197,9 +1197,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
     ):
 
         import thrift, errno
-        from databricks.sql.thrift_api.TCLIService.TCLIService import Client
-        from databricks.sql.exc import RequestError
-        from databricks.sql.utils import NoRetryReason
+        from databricks.sql import Client
+        from databricks.sql import RequestError
+        from databricks.sql import NoRetryReason
 
         this_gos_name = "GetOperationStatus"
         mock_GetOperationStatus.__name__ = this_gos_name
@@ -1263,10 +1263,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_gos.side_effect = urllib3.exceptions.HTTPError("Read timed out")
 
         import thrift, errno
-        from databricks.sql.thrift_api.TCLIService.TCLIService import Client
-        from databricks.sql.exc import RequestError
-        from databricks.sql.utils import NoRetryReason
-        from databricks.sql.auth.thrift_http_client import THttpClient
+        from databricks.sql import Client
+        from databricks.sql import RequestError
+        from databricks.sql import NoRetryReason
+        from databricks.sql import THttpClient
 
         this_gos_name = "GetOperationStatus"
         mock_gos.__name__ = this_gos_name

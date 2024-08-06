@@ -52,7 +52,7 @@ from sqlalchemy.testing.suite import (
 )
 
 from databricks.sqlalchemy.test.overrides._ctetest import CTETest
-from databricks.sqlalchemy.test.overrides._componentreflectiontest import (
+from databricks_sqlalchemy.src.sqlalchemy.test.overrides._componentreflectiontest import (
     ComponentReflectionTest,
 )
 

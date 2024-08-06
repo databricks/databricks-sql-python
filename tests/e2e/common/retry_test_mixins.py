@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 from urllib3.exceptions import MaxRetryError
 
-from databricks.sql.auth.retry import DatabricksRetryPolicy
-from databricks.sql.exc import (
+from databricks.sql import DatabricksRetryPolicy
+from databricks.sql import (
     MaxRetryDurationError,
     NonRecoverableNetworkError,
     RequestError,
