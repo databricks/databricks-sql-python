@@ -12,16 +12,16 @@ import os
 import decimal
 from uuid import UUID
 
-from databricks.sql import __version__
-from databricks.sql import *
-from databricks.sql.exc import (
+from databricks_sql_connector_core.sql import __version__
+from databricks_sql_connector_core.sql import *
+from databricks_sql_connector_core.sql.exc import (
     OperationalError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
 )
-from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.thrift_backend import ThriftBackend
-from databricks.sql.utils import (
+from databricks_sql_connector_core.sql.thrift_api.TCLIService import ttypes
+from databricks_sql_connector_core.sql.thrift_backend import ThriftBackend
+from databricks_sql_connector_core.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
     inject_parameters,
@@ -29,7 +29,7 @@ from databricks.sql.utils import (
     ArrowQueue,
     ColumnQueue
 )
-from databricks.sql.parameters.native import (
+from databricks_sql_connector_core.sql.parameters.native import (
     DbsqlParameterBase,
     TDbsqlParameter,
     TParameterDict,
@@ -41,11 +41,11 @@ from databricks.sql.parameters.native import (
 )
 
 
-from databricks.sql.types import Row
-from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
-from databricks.sql.experimental.oauth_persistence import OAuthPersistence
+from databricks_sql_connector_core.sql.types import Row
+from databricks_sql_connector_core.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks_sql_connector_core.sql.experimental.oauth_persistence import OAuthPersistence
 
-from databricks.sql.thrift_api.TCLIService.ttypes import (
+from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
 )
 

@@ -11,7 +11,7 @@ import sys
 # # Add the parent directory to sys.path
 # sys.path.append(target_folder_path)
 
-from databricks import sql
+from databricks_sql_connector.src.databricks import sql
 
 # from dotenv import load_dotenv
 

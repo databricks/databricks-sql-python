@@ -13,8 +13,8 @@ import requests
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from requests.exceptions import RequestException
 
-from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
-from databricks.sql.auth.endpoint import OAuthEndpointCollection
+from databricks_sql_connector_core.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
+from databricks_sql_connector_core.sql.auth.endpoint import OAuthEndpointCollection
 
 logger = logging.getLogger(__name__)
 

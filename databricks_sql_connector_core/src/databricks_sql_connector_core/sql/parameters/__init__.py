@@ -1,4 +1,4 @@
-from databricks.sql.parameters.native import (
+from databricks_sql_connector_core.sql.parameters.native import (
     IntegerParameter,
     StringParameter,
     BigIntegerParameter,

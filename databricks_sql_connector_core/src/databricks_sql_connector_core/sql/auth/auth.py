@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional, List
 
-from databricks.sql.auth.authenticators import (
+from databricks_sql_connector_core.sql.auth.authenticators import (
     AuthProvider,
     AccessTokenAuthProvider,
     ExternalAuthProvider,

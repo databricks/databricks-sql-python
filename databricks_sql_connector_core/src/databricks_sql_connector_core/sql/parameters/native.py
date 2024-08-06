@@ -3,8 +3,8 @@ import decimal
 from enum import Enum, auto
 from typing import Optional, Sequence
 
-from databricks.sql.exc import NotSupportedError
-from databricks.sql.thrift_api.TCLIService.ttypes import (
+from databricks_sql_connector_core.sql.exc import NotSupportedError
+from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TSparkParameterValue,
 )

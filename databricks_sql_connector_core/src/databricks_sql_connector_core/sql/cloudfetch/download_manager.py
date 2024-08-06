@@ -4,12 +4,12 @@ from ssl import SSLContext
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import List, Union
 
-from databricks.sql.cloudfetch.downloader import (
+from databricks_sql_connector_core.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
     DownloadableResultSettings,
     DownloadedFile,
 )
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
+from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
 

@@ -3,12 +3,12 @@ import base64
 import logging
 from typing import Callable, Dict, List
 
-from databricks.sql.auth.oauth import OAuthManager
-from databricks.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_host
+from databricks_sql_connector_core.sql.auth.oauth import OAuthManager
+from databricks_sql_connector_core.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_host
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
+from databricks_sql_connector_core.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
 
 
 class AuthProvider:

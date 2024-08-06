@@ -7,9 +7,9 @@ from ssl import SSLContext, CERT_NONE
 import lz4.frame
 import time
 
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
+from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
-from databricks.sql.exc import Error
+from databricks_sql_connector_core.sql.exc import Error
 
 logger = logging.getLogger(__name__)
 

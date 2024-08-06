@@ -19,17 +19,17 @@ import thrift.transport.TTransport
 
 import urllib3.exceptions
 
-import databricks.sql.auth.thrift_http_client
-from databricks.sql.auth.thrift_http_client import CommandType
-from databricks.sql.auth.authenticators import AuthProvider
-from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
-from databricks.sql import *
-from databricks.sql.exc import MaxRetryDurationError
-from databricks.sql.thrift_api.TCLIService.TCLIService import (
+import databricks_sql_connector_core.sql.auth.thrift_http_client
+from databricks_sql_connector_core.sql.auth.thrift_http_client import CommandType
+from databricks_sql_connector_core.sql.auth.authenticators import AuthProvider
+from databricks_sql_connector_core.sql.thrift_api.TCLIService import TCLIService, ttypes
+from databricks_sql_connector_core.sql import *
+from databricks_sql_connector_core.sql.exc import MaxRetryDurationError
+from databricks_sql_connector_core.sql.thrift_api.TCLIService.TCLIService import (
     Client as TCLIServiceClient,
 )
 
-from databricks.sql.utils import (
+from databricks_sql_connector_core.sql.utils import (
     ExecuteResponse,
     _bound,
     RequestErrorInfo,
@@ -40,18 +40,18 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
-# from databricks.sql import TDBSqlResultFormat
+# from databricks_sql_connector_core.sql import TDBSqlResultFormat
 
 logger = logging.getLogger(__name__)
 
-unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger = logging.getLogger("databricks_sql_connector_core.sql.unsafe")
 unsafe_logger.setLevel(logging.DEBUG)
 
 # To capture these logs in client code, add a non-NullHandler.
 # See our e2e test suite for an example with logging.FileHandler
 unsafe_logger.addHandler(logging.NullHandler())
 
-# Disable propagation so that handlers for `databricks.sql` don't pick up these messages
+# Disable propagation so that handlers for `databricks_sql_connector_core.sql` don't pick up these messages
 unsafe_logger.propagate = False
 
 THRIFT_ERROR_MESSAGE_HEADER = "x-thriftserver-error-message"
@@ -215,7 +215,7 @@ class ThriftBackend:
         else:
             urllib3_kwargs = {}
         if self.enable_v3_retries:
-            self.retry_policy = databricks.sql.auth.thrift_http_client.DatabricksRetryPolicy(
+            self.retry_policy = databricks_sql_connector_core.sql.auth.thrift_http_client.DatabricksRetryPolicy(
                 delay_min=self._retry_delay_min,
                 delay_max=self._retry_delay_max,
                 stop_after_attempts_count=self._retry_stop_after_attempts_count,
@@ -227,7 +227,7 @@ class ThriftBackend:
 
             additional_transport_args["retry_policy"] = self.retry_policy
 
-        self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
+        self._transport = databricks_sql_connector_core.sql.auth.thrift_http_client.THttpClient(
             auth_provider=self._auth_provider,
             uri_or_host=uri,
             ssl_context=self._ssl_context,
