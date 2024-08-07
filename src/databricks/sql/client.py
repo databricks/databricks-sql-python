@@ -158,6 +158,7 @@ class Connection:
                     STRUCT is returned as Dict[str, Any]
                     ARRAY is returned as numpy.ndarray
                 When False, complex types are returned as a strings. These are generally deserializable as JSON.
+            :param proxies: An optional dictionary mapping protocol to the URL of the proxy.
         """
 
         # Internal arguments in **kwargs:
@@ -206,6 +207,7 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
+        self.proxies = kwargs.get("proxies")
 
         auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
@@ -651,7 +653,12 @@ class Cursor:
             raise Error("Cannot perform PUT without specifying a local_file")
 
         with open(local_file, "rb") as fh:
-            r = requests.put(url=presigned_url, data=fh, headers=headers)
+            r = requests.put(
+                url=presigned_url,
+                data=fh,
+                headers=headers,
+                proxies=self.connection.proxies,
+            )
 
         # fmt: off
         # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
@@ -685,7 +692,9 @@ class Cursor:
         if local_file is None:
             raise Error("Cannot perform GET without specifying a local_file")
 
-        r = requests.get(url=presigned_url, headers=headers)
+        r = requests.get(
+            url=presigned_url, headers=headers, proxies=self.connection.proxies
+        )
 
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
@@ -702,7 +711,9 @@ class Cursor:
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        r = requests.delete(url=presigned_url, headers=headers)
+        r = requests.delete(
+            url=presigned_url, headers=headers, proxies=self.connection.proxies
+        )
 
         if not r.ok:
             raise Error(
