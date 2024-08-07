@@ -784,8 +784,8 @@ class Cursor:
             parameters=prepared_params,
         )
 
-        print("Line 781")
-        print(execute_response)
+        # print("Line 781")
+        # print(execute_response)
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
@@ -1141,7 +1141,7 @@ class ResultSet:
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
-        print("Table\n",table)
+        # print("Table\n",table)
         result = []
         for row_index in range(len(table[0])):
             curr_row = []
@@ -1164,23 +1164,20 @@ class ResultSet:
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
         # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        try:
-            dtype_mapping = {
-                pyarrow.int8(): pandas.Int8Dtype(),
-                pyarrow.int16(): pandas.Int16Dtype(),
-                pyarrow.int32(): pandas.Int32Dtype(),
-                pyarrow.int64(): pandas.Int64Dtype(),
-                pyarrow.uint8(): pandas.UInt8Dtype(),
-                pyarrow.uint16(): pandas.UInt16Dtype(),
-                pyarrow.uint32(): pandas.UInt32Dtype(),
-                pyarrow.uint64(): pandas.UInt64Dtype(),
-                pyarrow.bool_(): pandas.BooleanDtype(),
-                pyarrow.float32(): pandas.Float32Dtype(),
-                pyarrow.float64(): pandas.Float64Dtype(),
-                pyarrow.string(): pandas.StringDtype(),
-            }
-        except AttributeError:
-            print("pyarrow is not present")
+        dtype_mapping = {
+            pyarrow.int8(): pandas.Int8Dtype(),
+            pyarrow.int16(): pandas.Int16Dtype(),
+            pyarrow.int32(): pandas.Int32Dtype(),
+            pyarrow.int64(): pandas.Int64Dtype(),
+            pyarrow.uint8(): pandas.UInt8Dtype(),
+            pyarrow.uint16(): pandas.UInt16Dtype(),
+            pyarrow.uint32(): pandas.UInt32Dtype(),
+            pyarrow.uint64(): pandas.UInt64Dtype(),
+            pyarrow.bool_(): pandas.BooleanDtype(),
+            pyarrow.float32(): pandas.Float32Dtype(),
+            pyarrow.float64(): pandas.Float64Dtype(),
+            pyarrow.string(): pandas.StringDtype(),
+        }
 
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
@@ -1222,6 +1219,20 @@ class ResultSet:
 
         return results
 
+    def fetchmany_columnar(self, size: int):
+        """
+        Fetch the next set of rows of a query result, returning a Columnar Table.
+
+        An empty sequence is returned when no more rows are available.
+        """
+        if size < 0:
+            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+
+        results = self.results.next_n_rows(size)
+        self._next_row_index += results.num_rows
+
+        return results
+
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
@@ -1245,7 +1256,11 @@ class ResultSet:
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
-        res = self._convert_arrow_table(self.fetchmany_arrow(1))
+        if isinstance(self.results, ColumnQueue):
+            res = self._convert_columnar_table(self.fetchmany_columnar(1))
+        else:
+            res = self._convert_arrow_table(self.fetchmany_arrow(1))
+
         if len(res) > 0:
             return res[0]
         else:
@@ -1260,14 +1275,16 @@ class ResultSet:
         else:
             return self._convert_arrow_table(self.fetchall_arrow())
 
-
     def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a list of rows.
 
         An empty sequence is returned when no more rows are available.
         """
-        return self._convert_arrow_table(self.fetchmany_arrow(size))
+        if isinstance(self.results, ColumnQueue):
+            return self._convert_columnar_table(self.fetchmany_columnar(size))
+        else:
+            return self._convert_arrow_table(self.fetchmany_arrow(size))
 
     def close(self) -> None:
         """

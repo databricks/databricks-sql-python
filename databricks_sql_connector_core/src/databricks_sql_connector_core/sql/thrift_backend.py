@@ -743,7 +743,7 @@ class ThriftBackend:
         else:
             t_result_set_metadata_resp = self._get_metadata_resp(resp.operationHandle)
 
-        print(f"Line 739 - {t_result_set_metadata_resp.resultFormat}")
+        # print(f"Line 739 - {t_result_set_metadata_resp.resultFormat}")
         if t_result_set_metadata_resp.resultFormat not in [
             ttypes.TSparkRowSetType.ARROW_BASED_SET,
             ttypes.TSparkRowSetType.COLUMN_BASED_SET,
@@ -873,7 +873,7 @@ class ThriftBackend:
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
-            canReadArrowResult=False,
+            canReadArrowResult=True if pyarrow else False,
             canDecompressLZ4Result=lz4_compression,
             canDownloadResult=use_cloud_fetch,
             confOverlay={
