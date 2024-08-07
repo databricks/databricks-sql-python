@@ -23,13 +23,13 @@ python = "^3.8.0"
 #    { version = "^1.16.6", python = ">=3.8,<3.11" },
 #    { version = "^1.23.4", python = ">=3.11" },
 #]
-#sqlalchemy = { version = ">=2.0.21", optional = true }
+databricks_sqlalchemy = { version = ">=1.0.0", optional = true }
 #openpyxl = "^3.0.10"
 #alembic = { version = "^1.0.11", optional = true }
 #urllib3 = ">=1.26"
 #
-#[tool.poetry.extras]
-#sqlalchemy = ["sqlalchemy"]
+[tool.poetry.extras]
+databricks_sqlalchemy = ["databricks_sqlalchemy"]
 #alembic = ["sqlalchemy", "alembic"]
 #
 #[tool.poetry.dev-dependencies]
@@ -44,7 +44,7 @@ python = "^3.8.0"
 #"Bug Tracker" = "https://github.com/databricks/databricks-sql-python/issues"
 
 [tool.poetry.plugins."sqlalchemy.dialects"]
-"databricks" = "databricks.sqlalchemy:DatabricksDialect"
+"databricks" = "databricks_sqlalchemy:DatabricksDialect"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
