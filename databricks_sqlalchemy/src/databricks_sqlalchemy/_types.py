@@ -6,6 +6,8 @@ import sqlalchemy
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.ext.compiler import compiles
 
+# from databricks.sql.utils import ParamEscaper
+import databricks.sql
 from databricks.sql.utils import ParamEscaper
 
 

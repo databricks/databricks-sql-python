@@ -5,7 +5,7 @@ import sqlalchemy
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.engine.interfaces import ReflectedColumn
 
-from databricks.sqlalchemy import _types as type_overrides
+from databricks_sqlalchemy import _types as type_overrides
 
 """
 This module contains helper functions that can parse the contents
