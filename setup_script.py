@@ -25,6 +25,6 @@ def build_and_install_library(directory_name):
 
 
 if __name__ == "__main__":
-    # build_and_install_library("databricks_sql_connector_core")
+    build_and_install_library("databricks_sql_connector_core")
     build_and_install_library("databricks_sql_connector")
-    # build_and_install_library("databricks_sqlalchemy")
+    build_and_install_library("databricks_sqlalchemy")

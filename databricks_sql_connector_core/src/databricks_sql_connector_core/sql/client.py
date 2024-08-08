@@ -784,8 +784,6 @@ class Cursor:
             parameters=prepared_params,
         )
 
-        # print("Line 781")
-        # print(execute_response)
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
@@ -1141,7 +1139,6 @@ class ResultSet:
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
-        # print("Table\n",table)
         result = []
         for row_index in range(len(table[0])):
             curr_row = []

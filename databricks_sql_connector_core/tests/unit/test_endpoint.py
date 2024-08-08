@@ -4,8 +4,8 @@ import pytest
 
 from unittest.mock import patch
 
-from databricks.sql import AuthType
-from databricks.sql import (
+from databricks_sql_connector_core.sql.auth.auth import AuthType
+from databricks_sql_connector_core.sql.auth.endpoint import (
     infer_cloud_from_host,
     CloudType,
     get_oauth_endpoints,
@@ -89,13 +89,13 @@ class EndpointTest(unittest.TestCase):
         ]
 
         for (
-            cloud_type,
-            host,
-            use_azure_auth,
-            expected_auth_url,
-            expected_config_url,
-            expected_scopes,
-            expected_scope2,
+                cloud_type,
+                host,
+                use_azure_auth,
+                expected_auth_url,
+                expected_config_url,
+                expected_scopes,
+                expected_scope2,
         ) in param_list:
             with self.subTest(cloud_type):
                 endpoint = get_oauth_endpoints(host, use_azure_auth)

@@ -1,4 +1,4 @@
-from databricks import sql
+from databricks_sql_connector_core import sql
 import os, threading, time
 
 """
@@ -11,12 +11,12 @@ with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
 
   with connection.cursor() as cursor:
     def execute_really_long_query():
-        try:
-            cursor.execute("SELECT SUM(A.id - B.id) " +
-                            "FROM range(1000000000) A CROSS JOIN range(100000000) B " +
-                            "GROUP BY (A.id - B.id)")
-        except sql.exc.RequestError:
-          print("It looks like this query was cancelled.")
+      try:
+        cursor.execute("SELECT SUM(A.id - B.id) " +
+                       "FROM range(1000000000) A CROSS JOIN range(100000000) B " +
+                       "GROUP BY (A.id - B.id)")
+      except sql.exc.RequestError:
+        print("It looks like this query was cancelled.")
 
     exec_thread = threading.Thread(target=execute_really_long_query)
 

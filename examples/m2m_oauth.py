@@ -1,7 +1,7 @@
 import os
 
 from databricks.sdk.core import oauth_service_principal, Config
-from databricks import sql
+from databricks_sql_connector_core import sql
 
 """
 This example shows how to use OAuth M2M (machine-to-machine) for service principal

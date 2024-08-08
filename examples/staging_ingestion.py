@@ -1,4 +1,4 @@
-from databricks import sql
+from databricks_sql_connector_core import sql
 import os
 
 """
@@ -51,10 +51,10 @@ if not os.path.exists(_complete_path):
 staging_allowed_local_path = os.path.split(_complete_path)[0]
 
 with sql.connect(
-    server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
-    http_path=os.getenv("DATABRICKS_HTTP_PATH"),
-    access_token=os.getenv("DATABRICKS_TOKEN"),
-    staging_allowed_local_path=staging_allowed_local_path,
+        server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
+        http_path=os.getenv("DATABRICKS_HTTP_PATH"),
+        access_token=os.getenv("DATABRICKS_TOKEN"),
+        staging_allowed_local_path=staging_allowed_local_path,
 ) as connection:
 
     with connection.cursor() as cursor:

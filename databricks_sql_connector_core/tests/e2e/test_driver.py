@@ -18,8 +18,8 @@ import thrift
 import pytest
 from urllib3.connectionpool import ReadTimeoutError
 
-import databricks.sql as sql
-from databricks.sql import (
+import databricks_sql_connector_core.sql as sql
+from databricks_sql_connector_core.sql import (
     STRING,
     BINARY,
     NUMBER,
@@ -46,11 +46,11 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
-from databricks.sql import SessionAlreadyClosedError
+from databricks_sql_connector_core.sql.exc import SessionAlreadyClosedError
 
 log = logging.getLogger(__name__)
 
-unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger = logging.getLogger("databricks_sql_connector_core.sql.unsafe")
 unsafe_logger.setLevel(logging.DEBUG)
 unsafe_logger.addHandler(logging.FileHandler("./tests-unsafe.log"))
 
@@ -141,19 +141,19 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
         # If this table is deleted or this test is run on a different host, a different table may need to be used.
         base_query = "SELECT * FROM store_sales WHERE ss_sold_date_sk = 2452234 "
         for num_limit, num_threads, lz4_compression in itertools.product(
-            limits, threads, [True, False]
+                limits, threads, [True, False]
         ):
             with self.subTest(
-                num_limit=num_limit, num_threads=num_threads, lz4_compression=lz4_compression
+                    num_limit=num_limit, num_threads=num_threads, lz4_compression=lz4_compression
             ):
                 cf_result, noop_result = None, None
                 query = base_query + "LIMIT " + str(num_limit)
                 with self.cursor(
-                    {
-                        "use_cloud_fetch": True,
-                        "max_download_threads": num_threads,
-                        "catalog": "hive_metastore",
-                    },
+                        {
+                            "use_cloud_fetch": True,
+                            "max_download_threads": num_threads,
+                            "catalog": "hive_metastore",
+                        },
                 ) as cursor:
                     cursor.execute(query)
                     cf_result = cursor.fetchall()
@@ -333,7 +333,7 @@ class TestPySQLCoreSuite(
                         "col_3",
                         2002,
                         "STRUCT<name: STRING, age: INT>",
-                    ],
+                        ],
                     ["default", table_name + "_1", "col_4", 2000, "MAP<STRING, INT>"],
                     ["default", table_name + "_1", "col_5", 2003, "ARRAY<STRING>"],
                     ["default", table_name + "_2", "col_1", 4, "INT"],
@@ -344,7 +344,7 @@ class TestPySQLCoreSuite(
                         "col_3",
                         2002,
                         "STRUCT<name: STRING, age: INT>",
-                    ],
+                        ],
                     ["default", table_name + "_2", "col_4", 2000, "MAP<STRING, INT>"],
                     [
                         "default",
@@ -352,7 +352,7 @@ class TestPySQLCoreSuite(
                         "col_5",
                         2003,
                         "ARRAY<STRING>",
-                    ],
+                        ],
                 ]
                 assert cleaned_response == expected
                 expected = [
@@ -608,7 +608,7 @@ class TestPySQLCoreSuite(
                 # be UTC (what it should be by default on the server)
                 aware_timestamp = expected and expected.replace(tzinfo=datetime.timezone.utc)
                 assert result_value == (
-                    aware_timestamp and aware_timestamp.timestamp() * 1000000
+                        aware_timestamp and aware_timestamp.timestamp() * 1000000
                 ), "timestamp {} did not match {}".format(timestamp, expected)
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
@@ -696,7 +696,7 @@ class TestPySQLCoreSuite(
 
     def test_close_connection_closes_cursors(self):
 
-        from databricks.sql import ttypes
+        from databricks_sql_connector_core.sql.thrift_api.TCLIService import ttypes
 
         with self.connection() as conn:
             cursor = conn.cursor()
@@ -750,7 +750,7 @@ class TestPySQLUnityCatalogSuite(PySQLPytestTestCase):
             cursor.execute("USE CATALOG {}".format(self.arguments["catalog"]))
             cursor.execute("CREATE TABLE table_{} (col1 int)".format(table_name))
         with self.connection(
-            {"catalog": self.arguments["catalog"], "schema": table_name}
+                {"catalog": self.arguments["catalog"], "schema": table_name}
         ) as connection:
             cursor = connection.cursor()
             cursor.execute("select current_catalog()")

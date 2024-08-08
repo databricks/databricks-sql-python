@@ -2,8 +2,8 @@ import os
 import tempfile
 
 import pytest
-import databricks.sql as sql
-from databricks.sql import Error
+import databricks_sql_connector_core.sql as sql
+from databricks_sql_connector_core.sql import Error
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -100,7 +100,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 cursor.execute(query)
 
     def test_staging_ingestion_put_fails_if_localFile_not_in_staging_allowed_local_path(
-        self, ingestion_user
+            self, ingestion_user
     ):
 
         fh, temp_path = tempfile.mkstemp()
@@ -116,8 +116,8 @@ class PySQLStagingIngestionTestSuiteMixin:
         base_path = os.path.join(base_path, "temp")
 
         with pytest.raises(
-            Error,
-            match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                Error,
+                match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(extra_params={"staging_allowed_local_path": base_path}) as conn:
                 cursor = conn.cursor()
@@ -158,7 +158,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         # Try to put it again
         with pytest.raises(
-            sql.exc.ServerOperationError, match="FILE_IN_STAGING_PATH_ALREADY_EXISTS"
+                sql.exc.ServerOperationError, match="FILE_IN_STAGING_PATH_ALREADY_EXISTS"
         ):
             perform_put()
 
@@ -209,7 +209,7 @@ class PySQLStagingIngestionTestSuiteMixin:
             perform_get()
 
     def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(
-        self, ingestion_user
+            self, ingestion_user
     ):
         """
         This test confirms that staging_allowed_local_path and target_file are resolved into absolute paths.
@@ -222,11 +222,11 @@ class PySQLStagingIngestionTestSuiteMixin:
         target_file = "/var/www/html/../html1/not_allowed.html"
 
         with pytest.raises(
-            Error,
-            match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                Error,
+                match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                    extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
@@ -238,7 +238,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         with pytest.raises(Error, match="EMPTY_LOCAL_FILE_IN_STAGING_ACCESS_QUERY"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                    extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
@@ -250,14 +250,14 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         with pytest.raises(Error, match="INVALID_STAGING_PATH_IN_STAGING_ACCESS_QUERY"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                    extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_supports_multiple_staging_allowed_local_path_values(
-        self, ingestion_user
+            self, ingestion_user
     ):
         """staging_allowed_local_path may be either a path-like object or a list of path-like objects.
 
@@ -286,7 +286,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         fh3, temp_path3, put_query3, remove_query3 = generate_file_and_path_and_queries()
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}
+                extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}
         ) as conn:
             cursor = conn.cursor()
 
@@ -294,8 +294,8 @@ class PySQLStagingIngestionTestSuiteMixin:
             cursor.execute(put_query2)
 
             with pytest.raises(
-                Error,
-                match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                    Error,
+                    match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
             ):
                 cursor.execute(put_query3)
 

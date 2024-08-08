@@ -6,8 +6,8 @@ import uuid
 import time
 import pytest
 
-import databricks.sql.client as client
-from databricks.sql import ExecuteResponse, ArrowQueue
+import databricks_sql_connector_core.sql.client as client
+from databricks_sql_connector_core.sql.utils import ExecuteResponse, ArrowQueue
 
 
 class FetchBenchmarkTests(unittest.TestCase):

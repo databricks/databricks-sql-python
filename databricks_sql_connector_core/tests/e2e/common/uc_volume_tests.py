@@ -2,8 +2,8 @@ import os
 import tempfile
 
 import pytest
-import databricks.sql as sql
-from databricks.sql import Error
+import databricks_sql_connector_core.sql as sql
+from databricks_sql_connector_core.sql import Error
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -99,7 +99,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 cursor.execute(query)
 
     def test_uc_volume_put_fails_if_localFile_not_in_staging_allowed_local_path(
-        self, catalog, schema
+            self, catalog, schema
     ):
 
         fh, temp_path = tempfile.mkstemp()
@@ -115,8 +115,8 @@ class PySQLUCVolumeTestSuiteMixin:
         base_path = os.path.join(base_path, "temp")
 
         with pytest.raises(
-            Error,
-            match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                Error,
+                match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(extra_params={"staging_allowed_local_path": base_path}) as conn:
                 cursor = conn.cursor()
@@ -157,7 +157,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
         # Try to put it again
         with pytest.raises(
-            sql.exc.ServerOperationError, match="FILE_IN_STAGING_PATH_ALREADY_EXISTS"
+                sql.exc.ServerOperationError, match="FILE_IN_STAGING_PATH_ALREADY_EXISTS"
         ):
             perform_put()
 
@@ -165,7 +165,7 @@ class PySQLUCVolumeTestSuiteMixin:
         perform_remove()
 
     def test_uc_volume_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(
-        self, catalog, schema
+            self, catalog, schema
     ):
         """
         This test confirms that staging_allowed_local_path and target_file are resolved into absolute paths.
@@ -178,11 +178,11 @@ class PySQLUCVolumeTestSuiteMixin:
         target_file = "/var/www/html/../html1/not_allowed.html"
 
         with pytest.raises(
-            Error,
-            match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                Error,
+                match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                    extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
@@ -194,7 +194,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
         with pytest.raises(Error, match="EMPTY_LOCAL_FILE_IN_STAGING_ACCESS_QUERY"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                    extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
@@ -206,7 +206,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
         with pytest.raises(Error, match="NOT_FOUND: Catalog"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                    extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO '/Volumes/RANDOMSTRINGOFCHARACTERS/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
@@ -240,7 +240,7 @@ class PySQLUCVolumeTestSuiteMixin:
         fh3, temp_path3, put_query3, remove_query3 = generate_file_and_path_and_queries()
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}
+                extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}
         ) as conn:
             cursor = conn.cursor()
 
@@ -248,8 +248,8 @@ class PySQLUCVolumeTestSuiteMixin:
             cursor.execute(put_query2)
 
             with pytest.raises(
-                Error,
-                match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                    Error,
+                    match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
             ):
                 cursor.execute(put_query3)
 

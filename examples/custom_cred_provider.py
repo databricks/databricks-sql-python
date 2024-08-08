@@ -1,6 +1,7 @@
+
 # please pip install databricks-sdk prior to running this example.
 
-from databricks import sql
+from databricks_sql_connector_core import sql
 from databricks.sdk.oauth import OAuthClient
 import os
 

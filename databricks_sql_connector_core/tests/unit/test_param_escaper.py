@@ -1,9 +1,9 @@
 from datetime import date, datetime
 import unittest, pytest, decimal
 from typing import Any, Dict
-from databricks.sql import dbsql_parameter_from_primitive
+from databricks_sql_connector_core.sql.parameters.native import dbsql_parameter_from_primitive
 
-from databricks.sql import ParamEscaper, inject_parameters, transform_paramstyle, ParameterStructure
+from databricks_sql_connector_core.sql.utils import ParamEscaper, inject_parameters, transform_paramstyle, ParameterStructure
 
 pe = ParamEscaper()
 
@@ -42,48 +42,48 @@ class TestIndividualFormatters(object):
         # Testing for the presence of these characters: '"/\😂
 
         assert (
-            pe.escape_string("his name was 'robert palmer'")
-            == r"'his name was \'robert palmer\''"
+                pe.escape_string("his name was 'robert palmer'")
+                == r"'his name was \'robert palmer\''"
         )
 
         # These tests represent the same user input in the several ways it can be written in Python
         # Each argument to `escape_string` evaluates to the same bytes. But Python lets us write it differently.
         assert (
-            pe.escape_string('his name was "robert palmer"')
-            == "'his name was \"robert palmer\"'"
+                pe.escape_string('his name was "robert palmer"')
+                == "'his name was \"robert palmer\"'"
         )
         assert (
-            pe.escape_string('his name was "robert palmer"')
-            == "'his name was \"robert palmer\"'"
+                pe.escape_string('his name was "robert palmer"')
+                == "'his name was \"robert palmer\"'"
         )
         assert (
-            pe.escape_string("his name was {}".format('"robert palmer"'))
-            == "'his name was \"robert palmer\"'"
+                pe.escape_string("his name was {}".format('"robert palmer"'))
+                == "'his name was \"robert palmer\"'"
         )
 
         assert (
-            pe.escape_string("his name was robert / palmer")
-            == r"'his name was robert / palmer'"
+                pe.escape_string("his name was robert / palmer")
+                == r"'his name was robert / palmer'"
         )
 
         # If you need to include a single backslash, use an r-string to prevent Python from raising a
         # DeprecationWarning for an invalid escape sequence
         assert (
-            pe.escape_string("his name was robert \\/ palmer")
-            == r"'his name was robert \\/ palmer'"
+                pe.escape_string("his name was robert \\/ palmer")
+                == r"'his name was robert \\/ palmer'"
         )
         assert (
-            pe.escape_string("his name was robert \\ palmer")
-            == r"'his name was robert \\ palmer'"
+                pe.escape_string("his name was robert \\ palmer")
+                == r"'his name was robert \\ palmer'"
         )
         assert (
-            pe.escape_string("his name was robert \\\\ palmer")
-            == r"'his name was robert \\\\ palmer'"
+                pe.escape_string("his name was robert \\\\ palmer")
+                == r"'his name was robert \\\\ palmer'"
         )
 
         assert (
-            pe.escape_string("his name was robert palmer 😂")
-            == r"'his name was robert palmer 😂'"
+                pe.escape_string("his name was robert palmer 😂")
+                == r"'his name was robert palmer 😂'"
         )
 
         # Adding the test from PR #56 to prove escape behaviour
@@ -122,8 +122,8 @@ class TestIndividualFormatters(object):
 
     def test_escape_sequence_string(self):
         assert (
-            pe.escape_sequence(["his", "name", "was", "robert", "palmer"])
-            == "('his','name','was','robert','palmer')"
+                pe.escape_sequence(["his", "name", "was", "robert", "palmer"])
+                == "('his','name','was','robert','palmer')"
         )
 
     def test_escape_sequence_sequence_of_strings(self):
@@ -182,42 +182,42 @@ class TestInlineToNativeTransformer(object):
     @pytest.mark.parametrize(
         ("label", "query", "params", "expected"),
         (
-            ("no effect", "SELECT 1", {}, "SELECT 1"),
-            ("one marker", "%(param)s", {"param": ""}, ":param"),
-            (
-                "multiple markers",
-                "%(foo)s %(bar)s %(baz)s",
-                {"foo": None, "bar": None, "baz": None},
-                ":foo :bar :baz",
-            ),
-            (
-                "sql query",
-                "SELECT * FROM table WHERE field = %(param)s AND other_field IN (%(list)s)",
-                {"param": None, "list": None},
-                "SELECT * FROM table WHERE field = :param AND other_field IN (:list)",
-            ),
-            (
-                "query with like wildcard",
-                'select * from table where field like "%"',
-                {},
-                'select * from table where field like "%"'
-            ),
-            (
-                "query with named param and like wildcard",
-                'select :param from table where field like "%"',
-                {"param": None},
-                'select :param from table where field like "%"'
-            ),
-            (
-                "query with doubled wildcards",
-                'select 1 where '' like "%%"',
-                {"param": None},
-                'select 1 where '' like "%%"',
-            )
+                ("no effect", "SELECT 1", {}, "SELECT 1"),
+                ("one marker", "%(param)s", {"param": ""}, ":param"),
+                (
+                        "multiple markers",
+                        "%(foo)s %(bar)s %(baz)s",
+                        {"foo": None, "bar": None, "baz": None},
+                        ":foo :bar :baz",
+                ),
+                (
+                        "sql query",
+                        "SELECT * FROM table WHERE field = %(param)s AND other_field IN (%(list)s)",
+                        {"param": None, "list": None},
+                        "SELECT * FROM table WHERE field = :param AND other_field IN (:list)",
+                ),
+                (
+                        "query with like wildcard",
+                        'select * from table where field like "%"',
+                        {},
+                        'select * from table where field like "%"'
+                ),
+                (
+                        "query with named param and like wildcard",
+                        'select :param from table where field like "%"',
+                        {"param": None},
+                        'select :param from table where field like "%"'
+                ),
+                (
+                        "query with doubled wildcards",
+                        'select 1 where '' like "%%"',
+                        {"param": None},
+                        'select 1 where '' like "%%"',
+                )
         ),
     )
     def test_transformer(
-        self, label: str, query: str, params: Dict[str, Any], expected: str
+            self, label: str, query: str, params: Dict[str, Any], expected: str
     ):
 
         _params = [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]

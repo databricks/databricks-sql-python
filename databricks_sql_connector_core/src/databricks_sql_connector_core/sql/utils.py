@@ -74,18 +74,6 @@ class ResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue
         """
-
-        # def trow_to_json(trow):
-        #     # Step 1: Serialize TRow using Thrift's TJSONProtocol
-        #     transport = TTransport.TMemoryBuffer()
-        #     protocol = TJSONProtocol.TJSONProtocol(transport)
-        #     trow.write(protocol)
-        #
-        #     # Step 2: Extract JSON string from the transport
-        #     json_str = transport.getvalue().decode('utf-8')
-        #
-        #     return json_str
-
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
@@ -95,30 +83,11 @@ class ResultSetQueueFactory(ABC):
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
-            # print("Lin 79 ")
-            # print(type(t_row_set))
-            # print(t_row_set)
-            # json_str = json.loads(trow_to_json(t_row_set))
-            # pretty_json = json.dumps(json_str, indent=2)
-            # print(pretty_json)
-
             converted_column_table, column_names = convert_column_based_set_to_column_table(
                 t_row_set.columns,
                 description)
-            # print(converted_column_table, column_names)
 
             return ColumnQueue(converted_column_table, column_names)
-
-            # print(columnQueue.next_n_rows(2))
-            # print(columnQueue.next_n_rows(2))
-            # print(columnQueue.remaining_rows())
-            # arrow_table, n_valid_rows = convert_column_based_set_to_arrow_table(
-            #     t_row_set.columns, description
-            # )
-            # converted_arrow_table = convert_decimals_in_arrow_table(
-            #     arrow_table, description
-            # )
-            # return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,

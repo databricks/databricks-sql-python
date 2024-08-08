@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 from urllib3.exceptions import MaxRetryError
 
-from databricks.sql import DatabricksRetryPolicy
-from databricks.sql import (
+from databricks_sql_connector_core.sql.auth.retry import DatabricksRetryPolicy
+from databricks_sql_connector_core.sql.exc import (
     MaxRetryDurationError,
     NonRecoverableNetworkError,
     RequestError,
@@ -146,7 +146,7 @@ class PySQLRetryTestsMixin:
     def test_oserror_retries(self):
         """If a network error occurs during make_request, the request is retried according to policy"""
         with patch(
-            "urllib3.connectionpool.HTTPSConnectionPool._validate_conn",
+                "urllib3.connectionpool.HTTPSConnectionPool._validate_conn",
         ) as mock_validate_conn:
             mock_validate_conn.side_effect = OSError("Some arbitrary network error")
             with pytest.raises(MaxRetryError) as cm:
@@ -275,7 +275,7 @@ class PySQLRetryTestsMixin:
         ]
 
         with self.connection(
-            extra_params={**self._retry_policy, "_retry_stop_after_attempts_count": 1}
+                extra_params={**self._retry_policy, "_retry_stop_after_attempts_count": 1}
         ) as conn:
             with conn.cursor() as cursor:
                 # Code 502 is a Bad Gateway, which we commonly see in production under heavy load
@@ -318,9 +318,9 @@ class PySQLRetryTestsMixin:
         with self.connection(extra_params={**self._retry_policy}) as conn:
             with conn.cursor() as curs:
                 with patch(
-                    "databricks.sql.utils.ExecuteResponse.has_been_closed_server_side",
-                    new_callable=PropertyMock,
-                    return_value=False,
+                        "databricks_sql_connector_core.sql.utils.ExecuteResponse.has_been_closed_server_side",
+                        new_callable=PropertyMock,
+                        return_value=False,
                 ):
                     # This call guarantees we have an open cursor at the server
                     curs.execute("SELECT 1")
@@ -340,10 +340,10 @@ class PySQLRetryTestsMixin:
         with mocked_server_response(status=302, redirect_location="/foo.bar") as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
                 with self.connection(
-                    extra_params={
-                        **self._retry_policy,
-                        "_retry_max_redirects": max_redirects,
-                    }
+                        extra_params={
+                            **self._retry_policy,
+                            "_retry_max_redirects": max_redirects,
+                        }
                 ):
                     pass
             assert "too many redirects" == str(cm.value.reason)
@@ -362,9 +362,9 @@ class PySQLRetryTestsMixin:
         with mocked_server_response(status=302, redirect_location="/foo.bar/") as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
                 with self.connection(
-                    extra_params={
-                        **self._retry_policy,
-                    }
+                        extra_params={
+                            **self._retry_policy,
+                        }
                 ):
                     pass
 
@@ -394,13 +394,13 @@ class PySQLRetryTestsMixin:
 
     def test_retry_max_redirects_exceeds_max_attempts_count_warns_user(self, caplog):
         with self.connection(
-            extra_params={
-                **self._retry_policy,
-                **{
-                    "_retry_max_redirects": 100,
-                    "_retry_stop_after_attempts_count": 1,
-                },
-            }
+                extra_params={
+                    **self._retry_policy,
+                    **{
+                        "_retry_max_redirects": 100,
+                        "_retry_stop_after_attempts_count": 1,
+                    },
+                }
         ):
             assert "it will have no affect!" in caplog.text
 

@@ -1,4 +1,4 @@
-from databricks import sql
+from databricks_sql_connector_core import sql
 import os
 
 with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),

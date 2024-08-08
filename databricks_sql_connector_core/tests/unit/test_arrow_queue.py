@@ -2,7 +2,7 @@ import unittest
 
 import pyarrow as pa
 
-from databricks.sql import ArrowQueue
+from databricks_sql_connector_core.sql.utils import ArrowQueue
 
 
 class ArrowQueueSuite(unittest.TestCase):

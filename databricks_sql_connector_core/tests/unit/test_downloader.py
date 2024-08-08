@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch, MagicMock
 import requests
 from ssl import create_default_context
 
-import databricks.sql.cloudfetch.downloader as downloader
-from databricks.sql import Error
+import databricks_sql_connector_core.sql.cloudfetch.downloader as downloader
+from databricks_sql_connector_core.sql.exc import Error
 
 
 def create_response(**kwargs) -> requests.Response:
