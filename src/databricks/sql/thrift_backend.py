@@ -35,6 +35,7 @@ from databricks.sql.utils import (
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
+    SSLOptions,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ class ThriftBackend:
         http_path: str,
         http_headers,
         auth_provider: AuthProvider,
+        ssl_options: SSLOptions,
         staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
@@ -93,16 +95,6 @@ class ThriftBackend:
         #   Tag to add to User-Agent header. For use by partners.
         # _username, _password
         #   Username and password Basic authentication (no official support)
-        # _tls_no_verify
-        #   Set to True (Boolean) to completely disable SSL verification.
-        # _tls_verify_hostname
-        #   Set to False (Boolean) to disable SSL hostname verification, but check certificate.
-        # _tls_trusted_ca_file
-        #   Set to the path of the file containing trusted CA certificates for server certificate
-        #   verification. If not provide, uses system truststore.
-        # _tls_client_cert_file, _tls_client_cert_key_file, _tls_client_cert_key_password
-        #   Set client SSL certificate.
-        #   See https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain
         # _connection_uri
         #   Overrides server_hostname and http_path.
         # RETRY/ATTEMPT POLICY
@@ -162,29 +154,7 @@ class ThriftBackend:
         # Cloud fetch
         self.max_download_threads = kwargs.get("max_download_threads", 10)
 
-        # Configure tls context
-        ssl_context = create_default_context(cafile=kwargs.get("_tls_trusted_ca_file"))
-        if kwargs.get("_tls_no_verify") is True:
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = CERT_NONE
-        elif kwargs.get("_tls_verify_hostname") is False:
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = CERT_REQUIRED
-        else:
-            ssl_context.check_hostname = True
-            ssl_context.verify_mode = CERT_REQUIRED
-
-        tls_client_cert_file = kwargs.get("_tls_client_cert_file")
-        tls_client_cert_key_file = kwargs.get("_tls_client_cert_key_file")
-        tls_client_cert_key_password = kwargs.get("_tls_client_cert_key_password")
-        if tls_client_cert_file:
-            ssl_context.load_cert_chain(
-                certfile=tls_client_cert_file,
-                keyfile=tls_client_cert_key_file,
-                password=tls_client_cert_key_password,
-            )
-
-        self._ssl_context = ssl_context
+        self._ssl_options = ssl_options
 
         self._auth_provider = auth_provider
 
@@ -225,7 +195,7 @@ class ThriftBackend:
         self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
             auth_provider=self._auth_provider,
             uri_or_host=uri,
-            ssl_context=self._ssl_context,
+            ssl_options=self._ssl_options,
             **additional_transport_args,  # type: ignore
         )
 
@@ -776,7 +746,7 @@ class ThriftBackend:
                 max_download_threads=self.max_download_threads,
                 lz4_compressed=lz4_compressed,
                 description=description,
-                ssl_context=self._ssl_context,
+                ssl_options=self._ssl_options,
             )
         else:
             arrow_queue_opt = None
@@ -1008,7 +978,7 @@ class ThriftBackend:
             max_download_threads=self.max_download_threads,
             lz4_compressed=lz4_compressed,
             description=description,
-            ssl_context=self._ssl_context,
+            ssl_options=self._ssl_options,
         )
 
         return queue, resp.hasMoreRows

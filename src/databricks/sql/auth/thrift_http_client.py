@@ -6,8 +6,6 @@ from typing import Dict, Union
 import six
 import thrift
 
-logger = logging.getLogger(__name__)
-
 import ssl
 import warnings
 from http.client import HTTPResponse
@@ -16,6 +14,9 @@ from io import BytesIO
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
+from databricks.sql.utils import SSLOptions
+
+logger = logging.getLogger(__name__)
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
@@ -28,10 +29,12 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         cafile=None,
         cert_file=None,
         key_file=None,
-        ssl_context=None,
+        ssl_options: SSLOptions = None,
         max_connections: int = 1,
         retry_policy: Union[DatabricksRetryPolicy, int] = 0,
     ):
+        self._ssl_options = ssl_options
+
         if port is not None:
             warnings.warn(
                 "Please use the THttpClient('http{s}://host:port/path') constructor",
@@ -50,10 +53,11 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             if self.scheme == "https":
                 self.certfile = cert_file
                 self.keyfile = key_file
+                # TODO: Seems this context is never used anywhere - need to double-check
                 self.context = (
                     ssl.create_default_context(cafile=cafile)
-                    if (cafile and not ssl_context)
-                    else ssl_context
+                    if (cafile and not ssl_options)
+                    else ssl_options.create_ssl_context()
                 )
             self.port = parsed.port
             self.host = parsed.hostname
@@ -109,12 +113,23 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
     def open(self):
 
         # self.__pool replaces the self.__http used by the original THttpClient
+        _pool_kwargs = {"maxsize": self.max_connections}
+
         if self.scheme == "http":
             pool_class = HTTPConnectionPool
         elif self.scheme == "https":
             pool_class = HTTPSConnectionPool
-
-        _pool_kwargs = {"maxsize": self.max_connections}
+            _pool_kwargs.update(
+                {
+                    "cert_reqs": ssl.CERT_NONE
+                    if self._ssl_options.tls_verify
+                    else ssl.CERT_REQUIRED,
+                    "ca_certs": self._ssl_options.tls_trusted_ca_file,
+                    "cert_file": self._ssl_options.tls_client_cert_file,
+                    "key_file": self._ssl_options.tls_client_cert_key_file,
+                    "key_password": self._ssl_options.tls_client_cert_key_password,
+                }
+            )
 
         if self.using_proxy():
             proxy_manager = ProxyManager(

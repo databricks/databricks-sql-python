@@ -9,6 +9,8 @@ from databricks.sql.cloudfetch.downloader import (
     DownloadableResultSettings,
     DownloadedFile,
 )
+from databricks.sql.utils import SSLOptions
+
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ class ResultFileDownloadManager:
         links: List[TSparkArrowResultLink],
         max_download_threads: int,
         lz4_compressed: bool,
-        ssl_context: SSLContext,
+        ssl_options: SSLOptions,
     ):
         self._pending_links: List[TSparkArrowResultLink] = []
         for link in links:
@@ -38,7 +40,7 @@ class ResultFileDownloadManager:
         self._thread_pool = ThreadPoolExecutor(max_workers=self._max_download_threads)
 
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
-        self._ssl_context = ssl_context
+        self._ssl_options = ssl_options
 
     def get_next_downloaded_file(
         self, next_row_offset: int
@@ -95,7 +97,7 @@ class ResultFileDownloadManager:
             handler = ResultSetDownloadHandler(
                 settings=self._downloadable_result_settings,
                 link=link,
-                ssl_context=self._ssl_context,
+                ssl_options=self._ssl_options,
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)

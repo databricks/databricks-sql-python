@@ -9,7 +9,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 import re
-from ssl import SSLContext
+from ssl import SSLContext, CERT_NONE, CERT_REQUIRED, create_default_context
 
 import lz4.frame
 import pyarrow
@@ -24,11 +24,58 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
-BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
-
 import logging
 
+BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
+
 logger = logging.getLogger(__name__)
+
+
+class SSLOptions:
+    tls_verify: bool
+    tls_verify_hostname: bool
+    tls_trusted_ca_file: Optional[str]
+    tls_client_cert_file: Optional[str]
+    tls_client_cert_key_file: Optional[str]
+    tls_client_cert_key_password: Optional[str]
+
+    def __init__(
+        self,
+        tls_verify: Optional[bool] = True,
+        tls_verify_hostname: Optional[bool] = True,
+        tls_trusted_ca_file: Optional[str] = None,
+        tls_client_cert_file: Optional[str] = None,
+        tls_client_cert_key_file: Optional[str] = None,
+        tls_client_cert_key_password: Optional[str] = None,
+    ):
+        self.tls_verify = tls_verify
+        self.tls_verify_hostname = tls_verify_hostname
+        self.tls_trusted_ca_file = tls_trusted_ca_file
+        self.tls_client_cert_file = tls_client_cert_file
+        self.tls_client_cert_key_file = tls_client_cert_key_file
+        self.tls_client_cert_key_password = tls_client_cert_key_password
+
+    def create_ssl_context(self) -> SSLContext:
+        ssl_context = create_default_context(cafile=self.tls_trusted_ca_file)
+
+        if self.tls_verify is False:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = CERT_NONE
+        elif self.tls_verify_hostname is False:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = CERT_REQUIRED
+        else:
+            ssl_context.check_hostname = True
+            ssl_context.verify_mode = CERT_REQUIRED
+
+        if self.tls_client_cert_file:
+            ssl_context.load_cert_chain(
+                certfile=self.tls_client_cert_file,
+                keyfile=self.tls_client_cert_key_file,
+                password=self.tls_client_cert_key_password,
+            )
+
+        return ssl_context
 
 
 class ResultSetQueue(ABC):
@@ -48,7 +95,7 @@ class ResultSetQueueFactory(ABC):
         t_row_set: TRowSet,
         arrow_schema_bytes: bytes,
         max_download_threads: int,
-        ssl_context: SSLContext,
+        ssl_options: SSLOptions,
         lz4_compressed: bool = True,
         description: Optional[List[List[Any]]] = None,
     ) -> ResultSetQueue:
@@ -62,7 +109,7 @@ class ResultSetQueueFactory(ABC):
             lz4_compressed (bool): Whether result data has been lz4 compressed.
             description (List[List[Any]]): Hive table schema description.
             max_download_threads (int): Maximum number of downloader thread pool threads.
-            ssl_context (SSLContext): SSLContext object for CloudFetchQueue
+            ssl_options (SSLOptions): SSLOptions object for CloudFetchQueue
 
         Returns:
             ResultSetQueue
@@ -91,7 +138,7 @@ class ResultSetQueueFactory(ABC):
                 lz4_compressed=lz4_compressed,
                 description=description,
                 max_download_threads=max_download_threads,
-                ssl_context=ssl_context,
+                ssl_options=ssl_options,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -137,7 +184,7 @@ class CloudFetchQueue(ResultSetQueue):
         self,
         schema_bytes,
         max_download_threads: int,
-        ssl_context: SSLContext,
+        ssl_options: SSLOptions,
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
@@ -160,7 +207,7 @@ class CloudFetchQueue(ResultSetQueue):
         self.result_links = result_links
         self.lz4_compressed = lz4_compressed
         self.description = description
-        self._ssl_context = ssl_context
+        self._ssl_options = ssl_options
 
         logger.debug(
             "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
@@ -178,7 +225,7 @@ class CloudFetchQueue(ResultSetQueue):
             links=result_links or [],
             max_download_threads=self.max_download_threads,
             lz4_compressed=self.lz4_compressed,
-            ssl_context=self._ssl_context,
+            ssl_options=self._ssl_options,
         )
 
         self.table = self._create_next_table()
