@@ -26,9 +26,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         uri_or_host,
         port=None,
         path=None,
-        cafile=None,
-        cert_file=None,
-        key_file=None,
         ssl_options: SSLOptions = None,
         max_connections: int = 1,
         retry_policy: Union[DatabricksRetryPolicy, int] = 0,
@@ -51,14 +48,10 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.scheme = parsed.scheme
             assert self.scheme in ("http", "https")
             if self.scheme == "https":
-                self.certfile = cert_file
-                self.keyfile = key_file
-                # TODO: Seems this context is never used anywhere - need to double-check
-                self.context = (
-                    ssl.create_default_context(cafile=cafile)
-                    if (cafile and not ssl_options)
-                    else ssl_options.create_ssl_context()
-                )
+                # TODO: Not sure if those options are used anywhere - need to double-check
+                self.certfile = self._ssl_options.tls_client_cert_file
+                self.keyfile = self._ssl_options.tls_client_cert_key_file
+                self.context = self._ssl_options.create_ssl_context()
             self.port = parsed.port
             self.host = parsed.hostname
             self.path = parsed.path
