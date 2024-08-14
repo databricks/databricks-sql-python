@@ -18,13 +18,13 @@ def pysql_has_version(compare, version):
 
     Expected use:
         from common.predicates import pysql_has_version
-        from databricks import sql as pysql
+        from databricks_sql_connector_core import sql as pysql
         ...
         @unittest.skipIf(pysql_has_version('<', '2'))
         def test_some_pyhive_v1_stuff():
             ...
     """
-    from databricks import sql
+    from databricks_sql_connector_core import sql
     return compare_module_version(sql, compare, version)
 
 
