@@ -22,7 +22,6 @@ from databricks.sql.utils import (
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
-    SSLOptions,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -36,7 +35,7 @@ from databricks.sql.parameters.native import (
 )
 
 
-from databricks.sql.types import Row
+from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 

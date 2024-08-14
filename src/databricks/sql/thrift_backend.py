@@ -5,7 +5,6 @@ import math
 import time
 import uuid
 import threading
-from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union
 
 import pyarrow
@@ -35,8 +34,8 @@ from databricks.sql.utils import (
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
-    SSLOptions,
 )
+from databricks.sql.types import SSLOptions
 
 logger = logging.getLogger(__name__)
 

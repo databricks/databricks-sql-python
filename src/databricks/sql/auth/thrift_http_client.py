@@ -14,7 +14,7 @@ from io import BytesIO
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
-from databricks.sql.utils import SSLOptions
+from databricks.sql.types import SSLOptions
 
 logger = logging.getLogger(__name__)
 

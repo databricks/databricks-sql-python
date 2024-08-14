@@ -8,7 +8,7 @@ import time
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
-from databricks.sql.utils import SSLOptions
+from databricks.sql.types import SSLOptions
 
 logger = logging.getLogger(__name__)
 
