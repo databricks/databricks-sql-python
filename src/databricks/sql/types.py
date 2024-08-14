@@ -32,8 +32,8 @@ class SSLOptions:
 
     def __init__(
         self,
-        tls_verify: Optional[bool] = True,
-        tls_verify_hostname: Optional[bool] = True,
+        tls_verify: bool = True,
+        tls_verify_hostname: bool = True,
         tls_trusted_ca_file: Optional[str] = None,
         tls_client_cert_file: Optional[str] = None,
         tls_client_cert_key_file: Optional[str] = None,

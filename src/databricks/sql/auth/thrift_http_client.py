@@ -1,7 +1,7 @@
 import base64
 import logging
 import urllib.parse
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 
 import six
 import thrift
@@ -26,7 +26,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         uri_or_host,
         port=None,
         path=None,
-        ssl_options: SSLOptions = None,
+        ssl_options: Optional[SSLOptions] = None,
         max_connections: int = 1,
         retry_policy: Union[DatabricksRetryPolicy, int] = 0,
     ):
@@ -48,10 +48,11 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.scheme = parsed.scheme
             assert self.scheme in ("http", "https")
             if self.scheme == "https":
-                # TODO: Not sure if those options are used anywhere - need to double-check
-                self.certfile = self._ssl_options.tls_client_cert_file
-                self.keyfile = self._ssl_options.tls_client_cert_key_file
-                self.context = self._ssl_options.create_ssl_context()
+                if self._ssl_options is not None:
+                    # TODO: Not sure if those options are used anywhere - need to double-check
+                    self.certfile = self._ssl_options.tls_client_cert_file
+                    self.keyfile = self._ssl_options.tls_client_cert_key_file
+                    self.context = self._ssl_options.create_ssl_context()
             self.port = parsed.port
             self.host = parsed.hostname
             self.path = parsed.path
