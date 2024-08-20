@@ -4,13 +4,11 @@ import pytest
 
 @pytest.fixture(scope="session")
 def host():
-    return "adb-6436897454825492.12.azuredatabricks.net"
     return os.getenv("DATABRICKS_SERVER_HOSTNAME")
 
 
 @pytest.fixture(scope="session")
 def http_path():
-    return "/sql/1.0/warehouses/2f03dd43e35e2aa0"
     return os.getenv("DATABRICKS_HTTP_PATH")
 
 
@@ -26,13 +24,11 @@ def ingestion_user():
 
 @pytest.fixture(scope="session")
 def catalog():
-    return "main"
     return os.getenv("DATABRICKS_CATALOG")
 
 
 @pytest.fixture(scope="session")
 def schema():
-    return "default"
     return os.getenv("DATABRICKS_SCHEMA", "default")
 
 
