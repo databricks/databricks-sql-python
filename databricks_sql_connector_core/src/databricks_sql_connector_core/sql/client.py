@@ -1216,6 +1216,17 @@ class ResultSet:
 
         return results
 
+    def merge_columnar(self, result1, result2):
+        """
+        Function to merge / combining the columnar results into a single result
+
+        :param result1:
+        :param result2:
+        :return:
+        """
+        merged_result = [result1[i]+result2[i] for i in range(len(result1))]
+        return merged_result
+
     def fetchmany_columnar(self, size: int):
         """
         Fetch the next set of rows of a query result, returning a Columnar Table.
@@ -1226,7 +1237,19 @@ class ResultSet:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
 
         results = self.results.next_n_rows(size)
-        self._next_row_index += results.num_rows
+        n_remaining_rows = size - len(results[0])
+        self._next_row_index += len(results[0])
+
+        while (
+                n_remaining_rows > 0
+                and not self.has_been_closed_server_side
+                and self.has_more_rows
+        ):
+            self._fill_results_buffer()
+            partial_results = self.results.next_n_rows(n_remaining_rows)
+            results = self.merge_columnar(results, partial_results)
+            n_remaining_rows -= len(partial_results[0])
+            self._next_row_index += len(partial_results[0])
 
         return results
 
@@ -1245,17 +1268,13 @@ class ResultSet:
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
-        def merge_columnar(result1, result2):
-            merged_result = [result1[i]+result2[i] for i in range(len(result1))]
-            return merged_result
-
         results = self.results.remaining_rows()
         self._next_row_index += len(results[0])
 
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results=merge_columnar(results, partial_results)
+            results = self.merge_columnar(results, partial_results)
             self._next_row_index += len(partial_results[0])
 
         return results
