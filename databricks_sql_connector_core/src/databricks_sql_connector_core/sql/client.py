@@ -1244,8 +1244,20 @@ class ResultSet:
         return results
 
     def fetchall_columnar(self):
+        """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
+        def merge_columnar(result1, result2):
+            merged_result = [result1[i]+result2[i] for i in range(len(result1))]
+            return merged_result
+
         results = self.results.remaining_rows()
         self._next_row_index += len(results[0])
+
+        while not self.has_been_closed_server_side and self.has_more_rows:
+            self._fill_results_buffer()
+            partial_results = self.results.remaining_rows()
+            results=merge_columnar(results, partial_results)
+            self._next_row_index += len(partial_results[0])
+
         return results
 
     def fetchone(self) -> Optional[Row]:
