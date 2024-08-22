@@ -3,7 +3,7 @@
 from enum import Enum
 
 import pytest
-from databricks_sqlalchemy.src.sqlalchemy.test._regression import (
+from databricks_sqlalchemy.test._regression import (
     ComponentReflectionTest,
     ComponentReflectionTestExtra,
     CTETest,
@@ -441,7 +441,7 @@ class DateTimeTZTest(DateTimeTZTest):
     """Test whether the sqlalchemy.DateTime() type can _optionally_ include timezone info.
     This dialect maps DateTime() → TIMESTAMP, which _always_ includes tzinfo.
 
-    Users can use databricks.sqlalchemy.TIMESTAMP_NTZ for a tzinfo-less timestamp. The SQLA docs
+    Users can use databricks_sql_connector_core.sqlalchemy.TIMESTAMP_NTZ for a tzinfo-less timestamp. The SQLA docs
     acknowledge this is expected for some dialects.
 
     https://docs.sqlalchemy.org/en/20/core/type_basics.html#sqlalchemy.types.DateTime

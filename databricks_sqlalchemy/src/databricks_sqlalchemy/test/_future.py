@@ -3,13 +3,13 @@
 from enum import Enum
 
 import pytest
-from databricks_sqlalchemy.src.sqlalchemy.test._regression import (
+from databricks_sqlalchemy.test._regression import (
     ExpandingBoundInTest,
     IdentityAutoincrementTest,
     LikeFunctionsTest,
     NormalizedNameTest,
 )
-from databricks.sqlalchemy.test._unsupported import (
+from databricks_sqlalchemy.test._unsupported import (
     ComponentReflectionTest,
     ComponentReflectionTestExtra,
     CTETest,

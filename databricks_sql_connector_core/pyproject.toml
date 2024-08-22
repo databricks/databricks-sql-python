@@ -44,7 +44,7 @@ pytest-dotenv = "^0.5.2"
 "Bug Tracker" = "https://github.com/databricks/databricks-sql-python/issues"
 
 [tool.poetry.plugins."sqlalchemy.dialects"]
-"databricks" = "databricks.sqlalchemy:DatabricksDialect"
+"databricks" = "databricks_sql_connector_core.sqlalchemy:DatabricksDialect"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
