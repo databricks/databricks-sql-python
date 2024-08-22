@@ -4,6 +4,7 @@ import itertools
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
+from urllib3 import HTTPSConnectionPool
 
 import pyarrow
 
@@ -207,6 +208,61 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertTrue(mock_ssl_context.check_hostname)
         self.assertEqual(mock_ssl_context.verify_mode, CERT_REQUIRED)
         self.assertEqual(t_http_client_class.call_args[1]["ssl_options"], mock_ssl_options)
+
+    @patch("databricks.sql.types.create_default_context")
+    def test_tls_cert_args_are_used_by_http_client(self, mock_create_default_context):
+        from databricks.sql.auth.thrift_http_client import THttpClient
+
+        mock_cert_key_file = Mock()
+        mock_cert_key_password = Mock()
+        mock_trusted_ca_file = Mock()
+        mock_cert_file = Mock()
+
+        mock_ssl_options = SSLOptions(
+            tls_verify=True,
+            tls_client_cert_file=mock_cert_file,
+            tls_client_cert_key_file=mock_cert_key_file,
+            tls_client_cert_key_password=mock_cert_key_password,
+            tls_trusted_ca_file=mock_trusted_ca_file,
+        )
+
+        http_client = THttpClient(
+            auth_provider=None,
+            uri_or_host="https://example.com",
+            ssl_options=mock_ssl_options,
+        )
+
+        self.assertEqual(http_client.scheme, 'https')
+        self.assertEqual(http_client.certfile, mock_ssl_options.tls_client_cert_file)
+        self.assertEqual(http_client.keyfile, mock_ssl_options.tls_client_cert_key_file)
+        self.assertIsNotNone(http_client.certfile)
+        mock_create_default_context.assert_called()
+
+        http_client.open()
+
+        conn_pool = http_client._THttpClient__pool
+        self.assertIsInstance(conn_pool, HTTPSConnectionPool)
+        self.assertEqual(conn_pool.cert_reqs, CERT_REQUIRED)
+        self.assertEqual(conn_pool.ca_certs, mock_ssl_options.tls_trusted_ca_file)
+        self.assertEqual(conn_pool.cert_file, mock_ssl_options.tls_client_cert_file)
+        self.assertEqual(conn_pool.key_file, mock_ssl_options.tls_client_cert_key_file)
+        self.assertEqual(conn_pool.key_password, mock_ssl_options.tls_client_cert_key_password)
+
+    def test_tls_no_verify_is_respected_by_http_client(self):
+        from databricks.sql.auth.thrift_http_client import THttpClient
+
+        http_client = THttpClient(
+            auth_provider=None,
+            uri_or_host="https://example.com",
+            ssl_options=SSLOptions(tls_verify=False),
+        )
+        self.assertEqual(http_client.scheme, 'https')
+
+        http_client.open()
+
+        conn_pool = http_client._THttpClient__pool
+        self.assertIsInstance(conn_pool, HTTPSConnectionPool)
+        self.assertEqual(conn_pool.cert_reqs, CERT_NONE)
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch("databricks.sql.types.create_default_context")
