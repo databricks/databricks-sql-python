@@ -35,7 +35,7 @@ from databricks.sql.parameters.native import (
 )
 
 
-from databricks.sql.types import Row
+from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
@@ -178,8 +178,9 @@ class Connection:
         # _tls_trusted_ca_file
         #   Set to the path of the file containing trusted CA certificates for server certificate
         #   verification. If not provide, uses system truststore.
-        # _tls_client_cert_file, _tls_client_cert_key_file
+        # _tls_client_cert_file, _tls_client_cert_key_file, _tls_client_cert_key_password
         #   Set client SSL certificate.
+        #   See https://docs.python.org/3/library/ssl.html#ssl.SSLContext.load_cert_chain
         # _retry_stop_after_attempts_count
         #  The maximum number of attempts during a request retry sequence (defaults to 24)
         # _socket_timeout
@@ -220,12 +221,25 @@ class Connection:
 
         base_headers = [("User-Agent", useragent_header)]
 
+        self._ssl_options = SSLOptions(
+            # Double negation is generally a bad thing, but we have to keep backward compatibility
+            tls_verify=not kwargs.get(
+                "_tls_no_verify", False
+            ),  # by default - verify cert and host
+            tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
+            tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
+            tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
+            tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
+            tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
+        )
+
         self.thrift_backend = ThriftBackend(
             self.host,
             self.port,
             http_path,
             (http_headers or []) + base_headers,
             auth_provider,
+            ssl_options=self._ssl_options,
             _use_arrow_native_complex_types=_use_arrow_native_complex_types,
             **kwargs,
         )

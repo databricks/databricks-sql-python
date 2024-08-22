@@ -1,10 +1,10 @@
 import pyarrow
 import unittest
 from unittest.mock import MagicMock, patch
-from ssl import create_default_context
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 import databricks.sql.utils as utils
+from databricks.sql.types import SSLOptions
 
 class CloudFetchQueueSuite(unittest.TestCase):
 
@@ -51,7 +51,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             schema_bytes,
             result_links=result_links,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
 
         assert len(queue.download_manager._pending_links) == 10
@@ -65,7 +65,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             schema_bytes,
             result_links=result_links,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
 
         assert len(queue.download_manager._pending_links) == 0
@@ -78,7 +78,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             MagicMock(),
             result_links=[],
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
 
         assert queue._create_next_table() is None
@@ -95,7 +95,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         expected_result = self.make_arrow_table()
 
@@ -120,7 +120,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -140,7 +140,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -160,7 +160,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -180,7 +180,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -199,7 +199,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table is None
 
@@ -216,7 +216,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -235,7 +235,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -254,7 +254,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -273,7 +273,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -293,7 +293,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             description=description,
             max_download_threads=10,
-            ssl_context=create_default_context(),
+            ssl_options=SSLOptions(),
         )
         assert queue.table is None
 
