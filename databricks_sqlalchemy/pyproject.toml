@@ -58,10 +58,10 @@ exclude = ['ttypes\.py$', 'TCLIService\.py$']
 [tool.black]
 exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
 #
-#[tool.pytest.ini_options]
-#markers = {"reviewed" = "Test case has been reviewed by Databricks"}
-#minversion = "6.0"
-#log_cli = "false"
-#log_cli_level = "INFO"
-#testpaths = ["tests", "src/databricks/sqlalchemy/test_local"]
-#env_files = ["test.env"]
+[tool.pytest.ini_options]
+markers = {"reviewed" = "Test case has been reviewed by Databricks"}
+minversion = "6.0"
+log_cli = "false"
+log_cli_level = "INFO"
+testpaths = ["tests", "databricks_sqlalchemy/src/databricks_sqlalchemy/test_local"]
+env_files = ["test.env"]
