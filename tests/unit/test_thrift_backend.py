@@ -4,11 +4,13 @@ import itertools
 import unittest
 from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
+from urllib3 import HTTPSConnectionPool
 
 import pyarrow
 
 import databricks.sql
 from databricks.sql import utils
+from databricks.sql.types import SSLOptions
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
@@ -67,7 +69,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_method = Mock()
         mock_method.__name__ = "method name"
         mock_method.return_value = mock_response
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         with self.assertRaises(DatabaseError):
             thrift_backend.make_request(mock_method, Mock())
 
@@ -77,7 +79,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
     def _make_fake_thrift_backend(self):
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend._hive_schema_to_arrow_schema = Mock()
         thrift_backend._hive_schema_to_description = Mock()
         thrift_backend._create_arrow_table = MagicMock()
@@ -155,7 +157,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_headers_are_set(self, t_http_client_class):
-        ThriftBackend("foo", 123, "bar", [("header", "value")], auth_provider=AuthProvider())
+        ThriftBackend("foo", 123, "bar", [("header", "value")], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         t_http_client_class.return_value.setCustomHeaders.assert_called_with({"header": "value"})
 
     def test_proxy_headers_are_set(self):
@@ -175,12 +177,21 @@ class ThriftBackendTestSuite(unittest.TestCase):
         assert isinstance(result.get('proxy-authorization'), type(str()))
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
-    @patch("databricks.sql.thrift_backend.create_default_context")
+    @patch("databricks.sql.types.create_default_context")
     def test_tls_cert_args_are_propagated(self, mock_create_default_context, t_http_client_class):
         mock_cert_key_file = Mock()
         mock_cert_key_password = Mock()
         mock_trusted_ca_file = Mock()
         mock_cert_file = Mock()
+
+        mock_ssl_options = SSLOptions(
+            tls_client_cert_file=mock_cert_file,
+            tls_client_cert_key_file=mock_cert_key_file,
+            tls_client_cert_key_password=mock_cert_key_password,
+            tls_trusted_ca_file=mock_trusted_ca_file,
+        )
+        mock_ssl_context = mock_ssl_options.create_ssl_context()
+        mock_create_default_context.assert_called_once_with(cafile=mock_trusted_ca_file)
 
         ThriftBackend(
             "foo",
@@ -188,62 +199,118 @@ class ThriftBackendTestSuite(unittest.TestCase):
             "bar",
             [],
             auth_provider=AuthProvider(),
-            _tls_client_cert_file=mock_cert_file,
-            _tls_client_cert_key_file=mock_cert_key_file,
-            _tls_client_cert_key_password=mock_cert_key_password,
-            _tls_trusted_ca_file=mock_trusted_ca_file,
+            ssl_options=mock_ssl_options,
         )
 
-        mock_create_default_context.assert_called_once_with(cafile=mock_trusted_ca_file)
-        mock_ssl_context = mock_create_default_context.return_value
         mock_ssl_context.load_cert_chain.assert_called_once_with(
             certfile=mock_cert_file, keyfile=mock_cert_key_file, password=mock_cert_key_password
         )
         self.assertTrue(mock_ssl_context.check_hostname)
         self.assertEqual(mock_ssl_context.verify_mode, CERT_REQUIRED)
-        self.assertEqual(t_http_client_class.call_args[1]["ssl_context"], mock_ssl_context)
+        self.assertEqual(t_http_client_class.call_args[1]["ssl_options"], mock_ssl_options)
+
+    @patch("databricks.sql.types.create_default_context")
+    def test_tls_cert_args_are_used_by_http_client(self, mock_create_default_context):
+        from databricks.sql.auth.thrift_http_client import THttpClient
+
+        mock_cert_key_file = Mock()
+        mock_cert_key_password = Mock()
+        mock_trusted_ca_file = Mock()
+        mock_cert_file = Mock()
+
+        mock_ssl_options = SSLOptions(
+            tls_verify=True,
+            tls_client_cert_file=mock_cert_file,
+            tls_client_cert_key_file=mock_cert_key_file,
+            tls_client_cert_key_password=mock_cert_key_password,
+            tls_trusted_ca_file=mock_trusted_ca_file,
+        )
+
+        http_client = THttpClient(
+            auth_provider=None,
+            uri_or_host="https://example.com",
+            ssl_options=mock_ssl_options,
+        )
+
+        self.assertEqual(http_client.scheme, 'https')
+        self.assertEqual(http_client.certfile, mock_ssl_options.tls_client_cert_file)
+        self.assertEqual(http_client.keyfile, mock_ssl_options.tls_client_cert_key_file)
+        self.assertIsNotNone(http_client.certfile)
+        mock_create_default_context.assert_called()
+
+        http_client.open()
+
+        conn_pool = http_client._THttpClient__pool
+        self.assertIsInstance(conn_pool, HTTPSConnectionPool)
+        self.assertEqual(conn_pool.cert_reqs, CERT_REQUIRED)
+        self.assertEqual(conn_pool.ca_certs, mock_ssl_options.tls_trusted_ca_file)
+        self.assertEqual(conn_pool.cert_file, mock_ssl_options.tls_client_cert_file)
+        self.assertEqual(conn_pool.key_file, mock_ssl_options.tls_client_cert_key_file)
+        self.assertEqual(conn_pool.key_password, mock_ssl_options.tls_client_cert_key_password)
+
+    def test_tls_no_verify_is_respected_by_http_client(self):
+        from databricks.sql.auth.thrift_http_client import THttpClient
+
+        http_client = THttpClient(
+            auth_provider=None,
+            uri_or_host="https://example.com",
+            ssl_options=SSLOptions(tls_verify=False),
+        )
+        self.assertEqual(http_client.scheme, 'https')
+
+        http_client.open()
+
+        conn_pool = http_client._THttpClient__pool
+        self.assertIsInstance(conn_pool, HTTPSConnectionPool)
+        self.assertEqual(conn_pool.cert_reqs, CERT_NONE)
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
-    @patch("databricks.sql.thrift_backend.create_default_context")
+    @patch("databricks.sql.types.create_default_context")
     def test_tls_no_verify_is_respected(self, mock_create_default_context, t_http_client_class):
-        ThriftBackend("foo", 123, "bar", [], auth_provider=AuthProvider(), _tls_no_verify=True)
+        mock_ssl_options = SSLOptions(tls_verify=False)
+        mock_ssl_context = mock_ssl_options.create_ssl_context()
+        mock_create_default_context.assert_called()
 
-        mock_ssl_context = mock_create_default_context.return_value
+        ThriftBackend("foo", 123, "bar", [], auth_provider=AuthProvider(), ssl_options=mock_ssl_options)
+
         self.assertFalse(mock_ssl_context.check_hostname)
         self.assertEqual(mock_ssl_context.verify_mode, CERT_NONE)
-        self.assertEqual(t_http_client_class.call_args[1]["ssl_context"], mock_ssl_context)
+        self.assertEqual(t_http_client_class.call_args[1]["ssl_options"], mock_ssl_options)
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
-    @patch("databricks.sql.thrift_backend.create_default_context")
+    @patch("databricks.sql.types.create_default_context")
     def test_tls_verify_hostname_is_respected(
         self, mock_create_default_context, t_http_client_class
     ):
+        mock_ssl_options = SSLOptions(tls_verify_hostname=False)
+        mock_ssl_context = mock_ssl_options.create_ssl_context()
+        mock_create_default_context.assert_called()
+
         ThriftBackend(
-            "foo", 123, "bar", [], auth_provider=AuthProvider(), _tls_verify_hostname=False
+            "foo", 123, "bar", [], auth_provider=AuthProvider(), ssl_options=mock_ssl_options
         )
 
-        mock_ssl_context = mock_create_default_context.return_value
         self.assertFalse(mock_ssl_context.check_hostname)
         self.assertEqual(mock_ssl_context.verify_mode, CERT_REQUIRED)
-        self.assertEqual(t_http_client_class.call_args[1]["ssl_context"], mock_ssl_context)
+        self.assertEqual(t_http_client_class.call_args[1]["ssl_options"], mock_ssl_options)
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_port_and_host_are_respected(self, t_http_client_class):
-        ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider())
+        ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         self.assertEqual(
             t_http_client_class.call_args[1]["uri_or_host"], "https://hostname:123/path_value"
         )
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_host_with_https_does_not_duplicate(self, t_http_client_class):
-        ThriftBackend("https://hostname", 123, "path_value", [], auth_provider=AuthProvider())
+        ThriftBackend("https://hostname", 123, "path_value", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         self.assertEqual(
             t_http_client_class.call_args[1]["uri_or_host"], "https://hostname:123/path_value"
         )
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_host_with_trailing_backslash_does_not_duplicate(self, t_http_client_class):
-        ThriftBackend("https://hostname/", 123, "path_value", [], auth_provider=AuthProvider())
+        ThriftBackend("https://hostname/", 123, "path_value", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         self.assertEqual(
             t_http_client_class.call_args[1]["uri_or_host"], "https://hostname:123/path_value"
         )
@@ -251,17 +318,17 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     def test_socket_timeout_is_propagated(self, t_http_client_class):
         ThriftBackend(
-            "hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=129
+            "hostname", 123, "path_value", [], auth_provider=AuthProvider(), ssl_options=SSLOptions(), _socket_timeout=129
         )
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 129 * 1000)
         ThriftBackend(
-            "hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=0
+            "hostname", 123, "path_value", [], auth_provider=AuthProvider(), ssl_options=SSLOptions(), _socket_timeout=0
         )
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 0)
-        ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider())
+        ThriftBackend("hostname", 123, "path_value", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 900 * 1000)
         ThriftBackend(
-            "hostname", 123, "path_value", [], auth_provider=AuthProvider(), _socket_timeout=None
+            "hostname", 123, "path_value", [], auth_provider=AuthProvider(), ssl_options=SSLOptions(), _socket_timeout=None
         )
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], None)
 
@@ -350,7 +417,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     def test_make_request_checks_status_code(self):
         error_codes = [ttypes.TStatusCode.ERROR_STATUS, ttypes.TStatusCode.INVALID_HANDLE_STATUS]
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
 
         for code in error_codes:
             mock_error_response = Mock()
@@ -388,7 +455,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     ),
                 )
                 thrift_backend = ThriftBackend(
-                    "foobar", 443, "path", [], auth_provider=AuthProvider()
+                    "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions()
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -417,7 +484,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     closeOperation=None,
                 ),
             )
-            thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+            thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
 
             execute_response = thrift_backend._handle_execute_response(t_execute_resp, Mock())
             self.assertEqual(execute_response.lz4_compressed, lz4Compressed)
@@ -449,7 +516,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 tcli_service_instance.GetOperationStatus.return_value = op_state_resp
                 thrift_backend = ThriftBackend(
-                    "foobar", 443, "path", [], auth_provider=AuthProvider()
+                    "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions()
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -477,7 +544,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance.GetOperationStatus.return_value = t_get_operation_status_resp
         tcli_service_instance.ExecuteStatement.return_value = t_execute_resp
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         with self.assertRaises(DatabaseError) as cm:
             thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
 
@@ -510,7 +577,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         tcli_service_instance.ExecuteStatement.return_value = t_execute_resp
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         with self.assertRaises(DatabaseError) as cm:
             thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
 
@@ -562,7 +629,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             for error_resp in [resp_1, resp_2, resp_3, resp_4]:
                 with self.subTest(error_resp=error_resp):
                     thrift_backend = ThriftBackend(
-                        "foobar", 443, "path", [], auth_provider=AuthProvider()
+                        "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions()
                     )
 
                     with self.assertRaises(DatabaseError) as cm:
@@ -603,7 +670,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     op_state_3,
                 ]
                 thrift_backend = ThriftBackend(
-                    "foobar", 443, "path", [], auth_provider=AuthProvider()
+                    "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions()
                 )
                 results_message_response = thrift_backend._handle_execute_response(
                     execute_resp, Mock()
@@ -634,7 +701,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 )
 
                 thrift_backend = ThriftBackend(
-                    "foobar", 443, "path", [], auth_provider=AuthProvider()
+                    "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions()
                 )
                 thrift_backend._results_message_to_execute_response = Mock()
 
@@ -818,7 +885,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             .to_pybytes()
         )
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         arrow_queue, has_more_results = thrift_backend.fetch_results(
             op_handle=Mock(),
             max_rows=1,
@@ -836,7 +903,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.ExecuteStatement.return_value = response
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
@@ -854,7 +921,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetCatalogs.return_value = response
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
@@ -871,7 +938,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetSchemas.return_value = response
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
@@ -897,7 +964,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetTables.return_value = response
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
@@ -927,7 +994,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetColumns.return_value = response
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
@@ -957,14 +1024,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend.open_session({}, None, None)
         self.assertEqual(len(tcli_service_instance.OpenSession.call_args_list), 1)
 
     @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_op_handle_respected_in_close_command(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend.close_command(self.operation_handle)
         self.assertEqual(
             tcli_service_instance.CloseOperation.call_args[0][0].operationHandle,
@@ -974,7 +1041,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("databricks.sql.thrift_backend.TCLIService.Client", autospec=True)
     def test_session_handle_respected_in_close_session(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         thrift_backend.close_session(self.session_handle)
         self.assertEqual(
             tcli_service_instance.CloseSession.call_args[0][0].sessionHandle, self.session_handle
@@ -1012,7 +1079,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     def test_create_arrow_table_raises_error_for_unsupported_type(self):
         t_row_set = ttypes.TRowSet()
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         with self.assertRaises(OperationalError):
             thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
@@ -1021,7 +1088,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_create_arrow_table_calls_correct_conversion_method(
         self, convert_col_mock, convert_arrow_mock
     ):
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         convert_arrow_mock.return_value = (MagicMock(), Mock())
         convert_col_mock.return_value = (MagicMock(), Mock())
 
@@ -1043,7 +1110,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("lz4.frame.decompress")
     @patch("pyarrow.ipc.open_stream")
     def test_convert_arrow_based_set_to_arrow_table(self, open_stream_mock, lz4_decompress_mock):
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
 
         lz4_decompress_mock.return_value = bytearray("Testing", "utf-8")
 
@@ -1221,6 +1288,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             "path",
             [],
             auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
             _retry_stop_after_attempts_count=EXPECTED_RETRIES,
             _retry_delay_default=1,
         )
@@ -1287,6 +1355,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             "path",
             [],
             auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
             _retry_stop_after_attempts_count=EXPECTED_RETRIES,
             _retry_delay_default=1,
         )
@@ -1308,7 +1377,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_method.__name__ = "method name"
         mock_method.side_effect = Exception("This method fails")
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
 
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.make_request(mock_method, Mock())
@@ -1333,6 +1402,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             "path",
             [],
             auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
             _retry_stop_after_attempts_count=14,
             _retry_delay_max=0,
             _retry_delay_min=0,
@@ -1353,7 +1423,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_method.__name__ = "method name"
         mock_method.side_effect = Exception("This method fails")
 
-        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        thrift_backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
 
         error_headers = [
             [("x-thriftserver-error-message", "thrift server error message")],
@@ -1454,7 +1524,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             "_retry_stop_after_attempts_duration": 100,
         }
         backend = ThriftBackend(
-            "foobar", 443, "path", [], auth_provider=AuthProvider(), **retry_delay_args
+            "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions(), **retry_delay_args
         )
         for arg, val in retry_delay_args.items():
             self.assertEqual(getattr(backend, arg), val)
@@ -1470,7 +1540,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 k: v[i][0] for (k, v) in retry_delay_test_args_and_expected_values.items()
             }
             backend = ThriftBackend(
-                "foobar", 443, "path", [], auth_provider=AuthProvider(), **retry_delay_args
+                "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions(), **retry_delay_args
             )
             retry_delay_expected_vals = {
                 k: v[i][1] for (k, v) in retry_delay_test_args_and_expected_values.items()
@@ -1490,7 +1560,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             "42": "42",
         }
 
-        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         backend.open_session(mock_config, None, None)
 
         open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
@@ -1501,7 +1571,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_client_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
         mock_config = {"spark.thriftserver.arrowBasedRowSet.timestampAsString": True}
-        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
 
         with self.assertRaises(databricks.sql.Error) as cm:
             backend.open_session(mock_config, None, None)
@@ -1520,7 +1590,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_initial_namespace_passthrough_to_open_session(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
 
-        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         initial_cat_schem_args = [("cat", None), (None, "schem"), ("cat", "schem")]
 
         for cat, schem in initial_cat_schem_args:
@@ -1540,7 +1610,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_client_class.return_value
         tcli_service_instance.OpenSession.return_value = self.open_session_resp
 
-        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         backend.open_session({}, None, None)
 
         open_session_req = tcli_client_class.return_value.OpenSession.call_args[0][0]
@@ -1550,7 +1620,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_can_use_multiple_catalogs_is_false_fails_with_initial_catalog(self, tcli_client_class):
         tcli_service_instance = tcli_client_class.return_value
 
-        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
         # If the initial catalog is set, but server returns canUseMultipleCatalogs=False, we
         # expect failure. If the initial catalog isn't set, then canUseMultipleCatalogs=False
         # is fine
@@ -1588,7 +1658,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             initialNamespace=ttypes.TNamespace(catalogName="cat", schemaName="schem"),
         )
 
-        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider())
+        backend = ThriftBackend("foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions())
 
         with self.assertRaises(InvalidServerResponseError) as cm:
             backend.open_session({}, "cat", "schem")
@@ -1616,7 +1686,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 complex_arg_types["_use_arrow_native_decimals"] = decimals
 
             thrift_backend = ThriftBackend(
-                "foobar", 443, "path", [], auth_provider=AuthProvider(), **complex_arg_types
+                "foobar", 443, "path", [], auth_provider=AuthProvider(), ssl_options=SSLOptions(), **complex_arg_types
             )
             thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
             t_execute_statement_req = tcli_service_instance.ExecuteStatement.call_args[0][0]

@@ -3,13 +3,12 @@ from dataclasses import dataclass
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
-from ssl import SSLContext, CERT_NONE
 import lz4.frame
 import time
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
-
 from databricks.sql.exc import Error
+from databricks.sql.types import SSLOptions
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +65,11 @@ class ResultSetDownloadHandler:
         self,
         settings: DownloadableResultSettings,
         link: TSparkArrowResultLink,
-        ssl_context: SSLContext,
+        ssl_options: SSLOptions,
     ):
         self.settings = settings
         self.link = link
-        self._ssl_context = ssl_context
+        self._ssl_options = ssl_options
 
     def run(self) -> DownloadedFile:
         """
@@ -95,14 +94,13 @@ class ResultSetDownloadHandler:
         session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
         session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
 
-        ssl_verify = self._ssl_context.verify_mode != CERT_NONE
-
         try:
             # Get the file via HTTP request
             response = session.get(
                 self.link.fileLink,
                 timeout=self.settings.download_timeout,
-                verify=ssl_verify,
+                verify=self._ssl_options.tls_verify,
+                # TODO: Pass cert from `self._ssl_options`
             )
             response.raise_for_status()
 
