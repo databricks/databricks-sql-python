@@ -1,6 +1,4 @@
-import unittest
 import pytest
-import pyarrow as pa
 from databricks_sql_connector_core.sql.utils import ColumnQueue
 
 

@@ -2,10 +2,14 @@ from collections import OrderedDict
 from decimal import Decimal
 import itertools
 import unittest
+import pytest
 from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
 
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 import databricks_sql_connector_core.sql
 from databricks_sql_connector_core.sql import utils
@@ -25,6 +29,7 @@ def retry_policy_factory():
     }
 
 
+@pytest.mark.pyarrow_test
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
 

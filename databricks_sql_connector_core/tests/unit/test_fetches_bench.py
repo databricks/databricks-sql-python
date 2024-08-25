@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import Mock
-
-import pyarrow as pa
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 import uuid
 import time
 import pytest
@@ -10,6 +12,7 @@ import databricks_sql_connector_core.sql.client as client
 from databricks_sql_connector_core.sql.utils import ExecuteResponse, ArrowQueue
 
 
+@pytest.mark.pyarrow_test
 class FetchBenchmarkTests(unittest.TestCase):
     """
     Micro benchmark test for Arrow result handling.

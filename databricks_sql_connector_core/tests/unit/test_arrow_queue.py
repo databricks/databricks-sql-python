@@ -1,10 +1,14 @@
 import unittest
-
-import pyarrow as pa
+import pytest
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 
 from databricks_sql_connector_core.sql.utils import ArrowQueue
 
 
+@pytest.mark.pyarrow_test
 class ArrowQueueSuite(unittest.TestCase):
     @staticmethod
     def make_arrow_table(batch):

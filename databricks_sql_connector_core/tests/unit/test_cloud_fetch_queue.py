@@ -1,11 +1,17 @@
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 import unittest
+import pytest
 from unittest.mock import MagicMock, patch
 from ssl import create_default_context
 
 from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 import databricks_sql_connector_core.sql.utils as utils
 
+
+@pytest.mark.pyarrow_test
 class CloudFetchQueueSuite(unittest.TestCase):
 
     def create_result_link(

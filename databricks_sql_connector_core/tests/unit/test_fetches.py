@@ -1,12 +1,16 @@
 import unittest
+import pytest
 from unittest.mock import Mock
-
-import pyarrow as pa
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 
 import databricks_sql_connector_core.sql.client as client
 from databricks_sql_connector_core.sql.utils import ExecuteResponse, ArrowQueue
 
 
+@pytest.mark.pyarrow_test
 class FetchTests(unittest.TestCase):
     """
     Unit tests for checking the fetch logic.
