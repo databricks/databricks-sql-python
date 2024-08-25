@@ -1,5 +1,5 @@
 import pytest
-from databricks.sqlalchemy._parse import (
+from databricks_sqlalchemy._parse import (
     extract_identifiers_from_string,
     extract_identifier_groups_from_string,
     extract_three_level_identifier_from_constraint_string,

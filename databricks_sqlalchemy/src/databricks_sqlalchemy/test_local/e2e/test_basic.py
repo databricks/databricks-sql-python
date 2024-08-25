@@ -144,7 +144,7 @@ def test_pandas_upload(db_engine, metadata_obj):
     SCHEMA = "default"
     try:
         df = pd.read_excel(
-            "src/databricks/sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx"
+            "databricks_sqlalchemy/test_local/e2e/demo_data/MOCK_DATA.xlsx"
         )
         df.to_sql(
             "mock_data",
@@ -472,7 +472,7 @@ def test_user_agent_adjustment(db_engine):
 @pytest.fixture
 def sample_table(metadata_obj: MetaData, db_engine: Engine):
     """This fixture creates a sample table and cleans it up after the test is complete."""
-    from databricks.sqlalchemy._parse import GET_COLUMNS_TYPE_MAP
+    from databricks_sqlalchemy._parse import GET_COLUMNS_TYPE_MAP
 
     table_name = "PySQLTest_{}".format(datetime.datetime.utcnow().strftime("%s"))
 

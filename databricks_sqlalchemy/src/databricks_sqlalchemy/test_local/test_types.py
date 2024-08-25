@@ -3,8 +3,8 @@ import enum
 import pytest
 import sqlalchemy
 
-from databricks.sqlalchemy.base import DatabricksDialect
-from databricks.sqlalchemy._types import TINYINT, TIMESTAMP, TIMESTAMP_NTZ
+from databricks_sqlalchemy.base import DatabricksDialect
+from databricks_sqlalchemy._types import TINYINT, TIMESTAMP, TIMESTAMP_NTZ
 
 
 class DatabricksDataType(enum.Enum):
