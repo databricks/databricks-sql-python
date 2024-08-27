@@ -1,5 +1,11 @@
 # Release History
 
+# 3.4.0 (2024-08-27)
+
+- Unpin pandas to support v2.2.2 (databricks/databricks-sql-python#416 by @kfollesdal)
+- Make OAuth as the default authenticator if no authentication setting is provided (databricks/databricks-sql-python#419 by @jackyhu-db)
+- Fix (regression): use SSL options with HTTPS connection pool (databricks/databricks-sql-python#425 by @kravets-levko)
+
 # 3.3.0 (2024-07-18)
 
 - Don't retry requests that fail with HTTP code 401 (databricks/databricks-sql-python#408 by @Hodnebo)
