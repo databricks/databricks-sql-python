@@ -29,7 +29,7 @@ def retry_policy_factory():
     }
 
 
-@pytest.mark.pyarrow_test
+@pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
 

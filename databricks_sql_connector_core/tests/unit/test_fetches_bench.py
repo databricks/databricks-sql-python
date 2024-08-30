@@ -12,7 +12,7 @@ import databricks_sql_connector_core.sql.client as client
 from databricks_sql_connector_core.sql.utils import ExecuteResponse, ArrowQueue
 
 
-@pytest.mark.pyarrow_test
+@pytest.mark.skipif(not pa, reason="Skipping because pyarrow is not installed")
 class FetchBenchmarkTests(unittest.TestCase):
     """
     Micro benchmark test for Arrow result handling.

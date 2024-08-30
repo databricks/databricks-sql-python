@@ -11,7 +11,7 @@ from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import TSpa
 import databricks_sql_connector_core.sql.utils as utils
 
 
-@pytest.mark.pyarrow_test
+@pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
 class CloudFetchQueueSuite(unittest.TestCase):
 
     def create_result_link(

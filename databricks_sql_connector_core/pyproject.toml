@@ -14,23 +14,17 @@ thrift = ">=0.16.0,<0.21.0"
 pandas = [
     { version = ">=1.2.5,<2.2.0", python = ">=3.8" }
 ]
-#pyarrow = ">=14.0.1,<17"
-
 lz4 = "^4.0.2"
 requests = "^2.18.1"
 oauthlib = "^3.1.0"
-#numpy = [
-#    { version = "^1.16.6", python = ">=3.8,<3.11" },
-#    { version = "^1.23.4", python = ">=3.11" },
-#]
-sqlalchemy = { version = ">=2.0.21", optional = true }
 openpyxl = "^3.0.10"
+databricks_sqlalchemy = { version = ">=1.0.0", optional = true }
 alembic = { version = "^1.0.11", optional = true }
 urllib3 = ">=1.26"
 
 [tool.poetry.extras]
-sqlalchemy = ["sqlalchemy"]
-alembic = ["sqlalchemy", "alembic"]
+databricks_sqlalchemy = ["databricks_sqlalchemy"]
+alembic = ["databricks_sqlalchemy", "alembic"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"

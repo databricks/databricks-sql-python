@@ -9,7 +9,7 @@ class TestInitFile:
     """
 
     def test_init_file_contents(self):
-        with open("databricks_sql_connector_core/src/databricks_sql_connector_core/__init__.py") as f:
+        with open("src/databricks_sql_connector_core/__init__.py") as f:
             init_file_contents = f.read()
 
         # This hash is the expected hash of the contents of `src/databricks/__init__.py`.

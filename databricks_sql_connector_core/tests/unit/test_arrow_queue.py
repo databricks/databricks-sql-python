@@ -8,7 +8,7 @@ except ImportError:
 from databricks_sql_connector_core.sql.utils import ArrowQueue
 
 
-@pytest.mark.pyarrow_test
+@pytest.mark.skipif(not pa, reason="Skipping because pyarrow is not installed")
 class ArrowQueueSuite(unittest.TestCase):
     @staticmethod
     def make_arrow_table(batch):
