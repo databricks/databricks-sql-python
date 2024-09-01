@@ -4,6 +4,7 @@ from numpy import ndarray
 from tests.e2e.test_driver import PySQLPytestTestCase
 
 
+@pytest.mark.skipif(pytest.importorskip("pyarrow"), reason="Skipping because pyarrow is not installed")
 class TestComplexTypes(PySQLPytestTestCase):
     @pytest.fixture(scope="class")
     def table_fixture(self, connection_details):

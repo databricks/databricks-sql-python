@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from thrift.protocol import TJSONProtocol
 from thrift.transport import TTransport
+import pytz
 import datetime
 import decimal
 from abc import ABC, abstractmethod
@@ -83,9 +84,11 @@ class ResultSetQueueFactory(ABC):
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
-            converted_column_table, column_names = convert_column_based_set_to_column_table(
+            column_table, column_names = convert_column_based_set_to_column_table(
                 t_row_set.columns,
                 description)
+
+            converted_column_table = convert_to_assigned_datatypes_in_column_table(column_table, description)
 
             return ColumnQueue(converted_column_table, column_names)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
@@ -586,6 +589,17 @@ def convert_decimals_in_arrow_table(table, description) -> 'pyarrow.Table':
             table = table.set_column(i, field, col_data)
     return table
 
+
+def convert_to_assigned_datatypes_in_column_table(column_table, description):
+    for i, col in enumerate(column_table):
+        if description[i][1] == "decimal":
+            column_table[i] = tuple(v if v is None else Decimal(v) for v in col)
+        elif description[i][1] == "date":
+            column_table[i] = tuple(v if v is None else datetime.date.fromisoformat(v) for v in col)
+        elif description[i][1] == "timestamp":
+            column_table[i] = tuple(v if v is None else datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo = pytz.UTC) for v in col)
+
+    return column_table
 
 def convert_column_based_set_to_arrow_table(columns, description):
     arrow_table = pyarrow.Table.from_arrays(

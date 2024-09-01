@@ -284,6 +284,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             (PrimitiveExtra.TINYINT, TinyIntParameter),
         ],
     )
+    @pytest.mark.skipif(pytest.importorskip("pyarrow"),
+                        reason="Without pyarrow TIMESTAMP_NTZ datatype cannot be inferred")
     def test_dbsqlparameter_single(
             self,
             primitive: Primitive,
@@ -417,7 +419,6 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         params = {"one": "%(one)s"}
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
             result = cursor.execute(query, parameters=params).fetchone()
-            print("hello")
 
     def test_native_ordinals_dont_break_sql(self):
         """This test accompanies test_inline_ordinals_can_break_sql to prove that ordinal

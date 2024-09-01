@@ -8,9 +8,12 @@ ENDPOINT_TEST_KEY = "is_endpoint_test"
 
 
 def pysql_supports_arrow():
-    """Import databricks_sql_connector_core.sql and test whether Cursor has fetchall_arrow."""
-    from databricks_sql_connector_core.sql.client import Cursor
-    return hasattr(Cursor, 'fetchall_arrow')
+    """ Checks if the pyarrow library is installed or not"""
+    try:
+        __import__("pyarrow")
+        return True
+    except ImportError:
+        return False
 
 
 def pysql_has_version(compare, version):

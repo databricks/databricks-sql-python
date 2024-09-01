@@ -1,6 +1,10 @@
 import logging
 import math
 import time
+from unittest import skipUnless
+
+import pytest
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ class LargeQueriesMixin:
             + "assuming 10K fetch size."
         )
 
+    @skipUnless(pysql_supports_arrow(), "Without pyarrow lz4 compression is not supported")
     def test_query_with_large_wide_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
         width = 8192  # B
