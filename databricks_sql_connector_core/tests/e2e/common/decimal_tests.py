@@ -13,8 +13,16 @@ def decimal_and_expected_results():
 
     return [
         ("100.001 AS DECIMAL(6, 3)", Decimal("100.001"), pyarrow.decimal128(6, 3)),
-        ("1000000.0000 AS DECIMAL(11, 4)", Decimal("1000000.0000"), pyarrow.decimal128(11, 4)),
-        ("-10.2343 AS DECIMAL(10, 6)", Decimal("-10.234300"), pyarrow.decimal128(10, 6)),
+        (
+            "1000000.0000 AS DECIMAL(11, 4)",
+            Decimal("1000000.0000"),
+            pyarrow.decimal128(11, 4),
+        ),
+        (
+            "-10.2343 AS DECIMAL(10, 6)",
+            Decimal("-10.234300"),
+            pyarrow.decimal128(10, 6),
+        ),
         # TODO(SC-90767): Re-enable this test after we have a way of passing `ansi_mode` = False
         # ("-13872347.2343 AS DECIMAL(10, 10)", None, pyarrow.decimal128(10, 10)),
         ("NULL AS DECIMAL(1, 1)", None, pyarrow.decimal128(1, 1)),
@@ -28,7 +36,7 @@ def multi_decimals_and_expected_results():
 
     if pyarrow is None:
         return []
-    
+
     return [
         (
             ["1 AS DECIMAL(6, 3)", "100.001 AS DECIMAL(6, 3)", "NULL AS DECIMAL(6, 3)"],
@@ -46,7 +54,9 @@ def multi_decimals_and_expected_results():
 @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
 class DecimalTestsMixin:
 
-    @pytest.mark.parametrize("decimal, expected_value, expected_type", decimal_and_expected_results())
+    @pytest.mark.parametrize(
+        "decimal, expected_value, expected_type", decimal_and_expected_results()
+    )
     def test_decimals(self, decimal, expected_value, expected_type):
         with self.cursor({}) as cursor:
             query = "SELECT CAST ({})".format(decimal)
@@ -56,11 +66,14 @@ class DecimalTestsMixin:
             assert table.to_pydict().popitem()[1][0] == expected_value
 
     @pytest.mark.parametrize(
-        "decimals, expected_values, expected_type", multi_decimals_and_expected_results()
+        "decimals, expected_values, expected_type",
+        multi_decimals_and_expected_results(),
     )
     def test_multi_decimals(self, decimals, expected_values, expected_type):
         with self.cursor({}) as cursor:
-            union_str = " UNION ".join(["(SELECT CAST ({}))".format(dec) for dec in decimals])
+            union_str = " UNION ".join(
+                ["(SELECT CAST ({}))".format(dec) for dec in decimals]
+            )
             query = "SELECT * FROM ({}) ORDER BY 1 NULLS LAST".format(union_str)
 
             cursor.execute(query)

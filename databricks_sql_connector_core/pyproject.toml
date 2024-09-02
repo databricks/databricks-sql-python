@@ -50,7 +50,7 @@ exclude = ['ttypes\.py$', 'TCLIService\.py$']
 
 [tool.black]
 exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
-#
+
 [tool.pytest.ini_options]
 markers = {"reviewed" = "Test case has been reviewed by Databricks"}
 minversion = "6.0"

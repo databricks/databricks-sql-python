@@ -40,21 +40,21 @@ class TestSessionHandleChecks(object):
         "test_input,expected",
         [
             (
-                    TOpenSessionResp(
-                        serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
-                        sessionHandle=TSessionHandle(1, None),
-                    ),
-                    ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                TOpenSessionResp(
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                    sessionHandle=TSessionHandle(1, None),
+                ),
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
             ),
             # Ensure that protocol version inside sessionhandle takes precedence.
             (
-                    TOpenSessionResp(
-                        serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
-                        sessionHandle=TSessionHandle(
-                            1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
-                        ),
+                TOpenSessionResp(
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                    sessionHandle=TSessionHandle(
+                        1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
                     ),
-                    ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+                ),
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
             ),
         ],
     )
@@ -65,16 +65,16 @@ class TestSessionHandleChecks(object):
         "test_input,expected",
         [
             (
-                    None,
-                    False,
+                None,
+                False,
             ),
             (
-                    ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
-                    False,
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                False,
             ),
             (
-                    ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
-                    True,
+                ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
+                True,
             ),
         ],
     )
@@ -85,12 +85,12 @@ class TestSessionHandleChecks(object):
 @pytest.mark.parametrize(
     "value,expected",
     (
-            (Decimal("10.00"), "DECIMAL(4,2)"),
-            (Decimal("123456789123456789.123456789123456789"), "DECIMAL(36,18)"),
-            (Decimal(".12345678912345678912345678912345678912"), "DECIMAL(38,38)"),
-            (Decimal("123456789.123456789"), "DECIMAL(18,9)"),
-            (Decimal("12345678912345678912345678912345678912"), "DECIMAL(38,0)"),
-            (Decimal("1234.56"), "DECIMAL(6,2)"),
+        (Decimal("10.00"), "DECIMAL(4,2)"),
+        (Decimal("123456789123456789.123456789123456789"), "DECIMAL(36,18)"),
+        (Decimal(".12345678912345678912345678912345678912"), "DECIMAL(38,38)"),
+        (Decimal("123456789.123456789"), "DECIMAL(18,9)"),
+        (Decimal("12345678912345678912345678912345678912"), "DECIMAL(38,0)"),
+        (Decimal("1234.56"), "DECIMAL(6,2)"),
     ),
 )
 def test_calculate_decimal_cast_string(value, expected):
@@ -118,23 +118,23 @@ class TestDbsqlParameter:
     @pytest.mark.parametrize(
         "_type, prim, expect_cast_expr",
         (
-                (DecimalParameter, Primitive.DECIMAL, "DECIMAL(6,2)"),
-                (IntegerParameter, Primitive.INT, "INT"),
-                (StringParameter, Primitive.STRING, "STRING"),
-                (BigIntegerParameter, Primitive.BIGINT, "BIGINT"),
-                (BooleanParameter, Primitive.BOOL, "BOOLEAN"),
-                (DateParameter, Primitive.DATE, "DATE"),
-                (DoubleParameter, Primitive.DOUBLE, "DOUBLE"),
-                (FloatParameter, Primitive.FLOAT, "FLOAT"),
-                (VoidParameter, Primitive.NONE, "VOID"),
-                (SmallIntParameter, Primitive.INT, "SMALLINT"),
-                (TimestampParameter, Primitive.TIMESTAMP, "TIMESTAMP"),
-                (TimestampNTZParameter, Primitive.TIMESTAMP, "TIMESTAMP_NTZ"),
-                (TinyIntParameter, Primitive.INT, "TINYINT"),
+            (DecimalParameter, Primitive.DECIMAL, "DECIMAL(6,2)"),
+            (IntegerParameter, Primitive.INT, "INT"),
+            (StringParameter, Primitive.STRING, "STRING"),
+            (BigIntegerParameter, Primitive.BIGINT, "BIGINT"),
+            (BooleanParameter, Primitive.BOOL, "BOOLEAN"),
+            (DateParameter, Primitive.DATE, "DATE"),
+            (DoubleParameter, Primitive.DOUBLE, "DOUBLE"),
+            (FloatParameter, Primitive.FLOAT, "FLOAT"),
+            (VoidParameter, Primitive.NONE, "VOID"),
+            (SmallIntParameter, Primitive.INT, "SMALLINT"),
+            (TimestampParameter, Primitive.TIMESTAMP, "TIMESTAMP"),
+            (TimestampNTZParameter, Primitive.TIMESTAMP, "TIMESTAMP_NTZ"),
+            (TinyIntParameter, Primitive.INT, "TINYINT"),
         ),
     )
     def test_cast_expression(
-            self, _type: TDbsqlParameter, prim: Primitive, expect_cast_expr: str
+        self, _type: TDbsqlParameter, prim: Primitive, expect_cast_expr: str
     ):
         p = _type(prim.value)
         assert p._cast_expr() == expect_cast_expr
@@ -142,19 +142,19 @@ class TestDbsqlParameter:
     @pytest.mark.parametrize(
         "t, prim",
         (
-                (DecimalParameter, Primitive.DECIMAL),
-                (IntegerParameter, Primitive.INT),
-                (StringParameter, Primitive.STRING),
-                (BigIntegerParameter, Primitive.BIGINT),
-                (BooleanParameter, Primitive.BOOL),
-                (DateParameter, Primitive.DATE),
-                (DoubleParameter, Primitive.DOUBLE),
-                (FloatParameter, Primitive.FLOAT),
-                (VoidParameter, Primitive.NONE),
-                (SmallIntParameter, Primitive.INT),
-                (TimestampParameter, Primitive.TIMESTAMP),
-                (TimestampNTZParameter, Primitive.TIMESTAMP),
-                (TinyIntParameter, Primitive.INT),
+            (DecimalParameter, Primitive.DECIMAL),
+            (IntegerParameter, Primitive.INT),
+            (StringParameter, Primitive.STRING),
+            (BigIntegerParameter, Primitive.BIGINT),
+            (BooleanParameter, Primitive.BOOL),
+            (DateParameter, Primitive.DATE),
+            (DoubleParameter, Primitive.DOUBLE),
+            (FloatParameter, Primitive.FLOAT),
+            (VoidParameter, Primitive.NONE),
+            (SmallIntParameter, Primitive.INT),
+            (TimestampParameter, Primitive.TIMESTAMP),
+            (TimestampNTZParameter, Primitive.TIMESTAMP),
+            (TinyIntParameter, Primitive.INT),
         ),
     )
     def test_tspark_param_value(self, t: TDbsqlParameter, prim):
@@ -183,15 +183,15 @@ class TestDbsqlParameter:
     @pytest.mark.parametrize(
         "_type, prim",
         (
-                (DecimalParameter, Primitive.DECIMAL),
-                (IntegerParameter, Primitive.INT),
-                (StringParameter, Primitive.STRING),
-                (BigIntegerParameter, Primitive.BIGINT),
-                (BooleanParameter, Primitive.BOOL),
-                (DateParameter, Primitive.DATE),
-                (FloatParameter, Primitive.FLOAT),
-                (VoidParameter, Primitive.NONE),
-                (TimestampParameter, Primitive.TIMESTAMP),
+            (DecimalParameter, Primitive.DECIMAL),
+            (IntegerParameter, Primitive.INT),
+            (StringParameter, Primitive.STRING),
+            (BigIntegerParameter, Primitive.BIGINT),
+            (BooleanParameter, Primitive.BOOL),
+            (DateParameter, Primitive.DATE),
+            (FloatParameter, Primitive.FLOAT),
+            (VoidParameter, Primitive.NONE),
+            (TimestampParameter, Primitive.TIMESTAMP),
         ),
     )
     def test_inference(self, _type: TDbsqlParameter, prim: Primitive):

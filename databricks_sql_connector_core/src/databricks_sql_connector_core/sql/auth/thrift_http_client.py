@@ -15,7 +15,10 @@ from io import BytesIO
 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
-from databricks_sql_connector_core.sql.auth.retry import CommandType, DatabricksRetryPolicy
+from databricks_sql_connector_core.sql.auth.retry import (
+    CommandType,
+    DatabricksRetryPolicy,
+)
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):

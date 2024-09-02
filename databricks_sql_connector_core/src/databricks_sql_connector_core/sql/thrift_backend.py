@@ -227,11 +227,13 @@ class ThriftBackend:
 
             additional_transport_args["retry_policy"] = self.retry_policy
 
-        self._transport = databricks_sql_connector_core.sql.auth.thrift_http_client.THttpClient(
-            auth_provider=self._auth_provider,
-            uri_or_host=uri,
-            ssl_context=self._ssl_context,
-            **additional_transport_args,  # type: ignore
+        self._transport = (
+            databricks_sql_connector_core.sql.auth.thrift_http_client.THttpClient(
+                auth_provider=self._auth_provider,
+                uri_or_host=uri,
+                ssl_context=self._ssl_context,
+                **additional_transport_args,  # type: ignore
+            )
         )
 
         timeout = kwargs.get("_socket_timeout", DEFAULT_SOCKET_TIMEOUT)
@@ -644,7 +646,10 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
+            (
+                arrow_table,
+                num_rows,
+            ) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -659,7 +664,9 @@ class ThriftBackend:
     def _hive_schema_to_arrow_schema(t_table_schema):
 
         if pyarrow is None:
-            raise ImportError("pyarrow is required to convert Hive schema to Arrow schema")
+            raise ImportError(
+                "pyarrow is required to convert Hive schema to Arrow schema"
+            )
 
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:

@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import Mock
+
 try:
     import pyarrow as pa
 except ImportError:
@@ -38,12 +39,18 @@ class FetchBenchmarkTests(unittest.TestCase):
                 description=Mock(),
                 command_handle=None,
                 arrow_queue=arrow_queue,
-                arrow_schema=arrow_table.schema))
-        rs.description = [(f'col{col_id}', 'string', None, None, None, None, None)
-                          for col_id in range(arrow_table.num_columns)]
+                arrow_schema=arrow_table.schema,
+            ),
+        )
+        rs.description = [
+            (f"col{col_id}", "string", None, None, None, None, None)
+            for col_id in range(arrow_table.num_columns)
+        ]
         return rs
 
-    @pytest.mark.skip(reason="Test has not been updated for latest connector API (June 2022)")
+    @pytest.mark.skip(
+        reason="Test has not been updated for latest connector API (June 2022)"
+    )
     def test_benchmark_fetchall(self):
         print("preparing dummy arrow table")
         arrow_table = FetchBenchmarkTests.make_arrow_table(10, 25000)
@@ -53,7 +60,9 @@ class FetchBenchmarkTests(unittest.TestCase):
         start_time = time.time()
         count = 0
         while time.time() < start_time + benchmark_seconds:
-            dummy_result_set = self.make_dummy_result_set_from_initial_results(arrow_table)
+            dummy_result_set = self.make_dummy_result_set_from_initial_results(
+                arrow_table
+            )
             res = dummy_result_set.fetchall()
             for _ in res:
                 pass
@@ -62,5 +71,5 @@ class FetchBenchmarkTests(unittest.TestCase):
         print(f"Executed query {count} times, in {time.time() - start_time} seconds")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

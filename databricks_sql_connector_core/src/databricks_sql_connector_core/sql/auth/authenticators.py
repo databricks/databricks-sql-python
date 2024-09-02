@@ -4,11 +4,17 @@ import logging
 from typing import Callable, Dict, List
 
 from databricks_sql_connector_core.sql.auth.oauth import OAuthManager
-from databricks_sql_connector_core.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_host
+from databricks_sql_connector_core.sql.auth.endpoint import (
+    get_oauth_endpoints,
+    infer_cloud_from_host,
+)
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-from databricks_sql_connector_core.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
+from databricks_sql_connector_core.sql.experimental.oauth_persistence import (
+    OAuthToken,
+    OAuthPersistence,
+)
 
 
 class AuthProvider:
@@ -25,12 +31,10 @@ class CredentialsProvider(abc.ABC):
     for authenticating requests to Databricks REST APIs"""
 
     @abc.abstractmethod
-    def auth_type(self) -> str:
-        ...
+    def auth_type(self) -> str: ...
 
     @abc.abstractmethod
-    def __call__(self, *args, **kwargs) -> HeaderFactory:
-        ...
+    def __call__(self, *args, **kwargs) -> HeaderFactory: ...
 
 
 # Private API: this is an evolving interface and it will change in the future.

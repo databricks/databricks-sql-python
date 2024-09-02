@@ -17,7 +17,11 @@ import os
 from typing import Optional
 
 from databricks_sql_connector_core import sql
-from databricks_sql_connector_core.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken, DevOnlyFilePersistence
+from databricks_sql_connector_core.sql.experimental.oauth_persistence import (
+    OAuthPersistence,
+    OAuthToken,
+    DevOnlyFilePersistence,
+)
 
 
 class SampleOAuthPersistence(OAuthPersistence):
@@ -40,14 +44,17 @@ class SampleOAuthPersistence(OAuthPersistence):
         """
         pass
 
-with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
-                 http_path       = os.getenv("DATABRICKS_HTTP_PATH"),
-                 auth_type="databricks-oauth",
-                 experimental_oauth_persistence=DevOnlyFilePersistence("./sample.json")) as connection:
+
+with sql.connect(
+    server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
+    http_path=os.getenv("DATABRICKS_HTTP_PATH"),
+    auth_type="databricks-oauth",
+    experimental_oauth_persistence=DevOnlyFilePersistence("./sample.json"),
+) as connection:
 
     for x in range(1, 100):
         cursor = connection.cursor()
-        cursor.execute('SELECT 1+1')
+        cursor.execute("SELECT 1+1")
         result = cursor.fetchall()
         for row in result:
             print(row)

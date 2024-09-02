@@ -89,13 +89,13 @@ class EndpointTest(unittest.TestCase):
         ]
 
         for (
-                cloud_type,
-                host,
-                use_azure_auth,
-                expected_auth_url,
-                expected_config_url,
-                expected_scopes,
-                expected_scope2,
+            cloud_type,
+            host,
+            use_azure_auth,
+            expected_auth_url,
+            expected_config_url,
+            expected_scopes,
+            expected_scope2,
         ) in param_list:
             with self.subTest(cloud_type):
                 endpoint = get_oauth_endpoints(host, use_azure_auth)

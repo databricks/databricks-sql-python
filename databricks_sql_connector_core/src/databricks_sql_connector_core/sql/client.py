@@ -1,6 +1,7 @@
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
+
 try:
     import pyarrow
 except ImportError:
@@ -27,7 +28,7 @@ from databricks_sql_connector_core.sql.utils import (
     inject_parameters,
     transform_paramstyle,
     ArrowQueue,
-    ColumnQueue
+    ColumnQueue,
 )
 from databricks_sql_connector_core.sql.parameters.native import (
     DbsqlParameterBase,
@@ -42,8 +43,12 @@ from databricks_sql_connector_core.sql.parameters.native import (
 
 
 from databricks_sql_connector_core.sql.types import Row
-from databricks_sql_connector_core.sql.auth.auth import get_python_sql_connector_auth_provider
-from databricks_sql_connector_core.sql.experimental.oauth_persistence import OAuthPersistence
+from databricks_sql_connector_core.sql.auth.auth import (
+    get_python_sql_connector_auth_provider,
+)
+from databricks_sql_connector_core.sql.experimental.oauth_persistence import (
+    OAuthPersistence,
+)
 
 from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -1148,7 +1153,6 @@ class ResultSet:
 
         return result
 
-
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1224,7 +1228,7 @@ class ResultSet:
         :param result2:
         :return:
         """
-        merged_result = [result1[i]+result2[i] for i in range(len(result1))]
+        merged_result = [result1[i] + result2[i] for i in range(len(result1))]
         return merged_result
 
     def fetchmany_columnar(self, size: int):
@@ -1241,9 +1245,9 @@ class ResultSet:
         self._next_row_index += len(results[0])
 
         while (
-                n_remaining_rows > 0
-                and not self.has_been_closed_server_side
-                and self.has_more_rows
+            n_remaining_rows > 0
+            and not self.has_been_closed_server_side
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)

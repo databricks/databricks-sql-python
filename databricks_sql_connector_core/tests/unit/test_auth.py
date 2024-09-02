@@ -9,16 +9,26 @@ from databricks_sql_connector_core.sql.auth.auth import (
     ExternalAuthProvider,
     AuthType,
 )
-from databricks_sql_connector_core.sql.auth.auth import get_python_sql_connector_auth_provider, PYSQL_OAUTH_CLIENT_ID
+from databricks_sql_connector_core.sql.auth.auth import (
+    get_python_sql_connector_auth_provider,
+    PYSQL_OAUTH_CLIENT_ID,
+)
 from databricks_sql_connector_core.sql.auth.oauth import OAuthManager
-from databricks_sql_connector_core.sql.auth.authenticators import DatabricksOAuthProvider
+from databricks_sql_connector_core.sql.auth.authenticators import (
+    DatabricksOAuthProvider,
+)
 from databricks_sql_connector_core.sql.auth.endpoint import (
     CloudType,
     InHouseOAuthEndpointCollection,
     AzureOAuthEndpointCollection,
 )
-from databricks_sql_connector_core.sql.auth.authenticators import CredentialsProvider, HeaderFactory
-from databricks_sql_connector_core.sql.experimental.oauth_persistence import OAuthPersistenceCache
+from databricks_sql_connector_core.sql.auth.authenticators import (
+    CredentialsProvider,
+    HeaderFactory,
+)
+from databricks_sql_connector_core.sql.experimental.oauth_persistence import (
+    OAuthPersistenceCache,
+)
 
 
 class Auth(unittest.TestCase):
@@ -97,9 +107,11 @@ class Auth(unittest.TestCase):
                     redirect_port_range=[8020],
                     client_id=client_id,
                     scopes=scopes,
-                    auth_type=AuthType.AZURE_OAUTH.value
-                    if use_azure_auth
-                    else AuthType.DATABRICKS_OAUTH.value,
+                    auth_type=(
+                        AuthType.AZURE_OAUTH.value
+                        if use_azure_auth
+                        else AuthType.DATABRICKS_OAUTH.value
+                    ),
                 )
 
                 self.assertIsInstance(
@@ -177,4 +189,6 @@ class Auth(unittest.TestCase):
         }
         with self.assertRaises(ValueError) as e:
             get_python_sql_connector_auth_provider("foo.cloud.databricks.com", **kwargs)
-        self.assertIn("Username/password authentication is no longer supported", str(e.exception))
+        self.assertIn(
+            "Username/password authentication is no longer supported", str(e.exception)
+        )

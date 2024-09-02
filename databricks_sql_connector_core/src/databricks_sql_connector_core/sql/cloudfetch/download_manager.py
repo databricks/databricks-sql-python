@@ -9,7 +9,9 @@ from databricks_sql_connector_core.sql.cloudfetch.downloader import (
     DownloadableResultSettings,
     DownloadedFile,
 )
-from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
+from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import (
+    TSparkArrowResultLink,
+)
 
 logger = logging.getLogger(__name__)
 

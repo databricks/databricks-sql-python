@@ -147,8 +147,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         """Applies a patch so we can test the connector's behaviour under different SPARK_CLI_SERVICE_PROTOCOL_VERSION conditions."""
 
         with patch(
-                "databricks_sql_connector_core.sql.client.Connection.server_parameterized_queries_enabled",
-                return_value=supports_native_params,
+            "databricks_sql_connector_core.sql.client.Connection.server_parameterized_queries_enabled",
+            return_value=supports_native_params,
         ) as mock_parameterized_queries_enabled:
             try:
                 yield mock_parameterized_queries_enabled
@@ -167,12 +167,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             This is a no-op but is included to make the test-code easier to read.
         """
         target_column = self._get_inline_table_column(params.get("p"))
-        INSERT_QUERY = (
-            f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        )
-        SELECT_QUERY = (
-            f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
-        )
+        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
+        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
@@ -186,10 +182,10 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         return to_return
 
     def _native_roundtrip(
-            self,
-            parameters: Union[Dict, List[Dict]],
-            paramstyle: ParamStyle,
-            parameter_structure: ParameterStructure,
+        self,
+        parameters: Union[Dict, List[Dict]],
+        paramstyle: ParamStyle,
+        parameter_structure: ParameterStructure,
     ):
         if parameter_structure == ParameterStructure.POSITIONAL:
             _query = self.POSITIONAL_PARAMSTYLE_QUERY
@@ -203,11 +199,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                 return cursor.fetchone()
 
     def _get_one_result(
-            self,
-            params,
-            approach: ParameterApproach = ParameterApproach.NONE,
-            paramstyle: ParamStyle = ParamStyle.NONE,
-            parameter_structure: ParameterStructure = ParameterStructure.NONE,
+        self,
+        params,
+        approach: ParameterApproach = ParameterApproach.NONE,
+        paramstyle: ParamStyle = ParamStyle.NONE,
+        parameter_structure: ParameterStructure = ParameterStructure.NONE,
     ):
         """When approach is INLINE then we use %(param)s paramstyle and a connection with use_inline_params=True
         When approach is NATIVE then we use :param paramstyle and a connection with use_inline_params=False
@@ -243,12 +239,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         "approach,paramstyle,parameter_structure", approach_paramstyle_combinations
     )
     def test_primitive_single(
-            self,
-            approach,
-            paramstyle,
-            parameter_structure,
-            primitive: Primitive,
-            inline_table,
+        self,
+        approach,
+        paramstyle,
+        parameter_structure,
+        primitive: Primitive,
+        inline_table,
     ):
         """When ParameterApproach.INLINE is passed, inferrence will not be used.
         When ParameterApproach.NATIVE is passed, primitive inputs will be inferred.
@@ -284,13 +280,15 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             (PrimitiveExtra.TINYINT, TinyIntParameter),
         ],
     )
-    @pytest.mark.skipif(pytest.importorskip("pyarrow"),
-                        reason="Without pyarrow TIMESTAMP_NTZ datatype cannot be inferred")
+    @pytest.mark.skipif(
+        pytest.importorskip("pyarrow"),
+        reason="Without pyarrow TIMESTAMP_NTZ datatype cannot be inferred",
+    )
     def test_dbsqlparameter_single(
-            self,
-            primitive: Primitive,
-            dbsql_parameter_cls: Type[TDbsqlParameter],
-            parameter_structure: ParameterStructure,
+        self,
+        primitive: Primitive,
+        dbsql_parameter_cls: Type[TDbsqlParameter],
+        parameter_structure: ParameterStructure,
     ):
         dbsql_param = dbsql_parameter_cls(
             value=primitive.value,  # type: ignore
@@ -310,19 +308,23 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
-        extra_args = {"use_inline_params": use_inline_params} if use_inline_params else {}
+        extra_args = (
+            {"use_inline_params": use_inline_params} if use_inline_params else {}
+        )
 
         with self.connection(extra_params=extra_args) as conn:
             with conn.cursor() as cursor:
-                with self.patch_server_supports_native_params(supports_native_params=True):
+                with self.patch_server_supports_native_params(
+                    supports_native_params=True
+                ):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
                     if use_inline_params is True:
                         assert (
-                                "Consider using native parameters." in caplog.text
+                            "Consider using native parameters." in caplog.text
                         ), "Log message should be suppressed"
                     elif use_inline_params == "silent":
                         assert (
-                                "Consider using native parameters." not in caplog.text
+                            "Consider using native parameters." not in caplog.text
                         ), "Log message should not be supressed"
 
     def test_positional_native_params_with_defaults(self):
@@ -335,12 +337,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     @pytest.mark.parametrize(
         "params",
         (
-                [
-                    StringParameter(value="foo"),
-                    StringParameter(value="bar"),
-                    StringParameter(value="baz"),
-                ],
-                ["foo", "bar", "baz"],
+            [
+                StringParameter(value="foo"),
+                StringParameter(value="bar"),
+                StringParameter(value="baz"),
+            ],
+            ["foo", "bar", "baz"],
         ),
     )
     def test_positional_native_multiple(self, params):
@@ -404,7 +406,9 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         query = "SELECT 'samsonite', %s WHERE 'samsonite' LIKE '%sonite'"
         params = ["luggage"]
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
-            with pytest.raises(TypeError, match="not enough arguments for format string"):
+            with pytest.raises(
+                TypeError, match="not enough arguments for format string"
+            ):
                 cursor.execute(query, parameters=params)
 
     def test_inline_named_dont_break_sql(self):

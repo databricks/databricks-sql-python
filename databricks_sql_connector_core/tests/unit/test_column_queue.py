@@ -18,5 +18,3 @@ class TestColumnQueueSuite:
         column_queue = setup
         assert column_queue.next_n_rows(2) == [[0, 3], [1, 4], [2, 5]]
         assert column_queue.remaining_rows() == [[6, 9], [7, 10], [8, 11]]
-
-
