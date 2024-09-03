@@ -33,6 +33,7 @@ def process_literal_param_hack(value: Any):
 @compiles(sqlalchemy.types.Unicode, "databricks")
 @compiles(sqlalchemy.types.UnicodeText, "databricks")
 @compiles(sqlalchemy.types.Uuid, "databricks")
+@compiles(sqlalchemy.types.Json, "databricks")
 def compile_string_databricks(type_, compiler, **kw):
     """
     We override the default compilation for Enum(), String(), Text(), and Time() because SQLAlchemy
