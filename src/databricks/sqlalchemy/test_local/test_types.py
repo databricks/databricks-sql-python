@@ -52,7 +52,6 @@ camel_case_type_map = {
     sqlalchemy.types.Unicode: DatabricksDataType.STRING,
     sqlalchemy.types.UnicodeText: DatabricksDataType.STRING,
     sqlalchemy.types.Uuid: DatabricksDataType.STRING,
-    sqlalchemy.types.JSON: DatabricksDataType.STRING
 }
 
 
@@ -129,6 +128,7 @@ uppercase_type_map = {
     sqlalchemy.types.INT: DatabricksDataType.INT,
     sqlalchemy.types.SMALLINT: DatabricksDataType.SMALLINT,
     sqlalchemy.types.TIMESTAMP: DatabricksDataType.TIMESTAMP,
+    sqlalchemy.types.JSON: DatabricksDataType.STRING,
     TINYINT: DatabricksDataType.TINYINT,
     TIMESTAMP: DatabricksDataType.TIMESTAMP,
     TIMESTAMP_NTZ: DatabricksDataType.TIMESTAMP_NTZ,
