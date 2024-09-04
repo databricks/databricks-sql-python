@@ -52,6 +52,7 @@ camel_case_type_map = {
     sqlalchemy.types.Unicode: DatabricksDataType.STRING,
     sqlalchemy.types.UnicodeText: DatabricksDataType.STRING,
     sqlalchemy.types.Uuid: DatabricksDataType.STRING,
+    sqlalchemy.types.JSON: DatabricksDataType.STRING
 }
 
 
