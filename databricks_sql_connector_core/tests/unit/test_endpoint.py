@@ -4,8 +4,8 @@ import pytest
 
 from unittest.mock import patch
 
-from databricks_sql_connector_core.sql.auth.auth import AuthType
-from databricks_sql_connector_core.sql.auth.endpoint import (
+from databricks.sql.auth.auth import AuthType
+from databricks.sql.auth.endpoint import (
     infer_cloud_from_host,
     CloudType,
     get_oauth_endpoints,

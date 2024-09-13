@@ -1,4 +1,4 @@
-from databricks_sql_connector_core import sql
+from databricks import sql
 import os, threading, time
 
 """

@@ -1,11 +1,11 @@
 from datetime import date, datetime
 import unittest, pytest, decimal
 from typing import Any, Dict
-from databricks_sql_connector_core.sql.parameters.native import (
+from databricks.sql.parameters.native import (
     dbsql_parameter_from_primitive,
 )
 
-from databricks_sql_connector_core.sql.utils import (
+from databricks.sql.utils import (
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,

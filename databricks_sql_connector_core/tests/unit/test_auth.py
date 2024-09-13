@@ -3,30 +3,30 @@ import pytest
 from typing import Optional
 from unittest.mock import patch
 
-from databricks_sql_connector_core.sql.auth.auth import (
+from databricks.sql.auth.auth import (
     AccessTokenAuthProvider,
     AuthProvider,
     ExternalAuthProvider,
     AuthType,
 )
-from databricks_sql_connector_core.sql.auth.auth import (
+from databricks.sql.auth.auth import (
     get_python_sql_connector_auth_provider,
     PYSQL_OAUTH_CLIENT_ID,
 )
-from databricks_sql_connector_core.sql.auth.oauth import OAuthManager
-from databricks_sql_connector_core.sql.auth.authenticators import (
+from databricks.sql.auth.oauth import OAuthManager
+from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
 )
-from databricks_sql_connector_core.sql.auth.endpoint import (
+from databricks.sql.auth.endpoint import (
     CloudType,
     InHouseOAuthEndpointCollection,
     AzureOAuthEndpointCollection,
 )
-from databricks_sql_connector_core.sql.auth.authenticators import (
+from databricks.sql.auth.authenticators import (
     CredentialsProvider,
     HeaderFactory,
 )
-from databricks_sql_connector_core.sql.experimental.oauth_persistence import (
+from databricks.sql.experimental.oauth_persistence import (
     OAuthPersistenceCache,
 )
 

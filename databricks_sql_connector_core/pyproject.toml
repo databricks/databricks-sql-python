@@ -5,7 +5,7 @@ description = "Databricks SQL Connector core for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
 readme = "README.md"
-packages = [{ include = "databricks_sql_connector_core", from = "src" }]
+packages = [{ include = "databricks", from = "src" }]
 include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]

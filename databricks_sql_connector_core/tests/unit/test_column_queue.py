@@ -1,5 +1,5 @@
 import pytest
-from databricks_sql_connector_core.sql.utils import ColumnQueue
+from databricks.sql.utils import ColumnQueue
 
 
 class TestColumnQueueSuite:

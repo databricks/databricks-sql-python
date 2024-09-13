@@ -21,17 +21,17 @@ try:
 except ImportError:
     pyarrow = None
 
-from databricks_sql_connector_core.sql import OperationalError, exc
-from databricks_sql_connector_core.sql.cloudfetch.download_manager import (
+from databricks.sql import OperationalError, exc
+from databricks.sql.cloudfetch.download_manager import (
     ResultFileDownloadManager,
 )
-from databricks_sql_connector_core.sql.thrift_api.TCLIService.ttypes import (
+from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
     TSparkArrowResultLink,
     TSparkRowSetType,
 )
 
-from databricks_sql_connector_core.sql.parameters.native import (
+from databricks.sql.parameters.native import (
     ParameterStructure,
     TDbsqlParameter,
 )

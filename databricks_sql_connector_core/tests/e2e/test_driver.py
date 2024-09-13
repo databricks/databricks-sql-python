@@ -22,8 +22,8 @@ import thrift
 import pytest
 from urllib3.connectionpool import ReadTimeoutError
 
-import databricks_sql_connector_core.sql as sql
-from databricks_sql_connector_core.sql import (
+import databricks.sql as sql
+from databricks.sql import (
     STRING,
     BINARY,
     NUMBER,
@@ -53,11 +53,11 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
-from databricks_sql_connector_core.sql.exc import SessionAlreadyClosedError
+from databricks.sql.exc import SessionAlreadyClosedError
 
 log = logging.getLogger(__name__)
 
-unsafe_logger = logging.getLogger("databricks_sql_connector_core.sql.unsafe")
+unsafe_logger = logging.getLogger("databricks.sql.unsafe")
 unsafe_logger.setLevel(logging.DEBUG)
 unsafe_logger.addHandler(logging.FileHandler("./tests-unsafe.log"))
 
@@ -738,7 +738,7 @@ class TestPySQLCoreSuite(
 
     def test_close_connection_closes_cursors(self):
 
-        from databricks_sql_connector_core.sql.thrift_api.TCLIService import ttypes
+        from databricks.sql.thrift_api.TCLIService import ttypes
 
         with self.connection() as conn:
             cursor = conn.cursor()

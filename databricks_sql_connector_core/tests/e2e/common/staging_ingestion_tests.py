@@ -2,8 +2,8 @@ import os
 import tempfile
 
 import pytest
-import databricks_sql_connector_core.sql as sql
-from databricks_sql_connector_core.sql import Error
+import databricks.sql as sql
+from databricks.sql import Error
 
 
 @pytest.fixture(scope="module", autouse=True)

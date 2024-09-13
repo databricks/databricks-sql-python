@@ -1,6 +1,6 @@
 import unittest
 
-from databricks_sql_connector_core.sql.experimental.oauth_persistence import (
+from databricks.sql.experimental.oauth_persistence import (
     DevOnlyFilePersistence,
     OAuthToken,
 )

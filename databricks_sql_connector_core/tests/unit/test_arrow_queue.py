@@ -6,7 +6,7 @@ try:
 except ImportError:
     pa = None
 
-from databricks_sql_connector_core.sql.utils import ArrowQueue
+from databricks.sql.utils import ArrowQueue
 
 
 @pytest.mark.skipif(not pa, reason="Skipping because pyarrow is not installed")

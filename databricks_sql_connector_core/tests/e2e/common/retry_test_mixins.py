@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 from urllib3.exceptions import MaxRetryError
 
-from databricks_sql_connector_core.sql.auth.retry import DatabricksRetryPolicy
-from databricks_sql_connector_core.sql.exc import (
+from databricks.sql.auth.retry import DatabricksRetryPolicy
+from databricks.sql.exc import (
     MaxRetryDurationError,
     NonRecoverableNetworkError,
     RequestError,
@@ -326,7 +326,7 @@ class PySQLRetryTestsMixin:
         with self.connection(extra_params={**self._retry_policy}) as conn:
             with conn.cursor() as curs:
                 with patch(
-                    "databricks_sql_connector_core.sql.utils.ExecuteResponse.has_been_closed_server_side",
+                    "databricks.sql.utils.ExecuteResponse.has_been_closed_server_side",
                     new_callable=PropertyMock,
                     return_value=False,
                 ):

@@ -3,11 +3,11 @@ This example demonstrates how to use parameters in both native (default) and inl
 """
 
 from decimal import Decimal
-from databricks_sql_connector_core import sql
-from databricks_sql_connector_core.sql.parameters import *
+from databricks import sql
+from databricks.sql.parameters import *
 
 import os
-from databricks_sql_connector_core import sql
+from databricks import sql
 from datetime import datetime
 import pytz
 

@@ -1,4 +1,4 @@
-from databricks_sql_connector_core import sql
+from databricks import sql
 import os
 
 # Users of connector versions >= 2.9.0 and <= 3.0.0 can use the v3 retry behaviour by setting _enable_v3_retries=True
@@ -26,7 +26,7 @@ import os
 # which means all redirects will be followed. In this case, a redirect will count toward the
 # _retry_stop_after_attempts_count which means that by default the connector will not enter an endless retry loop.
 #
-# For complete information about configuring retries, see the docstring for databricks_sql_connector_core.sql.thrift_backend.ThriftBackend
+# For complete information about configuring retries, see the docstring for databricks.sql.thrift_backend.ThriftBackend
 
 with sql.connect(
     server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),

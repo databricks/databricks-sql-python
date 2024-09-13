@@ -1,6 +1,6 @@
 import datetime
 
-from databricks_sql_connector_core.sql.exc import *
+from databricks.sql.exc import *
 
 # PEP 249 module globals
 apilevel = "2.0"

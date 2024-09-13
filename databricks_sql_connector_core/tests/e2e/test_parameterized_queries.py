@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 import pytz
 
-from databricks_sql_connector_core.sql.parameters.native import (
+from databricks.sql.parameters.native import (
     BigIntegerParameter,
     BooleanParameter,
     DateParameter,
@@ -147,7 +147,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         """Applies a patch so we can test the connector's behaviour under different SPARK_CLI_SERVICE_PROTOCOL_VERSION conditions."""
 
         with patch(
-            "databricks_sql_connector_core.sql.client.Connection.server_parameterized_queries_enabled",
+            "databricks.sql.client.Connection.server_parameterized_queries_enabled",
             return_value=supports_native_params,
         ) as mock_parameterized_queries_enabled:
             try:
