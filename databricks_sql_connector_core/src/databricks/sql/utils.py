@@ -1,7 +1,4 @@
 from __future__ import annotations
-import json
-from thrift.protocol import TJSONProtocol
-from thrift.transport import TTransport
 import pytz
 import datetime
 import decimal
@@ -89,15 +86,14 @@ class ResultSetQueueFactory(ABC):
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
-            column_table, column_names = convert_column_based_set_to_column_table(
+            arrow_table, n_valid_rows = convert_column_based_set_to_arrow_table(
                 t_row_set.columns, description
             )
 
-            converted_column_table = convert_to_assigned_datatypes_in_column_table(
-                column_table, description
-            )
+            converted_arrow_table = convert_decimals_in_arrow_table(
+                arrow_table, description)
 
-            return ColumnQueue(converted_column_table, column_names)
+            return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
@@ -110,30 +106,6 @@ class ResultSetQueueFactory(ABC):
             )
         else:
             raise AssertionError("Row set type is not valid")
-
-
-class ColumnQueue(ResultSetQueue):
-    def __init__(self, columnar_table, column_names):
-        self.columnar_table = columnar_table
-        self.cur_row_index = 0
-        self.n_valid_rows = len(columnar_table[0])
-        self.column_names = column_names
-
-    def next_n_rows(self, num_rows):
-        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
-        # Slicing using the default python slice
-        next_data = [
-            column[self.cur_row_index : self.cur_row_index + length]
-            for column in self.columnar_table
-        ]
-        self.cur_row_index += length
-        return next_data
-
-    def remaining_rows(self):
-        next_data = [column[self.cur_row_index :] for column in self.columnar_table]
-        self.cur_row_index += len(next_data[0])
-        return next_data
-
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
@@ -600,29 +572,6 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
     return table
 
 
-def convert_to_assigned_datatypes_in_column_table(column_table, description):
-    for i, col in enumerate(column_table):
-        if description[i][1] == "decimal":
-            column_table[i] = tuple(v if v is None else Decimal(v) for v in col)
-        elif description[i][1] == "date":
-            column_table[i] = tuple(
-                v if v is None else datetime.date.fromisoformat(v) for v in col
-            )
-        elif description[i][1] == "timestamp":
-            column_table[i] = tuple(
-                (
-                    v
-                    if v is None
-                    else datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S.%f").replace(
-                        tzinfo=pytz.UTC
-                    )
-                )
-                for v in col
-            )
-
-    return column_table
-
-
 def convert_column_based_set_to_arrow_table(columns, description):
     arrow_table = pyarrow.Table.from_arrays(
         [_convert_column_to_arrow_array(c) for c in columns],
@@ -632,13 +581,6 @@ def convert_column_based_set_to_arrow_table(columns, description):
         names=[c[0] for c in description],
     )
     return arrow_table, arrow_table.num_rows
-
-
-def convert_column_based_set_to_column_table(columns, description):
-    column_names = [c[0] for c in description]
-    column_table = [_covert_column_to_list(c) for c in columns]
-
-    return column_table, column_names
 
 
 def _convert_column_to_arrow_array(t_col):
@@ -665,26 +607,6 @@ def _convert_column_to_arrow_array(t_col):
     raise OperationalError("Empty TColumn instance {}".format(t_col))
 
 
-def _covert_column_to_list(t_col):
-    supported_field_types = (
-        "boolVal",
-        "byteVal",
-        "i16Val",
-        "i32Val",
-        "i64Val",
-        "doubleVal",
-        "stringVal",
-        "binaryVal",
-    )
-
-    for field in supported_field_types:
-        wrapper = getattr(t_col, field)
-        if wrapper:
-            return _create_python_tuple(wrapper)
-
-    raise OperationalError("Empty TColumn instance {}".format(t_col))
-
-
 def _create_arrow_array(t_col_value_wrapper, arrow_type):
     result = t_col_value_wrapper.values
     nulls = t_col_value_wrapper.nulls  # bitfield describing which values are null
@@ -700,18 +622,3 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
 
     return pyarrow.array(result, type=arrow_type)
 
-
-def _create_python_tuple(t_col_value_wrapper):
-    result = t_col_value_wrapper.values
-    nulls = t_col_value_wrapper.nulls  # bitfield describing which values are null
-    assert isinstance(nulls, bytes)
-
-    # The number of bits in nulls can be both larger or smaller than the number of
-    # elements in result, so take the minimum of both to iterate over.
-    length = min(len(result), len(nulls) * 8)
-
-    for i in range(length):
-        if nulls[i >> 3] & BIT_MASKS[i & 0x7]:
-            result[i] = None
-
-    return tuple(result)

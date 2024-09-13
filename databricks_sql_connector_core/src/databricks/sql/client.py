@@ -1141,18 +1141,6 @@ class ResultSet:
         self.results = results
         self.has_more_rows = has_more_rows
 
-    def _convert_columnar_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-        result = []
-        for row_index in range(len(table[0])):
-            curr_row = []
-            for col_index in range(len(table)):
-                curr_row.append(table[col_index][row_index])
-            result.append(ResultRow(*curr_row))
-
-        return result
-
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1220,43 +1208,6 @@ class ResultSet:
 
         return results
 
-    def merge_columnar(self, result1, result2):
-        """
-        Function to merge / combining the columnar results into a single result
-
-        :param result1:
-        :param result2:
-        :return:
-        """
-        merged_result = [result1[i] + result2[i] for i in range(len(result1))]
-        return merged_result
-
-    def fetchmany_columnar(self, size: int):
-        """
-        Fetch the next set of rows of a query result, returning a Columnar Table.
-
-        An empty sequence is returned when no more rows are available.
-        """
-        if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
-
-        results = self.results.next_n_rows(size)
-        n_remaining_rows = size - len(results[0])
-        self._next_row_index += len(results[0])
-
-        while (
-            n_remaining_rows > 0
-            and not self.has_been_closed_server_side
-            and self.has_more_rows
-        ):
-            self._fill_results_buffer()
-            partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = self.merge_columnar(results, partial_results)
-            n_remaining_rows -= len(partial_results[0])
-            self._next_row_index += len(partial_results[0])
-
-        return results
-
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
@@ -1270,28 +1221,12 @@ class ResultSet:
 
         return results
 
-    def fetchall_columnar(self):
-        """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
-        results = self.results.remaining_rows()
-        self._next_row_index += len(results[0])
-
-        while not self.has_been_closed_server_side and self.has_more_rows:
-            self._fill_results_buffer()
-            partial_results = self.results.remaining_rows()
-            results = self.merge_columnar(results, partial_results)
-            self._next_row_index += len(partial_results[0])
-
-        return results
-
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
-        if isinstance(self.results, ColumnQueue):
-            res = self._convert_columnar_table(self.fetchmany_columnar(1))
-        else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
+        res = self._convert_arrow_table(self.fetchmany_arrow(1))
 
         if len(res) > 0:
             return res[0]
@@ -1302,10 +1237,7 @@ class ResultSet:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
-        if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchall_columnar())
-        else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+        return self._convert_arrow_table(self.fetchall_arrow())
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -1313,10 +1245,7 @@ class ResultSet:
 
         An empty sequence is returned when no more rows are available.
         """
-        if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchmany_columnar(size))
-        else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+        return self._convert_arrow_table(self.fetchmany_arrow(size))
 
     def close(self) -> None:
         """

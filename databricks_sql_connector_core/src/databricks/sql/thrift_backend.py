@@ -40,8 +40,6 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
-# from databricks.sql import TDBSqlResultFormat
-
 logger = logging.getLogger(__name__)
 
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
@@ -774,15 +772,12 @@ class ThriftBackend:
             t_result_set_metadata_resp.schema
         )
 
-        if pyarrow:
-            schema_bytes = (
+        schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
                 or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
                 .serialize()
                 .to_pybytes()
-            )
-        else:
-            schema_bytes = None
+        )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
