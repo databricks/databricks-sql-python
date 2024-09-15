@@ -28,7 +28,6 @@ from databricks.sql.utils import (
     inject_parameters,
     transform_paramstyle,
     ArrowQueue,
-    ColumnQueue,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
