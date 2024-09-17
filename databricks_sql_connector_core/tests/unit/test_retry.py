@@ -11,7 +11,6 @@ from databricks.sql.auth.retry import (
 
 
 class TestRetry:
-
     @pytest.fixture()
     def retry_policy(self) -> DatabricksRetryPolicy:
         return DatabricksRetryPolicy(

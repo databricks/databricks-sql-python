@@ -1,5 +1,4 @@
 from __future__ import annotations
-import pytz
 import datetime
 import decimal
 from abc import ABC, abstractmethod
@@ -12,11 +11,6 @@ import re
 from ssl import SSLContext
 
 import lz4.frame
-
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
 
 from databricks.sql import OperationalError, exc
 from databricks.sql.cloudfetch.download_manager import (
@@ -32,6 +26,11 @@ from databricks.sql.parameters.native import (
     ParameterStructure,
     TDbsqlParameter,
 )
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
 
@@ -51,7 +50,6 @@ class ResultSetQueue(ABC):
 
 
 class ResultSetQueueFactory(ABC):
-
     @staticmethod
     def build_queue(
         row_set_type: TSparkRowSetType,
@@ -91,7 +89,8 @@ class ResultSetQueueFactory(ABC):
             )
 
             converted_arrow_table = convert_decimals_in_arrow_table(
-                arrow_table, description)
+                arrow_table, description
+            )
 
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
@@ -106,6 +105,7 @@ class ResultSetQueueFactory(ABC):
             )
         else:
             raise AssertionError("Row set type is not valid")
+
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
@@ -621,4 +621,3 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
             result[i] = None
 
     return pyarrow.array(result, type=arrow_type)
-

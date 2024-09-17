@@ -6,17 +6,18 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
 
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
-
 import databricks.sql
 from databricks.sql import utils
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_backend import ThriftBackend
+from tests.e2e.predicate import pysql_supports_arrow
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 
 def retry_policy_factory():
@@ -29,7 +30,9 @@ def retry_policy_factory():
     }
 
 
-@pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+@pytest.mark.skipif(
+    not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+)
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
 
@@ -1256,12 +1259,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(OperationalError):
             thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
-    @patch(
-        "databricks.sql.thrift_backend.convert_arrow_based_set_to_arrow_table"
-    )
-    @patch(
-        "databricks.sql.thrift_backend.convert_column_based_set_to_arrow_table"
-    )
+    @patch("databricks.sql.thrift_backend.convert_arrow_based_set_to_arrow_table")
+    @patch("databricks.sql.thrift_backend.convert_column_based_set_to_arrow_table")
     def test_create_arrow_table_calls_correct_conversion_method(
         self, convert_col_mock, convert_arrow_mock
     ):
@@ -1978,9 +1977,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         "databricks.sql.thrift_backend.TCLIService.Client",
         autospec=True,
     )
-    @patch(
-        "databricks.sql.thrift_backend.ThriftBackend._handle_execute_response"
-    )
+    @patch("databricks.sql.thrift_backend.ThriftBackend._handle_execute_response")
     def test_execute_command_sets_complex_type_fields_correctly(
         self, mock_handle_execute_response, tcli_service_class
     ):

@@ -20,6 +20,10 @@ oauthlib = "^3.1.0"
 openpyxl = "^3.0.10"
 alembic = { version = "^1.0.11", optional = true }
 urllib3 = ">=1.26"
+pyarrow = {version = ">=14.0.1,<17", optional = true}
+
+[tool.poetry.extras]
+pyarrow = ["pyarrow"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"

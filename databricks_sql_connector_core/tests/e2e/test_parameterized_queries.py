@@ -28,6 +28,7 @@ from databricks.sql.parameters.native import (
     VoidParameter,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
+from tests.e2e.predicate import pysql_supports_arrow
 
 
 class ParamStyle(Enum):
@@ -281,7 +282,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         ],
     )
     @pytest.mark.skipif(
-        pytest.importorskip("pyarrow"),
+        not pysql_supports_arrow(),
         reason="Without pyarrow TIMESTAMP_NTZ datatype cannot be inferred",
     )
     def test_dbsqlparameter_single(

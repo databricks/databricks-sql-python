@@ -10,7 +10,8 @@ ENDPOINT_TEST_KEY = "is_endpoint_test"
 def pysql_supports_arrow():
     """Checks if the pyarrow library is installed or not"""
     try:
-        __import__("pyarrow")
+        import pyarrow
+
         return True
     except ImportError:
         return False

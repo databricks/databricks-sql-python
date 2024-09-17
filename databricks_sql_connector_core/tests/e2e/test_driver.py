@@ -12,11 +12,6 @@ from unittest import loader, skipIf, skipUnless, TestCase
 from uuid import uuid4
 
 import numpy as np
-
-try:
-    import pyarrow
-except:
-    pyarrow = None
 import pytz
 import thrift
 import pytest
@@ -39,6 +34,7 @@ from tests.e2e.common.predicates import (
     pysql_supports_arrow,
     compare_dbr_versions,
     is_thrift_v5_plus,
+    pysql_supports_arrow,
 )
 from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
 from tests.e2e.common.large_queries_mixin import LargeQueriesMixin
@@ -54,6 +50,11 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
 from databricks.sql.exc import SessionAlreadyClosedError
+
+try:
+    import pyarrow
+except:
+    pyarrow = None
 
 log = logging.getLogger(__name__)
 
@@ -625,7 +626,9 @@ class TestPySQLCoreSuite(
                 cursor.execute("SET ansi_mode")
                 assert list(cursor.fetchone()) == ["ansi_mode", str(enable_ansi)]
 
-    @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+    @pytest.mark.skipif(
+        not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+    )
     def test_timestamps_arrow(self):
         with self.cursor({"session_configuration": {"ansi_mode": False}}) as cursor:
             for timestamp, expected in self.timestamp_and_expected_results:
@@ -649,7 +652,9 @@ class TestPySQLCoreSuite(
                     aware_timestamp and aware_timestamp.timestamp() * 1000000
                 ), "timestamp {} did not match {}".format(timestamp, expected)
 
-    @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+    @pytest.mark.skipif(
+        not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+    )
     def test_multi_timestamps_arrow(self):
         with self.cursor({"session_configuration": {"ansi_mode": False}}) as cursor:
             query, expected = self.multi_query()
@@ -667,7 +672,9 @@ class TestPySQLCoreSuite(
             ]
             assert result == expected
 
-    @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+    @pytest.mark.skipif(
+        not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+    )
     def test_timezone_with_timestamp(self):
         if self.should_add_timezone():
             with self.cursor() as cursor:
@@ -688,7 +695,9 @@ class TestPySQLCoreSuite(
                 assert arrow_result_table.field(0).type == ts_type
                 assert arrow_result_value == expected.timestamp() * 1000000
 
-    @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+    @pytest.mark.skipif(
+        not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+    )
     def test_can_flip_compression(self):
         with self.cursor() as cursor:
             cursor.execute("SELECT array(1,2,3,4)")
@@ -705,7 +714,9 @@ class TestPySQLCoreSuite(
     def _should_have_native_complex_types(self):
         return pysql_has_version(">=", 2) and is_thrift_v5_plus(self.arguments)
 
-    @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+    @pytest.mark.skipif(
+        not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+    )
     def test_arrays_are_not_returned_as_strings_arrow(self):
         if self._should_have_native_complex_types():
             with self.cursor() as cursor:
@@ -716,7 +727,9 @@ class TestPySQLCoreSuite(
                 assert pyarrow.types.is_list(list_type)
                 assert pyarrow.types.is_integer(list_type.value_type)
 
-    @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+    @pytest.mark.skipif(
+        not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+    )
     def test_structs_are_not_returned_as_strings_arrow(self):
         if self._should_have_native_complex_types():
             with self.cursor() as cursor:
@@ -726,7 +739,9 @@ class TestPySQLCoreSuite(
                 struct_type = arrow_df.field(0).type
                 assert pyarrow.types.is_struct(struct_type)
 
-    @pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+    @pytest.mark.skipif(
+        not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+    )
     def test_decimal_not_returned_as_strings_arrow(self):
         if self._should_have_native_complex_types():
             with self.cursor() as cursor:

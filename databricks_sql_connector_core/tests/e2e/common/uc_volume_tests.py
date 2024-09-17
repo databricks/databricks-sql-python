@@ -257,15 +257,24 @@ class PySQLUCVolumeTestSuiteMixin:
             )
             return fh, temp_path, put_query, remove_query
 
-        fh1, temp_path1, put_query1, remove_query1 = (
-            generate_file_and_path_and_queries()
-        )
-        fh2, temp_path2, put_query2, remove_query2 = (
-            generate_file_and_path_and_queries()
-        )
-        fh3, temp_path3, put_query3, remove_query3 = (
-            generate_file_and_path_and_queries()
-        )
+        (
+            fh1,
+            temp_path1,
+            put_query1,
+            remove_query1,
+        ) = generate_file_and_path_and_queries()
+        (
+            fh2,
+            temp_path2,
+            put_query2,
+            remove_query2,
+        ) = generate_file_and_path_and_queries()
+        (
+            fh3,
+            temp_path3,
+            put_query3,
+            remove_query3,
+        ) = generate_file_and_path_and_queries()
 
         with self.connection(
             extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}

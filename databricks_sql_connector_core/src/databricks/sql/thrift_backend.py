@@ -8,10 +8,6 @@ import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union
 
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
 import thrift.transport.THttpClient
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
@@ -40,6 +36,11 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 logger = logging.getLogger(__name__)
 
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
@@ -59,7 +60,7 @@ DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
 DEFAULT_SOCKET_TIMEOUT = float(900)
 
-# see Connection.__init__ for parameter descriptions.
+# see Connection.__init__.py for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
 # - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
 _retry_policy = {  # (type, default, min, max)
@@ -225,13 +226,11 @@ class ThriftBackend:
 
             additional_transport_args["retry_policy"] = self.retry_policy
 
-        self._transport = (
-            databricks.sql.auth.thrift_http_client.THttpClient(
-                auth_provider=self._auth_provider,
-                uri_or_host=uri,
-                ssl_context=self._ssl_context,
-                **additional_transport_args,  # type: ignore
-            )
+        self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
+            auth_provider=self._auth_provider,
+            uri_or_host=uri,
+            ssl_context=self._ssl_context,
+            **additional_transport_args,  # type: ignore
         )
 
         timeout = kwargs.get("_socket_timeout", DEFAULT_SOCKET_TIMEOUT)
@@ -644,10 +643,7 @@ class ThriftBackend:
                 num_rows,
             ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
         elif t_row_set.arrowBatches is not None:
-            (
-                arrow_table,
-                num_rows,
-            ) = convert_arrow_based_set_to_arrow_table(
+            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
@@ -773,10 +769,10 @@ class ThriftBackend:
         )
 
         schema_bytes = (
-                t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
-                .serialize()
-                .to_pybytes()
+            t_result_set_metadata_resp.arrowSchema
+            or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+            .serialize()
+            .to_pybytes()
         )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed

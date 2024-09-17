@@ -1,12 +1,6 @@
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
-
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
-
 import requests
 import json
 import os
@@ -27,7 +21,6 @@ from databricks.sql.utils import (
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
-    ArrowQueue,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -53,6 +46,10 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
 )
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +125,7 @@ class Connection:
 
                 from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken
                 class MyCustomImplementation(OAuthPersistence):
-                    def __init__(self, file_path):
+                    def __init__.py(self, file_path):
                         self._file_path = file_path
 
                     def persist(self, token: OAuthToken):

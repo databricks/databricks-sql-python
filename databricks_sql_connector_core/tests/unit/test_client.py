@@ -33,7 +33,6 @@ from tests.unit.test_arrow_queue import ArrowQueueSuite
 
 
 class ThriftBackendMockFactory:
-
     @classmethod
     def new(cls):
         ThriftBackendMock = Mock(spec=ThriftBackend)
@@ -94,9 +93,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_open_session_resp.sessionHandle.sessionId = b"\x22"
         instance.open_session.return_value = mock_open_session_resp
 
-        connection = databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS
-        )
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         connection.close()
 
         # Check the close session request has an id of x22
@@ -133,9 +130,7 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_http_header_passthrough(self, mock_client_class):
         http_headers = [("foo", "bar")]
-        databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS, http_headers=http_headers
-        )
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, http_headers=http_headers)
 
         call_args = mock_client_class.call_args[0][3]
         self.assertIn(("foo", "bar"), call_args)
@@ -170,9 +165,7 @@ class ClientTestSuite(unittest.TestCase):
         )
         self.assertIn(user_agent_header, http_headers)
 
-        databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS, _user_agent_entry="foobar"
-        )
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, _user_agent_entry="foobar")
         user_agent_header_with_entry = (
             "User-Agent",
             "{}/{} ({})".format(
@@ -191,9 +184,7 @@ class ClientTestSuite(unittest.TestCase):
         for closed in (True, False):
             with self.subTest(closed=closed):
                 mock_result_set_class.return_value = Mock()
-                connection = databricks.sql.connect(
-                    **self.DUMMY_CONNECTION_ARGS
-                )
+                connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
                 cursor = connection.cursor()
                 cursor.execute("SELECT 1;")
                 connection.close()
@@ -205,9 +196,7 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
-        connection = databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS
-        )
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         self.assertTrue(connection.open)
         connection.close()
         self.assertFalse(connection.open)
@@ -220,9 +209,7 @@ class ClientTestSuite(unittest.TestCase):
     def test_arraysize_buffer_size_passthrough(
         self, mock_cursor_class, mock_client_class
     ):
-        connection = databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS
-        )
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         connection.cursor(arraysize=999, buffer_size_bytes=1234)
         kwargs = mock_cursor_class.call_args[1]
 
@@ -314,9 +301,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_open_session_resp.sessionHandle.sessionId = b"\x22"
         instance.open_session.return_value = mock_open_session_resp
 
-        with databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS
-        ) as connection:
+        with databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS) as connection:
             pass
 
         # Check the close session request has an id of x22
@@ -433,9 +418,7 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_socket_timeout_passthrough(self, mock_client_class):
-        databricks.sql.connect(
-            _socket_timeout=234, **self.DUMMY_CONNECTION_ARGS
-        )
+        databricks.sql.connect(_socket_timeout=234, **self.DUMMY_CONNECTION_ARGS)
         self.assertEqual(mock_client_class.call_args[1]["_socket_timeout"], 234)
 
     def test_version_is_canonical(self):
@@ -655,9 +638,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_open_session_resp.sessionHandle.sessionId = b"\x22"
         instance.open_session.return_value = mock_open_session_resp
 
-        connection = databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS
-        )
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         cursor = connection.cursor()
         del connection
 
@@ -680,9 +661,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_client_class.execute_command.return_value = mock_execute_response
         mock_client_class.return_value = mock_client_class
 
-        connection = databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS
-        )
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         cursor = connection.cursor()
         cursor.execute("Text of some staging operation command;")
         connection.close()
@@ -693,9 +672,7 @@ class ClientTestSuite(unittest.TestCase):
     def test_access_current_query_id(self):
         operation_id = "EE6A8778-21FC-438B-92D8-96AC51EE3821"
 
-        connection = databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS
-        )
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         cursor = connection.cursor()
 
         self.assertIsNone(cursor.query_id)

@@ -9,7 +9,6 @@ import os
 
 
 class OAuthPersistenceTests(unittest.TestCase):
-
     def test_DevOnlyFilePersistence_read_my_write(self):
         with tempfile.TemporaryDirectory() as tempdir:
             test_json_file_path = os.path.join(tempdir, "test.json")

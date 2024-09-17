@@ -8,9 +8,11 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkArrowResultLink,
 )
 
+from tests.e2e.predicate import pysql_supports_arrow
+
 
 @pytest.mark.skipif(
-    pytest.importorskip("pyarrow"), reason="Skipping because pyarrow is not installed"
+    not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
 )
 class DownloadManagerTests(unittest.TestCase):
     """

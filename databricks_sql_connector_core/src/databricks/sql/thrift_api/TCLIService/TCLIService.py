@@ -961,17 +961,17 @@ class Processor(Iface, TProcessor):
         self._processMap["GetOperationStatus"] = Processor.process_GetOperationStatus
         self._processMap["CancelOperation"] = Processor.process_CancelOperation
         self._processMap["CloseOperation"] = Processor.process_CloseOperation
-        self._processMap["GetResultSetMetadata"] = (
-            Processor.process_GetResultSetMetadata
-        )
+        self._processMap[
+            "GetResultSetMetadata"
+        ] = Processor.process_GetResultSetMetadata
         self._processMap["FetchResults"] = Processor.process_FetchResults
         self._processMap["GetDelegationToken"] = Processor.process_GetDelegationToken
-        self._processMap["CancelDelegationToken"] = (
-            Processor.process_CancelDelegationToken
-        )
-        self._processMap["RenewDelegationToken"] = (
-            Processor.process_RenewDelegationToken
-        )
+        self._processMap[
+            "CancelDelegationToken"
+        ] = Processor.process_CancelDelegationToken
+        self._processMap[
+            "RenewDelegationToken"
+        ] = Processor.process_RenewDelegationToken
         self._on_message_begin = None
 
     def on_message_begin(self, func):

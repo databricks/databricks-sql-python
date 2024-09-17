@@ -1,7 +1,3 @@
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
 import unittest
 import pytest
 from unittest.mock import MagicMock, patch
@@ -11,11 +7,18 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkArrowResultLink,
 )
 import databricks.sql.utils as utils
+from tests.e2e.predicate import pysql_supports_arrow
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 
-@pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+@pytest.mark.skipif(
+    not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+)
 class CloudFetchQueueSuite(unittest.TestCase):
-
     def create_result_link(
         self,
         file_link: str = "fileLink",

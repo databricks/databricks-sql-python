@@ -1,16 +1,15 @@
 from decimal import Decimal
+import pytest
 
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
-import pytest
+
+from tests.e2e.predicate import pysql_supports_arrow
 
 
 def decimal_and_expected_results():
-    if pyarrow is None:
-        return []
-
     return [
         ("100.001 AS DECIMAL(6, 3)", Decimal("100.001"), pyarrow.decimal128(6, 3)),
         (
@@ -33,10 +32,6 @@ def decimal_and_expected_results():
 
 
 def multi_decimals_and_expected_results():
-
-    if pyarrow is None:
-        return []
-
     return [
         (
             ["1 AS DECIMAL(6, 3)", "100.001 AS DECIMAL(6, 3)", "NULL AS DECIMAL(6, 3)"],
@@ -51,9 +46,10 @@ def multi_decimals_and_expected_results():
     ]
 
 
-@pytest.mark.skipif(not pyarrow, reason="Skipping because pyarrow is not installed")
+@pytest.mark.skipif(
+    not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
+)
 class DecimalTestsMixin:
-
     @pytest.mark.parametrize(
         "decimal, expected_value, expected_type", decimal_and_expected_results()
     )

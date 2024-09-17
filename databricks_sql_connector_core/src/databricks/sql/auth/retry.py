@@ -77,7 +77,7 @@ class DatabricksRetryPolicy(Retry):
         commands like ExecuteStatement. This is passed to urllib3 by extending its status_forcelist
 
     :param urllib3_kwargs:
-        Dictionary of arguments that are passed to Retry.__init__. Any setting of Retry() that
+        Dictionary of arguments that are passed to Retry.__init__.py. Any setting of Retry() that
         Databricks does not override or extend may be modified here.
     """
 
@@ -154,7 +154,7 @@ class DatabricksRetryPolicy(Retry):
             a network request.
 
         :param init_kwargs:
-            A dictionary of parameters that will be passed to __init__ in the new object
+            A dictionary of parameters that will be passed to __init__.py in the new object
         """
 
         new_object = cls(**init_kwargs)
@@ -184,12 +184,12 @@ class DatabricksRetryPolicy(Retry):
 
         The arguments it passes to `.new()` (total, connect, read, etc.) are those modified by `.increment()`.
 
-        Since self.__init__ has a different signature than Retry.__init__ , we implement our own `self.new()`
+        Since self.__init__.py has a different signature than Retry.__init__.py , we implement our own `self.new()`
         to pipe our Databricks-specific state while preserving the super-class's behaviour.
 
         """
 
-        # These arguments will match the function signature for self.__init__
+        # These arguments will match the function signature for self.__init__.py
         databricks_init_params = dict(
             delay_min=self.delay_min,
             delay_max=self.delay_max,
@@ -201,7 +201,7 @@ class DatabricksRetryPolicy(Retry):
         )
 
         # Gather urllib3's current retry state _before_ increment was called
-        # These arguments match the function signature for Retry.__init__
+        # These arguments match the function signature for Retry.__init__.py
         # Note: if we update urllib3 we may need to add/remove arguments from this dict
         urllib3_init_params = dict(
             total=self.total,
@@ -223,7 +223,7 @@ class DatabricksRetryPolicy(Retry):
         # Update urllib3's current state to reflect the incremented counters
         urllib3_init_params.update(**urllib3_incremented_counters)
 
-        # Include urllib3's current state in our __init__ params
+        # Include urllib3's current state in our __init__.py params
         databricks_init_params["urllib3_kwargs"].update(**urllib3_init_params)  # type: ignore[attr-defined]
 
         return type(self).__private_init__(
@@ -247,7 +247,7 @@ class DatabricksRetryPolicy(Retry):
         This property is never read by urllib3 for the purpose of retries. It's stored in this class
         to keep all retry logic in one place.
 
-        This property is only set by __init__ and cannot be modified afterward.
+        This property is only set by __init__.py and cannot be modified afterward.
         """
         return self._delay_default
 
