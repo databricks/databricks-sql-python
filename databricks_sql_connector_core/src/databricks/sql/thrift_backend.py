@@ -60,7 +60,7 @@ DATABRICKS_REASON_HEADER = "x-databricks-reason-phrase"
 TIMESTAMP_AS_STRING_CONFIG = "spark.thriftserver.arrowBasedRowSet.timestampAsString"
 DEFAULT_SOCKET_TIMEOUT = float(900)
 
-# see Connection.__init__.py for parameter descriptions.
+# see Connection.__init__ for parameter descriptions.
 # - Min/Max avoids unsustainable configs (sane values are far more constrained)
 # - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
 _retry_policy = {  # (type, default, min, max)

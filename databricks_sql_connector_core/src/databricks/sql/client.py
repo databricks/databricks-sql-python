@@ -125,7 +125,7 @@ class Connection:
 
                 from databricks.sql.experimental.oauth_persistence import OAuthPersistence, OAuthToken
                 class MyCustomImplementation(OAuthPersistence):
-                    def __init__.py(self, file_path):
+                    def __init__(self, file_path):
                         self._file_path = file_path
 
                     def persist(self, token: OAuthToken):
