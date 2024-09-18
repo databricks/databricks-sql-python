@@ -107,11 +107,9 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
         oauth_scopes=PYSQL_OAUTH_SCOPES,
         oauth_client_id=kwargs.get("oauth_client_id") or client_id,
-        oauth_redirect_port_range=(
-            [kwargs["oauth_redirect_port"]]
-            if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
-            else redirect_port_range
-        ),
+        oauth_redirect_port_range=[kwargs["oauth_redirect_port"]]
+        if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
+        else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
     )

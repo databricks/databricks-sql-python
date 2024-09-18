@@ -4,17 +4,11 @@ import logging
 from typing import Callable, Dict, List
 
 from databricks.sql.auth.oauth import OAuthManager
-from databricks.sql.auth.endpoint import (
-    get_oauth_endpoints,
-    infer_cloud_from_host,
-)
+from databricks.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_host
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-from databricks.sql.experimental.oauth_persistence import (
-    OAuthToken,
-    OAuthPersistence,
-)
+from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
 
 
 class AuthProvider:
@@ -55,13 +49,13 @@ class DatabricksOAuthProvider(AuthProvider):
     SCOPE_DELIM = " "
 
     def __init__(
-        self,
-        hostname: str,
-        oauth_persistence: OAuthPersistence,
-        redirect_port_range: List[int],
-        client_id: str,
-        scopes: List[str],
-        auth_type: str = "databricks-oauth",
+            self,
+            hostname: str,
+            oauth_persistence: OAuthPersistence,
+            redirect_port_range: List[int],
+            client_id: str,
+            scopes: List[str],
+            auth_type: str = "databricks-oauth",
     ):
         try:
             idp_endpoint = get_oauth_endpoints(hostname, auth_type == "azure-oauth")
