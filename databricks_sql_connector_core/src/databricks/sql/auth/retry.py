@@ -82,14 +82,14 @@ class DatabricksRetryPolicy(Retry):
     """
 
     def __init__(
-            self,
-            delay_min: float,
-            delay_max: float,
-            stop_after_attempts_count: int,
-            stop_after_attempts_duration: float,
-            delay_default: float,
-            force_dangerous_codes: List[int],
-            urllib3_kwargs: dict = {},
+        self,
+        delay_min: float,
+        delay_max: float,
+        stop_after_attempts_count: int,
+        stop_after_attempts_duration: float,
+        delay_default: float,
+        force_dangerous_codes: List[int],
+        urllib3_kwargs: dict = {},
     ):
         # These values do not change from one command to the next
         self.delay_max = delay_max
@@ -134,7 +134,7 @@ class DatabricksRetryPolicy(Retry):
 
     @classmethod
     def __private_init__(
-            cls, retry_start_time: float, command_type: Optional[CommandType], **init_kwargs
+        cls, retry_start_time: float, command_type: Optional[CommandType], **init_kwargs
     ):
         """
         Returns a new instance of DatabricksRetryPolicy with the _retry_start_time and _command_type
@@ -163,7 +163,7 @@ class DatabricksRetryPolicy(Retry):
         return new_object
 
     def new(
-            self, **urllib3_incremented_counters: typing.Any
+        self, **urllib3_incremented_counters: typing.Any
     ) -> "DatabricksRetryPolicy":
         """This method is responsible for passing the entire Retry state to its next iteration.
 
@@ -369,9 +369,9 @@ class DatabricksRetryPolicy(Retry):
 
         # Request failed with 404 because CloseSession returns 404 if you repeat the request.
         if (
-                status_code == 404
-                and self.command_type == CommandType.CLOSE_SESSION
-                and len(self.history) > 0
+            status_code == 404
+            and self.command_type == CommandType.CLOSE_SESSION
+            and len(self.history) > 0
         ):
             raise SessionAlreadyClosedError(
                 "CloseSession received 404 code from Databricks. Session is already closed."
@@ -379,9 +379,9 @@ class DatabricksRetryPolicy(Retry):
 
         # Request failed with 404 because CloseOperation returns 404 if you repeat the request.
         if (
-                status_code == 404
-                and self.command_type == CommandType.CLOSE_OPERATION
-                and len(self.history) > 0
+            status_code == 404
+            and self.command_type == CommandType.CLOSE_OPERATION
+            and len(self.history) > 0
         ):
             raise CursorAlreadyClosedError(
                 "CloseOperation received 404 code from Databricks. Cursor is already closed."
@@ -389,9 +389,9 @@ class DatabricksRetryPolicy(Retry):
 
         # Request failed, was an ExecuteStatement and the command may have reached the server
         if (
-                self.command_type == CommandType.EXECUTE_STATEMENT
-                and status_code not in self.status_forcelist
-                and status_code not in self.force_dangerous_codes
+            self.command_type == CommandType.EXECUTE_STATEMENT
+            and status_code not in self.status_forcelist
+            and status_code not in self.force_dangerous_codes
         ):
             raise UnsafeToRetryError(
                 "ExecuteStatement command can only be retried for codes 429 and 503"
@@ -402,8 +402,8 @@ class DatabricksRetryPolicy(Retry):
         # retry automatically. This code is included only so that we can log the exact reason for the retry.
         # This gives users signal that their _retry_dangerous_codes setting actually did something.
         if (
-                self.command_type == CommandType.EXECUTE_STATEMENT
-                and status_code in self.force_dangerous_codes
+            self.command_type == CommandType.EXECUTE_STATEMENT
+            and status_code in self.force_dangerous_codes
         ):
             return (
                 True,
@@ -420,7 +420,7 @@ class DatabricksRetryPolicy(Retry):
         )
 
     def is_retry(
-            self, method: str, status_code: int, has_retry_after: bool = False
+        self, method: str, status_code: int, has_retry_after: bool = False
     ) -> bool:
         """
         Called by urllib3 when determining whether or not to retry

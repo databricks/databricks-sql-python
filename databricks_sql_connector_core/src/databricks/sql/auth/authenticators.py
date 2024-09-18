@@ -49,13 +49,13 @@ class DatabricksOAuthProvider(AuthProvider):
     SCOPE_DELIM = " "
 
     def __init__(
-            self,
-            hostname: str,
-            oauth_persistence: OAuthPersistence,
-            redirect_port_range: List[int],
-            client_id: str,
-            scopes: List[str],
-            auth_type: str = "databricks-oauth",
+        self,
+        hostname: str,
+        oauth_persistence: OAuthPersistence,
+        redirect_port_range: List[int],
+        client_id: str,
+        scopes: List[str],
+        auth_type: str = "databricks-oauth",
     ):
         try:
             idp_endpoint = get_oauth_endpoints(hostname, auth_type == "azure-oauth")

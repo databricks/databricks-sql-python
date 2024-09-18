@@ -37,10 +37,10 @@ class IgnoreNetrcAuth(requests.auth.AuthBase):
 
 class OAuthManager:
     def __init__(
-            self,
-            port_range: List[int],
-            client_id: str,
-            idp_endpoint: OAuthEndpointCollection,
+        self,
+        port_range: List[int],
+        client_id: str,
+        idp_endpoint: OAuthEndpointCollection,
     ):
         self.port_range = port_range
         self.client_id = client_id
@@ -151,7 +151,7 @@ class OAuthManager:
         return authorization_code_response
 
     def __send_auth_code_token_request(
-            self, client, token_request_url, redirect_url, code, verifier
+        self, client, token_request_url, redirect_url, code, verifier
     ):
         token_request_body = client.prepare_request_body(
             code=code, redirect_uri=redirect_url
@@ -190,7 +190,7 @@ class OAuthManager:
         return access_token, refresh_token
 
     def check_and_refresh_access_token(
-            self, hostname: str, access_token: str, refresh_token: str
+        self, hostname: str, access_token: str, refresh_token: str
     ):
         now = datetime.now(tz=timezone.utc)
         # If we can't decode an expiration time, this will be expired by default.
@@ -203,7 +203,7 @@ class OAuthManager:
             access_token_payload = access_token.split(".")[1]
             # add padding
             access_token_payload = access_token_payload + "=" * (
-                    -len(access_token_payload) % 4
+                -len(access_token_payload) % 4
             )
             decoded = json.loads(base64.standard_b64decode(access_token_payload))
             expiration_time = datetime.fromtimestamp(decoded["exp"], tz=timezone.utc)
