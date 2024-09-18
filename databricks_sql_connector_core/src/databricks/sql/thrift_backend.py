@@ -37,6 +37,11 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 logger = logging.getLogger(__name__)
 
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
@@ -652,6 +657,12 @@ class ThriftBackend:
 
     @staticmethod
     def _hive_schema_to_arrow_schema(t_table_schema):
+
+        if pyarrow is None:
+            raise ImportError(
+                "pyarrow is required to convert Hive schema to Arrow schema"
+            )
+
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -858,7 +869,7 @@ class ThriftBackend:
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
-            canReadArrowResult=True,
+            canReadArrowResult=True if pyarrow else False,
             canDecompressLZ4Result=lz4_compression,
             canDownloadResult=use_cloud_fetch,
             confOverlay={

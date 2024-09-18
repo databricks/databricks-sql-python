@@ -43,6 +43,10 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
 )
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 logger = logging.getLogger(__name__)
 
@@ -977,14 +981,14 @@ class Cursor:
         else:
             raise Error("There is no active result set")
 
-    def fetchall_arrow(self) -> pyarrow.Table:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
             raise Error("There is no active result set")
 
-    def fetchmany_arrow(self, size) -> pyarrow.Table:
+    def fetchmany_arrow(self, size) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
@@ -1171,7 +1175,7 @@ class ResultSet:
     def rownumber(self):
         return self._next_row_index
 
-    def fetchmany_arrow(self, size: int) -> pyarrow.Table:
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
 
@@ -1196,7 +1200,7 @@ class ResultSet:
 
         return results
 
-    def fetchall_arrow(self) -> pyarrow.Table:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
