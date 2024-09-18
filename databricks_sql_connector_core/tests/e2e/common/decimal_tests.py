@@ -1,11 +1,16 @@
 from decimal import Decimal
 
-import pyarrow
 import pytest
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
-class DecimalTestsMixin:
-    decimal_and_expected_results = [
+from tests.e2e.predicate import pysql_supports_arrow
+
+def decimal_and_expected_results():
+    return [
         ("100.001 AS DECIMAL(6, 3)", Decimal("100.001"), pyarrow.decimal128(6, 3)),
         ("1000000.0000 AS DECIMAL(11, 4)", Decimal("1000000.0000"), pyarrow.decimal128(11, 4)),
         ("-10.2343 AS DECIMAL(10, 6)", Decimal("-10.234300"), pyarrow.decimal128(10, 6)),
@@ -17,7 +22,8 @@ class DecimalTestsMixin:
         ("1e-3 AS DECIMAL(38, 3)", Decimal("0.001"), pyarrow.decimal128(38, 3)),
     ]
 
-    multi_decimals_and_expected_results = [
+def multi_decimals_and_expected_results():
+    return [
         (
             ["1 AS DECIMAL(6, 3)", "100.001 AS DECIMAL(6, 3)", "NULL AS DECIMAL(6, 3)"],
             [Decimal("1.00"), Decimal("100.001"), None],
@@ -30,7 +36,9 @@ class DecimalTestsMixin:
         ),
     ]
 
-    @pytest.mark.parametrize("decimal, expected_value, expected_type", decimal_and_expected_results)
+@pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
+class DecimalTestsMixin:
+    @pytest.mark.parametrize("decimal, expected_value, expected_type", decimal_and_expected_results())
     def test_decimals(self, decimal, expected_value, expected_type):
         with self.cursor({}) as cursor:
             query = "SELECT CAST ({})".format(decimal)
@@ -39,9 +47,7 @@ class DecimalTestsMixin:
             assert table.field(0).type == expected_type
             assert table.to_pydict().popitem()[1][0] == expected_value
 
-    @pytest.mark.parametrize(
-        "decimals, expected_values, expected_type", multi_decimals_and_expected_results
-    )
+    @pytest.mark.parametrize("decimals, expected_values, expected_type", multi_decimals_and_expected_results())
     def test_multi_decimals(self, decimals, expected_values, expected_type):
         with self.cursor({}) as cursor:
             union_str = " UNION ".join(["(SELECT CAST ({}))".format(dec) for dec in decimals])

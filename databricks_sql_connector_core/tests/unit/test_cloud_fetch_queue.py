@@ -1,11 +1,18 @@
-import pyarrow
+import pytest
 import unittest
 from unittest.mock import MagicMock, patch
 from ssl import create_default_context
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 import databricks.sql.utils as utils
+from tests.e2e.predicate import pysql_supports_arrow
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
+@pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class CloudFetchQueueSuite(unittest.TestCase):
 
     def create_result_link(

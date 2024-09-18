@@ -1,12 +1,15 @@
 import unittest
 from unittest.mock import patch, MagicMock
+import pytest
 
 from ssl import create_default_context
 
 import databricks.sql.cloudfetch.download_manager as download_manager
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
+from tests.e2e.predicate import pysql_supports_arrow
 
+@pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class DownloadManagerTests(unittest.TestCase):
     """
     Unit tests for checking download manager logic.

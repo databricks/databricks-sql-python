@@ -1,12 +1,17 @@
 import unittest
 from unittest.mock import Mock
-
-import pyarrow as pa
+import pytest
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from tests.e2e.predicate import pysql_supports_arrow
 
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 
+@pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class FetchTests(unittest.TestCase):
     """
     Unit tests for checking the fetch logic.
