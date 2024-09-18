@@ -9,26 +9,16 @@ from databricks.sql.auth.auth import (
     ExternalAuthProvider,
     AuthType,
 )
-from databricks.sql.auth.auth import (
-    get_python_sql_connector_auth_provider,
-    PYSQL_OAUTH_CLIENT_ID,
-)
+from databricks.sql.auth.auth import get_python_sql_connector_auth_provider, PYSQL_OAUTH_CLIENT_ID
 from databricks.sql.auth.oauth import OAuthManager
-from databricks.sql.auth.authenticators import (
-    DatabricksOAuthProvider,
-)
+from databricks.sql.auth.authenticators import DatabricksOAuthProvider
 from databricks.sql.auth.endpoint import (
     CloudType,
     InHouseOAuthEndpointCollection,
     AzureOAuthEndpointCollection,
 )
-from databricks.sql.auth.authenticators import (
-    CredentialsProvider,
-    HeaderFactory,
-)
-from databricks.sql.experimental.oauth_persistence import (
-    OAuthPersistenceCache,
-)
+from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
+from databricks.sql.experimental.oauth_persistence import OAuthPersistenceCache
 
 
 class Auth(unittest.TestCase):
@@ -107,11 +97,9 @@ class Auth(unittest.TestCase):
                     redirect_port_range=[8020],
                     client_id=client_id,
                     scopes=scopes,
-                    auth_type=(
-                        AuthType.AZURE_OAUTH.value
-                        if use_azure_auth
-                        else AuthType.DATABRICKS_OAUTH.value
-                    ),
+                    auth_type=AuthType.AZURE_OAUTH.value
+                    if use_azure_auth
+                    else AuthType.DATABRICKS_OAUTH.value,
                 )
 
                 self.assertIsInstance(
@@ -189,6 +177,12 @@ class Auth(unittest.TestCase):
         }
         with self.assertRaises(ValueError) as e:
             get_python_sql_connector_auth_provider("foo.cloud.databricks.com", **kwargs)
-        self.assertIn(
-            "Username/password authentication is no longer supported", str(e.exception)
-        )
+        self.assertIn("Username/password authentication is no longer supported", str(e.exception))
+
+    @patch.object(DatabricksOAuthProvider, "_initial_get_token")
+    def test_get_python_sql_connector_default_auth(self, mock__initial_get_token):
+        hostname = "foo.cloud.databricks.com"
+        auth_provider = get_python_sql_connector_auth_provider(hostname)
+        self.assertTrue(type(auth_provider).__name__, "DatabricksOAuthProvider")
+        self.assertTrue(auth_provider._client_id,PYSQL_OAUTH_CLIENT_ID)
+
