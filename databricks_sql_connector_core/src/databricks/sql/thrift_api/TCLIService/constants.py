@@ -6,55 +6,42 @@
 #  options string: py
 #
 
-from thrift.Thrift import (
-    TType,
-    TMessageType,
-    TFrozenDict,
-    TException,
-    TApplicationException,
-)
+from thrift.Thrift import TType, TMessageType, TFrozenDict, TException, TApplicationException
 from thrift.protocol.TProtocol import TProtocolException
 from thrift.TRecursive import fix_spec
 
 import sys
 from .ttypes import *
-
-PRIMITIVE_TYPES = set(
-    (
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        15,
-        16,
-        17,
-        18,
-        19,
-        20,
-        21,
-    )
-)
-COMPLEX_TYPES = set(
-    (
-        10,
-        11,
-        12,
-        13,
-        14,
-    )
-)
-COLLECTION_TYPES = set(
-    (
-        10,
-        11,
-    )
-)
+PRIMITIVE_TYPES = set((
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+))
+COMPLEX_TYPES = set((
+    10,
+    11,
+    12,
+    13,
+    14,
+))
+COLLECTION_TYPES = set((
+    10,
+    11,
+))
 TYPE_NAMES = {
     10: "ARRAY",
     4: "BIGINT",
