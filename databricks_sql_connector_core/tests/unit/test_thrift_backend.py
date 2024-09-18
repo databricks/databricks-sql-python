@@ -2,10 +2,9 @@ from collections import OrderedDict
 from decimal import Decimal
 import itertools
 import unittest
+import pytest
 from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
-
-import pyarrow
 
 import databricks.sql
 from databricks.sql import utils
@@ -13,7 +12,12 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_backend import ThriftBackend
+from tests.e2e.predicate import pysql_supports_arrow
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 def retry_policy_factory():
     return {  # (type, default, min, max)
@@ -24,7 +28,7 @@ def retry_policy_factory():
         "_retry_delay_default": (float, 5, 1, 60),
     }
 
-
+@pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
 
