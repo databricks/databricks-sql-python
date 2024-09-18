@@ -63,10 +63,10 @@ class DownloadableResultSettings:
 
 class ResultSetDownloadHandler:
     def __init__(
-            self,
-            settings: DownloadableResultSettings,
-            link: TSparkArrowResultLink,
-            ssl_context: SSLContext,
+        self,
+        settings: DownloadableResultSettings,
+        link: TSparkArrowResultLink,
+        ssl_context: SSLContext,
     ):
         self.settings = settings
         self.link = link
@@ -147,8 +147,8 @@ class ResultSetDownloadHandler:
         """
         current_time = int(time.time())
         if (
-                link.expiryTime <= current_time
-                or link.expiryTime - current_time <= expiry_buffer_secs
+            link.expiryTime <= current_time
+            or link.expiryTime - current_time <= expiry_buffer_secs
         ):
             raise Error("CloudFetch link has expired")
 

@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 class ResultFileDownloadManager:
     def __init__(
-            self,
-            links: List[TSparkArrowResultLink],
-            max_download_threads: int,
-            lz4_compressed: bool,
-            ssl_context: SSLContext,
+        self,
+        links: List[TSparkArrowResultLink],
+        max_download_threads: int,
+        lz4_compressed: bool,
+        ssl_context: SSLContext,
     ):
         self._pending_links: List[TSparkArrowResultLink] = []
         for link in links:
@@ -41,7 +41,7 @@ class ResultFileDownloadManager:
         self._ssl_context = ssl_context
 
     def get_next_downloaded_file(
-            self, next_row_offset: int
+        self, next_row_offset: int
     ) -> Union[DownloadedFile, None]:
         """
         Get next file that starts at given offset.
@@ -70,7 +70,7 @@ class ResultFileDownloadManager:
         # will throw the same exception
         file = task.result()
         if (next_row_offset < file.start_row_offset) or (
-                next_row_offset > file.start_row_offset + file.row_count
+            next_row_offset > file.start_row_offset + file.row_count
         ):
             logger.debug(
                 "ResultFileDownloadManager: file does not contain row {}, start {}, row count {}".format(
@@ -86,7 +86,7 @@ class ResultFileDownloadManager:
         """
         logger.debug("ResultFileDownloadManager: schedule downloads")
         while (len(self._download_tasks) < self._max_download_threads) and (
-                len(self._pending_links) > 0
+            len(self._pending_links) > 0
         ):
             link = self._pending_links.pop(0)
             logger.debug(
