@@ -20,17 +20,17 @@ from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
     def __init__(
-            self,
-            auth_provider,
-            uri_or_host,
-            port=None,
-            path=None,
-            cafile=None,
-            cert_file=None,
-            key_file=None,
-            ssl_context=None,
-            max_connections: int = 1,
-            retry_policy: Union[DatabricksRetryPolicy, int] = 0,
+        self,
+        auth_provider,
+        uri_or_host,
+        port=None,
+        path=None,
+        cafile=None,
+        cert_file=None,
+        key_file=None,
+        ssl_context=None,
+        max_connections: int = 1,
+        retry_policy: Union[DatabricksRetryPolicy, int] = 0,
     ):
         if port is not None:
             warnings.warn(
