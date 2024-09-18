@@ -28,7 +28,7 @@ from databricks.sql.parameters.native import (
     VoidParameter,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 
 class ParamStyle(Enum):
@@ -168,8 +168,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             This is a no-op but is included to make the test-code easier to read.
         """
         target_column = self._get_inline_table_column(params.get("p"))
-        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
+        INSERT_QUERY = (
+            f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
+        )
+        SELECT_QUERY = (
+            f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
+        )
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
@@ -281,10 +285,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             (PrimitiveExtra.TINYINT, TinyIntParameter),
         ],
     )
-    @pytest.mark.skipif(
-        not pysql_supports_arrow(),
-        reason="Without pyarrow TIMESTAMP_NTZ datatype cannot be inferred",
-    )
+
+    @pytest.mark.skipif(not pysql_supports_arrow(),reason="Without pyarrow TIMESTAMP_NTZ datatype cannot be inferred",)
     def test_dbsqlparameter_single(
         self,
         primitive: Primitive,
@@ -309,15 +311,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
-        extra_args = (
-            {"use_inline_params": use_inline_params} if use_inline_params else {}
-        )
+        extra_args = {"use_inline_params": use_inline_params} if use_inline_params else {}
 
         with self.connection(extra_params=extra_args) as conn:
             with conn.cursor() as cursor:
-                with self.patch_server_supports_native_params(
-                    supports_native_params=True
-                ):
+                with self.patch_server_supports_native_params(supports_native_params=True):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
                     if use_inline_params is True:
                         assert (
@@ -407,9 +405,7 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         query = "SELECT 'samsonite', %s WHERE 'samsonite' LIKE '%sonite'"
         params = ["luggage"]
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
-            with pytest.raises(
-                TypeError, match="not enough arguments for format string"
-            ):
+            with pytest.raises(TypeError, match="not enough arguments for format string"):
                 cursor.execute(query, parameters=params)
 
     def test_inline_named_dont_break_sql(self):
@@ -424,6 +420,7 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         params = {"one": "%(one)s"}
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
             result = cursor.execute(query, parameters=params).fetchone()
+            print("hello")
 
     def test_native_ordinals_dont_break_sql(self):
         """This test accompanies test_inline_ordinals_can_break_sql to prove that ordinal

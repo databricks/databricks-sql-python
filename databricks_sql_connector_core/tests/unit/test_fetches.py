@@ -1,21 +1,17 @@
 import unittest
-import pytest
 from unittest.mock import Mock
+import pytest
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 try:
     import pyarrow as pa
 except ImportError:
     pa = None
 
-from tests.e2e.predicate import pysql_supports_arrow
-
-
-@pytest.mark.skipif(
-    not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed"
-)
+@pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class FetchTests(unittest.TestCase):
     """
     Unit tests for checking the fetch logic.
@@ -26,9 +22,7 @@ class FetchTests(unittest.TestCase):
         n_cols = len(batch[0]) if batch else 0
         schema = pa.schema({"col%s" % i: pa.uint32() for i in range(n_cols)})
         cols = [[batch[row][col] for row in range(len(batch))] for col in range(n_cols)]
-        return schema, pa.Table.from_pydict(
-            dict(zip(schema.names, cols)), schema=schema
-        )
+        return schema, pa.Table.from_pydict(dict(zip(schema.names, cols)), schema=schema)
 
     @staticmethod
     def make_arrow_queue(batch):
@@ -53,29 +47,18 @@ class FetchTests(unittest.TestCase):
                 command_handle=None,
                 arrow_queue=arrow_queue,
                 arrow_schema_bytes=schema.serialize().to_pybytes(),
-                is_staging_operation=False,
-            ),
-        )
+                is_staging_operation=False))
         num_cols = len(initial_results[0]) if initial_results else 0
-        rs.description = [
-            (f"col{col_id}", "integer", None, None, None, None, None)
-            for col_id in range(num_cols)
-        ]
+        rs.description = [(f'col{col_id}', 'integer', None, None, None, None, None)
+                          for col_id in range(num_cols)]
         return rs
 
     @staticmethod
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
 
-        def fetch_results(
-            op_handle,
-            max_rows,
-            max_bytes,
-            expected_row_start_offset,
-            lz4_compressed,
-            arrow_schema_bytes,
-            description,
-        ):
+        def fetch_results(op_handle, max_rows, max_bytes, expected_row_start_offset, lz4_compressed,
+                          arrow_schema_bytes, description):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1
@@ -93,17 +76,13 @@ class FetchTests(unittest.TestCase):
                 status=None,
                 has_been_closed_server_side=False,
                 has_more_rows=True,
-                description=[
-                    (f"col{col_id}", "integer", None, None, None, None, None)
-                    for col_id in range(num_cols)
-                ],
+                description=[(f'col{col_id}', 'integer', None, None, None, None, None)
+                             for col_id in range(num_cols)],
                 lz4_compressed=Mock(),
                 command_handle=None,
                 arrow_queue=None,
                 arrow_schema_bytes=None,
-                is_staging_operation=False,
-            ),
-        )
+                is_staging_operation=False))
         return rs
 
     def assertEqualRowValues(self, actual, expected):
@@ -113,44 +92,30 @@ class FetchTests(unittest.TestCase):
 
     def test_fetchmany_with_initial_results(self):
         # Fetch all in one go
-        initial_results_1 = [
-            [1],
-            [2],
-            [3],
-        ]  # This is a list of rows, each row with 1 col
-        dummy_result_set = self.make_dummy_result_set_from_initial_results(
-            initial_results_1
-        )
+        initial_results_1 = [[1], [2], [3]]  # This is a list of rows, each row with 1 col
+        dummy_result_set = self.make_dummy_result_set_from_initial_results(initial_results_1)
         self.assertEqualRowValues(dummy_result_set.fetchmany(3), [[1], [2], [3]])
 
         # Fetch in small amounts
         initial_results_2 = [[1], [2], [3], [4]]
-        dummy_result_set = self.make_dummy_result_set_from_initial_results(
-            initial_results_2
-        )
+        dummy_result_set = self.make_dummy_result_set_from_initial_results(initial_results_2)
         self.assertEqualRowValues(dummy_result_set.fetchmany(1), [[1]])
         self.assertEqualRowValues(dummy_result_set.fetchmany(2), [[2], [3]])
         self.assertEqualRowValues(dummy_result_set.fetchmany(1), [[4]])
 
         # Fetch too many
         initial_results_3 = [[2], [3]]
-        dummy_result_set = self.make_dummy_result_set_from_initial_results(
-            initial_results_3
-        )
+        dummy_result_set = self.make_dummy_result_set_from_initial_results(initial_results_3)
         self.assertEqualRowValues(dummy_result_set.fetchmany(5), [[2], [3]])
 
         # Empty results
         initial_results_4 = [[]]
-        dummy_result_set = self.make_dummy_result_set_from_initial_results(
-            initial_results_4
-        )
+        dummy_result_set = self.make_dummy_result_set_from_initial_results(initial_results_4)
         self.assertEqualRowValues(dummy_result_set.fetchmany(0), [])
 
     def test_fetch_many_without_initial_results(self):
         # Fetch all in one go; single batch
-        batch_list_1 = [
-            [[1], [2], [3]]
-        ]  # This is a list of one batch of rows, each row with 1 col
+        batch_list_1 = [[[1], [2], [3]]]  # This is a list of one batch of rows, each row with 1 col
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_1)
         self.assertEqualRowValues(dummy_result_set.fetchmany(3), [[1], [2], [3]])
 
@@ -180,9 +145,7 @@ class FetchTests(unittest.TestCase):
         # Fetch too many; multiple batches
         batch_list_6 = [[[1]], [[2], [3], [4]], [[5], [6]]]
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_6)
-        self.assertEqualRowValues(
-            dummy_result_set.fetchmany(100), [[1], [2], [3], [4], [5], [6]]
-        )
+        self.assertEqualRowValues(dummy_result_set.fetchmany(100), [[1], [2], [3], [4], [5], [6]])
 
         # Fetch 0; 1 empty batch
         batch_list_7 = [[]]
@@ -196,25 +159,19 @@ class FetchTests(unittest.TestCase):
 
     def test_fetchall_with_initial_results(self):
         initial_results_1 = [[1], [2], [3]]
-        dummy_result_set = self.make_dummy_result_set_from_initial_results(
-            initial_results_1
-        )
+        dummy_result_set = self.make_dummy_result_set_from_initial_results(initial_results_1)
         self.assertEqualRowValues(dummy_result_set.fetchall(), [[1], [2], [3]])
 
     def test_fetchall_without_initial_results(self):
         # Fetch all, single batch
-        batch_list_1 = [
-            [[1], [2], [3]]
-        ]  # This is a list of one batch of rows, each row with 1 col
+        batch_list_1 = [[[1], [2], [3]]]  # This is a list of one batch of rows, each row with 1 col
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_1)
         self.assertEqualRowValues(dummy_result_set.fetchall(), [[1], [2], [3]])
 
         # Fetch all, multiple batches
         batch_list_2 = [[[1], [2]], [[3]], [[4], [5], [6]]]
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_2)
-        self.assertEqualRowValues(
-            dummy_result_set.fetchall(), [[1], [2], [3], [4], [5], [6]]
-        )
+        self.assertEqualRowValues(dummy_result_set.fetchall(), [[1], [2], [3], [4], [5], [6]])
 
         batch_list_3 = [[]]
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_3)
@@ -222,16 +179,12 @@ class FetchTests(unittest.TestCase):
 
     def test_fetchmany_fetchall_with_initial_results(self):
         initial_results_1 = [[1], [2], [3]]
-        dummy_result_set = self.make_dummy_result_set_from_initial_results(
-            initial_results_1
-        )
+        dummy_result_set = self.make_dummy_result_set_from_initial_results(initial_results_1)
         self.assertEqualRowValues(dummy_result_set.fetchmany(2), [[1], [2]])
         self.assertEqualRowValues(dummy_result_set.fetchall(), [[3]])
 
     def test_fetchmany_fetchall_without_initial_results(self):
-        batch_list_1 = [
-            [[1], [2], [3]]
-        ]  # This is a list of one batch of rows, each row with 1 col
+        batch_list_1 = [[[1], [2], [3]]]  # This is a list of one batch of rows, each row with 1 col
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_1)
         self.assertEqualRowValues(dummy_result_set.fetchmany(2), [[1], [2]])
         self.assertEqualRowValues(dummy_result_set.fetchall(), [[3]])
@@ -243,9 +196,7 @@ class FetchTests(unittest.TestCase):
 
     def test_fetchone_with_initial_results(self):
         initial_results_1 = [[1], [2], [3]]
-        dummy_result_set = self.make_dummy_result_set_from_initial_results(
-            initial_results_1
-        )
+        dummy_result_set = self.make_dummy_result_set_from_initial_results(initial_results_1)
         self.assertSequenceEqual(dummy_result_set.fetchone(), [1])
         self.assertSequenceEqual(dummy_result_set.fetchone(), [2])
         self.assertSequenceEqual(dummy_result_set.fetchone(), [3])
@@ -264,5 +215,5 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(dummy_result_set.fetchone(), None)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

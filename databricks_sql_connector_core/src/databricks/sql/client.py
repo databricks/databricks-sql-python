@@ -35,12 +35,8 @@ from databricks.sql.parameters.native import (
 
 
 from databricks.sql.types import Row
-from databricks.sql.auth.auth import (
-    get_python_sql_connector_auth_provider,
-)
-from databricks.sql.experimental.oauth_persistence import (
-    OAuthPersistence,
-)
+from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -103,7 +99,7 @@ class Connection:
                 sanitise parameterized inputs to prevent SQL injection.  The inline parameter approach is maintained for
                 legacy purposes and will be deprecated in a future release. When this parameter is `True` you will see
                 a warning log message. To suppress this log message, set `use_inline_params="silent"`.
-            auth_type: `str`, optional
+            auth_type: `str`, optional (default is databricks-oauth if neither `access_token` nor `tls_client_cert_file` is set)
                 `databricks-oauth` : to use Databricks OAuth with fine-grained permission scopes, set to `databricks-oauth`.
                 `azure-oauth` : to use Microsoft Entra ID OAuth flow, set to `azure-oauth`.
 
@@ -784,7 +780,6 @@ class Cursor:
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
         )
-
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
@@ -1172,7 +1167,7 @@ class ResultSet:
             timestamp_as_object=True,
         )
 
-        res = df.to_numpy(na_value=None)
+        res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
     @property
@@ -1223,7 +1218,6 @@ class ResultSet:
         or None when no more data is available.
         """
         res = self._convert_arrow_table(self.fetchmany_arrow(1))
-
         if len(res) > 0:
             return res[0]
         else:

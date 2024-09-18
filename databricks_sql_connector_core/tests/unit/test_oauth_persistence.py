@@ -1,17 +1,16 @@
+
 import unittest
 
-from databricks.sql.experimental.oauth_persistence import (
-    DevOnlyFilePersistence,
-    OAuthToken,
-)
+from databricks.sql.experimental.oauth_persistence import DevOnlyFilePersistence, OAuthToken
 import tempfile
 import os
 
 
 class OAuthPersistenceTests(unittest.TestCase):
+
     def test_DevOnlyFilePersistence_read_my_write(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            test_json_file_path = os.path.join(tempdir, "test.json")
+            test_json_file_path = os.path.join(tempdir, 'test.json')
             persistence_manager = DevOnlyFilePersistence(test_json_file_path)
             access_token = "abc#$%%^&^*&*()()_=-/"
             refresh_token = "#$%%^^&**()+)_gter243]xyz"
@@ -24,7 +23,7 @@ class OAuthPersistenceTests(unittest.TestCase):
 
     def test_DevOnlyFilePersistence_file_does_not_exist(self):
         with tempfile.TemporaryDirectory() as tempdir:
-            test_json_file_path = os.path.join(tempdir, "test.json")
+            test_json_file_path = os.path.join(tempdir, 'test.json')
             persistence_manager = DevOnlyFilePersistence(test_json_file_path)
             new_token = persistence_manager.read("https://randomserver")
 

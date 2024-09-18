@@ -103,4 +103,3 @@ def compare_module_version(module, compare, version):
     mod_version = validate_version(module.__version__)
     req_version = validate_version(version)
     return compare_versions(compare, mod_version, req_version)
-

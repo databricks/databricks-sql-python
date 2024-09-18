@@ -13,14 +13,12 @@ end user will have to login again. See examples/persistent_oauth.py to learn abo
 token across script executions.
 """
 
-with sql.connect(
-    server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
-    http_path=os.getenv("DATABRICKS_HTTP_PATH"),
-) as connection:
+with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
+                 http_path       = os.getenv("DATABRICKS_HTTP_PATH")) as connection:
 
     for x in range(1, 100):
         cursor = connection.cursor()
-        cursor.execute("SELECT 1+1")
+        cursor.execute('SELECT 1+1')
         result = cursor.fetchall()
         for row in result:
             print(row)

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import datetime
 import decimal
 from abc import ABC, abstractmethod
@@ -13,28 +14,23 @@ from ssl import SSLContext
 import lz4.frame
 
 from databricks.sql import OperationalError, exc
-from databricks.sql.cloudfetch.download_manager import (
-    ResultFileDownloadManager,
-)
+from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
     TSparkArrowResultLink,
     TSparkRowSetType,
 )
 
-from databricks.sql.parameters.native import (
-    ParameterStructure,
-    TDbsqlParameter,
-)
+from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
+
+BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
+
+import logging
 
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
-
-BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -87,11 +83,9 @@ class ResultSetQueueFactory(ABC):
             arrow_table, n_valid_rows = convert_column_based_set_to_arrow_table(
                 t_row_set.columns, description
             )
-
             converted_arrow_table = convert_decimals_in_arrow_table(
                 arrow_table, description
             )
-
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
@@ -525,9 +519,7 @@ def transform_paramstyle(
     return output
 
 
-def create_arrow_table_from_arrow_file(
-    file_bytes: bytes, description
-) -> "pyarrow.Table":
+def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> "pyarrow.Table":
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 

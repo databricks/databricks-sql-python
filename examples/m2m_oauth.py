@@ -22,19 +22,17 @@ def credential_provider():
         # Service Principal UUID
         client_id=os.getenv("DATABRICKS_CLIENT_ID"),
         # Service Principal Secret
-        client_secret=os.getenv("DATABRICKS_CLIENT_SECRET"),
-    )
+        client_secret=os.getenv("DATABRICKS_CLIENT_SECRET"))
     return oauth_service_principal(config)
 
 
 with sql.connect(
-    server_hostname=server_hostname,
-    http_path=os.getenv("DATABRICKS_HTTP_PATH"),
-    credentials_provider=credential_provider,
-) as connection:
+        server_hostname=server_hostname,
+        http_path=os.getenv("DATABRICKS_HTTP_PATH"),
+        credentials_provider=credential_provider) as connection:
     for x in range(1, 100):
         cursor = connection.cursor()
-        cursor.execute("SELECT 1+1")
+        cursor.execute('SELECT 1+1')
         result = cursor.fetchall()
         for row in result:
             print(row)

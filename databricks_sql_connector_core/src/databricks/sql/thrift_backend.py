@@ -767,14 +767,12 @@ class ThriftBackend:
         description = self._hive_schema_to_description(
             t_result_set_metadata_resp.schema
         )
-
         schema_bytes = (
             t_result_set_metadata_resp.arrowSchema
             or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
             .serialize()
             .to_pybytes()
         )
-
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         if direct_results and direct_results.resultSet:

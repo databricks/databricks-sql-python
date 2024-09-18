@@ -3,10 +3,7 @@ name = "databricks-sql-connector-core"
 version = "1.0.0"
 description = "Databricks SQL Connector core for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
-license = "Apache-2.0"
-readme = "README.md"
 packages = [{ include = "databricks", from = "src" }]
-include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
 python = "^3.8.0"
