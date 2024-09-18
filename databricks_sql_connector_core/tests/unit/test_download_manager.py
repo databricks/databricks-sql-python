@@ -7,7 +7,7 @@ from ssl import create_default_context
 import databricks.sql.cloudfetch.download_manager as download_manager
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 @pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class DownloadManagerTests(unittest.TestCase):

@@ -9,7 +9,7 @@ try:
 except ImportError:
     pa = None
 
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 @pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class ArrowQueueSuite(unittest.TestCase):

@@ -8,7 +8,6 @@ import threading
 from ssl import CERT_NONE, CERT_REQUIRED, create_default_context
 from typing import List, Union
 
-import pyarrow
 import thrift.transport.THttpClient
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket

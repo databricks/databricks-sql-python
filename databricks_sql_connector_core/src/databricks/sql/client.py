@@ -1,7 +1,6 @@
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
-import pyarrow
 import requests
 import json
 import os

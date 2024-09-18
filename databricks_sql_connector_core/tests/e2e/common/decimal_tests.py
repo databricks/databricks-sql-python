@@ -7,9 +7,13 @@ try:
 except ImportError:
     pyarrow = None
 
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 def decimal_and_expected_results():
+
+    if pyarrow is None:
+        return []
+
     return [
         ("100.001 AS DECIMAL(6, 3)", Decimal("100.001"), pyarrow.decimal128(6, 3)),
         ("1000000.0000 AS DECIMAL(11, 4)", Decimal("1000000.0000"), pyarrow.decimal128(11, 4)),
@@ -23,6 +27,10 @@ def decimal_and_expected_results():
     ]
 
 def multi_decimals_and_expected_results():
+
+    if pyarrow is None:
+        return []
+
     return [
         (
             ["1 AS DECIMAL(6, 3)", "100.001 AS DECIMAL(6, 3)", "NULL AS DECIMAL(6, 3)"],

@@ -28,7 +28,7 @@ from databricks.sql.parameters.native import (
     VoidParameter,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 
 class ParamStyle(Enum):

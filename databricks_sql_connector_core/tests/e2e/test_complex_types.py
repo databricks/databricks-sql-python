@@ -2,7 +2,7 @@ import pytest
 from numpy import ndarray
 
 from tests.e2e.test_driver import PySQLPytestTestCase
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 @pytest.mark.skipif(not pysql_supports_arrow(), reason="Skipping because pyarrow is not installed")
 class TestComplexTypes(PySQLPytestTestCase):

@@ -12,7 +12,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_backend import ThriftBackend
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 try:
     import pyarrow

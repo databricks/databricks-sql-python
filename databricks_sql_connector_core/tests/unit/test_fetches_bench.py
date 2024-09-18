@@ -7,7 +7,7 @@ import pytest
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 try:
     import pyarrow as pa

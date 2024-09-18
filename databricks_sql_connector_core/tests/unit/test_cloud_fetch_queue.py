@@ -5,7 +5,7 @@ from ssl import create_default_context
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 import databricks.sql.utils as utils
-from tests.e2e.predicate import pysql_supports_arrow
+from tests.e2e.common.predicates import pysql_supports_arrow
 
 try:
     import pyarrow

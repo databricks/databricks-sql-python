@@ -12,7 +12,6 @@ import re
 from ssl import SSLContext
 
 import lz4.frame
-import pyarrow
 
 from databricks.sql import OperationalError, exc
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
