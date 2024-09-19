@@ -60,7 +60,7 @@ In the above example:
 - `server-hostname` is the Databricks instance host name.
 - `http-path` is the HTTP Path either to a Databricks SQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef),
 or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
-  `personal-access-token` is the Databricks Personal Access Token for the account that will execute commands and queries
+- `personal-access-token` is the Databricks Personal Access Token for the account that will execute commands and queries
 
 
 ## Contributing

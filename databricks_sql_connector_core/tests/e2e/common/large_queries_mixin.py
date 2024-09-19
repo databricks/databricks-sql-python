@@ -44,7 +44,7 @@ class LargeQueriesMixin:
             + "assuming 10K fetch size."
         )
 
-    @skipUnless(pysql_supports_arrow(), "Without pyarrow lz4 compression is not supported")
+    @pytest.mark.skipif(not pysql_supports_arrow(), "Without pyarrow lz4 compression is not supported")
     def test_query_with_large_wide_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
         width = 8192  # B
