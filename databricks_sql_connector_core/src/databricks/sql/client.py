@@ -99,7 +99,7 @@ class Connection:
                 sanitise parameterized inputs to prevent SQL injection.  The inline parameter approach is maintained for
                 legacy purposes and will be deprecated in a future release. When this parameter is `True` you will see
                 a warning log message. To suppress this log message, set `use_inline_params="silent"`.
-            auth_type: `str`, optional (default is databricks-oauth if neither `access_token` nor `tls_client_cert_file` is set)
+            auth_type: `str`, optional
                 `databricks-oauth` : to use Databricks OAuth with fine-grained permission scopes, set to `databricks-oauth`.
                 `azure-oauth` : to use Microsoft Entra ID OAuth flow, set to `azure-oauth`.
 
