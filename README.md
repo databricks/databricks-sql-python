@@ -24,9 +24,12 @@ For the latest documentation, see
 
 Install the library with `pip install databricks-sql-connector`
 
+Note: Don't hard-code authentication secrets into your Python. Use environment variables
+
 ```bash
 export DATABRICKS_HOST=********.databricks.com
 export DATABRICKS_HTTP_PATH=/sql/1.0/endpoints/****************
+export DATABRICKS_TOKEN=dapi********************************
 ```
 
 Example usage:
@@ -36,10 +39,12 @@ from databricks import sql
 
 host = os.getenv("DATABRICKS_HOST")
 http_path = os.getenv("DATABRICKS_HTTP_PATH")
+access_token = os.getenv("DATABRICKS_TOKEN")
 
 connection = sql.connect(
   server_hostname=host,
-  http_path=http_path)
+  http_path=http_path,
+  access_token=access_token)
 
 cursor = connection.cursor()
 cursor.execute('SELECT :param `p`, * FROM RANGE(10)', {"param": "foo"})
@@ -55,10 +60,7 @@ In the above example:
 - `server-hostname` is the Databricks instance host name.
 - `http-path` is the HTTP Path either to a Databricks SQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef),
 or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
-
-> Note: This example uses [Databricks OAuth U2M](https://docs.databricks.com/en/dev-tools/auth/oauth-u2m.html) 
-> to authenticate the target Databricks user account and needs to open the browser for authentication. So it 
-> can only run on the user's machine.
+  `personal-access-token` is the Databricks Personal Access Token for the account that will execute commands and queries
 
 
 ## Contributing
