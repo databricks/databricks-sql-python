@@ -589,15 +589,17 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
 
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
+
+    converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":
-            column_table[i] = tuple(v if v is None else Decimal(v) for v in col)
+            converted_column_table.append(tuple(v if v is None else Decimal(v) for v in col))
         elif description[i][1] == "date":
-            column_table[i] = tuple(
+            converted_column_table[i].append(tuple(
                 v if v is None else datetime.date.fromisoformat(v) for v in col
-            )
+            ))
         elif description[i][1] == "timestamp":
-            column_table[i] = tuple(
+            converted_column_table[i].append(tuple(
                 (
                     v
                     if v is None
@@ -606,9 +608,11 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
                     )
                 )
                 for v in col
-            )
+            ))
+        else:
+            converted_column_table.append(col)
 
-    return column_table
+    return converted_column_table
 
 
 def convert_column_based_set_to_arrow_table(columns, description):
@@ -624,7 +628,7 @@ def convert_column_based_set_to_arrow_table(columns, description):
 
 def convert_column_based_set_to_column_table(columns, description):
     column_names = [c[0] for c in description]
-    column_table = [_covert_column_to_list(c) for c in columns]
+    column_table = [_convert_column_to_list(c) for c in columns]
 
     return column_table, column_names
 
@@ -653,8 +657,8 @@ def _convert_column_to_arrow_array(t_col):
     raise OperationalError("Empty TColumn instance {}".format(t_col))
 
 
-def _covert_column_to_list(t_col):
-    supported_field_types = (
+def _convert_column_to_list(t_col):
+    SUPPORTED_FIELD_TYPES = (
         "boolVal",
         "byteVal",
         "i16Val",
@@ -665,7 +669,7 @@ def _covert_column_to_list(t_col):
         "binaryVal",
     )
 
-    for field in supported_field_types:
+    for field in SUPPORTED_FIELD_TYPES:
         wrapper = getattr(t_col, field)
         if wrapper:
             return _create_python_tuple(wrapper)

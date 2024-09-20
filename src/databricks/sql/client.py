@@ -1227,13 +1227,17 @@ class ResultSet:
 
         return results
 
-        def merge_columnar(self, result1, result2):
-            """
-            Function to merge / combining the columnar results into a single result
-            :param result1:
-            :param result2:
-            :return:
-            """
+    def merge_columnar(self, result1, result2):
+        """
+        Function to merge / combining the columnar results into a single result
+        :param result1:
+        :param result2:
+        :return:
+        """
+
+        if len(result1) != len(result2):
+            raise ValueError("The number of columns in both results must be the same")
+
         merged_result = [result1[i] + result2[i] for i in range(len(result1))]
         return merged_result
 
