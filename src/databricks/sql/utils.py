@@ -617,11 +617,11 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
         if description[i][1] == "decimal":
             converted_column_table.append(tuple(v if v is None else Decimal(v) for v in col))
         elif description[i][1] == "date":
-            converted_column_table[i].append(tuple(
+            converted_column_table.append(tuple(
                 v if v is None else datetime.date.fromisoformat(v) for v in col
             ))
         elif description[i][1] == "timestamp":
-            converted_column_table[i].append(tuple(
+            converted_column_table.append(tuple(
                 (
                     v
                     if v is None
