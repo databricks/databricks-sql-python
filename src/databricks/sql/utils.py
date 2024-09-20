@@ -88,7 +88,7 @@ class ResultSetQueueFactory(ABC):
                 column_table, description
             )
 
-            return ColumnQueue(converted_column_table, column_names)
+            return ColumnQueue(ColumnTable(converted_column_table, column_names))
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
@@ -102,27 +102,47 @@ class ResultSetQueueFactory(ABC):
         else:
             raise AssertionError("Row set type is not valid")
 
-class ColumnQueue(ResultSetQueue):
-    def __init__(self, columnar_table, column_names):
-        self.columnar_table = columnar_table
-        self.cur_row_index = 0
-        self.n_valid_rows = len(columnar_table[0])
+class ColumnTable:
+    def __init__(self, column_table, column_names):
+        self.column_table = column_table
         self.column_names = column_names
+
+    @property
+    def num_rows(self):
+        if len(self.column_table) == 0:
+            return 0
+        else:
+            return len(self.column_table[0])
+
+    @property
+    def num_columns(self):
+        return len(self.column_names)
+
+    def get_item(self, col_index, row_index):
+        return self.column_table[col_index][row_index]
+
+    def slice(self, curr_index, length):
+        sliced_column_table = [column[curr_index : curr_index + length] for column in self.column_table]
+        return ColumnTable(sliced_column_table, self.column_names)
+
+
+class ColumnQueue(ResultSetQueue):
+    def __init__(self, column_table: ColumnTable):
+        self.column_table = column_table
+        self.cur_row_index = 0
+        self.n_valid_rows = column_table.num_rows
 
     def next_n_rows(self, num_rows):
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
-        # Slicing using the default python slice
-        next_data = [
-            column[self.cur_row_index : self.cur_row_index + length]
-            for column in self.columnar_table
-        ]
-        self.cur_row_index += length
-        return next_data
+
+        slice = self.column_table.slice(self.cur_row_index, length)
+        self.cur_row_index += slice.num_rows
+        return slice
 
     def remaining_rows(self):
-        next_data = [column[self.cur_row_index :] for column in self.columnar_table]
-        self.cur_row_index += len(next_data[0])
-        return next_data
+        slice = self.column_table.slice(self.cur_row_index, self.n_valid_rows - self.cur_row_index)
+        self.cur_row_index += slice.num_rows
+        return slice
 
 
 class ArrowQueue(ResultSetQueue):

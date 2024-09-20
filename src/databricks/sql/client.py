@@ -25,7 +25,7 @@ from databricks.sql.utils import (
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
-    ArrowQueue,
+    ColumnTable,
     ColumnQueue
 )
 from databricks.sql.parameters.native import (
@@ -1152,10 +1152,10 @@ class ResultSet:
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
         result = []
-        for row_index in range(len(table[0])):
+        for row_index in range(table.num_rows):
             curr_row = []
-            for col_index in range(len(table)):
-                curr_row.append(table[col_index][row_index])
+            for col_index in range(table.num_columns):
+                curr_row.append(table.get_item(col_index,  row_index))
             result.append(ResultRow(*curr_row))
 
         return result
@@ -1235,11 +1235,11 @@ class ResultSet:
         :return:
         """
 
-        if len(result1) != len(result2):
-            raise ValueError("The number of columns in both results must be the same")
+        if result1.column_names != result2.column_names:
+            raise ValueError("The columns in the results don't match")
 
-        merged_result = [result1[i] + result2[i] for i in range(len(result1))]
-        return merged_result
+        merged_result = [result1.column_table[i] + result2.column_table[i] for i in range(result1.num_columns)]
+        return ColumnTable(merged_result, result1.column_names)
 
     def fetchmany_columnar(self, size: int):
         """
@@ -1250,8 +1250,8 @@ class ResultSet:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
 
         results = self.results.next_n_rows(size)
-        n_remaining_rows = size - len(results[0])
-        self._next_row_index += len(results[0])
+        n_remaining_rows = size - results.num_rows
+        self._next_row_index += results.num_rows
 
         while (
                 n_remaining_rows > 0
@@ -1261,8 +1261,8 @@ class ResultSet:
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
             results = self.merge_columnar(results, partial_results)
-            n_remaining_rows -= len(partial_results[0])
-            self._next_row_index += len(partial_results[0])
+            n_remaining_rows -= partial_results.num_rows
+            self._next_row_index += partial_results.num_rows
 
         return results
 
@@ -1282,13 +1282,13 @@ class ResultSet:
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
         results = self.results.remaining_rows()
-        self._next_row_index += len(results[0])
+        self._next_row_index += results.num_rows
 
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
-            self._next_row_index += len(partial_results[0])
+            self._next_row_index += partial_results.num_rows
 
         return results
 
