@@ -125,6 +125,8 @@ class ColumnTable:
         sliced_column_table = [column[curr_index : curr_index + length] for column in self.column_table]
         return ColumnTable(sliced_column_table, self.column_names)
 
+    def __eq__(self, other):
+        return self.column_table == other.column_table and self.column_names == other.column_names
 
 class ColumnQueue(ResultSetQueue):
     def __init__(self, column_table: ColumnTable):
