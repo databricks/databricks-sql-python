@@ -59,7 +59,9 @@ class Client503ResponseMixin:
 
 
 @contextmanager
-def mocked_server_response(status: int = 200, headers: dict = {}, redirect_location: Optional[str] = None):
+def mocked_server_response(
+    status: int = 200, headers: dict = {}, redirect_location: Optional[str] = None
+):
     """Context manager for patching urllib3 responses"""
 
     # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
@@ -97,7 +99,9 @@ def mock_sequential_server_responses(responses: List[dict]):
     # Each resp should have these members:
 
     for resp in responses:
-        _mock = MagicMock(headers=resp["headers"], msg=resp["headers"], status=resp["status"])
+        _mock = MagicMock(
+            headers=resp["headers"], msg=resp["headers"], status=resp["status"]
+        )
         _mock.get_redirect_location.return_value = (
             False if resp["redirect_location"] is None else resp["redirect_location"]
         )
@@ -176,7 +180,9 @@ class PySQLRetryTestsMixin:
         retry_policy["_retry_delay_min"] = 1
 
         time_start = time.time()
-        with mocked_server_response(status=429, headers={"Retry-After": "3"}) as mock_obj:
+        with mocked_server_response(
+            status=429, headers={"Retry-After": "3"}
+        ) as mock_obj:
             with pytest.raises(RequestError) as cm:
                 with self.connection(extra_params=retry_policy) as conn:
                     pass
@@ -256,7 +262,9 @@ class PySQLRetryTestsMixin:
                             assert isinstance(cm.value.args[1], UnsafeToRetryError)
 
         # Prove that these codes are retried if forced by the user
-        with self.connection(extra_params={**self._retry_policy, **additional_settings}) as conn:
+        with self.connection(
+            extra_params={**self._retry_policy, **additional_settings}
+        ) as conn:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
                     with mocked_server_response(status=dangerous_code):
@@ -326,7 +334,9 @@ class PySQLRetryTestsMixin:
                     curs.execute("SELECT 1")
                     with mock_sequential_server_responses(responses):
                         curs.close()
-                        assert "Operation was canceled by a prior request" in caplog.text
+                        assert (
+                            "Operation was canceled by a prior request" in caplog.text
+                        )
 
     def test_retry_max_redirects_raises_too_many_redirects_exception(self):
         """GIVEN the connector is configured with a custom max_redirects
@@ -337,7 +347,9 @@ class PySQLRetryTestsMixin:
         max_redirects, expected_call_count = 1, 2
 
         # Code 302 is a redirect
-        with mocked_server_response(status=302, redirect_location="/foo.bar") as mock_obj:
+        with mocked_server_response(
+            status=302, redirect_location="/foo.bar"
+        ) as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
                 with self.connection(
                     extra_params={
@@ -359,7 +371,9 @@ class PySQLRetryTestsMixin:
         _stop_after_attempts_count is enforced.
         """
         # Code 302 is a redirect
-        with mocked_server_response(status=302, redirect_location="/foo.bar/") as mock_obj:
+        with mocked_server_response(
+            status=302, redirect_location="/foo.bar/"
+        ) as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
                 with self.connection(
                     extra_params={
@@ -385,7 +399,9 @@ class PySQLRetryTestsMixin:
 
         with pytest.raises(RequestError) as cm:
             with mock_sequential_server_responses(responses):
-                with self.connection(extra_params={**self._retry_policy, **additional_settings}):
+                with self.connection(
+                    extra_params={**self._retry_policy, **additional_settings}
+                ):
                     pass
 
         # The error should be the result of the 500, not because of too many requests.
@@ -405,9 +421,12 @@ class PySQLRetryTestsMixin:
             assert "it will have no affect!" in caplog.text
 
     def test_retry_legacy_behavior_warns_user(self, caplog):
-        with self.connection(extra_params={**self._retry_policy, "_enable_v3_retries": False}):
-            assert "Legacy retry behavior is enabled for this connection." in caplog.text
-
+        with self.connection(
+            extra_params={**self._retry_policy, "_enable_v3_retries": False}
+        ):
+            assert (
+                "Legacy retry behavior is enabled for this connection." in caplog.text
+            )
 
     def test_403_not_retried(self):
         """GIVEN the server returns a code 403

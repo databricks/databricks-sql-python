@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Union
 import re
 
 import lz4.frame
+
 try:
     import pyarrow
 except ImportError:
@@ -103,6 +104,7 @@ class ResultSetQueueFactory(ABC):
         else:
             raise AssertionError("Row set type is not valid")
 
+
 class ColumnTable:
     def __init__(self, column_table, column_names):
         self.column_table = column_table
@@ -123,11 +125,17 @@ class ColumnTable:
         return self.column_table[col_index][row_index]
 
     def slice(self, curr_index, length):
-        sliced_column_table = [column[curr_index : curr_index + length] for column in self.column_table]
+        sliced_column_table = [
+            column[curr_index : curr_index + length] for column in self.column_table
+        ]
         return ColumnTable(sliced_column_table, self.column_names)
 
     def __eq__(self, other):
-        return self.column_table == other.column_table and self.column_names == other.column_names
+        return (
+            self.column_table == other.column_table
+            and self.column_names == other.column_names
+        )
+
 
 class ColumnQueue(ResultSetQueue):
     def __init__(self, column_table: ColumnTable):
@@ -143,7 +151,9 @@ class ColumnQueue(ResultSetQueue):
         return slice
 
     def remaining_rows(self):
-        slice = self.column_table.slice(self.cur_row_index, self.n_valid_rows - self.cur_row_index)
+        slice = self.column_table.slice(
+            self.cur_row_index, self.n_valid_rows - self.cur_row_index
+        )
         self.cur_row_index += slice.num_rows
         return slice
 
@@ -571,7 +581,9 @@ def transform_paramstyle(
     return output
 
 
-def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> "pyarrow.Table":
+def create_arrow_table_from_arrow_file(
+    file_bytes: bytes, description
+) -> "pyarrow.Table":
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
@@ -621,22 +633,26 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
     converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":
-            converted_column_table.append(tuple(v if v is None else Decimal(v) for v in col))
+            converted_column_table.append(
+                tuple(v if v is None else Decimal(v) for v in col)
+            )
         elif description[i][1] == "date":
-            converted_column_table.append(tuple(
-                v if v is None else datetime.date.fromisoformat(v) for v in col
-            ))
+            converted_column_table.append(
+                tuple(v if v is None else datetime.date.fromisoformat(v) for v in col)
+            )
         elif description[i][1] == "timestamp":
-            converted_column_table.append(tuple(
-                (
-                    v
-                    if v is None
-                    else datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S.%f").replace(
-                        tzinfo=pytz.UTC
+            converted_column_table.append(
+                tuple(
+                    (
+                        v
+                        if v is None
+                        else datetime.datetime.strptime(
+                            v, "%Y-%m-%d %H:%M:%S.%f"
+                        ).replace(tzinfo=pytz.UTC)
                     )
+                    for v in col
                 )
-                for v in col
-            ))
+            )
         else:
             converted_column_table.append(col)
 
