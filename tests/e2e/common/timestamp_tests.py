@@ -15,7 +15,10 @@ class TimestampTestsMixin:
     ]
 
     timestamp_and_expected_results = [
-        ("2021-09-30 11:27:35.123+04:00", datetime.datetime(2021, 9, 30, 7, 27, 35, 123000)),
+        (
+            "2021-09-30 11:27:35.123+04:00",
+            datetime.datetime(2021, 9, 30, 7, 27, 35, 123000),
+        ),
         ("2021-09-30 11:27:35+04:00", datetime.datetime(2021, 9, 30, 7, 27, 35)),
         ("2021-09-30 11:27:35.123", datetime.datetime(2021, 9, 30, 11, 27, 35, 123000)),
         ("2021-09-30 11:27:35", datetime.datetime(2021, 9, 30, 11, 27, 35)),
@@ -45,18 +48,24 @@ class TimestampTestsMixin:
 
     def multi_query(self, n_rows=10):
         row_sql = "SELECT " + ", ".join(
-            ["TIMESTAMP('{}')".format(ts) for (ts, _) in self.timestamp_and_expected_results]
+            [
+                "TIMESTAMP('{}')".format(ts)
+                for (ts, _) in self.timestamp_and_expected_results
+            ]
         )
         query = " UNION ALL ".join([row_sql for _ in range(n_rows)])
         expected_matrix = [
-            [dt for (_, dt) in self.timestamp_and_expected_results] for _ in range(n_rows)
+            [dt for (_, dt) in self.timestamp_and_expected_results]
+            for _ in range(n_rows)
         ]
         return query, expected_matrix
 
     def test_timestamps(self):
         with self.cursor({"session_configuration": {"ansi_mode": False}}) as cursor:
             for timestamp, expected in self.timestamp_and_expected_results:
-                cursor.execute("SELECT TIMESTAMP('{timestamp}')".format(timestamp=timestamp))
+                cursor.execute(
+                    "SELECT TIMESTAMP('{timestamp}')".format(timestamp=timestamp)
+                )
                 result = cursor.fetchone()[0]
                 self.assertTimestampsEqual(result, expected)
 
