@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytz
 import datetime
 import decimal
 from abc import ABC, abstractmethod
@@ -11,7 +12,10 @@ from typing import Any, Dict, List, Optional, Union
 import re
 
 import lz4.frame
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 from databricks.sql import OperationalError, exc
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
@@ -33,11 +37,11 @@ logger = logging.getLogger(__name__)
 
 class ResultSetQueue(ABC):
     @abstractmethod
-    def next_n_rows(self, num_rows: int) -> pyarrow.Table:
+    def next_n_rows(self, num_rows: int):
         pass
 
     @abstractmethod
-    def remaining_rows(self) -> pyarrow.Table:
+    def remaining_rows(self):
         pass
 
 
@@ -76,13 +80,15 @@ class ResultSetQueueFactory(ABC):
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
-            arrow_table, n_valid_rows = convert_column_based_set_to_arrow_table(
+            column_table, column_names = convert_column_based_set_to_column_table(
                 t_row_set.columns, description
             )
-            converted_arrow_table = convert_decimals_in_arrow_table(
-                arrow_table, description
+
+            converted_column_table = convert_to_assigned_datatypes_in_column_table(
+                column_table, description
             )
-            return ArrowQueue(converted_arrow_table, n_valid_rows)
+
+            return ColumnQueue(ColumnTable(converted_column_table, column_names))
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return CloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
@@ -96,11 +102,55 @@ class ResultSetQueueFactory(ABC):
         else:
             raise AssertionError("Row set type is not valid")
 
+class ColumnTable:
+    def __init__(self, column_table, column_names):
+        self.column_table = column_table
+        self.column_names = column_names
+
+    @property
+    def num_rows(self):
+        if len(self.column_table) == 0:
+            return 0
+        else:
+            return len(self.column_table[0])
+
+    @property
+    def num_columns(self):
+        return len(self.column_names)
+
+    def get_item(self, col_index, row_index):
+        return self.column_table[col_index][row_index]
+
+    def slice(self, curr_index, length):
+        sliced_column_table = [column[curr_index : curr_index + length] for column in self.column_table]
+        return ColumnTable(sliced_column_table, self.column_names)
+
+    def __eq__(self, other):
+        return self.column_table == other.column_table and self.column_names == other.column_names
+
+class ColumnQueue(ResultSetQueue):
+    def __init__(self, column_table: ColumnTable):
+        self.column_table = column_table
+        self.cur_row_index = 0
+        self.n_valid_rows = column_table.num_rows
+
+    def next_n_rows(self, num_rows):
+        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
+
+        slice = self.column_table.slice(self.cur_row_index, length)
+        self.cur_row_index += slice.num_rows
+        return slice
+
+    def remaining_rows(self):
+        slice = self.column_table.slice(self.cur_row_index, self.n_valid_rows - self.cur_row_index)
+        self.cur_row_index += slice.num_rows
+        return slice
+
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
         self,
-        arrow_table: pyarrow.Table,
+        arrow_table: "pyarrow.Table",
         n_valid_rows: int,
         start_row_index: int = 0,
     ):
@@ -115,7 +165,7 @@ class ArrowQueue(ResultSetQueue):
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
 
-    def next_n_rows(self, num_rows: int) -> pyarrow.Table:
+    def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """Get upto the next n rows of the Arrow dataframe"""
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
         # Note that the table.slice API is not the same as Python's slice
@@ -124,7 +174,7 @@ class ArrowQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
-    def remaining_rows(self) -> pyarrow.Table:
+    def remaining_rows(self) -> "pyarrow.Table":
         slice = self.arrow_table.slice(
             self.cur_row_index, self.n_valid_rows - self.cur_row_index
         )
@@ -184,7 +234,7 @@ class CloudFetchQueue(ResultSetQueue):
         self.table = self._create_next_table()
         self.table_row_index = 0
 
-    def next_n_rows(self, num_rows: int) -> pyarrow.Table:
+    def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """
         Get up to the next n rows of the cloud fetch Arrow dataframes.
 
@@ -216,7 +266,7 @@ class CloudFetchQueue(ResultSetQueue):
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
         return results
 
-    def remaining_rows(self) -> pyarrow.Table:
+    def remaining_rows(self) -> "pyarrow.Table":
         """
         Get all remaining rows of the cloud fetch Arrow dataframes.
 
@@ -237,7 +287,7 @@ class CloudFetchQueue(ResultSetQueue):
             self.table_row_index = 0
         return results
 
-    def _create_next_table(self) -> Union[pyarrow.Table, None]:
+    def _create_next_table(self) -> Union["pyarrow.Table", None]:
         logger.debug(
             "CloudFetchQueue: Trying to get downloaded file for row {}".format(
                 self.start_row_index
@@ -276,7 +326,7 @@ class CloudFetchQueue(ResultSetQueue):
 
         return arrow_table
 
-    def _create_empty_table(self) -> pyarrow.Table:
+    def _create_empty_table(self) -> "pyarrow.Table":
         # Create a 0-row table with just the schema bytes
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
@@ -515,7 +565,7 @@ def transform_paramstyle(
     return output
 
 
-def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> pyarrow.Table:
+def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> "pyarrow.Table":
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
@@ -542,7 +592,7 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     return arrow_table, n_rows
 
 
-def convert_decimals_in_arrow_table(table, description) -> pyarrow.Table:
+def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
     for i, col in enumerate(table.itercolumns()):
         if description[i][1] == "decimal":
             decimal_col = col.to_pandas().apply(
@@ -560,6 +610,33 @@ def convert_decimals_in_arrow_table(table, description) -> pyarrow.Table:
     return table
 
 
+def convert_to_assigned_datatypes_in_column_table(column_table, description):
+
+    converted_column_table = []
+    for i, col in enumerate(column_table):
+        if description[i][1] == "decimal":
+            converted_column_table.append(tuple(v if v is None else Decimal(v) for v in col))
+        elif description[i][1] == "date":
+            converted_column_table.append(tuple(
+                v if v is None else datetime.date.fromisoformat(v) for v in col
+            ))
+        elif description[i][1] == "timestamp":
+            converted_column_table.append(tuple(
+                (
+                    v
+                    if v is None
+                    else datetime.datetime.strptime(v, "%Y-%m-%d %H:%M:%S.%f").replace(
+                        tzinfo=pytz.UTC
+                    )
+                )
+                for v in col
+            ))
+        else:
+            converted_column_table.append(col)
+
+    return converted_column_table
+
+
 def convert_column_based_set_to_arrow_table(columns, description):
     arrow_table = pyarrow.Table.from_arrays(
         [_convert_column_to_arrow_array(c) for c in columns],
@@ -569,6 +646,13 @@ def convert_column_based_set_to_arrow_table(columns, description):
         names=[c[0] for c in description],
     )
     return arrow_table, arrow_table.num_rows
+
+
+def convert_column_based_set_to_column_table(columns, description):
+    column_names = [c[0] for c in description]
+    column_table = [_convert_column_to_list(c) for c in columns]
+
+    return column_table, column_names
 
 
 def _convert_column_to_arrow_array(t_col):
@@ -595,6 +679,26 @@ def _convert_column_to_arrow_array(t_col):
     raise OperationalError("Empty TColumn instance {}".format(t_col))
 
 
+def _convert_column_to_list(t_col):
+    SUPPORTED_FIELD_TYPES = (
+        "boolVal",
+        "byteVal",
+        "i16Val",
+        "i32Val",
+        "i64Val",
+        "doubleVal",
+        "stringVal",
+        "binaryVal",
+    )
+
+    for field in SUPPORTED_FIELD_TYPES:
+        wrapper = getattr(t_col, field)
+        if wrapper:
+            return _create_python_tuple(wrapper)
+
+    raise OperationalError("Empty TColumn instance {}".format(t_col))
+
+
 def _create_arrow_array(t_col_value_wrapper, arrow_type):
     result = t_col_value_wrapper.values
     nulls = t_col_value_wrapper.nulls  # bitfield describing which values are null
@@ -609,3 +713,19 @@ def _create_arrow_array(t_col_value_wrapper, arrow_type):
             result[i] = None
 
     return pyarrow.array(result, type=arrow_type)
+
+
+def _create_python_tuple(t_col_value_wrapper):
+    result = t_col_value_wrapper.values
+    nulls = t_col_value_wrapper.nulls  # bitfield describing which values are null
+    assert isinstance(nulls, bytes)
+
+    # The number of bits in nulls can be both larger or smaller than the number of
+    # elements in result, so take the minimum of both to iterate over.
+    length = min(len(result), len(nulls) * 8)
+
+    for i in range(length):
+        if nulls[i >> 3] & BIT_MASKS[i & 0x7]:
+            result[i] = None
+
+    return tuple(result)
