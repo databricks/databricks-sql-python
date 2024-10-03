@@ -357,7 +357,12 @@ class RequestErrorInfo(
             user_friendly_error_message = "{}: {}".format(
                 user_friendly_error_message, self.error_message
             )
-        return user_friendly_error_message
+        try:
+            error_context = str(self.error)
+        except:
+            error_context = ""
+
+        return user_friendly_error_message + ". " + error_context
 
 
 # Taken from PyHive
