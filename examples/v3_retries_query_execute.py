@@ -28,16 +28,18 @@ import os
 #
 # For complete information about configuring retries, see the docstring for databricks.sql.thrift_backend.ThriftBackend
 
-with sql.connect(server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME"),
-                 http_path       = os.getenv("DATABRICKS_HTTP_PATH"),
-                 access_token    = os.getenv("DATABRICKS_TOKEN"),
-                 _enable_v3_retries = True,
-                 _retry_dangerous_codes=[502,400],
-                 _retry_max_redirects=2) as connection:
+with sql.connect(
+    server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
+    http_path=os.getenv("DATABRICKS_HTTP_PATH"),
+    access_token=os.getenv("DATABRICKS_TOKEN"),
+    _enable_v3_retries=True,
+    _retry_dangerous_codes=[502, 400],
+    _retry_max_redirects=2,
+) as connection:
 
-  with connection.cursor() as cursor:
-    cursor.execute("SELECT * FROM default.diamonds LIMIT 2")
-    result = cursor.fetchall()
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT * FROM default.diamonds LIMIT 2")
+        result = cursor.fetchall()
 
-    for row in result:
-      print(row)
+        for row in result:
+            print(row)

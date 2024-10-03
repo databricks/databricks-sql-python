@@ -40,7 +40,10 @@ from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
 from tests.e2e.common.large_queries_mixin import LargeQueriesMixin
 from tests.e2e.common.timestamp_tests import TimestampTestsMixin
 from tests.e2e.common.decimal_tests import DecimalTestsMixin
-from tests.e2e.common.retry_test_mixins import Client429ResponseMixin, Client503ResponseMixin
+from tests.e2e.common.retry_test_mixins import (
+    Client429ResponseMixin,
+    Client503ResponseMixin,
+)
 from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSuiteMixin
 from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
@@ -57,7 +60,9 @@ unsafe_logger.addHandler(logging.FileHandler("./tests-unsafe.log"))
 # manually decorate DecimalTestsMixin to need arrow support
 for name in loader.getTestCaseNames(DecimalTestsMixin, "test_"):
     fn = getattr(DecimalTestsMixin, name)
-    decorated = skipUnless(pysql_supports_arrow(), "Decimal tests need arrow support")(fn)
+    decorated = skipUnless(pysql_supports_arrow(), "Decimal tests need arrow support")(
+        fn
+    )
     setattr(DecimalTestsMixin, name, decorated)
 
 
@@ -68,7 +73,9 @@ class PySQLPytestTestCase:
 
     error_type = Error
     conf_to_disable_rate_limit_retries = {"_retry_stop_after_attempts_count": 1}
-    conf_to_disable_temporarily_unavailable_retries = {"_retry_stop_after_attempts_count": 1}
+    conf_to_disable_temporarily_unavailable_retries = {
+        "_retry_stop_after_attempts_count": 1
+    }
     arraysize = 1000
     buffer_size_bytes = 104857600
 
@@ -105,7 +112,9 @@ class PySQLPytestTestCase:
     @contextmanager
     def cursor(self, extra_params=()):
         with self.connection(extra_params) as conn:
-            cursor = conn.cursor(arraysize=self.arraysize, buffer_size_bytes=self.buffer_size_bytes)
+            cursor = conn.cursor(
+                arraysize=self.arraysize, buffer_size_bytes=self.buffer_size_bytes
+            )
             try:
                 yield cursor
             finally:
@@ -144,7 +153,9 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
             limits, threads, [True, False]
         ):
             with self.subTest(
-                num_limit=num_limit, num_threads=num_threads, lz4_compression=lz4_compression
+                num_limit=num_limit,
+                num_threads=num_threads,
+                lz4_compression=lz4_compression,
             ):
                 cf_result, noop_result = None, None
                 query = base_query + "LIMIT " + str(num_limit)
@@ -289,7 +300,15 @@ class TestPySQLCoreSuite(
                     ("TYPE_CAT", "string", None, None, None, None, None),
                     ("TYPE_SCHEM", "string", None, None, None, None, None),
                     ("TYPE_NAME", "string", None, None, None, None, None),
-                    ("SELF_REFERENCING_COL_NAME", "string", None, None, None, None, None),
+                    (
+                        "SELF_REFERENCING_COL_NAME",
+                        "string",
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
                     ("REF_GENERATION", "string", None, None, None, None, None),
                 ]
                 assert tables_desc == expected
@@ -390,15 +409,21 @@ class TestPySQLCoreSuite(
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             # Test escape syntax directly
             cursor.execute(
-                "CREATE TABLE IF NOT EXISTS {} AS (SELECT 'you\\'re' AS col_1)".format(table_name)
+                "CREATE TABLE IF NOT EXISTS {} AS (SELECT 'you\\'re' AS col_1)".format(
+                    table_name
+                )
             )
-            cursor.execute("SELECT * FROM {} WHERE col_1 LIKE 'you\\'re'".format(table_name))
+            cursor.execute(
+                "SELECT * FROM {} WHERE col_1 LIKE 'you\\'re'".format(table_name)
+            )
             rows = cursor.fetchall()
             assert rows[0]["col_1"] == "you're"
 
             # Test escape syntax in parameter
             cursor.execute(
-                "SELECT * FROM {} WHERE {}.col_1 LIKE %(var)s".format(table_name, table_name),
+                "SELECT * FROM {} WHERE {}.col_1 LIKE %(var)s".format(
+                    table_name, table_name
+                ),
                 parameters={"var": "you're"},
             )
             rows = cursor.fetchall()
@@ -427,7 +452,9 @@ class TestPySQLCoreSuite(
             cursor.catalogs()
             cursor.fetchall()
             catalogs_desc = cursor.description
-            assert catalogs_desc == [("TABLE_CAT", "string", None, None, None, None, None)]
+            assert catalogs_desc == [
+                ("TABLE_CAT", "string", None, None, None, None, None)
+            ]
 
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
     def test_get_arrow(self):
@@ -564,7 +591,8 @@ class TestPySQLCoreSuite(
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
     @skipIf(
-        True, "Unclear the purpose of this test since urllib3 does not complain when timeout == 0"
+        True,
+        "Unclear the purpose of this test since urllib3 does not complain when timeout == 0",
     )
     def test_socket_timeout(self):
         #  We expect to see a BlockingIO error when the socket is opened
@@ -587,7 +615,9 @@ class TestPySQLCoreSuite(
 
     def test_ssp_passthrough(self):
         for enable_ansi in (True, False):
-            with self.cursor({"session_configuration": {"ansi_mode": enable_ansi}}) as cursor:
+            with self.cursor(
+                {"session_configuration": {"ansi_mode": enable_ansi}}
+            ) as cursor:
                 cursor.execute("SET ansi_mode")
                 assert list(cursor.fetchone()) == ["ansi_mode", str(enable_ansi)]
 
@@ -595,7 +625,9 @@ class TestPySQLCoreSuite(
     def test_timestamps_arrow(self):
         with self.cursor({"session_configuration": {"ansi_mode": False}}) as cursor:
             for timestamp, expected in self.timestamp_and_expected_results:
-                cursor.execute("SELECT TIMESTAMP('{timestamp}')".format(timestamp=timestamp))
+                cursor.execute(
+                    "SELECT TIMESTAMP('{timestamp}')".format(timestamp=timestamp)
+                )
                 arrow_table = cursor.fetchmany_arrow(1)
                 if self.should_add_timezone():
                     ts_type = pyarrow.timestamp("us", tz="Etc/UTC")
@@ -606,7 +638,9 @@ class TestPySQLCoreSuite(
                 # To work consistently across different local timezones, we specify the timezone
                 # of the expected result to
                 # be UTC (what it should be by default on the server)
-                aware_timestamp = expected and expected.replace(tzinfo=datetime.timezone.utc)
+                aware_timestamp = expected and expected.replace(
+                    tzinfo=datetime.timezone.utc
+                )
                 assert result_value == (
                     aware_timestamp and aware_timestamp.timestamp() * 1000000
                 ), "timestamp {} did not match {}".format(timestamp, expected)
@@ -616,14 +650,16 @@ class TestPySQLCoreSuite(
         with self.cursor({"session_configuration": {"ansi_mode": False}}) as cursor:
             query, expected = self.multi_query()
             expected = [
-                [self.maybe_add_timezone_to_timestamp(ts) for ts in row] for row in expected
+                [self.maybe_add_timezone_to_timestamp(ts) for ts in row]
+                for row in expected
             ]
             cursor.execute(query)
             table = cursor.fetchall_arrow()
             # Transpose columnar result to list of rows
             list_of_cols = [c.to_pylist() for c in table]
             result = [
-                [col[row_index] for col in list_of_cols] for row_index in range(table.num_rows)
+                [col[row_index] for col in list_of_cols]
+                for row_index in range(table.num_rows)
             ]
             assert result == expected
 
@@ -640,7 +676,9 @@ class TestPySQLCoreSuite(
 
                 cursor.execute("select CAST('2022-03-02 12:54:56' as TIMESTAMP)")
                 arrow_result_table = cursor.fetchmany_arrow(1)
-                arrow_result_value = arrow_result_table.column(0).combine_chunks()[0].value
+                arrow_result_value = (
+                    arrow_result_table.column(0).combine_chunks()[0].value
+                )
                 ts_type = pyarrow.timestamp("us", tz="Europe/Amsterdam")
 
                 assert arrow_result_table.field(0).type == ts_type
@@ -700,7 +738,9 @@ class TestPySQLCoreSuite(
 
         with self.connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, id `id2`, id `id3` FROM RANGE(1000000) order by RANDOM()")
+            cursor.execute(
+                "SELECT id, id `id2`, id `id3` FROM RANGE(1000000) order by RANDOM()"
+            )
             ars = cursor.active_result_set
 
             # We must manually run this check because thrift_backend always forces `has_been_closed_server_side` to True
@@ -709,14 +749,21 @@ class TestPySQLCoreSuite(
             status_request = ttypes.TGetOperationStatusReq(
                 operationHandle=ars.command_id, getProgressUpdate=False
             )
-            op_status_at_server = ars.thrift_backend._client.GetOperationStatus(status_request)
-            assert op_status_at_server.operationState != ttypes.TOperationState.CLOSED_STATE
+            op_status_at_server = ars.thrift_backend._client.GetOperationStatus(
+                status_request
+            )
+            assert (
+                op_status_at_server.operationState
+                != ttypes.TOperationState.CLOSED_STATE
+            )
 
             conn.close()
 
             # When connection closes, any cursor operations should no longer exist at the server
             with pytest.raises(SessionAlreadyClosedError) as cm:
-                op_status_at_server = ars.thrift_backend._client.GetOperationStatus(status_request)
+                op_status_at_server = ars.thrift_backend._client.GetOperationStatus(
+                    status_request
+                )
 
     def test_closing_a_closed_connection_doesnt_fail(self, caplog):
         caplog.set_level(logging.DEBUG)
@@ -737,7 +784,9 @@ class TestPySQLRetrySuite:
     class HTTP503Suite(Client503ResponseMixin, PySQLPytestTestCase):
         # 503Response suite gets custom error here vs PyODBC
         def test_retry_disabled(self):
-            self._test_retry_disabled_with_message("TEMPORARILY_UNAVAILABLE", OperationalError)
+            self._test_retry_disabled_with_message(
+                "TEMPORARILY_UNAVAILABLE", OperationalError
+            )
 
 
 class TestPySQLUnityCatalogSuite(PySQLPytestTestCase):

@@ -41,7 +41,9 @@ class PySQLStagingIngestionTestSuiteMixin:
         with open(fh, "wb") as fp:
             fp.write(original_text)
 
-        with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
+        with self.connection(
+            extra_params={"staging_allowed_local_path": temp_path}
+        ) as conn:
 
             cursor = conn.cursor()
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
@@ -51,7 +53,9 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         new_fh, new_temp_path = tempfile.mkstemp()
 
-        with self.connection(extra_params={"staging_allowed_local_path": new_temp_path}) as conn:
+        with self.connection(
+            extra_params={"staging_allowed_local_path": new_temp_path}
+        ) as conn:
             cursor = conn.cursor()
             query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
@@ -71,17 +75,19 @@ class PySQLStagingIngestionTestSuiteMixin:
 
             # GET after REMOVE should fail
 
-            with pytest.raises(Error, match="Staging operation over HTTP was unsuccessful: 404"):
+            with pytest.raises(
+                Error, match="Staging operation over HTTP was unsuccessful: 404"
+            ):
                 cursor = conn.cursor()
-                query = (
-                    f"GET 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
-                )
+                query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
                 cursor.execute(query)
 
         os.remove(temp_path)
         os.remove(new_temp_path)
 
-    def test_staging_ingestion_put_fails_without_staging_allowed_local_path(self, ingestion_user):
+    def test_staging_ingestion_put_fails_without_staging_allowed_local_path(
+        self, ingestion_user
+    ):
         """PUT operations are not supported unless the connection was built with
         a parameter called staging_allowed_local_path
         """
@@ -93,7 +99,9 @@ class PySQLStagingIngestionTestSuiteMixin:
         with open(fh, "wb") as fp:
             fp.write(original_text)
 
-        with pytest.raises(Error, match="You must provide at least one staging_allowed_local_path"):
+        with pytest.raises(
+            Error, match="You must provide at least one staging_allowed_local_path"
+        ):
             with self.connection() as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
@@ -119,12 +127,16 @@ class PySQLStagingIngestionTestSuiteMixin:
             Error,
             match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
-            with self.connection(extra_params={"staging_allowed_local_path": base_path}) as conn:
+            with self.connection(
+                extra_params={"staging_allowed_local_path": base_path}
+            ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_put_fails_if_file_exists_and_overwrite_not_set(self, ingestion_user):
+    def test_staging_ingestion_put_fails_if_file_exists_and_overwrite_not_set(
+        self, ingestion_user
+    ):
         """PUT a file into the staging location twice. First command should succeed. Second should fail."""
 
         fh, temp_path = tempfile.mkstemp()
@@ -135,16 +147,22 @@ class PySQLStagingIngestionTestSuiteMixin:
             fp.write(original_text)
 
         def perform_put():
-            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
+            with self.connection(
+                extra_params={"staging_allowed_local_path": temp_path}
+            ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/12/15/file1.csv'"
                 cursor.execute(query)
 
         def perform_remove():
             try:
-                remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/12/15/file1.csv'"
+                remove_query = (
+                    f"REMOVE 'stage://tmp/{ingestion_user}/tmp/12/15/file1.csv'"
+                )
 
-                with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
+                with self.connection(
+                    extra_params={"staging_allowed_local_path": "/"}
+                ) as conn:
                     cursor = conn.cursor()
                     cursor.execute(remove_query)
             except Exception:
@@ -178,7 +196,9 @@ class PySQLStagingIngestionTestSuiteMixin:
             fp.write(original_text)
 
         def perform_put():
-            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
+            with self.connection(
+                extra_params={"staging_allowed_local_path": temp_path}
+            ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
@@ -186,12 +206,16 @@ class PySQLStagingIngestionTestSuiteMixin:
         def perform_remove():
             remove_query = f"REMOVE 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv'"
 
-            with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
+            with self.connection(
+                extra_params={"staging_allowed_local_path": "/"}
+            ) as conn:
                 cursor = conn.cursor()
                 cursor.execute(remove_query)
 
         def perform_get():
-            with self.connection(extra_params={"staging_allowed_local_path": temp_path}) as conn:
+            with self.connection(
+                extra_params={"staging_allowed_local_path": temp_path}
+            ) as conn:
                 cursor = conn.cursor()
                 query = f"GET 'stage://tmp/{some_other_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
                 cursor.execute(query)
@@ -232,7 +256,9 @@ class PySQLStagingIngestionTestSuiteMixin:
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(self, ingestion_user):
+    def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(
+        self, ingestion_user
+    ):
         staging_allowed_local_path = "/var/www/html"
         target_file = ""
 
@@ -244,7 +270,9 @@ class PySQLStagingIngestionTestSuiteMixin:
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_staging_ingestion_invalid_staging_path_fails_at_server(self, ingestion_user):
+    def test_staging_ingestion_invalid_staging_path_fails_at_server(
+        self, ingestion_user
+    ):
         staging_allowed_local_path = "/var/www/html"
         target_file = "index.html"
 
@@ -278,12 +306,29 @@ class PySQLStagingIngestionTestSuiteMixin:
                 original_text = "hello world!".encode("utf-8")
                 fp.write(original_text)
             put_query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/{id(temp_path)}.csv' OVERWRITE"
-            remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/15/{id(temp_path)}.csv'"
+            remove_query = (
+                f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/15/{id(temp_path)}.csv'"
+            )
             return fh, temp_path, put_query, remove_query
 
-        fh1, temp_path1, put_query1, remove_query1 = generate_file_and_path_and_queries()
-        fh2, temp_path2, put_query2, remove_query2 = generate_file_and_path_and_queries()
-        fh3, temp_path3, put_query3, remove_query3 = generate_file_and_path_and_queries()
+        (
+            fh1,
+            temp_path1,
+            put_query1,
+            remove_query1,
+        ) = generate_file_and_path_and_queries()
+        (
+            fh2,
+            temp_path2,
+            put_query2,
+            remove_query2,
+        ) = generate_file_and_path_and_queries()
+        (
+            fh3,
+            temp_path3,
+            put_query3,
+            remove_query3,
+        ) = generate_file_and_path_and_queries()
 
         with self.connection(
             extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}

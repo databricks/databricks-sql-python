@@ -8,7 +8,6 @@ from databricks.sql.auth.retry import DatabricksRetryPolicy, RequestHistory
 
 
 class TestRetry:
-
     @pytest.fixture()
     def retry_policy(self) -> DatabricksRetryPolicy:
         return DatabricksRetryPolicy(
@@ -41,7 +40,9 @@ class TestRetry:
         t_mock.assert_called_with(3)
 
     @patch("time.sleep")
-    def test_sleep__retry_after_present_but_not_binding(self, t_mock, retry_policy, error_history):
+    def test_sleep__retry_after_present_but_not_binding(
+        self, t_mock, retry_policy, error_history
+    ):
         retry_policy._retry_start_time = time.time()
         retry_policy.history = [error_history, error_history]
         retry_policy.sleep(HTTPResponse(status=503, headers={"Retry-After": "1"}))
