@@ -1,6 +1,7 @@
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
+
 try:
     import pyarrow
 except ImportError:
@@ -26,7 +27,7 @@ from databricks.sql.utils import (
     inject_parameters,
     transform_paramstyle,
     ColumnTable,
-    ColumnQueue
+    ColumnQueue,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -1155,7 +1156,7 @@ class ResultSet:
         for row_index in range(table.num_rows):
             curr_row = []
             for col_index in range(table.num_columns):
-                curr_row.append(table.get_item(col_index,  row_index))
+                curr_row.append(table.get_item(col_index, row_index))
             result.append(ResultRow(*curr_row))
 
         return result
@@ -1238,7 +1239,10 @@ class ResultSet:
         if result1.column_names != result2.column_names:
             raise ValueError("The columns in the results don't match")
 
-        merged_result = [result1.column_table[i] + result2.column_table[i] for i in range(result1.num_columns)]
+        merged_result = [
+            result1.column_table[i] + result2.column_table[i]
+            for i in range(result1.num_columns)
+        ]
         return ColumnTable(merged_result, result1.column_names)
 
     def fetchmany_columnar(self, size: int):
@@ -1254,9 +1258,9 @@ class ResultSet:
         self._next_row_index += results.num_rows
 
         while (
-                n_remaining_rows > 0
-                and not self.has_been_closed_server_side
-                and self.has_more_rows
+            n_remaining_rows > 0
+            and not self.has_been_closed_server_side
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)

@@ -3,7 +3,12 @@ import unittest, pytest, decimal
 from typing import Any, Dict
 from databricks.sql.parameters.native import dbsql_parameter_from_primitive
 
-from databricks.sql.utils import ParamEscaper, inject_parameters, transform_paramstyle, ParameterStructure
+from databricks.sql.utils import (
+    ParamEscaper,
+    inject_parameters,
+    transform_paramstyle,
+    ParameterStructure,
+)
 
 pe = ParamEscaper()
 
@@ -200,26 +205,31 @@ class TestInlineToNativeTransformer(object):
                 "query with like wildcard",
                 'select * from table where field like "%"',
                 {},
-                'select * from table where field like "%"'
+                'select * from table where field like "%"',
             ),
             (
                 "query with named param and like wildcard",
                 'select :param from table where field like "%"',
                 {"param": None},
-                'select :param from table where field like "%"'
+                'select :param from table where field like "%"',
             ),
             (
                 "query with doubled wildcards",
-                'select 1 where '' like "%%"',
+                "select 1 where " ' like "%%"',
                 {"param": None},
-                'select 1 where '' like "%%"',
-            )
+                "select 1 where " ' like "%%"',
+            ),
         ),
     )
     def test_transformer(
         self, label: str, query: str, params: Dict[str, Any], expected: str
     ):
 
-        _params = [dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()]
-        output = transform_paramstyle(query, _params, param_structure=ParameterStructure.NAMED)
+        _params = [
+            dbsql_parameter_from_primitive(value=value, name=name)
+            for name, value in params.items()
+        ]
+        output = transform_paramstyle(
+            query, _params, param_structure=ParameterStructure.NAMED
+        )
         assert output == expected

@@ -53,7 +53,9 @@ class TestComplexTypes(PySQLPytestTestCase):
     @pytest.mark.parametrize("field", [("array_col"), ("map_col"), ("struct_col")])
     def test_read_complex_types_as_string(self, field, table_fixture):
         """Confirms the return type of a complex type that is returned as a string"""
-        with self.cursor(extra_params={"_use_arrow_native_complex_types": False}) as cursor:
+        with self.cursor(
+            extra_params={"_use_arrow_native_complex_types": False}
+        ) as cursor:
             result = cursor.execute(
                 "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
             ).fetchone()

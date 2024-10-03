@@ -624,7 +624,6 @@ class ThriftBackend:
 
     @staticmethod
     def _hive_schema_to_arrow_schema(t_table_schema):
-
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -733,10 +732,10 @@ class ThriftBackend:
 
         if pyarrow:
             schema_bytes = (
-                    t_result_set_metadata_resp.arrowSchema
-                    or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
-                    .serialize()
-                    .to_pybytes()
+                t_result_set_metadata_resp.arrowSchema
+                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                .serialize()
+                .to_pybytes()
             )
         else:
             schema_bytes = None
