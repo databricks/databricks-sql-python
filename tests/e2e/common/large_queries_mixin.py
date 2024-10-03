@@ -36,7 +36,9 @@ class LargeQueriesMixin:
         num_fetches = max(math.ceil(n / 10000), 1)
         latency_ms = int((time.time() - start_time) * 1000 / num_fetches), 1
         print(
-            "Fetched {} rows with an avg latency of {} per fetch, ".format(n, latency_ms)
+            "Fetched {} rows with an avg latency of {} per fetch, ".format(
+                n, latency_ms
+            )
             + "assuming 10K fetch size."
         )
 
@@ -55,10 +57,14 @@ class LargeQueriesMixin:
                 cursor.connection.lz4_compression = lz4_compression
                 uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
                 cursor.execute(
-                    "SELECT id, {uuids} FROM RANGE({rows})".format(uuids=uuids, rows=rows)
+                    "SELECT id, {uuids} FROM RANGE({rows})".format(
+                        uuids=uuids, rows=rows
+                    )
                 )
                 assert lz4_compression == cursor.active_result_set.lz4_compressed
-                for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
+                for row_id, row in enumerate(
+                    self.fetch_rows(cursor, rows, fetchmany_size)
+                ):
                     assert row[0] == row_id  # Verify no rows are dropped in the middle.
                     assert len(row[1]) == 36
 
