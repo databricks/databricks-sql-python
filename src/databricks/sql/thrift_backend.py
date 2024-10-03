@@ -625,11 +625,6 @@ class ThriftBackend:
     @staticmethod
     def _hive_schema_to_arrow_schema(t_table_schema):
 
-        if pyarrow is None:
-            raise ImportError(
-                "pyarrow is required to convert Hive schema to Arrow schema"
-            )
-
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
