@@ -31,6 +31,7 @@ from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 import logging
 
 BIT_MASKS = [1, 2, 4, 8, 16, 32, 64, 128]
+DEFAULT_ERROR_CONTEXT = "Unknown error"
 
 logger = logging.getLogger(__name__)
 
@@ -407,7 +408,12 @@ class RequestErrorInfo(
             user_friendly_error_message = "{}: {}".format(
                 user_friendly_error_message, self.error_message
             )
-        return user_friendly_error_message
+        try:
+            error_context = str(self.error)
+        except:
+            error_context = DEFAULT_ERROR_CONTEXT
+
+        return user_friendly_error_message + ". " + error_context
 
 
 # Taken from PyHive
