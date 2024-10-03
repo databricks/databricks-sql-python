@@ -7,7 +7,10 @@ import uuid
 import threading
 from typing import List, Union
 
-import pyarrow
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 import thrift.transport.THttpClient
 import thrift.protocol.TBinaryProtocol
 import thrift.transport.TSocket
@@ -621,6 +624,7 @@ class ThriftBackend:
 
     @staticmethod
     def _hive_schema_to_arrow_schema(t_table_schema):
+
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -726,12 +730,17 @@ class ThriftBackend:
         description = self._hive_schema_to_description(
             t_result_set_metadata_resp.schema
         )
-        schema_bytes = (
-            t_result_set_metadata_resp.arrowSchema
-            or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
-            .serialize()
-            .to_pybytes()
-        )
+
+        if pyarrow:
+            schema_bytes = (
+                    t_result_set_metadata_resp.arrowSchema
+                    or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                    .serialize()
+                    .to_pybytes()
+            )
+        else:
+            schema_bytes = None
+
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         if direct_results and direct_results.resultSet:
@@ -827,7 +836,7 @@ class ThriftBackend:
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
-            canReadArrowResult=True,
+            canReadArrowResult=True if pyarrow else False,
             canDecompressLZ4Result=lz4_compression,
             canDownloadResult=use_cloud_fetch,
             confOverlay={
