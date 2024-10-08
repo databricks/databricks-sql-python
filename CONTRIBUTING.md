@@ -85,18 +85,18 @@ We use [Pytest](https://docs.pytest.org/en/7.1.x/) as our test runner. Invoke it
 Unit tests do not require a Databricks account.
 
 ```bash
-poetry run python -m pytest tests/unit
+poetry run python -m pytest databricks_sql_connector_core/tests/unit
 ```
 #### Only a specific test file
 
 ```bash
-poetry run python -m pytest tests/unit/tests.py
+poetry run python -m pytest databricks_sql_connector_core/tests/unit/tests.py
 ```
 
 #### Only a specific method
 
 ```bash
-poetry run python -m pytest tests/unit/tests.py::ClientTestSuite::test_closing_connection_closes_commands
+poetry run python -m pytest databricks_sql_connector_core/tests/unit/tests.py::ClientTestSuite::test_closing_connection_closes_commands
 ```
 
 #### e2e Tests
@@ -133,7 +133,7 @@ There are several e2e test suites available:
 To execute the core test suite:
 
 ```bash
-poetry run python -m pytest tests/e2e/driver_tests.py::PySQLCoreTestSuite
+poetry run python -m pytest databricks_sql_connector_core/tests/e2e/driver_tests.py::PySQLCoreTestSuite
 ```
 
 The `PySQLCoreTestSuite` namespace contains tests for all of the connector's basic features and behaviours. This is the default namespace where tests should be written unless they require specially configured clusters or take an especially long-time to execute by design.
