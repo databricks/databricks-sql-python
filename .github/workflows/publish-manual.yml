@@ -1,4 +1,4 @@
-name: Publish to PyPI [Production]
+name: Publish to PyPI Manual [Production]
 
 # Allow manual triggering of the workflow
 on:
@@ -67,16 +67,15 @@ jobs:
       #----------------------------------------------
       - name: Build and publish databricks sql connector to PyPI
         working-directory: ./databricks_sql_connector
-        uses: JRubics/poetry-publish@v1.10  # Use the poetry-publish action to handle publishing
-        with:
-          pypi_token: ${{ secrets.PROD_PYPI_TOKEN }}  # The PyPI token for authentication, stored in GitHub Secrets
-
+        run: |
+          poetry build
+          poetry publish -u __token__ -p ${{ secrets.PROD_PYPI_TOKEN }}  # Publish with PyPI token
       #----------------------------------------------
       # Step 7: Build and publish the second package to PyPI
       #----------------------------------------------
 
       - name: Build and publish databricks sql connector core to PyPI
         working-directory: ./databricks_sql_connector_core
-        uses: JRubics/poetry-publish@v1.10  # Use the poetry-publish action to handle publishing
-        with:
-          pypi_token: ${{ secrets.PROD_PYPI_TOKEN }}  # The PyPI token for authentication, stored in GitHub Secrets
+        run: |
+          poetry build
+          poetry publish -u __token__ -p ${{ secrets.PROD_PYPI_TOKEN }}  # Publish with PyPI token
