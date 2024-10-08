@@ -2,12 +2,10 @@ name: Publish to PyPI [Production]
 
 # Allow manual triggering of the workflow
 on:
-  workflow_dispatch:  # This enables manual triggering of the workflow
-    inputs:
-      version:  # The version input that will be provided manually when the workflow is triggered
-        description: 'Specify the version to release (e.g., 4.0.0, 4.0.0.b0)'
-        required: true
-        default: '4.0.0.b0'  # Set a default version value
+  workflow_dispatch: {}
+  push:
+    branches:
+      - 'PECO-1803/connector-split'
 
 jobs:
   publish:
