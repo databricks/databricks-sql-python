@@ -1,0 +1,84 @@
+name: Publish to PyPI [Production]
+
+# Allow manual triggering of the workflow
+on:
+  workflow_dispatch:  # This enables manual triggering of the workflow
+    inputs:
+      version:  # The version input that will be provided manually when the workflow is triggered
+        description: 'Specify the version to release (e.g., 4.0.0, 4.0.0.b0)'
+        required: true
+        default: '4.0.0.b0'  # Set a default version value
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      #----------------------------------------------
+      # Step 1: Check out the repository code
+      #----------------------------------------------
+      - name: Check out repository
+        uses: actions/checkout@v2  # Check out the repository to access the code
+
+      #----------------------------------------------
+      # Step 2: Set up Python environment
+      #----------------------------------------------
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9  # Specify the Python version to be used
+
+      #----------------------------------------------
+      # Step 3: Install and configure Poetry
+      #----------------------------------------------
+      - name: Install Poetry
+        uses: snok/install-poetry@v1  # Install Poetry, the Python package manager
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+#      #----------------------------------------------
+#      # Step 4: Load cached virtual environment (if available)
+#      #----------------------------------------------
+#      - name: Load cached venv
+#        id: cached-poetry-dependencies
+#        uses: actions/cache@v2
+#        with:
+#          path: .venv  # Path to the virtual environment
+#          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+#          # Cache key is generated based on OS, Python version, repo name, and the `poetry.lock` file hash
+
+#      #----------------------------------------------
+#      # Step 5: Install dependencies if the cache is not found
+#      #----------------------------------------------
+#      - name: Install dependencies
+#        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'  # Only run if the cache was not hit
+#        run: poetry install --no-interaction --no-root  # Install dependencies without interaction
+
+#      #----------------------------------------------
+#      # Step 6: Update the version to the manually provided version
+#      #----------------------------------------------
+#      - name: Update pyproject.toml with the specified version
+#        run: poetry version ${{ github.event.inputs.version }}  # Use the version provided by the user input
+
+      #----------------------------------------------
+      # Step 7: Build and publish the first package to PyPI
+      #----------------------------------------------
+      - name: Build and publish databricks sql connector to PyPI
+        working-directory: ./databricks_sql_connector
+        uses: JRubics/poetry-publish@v1.10  # Use the poetry-publish action to handle publishing
+        with:
+          pypi_token: ${{ secrets.PROD_PYPI_TOKEN }}  # The PyPI token for authentication, stored in GitHub Secrets
+
+      #----------------------------------------------
+      # Step 7: Build and publish the second package to PyPI
+      #----------------------------------------------
+
+      - name: Build and publish databricks sql connector core to PyPI
+        working-directory: ./databricks_sql_connector_core
+        uses: JRubics/poetry-publish@v1.10  # Use the poetry-publish action to handle publishing
+        with:
+          pypi_token: ${{ secrets.PROD_PYPI_TOKEN }}  # The PyPI token for authentication, stored in GitHub Secrets
