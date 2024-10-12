@@ -17,10 +17,10 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       #----------------------------------------------
@@ -38,7 +38,7 @@ jobs:
       #----------------------------------------------
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
@@ -68,10 +68,10 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       #----------------------------------------------
@@ -89,7 +89,7 @@ jobs:
       #----------------------------------------------
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
@@ -120,10 +120,10 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       #----------------------------------------------
@@ -141,7 +141,7 @@ jobs:
       #----------------------------------------------
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
