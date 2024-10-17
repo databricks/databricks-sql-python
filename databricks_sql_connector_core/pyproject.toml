@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sql-connector-core"
-version = "4.0.0.b0"
+version = "4.0.1"
 description = "Databricks SQL Connector core for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 packages = [{ include = "databricks", from = "src" }]
