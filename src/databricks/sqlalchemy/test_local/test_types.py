@@ -128,6 +128,7 @@ uppercase_type_map = {
     sqlalchemy.types.INT: DatabricksDataType.INT,
     sqlalchemy.types.SMALLINT: DatabricksDataType.SMALLINT,
     sqlalchemy.types.TIMESTAMP: DatabricksDataType.TIMESTAMP,
+    sqlalchemy.types.JSON: DatabricksDataType.STRING,
     TINYINT: DatabricksDataType.TINYINT,
     TIMESTAMP: DatabricksDataType.TIMESTAMP,
     TIMESTAMP_NTZ: DatabricksDataType.TIMESTAMP_NTZ,
