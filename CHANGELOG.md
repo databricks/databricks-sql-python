@@ -1,5 +1,10 @@
 # Release History
 
+# 3.5.0 (2024-10-18)
+
+- Create a non pyarrow flow to handle small results for the column set (databricks/databricks-sql-python#440 by @jprakash-db)
+- Fix: On non-retryable error, ensure PySQL includes useful information in error (databricks/databricks-sql-python#447 by @shivam2680)
+
 # 3.4.0 (2024-08-27)
 
 - Unpin pandas to support v2.2.2 (databricks/databricks-sql-python#416 by @kfollesdal)
