@@ -1,5 +1,9 @@
 # Release History
 
+# 3.4.1 (2024-10-18)
+
+- Appended original exception context in case of non-retryable errors (databricks/databricks-sql-python#447 by @shivam2680)
+
 # 3.4.0 (2024-08-27)
 
 - Unpin pandas to support v2.2.2 (databricks/databricks-sql-python#416 by @kfollesdal)
