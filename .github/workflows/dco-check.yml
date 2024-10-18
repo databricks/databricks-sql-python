@@ -10,7 +10,7 @@ jobs:
         id: dco-check
         uses: tisonkun/actions-dco@v1.1
       - name: Comment about DCO status
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         if: ${{ failure() }}
         with:
           script: |
