@@ -1,5 +1,9 @@
 # Release History
 
+# 3.6.0 (2024-10-25)
+
+- Support encryption headers in the cloud fetch request (https://github.com/databricks/databricks-sql-python/pull/460 by @jackyhu-db)
+
 # 3.5.0 (2024-10-18)
 
 - Create a non pyarrow flow to handle small results for the column set (databricks/databricks-sql-python#440 by @jprakash-db)
