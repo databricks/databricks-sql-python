@@ -100,6 +100,7 @@ class ResultSetDownloadHandler:
                 self.link.fileLink,
                 timeout=self.settings.download_timeout,
                 verify=self._ssl_options.tls_verify,
+                headers=self.link.httpHeaders
                 # TODO: Pass cert from `self._ssl_options`
             )
             response.raise_for_status()
