@@ -83,23 +83,33 @@ def DateFromTicks(ticks):
 def TimestampFromTicks(ticks):
     return Timestamp(*time.localtime(ticks)[:6])
 
+
 def singleton(class_):
     instances = {}
+
     def getinstance(*args, **kwargs):
         if class_ not in instances:
             instances[class_] = class_(*args, **kwargs)
         return instances[class_]
+
     return getinstance
+
 
 @singleton
 class DefaultNone(object):
     """Used to represent a default value of None so that this code can distinguish between
     the user passing None versus a default value of None being used.
     """
+
     pass
 
 
-def connect(server_hostname, http_path, access_token: Optional[Union[str, DefaultNone]]=DefaultNone, **kwargs) -> "Connection":
+def connect(
+    server_hostname,
+    http_path,
+    access_token: Optional[Union[str, DefaultNone]] = DefaultNone,
+    **kwargs
+) -> "Connection":
     from .client import Connection
 
     return Connection(server_hostname, http_path, access_token, **kwargs)

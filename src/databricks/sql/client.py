@@ -209,7 +209,7 @@ class Connection:
         elif access_token is None:
             logger.info(
                 "Connection access_token was passed a None value. U2M OAuth will be attempted"
-                )
+            )
         else:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
