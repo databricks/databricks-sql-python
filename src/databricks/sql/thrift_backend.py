@@ -817,6 +817,7 @@ class ThriftBackend:
         cursor,
         use_cloud_fetch=True,
         parameters=[],
+        perform_async=False,
     ):
         assert session_handle is not None
 
@@ -846,7 +847,8 @@ class ThriftBackend:
             parameters=parameters,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
-        return self._handle_execute_response(resp, cursor)
+
+        return self._handle_execute_response(resp, cursor, perform_async)
 
     def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
         assert session_handle is not None
@@ -934,14 +936,16 @@ class ThriftBackend:
         resp = self.make_request(self._client.GetColumns, req)
         return self._handle_execute_response(resp, cursor)
 
-    def _handle_execute_response(self, resp, cursor):
+    def _handle_execute_response(self, resp, cursor, perform_async=False):
         cursor.active_op_handle = resp.operationHandle
         self._check_direct_results_for_error(resp.directResults)
 
-        final_operation_state = self._wait_until_command_done(
+        if perform_async:
+            final_operation_state=ttypes.TStatusCode.STILL_EXECUTING_STATUS
+        else:
+            final_operation_state=self._wait_until_command_done(
             resp.operationHandle,
-            resp.directResults and resp.directResults.operationStatus,
-        )
+            resp.directResults and resp.directResults.operationStatus)
 
         return self._results_message_to_execute_response(resp, final_operation_state)
 

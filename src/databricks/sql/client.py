@@ -733,6 +733,7 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
+        perform_async = True
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -796,6 +797,7 @@ class Cursor:
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
+            perform_async=perform_async,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -811,6 +813,11 @@ class Cursor:
             )
 
         return self
+
+    def executeAsync(self,
+                     operation: str,
+                     parameters: Optional[TParameterCollection] = None,):
+        return execute(operation, parameters, True)
 
     def executemany(self, operation, seq_of_parameters):
         """
