@@ -12,7 +12,7 @@ import os
 import decimal
 from uuid import UUID
 
-from databricks.sql import __version__
+from databricks.sql import __version__, DefaultNone
 from databricks.sql import *
 from databricks.sql.exc import (
     OperationalError,
@@ -63,7 +63,7 @@ class Connection:
         self,
         server_hostname: str,
         http_path: str,
-        access_token: Optional[str] = None,
+        access_token: Optional[Union[str, DefaultNone]] = None,
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Optional[Dict[str, Any]] = None,
         catalog: Optional[str] = None,
@@ -204,7 +204,13 @@ class Connection:
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
-        if access_token:
+        if access_token is DefaultNone:
+            access_token = None
+        elif access_token is None:
+            logger.info(
+                "Connection access_token was passed a None value. U2M OAuth will be attempted"
+                )
+        else:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
 
