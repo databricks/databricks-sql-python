@@ -2,16 +2,17 @@ name: Code Quality Checks
 on:
   push:
     branches:
-      - main
+      - PECO-1803/connector-split
   pull_request:
     branches:
-      - main
+      - PECO-1803/connector-split
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [3.8, 3.9, "3.10", "3.11"]
+        package: ["databricks_sql_connector_core", "databricks_sql_connector"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -48,21 +49,26 @@ jobs:
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
       #----------------------------------------------
       # install your root project, if required
       #----------------------------------------------
       - name: Install library
         run: poetry install --no-interaction
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
       #----------------------------------------------
       #              run test suite
       #----------------------------------------------
       - name: Run tests
+        if: maxtrix.package != "databricks_sql_connector"
         run: poetry run python -m pytest tests/unit
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
   check-linting:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [3.8, 3.9, "3.10"]
+        package: ["databricks_sql_connector_core"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -99,22 +105,26 @@ jobs:
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
       #----------------------------------------------
       # install your root project, if required
       #----------------------------------------------
       - name: Install library
         run: poetry install --no-interaction
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
       #----------------------------------------------
       #              black the code
       #----------------------------------------------
       - name: Black
         run: poetry run black --check src
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
 
   check-types:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: [3.8, 3.9, "3.10"]
+        package: ["databricks_sql_connector_core"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -151,11 +161,13 @@ jobs:
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
       #----------------------------------------------
       # install your root project, if required
       #----------------------------------------------
       - name: Install library
         run: poetry install --no-interaction
+        working-directory: ${{ github.workspace }}/${{ matrix.package }}
       #----------------------------------------------
       #              mypy the code
       #----------------------------------------------
@@ -163,3 +175,5 @@ jobs:
         run: |
           mkdir .mypy_cache # Workaround for bad error message "error: --install-types failed (no mypy cache directory)"; see https://github.com/python/mypy/issues/10768#issuecomment-2178450153
           poetry run mypy --install-types --non-interactive src
+          working-directory: ${{ github.workspace }}/${{ matrix.package }}
+
