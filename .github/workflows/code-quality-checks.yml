@@ -11,9 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
-        with:
-          ref: ${{ github.head_ref }}
+        uses: actions/checkout@v3
 
       - name: Build
         uses: ./.github/workflows/build.yml
