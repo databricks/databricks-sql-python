@@ -1,0 +1,76 @@
+name: Build and validate package
+
+on:
+  workflow_call:
+    inputs:
+      target_path:
+        description: "The path of the package or service to build"
+        required: true
+        type: string
+      run_test:
+        description: "Run lint and test"
+        required: true
+        type: boolean
+
+jobs:
+  build_package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ 3.8, 3.9, "3.10", "3.11" ]
+    steps:
+      - name: Set up python ${{ matrix.python-version }}
+        id: setup-python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      #----------------------------------------------
+      #  -----  install & configure poetry  -----
+      #----------------------------------------------
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      #----------------------------------------------
+      #       load cached venv if cache exists
+      #----------------------------------------------
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v2
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+      #----------------------------------------------
+      # install dependencies if cache does not exist
+      #----------------------------------------------
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+        working-directory: ${{ github.workspace }}/${{ github.event.inputs.target_path  }}
+
+      #----------------------------------------------
+      # install your root project, if required
+      #----------------------------------------------
+      - name: Install library
+        run: poetry install --no-interaction
+        working-directory: ${{ github.event.inputs.target_path  }}
+
+      - name: Check-linting
+        if: ${{ inputs.run_test }}
+        run: poetry run black --check src
+        working-directory: ${{ github.event.inputs.target_path  }}
+
+      - name: Run unit test
+        if: ${{ inputs.run_test }}
+        run: poetry run python -m pytest tests/unit
+        working-directory: ${{ github.event.inputs.target_path }}
+
+#      - name: Check types
+#        if: ${{ inputs.run_test }}
+#        run: |
+#          mkdir .mypy_cache # Workaround for bad error message "error: --install-types failed (no mypy cache directory)"; see https://github.com/python/mypy/issues/10768#issuecomment-2178450153
+#          poetry run mypy --install-types --non-interactive src
+#          working-directory: ${{ github.event.inputs.target_path  }}
