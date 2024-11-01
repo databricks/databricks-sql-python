@@ -60,7 +60,7 @@ jobs:
       #              run test suite
       #----------------------------------------------
       - name: Run tests
-        if: maxtrix.package != "databricks_sql_connector"
+        if: ${{ maxtrix.package != 'databricks_sql_connector'}}
         run: poetry run python -m pytest tests/unit
         working-directory: ${{ github.workspace }}/${{ matrix.package }}
   check-linting:
