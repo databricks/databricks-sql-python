@@ -769,6 +769,66 @@ class ThriftBackend:
             arrow_schema_bytes=schema_bytes,
         )
 
+    def get_execution_result(self, op_handle):
+
+        assert op_handle is not None
+
+        req = ttypes.TFetchResultsReq(
+            operationHandle=ttypes.TOperationHandle(
+                op_handle.operationId,
+                op_handle.operationType,
+                False,
+                op_handle.modifiedRowCount,
+            ),
+            maxRows=max_rows,
+            maxBytes=max_bytes,
+            orientation=ttypes.TFetchOrientation.FETCH_NEXT,
+            includeResultSetMetadata=True,
+        )
+
+        resp = self.make_request(self._client.FetchResults, req)
+
+        t_result_set_metadata_resp = resp.resultSetMetaData
+
+        lz4_compressed = t_result_set_metadata_resp.lz4Compressed
+        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
+        has_more_rows = resp.hasMoreRows
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema
+        )
+
+        if pyarrow:
+            schema_bytes = (
+                t_result_set_metadata_resp.arrowSchema
+                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                .serialize()
+                .to_pybytes()
+            )
+        else:
+            schema_bytes = None
+
+        queue = ResultSetQueueFactory.build_queue(
+            row_set_type=resp.resultSetMetadata.resultFormat,
+            t_row_set=resp.results,
+            arrow_schema_bytes=schema_bytes,
+            max_download_threads=self.max_download_threads,
+            lz4_compressed=lz4_compressed,
+            description=description,
+            ssl_options=self._ssl_options,
+        )
+
+        return ExecuteResponse(
+            arrow_queue=queue,
+            status=resp.status,
+            has_been_closed_server_side=has_been_closed_server_side,
+            has_more_rows=has_more_rows,
+            lz4_compressed=lz4_compressed,
+            is_staging_operation=is_staging_operation,
+            command_handle=resp.operationHandle,
+            description=description,
+            arrow_schema_bytes=schema_bytes,
+        )
+
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
         if initial_operation_status_resp:
             self._check_command_not_in_error_or_closed_state(
@@ -785,6 +845,12 @@ class ThriftBackend:
             poll_resp = self._poll_for_status(op_handle)
             operation_state = poll_resp.operationState
             self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
+        return operation_state
+
+    def get_query_status(self, op_handle):
+        poll_resp = self._poll_for_status(op_handle)
+        operation_state = poll_resp.status
+        self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
     @staticmethod
@@ -848,7 +914,10 @@ class ThriftBackend:
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 
-        return self._handle_execute_response(resp, cursor, perform_async)
+        if perform_async:
+            return self._handle_execute_response_async(resp, cursor)
+        else:
+            return self._handle_execute_response(resp, cursor)
 
     def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
         assert session_handle is not None
@@ -936,18 +1005,33 @@ class ThriftBackend:
         resp = self.make_request(self._client.GetColumns, req)
         return self._handle_execute_response(resp, cursor)
 
-    def _handle_execute_response(self, resp, cursor, perform_async=False):
+    def _handle_execute_response(self, resp, cursor):
         cursor.active_op_handle = resp.operationHandle
         self._check_direct_results_for_error(resp.directResults)
 
-        if perform_async:
-            final_operation_state=ttypes.TStatusCode.STILL_EXECUTING_STATUS
-        else:
-            final_operation_state=self._wait_until_command_done(
+        final_operation_state = self._wait_until_command_done(
             resp.operationHandle,
-            resp.directResults and resp.directResults.operationStatus)
+            resp.directResults and resp.directResults.operationStatus,
+            )
 
         return self._results_message_to_execute_response(resp, final_operation_state)
+
+    def _handle_execute_response_async(self, resp, cursor):
+        cursor.active_op_handle = resp.operationHandle
+        self._check_direct_results_for_error(resp.directResults)
+        operation_status = resp.status.statusCode
+
+        return ExecuteResponse(
+            arrow_queue=None,
+            status=operation_status,
+            has_been_closed_server_side=None,
+            has_more_rows=None,
+            lz4_compressed=None,
+            is_staging_operation=None,
+            command_handle=resp.operationHandle,
+            description=None,
+            arrow_schema_bytes=None,
+        )
 
     def fetch_results(
         self,

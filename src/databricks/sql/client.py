@@ -733,7 +733,7 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
-        perform_async = True
+        perform_async = False
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -814,10 +814,37 @@ class Cursor:
 
         return self
 
-    def executeAsync(self,
+    def execute_async(self,
                      operation: str,
                      parameters: Optional[TParameterCollection] = None,):
-        return execute(operation, parameters, True)
+        return self.execute(operation, parameters, True)
+
+    def get_query_status(self):
+        self._check_not_closed()
+        return self.thrift_backend.get_query_status(self.active_op_handle)
+
+    def get_execution_result(self):
+        self._check_not_closed()
+
+        operation_state = self.get_query_status()
+        if operation_state.statusCode == ttypes.TStatusCode.SUCCESS_STATUS or operation_state.statusCode == ttypes.TStatusCode.SUCCESS_WITH_INFO_STATUS:
+            execute_response=self.thrift_backend.get_execution_result(self.active_op_handle)
+            self.active_result_set = ResultSet(
+                self.connection,
+                execute_response,
+                self.thrift_backend,
+                self.buffer_size_bytes,
+                self.arraysize,
+            )
+
+            if execute_response.is_staging_operation:
+                self._handle_staging_operation(
+                    staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
+                )
+
+            return self
+        else:
+            raise Error(f"get_execution_result failed with status code {operation_state.statusCode}")
 
     def executemany(self, operation, seq_of_parameters):
         """
@@ -1126,7 +1153,7 @@ class ResultSet:
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
 
-        if execute_response.arrow_queue:
+        if execute_response.arrow_queue or True:
             # In this case the server has taken the fast path and returned an initial batch of
             # results
             self.results = execute_response.arrow_queue
