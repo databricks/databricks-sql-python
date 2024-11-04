@@ -769,7 +769,7 @@ class ThriftBackend:
             arrow_schema_bytes=schema_bytes,
         )
 
-    def get_execution_result(self, op_handle):
+    def get_execution_result(self, op_handle, cursor):
 
         assert op_handle is not None
 
@@ -780,15 +780,15 @@ class ThriftBackend:
                 False,
                 op_handle.modifiedRowCount,
             ),
-            maxRows=max_rows,
-            maxBytes=max_bytes,
+            maxRows=cursor.arraysize,
+            maxBytes=cursor.buffer_size_bytes,
             orientation=ttypes.TFetchOrientation.FETCH_NEXT,
             includeResultSetMetadata=True,
         )
 
         resp = self.make_request(self._client.FetchResults, req)
 
-        t_result_set_metadata_resp = resp.resultSetMetaData
+        t_result_set_metadata_resp = resp.resultSetMetadata
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
@@ -797,15 +797,12 @@ class ThriftBackend:
             t_result_set_metadata_resp.schema
         )
 
-        if pyarrow:
-            schema_bytes = (
-                t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
-                .serialize()
-                .to_pybytes()
-            )
-        else:
-            schema_bytes = None
+        schema_bytes = (
+            t_result_set_metadata_resp.arrowSchema
+            or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+            .serialize()
+            .to_pybytes()
+        )
 
         queue = ResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
@@ -820,11 +817,11 @@ class ThriftBackend:
         return ExecuteResponse(
             arrow_queue=queue,
             status=resp.status,
-            has_been_closed_server_side=has_been_closed_server_side,
+            has_been_closed_server_side=False,
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
             is_staging_operation=is_staging_operation,
-            command_handle=resp.operationHandle,
+            command_handle=op_handle,
             description=description,
             arrow_schema_bytes=schema_bytes,
         )
@@ -847,9 +844,9 @@ class ThriftBackend:
             self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
-    def get_query_status(self, op_handle):
+    def get_query_state(self, op_handle):
         poll_resp = self._poll_for_status(op_handle)
-        operation_state = poll_resp.status
+        operation_state = poll_resp.operationState
         self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
@@ -883,7 +880,7 @@ class ThriftBackend:
         cursor,
         use_cloud_fetch=True,
         parameters=[],
-        perform_async=False,
+        async_op=False,
     ):
         assert session_handle is not None
 
@@ -914,7 +911,7 @@ class ThriftBackend:
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 
-        if perform_async:
+        if async_op:
             return self._handle_execute_response_async(resp, cursor)
         else:
             return self._handle_execute_response(resp, cursor)
@@ -1012,7 +1009,7 @@ class ThriftBackend:
         final_operation_state = self._wait_until_command_done(
             resp.operationHandle,
             resp.directResults and resp.directResults.operationStatus,
-            )
+        )
 
         return self._results_message_to_execute_response(resp, final_operation_state)
 

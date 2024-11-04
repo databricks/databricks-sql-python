@@ -733,7 +733,7 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
-        perform_async = False
+        async_op=False,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -797,7 +797,7 @@ class Cursor:
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
-            perform_async=perform_async,
+            async_op=async_op,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -805,6 +805,7 @@ class Cursor:
             self.thrift_backend,
             self.buffer_size_bytes,
             self.arraysize,
+            async_op,
         )
 
         if execute_response.is_staging_operation:
@@ -814,21 +815,25 @@ class Cursor:
 
         return self
 
-    def execute_async(self,
-                     operation: str,
-                     parameters: Optional[TParameterCollection] = None,):
+    def execute_async(
+        self,
+        operation: str,
+        parameters: Optional[TParameterCollection] = None,
+    ):
         return self.execute(operation, parameters, True)
 
-    def get_query_status(self):
+    def get_query_state(self):
         self._check_not_closed()
-        return self.thrift_backend.get_query_status(self.active_op_handle)
+        return self.thrift_backend.get_query_state(self.active_op_handle)
 
     def get_execution_result(self):
         self._check_not_closed()
 
-        operation_state = self.get_query_status()
-        if operation_state.statusCode == ttypes.TStatusCode.SUCCESS_STATUS or operation_state.statusCode == ttypes.TStatusCode.SUCCESS_WITH_INFO_STATUS:
-            execute_response=self.thrift_backend.get_execution_result(self.active_op_handle)
+        operation_state = self.get_query_state()
+        if operation_state == ttypes.TOperationState.FINISHED_STATE:
+            execute_response = self.thrift_backend.get_execution_result(
+                self.active_op_handle, self
+            )
             self.active_result_set = ResultSet(
                 self.connection,
                 execute_response,
@@ -844,7 +849,9 @@ class Cursor:
 
             return self
         else:
-            raise Error(f"get_execution_result failed with status code {operation_state.statusCode}")
+            raise Error(
+                f"get_execution_result failed with Operation status {operation_state}"
+            )
 
     def executemany(self, operation, seq_of_parameters):
         """
@@ -1131,6 +1138,7 @@ class ResultSet:
         thrift_backend: ThriftBackend,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = 10000,
+        async_op=False,
     ):
         """
         A ResultSet manages the results of a single command.
@@ -1153,7 +1161,7 @@ class ResultSet:
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
 
-        if execute_response.arrow_queue or True:
+        if execute_response.arrow_queue or async_op:
             # In this case the server has taken the fast path and returned an initial batch of
             # results
             self.results = execute_response.arrow_queue
