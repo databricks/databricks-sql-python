@@ -285,13 +285,26 @@ class DatabricksRetryPolicy(Retry):
         """
         retry_after = self.get_retry_after(response)
         if retry_after:
-            backoff = self.get_backoff_time()
+            backoff = self.get_exponential_backoff()
             proposed_wait = max(backoff, retry_after)
             self.check_proposed_wait(proposed_wait)
             time.sleep(proposed_wait)
             return True
 
         return False
+
+    def get_exponential_backoff(self) -> float:
+        """
+        This method implements the exponential backoff algorithm to calculate the delay between retries.
+        :return:
+        """
+
+        current_attempt = self.stop_after_attempts_count - self.total
+        proposed_backoff = (2**current_attempt) * self.delay_min
+        proposed_backoff = min(proposed_backoff, self.delay_max)
+        self.check_proposed_wait(proposed_backoff)
+
+        return proposed_backoff
 
     def get_backoff_time(self) -> float:
         """Calls urllib3's built-in get_backoff_time.
