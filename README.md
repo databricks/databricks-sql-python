@@ -22,7 +22,12 @@ For the latest documentation, see
 
 ## Quickstart
 
-Install the library with `pip install databricks-sql-connector[pyarrow]`
+### Installing the core library
+Install using `pip install databricks-sql-connector`
+
+### Installing the core library with PyArrow
+Install using `pip install databricks-sql-connector[pyarrow]`
+
 
 ```bash
 export DATABRICKS_HOST=********.databricks.com
@@ -59,6 +64,18 @@ or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/123456789
 > Note: This example uses [Databricks OAuth U2M](https://docs.databricks.com/en/dev-tools/auth/oauth-u2m.html) 
 > to authenticate the target Databricks user account and needs to open the browser for authentication. So it 
 > can only run on the user's machine.
+
+## SQLAlchemy
+Starting from `databricks-sql-connector` version 4.0.0 SQLAlchemy support has been extracted to a new library `databricks-sqlalchemy`.
+
+- Github repository [databricks-sqlalchemy github](https://github.com/databricks/databricks-sqlalchemy)
+- PyPI [databricks-sqlalchemy pypi](https://pypi.org/project/databricks-sqlalchemy/)
+
+### Quick SQLAlchemy guide
+Users can now choose between using the SQLAlchemy v1 or SQLAlchemy v2 dialects with the connector core
+
+- Install the latest SQLAlchemy v1 using `pip install databricks-sqlalchemy~=1.0`
+- Install SQLAlchemy v2 using `pip install databricks-sqlalchemy`
 
 
 ## Contributing
