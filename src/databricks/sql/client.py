@@ -52,6 +52,13 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 
 logger = logging.getLogger(__name__)
 
+if pyarrow is None:
+    logger.warning(
+        "[WARN] pyarrow is not installed by default since databricks-sql-connector 4.0.0,"
+        "any arrow specific api (e.g. fetchmany_arrow) and cloud fetch will be disabled."
+        "If you need these features, please run pip install pyarrow or pip install databricks-sql-connector[pyarrow] to install"
+    )
+
 DEFAULT_RESULT_BUFFER_SIZE_BYTES = 104857600
 DEFAULT_ARRAY_SIZE = 100000
 
