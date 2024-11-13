@@ -24,14 +24,9 @@ numpy = [
 openpyxl = "^3.0.10"
 urllib3 = ">=1.26"
 
-databricks-sqlalchemy = { version = ">=2.0.0", optional = true }
 pyarrow = { version = ">=14.0.1,<17", optional=true }
-alembic = { version = "^1.0.11", optional = true }
-
 
 [tool.poetry.extras]
-databricks-sqlalchemy = ["databricks-sqlalchemy"]
-alembic = ["databricks-sqlalchemy", "alembic"]
 pyarrow = ["pyarrow"]
 
 [tool.poetry.dev-dependencies]
@@ -44,9 +39,6 @@ pytest-dotenv = "^0.5.2"
 [tool.poetry.urls]
 "Homepage" = "https://github.com/databricks/databricks-sql-python"
 "Bug Tracker" = "https://github.com/databricks/databricks-sql-python/issues"
-
-[tool.poetry.plugins."sqlalchemy.dialects"]
-"databricks" = "databricks.sqlalchemy:DatabricksDialect"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -64,5 +56,5 @@ markers = {"reviewed" = "Test case has been reviewed by Databricks"}
 minversion = "6.0"
 log_cli = "false"
 log_cli_level = "INFO"
-testpaths = ["tests", "src/databricks/sqlalchemy/test_local"]
+testpaths = ["tests"]
 env_files = ["test.env"]
