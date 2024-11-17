@@ -187,8 +187,9 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
         with self.cursor() as cursor:
             cursor.execute_async(long_running_query)
 
-            ## Polling
+            ## Polling after every 10 seconds
             while isExecuting(cursor.get_query_state()):
+                time.sleep(10)
                 log.info("Polling the status in test_execute_async")
 
             cursor.get_execution_result()

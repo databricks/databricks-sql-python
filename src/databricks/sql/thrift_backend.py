@@ -7,6 +7,8 @@ import uuid
 import threading
 from typing import List, Union
 
+from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
+
 try:
     import pyarrow
 except ImportError:
@@ -844,7 +846,7 @@ class ThriftBackend:
             self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
-    def get_query_state(self, op_handle):
+    def get_query_state(self, op_handle) -> "TOperationState":
         poll_resp = self._poll_for_status(op_handle)
         operation_state = poll_resp.operationState
         self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)

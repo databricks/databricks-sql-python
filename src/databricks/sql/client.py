@@ -46,7 +46,7 @@ from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkParameter,
+    TSparkParameter, TOperationState,
 )
 
 
@@ -764,6 +764,11 @@ class Cursor:
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
 
+        async_op:
+        Denotes whether the execute command will execute the request asynchronously or not
+        By default it is set to False, if set True the execution request will be submitted and the code
+        will be non-blocking. User can later poll and request the result when ready
+
         :returns self
         """
 
@@ -819,14 +824,35 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
-    ):
-        return self.execute(operation, parameters, True)
+    ) -> "Cursor":
+        """
 
-    def get_query_state(self):
+        Execute a query and do not wait for it to complete and just move ahead
+
+        Internally it calls execute function with async_op=True
+        :param operation:
+        :param parameters:
+        :return:
+        """
+        self.execute(operation, parameters, True)
+        return self
+
+    def get_query_state(self) -> "TOperationState":
+        """
+        Get the state of the async executing query or basically poll the status of the query
+
+        :return:
+        """
         self._check_not_closed()
         return self.thrift_backend.get_query_state(self.active_op_handle)
 
     def get_execution_result(self):
+        """
+
+        Checks for the status of the async executing query and fetches the result if the query is finished
+        If executed sets the active_result_set to the obtained result
+        :return:
+        """
         self._check_not_closed()
 
         operation_state = self.get_query_state()
