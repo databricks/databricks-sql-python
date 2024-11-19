@@ -1,11 +1,8 @@
-from os import error
 import time
-from unittest.mock import Mock, patch, call
+from unittest.mock import patch, call
 import pytest
-from requests import Request
 from urllib3 import HTTPResponse
 from databricks.sql.auth.retry import DatabricksRetryPolicy, RequestHistory, CommandType
-from databricks.sql.exc import MaxRetryDurationError
 from urllib3.exceptions import MaxRetryError
 
 class TestRetry:
