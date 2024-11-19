@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 import typing
 from enum import Enum
@@ -287,14 +288,14 @@ class DatabricksRetryPolicy(Retry):
         if retry_after:
             proposed_wait = retry_after
         else:
-            proposed_wait = self.get_exponential_backoff()
+            proposed_wait = self.get_backoff_time()
 
         proposed_wait = min(proposed_wait, self.delay_max)
         self.check_proposed_wait(proposed_wait)
         time.sleep(proposed_wait)
         return True
 
-    def get_exponential_backoff(self) -> float:
+    def get_backoff_time(self) -> float:
         """
         This method implements the exponential backoff algorithm to calculate the delay between retries.
 
@@ -306,6 +307,9 @@ class DatabricksRetryPolicy(Retry):
 
         current_attempt = self.stop_after_attempts_count - self.total
         proposed_backoff = (2**current_attempt) * self.delay_min
+        if self.backoff_jitter != 0.0:
+            proposed_backoff += random.random() * self.backoff_jitter
+
         proposed_backoff = min(proposed_backoff, self.delay_max)
         self.check_proposed_wait(proposed_backoff)
 
