@@ -174,7 +174,7 @@ class PySQLRetryTestsMixin:
     def test_retry_exponential_backoff(self):
         """GIVEN the retry policy is configured for reasonable exponential backoff
         WHEN the server sends nothing but 429 responses with retry-afters
-        THEN the connector will use those retry-afters as a floor
+        THEN the connector will use those retry-afters values as delay
         """
         retry_policy = self._retry_policy.copy()
         retry_policy["_retry_delay_min"] = 1
@@ -191,10 +191,10 @@ class PySQLRetryTestsMixin:
             assert isinstance(cm.value.args[1], MaxRetryDurationError)
 
             # With setting delay_min to 1, the expected retry delays should be:
-            # 3, 3, 4
-            # The first 2 retries are allowed, the 3rd retry puts the total duration over the limit
+            # 3, 3, 3, 3
+            # The first 3 retries are allowed, the 4th retry puts the total duration over the limit
             # of 10 seconds
-            assert mock_obj.return_value.getresponse.call_count == 3
+            assert mock_obj.return_value.getresponse.call_count == 4
             assert duration > 6
 
             # Should be less than 7, but this is a safe margin for CI/CD slowness
