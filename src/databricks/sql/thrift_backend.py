@@ -914,7 +914,7 @@ class ThriftBackend:
         resp = self.make_request(self._client.ExecuteStatement, req)
 
         if async_op:
-            return self._handle_execute_response_async(resp, cursor)
+            self._handle_execute_response_async(resp, cursor)
         else:
             return self._handle_execute_response(resp, cursor)
 
@@ -1018,19 +1018,6 @@ class ThriftBackend:
     def _handle_execute_response_async(self, resp, cursor):
         cursor.active_op_handle = resp.operationHandle
         self._check_direct_results_for_error(resp.directResults)
-        operation_status = resp.status.statusCode
-
-        return ExecuteResponse(
-            arrow_queue=None,
-            status=operation_status,
-            has_been_closed_server_side=None,
-            has_more_rows=None,
-            lz4_compressed=None,
-            is_staging_operation=None,
-            command_handle=resp.operationHandle,
-            description=None,
-            arrow_schema_bytes=None,
-        )
 
     def fetch_results(
         self,

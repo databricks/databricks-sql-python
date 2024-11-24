@@ -79,6 +79,7 @@ class PySQLPytestTestCase:
     }
     arraysize = 1000
     buffer_size_bytes = 104857600
+    POLLING_INTERVAL = 2
 
     @pytest.fixture(autouse=True)
     def get_details(self, connection_details):
@@ -187,12 +188,12 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
         with self.cursor() as cursor:
             cursor.execute_async(long_running_query)
 
-            ## Polling after every 10 seconds
+            ## Polling after every POLLING_INTERVAL seconds
             while isExecuting(cursor.get_query_state()):
-                time.sleep(10)
+                time.sleep(self.POLLING_INTERVAL)
                 log.info("Polling the status in test_execute_async")
 
-            cursor.get_execution_result()
+            cursor.get_async_execution_result()
             result = cursor.fetchall()
 
             assert result[0].asDict() == {"count(1)": 0}
