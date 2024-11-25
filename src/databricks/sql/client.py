@@ -47,7 +47,8 @@ from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TSparkParameter, TOperationState,
+    TSparkParameter,
+    TOperationState,
 )
 
 
@@ -888,7 +889,7 @@ class Cursor:
                 ttypes.TOperationState.PENDING_STATE,
             ]
 
-        while(is_executing(self.get_query_state())):
+        while is_executing(self.get_query_state()):
             # Poll after some default time
             time.sleep(self.ASYNC_DEFAULT_POLLING_INTERVAL)
 
