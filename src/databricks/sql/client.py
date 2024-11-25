@@ -766,11 +766,6 @@ class Cursor:
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
 
-        async_op:
-        Denotes whether the execute command will execute the request asynchronously or not
-        By default it is set to False, if set True the execution request will be submitted and the code
-        will be non-blocking. User can later poll and request the result when ready
-
         :returns self
         """
 
