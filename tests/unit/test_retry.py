@@ -5,6 +5,7 @@ from urllib3 import HTTPResponse
 from databricks.sql.auth.retry import DatabricksRetryPolicy, RequestHistory, CommandType
 from urllib3.exceptions import MaxRetryError
 
+
 class TestRetry:
     @pytest.fixture()
     def retry_policy(self) -> DatabricksRetryPolicy:
@@ -33,7 +34,9 @@ class TestRetry:
         retry_policy.history = [error_history, error_history]
         retry_policy.sleep(HTTPResponse(status=503))
 
-        expected_backoff_time = self.calculate_backoff_time(0, retry_policy.delay_min, retry_policy.delay_max)
+        expected_backoff_time = self.calculate_backoff_time(
+            0, retry_policy.delay_min, retry_policy.delay_max
+        )
         t_mock.assert_called_with(expected_backoff_time)
 
     @patch("time.sleep")
@@ -50,10 +53,16 @@ class TestRetry:
 
         expected_backoff_times = []
         for attempt in range(num_attempts):
-            expected_backoff_times.append(self.calculate_backoff_time(attempt, retry_policy.delay_min, retry_policy.delay_max))
+            expected_backoff_times.append(
+                self.calculate_backoff_time(
+                    attempt, retry_policy.delay_min, retry_policy.delay_max
+                )
+            )
 
         # Asserts if the sleep value was called in the expected order
-        t_mock.assert_has_calls([call(expected_time) for expected_time in expected_backoff_times])
+        t_mock.assert_has_calls(
+            [call(expected_time) for expected_time in expected_backoff_times]
+        )
 
     @patch("time.sleep")
     def test_excessive_retry_attempts_error(self, t_mock, retry_policy):
