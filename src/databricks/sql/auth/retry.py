@@ -305,7 +305,7 @@ class DatabricksRetryPolicy(Retry):
         :return:
         """
 
-        current_attempt = self.stop_after_attempts_count - self.total
+        current_attempt = self.stop_after_attempts_count - int(self.total or 0)
         proposed_backoff = (2**current_attempt) * self.delay_min
         if self.backoff_jitter != 0.0:
             proposed_backoff += random.random() * self.backoff_jitter
