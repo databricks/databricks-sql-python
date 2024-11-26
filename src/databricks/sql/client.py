@@ -1,3 +1,4 @@
+import time
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
 import pandas
@@ -47,6 +48,7 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
+    TOperationState,
 )
 
 
@@ -430,6 +432,8 @@ class Cursor:
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
+        self.ASYNC_DEFAULT_POLLING_INTERVAL = 2
+
     # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
     def __enter__(self) -> "Cursor":
         return self
@@ -796,6 +800,7 @@ class Cursor:
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
+            async_op=False,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -811,6 +816,106 @@ class Cursor:
             )
 
         return self
+
+    def execute_async(
+        self,
+        operation: str,
+        parameters: Optional[TParameterCollection] = None,
+    ) -> "Cursor":
+        """
+
+        Execute a query and do not wait for it to complete and just move ahead
+
+        :param operation:
+        :param parameters:
+        :return:
+        """
+        param_approach = self._determine_parameter_approach(parameters)
+        if param_approach == ParameterApproach.NONE:
+            prepared_params = NO_NATIVE_PARAMS
+            prepared_operation = operation
+
+        elif param_approach == ParameterApproach.INLINE:
+            prepared_operation, prepared_params = self._prepare_inline_parameters(
+                operation, parameters
+            )
+        elif param_approach == ParameterApproach.NATIVE:
+            normalized_parameters = self._normalize_tparametercollection(parameters)
+            param_structure = self._determine_parameter_structure(normalized_parameters)
+            transformed_operation = transform_paramstyle(
+                operation, normalized_parameters, param_structure
+            )
+            prepared_operation, prepared_params = self._prepare_native_parameters(
+                transformed_operation, normalized_parameters, param_structure
+            )
+
+        self._check_not_closed()
+        self._close_and_clear_active_result_set()
+        self.thrift_backend.execute_command(
+            operation=prepared_operation,
+            session_handle=self.connection._session_handle,
+            max_rows=self.arraysize,
+            max_bytes=self.buffer_size_bytes,
+            lz4_compression=self.connection.lz4_compression,
+            cursor=self,
+            use_cloud_fetch=self.connection.use_cloud_fetch,
+            parameters=prepared_params,
+            async_op=True,
+        )
+
+        return self
+
+    def get_query_state(self) -> "TOperationState":
+        """
+        Get the state of the async executing query or basically poll the status of the query
+
+        :return:
+        """
+        self._check_not_closed()
+        return self.thrift_backend.get_query_state(self.active_op_handle)
+
+    def get_async_execution_result(self):
+        """
+
+        Checks for the status of the async executing query and fetches the result if the query is finished
+        Otherwise it will keep polling the status of the query till there is a Not pending state
+        :return:
+        """
+        self._check_not_closed()
+
+        def is_executing(operation_state) -> "bool":
+            return not operation_state or operation_state in [
+                ttypes.TOperationState.RUNNING_STATE,
+                ttypes.TOperationState.PENDING_STATE,
+            ]
+
+        while is_executing(self.get_query_state()):
+            # Poll after some default time
+            time.sleep(self.ASYNC_DEFAULT_POLLING_INTERVAL)
+
+        operation_state = self.get_query_state()
+        if operation_state == ttypes.TOperationState.FINISHED_STATE:
+            execute_response = self.thrift_backend.get_execution_result(
+                self.active_op_handle, self
+            )
+            self.active_result_set = ResultSet(
+                self.connection,
+                execute_response,
+                self.thrift_backend,
+                self.buffer_size_bytes,
+                self.arraysize,
+            )
+
+            if execute_response.is_staging_operation:
+                self._handle_staging_operation(
+                    staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
+                )
+
+            return self
+        else:
+            raise Error(
+                f"get_execution_result failed with Operation status {operation_state}"
+            )
 
     def executemany(self, operation, seq_of_parameters):
         """
