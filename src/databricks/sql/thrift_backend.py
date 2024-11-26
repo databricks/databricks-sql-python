@@ -7,6 +7,8 @@ import uuid
 import threading
 from typing import List, Union
 
+from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
+
 try:
     import pyarrow
 except ImportError:
@@ -769,6 +771,63 @@ class ThriftBackend:
             arrow_schema_bytes=schema_bytes,
         )
 
+    def get_execution_result(self, op_handle, cursor):
+
+        assert op_handle is not None
+
+        req = ttypes.TFetchResultsReq(
+            operationHandle=ttypes.TOperationHandle(
+                op_handle.operationId,
+                op_handle.operationType,
+                False,
+                op_handle.modifiedRowCount,
+            ),
+            maxRows=cursor.arraysize,
+            maxBytes=cursor.buffer_size_bytes,
+            orientation=ttypes.TFetchOrientation.FETCH_NEXT,
+            includeResultSetMetadata=True,
+        )
+
+        resp = self.make_request(self._client.FetchResults, req)
+
+        t_result_set_metadata_resp = resp.resultSetMetadata
+
+        lz4_compressed = t_result_set_metadata_resp.lz4Compressed
+        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
+        has_more_rows = resp.hasMoreRows
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema
+        )
+
+        schema_bytes = (
+            t_result_set_metadata_resp.arrowSchema
+            or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+            .serialize()
+            .to_pybytes()
+        )
+
+        queue = ResultSetQueueFactory.build_queue(
+            row_set_type=resp.resultSetMetadata.resultFormat,
+            t_row_set=resp.results,
+            arrow_schema_bytes=schema_bytes,
+            max_download_threads=self.max_download_threads,
+            lz4_compressed=lz4_compressed,
+            description=description,
+            ssl_options=self._ssl_options,
+        )
+
+        return ExecuteResponse(
+            arrow_queue=queue,
+            status=resp.status,
+            has_been_closed_server_side=False,
+            has_more_rows=has_more_rows,
+            lz4_compressed=lz4_compressed,
+            is_staging_operation=is_staging_operation,
+            command_handle=op_handle,
+            description=description,
+            arrow_schema_bytes=schema_bytes,
+        )
+
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
         if initial_operation_status_resp:
             self._check_command_not_in_error_or_closed_state(
@@ -785,6 +844,12 @@ class ThriftBackend:
             poll_resp = self._poll_for_status(op_handle)
             operation_state = poll_resp.operationState
             self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
+        return operation_state
+
+    def get_query_state(self, op_handle) -> "TOperationState":
+        poll_resp = self._poll_for_status(op_handle)
+        operation_state = poll_resp.operationState
+        self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
     @staticmethod
@@ -817,6 +882,7 @@ class ThriftBackend:
         cursor,
         use_cloud_fetch=True,
         parameters=[],
+        async_op=False,
     ):
         assert session_handle is not None
 
@@ -846,7 +912,11 @@ class ThriftBackend:
             parameters=parameters,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
-        return self._handle_execute_response(resp, cursor)
+
+        if async_op:
+            self._handle_execute_response_async(resp, cursor)
+        else:
+            return self._handle_execute_response(resp, cursor)
 
     def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
         assert session_handle is not None
@@ -944,6 +1014,10 @@ class ThriftBackend:
         )
 
         return self._results_message_to_execute_response(resp, final_operation_state)
+
+    def _handle_execute_response_async(self, resp, cursor):
+        cursor.active_op_handle = resp.operationHandle
+        self._check_direct_results_for_error(resp.directResults)
 
     def fetch_results(
         self,

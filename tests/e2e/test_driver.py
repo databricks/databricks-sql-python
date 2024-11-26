@@ -36,6 +36,7 @@ from tests.e2e.common.predicates import (
     compare_dbr_versions,
     is_thrift_v5_plus,
 )
+from databricks.sql.thrift_api.TCLIService import ttypes
 from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
 from tests.e2e.common.large_queries_mixin import LargeQueriesMixin
 from tests.e2e.common.timestamp_tests import TimestampTestsMixin
@@ -78,6 +79,7 @@ class PySQLPytestTestCase:
     }
     arraysize = 1000
     buffer_size_bytes = 104857600
+    POLLING_INTERVAL = 2
 
     @pytest.fixture(autouse=True)
     def get_details(self, connection_details):
@@ -174,6 +176,27 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
                 assert len(cf_result) == len(noop_result)
                 for i in range(len(cf_result)):
                     assert cf_result[i] == noop_result[i]
+
+    def test_execute_async(self):
+        def isExecuting(operation_state):
+            return not operation_state or operation_state in [
+                ttypes.TOperationState.RUNNING_STATE,
+                ttypes.TOperationState.PENDING_STATE,
+            ]
+
+        long_running_query = "SELECT COUNT(*) FROM RANGE(10000 * 16) x JOIN RANGE(10000) y ON FROM_UNIXTIME(x.id * y.id, 'yyyy-MM-dd') LIKE '%not%a%date%'"
+        with self.cursor() as cursor:
+            cursor.execute_async(long_running_query)
+
+            ## Polling after every POLLING_INTERVAL seconds
+            while isExecuting(cursor.get_query_state()):
+                time.sleep(self.POLLING_INTERVAL)
+                log.info("Polling the status in test_execute_async")
+
+            cursor.get_async_execution_result()
+            result = cursor.fetchall()
+
+            assert result[0].asDict() == {"count(1)": 0}
 
 
 # Exclude Retry tests because they require specific setups, and LargeQueries too slow for core
