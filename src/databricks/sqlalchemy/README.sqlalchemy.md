@@ -49,6 +49,27 @@ engine = create_engine(
     )
 ```
 
+### Using OAuth instead of PAT
+
+It is possible to use an OAuth token instead of a PAT token. The token can be obtained from an `oauth_service_principal` like so (M2M using a Service Principal):
+
+```python
+from databricks.sdk.core import Config, oauth_service_principal
+from sqlalchemy import create_engine
+
+def credential_provider():
+    config = Config(
+        host          = f"https://{os.environ.get("DATABRICKS_HOSTNAME")}",
+        client_id     = os.environ.get("DATABRICKS_CLIENT_ID"),
+        client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET")
+    )
+    return oauth_service_principal(config)
+
+access_token = credential_provider().oauth_token().access_token
+...
+```
+
+
 ## Types
 
 The [SQLAlchemy type hierarchy](https://docs.sqlalchemy.org/en/20/core/type_basics.html) contains backend-agnostic type implementations (represented in CamelCase) and backend-specific types (represented in UPPERCASE). The majority of SQLAlchemy's [CamelCase](https://docs.sqlalchemy.org/en/20/core/type_basics.html#the-camelcase-datatypes) types are supported. This means that a SQLAlchemy application using these types should "just work" with Databricks.
