@@ -7,6 +7,9 @@ on:
 
 jobs:
   run-e2e-tests:
+    strategy:
+      matrix:
+        numpy-version: [ "1.*", "2.*" ]
     runs-on: ubuntu-latest
     environment: azure-prod
     env:
@@ -53,7 +56,15 @@ jobs:
       #----------------------------------------------
       #              run test suite
       #----------------------------------------------
+      - name: Install NumPy version
+        run: |
+          source .venv/bin/activate
+          pip install "numpy==${{ matrix.numpy-version }}"
       - name: Run e2e tests
-        run: poetry run python -m pytest tests/e2e
+        run: |
+          source .venv/bin/activate
+          python -m pytest tests/e2e
       - name: Run SQL Alchemy tests
-        run: poetry run python -m pytest src/databricks/sqlalchemy/test_local
+        run: |
+          source .venv/bin/activate  
+          python -m pytest src/databricks/sqlalchemy/test_local
