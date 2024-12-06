@@ -17,6 +17,7 @@ See `examples/parameters.py` in this repository for a runnable demo.
 
 - A query executed with native parameters can contain at most 255 parameter markers
 - The maximum size of all parameterized values cannot exceed 1MB
+- For volume operations such as PUT, native parameters are not supported
 
 ## SQL Syntax
 
