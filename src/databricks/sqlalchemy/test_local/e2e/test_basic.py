@@ -1,9 +1,11 @@
 import datetime
 import decimal
+import re
 from typing import Tuple, Union, List
 from unittest import skipIf
 
 import pytest
+import sqlalchemy
 from sqlalchemy import (
     Column,
     MetaData,
@@ -19,6 +21,12 @@ from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.schema import DropColumnComment, SetColumnComment
 from sqlalchemy.types import BOOLEAN, DECIMAL, Date, Integer, String
+
+from databricks.sqlalchemy.base import (
+    SQLALCHEMY_TAG,
+    add_sqla_tag_if_not_present,
+    sqlalchemy_version_tag_pat,
+)
 
 try:
     from sqlalchemy.orm import declarative_base
@@ -118,20 +126,6 @@ def test_can_connect(db_engine):
     simple_query = "SELECT 1"
     result = run_query(db_engine, simple_query)
     assert len(result) == 1
-
-
-def test_connect_args(db_engine):
-    """Verify that extra connect args passed to sqlalchemy.create_engine are passed to DBAPI
-
-    This will most commonly happen when partners supply a user agent entry
-    """
-
-    conn = db_engine.connect()
-    connection_headers = conn.connection.thrift_backend._transport._headers
-    user_agent = connection_headers["User-Agent"]
-
-    expected = f"(sqlalchemy + {USER_AGENT_TOKEN})"
-    assert expected in user_agent
 
 
 @pytest.mark.skipif(sqlalchemy_1_3(), reason="Pandas requires SQLAlchemy >= 1.4")
@@ -448,25 +442,80 @@ def test_has_table_across_schemas(
                 conn.execute(text("DROP TABLE test_has_table;"))
 
 
-def test_user_agent_adjustment(db_engine):
-    # If .connect() is called multiple times on an engine, don't keep pre-pending the user agent
-    # https://github.com/databricks/databricks-sql-python/issues/192
-    c1 = db_engine.connect()
-    c2 = db_engine.connect()
+class TestUserAgent:
+    @pytest.fixture(scope="class")
+    def expected_sqlalchemy_tag(self):
+        import sqlalchemy
 
-    def get_conn_user_agent(conn):
+        user_agent_tag = f"sqlalchemy/{sqlalchemy.__version__}"
+        return user_agent_tag
+
+    def get_conn_user_agent(self, conn):
         return conn.connection.dbapi_connection.thrift_backend._transport._headers.get(
             "User-Agent"
         )
 
-    ua1 = get_conn_user_agent(c1)
-    ua2 = get_conn_user_agent(c2)
-    same_ua = ua1 == ua2
+    def test_user_agent_adjustment(self, db_engine):
+        # If .connect() is called multiple times on an engine, don't keep pre-pending the user agent
+        # https://github.com/databricks/databricks-sql-python/issues/192
+        c1 = db_engine.connect()
+        c2 = db_engine.connect()
 
-    c1.close()
-    c2.close()
+        ua1 = self.get_conn_user_agent(c1)
+        ua2 = self.get_conn_user_agent(c2)
+        same_ua = ua1 == ua2
 
-    assert same_ua, f"User agents didn't match \n {ua1} \n {ua2}"
+        c1.close()
+        c2.close()
+
+        assert same_ua, f"User agents didn't match \n {ua1} \n {ua2}"
+
+    def test_sqlalchemy_user_agent_includes_version(self, db_engine):
+        """So that we know when we can safely deprecate support for sqlalchemy 1.x"""
+
+        version_str = sqlalchemy.__version__
+        c = db_engine.connect()
+        ua = self.get_conn_user_agent(c)
+
+        assert version_str in ua
+
+    def test_user_supplied_string(self, db_engine):
+        """Verify that extra connect args passed to sqlalchemy.create_engine are passed to DBAPI
+
+        This will most commonly happen when partners supply a user agent entry
+        """
+
+        conn = db_engine.connect()
+        connection_headers = conn.connection.thrift_backend._transport._headers
+        user_agent = connection_headers["User-Agent"]
+
+        assert USER_AGENT_TOKEN in user_agent
+
+    @pytest.mark.parametrize(
+        "input, expected",
+        (
+            (None, "{}"),
+            ("", "{}"),
+            ("sqlalchemy connection", "{} + sqlalchemy connection"),
+            (
+                "reusable dialect compliance tests",
+                "{} + reusable dialect compliance tests",
+            ),
+        ),
+    )
+    def test_user_agent_insertion_behavior(
+        self, input: Union[str, None], expected: str, expected_sqlalchemy_tag: str
+    ):
+        assert add_sqla_tag_if_not_present(input) == expected.format(
+            expected_sqlalchemy_tag
+        )
+
+    @pytest.mark.parametrize(
+        "input",
+        ("sqlalchemy/1.4.0", "sqlalchemy/1.3.0", "sqlalchemy/2.0.0", SQLALCHEMY_TAG),
+    )
+    def test_sqlalchemy_tag_regexes_properly(self, input):
+        assert re.search(sqlalchemy_version_tag_pat, input)
 
 
 @pytest.fixture
