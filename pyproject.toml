@@ -18,8 +18,8 @@ lz4 = "^4.0.2"
 requests = "^2.18.1"
 oauthlib = "^3.1.0"
 numpy = [
-    { version = "^1.16.6", python = ">=3.8,<3.11" },
-    { version = "^1.23.4", python = ">=3.11" },
+    { version = ">=1.16.6", python = ">=3.8,<3.11" },
+    { version = ">=1.23.4", python = ">=3.11" },
 ]
 openpyxl = "^3.0.10"
 urllib3 = ">=1.26"

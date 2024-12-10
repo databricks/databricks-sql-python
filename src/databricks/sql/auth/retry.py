@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 import typing
 from enum import Enum
@@ -285,25 +286,30 @@ class DatabricksRetryPolicy(Retry):
         """
         retry_after = self.get_retry_after(response)
         if retry_after:
-            backoff = self.get_backoff_time()
-            proposed_wait = max(backoff, retry_after)
-            self.check_proposed_wait(proposed_wait)
-            time.sleep(proposed_wait)
-            return True
+            proposed_wait = retry_after
+        else:
+            proposed_wait = self.get_backoff_time()
 
-        return False
+        proposed_wait = min(proposed_wait, self.delay_max)
+        self.check_proposed_wait(proposed_wait)
+        time.sleep(proposed_wait)
+        return True
 
     def get_backoff_time(self) -> float:
-        """Calls urllib3's built-in get_backoff_time.
+        """
+        This method implements the exponential backoff algorithm to calculate the delay between retries.
 
         Never returns a value larger than self.delay_max
         A MaxRetryDurationError will be raised if the calculated backoff would exceed self.max_attempts_duration
 
-        Note: within urllib3, a backoff is only calculated in cases where a Retry-After header is not present
-            in the previous unsuccessful request and `self.respect_retry_after_header` is True (which is always true)
+        :return:
         """
 
-        proposed_backoff = super().get_backoff_time()
+        current_attempt = self.stop_after_attempts_count - int(self.total or 0)
+        proposed_backoff = (2**current_attempt) * self.delay_min
+        if self.backoff_jitter != 0.0:
+            proposed_backoff += random.random() * self.backoff_jitter
+
         proposed_backoff = min(proposed_backoff, self.delay_max)
         self.check_proposed_wait(proposed_backoff)
 
