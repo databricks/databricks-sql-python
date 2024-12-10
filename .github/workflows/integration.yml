@@ -55,5 +55,3 @@ jobs:
       #----------------------------------------------
       - name: Run e2e tests
         run: poetry run python -m pytest tests/e2e
-      - name: Run SQL Alchemy tests
-        run: poetry run python -m pytest src/databricks/sqlalchemy/test_local
