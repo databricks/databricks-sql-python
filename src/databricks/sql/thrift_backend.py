@@ -1046,7 +1046,7 @@ class ThriftBackend:
 
         resp = self.make_request(self._client.FetchResults, req)
         if resp.results.startRowOffset > expected_row_start_offset:
-            logger.warning(
+            raise ValueError(
                 "Expected results to start from {} but they instead start at {}".format(
                     expected_row_start_offset, resp.results.startRowOffset
                 )
