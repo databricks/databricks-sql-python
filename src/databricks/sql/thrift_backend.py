@@ -1047,7 +1047,7 @@ class ThriftBackend:
         resp = self.make_request(self._client.FetchResults, req)
         if resp.results.startRowOffset > expected_row_start_offset:
             raise DataError(
-                "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batch must have been skipped".format(
+                "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
                     expected_row_start_offset, resp.results.startRowOffset
                 )
             )
