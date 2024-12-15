@@ -32,6 +32,7 @@ class CommandType(Enum):
     CLOSE_SESSION = "CloseSession"
     CLOSE_OPERATION = "CloseOperation"
     GET_OPERATION_STATUS = "GetOperationStatus"
+    FETCH_RESULTS_ORIENTATION_FETCH_NEXT = "FetchResultsOrientation_FETCH_NEXT"
     OTHER = "Other"
 
     @classmethod
@@ -361,6 +362,12 @@ class DatabricksRetryPolicy(Retry):
         # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
         if status_code == 501:
             raise NonRecoverableNetworkError("Received code 501 from server.")
+
+        if self.command_type == CommandType.FETCH_RESULTS_ORIENTATION_FETCH_NEXT:
+            return (
+                False,
+                "FetchResults with FETCH_NEXT orientation are not idempotent and is not retried",
+            )
 
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):

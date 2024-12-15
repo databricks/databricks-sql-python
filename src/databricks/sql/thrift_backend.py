@@ -374,6 +374,15 @@ class ThriftBackend:
 
                 # These three lines are no-ops if the v3 retry policy is not in use
                 if self.enable_v3_retries:
+                    # Not to retry when FetchResults has orientation as FETCH_NEXT as it is not idempotent
+                    if this_method_name == "FetchResults":
+                        this_method_name += (
+                            "Orientation_"
+                            + ttypes.TFetchOrientation._VALUES_TO_NAMES[
+                                request.orientation
+                            ]
+                        )
+
                     this_command_type = CommandType.get(this_method_name)
                     self._transport.set_retry_command_type(this_command_type)
                     self._transport.startRetryTimer()
