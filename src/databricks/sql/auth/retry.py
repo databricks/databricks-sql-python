@@ -366,7 +366,7 @@ class DatabricksRetryPolicy(Retry):
         if self.command_type == CommandType.FETCH_RESULTS_ORIENTATION_FETCH_NEXT:
             return (
                 False,
-                "FetchResults with FETCH_NEXT orientation are not idempotent and is not retried",
+                "FetchResults with FETCH_NEXT orientation are not idempotent in inline mode and is not retried",
             )
 
         # Request failed and this method is not retryable. We only retry POST requests.
