@@ -87,6 +87,6 @@ class TestRetry:
 
     def test_not_retryable__fetch_results_orientation_fetch_next(self, retry_policy):
         HTTP_STATUS_CODES = [200, 429, 503, 504]
-        retry_policy.command_type = CommandType.FETCH_RESULTS_ORIENTATION_FETCH_NEXT
+        retry_policy.command_type = CommandType.FETCH_RESULTS_INLINE_FETCH_NEXT
         for status_code in HTTP_STATUS_CODES:
             assert not retry_policy.is_retry("METHOD_NAME", status_code=status_code)

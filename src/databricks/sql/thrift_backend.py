@@ -156,6 +156,8 @@ class ThriftBackend:
         )
 
         # Cloud fetch
+        self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
+
         self.max_download_threads = kwargs.get("max_download_threads", 10)
 
         self._ssl_options = ssl_options
@@ -374,10 +376,13 @@ class ThriftBackend:
 
                 # These three lines are no-ops if the v3 retry policy is not in use
                 if self.enable_v3_retries:
-                    # Not to retry when FetchResults has orientation as FETCH_NEXT as it is not idempotent
-                    if this_method_name == "FetchResults":
+                    # Not to retry when FetchResults in INLINE mode when it has orientation as FETCH_NEXT as it is not idempotent
+                    if (
+                        this_method_name == "FetchResults"
+                        and self._use_cloud_fetch == False
+                    ):
                         this_method_name += (
-                            "Orientation_"
+                            "Inline_"
                             + ttypes.TFetchOrientation._VALUES_TO_NAMES[
                                 request.orientation
                             ]
