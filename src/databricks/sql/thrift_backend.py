@@ -321,7 +321,7 @@ class ThriftBackend:
 
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
-    def make_request(self, method, request):
+    def make_request(self, method, request, retryable=True):
         """Execute given request, attempting retries when
             1. Receiving HTTP 429/503 from server
             2. OSError is raised during a GetOperationStatus
@@ -374,20 +374,9 @@ class ThriftBackend:
 
                 # These three lines are no-ops if the v3 retry policy is not in use
                 if self.enable_v3_retries:
-                    # Not to retry when FetchResults in INLINE mode when it has orientation as FETCH_NEXT as it is not idempotent
-                    if (
-                        this_method_name == "FetchResults"
-                        and self._use_cloud_fetch == False
-                    ):
-                        this_method_name += (
-                            "Inline_"
-                            + ttypes.TFetchOrientation._VALUES_TO_NAMES[
-                                request.orientation
-                            ]
-                        )
-
                     this_command_type = CommandType.get(this_method_name)
                     self._transport.set_retry_command_type(this_command_type)
+                    self._transport.set_is_retryable(retryable)
                     self._transport.startRetryTimer()
 
                 response = method(request)
@@ -898,8 +887,6 @@ class ThriftBackend:
     ):
         assert session_handle is not None
 
-        self._use_cloud_fetch = use_cloud_fetch
-
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
             decimalAsArrow=self._use_arrow_native_decimals,
@@ -1042,6 +1029,7 @@ class ThriftBackend:
         lz4_compressed,
         arrow_schema_bytes,
         description,
+        use_cloud_fetch=True,
     ):
         assert op_handle is not None
 
@@ -1058,7 +1046,8 @@ class ThriftBackend:
             includeResultSetMetadata=True,
         )
 
-        resp = self.make_request(self._client.FetchResults, req)
+        # Fetch results in Inline mode with FETCH_NEXT orientation are not idempotent and hence not retried
+        resp = self.make_request(self._client.FetchResults, req, use_cloud_fetch)
         if resp.results.startRowOffset > expected_row_start_offset:
             raise DataError(
                 "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(

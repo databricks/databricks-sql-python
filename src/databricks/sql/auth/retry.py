@@ -32,7 +32,6 @@ class CommandType(Enum):
     CLOSE_SESSION = "CloseSession"
     CLOSE_OPERATION = "CloseOperation"
     GET_OPERATION_STATUS = "GetOperationStatus"
-    FETCH_RESULTS_INLINE_FETCH_NEXT = "FetchResultsInline_FETCH_NEXT"
     OTHER = "Other"
 
     @classmethod
@@ -243,6 +242,14 @@ class DatabricksRetryPolicy(Retry):
         self._command_type = value
 
     @property
+    def is_retryable(self) -> bool:
+        return self._is_retryable
+
+    @is_retryable.setter
+    def is_retryable(self, value: bool) -> None:
+        self._is_retryable = value
+
+    @property
     def delay_default(self) -> float:
         """Time in seconds the connector will wait between requests polling a GetOperationStatus Request
 
@@ -363,11 +370,8 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 501:
             raise NonRecoverableNetworkError("Received code 501 from server.")
 
-        if self.command_type == CommandType.FETCH_RESULTS_INLINE_FETCH_NEXT:
-            return (
-                False,
-                "FetchResults in INLINE mode with FETCH_NEXT orientation are not idempotent and is not retried",
-            )
+        if self.is_retryable == False:
+            return False, "Request is not retryable"
 
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):
