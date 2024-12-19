@@ -351,7 +351,6 @@ class DatabricksRetryPolicy(Retry):
         Returns True if the request should be retried. Returns False or raises an exception
         if a retry would violate the configured policy.
         """
-
         # Request succeeded. Don't retry.
         if status_code == 200:
             return False, "200 codes are not retried"

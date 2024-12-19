@@ -1225,7 +1225,7 @@ class ResultSet:
         self.description = execute_response.description
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
-        self.use_cloud_fetch = use_cloud_fetch
+        self._use_cloud_fetch = use_cloud_fetch
 
         if execute_response.arrow_queue:
             # In this case the server has taken the fast path and returned an initial batch of
@@ -1253,7 +1253,7 @@ class ResultSet:
             lz4_compressed=self.lz4_compressed,
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
-            use_cloud_fetch=self.use_cloud_fetch,
+            use_cloud_fetch=self._use_cloud_fetch,
         )
         self.results = results
         self.has_more_rows = has_more_rows
