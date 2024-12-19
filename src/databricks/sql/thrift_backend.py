@@ -374,6 +374,18 @@ class ThriftBackend:
 
                 # These three lines are no-ops if the v3 retry policy is not in use
                 if self.enable_v3_retries:
+                    # Not to retry when FetchResults in INLINE mode when it has orientation as FETCH_NEXT as it is not idempotent
+                    if (
+                        this_method_name == "FetchResults"
+                        and self._use_cloud_fetch == False
+                    ):
+                        this_method_name += (
+                            "Inline_"
+                            + ttypes.TFetchOrientation._VALUES_TO_NAMES[
+                                request.orientation
+                            ]
+                        )
+
                     this_command_type = CommandType.get(this_method_name)
                     self._transport.set_retry_command_type(this_command_type)
                     self._transport.startRetryTimer()
@@ -886,6 +898,8 @@ class ThriftBackend:
     ):
         assert session_handle is not None
 
+        self._use_cloud_fetch = use_cloud_fetch
+
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
             decimalAsArrow=self._use_arrow_native_decimals,
@@ -1046,8 +1060,8 @@ class ThriftBackend:
 
         resp = self.make_request(self._client.FetchResults, req)
         if resp.results.startRowOffset > expected_row_start_offset:
-            logger.warning(
-                "Expected results to start from {} but they instead start at {}".format(
+            raise DataError(
+                "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
                     expected_row_start_offset, resp.results.startRowOffset
                 )
             )
