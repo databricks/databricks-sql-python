@@ -156,8 +156,6 @@ class ThriftBackend:
         )
 
         # Cloud fetch
-        self._use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
-
         self.max_download_threads = kwargs.get("max_download_threads", 10)
 
         self._ssl_options = ssl_options
@@ -899,6 +897,8 @@ class ThriftBackend:
         async_op=False,
     ):
         assert session_handle is not None
+
+        self._use_cloud_fetch = use_cloud_fetch
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
