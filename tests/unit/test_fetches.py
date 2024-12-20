@@ -66,6 +66,7 @@ class FetchTests(unittest.TestCase):
             lz4_compressed,
             arrow_schema_bytes,
             description,
+            use_cloud_fetch=True,
         ):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
