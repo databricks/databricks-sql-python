@@ -242,14 +242,6 @@ class DatabricksRetryPolicy(Retry):
         self._command_type = value
 
     @property
-    def is_retryable(self) -> bool:
-        return self._is_retryable
-
-    @is_retryable.setter
-    def is_retryable(self, value: bool) -> None:
-        self._is_retryable = value
-
-    @property
     def delay_default(self) -> float:
         """Time in seconds the connector will wait between requests polling a GetOperationStatus Request
 
@@ -368,9 +360,6 @@ class DatabricksRetryPolicy(Retry):
         # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
         if status_code == 501:
             raise NonRecoverableNetworkError("Received code 501 from server.")
-
-        if self.is_retryable == False:
-            return False, "Request is not retryable"
 
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):

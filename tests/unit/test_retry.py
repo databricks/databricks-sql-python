@@ -84,9 +84,3 @@ class TestRetry:
         retry_policy.history = [error_history, error_history, error_history]
         retry_policy.sleep(HTTPResponse(status=503, headers={"Retry-After": "3"}))
         t_mock.assert_called_with(3)
-
-    def test_not_retryable__fetch_results_orientation_fetch_next(self, retry_policy):
-        HTTP_STATUS_CODES = [200, 429, 503, 504]
-        retry_policy.is_retryable = False
-        for status_code in HTTP_STATUS_CODES:
-            assert not retry_policy.is_retry("METHOD_NAME", status_code=status_code)

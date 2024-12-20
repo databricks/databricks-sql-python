@@ -216,12 +216,3 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             logger.warning(
                 "DatabricksRetryPolicy is currently bypassed. The CommandType cannot be set."
             )
-
-    def set_is_retryable(self, retryable: bool):
-        """Pass the provided retryable flag to the retry policy"""
-        if isinstance(self.retry_policy, DatabricksRetryPolicy):
-            self.retry_policy.is_retryable = retryable
-        else:
-            logger.warning(
-                "DatabricksRetryPolicy is currently bypassed. The is_retryable flag cannot be set."
-            )

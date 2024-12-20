@@ -376,7 +376,6 @@ class ThriftBackend:
                 if self.enable_v3_retries:
                     this_command_type = CommandType.get(this_method_name)
                     self._transport.set_retry_command_type(this_command_type)
-                    self._transport.set_is_retryable(retryable)
                     self._transport.startRetryTimer()
 
                 response = method(request)
@@ -461,7 +460,7 @@ class ThriftBackend:
         #       return on success
         #       if available: bounded delay and retry
         #       if not: raise error
-        max_attempts = self._retry_stop_after_attempts_count
+        max_attempts = self._retry_stop_after_attempts_count if retryable else 1
 
         # use index-1 counting for logging/human consistency
         for attempt in range(1, max_attempts + 1):
