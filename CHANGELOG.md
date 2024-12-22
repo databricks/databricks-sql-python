@@ -1,5 +1,9 @@
 # Release History
 
+# 3.6.1 (2024-12-23)
+
+- Fix: Incorrect number of rows fetched in inline results when fetching results with FETCH_NEXT orientation (databricks/databricks-sql-python#479 by @jprakash-db)
+
 # 3.6.0 (2024-10-25)
 
 - Support encryption headers in the cloud fetch request (https://github.com/databricks/databricks-sql-python/pull/460 by @jackyhu-db)
