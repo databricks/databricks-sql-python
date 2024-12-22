@@ -321,7 +321,7 @@ class ThriftBackend:
 
     # FUTURE: Consider moving to https://github.com/litl/backoff or
     # https://github.com/jd/tenacity for retry logic.
-    def make_request(self, method, request):
+    def make_request(self, method, request, retryable=True):
         """Execute given request, attempting retries when
             1. Receiving HTTP 429/503 from server
             2. OSError is raised during a GetOperationStatus
@@ -460,7 +460,7 @@ class ThriftBackend:
         #       return on success
         #       if available: bounded delay and retry
         #       if not: raise error
-        max_attempts = self._retry_stop_after_attempts_count
+        max_attempts = self._retry_stop_after_attempts_count if retryable else 1
 
         # use index-1 counting for logging/human consistency
         for attempt in range(1, max_attempts + 1):
@@ -1028,6 +1028,7 @@ class ThriftBackend:
         lz4_compressed,
         arrow_schema_bytes,
         description,
+        use_cloud_fetch=True,
     ):
         assert op_handle is not None
 
@@ -1044,10 +1045,11 @@ class ThriftBackend:
             includeResultSetMetadata=True,
         )
 
-        resp = self.make_request(self._client.FetchResults, req)
+        # Fetch results in Inline mode with FETCH_NEXT orientation are not idempotent and hence not retried
+        resp = self.make_request(self._client.FetchResults, req, use_cloud_fetch)
         if resp.results.startRowOffset > expected_row_start_offset:
-            logger.warning(
-                "Expected results to start from {} but they instead start at {}".format(
+            raise DataError(
+                "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
                     expected_row_start_offset, resp.results.startRowOffset
                 )
             )
