@@ -3,9 +3,9 @@
 [![PyPI](https://img.shields.io/pypi/v/databricks-sql-connector?style=flat-square)](https://pypi.org/project/databricks-sql-connector/)
 [![Downloads](https://pepy.tech/badge/databricks-sql-connector)](https://pepy.tech/project/databricks-sql-connector)
 
-The Databricks SQL Connector for Python allows you to develop Python applications that connect to Databricks clusters and SQL warehouses. It is a Thrift-based client with no dependencies on ODBC or JDBC. It conforms to the [Python DB API 2.0 specification](https://www.python.org/dev/peps/pep-0249/) and exposes a [SQLAlchemy](https://www.sqlalchemy.org/) dialect for use with tools like `pandas` and `alembic` which use SQLAlchemy to execute DDL. Use `pip install databricks-sql-connector[sqlalchemy]` to install with SQLAlchemy's dependencies. `pip install databricks-sql-connector[alembic]` will install alembic's dependencies.
+The Databricks SQL Connector for Python allows you to develop Python applications that connect to Databricks clusters and SQL warehouses. It is a Thrift-based client with no dependencies on ODBC or JDBC. It conforms to the [Python DB API 2.0 specification](https://www.python.org/dev/peps/pep-0249/).
 
-This connector uses Arrow as the data-exchange format, and supports APIs to directly fetch Arrow tables. Arrow tables are wrapped in the `ArrowQueue` class to provide a natural API to get several rows at a time.
+This connector uses Arrow as the data-exchange format, and supports APIs (e.g. `fetchmany_arrow`) to directly fetch Arrow tables. Arrow tables are wrapped in the `ArrowQueue` class to provide a natural API to get several rows at a time. [PyArrow](https://arrow.apache.org/docs/python/index.html) is required to enable this and use these APIs, you can install it via  `pip install pyarrow` or `pip install databricks-sql-connector[pyarrow]`.
 
 You are welcome to file an issue here for general use cases. You can also contact Databricks Support [here](help.databricks.com).
 
@@ -22,7 +22,12 @@ For the latest documentation, see
 
 ## Quickstart
 
-Install the library with `pip install databricks-sql-connector`
+### Installing the core library
+Install using `pip install databricks-sql-connector`
+
+### Installing the core library with PyArrow
+Install using `pip install databricks-sql-connector[pyarrow]`
+
 
 ```bash
 export DATABRICKS_HOST=********.databricks.com
@@ -59,6 +64,18 @@ or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/123456789
 > Note: This example uses [Databricks OAuth U2M](https://docs.databricks.com/en/dev-tools/auth/oauth-u2m.html) 
 > to authenticate the target Databricks user account and needs to open the browser for authentication. So it 
 > can only run on the user's machine.
+
+## SQLAlchemy
+Starting from `databricks-sql-connector` version 4.0.0 SQLAlchemy support has been extracted to a new library `databricks-sqlalchemy`.
+
+- Github repository [databricks-sqlalchemy github](https://github.com/databricks/databricks-sqlalchemy)
+- PyPI [databricks-sqlalchemy pypi](https://pypi.org/project/databricks-sqlalchemy/)
+
+### Quick SQLAlchemy guide
+Users can now choose between using the SQLAlchemy v1 or SQLAlchemy v2 dialects with the connector core
+
+- Install the latest SQLAlchemy v1 using `pip install databricks-sqlalchemy~=1.0`
+- Install SQLAlchemy v2 using `pip install databricks-sqlalchemy`
 
 
 ## Contributing
