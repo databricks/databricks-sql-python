@@ -3,7 +3,7 @@
 # 3.6.1 (2024-12-23)
 
 - Fix: Incorrect number of rows fetched in inline results when fetching results with FETCH_NEXT orientation (databricks/databricks-sql-python#479 by @jprakash-db)
-- Update the doc to specify native parameters are not supported in PUT operation (databricks/databricks-sql-python#477 by @jprakash-db)
+- Updated the doc to specify native parameters are not supported in PUT operation (databricks/databricks-sql-python#477 by @jprakash-db)
 - Relax `pyarrow` and `numpy` pin (databricks/databricks-sql-python#452 by @arredond)
 - Updated the HTTP retry logic to be similar to the other Databricks drivers (databricks/databricks-sql-python#467 by @jprakash-db)
 - Feature: Support for async execute has been added (databricks/databricks-sql-python#463 by @jprakash-db)
