@@ -1,10 +1,17 @@
 # Release History
 
-
-# 4.0.0 
+# 4.0.0 (TBD)
 
 - Split the connector into two separate packages: `databricks-sql-connector` and `databricks-sqlalchemy`. The `databricks-sql-connector` package contains the core functionality of the connector, while the `databricks-sqlalchemy` package contains the SQLAlchemy dialect for the connector. 
 - Pyarrow dependency is now optional in `databricks-sql-connector`. Users needing arrow are supposed to explicitly install pyarrow
+
+# 3.7.0 (2024-12-23)
+
+- Fix: Incorrect number of rows fetched in inline results when fetching results with FETCH_NEXT orientation (databricks/databricks-sql-python#479 by @jprakash-db)
+- Updated the doc to specify native parameters are not supported in PUT operation (databricks/databricks-sql-python#477 by @jprakash-db)
+- Relax `pyarrow` and `numpy` pin (databricks/databricks-sql-python#452 by @arredond)
+- Feature: Support for async execute has been added (databricks/databricks-sql-python#463 by @jprakash-db)
+- Updated the HTTP retry logic to be similar to the other Databricks drivers (databricks/databricks-sql-python#467 by @jprakash-db)
 
 # 3.6.0 (2024-10-25)
 
