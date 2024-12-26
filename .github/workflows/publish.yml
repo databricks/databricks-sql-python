@@ -1,5 +1,7 @@
 name: Publish to PyPI [Production]
 on:
+  push:
+  workflow_dispatch:
   release:
     types: [published]
 jobs:
@@ -54,11 +56,14 @@ jobs:
       # Tell poetry to use the `current-version` that was found by the previous step
       #-----------------------------------------------------------------------------
       - name: Update pyproject.toml
-        run: poetry version ${{ steps.version.outputs.current-version }}
+        run: |
+          echo "Current version - ${{ steps.version.outputs.current-version }}"
+          poetry version ${{ steps.version.outputs.current-version }}
+          echo "Updated version - $(poetry version -s)"
       #----------------------------------------------
       # Attempt push to test-pypi
       #----------------------------------------------
-      - name: Build and publish to pypi
-        uses: JRubics/poetry-publish@v1.10
-        with:
-          pypi_token: ${{ secrets.PROD_PYPI_TOKEN }}
+#      - name: Build and publish to pypi
+#        uses: JRubics/poetry-publish@v1.10
+#        with:
+#          pypi_token: ${{ secrets.PROD_PYPI_TOKEN }}
