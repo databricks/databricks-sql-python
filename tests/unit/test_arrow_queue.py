@@ -1,10 +1,12 @@
 import unittest
-
-import pyarrow as pa
-
+import pytest
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 from databricks.sql.utils import ArrowQueue
 
-
+@pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
 class ArrowQueueSuite(unittest.TestCase):
     @staticmethod
     def make_arrow_table(batch):

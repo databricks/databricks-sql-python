@@ -144,9 +144,6 @@ The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR ve
 
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 
-#### SQLAlchemy dialect tests
-
-See README.tests.md for details.
 
 ### Code formatting
 
