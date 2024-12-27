@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sql-connector"
-version = "3.7.0"
+version = "4.0.0"
 description = "Databricks SQL Connector for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
@@ -14,23 +14,19 @@ thrift = ">=0.16.0,<0.21.0"
 pandas = [
     { version = ">=1.2.5,<2.3.0", python = ">=3.8" }
 ]
-pyarrow = ">=14.0.1"
-
 lz4 = "^4.0.2"
 requests = "^2.18.1"
 oauthlib = "^3.1.0"
 numpy = [
-    { version = ">=1.16.6", python = ">=3.8,<3.11" },
-    { version = ">=1.23.4", python = ">=3.11" },
+    { version = "^1.16.6", python = ">=3.8,<3.11" },
+    { version = "^1.23.4", python = ">=3.11" },
 ]
-sqlalchemy = { version = ">=2.0.21", optional = true }
 openpyxl = "^3.0.10"
-alembic = { version = "^1.0.11", optional = true }
 urllib3 = ">=1.26"
+pyarrow = { version = ">=14.0.1", optional=true }
 
 [tool.poetry.extras]
-sqlalchemy = ["sqlalchemy"]
-alembic = ["sqlalchemy", "alembic"]
+pyarrow = ["pyarrow"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
@@ -42,9 +38,6 @@ pytest-dotenv = "^0.5.2"
 [tool.poetry.urls]
 "Homepage" = "https://github.com/databricks/databricks-sql-python"
 "Bug Tracker" = "https://github.com/databricks/databricks-sql-python/issues"
-
-[tool.poetry.plugins."sqlalchemy.dialects"]
-"databricks" = "databricks.sqlalchemy:DatabricksDialect"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -62,5 +55,5 @@ markers = {"reviewed" = "Test case has been reviewed by Databricks"}
 minversion = "6.0"
 log_cli = "false"
 log_cli_level = "INFO"
-testpaths = ["tests", "src/databricks/sqlalchemy/test_local"]
+testpaths = ["tests"]
 env_files = ["test.env"]
