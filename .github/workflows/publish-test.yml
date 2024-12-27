@@ -1,5 +1,7 @@
 name: Publish to PyPI [Test]
-on: [push]
+on:
+  push:
+  workflow_dispatch:
 jobs:
   test-pypi:
     name: Create patch version number and push to test-pypi
@@ -52,7 +54,11 @@ jobs:
       # Tell poetry to update the version number
       #----------------------------------------------
       - name: Update pyproject.toml
-        run: poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
+        run: |
+          echo "Major version - ${{ steps.version.outputs.major-version }}" 
+          echo "Minor version - ${{ steps.version.outputs.minor-version }}" 
+          echo "Current Version - ${{ steps.version.outputs.current-version }}"
+          poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
       #----------------------------------------------
       # Attempt push to test-pypi
       #----------------------------------------------
