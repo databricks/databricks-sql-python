@@ -1,40 +1,9 @@
 # Release History
 
-# 4.0.3 (2025-04-22)
-
-- Fix: Removed `packaging` dependency in favour of default libraries, for `urllib3` version checks (databricks/databricks-sql-python#547 by @jprakash-db)
-- 
-# 4.0.2 (2025-04-01)
-
-- Fix: Relaxed the pin for `python-dateutil` to be `^2.8.0` (databricks/databricks-sql-python#538 by @jprakash-db)
-
-# 4.0.1 (2025-03-19)
-
-**Note: this release was yanked from Pypi on 19 March 2025 due to compatibility issues with `dbt-databricks<1.5.3`**
-
-- Support for multiple timestamp formats parsing (databricks/databricks-sql-python#533 by @jprakash-db)
-- Rename `_user_agent_entry` in connect call to `user_agent_entry` to expose it as a public parameter. (databricks/databricks-sql-python#530 by @shivam2680)
-- Fix: compatibility with urllib3 versions less than 2.x. (databricks/databricks-sql-python#526 by @shivam2680)
-- Support for Python 3.13 and updated dependencies (databricks/databricks-sql-python#510 by @dhirschfeld and @dbaxa)
-
-# 4.0.0 (2025-01-19)
+# 4.0.0 (TBD)
 
 - Split the connector into two separate packages: `databricks-sql-connector` and `databricks-sqlalchemy`. The `databricks-sql-connector` package contains the core functionality of the connector, while the `databricks-sqlalchemy` package contains the SQLAlchemy dialect for the connector. 
 - Pyarrow dependency is now optional in `databricks-sql-connector`. Users needing arrow are supposed to explicitly install pyarrow
-
-# 3.7.3 (2025-03-28)
-
-- Fix: Unable to poll small results in execute_async function (databricks/databricks-sql-python#515 by @jprakash-db) 
-- Updated log messages to show the status code and error messages of requests (databricks/databricks-sql-python#511 by @jprakash-db) 
-- Fix: Incorrect metadata was fetched in case of queries with the same alias (databricks/databricks-sql-python#505 by @jprakash-db)
-
-# 3.7.2 (2025-01-31)
-
-- Updated the retry_dela_max and retry_timeout (databricks/databricks-sql-python#497 by @jprakash-db)
-
-# 3.7.1 (2025-01-07)
-
-- Relaxed the number of Http retry attempts (databricks/databricks-sql-python#486 by @jprakash-db)
 
 # 3.7.0 (2024-12-23)
 

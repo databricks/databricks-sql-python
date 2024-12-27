@@ -10,7 +10,6 @@ from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 import databricks.sql.utils as utils
 from databricks.sql.types import SSLOptions
 
-
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class CloudFetchQueueSuite(unittest.TestCase):
     def create_result_link(

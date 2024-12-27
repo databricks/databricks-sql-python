@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sql-connector"
-version = "4.0.3"
+version = "4.0.0"
 description = "Databricks SQL Connector for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
@@ -18,13 +18,13 @@ pandas = [
 lz4 = "^4.0.2"
 requests = "^2.18.1"
 oauthlib = "^3.1.0"
+numpy = [
+    { version = "^1.16.6", python = ">=3.8,<3.11" },
+    { version = "^1.23.4", python = ">=3.11" },
+]
 openpyxl = "^3.0.10"
 urllib3 = ">=1.26"
-pyarrow = [
-    { version = ">=14.0.1", python = ">=3.8,<3.13", optional=true },
-    { version = ">=18.0.0", python = ">=3.13", optional=true }
-]
-python-dateutil = "^2.8.0"
+pyarrow = { version = ">=14.0.1", optional=true }
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]

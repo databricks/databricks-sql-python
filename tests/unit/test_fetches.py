@@ -5,13 +5,12 @@ from unittest.mock import Mock
 try:
     import pyarrow as pa
 except ImportError:
-    pa = None
+    pa=None
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
-
 
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
 class FetchTests(unittest.TestCase):

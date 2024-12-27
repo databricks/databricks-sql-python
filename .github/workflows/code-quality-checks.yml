@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: [ 3.8, 3.9, "3.10", "3.11" ]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -93,7 +93,7 @@ jobs:
       #----------------------------------------------
       -   name: Load cached venv
           id: cached-poetry-dependencies
-          uses: actions/cache@v4
+          uses: actions/cache@v2
           with:
             path: .venv-pyarrow
             key: venv-pyarrow-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
