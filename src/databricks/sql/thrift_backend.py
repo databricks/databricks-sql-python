@@ -67,7 +67,7 @@ DEFAULT_SOCKET_TIMEOUT = float(900)
 _retry_policy = {  # (type, default, min, max)
     "_retry_delay_min": (float, 1, 0.1, 60),
     "_retry_delay_max": (float, 30, 5, 3600),
-    "_retry_stop_after_attempts_count": (int, 5, 1, 60),
+    "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
     "_retry_delay_default": (float, 5, 1, 60),
 }
