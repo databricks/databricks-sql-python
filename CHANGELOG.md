@@ -1,5 +1,9 @@
 # Release History
 
+# 3.7.1 (2025-01-07)
+
+- Relaxed the number of Http retry attempts (databricks/databricks-sql-python#486 by @jprakash-db)
+
 # 3.7.0 (2024-12-23)
 
 - Fix: Incorrect number of rows fetched in inline results when fetching results with FETCH_NEXT orientation (databricks/databricks-sql-python#479 by @jprakash-db)
