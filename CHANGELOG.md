@@ -5,6 +5,10 @@
 - Split the connector into two separate packages: `databricks-sql-connector` and `databricks-sqlalchemy`. The `databricks-sql-connector` package contains the core functionality of the connector, while the `databricks-sqlalchemy` package contains the SQLAlchemy dialect for the connector. 
 - Pyarrow dependency is now optional in `databricks-sql-connector`. Users needing arrow are supposed to explicitly install pyarrow
 
+# 3.7.1 (2025-01-07)
+
+- Relaxed the number of Http retry attempts (databricks/databricks-sql-python#486 by @jprakash-db)
+
 # 3.7.0 (2024-12-23)
 
 - Fix: Incorrect number of rows fetched in inline results when fetching results with FETCH_NEXT orientation (databricks/databricks-sql-python#479 by @jprakash-db)

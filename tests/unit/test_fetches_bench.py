@@ -1,15 +1,17 @@
 import unittest
 from unittest.mock import Mock
+
 try:
     import pyarrow as pa
 except ImportError:
-    pa=None
+    pa = None
 import uuid
 import time
 import pytest
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
+
 
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
 class FetchBenchmarkTests(unittest.TestCase):
