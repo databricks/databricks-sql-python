@@ -6,10 +6,11 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock
 from ssl import CERT_NONE, CERT_REQUIRED
 from urllib3 import HTTPSConnectionPool
+
 try:
     import pyarrow
 except ImportError:
-    pyarrow=None
+    pyarrow = None
 import databricks.sql
 from databricks.sql import utils
 from databricks.sql.types import SSLOptions
@@ -29,7 +30,8 @@ def retry_policy_factory():
         "_retry_delay_default": (float, 5, 1, 60),
     }
 
-@pytest.mark.skipif(pyarrow is None,reason="PyArrow is not installed")
+
+@pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class ThriftBackendTestSuite(unittest.TestCase):
     okay_status = ttypes.TStatus(statusCode=ttypes.TStatusCode.SUCCESS_STATUS)
 
