@@ -1,6 +1,6 @@
 # Release History
 
-# 4.0.0 (TBD)
+# 4.0.0 (2025-01-19)
 
 - Split the connector into two separate packages: `databricks-sql-connector` and `databricks-sqlalchemy`. The `databricks-sql-connector` package contains the core functionality of the connector, while the `databricks-sqlalchemy` package contains the SQLAlchemy dialect for the connector. 
 - Pyarrow dependency is now optional in `databricks-sql-connector`. Users needing arrow are supposed to explicitly install pyarrow
