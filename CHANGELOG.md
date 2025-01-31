@@ -1,5 +1,9 @@
 # Release History
 
+# 3.7.2 (2025-01-31)
+
+- Updated the retry_dela_max and retry_timeout (databricks/databricks-sql-python#497 by @jprakash-db)
+
 # 3.7.1 (2025-01-07)
 
 - Relaxed the number of Http retry attempts (databricks/databricks-sql-python#486 by @jprakash-db)
