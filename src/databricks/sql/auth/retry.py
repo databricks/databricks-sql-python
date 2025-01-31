@@ -290,7 +290,7 @@ class DatabricksRetryPolicy(Retry):
         else:
             proposed_wait = self.get_backoff_time()
 
-        proposed_wait = min(proposed_wait, self.delay_max)
+        proposed_wait = max(proposed_wait, self.delay_max)
         self.check_proposed_wait(proposed_wait)
         time.sleep(proposed_wait)
         return True
