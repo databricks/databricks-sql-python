@@ -292,6 +292,7 @@ class DatabricksRetryPolicy(Retry):
 
         proposed_wait = max(proposed_wait, self.delay_max)
         self.check_proposed_wait(proposed_wait)
+        logger.debug(f"Retrying after {proposed_wait} seconds")
         time.sleep(proposed_wait)
         return True
 
