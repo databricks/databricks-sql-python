@@ -24,7 +24,10 @@ numpy = [
 ]
 openpyxl = "^3.0.10"
 urllib3 = ">=1.26"
-pyarrow = { version = ">=14.0.1", optional=true }
+pyarrow = [
+    { version = ">=14.0.1", python = ">=3.8,<3.13", optional=true },
+    { version = ">=18.0.0", python = ">=3.13", optional=true }
+]
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]
