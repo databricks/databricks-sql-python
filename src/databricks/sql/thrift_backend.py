@@ -883,7 +883,7 @@ class ThriftBackend:
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
-        enforceEmbeddedSchema=False,
+        enforce_embedded_schema_correctness=False,
     ):
         assert session_handle is not None
 
@@ -911,7 +911,7 @@ class ThriftBackend:
             },
             useArrowNativeTypes=spark_arrow_types,
             parameters=parameters,
-            enforceEmbeddedSchemaCorrectness=enforceEmbeddedSchema,
+            enforceEmbeddedSchemaCorrectness=enforce_embedded_schema_correctness,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 
