@@ -345,6 +345,8 @@ class DatabricksRetryPolicy(Retry):
         if a retry would violate the configured policy.
         """
 
+        logger.info(f"Received status code {status_code} for {method} request")
+
         # Request succeeded. Don't retry.
         if status_code == 200:
             return False, "200 codes are not retried"
