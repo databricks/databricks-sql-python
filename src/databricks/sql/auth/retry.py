@@ -352,18 +352,17 @@ class DatabricksRetryPolicy(Retry):
             return False, "200 codes are not retried"
 
         if status_code == 401:
-            raise NonRecoverableNetworkError(
-                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials."
+            return (
+                False,
+                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials.",
             )
 
         if status_code == 403:
-            raise NonRecoverableNetworkError(
-                "Received 403 - FORBIDDEN. Confirm your authentication credentials."
-            )
+            return False, "403 codes are not retried"
 
         # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
         if status_code == 501:
-            raise NonRecoverableNetworkError("Received code 501 from server.")
+            return False, "Received code 501 from server."
 
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):
@@ -382,8 +381,9 @@ class DatabricksRetryPolicy(Retry):
             and self.command_type == CommandType.CLOSE_SESSION
             and len(self.history) > 0
         ):
-            raise SessionAlreadyClosedError(
-                "CloseSession received 404 code from Databricks. Session is already closed."
+            return (
+                False,
+                "CloseSession received 404 code from Databricks. Session is already closed.",
             )
 
         # Request failed with 404 because CloseOperation returns 404 if you repeat the request.
@@ -392,8 +392,9 @@ class DatabricksRetryPolicy(Retry):
             and self.command_type == CommandType.CLOSE_OPERATION
             and len(self.history) > 0
         ):
-            raise CursorAlreadyClosedError(
-                "CloseOperation received 404 code from Databricks. Cursor is already closed."
+            return (
+                False,
+                "CloseOperation received 404 code from Databricks. Cursor is already closed.",
             )
 
         # Request failed, was an ExecuteStatement and the command may have reached the server
@@ -402,8 +403,9 @@ class DatabricksRetryPolicy(Retry):
             and status_code not in self.status_forcelist
             and status_code not in self.force_dangerous_codes
         ):
-            raise UnsafeToRetryError(
-                "ExecuteStatement command can only be retried for codes 429 and 503"
+            return (
+                False,
+                "ExecuteStatement command can only be retried for codes 429 and 503",
             )
 
         # Request failed with a dangerous code, was an ExecuteStatement, but user forced retries for this
