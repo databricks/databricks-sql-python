@@ -381,9 +381,8 @@ class DatabricksRetryPolicy(Retry):
             and self.command_type == CommandType.CLOSE_SESSION
             and len(self.history) > 0
         ):
-            return (
-                False,
-                "CloseSession received 404 code from Databricks. Session is already closed.",
+            raise SessionAlreadyClosedError(
+                "CloseSession received 404 code from Databricks. Session is already closed."
             )
 
         # Request failed with 404 because CloseOperation returns 404 if you repeat the request.
@@ -392,9 +391,8 @@ class DatabricksRetryPolicy(Retry):
             and self.command_type == CommandType.CLOSE_OPERATION
             and len(self.history) > 0
         ):
-            return (
-                False,
-                "CloseOperation received 404 code from Databricks. Cursor is already closed.",
+            raise CursorAlreadyClosedError(
+                "CloseOperation received 404 code from Databricks. Cursor is already closed."
             )
 
         # Request failed, was an ExecuteStatement and the command may have reached the server
