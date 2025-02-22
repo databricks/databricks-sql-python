@@ -382,9 +382,7 @@ class ThriftBackend:
 
                 # We need to call type(response) here because thrift doesn't implement __name__ attributes for thrift responses
                 logger.debug(
-                    "Received response: {}(<REDACTED>) with status {}".format(
-                        type(response).__name__, getattr(response, "status", None)
-                    )
+                    "Received response: {}(<REDACTED>)".format(type(response).__name__)
                 )
                 unsafe_logger.debug("Received response: {}".format(response))
                 return response
