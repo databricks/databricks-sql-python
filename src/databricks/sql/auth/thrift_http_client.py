@@ -192,13 +192,17 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             timeout=self.__timeout,
             retries=self.retry_policy,
         )
-        
+
         # Get reply to flush the request
         self.code = self.__resp.status
         self.message = self.__resp.reason
         self.headers = self.__resp.headers
 
-        logger.info("HTTP Response with status code {}, message: {}".format(self.code, self.message))
+        logger.info(
+            "HTTP Response with status code {}, message: {}".format(
+                self.code, self.message
+            )
+        )
 
     @staticmethod
     def basic_proxy_auth_headers(proxy):
