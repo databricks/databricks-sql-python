@@ -198,6 +198,12 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.message = self.__resp.reason
         self.headers = self.__resp.headers
 
+        logger.info(
+            "HTTP Response with status code {}, message: {}".format(
+                self.code, self.message
+            )
+        )
+
     @staticmethod
     def basic_proxy_auth_headers(proxy):
         if proxy is None or not proxy.username:
