@@ -1,0 +1,22 @@
+name: 'Close stale issues and PRs'
+on:
+  schedule:
+    # Run at 06:30 GMT everyday
+    - cron: "30 6 * * *"
+jobs:
+  stale:
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    steps:
+      # Release v9 (https://github.com/actions/stale/tree/v9.0.0)
+      - uses: actions/stale@v9
+        with:
+          stale-issue-message: "This issue has been marked as Stale because it has been open for 60 days with no activity. If you would like the issue to remain open, please remove the stale label or comment on the issue."
+          stale-pr-message: "This PR has been marked as Stale because it has been open for 60 days with no activity. If you would like the PR to remain open, please remove the stale label or comment on the PR."
+          close-pr-message: "This PR was closed because it has been inactive for 10 days since being marked as stale."
+          close-issue-message: "This issue was closed because it has been inactive for 10 days since being marked as stale."
+          days-before-stale: 60
+          days-before-close: 10
+          # ignore checking issues with the following labels
+          exempt-issue-labels: "epic, discussion"
