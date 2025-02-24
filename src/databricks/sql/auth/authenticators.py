@@ -25,12 +25,10 @@ class CredentialsProvider(abc.ABC):
     for authenticating requests to Databricks REST APIs"""
 
     @abc.abstractmethod
-    def auth_type(self) -> str:
-        ...
+    def auth_type(self) -> str: ...
 
     @abc.abstractmethod
-    def __call__(self, *args, **kwargs) -> HeaderFactory:
-        ...
+    def __call__(self, *args, **kwargs) -> HeaderFactory: ...
 
 
 # Private API: this is an evolving interface and it will change in the future.

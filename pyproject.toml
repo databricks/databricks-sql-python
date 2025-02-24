@@ -32,7 +32,7 @@ pyarrow = ["pyarrow"]
 pytest = "^7.1.2"
 mypy = "^1.10.1"
 pylint = ">=2.12.0"
-black = "^22.3.0"
+black = "^24.3.0"
 pytest-dotenv = "^0.5.2"
 
 [tool.poetry.urls]
