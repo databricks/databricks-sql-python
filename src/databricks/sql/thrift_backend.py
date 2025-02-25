@@ -898,8 +898,10 @@ class ThriftBackend:
             sessionHandle=session_handle,
             statement=operation,
             runAsync=True,
+            # For async operation we don't want the direct results
             getDirectResults=ttypes.TSparkGetDirectResults(
-                maxRows=max_rows, maxBytes=max_bytes
+                maxRows=0 if async_op else max_rows,
+                maxBytes=0 if async_op else max_bytes,
             ),
             canReadArrowResult=True if pyarrow else False,
             canDecompressLZ4Result=lz4_compression,
