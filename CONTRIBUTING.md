@@ -165,3 +165,6 @@ Modify the dependency specification (syntax can be found [here](https://python-p
 - `rm poetry.lock && poetry install`
 
 Sometimes `poetry update` can freeze or run forever. Deleting the `poetry.lock` file and calling `poetry install` is guaranteed to update everything but is usually _slower_ than `poetry update` **if `poetry update` works at all**.
+
+
+Sample change: Add commit signoffs.
