@@ -83,11 +83,11 @@ class LargeQueriesMixin:
                 assert row[0] == row_id
 
     def test_long_running_query(self):
-        """Incrementally increase query size until it takes at least 4 minutes,
+        """Incrementally increase query size until it takes at least 5 minutes,
         and asserts that the query completes successfully.
         """
         minutes = 60
-        min_duration = 4 * minutes
+        min_duration = 5 * minutes
 
         duration = -1
         scale0 = 10000
@@ -113,5 +113,5 @@ class LargeQueriesMixin:
                 duration = time.time() - start
                 current_fraction = duration / min_duration
                 print("Took {} s with scale factor={}".format(duration, scale_factor))
-                # Extrapolate linearly to reach 4 min and add 50% padding to push over the limit
+                # Extrapolate linearly to reach 5 min and add 50% padding to push over the limit
                 scale_factor = math.ceil(1.5 * scale_factor / current_fraction)
