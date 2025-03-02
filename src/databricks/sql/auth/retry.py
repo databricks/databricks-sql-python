@@ -408,9 +408,8 @@ class DatabricksRetryPolicy(Retry):
             and status_code not in self.status_forcelist
             and status_code not in self.force_dangerous_codes
         ):
-            return (
-                False,
-                "ExecuteStatement command can only be retried for codes 429 and 503",
+            raise UnsafeToRetryError(
+                "ExecuteStatement command can only be retried for codes 429 and 503. Received code: {status_code}"
             )
 
         # Request failed with a dangerous code, was an ExecuteStatement, but user forced retries for this
