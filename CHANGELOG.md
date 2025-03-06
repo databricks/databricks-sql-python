@@ -5,6 +5,16 @@
 - Split the connector into two separate packages: `databricks-sql-connector` and `databricks-sqlalchemy`. The `databricks-sql-connector` package contains the core functionality of the connector, while the `databricks-sqlalchemy` package contains the SQLAlchemy dialect for the connector. 
 - Pyarrow dependency is now optional in `databricks-sql-connector`. Users needing arrow are supposed to explicitly install pyarrow
 
+# 3.7.3 (2025-03-28)
+
+- Fix: Unable to poll small results in execute_async function (databricks/databricks-sql-python#515 by @jprakash-db) 
+- Updated log messages to show the status code and error messages of requests (databricks/databricks-sql-python#511 by @jprakash-db) 
+- Fix: Incorrect metadata was fetched in case of queries with the same alias (databricks/databricks-sql-python#505 by @jprakash-db)
+
+# 3.7.2 (2025-01-31)
+
+- Updated the retry_dela_max and retry_timeout (databricks/databricks-sql-python#497 by @jprakash-db)
+
 # 3.7.1 (2025-01-07)
 
 - Relaxed the number of Http retry attempts (databricks/databricks-sql-python#486 by @jprakash-db)

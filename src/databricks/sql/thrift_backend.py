@@ -66,7 +66,7 @@ DEFAULT_SOCKET_TIMEOUT = float(900)
 # - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
 _retry_policy = {  # (type, default, min, max)
     "_retry_delay_min": (float, 1, 0.1, 60),
-    "_retry_delay_max": (float, 30, 5, 3600),
+    "_retry_delay_max": (float, 60, 5, 3600),
     "_retry_stop_after_attempts_count": (int, 30, 1, 60),
     "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
     "_retry_delay_default": (float, 5, 1, 60),
@@ -883,6 +883,7 @@ class ThriftBackend:
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
+        enforce_embedded_schema_correctness=False
     ):
         assert session_handle is not None
 
@@ -898,8 +899,12 @@ class ThriftBackend:
             sessionHandle=session_handle,
             statement=operation,
             runAsync=True,
-            getDirectResults=ttypes.TSparkGetDirectResults(
-                maxRows=max_rows, maxBytes=max_bytes
+            # For async operation we don't want the direct results
+            getDirectResults=None
+            if async_op
+            else ttypes.TSparkGetDirectResults(
+                maxRows=max_rows,
+                maxBytes=max_bytes,
             ),
             canReadArrowResult=True if pyarrow else False,
             canDecompressLZ4Result=lz4_compression,
@@ -910,6 +915,7 @@ class ThriftBackend:
             },
             useArrowNativeTypes=spark_arrow_types,
             parameters=parameters,
+            enforceEmbeddedSchemaCorrectness=enforce_embedded_schema_correctness
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 

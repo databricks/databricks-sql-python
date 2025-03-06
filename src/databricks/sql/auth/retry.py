@@ -290,8 +290,9 @@ class DatabricksRetryPolicy(Retry):
         else:
             proposed_wait = self.get_backoff_time()
 
-        proposed_wait = min(proposed_wait, self.delay_max)
+        proposed_wait = max(proposed_wait, self.delay_max)
         self.check_proposed_wait(proposed_wait)
+        logger.debug(f"Retrying after {proposed_wait} seconds")
         time.sleep(proposed_wait)
         return True
 
@@ -344,23 +345,24 @@ class DatabricksRetryPolicy(Retry):
         if a retry would violate the configured policy.
         """
 
+        logger.info(f"Received status code {status_code} for {method} request")
+
         # Request succeeded. Don't retry.
         if status_code == 200:
             return False, "200 codes are not retried"
 
         if status_code == 401:
-            raise NonRecoverableNetworkError(
-                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials."
+            return (
+                False,
+                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials.",
             )
 
         if status_code == 403:
-            raise NonRecoverableNetworkError(
-                "Received 403 - FORBIDDEN. Confirm your authentication credentials."
-            )
+            return False, "403 codes are not retried"
 
         # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
         if status_code == 501:
-            raise NonRecoverableNetworkError("Received code 501 from server.")
+            return False, "Received code 501 from server."
 
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):
@@ -399,8 +401,9 @@ class DatabricksRetryPolicy(Retry):
             and status_code not in self.status_forcelist
             and status_code not in self.force_dangerous_codes
         ):
-            raise UnsafeToRetryError(
-                "ExecuteStatement command can only be retried for codes 429 and 503. Received code: {status_code}"
+            return (
+                False,
+                "ExecuteStatement command can only be retried for codes 429 and 503",
             )
 
         # Request failed with a dangerous code, was an ExecuteStatement, but user forced retries for this
