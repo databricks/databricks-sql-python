@@ -179,6 +179,12 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
 
 
 class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
+    def isExecuting(self, operation_state):
+        return not operation_state or operation_state in [
+            ttypes.TOperationState.RUNNING_STATE,
+            ttypes.TOperationState.PENDING_STATE,
+        ]
+
     def test_execute_async__long_running(self):
 
         long_running_query = "SELECT COUNT(*) FROM RANGE(10000 * 16) x JOIN RANGE(10000) y ON FROM_UNIXTIME(x.id * y.id, 'yyyy-MM-dd') LIKE '%not%a%date%'"
@@ -186,7 +192,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
             cursor.execute_async(long_running_query)
 
             ## Polling after every POLLING_INTERVAL seconds
-            while cursor.is_query_pending():
+            while self.isExecuting(cursor.get_query_state()):
                 time.sleep(self.POLLING_INTERVAL)
                 log.info("Polling the status in test_execute_async")
 
@@ -205,7 +211,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
             time.sleep(5)
 
             ## Polling after every POLLING_INTERVAL seconds
-            while cursor.is_query_pending():
+            while self.isExecuting(cursor.get_query_state()):
                 time.sleep(self.POLLING_INTERVAL)
                 log.info("Polling the status in test_execute_async")
 
@@ -235,7 +241,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
             time.sleep(5)
 
             ## Polling after every POLLING_INTERVAL seconds
-            while cursor.is_query_pending():
+            while self.isExecuting(cursor.get_query_state()):
                 time.sleep(self.POLLING_INTERVAL)
                 log.info("Polling the status in test_execute_async")
 
