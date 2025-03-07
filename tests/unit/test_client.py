@@ -157,7 +157,7 @@ class ClientTestSuite(unittest.TestCase):
         )
         self.assertIn(user_agent_header, http_headers)
 
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, _user_agent_entry="foobar")
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, user_agent_entry="foobar")
         user_agent_header_with_entry = (
             "User-Agent",
             "{}/{} ({})".format(

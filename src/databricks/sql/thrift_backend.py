@@ -95,8 +95,6 @@ class ThriftBackend:
         **kwargs,
     ):
         # Internal arguments in **kwargs:
-        # _user_agent_entry
-        #   Tag to add to User-Agent header. For use by partners.
         # _username, _password
         #   Username and password Basic authentication (no official support)
         # _connection_uri
