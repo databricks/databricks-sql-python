@@ -121,9 +121,9 @@ class PySQLRetryTestsMixin:
     # For testing purposes
     _retry_policy = {
         "_retry_delay_min": 0.1,
-        "_retry_delay_max": 5,
+        "_retry_delay_max": 3,
         "_retry_stop_after_attempts_count": 5,
-        "_retry_stop_after_attempts_duration": 10,
+        "_retry_stop_after_attempts_duration": 30,
         "_retry_delay_default": 0.5,
     }
 
@@ -135,7 +135,7 @@ class PySQLRetryTestsMixin:
         urllib3_config = {"connect": 10, "read": 11, "redirect": 12}
         rp = DatabricksRetryPolicy(
             delay_min=0.1,
-            delay_max=10.0,
+            delay_max=3,
             stop_after_attempts_count=10,
             stop_after_attempts_duration=10.0,
             delay_default=1.0,
@@ -174,14 +174,14 @@ class PySQLRetryTestsMixin:
     def test_retry_exponential_backoff(self):
         """GIVEN the retry policy is configured for reasonable exponential backoff
         WHEN the server sends nothing but 429 responses with retry-afters
-        THEN the connector will use those retry-afters values as delay
+        THEN the connector will use those retry-afters values as floor
         """
         retry_policy = self._retry_policy.copy()
         retry_policy["_retry_delay_min"] = 1
 
         time_start = time.time()
         with mocked_server_response(
-            status=429, headers={"Retry-After": "3"}
+            status=429, headers={"Retry-After": "8"}
         ) as mock_obj:
             with pytest.raises(RequestError) as cm:
                 with self.connection(extra_params=retry_policy) as conn:
@@ -191,14 +191,14 @@ class PySQLRetryTestsMixin:
             assert isinstance(cm.value.args[1], MaxRetryDurationError)
 
             # With setting delay_min to 1, the expected retry delays should be:
-            # 3, 3, 3, 3
+            # 8, 8, 8, 8
             # The first 3 retries are allowed, the 4th retry puts the total duration over the limit
-            # of 10 seconds
+            # of 30 seconds
             assert mock_obj.return_value.getresponse.call_count == 4
-            assert duration > 6
+            assert duration > 24
 
-            # Should be less than 7, but this is a safe margin for CI/CD slowness
-            assert duration < 10
+            # Should be less than 26, but this is a safe margin for CI/CD slowness
+            assert duration < 30
 
     def test_retry_max_duration_not_exceeded(self):
         """GIVEN the max attempt duration of 10 seconds

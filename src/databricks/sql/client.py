@@ -744,6 +744,7 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
+        enforce_embedded_schema_correctness=False,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -808,6 +809,7 @@ class Cursor:
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
             async_op=False,
+            enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -829,6 +831,7 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
+        enforce_embedded_schema_correctness=False,
     ) -> "Cursor":
         """
 
@@ -869,6 +872,7 @@ class Cursor:
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
             async_op=True,
+            enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
 
         return self
