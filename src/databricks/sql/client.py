@@ -179,8 +179,6 @@ class Connection:
         """
 
         # Internal arguments in **kwargs:
-        # user_agent_entry
-        #   Tag to add to User-Agent header. For use by partners.
         # _use_cert_as_auth
         #  Use a TLS cert instead of a token
         # _enable_ssl
