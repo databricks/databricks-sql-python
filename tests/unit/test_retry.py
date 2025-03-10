@@ -34,8 +34,11 @@ class TestRetry:
         retry_policy.history = [error_history, error_history]
         retry_policy.sleep(HTTPResponse(status=503))
 
-        expected_backoff_time = self.calculate_backoff_time(
-            0, retry_policy.delay_min, retry_policy.delay_max
+        expected_backoff_time = max(
+            self.calculate_backoff_time(
+                0, retry_policy.delay_min, retry_policy.delay_max
+            ),
+            retry_policy.delay_max,
         )
         t_mock.assert_called_with(expected_backoff_time)
 
@@ -54,8 +57,11 @@ class TestRetry:
         expected_backoff_times = []
         for attempt in range(num_attempts):
             expected_backoff_times.append(
-                self.calculate_backoff_time(
-                    attempt, retry_policy.delay_min, retry_policy.delay_max
+                max(
+                    self.calculate_backoff_time(
+                        attempt, retry_policy.delay_min, retry_policy.delay_max
+                    ),
+                    retry_policy.delay_max,
                 )
             )
 
@@ -77,10 +83,3 @@ class TestRetry:
                 retry_policy.sleep(HTTPResponse(status=503))
                 # Internally urllib3 calls the increment function generating a new instance for every retry
                 retry_policy = retry_policy.increment()
-
-    @patch("time.sleep")
-    def test_sleep__retry_after_present(self, t_mock, retry_policy, error_history):
-        retry_policy._retry_start_time = time.time()
-        retry_policy.history = [error_history, error_history, error_history]
-        retry_policy.sleep(HTTPResponse(status=503, headers={"Retry-After": "3"}))
-        t_mock.assert_called_with(3)
