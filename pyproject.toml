@@ -29,7 +29,7 @@ python-dateutil = "^2.8.0"
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.1.2"
 mypy = "^1.15.0"
 pylint = ">=2.12.0"
