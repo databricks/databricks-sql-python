@@ -123,7 +123,7 @@ class Connection:
                 `oauth_client_id` is set
 
             user_agent_entry: `str`, optional
-                Tag to add to User-Agent header. For use by partners. If not specified, it will use the default user agent PyDatabricksSqlConnector
+                A custom tag to append to the User-Agent header. This is typically used by partners to identify their applications.. If not specified, it will use the default user agent PyDatabricksSqlConnector
 
             experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
                 This has to be a class implementing `OAuthPersistence`.
@@ -228,12 +228,21 @@ class Connection:
             server_hostname, **kwargs
         )
 
-        if not kwargs.get("user_agent_entry"):
-            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
-        else:
+        user_agent_entry = kwargs.get("user_agent_entry")
+        if user_agent_entry is None:
+            user_agent_entry = kwargs.get("_user_agent_entry")
+            if user_agent_entry is not None:
+                logger.warning(
+                    "[WARN] Parameter '_user_agent_entry' is deprecated; use 'user_agent_entry' instead. "
+                    "This parameter will be removed in the next release."
+                )
+
+        if user_agent_entry:
             useragent_header = "{}/{} ({})".format(
-                USER_AGENT_NAME, __version__, kwargs.get("user_agent_entry")
+                USER_AGENT_NAME, __version__, user_agent_entry
             )
+        else:
+            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
 
         base_headers = [("User-Agent", useragent_header)]
 
