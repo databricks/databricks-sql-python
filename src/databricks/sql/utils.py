@@ -628,6 +628,26 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
     return table
 
 
+def datetime_parser(datetime_string):
+    formats = [
+        "%Y-%m-%d %H:%M:%S.%f",  # MySQL and PostgreSQL format
+        "%Y-%m-%d %H:%M:%S",  # Common SQL format
+        "%Y-%m-%d",  # MySQL Date only
+        "%m/%d/%Y %I:%M:%S %p",  # US format MSSQL Server
+        "%d-%b-%Y %H:%M:%S",  # Oracle format
+    ]
+
+    for fmt in formats:
+        try:
+            return datetime.datetime.strptime(datetime_string, fmt)
+        except ValueError:
+            continue
+
+    raise ValueError(
+        f"Datetime string '{datetime_string}' does not match any expected formats"
+    )
+
+
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
 
     converted_column_table = []
@@ -642,16 +662,7 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
             )
         elif description[i][1] == "timestamp":
             converted_column_table.append(
-                tuple(
-                    (
-                        v
-                        if v is None
-                        else datetime.datetime.strptime(
-                            v, "%Y-%m-%d %H:%M:%S.%f"
-                        ).replace(tzinfo=pytz.UTC)
-                    )
-                    for v in col
-                )
+                tuple((v if v is None else datetime_parser(v)) for v in col)
             )
         else:
             converted_column_table.append(col)
