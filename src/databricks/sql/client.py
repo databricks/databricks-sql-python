@@ -234,7 +234,7 @@ class Connection:
             if user_agent_entry is not None:
                 logger.warning(
                     "[WARN] Parameter '_user_agent_entry' is deprecated; use 'user_agent_entry' instead. "
-                    "This parameter will be removed in the next release."
+                    "This parameter will be removed in the upcoming releases."
                 )
 
         if user_agent_entry:
