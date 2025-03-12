@@ -1,5 +1,10 @@
 # Release History
 
+# 4.0.1 (2025-03-12)
+- Rename `_user_agent_entry` to `user_agent_entry` to expose it as a public parameter. Documentation updated to reflect this. (databricks/databricks-sql-python#530 by @shivam2680)
+- Fix: Compatibility with urllib3 v1.26 (#526 by @shivam2680)
+- Support for Python 3.13 and updated dependencies (#510 by @dhirschfeld and @dbaxa)
+
 # 4.0.0 (2025-01-19)
 
 - Split the connector into two separate packages: `databricks-sql-connector` and `databricks-sqlalchemy`. The `databricks-sql-connector` package contains the core functionality of the connector, while the `databricks-sqlalchemy` package contains the SQLAlchemy dialect for the connector. 
