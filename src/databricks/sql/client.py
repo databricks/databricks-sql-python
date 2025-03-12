@@ -122,6 +122,9 @@ class Connection:
                 port of the oauth redirect uri (localhost). This is required when custom oauth client_id
                 `oauth_client_id` is set
 
+            user_agent_entry: `str`, optional
+                A custom tag to append to the User-Agent header. This is typically used by partners to identify their applications.. If not specified, it will use the default user agent PyDatabricksSqlConnector
+
             experimental_oauth_persistence: configures preferred storage for persisting oauth tokens.
                 This has to be a class implementing `OAuthPersistence`.
                 When `auth_type` is set to `databricks-oauth` or `azure-oauth` without persisting the oauth token in a
@@ -176,8 +179,6 @@ class Connection:
         """
 
         # Internal arguments in **kwargs:
-        # _user_agent_entry
-        #   Tag to add to User-Agent header. For use by partners.
         # _use_cert_as_auth
         #  Use a TLS cert instead of a token
         # _enable_ssl
@@ -227,12 +228,21 @@ class Connection:
             server_hostname, **kwargs
         )
 
-        if not kwargs.get("_user_agent_entry"):
-            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
-        else:
+        user_agent_entry = kwargs.get("user_agent_entry")
+        if user_agent_entry is None:
+            user_agent_entry = kwargs.get("_user_agent_entry")
+            if user_agent_entry is not None:
+                logger.warning(
+                    "[WARN] Parameter '_user_agent_entry' is deprecated; use 'user_agent_entry' instead. "
+                    "This parameter will be removed in the upcoming releases."
+                )
+
+        if user_agent_entry:
             useragent_header = "{}/{} ({})".format(
-                USER_AGENT_NAME, __version__, kwargs.get("_user_agent_entry")
+                USER_AGENT_NAME, __version__, user_agent_entry
             )
+        else:
+            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
 
         base_headers = [("User-Agent", useragent_header)]
 
