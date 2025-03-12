@@ -629,7 +629,13 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
 
 
 def datetime_parser(datetime_string):
-    formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]
+    formats = [
+        "%Y-%m-%d %H:%M:%S.%f",  # MySQL and PostgreSQL format
+        "%Y-%m-%d %H:%M:%S",  # Common SQL format
+        "%Y-%m-%d",  # MySQL Date only
+        "%m/%d/%Y %I:%M:%S %p",  # US format MSSQL Server
+        "%d-%b-%Y %H:%M:%S",  # Oracle format
+    ]
 
     for fmt in formats:
         try:
