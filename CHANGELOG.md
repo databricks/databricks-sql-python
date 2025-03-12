@@ -2,8 +2,8 @@
 
 # 4.0.1 (2025-03-12)
 - Rename `_user_agent_entry` to `user_agent_entry` to expose it as a public parameter. Documentation updated to reflect this. (databricks/databricks-sql-python#530 by @shivam2680)
-- Fix: Compatibility with urllib3 v1.26 (#526 by @shivam2680)
-- Support for Python 3.13 and updated dependencies (#510 by @dhirschfeld and @dbaxa)
+- Fix: Compatibility with urllib3 v1.26 (databricks/databricks-sql-python#526 by @shivam2680)
+- Support for Python 3.13 and updated dependencies (databricks/databricks-sql-python#510 by @dhirschfeld and @dbaxa)
 
 # 4.0.0 (2025-01-19)
 
