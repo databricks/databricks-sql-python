@@ -635,6 +635,7 @@ def datetime_parser(datetime_string):
         "%Y-%m-%d",  # MySQL Date only
         "%m/%d/%Y %I:%M:%S %p",  # US format MSSQL Server
         "%d-%b-%Y %H:%M:%S",  # Oracle format
+        "%Y-%m-%dT%H:%M:%S.%f",
     ]
 
     for fmt in formats:
