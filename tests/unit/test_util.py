@@ -1,5 +1,6 @@
 import decimal
 import datetime
+from datetime import timezone, timedelta
 
 from databricks.sql.utils import convert_to_assigned_datatypes_in_column_table
 
@@ -24,6 +25,8 @@ class TestUtils:
             ("timestamp_column_3", "timestamp", None, None, None, None, None),
             ("timestamp_column_4", "timestamp", None, None, None, None, None),
             ("timestamp_column_5", "timestamp", None, None, None, None, None),
+            ("timestamp_column_6", "timestamp", None, None, None, None, None),
+            ("timestamp_column_7", "timestamp", None, None, None, None, None),
             ("binary_column", "binary", None, None, None, None, None),
             ("array_column", "array", None, None, None, None, None),
             ("map_column", "map", None, None, None, None, None),
@@ -49,6 +52,8 @@ class TestUtils:
             ("03/08/2024 02:30:15 PM",),
             ("08-Mar-2024 14:30:15",),
             ("2024-03-16T14:30:25.123",),
+            ("2025-03-16T12:30:45+0530",),
+            ("2025-03-16 12:30:45 +0530",),
             (b"\xde\xad\xbe\xef",),
             ('["item1","item2"]',),
             ('{"key1":"value1","key2":"value2"}',),
@@ -83,6 +88,30 @@ class TestUtils:
             (datetime.datetime(2024, 3, 8, 14, 30, 15), datetime.datetime),
             (datetime.datetime(2024, 3, 8, 14, 30, 15), datetime.datetime),
             (datetime.datetime(2024, 3, 16, 14, 30, 25, 123000), datetime.datetime),
+            (
+                datetime.datetime(
+                    2025,
+                    3,
+                    16,
+                    12,
+                    30,
+                    45,
+                    tzinfo=timezone(timedelta(hours=5, minutes=30)),
+                ),
+                datetime.datetime,
+            ),
+            (
+                datetime.datetime(
+                    2025,
+                    3,
+                    16,
+                    12,
+                    30,
+                    45,
+                    tzinfo=timezone(timedelta(hours=5, minutes=30)),
+                ),
+                datetime.datetime,
+            ),
             (b"\xde\xad\xbe\xef", bytes),
             ('["item1","item2"]', str),
             ('{"key1":"value1","key2":"value2"}', str),
