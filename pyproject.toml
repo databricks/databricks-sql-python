@@ -24,6 +24,7 @@ pyarrow = [
     { version = ">=14.0.1", python = ">=3.8,<3.13", optional=true },
     { version = ">=18.0.0", python = ">=3.13", optional=true }
 ]
+python-dateutil = "^2.9.0"
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]
