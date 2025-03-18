@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import pytz
+from dateutil import parser
 import datetime
 import decimal
 from abc import ABC, abstractmethod
@@ -642,16 +642,7 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
             )
         elif description[i][1] == "timestamp":
             converted_column_table.append(
-                tuple(
-                    (
-                        v
-                        if v is None
-                        else datetime.datetime.strptime(
-                            v, "%Y-%m-%d %H:%M:%S.%f"
-                        ).replace(tzinfo=pytz.UTC)
-                    )
-                    for v in col
-                )
+                tuple((v if v is None else parser.parse(v)) for v in col)
             )
         else:
             converted_column_table.append(col)
