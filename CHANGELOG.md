@@ -3,7 +3,7 @@
 # 4.0.1 (2025-03-12)
 - Support for multiple timestamp formats parsing (databricks/databricks-sql-python#533 by @jprakash-db)
 - Rename `_user_agent_entry` in connect call to `user_agent_entry` to expose it as a public parameter. (databricks/databricks-sql-python#530 by @shivam2680)
-- Fi: compatibility with urllib3 versions less than 2.x. (databricks/databricks-sql-python#526 by @shivam2680)
+- Fix: compatibility with urllib3 versions less than 2.x. (databricks/databricks-sql-python#526 by @shivam2680)
 - Support for Python 3.13 and updated dependencies (databricks/databricks-sql-python#510 by @dhirschfeld and @dbaxa)
 
 # 4.0.0 (2025-01-19)
