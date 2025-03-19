@@ -144,6 +144,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.__resp and self.__resp.drain_conn()
         self.__resp and self.__resp.release_conn()
         self.__resp = None
+        self.__pool = None
 
     def read(self, sz):
         return self.__resp.read(sz)
