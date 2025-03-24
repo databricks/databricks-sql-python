@@ -42,8 +42,8 @@ python = "^3.10"
 # for its own already-bounded, trusted-server result stream).
 thrift = ">=0.24.0,<0.26.0"
 pandas = [
-    { version = ">=1.2.5,<4.0.0", python = ">=3.10,<3.13" },
-    { version = ">=2.2.3,<4.0.0", python = ">=3.13" }
+    { version = ">=1.2.5,<4.0.0", python = ">=3.10,<3.13", optional=true },
+    { version = ">=2.2.3,<4.0.0", python = ">=3.13", optional=true }
 ]
 lz4 = [
     { version = "^4.0.2", python = ">=3.10,<3.14" },
@@ -75,6 +75,7 @@ databricks-sql-kernel = {version = "^1.3.0", optional = true, python = ">=3.10"}
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]
+pandas = ["pandas"]
 # ``pip install databricks-sql-connector[kernel]`` adds the Rust kernel
 # backend so ``use_kernel=True`` works.
 #
