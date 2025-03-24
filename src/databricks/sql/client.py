@@ -1,11 +1,15 @@
 import time
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence, BinaryIO
-import pandas
 
+try:
+    import pandas
+except ImportError:
+    pandas = None
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
+
 import json
 import os
 import decimal
@@ -77,6 +81,13 @@ from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.enums import StatementType
 
 logger = logging.getLogger(__name__)
+
+if pandas is None:
+    logger.warning(
+        "[WARN] pandas is not installed by default,"
+        "any pandas specific api will be disabled."
+        "If you need these features, please run pip install pandas or pip install databricks-sql-connector[pandas] to install"
+    )
 
 if pyarrow is None:
     logger.warning(
@@ -281,7 +292,9 @@ class Connection:
                 "spark.sql.thriftserver.metadata.metricview.enabled"
             ] = "true"
 
-        self.disable_pandas = kwargs.get("_disable_pandas", False)
+        self.disable_pandas = (
+            True if pandas is None else kwargs.get("_disable_pandas", False)
+        )
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._cursors = []  # type: List[Cursor]

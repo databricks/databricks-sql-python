@@ -4,8 +4,11 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
-import pandas
 
+try:
+    import pandas
+except ImportError:
+    pandas = None
 try:
     import pyarrow
 except ImportError:
