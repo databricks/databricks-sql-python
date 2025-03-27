@@ -896,6 +896,19 @@ class Cursor:
         self._check_not_closed()
         return self.thrift_backend.get_query_state(self.active_op_handle)
 
+    def is_query_pending(self):
+        """
+        Checks whether the async executing query is in pending state or not
+
+        :return:
+        """
+        operation_state = self.get_query_state()
+
+        return not operation_state or operation_state in [
+            ttypes.TOperationState.RUNNING_STATE,
+            ttypes.TOperationState.PENDING_STATE,
+        ]
+
     def get_async_execution_result(self):
         """
 
@@ -905,13 +918,7 @@ class Cursor:
         """
         self._check_not_closed()
 
-        def is_executing(operation_state) -> "bool":
-            return not operation_state or operation_state in [
-                ttypes.TOperationState.RUNNING_STATE,
-                ttypes.TOperationState.PENDING_STATE,
-            ]
-
-        while is_executing(self.get_query_state()):
+        while self.is_query_pending():
             # Poll after some default time
             time.sleep(self.ASYNC_DEFAULT_POLLING_INTERVAL)
 
