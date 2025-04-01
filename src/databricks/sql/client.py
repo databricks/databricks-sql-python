@@ -876,6 +876,19 @@ class Cursor:
             ttypes.TOperationState.PENDING_STATE,
         ]
 
+    def is_query_pending(self):
+        """
+        Checks whether the async executing query is in pending state or not
+
+        :return:
+        """
+        operation_state = self.get_query_state()
+
+        return not operation_state or operation_state in [
+            ttypes.TOperationState.RUNNING_STATE,
+            ttypes.TOperationState.PENDING_STATE,
+        ]
+
     def get_async_execution_result(self):
         """
 
