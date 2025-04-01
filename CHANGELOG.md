@@ -1,6 +1,12 @@
 # Release History
 
+# 4.0.2 (2025-04-01)
+
+- Fix: Relaxed the pin for `python-dateutil` to be `^2.8.0` (databricks/databricks-sql-python#538 by @jprakash-db)
+
 # 4.0.1 (2025-03-19)
+
+**Note: this release was yanked from Pypi on 19 March 2025 due to compatibility issues with `dbt-databricks<1.5.3`**
 
 - Support for multiple timestamp formats parsing (databricks/databricks-sql-python#533 by @jprakash-db)
 - Rename `_user_agent_entry` in connect call to `user_agent_entry` to expose it as a public parameter. (databricks/databricks-sql-python#530 by @shivam2680)
