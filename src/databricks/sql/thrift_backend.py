@@ -797,12 +797,15 @@ class ThriftBackend:
             t_result_set_metadata_resp.schema
         )
 
-        schema_bytes = (
-            t_result_set_metadata_resp.arrowSchema
-            or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
-            .serialize()
-            .to_pybytes()
-        )
+        if pyarrow:
+            schema_bytes = (
+                t_result_set_metadata_resp.arrowSchema
+                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                .serialize()
+                .to_pybytes()
+            )
+        else:
+            schema_bytes = None
 
         queue = ResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
