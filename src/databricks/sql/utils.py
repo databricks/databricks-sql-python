@@ -611,21 +611,32 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
 
 
 def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
+    new_columns = []
+    new_fields = []
+
     for i, col in enumerate(table.itercolumns()):
+        field = table.field(i)
+
         if description[i][1] == "decimal":
-            decimal_col = col.to_pandas().apply(
-                lambda v: v if v is None else Decimal(v)
-            )
             precision, scale = description[i][4], description[i][5]
             assert scale is not None
             assert precision is not None
-            # Spark limits decimal to a maximum scale of 38,
-            # so 128 is guaranteed to be big enough
+            # create the target decimal type
             dtype = pyarrow.decimal128(precision, scale)
-            col_data = pyarrow.array(decimal_col, type=dtype)
-            field = table.field(i).with_type(dtype)
-            table = table.set_column(i, field, col_data)
-    return table
+
+            # convert the column directly using PyArrow's cast operation
+            new_col = col.cast(dtype)
+            new_field = field.with_type(dtype)
+
+            new_columns.append(new_col)
+            new_fields.append(new_field)
+        else:
+            new_columns.append(col)
+            new_fields.append(field)
+
+    new_schema = pyarrow.schema(new_fields)
+
+    return pyarrow.Table.from_arrays(new_columns, schema=new_schema)
 
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
