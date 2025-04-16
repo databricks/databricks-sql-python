@@ -6266,7 +6266,6 @@ class TDBSqlStatement(object):
     def __ne__(self, other):
         return not (self == other)
 
-
 class TSparkParameterValue(object):
     """
     Attributes:
@@ -6275,9 +6274,10 @@ class TSparkParameterValue(object):
      - booleanValue
 
     """
+    thrift_spec = None
 
 
-    def __init__(self, stringValue=None, doubleValue=None, booleanValue=None,):
+    def __init__(self, stringValue = None, doubleValue = None, booleanValue = None,):
         self.stringValue = stringValue
         self.doubleValue = doubleValue
         self.booleanValue = booleanValue
@@ -6312,6 +6312,7 @@ class TSparkParameterValue(object):
         iprot.readStructEnd()
 
     def write(self, oprot):
+        self.validate()
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
@@ -6346,6 +6347,96 @@ class TSparkParameterValue(object):
         return not (self == other)
 
 
+class TSparkParameterValueArg(object):
+    """
+    Attributes:
+     - type
+     - value
+     - arguments
+
+    """
+    thrift_spec = None
+
+
+    def __init__(self, type = None, value = None, arguments = None,):
+        self.type = type
+        self.value = value
+        self.arguments = arguments
+
+    def read(self, iprot):
+        if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
+            iprot._fast_decode(self, iprot, [self.__class__, self.thrift_spec])
+            return
+        iprot.readStructBegin()
+        while True:
+            (fname, ftype, fid) = iprot.readFieldBegin()
+            if ftype == TType.STOP:
+                break
+            if fid == 1:
+                if ftype == TType.STRING:
+                    self.type = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 2:
+                if ftype == TType.STRING:
+                    self.value = iprot.readString().decode('utf-8', errors='replace') if sys.version_info[0] == 2 else iprot.readString()
+                else:
+                    iprot.skip(ftype)
+            elif fid == 3:
+                if ftype == TType.LIST:
+                    self.arguments = []
+                    (_etype265, _size262) = iprot.readListBegin()
+                    for _i266 in range(_size262):
+                        _elem267 = TSparkParameterValueArg()
+                        _elem267.read(iprot)
+                        self.arguments.append(_elem267)
+                    iprot.readListEnd()
+                else:
+                    iprot.skip(ftype)
+            else:
+                iprot.skip(ftype)
+            iprot.readFieldEnd()
+        iprot.readStructEnd()
+
+    def write(self, oprot):
+        self.validate()
+        if oprot._fast_encode is not None and self.thrift_spec is not None:
+            oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
+            return
+        oprot.writeStructBegin('TSparkParameterValueArg')
+        if self.type is not None:
+            oprot.writeFieldBegin('type', TType.STRING, 1)
+            oprot.writeString(self.type.encode('utf-8') if sys.version_info[0] == 2 else self.type)
+            oprot.writeFieldEnd()
+        if self.value is not None:
+            oprot.writeFieldBegin('value', TType.STRING, 2)
+            oprot.writeString(self.value.encode('utf-8') if sys.version_info[0] == 2 else self.value)
+            oprot.writeFieldEnd()
+        if self.arguments is not None:
+            oprot.writeFieldBegin('arguments', TType.LIST, 3)
+            oprot.writeListBegin(TType.STRUCT, len(self.arguments))
+            for iter268 in self.arguments:
+                iter268.write(oprot)
+            oprot.writeListEnd()
+            oprot.writeFieldEnd()
+        oprot.writeFieldStop()
+        oprot.writeStructEnd()
+
+    def validate(self):
+        return
+
+    def __repr__(self):
+        L = ['%s=%r' % (key, value)
+             for key, value in self.__dict__.items()]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+    def __ne__(self, other):
+        return not (self == other)
+
+
 class TSparkParameter(object):
     """
     Attributes:
@@ -6353,15 +6444,18 @@ class TSparkParameter(object):
      - name
      - type
      - value
+     - arguments
 
     """
+    thrift_spec = None
 
 
-    def __init__(self, ordinal=None, name=None, type=None, value=None,):
+    def __init__(self, ordinal = None, name = None, type = None, value = None, arguments = None,):
         self.ordinal = ordinal
         self.name = name
         self.type = type
         self.value = value
+        self.arguments = arguments
 
     def read(self, iprot):
         if iprot._fast_decode is not None and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None:
@@ -6393,12 +6487,24 @@ class TSparkParameter(object):
                     self.value.read(iprot)
                 else:
                     iprot.skip(ftype)
+            elif fid == 5:
+                if ftype == TType.LIST:
+                    self.arguments = []
+                    (_etype272, _size269) = iprot.readListBegin()
+                    for _i273 in range(_size269):
+                        _elem274 = TSparkParameterValueArg()
+                        _elem274.read(iprot)
+                        self.arguments.append(_elem274)
+                    iprot.readListEnd()
+                else:
+                    iprot.skip(ftype)
             else:
                 iprot.skip(ftype)
             iprot.readFieldEnd()
         iprot.readStructEnd()
 
     def write(self, oprot):
+        self.validate()
         if oprot._fast_encode is not None and self.thrift_spec is not None:
             oprot.trans.write(oprot._fast_encode(self, [self.__class__, self.thrift_spec]))
             return
@@ -6418,6 +6524,13 @@ class TSparkParameter(object):
         if self.value is not None:
             oprot.writeFieldBegin('value', TType.STRUCT, 4)
             self.value.write(oprot)
+            oprot.writeFieldEnd()
+        if self.arguments is not None:
+            oprot.writeFieldBegin('arguments', TType.LIST, 5)
+            oprot.writeListBegin(TType.STRUCT, len(self.arguments))
+            for iter275 in self.arguments:
+                iter275.write(oprot)
+            oprot.writeListEnd()
             oprot.writeFieldEnd()
         oprot.writeFieldStop()
         oprot.writeStructEnd()

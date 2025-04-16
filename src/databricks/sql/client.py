@@ -48,7 +48,7 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
-    TOperationState,
+    TOperationState, TSparkParameterValue, TSparkParameterValueArg,
 )
 
 
@@ -788,36 +788,68 @@ class Cursor:
         :returns self
         """
 
-        param_approach = self._determine_parameter_approach(parameters)
-        if param_approach == ParameterApproach.NONE:
-            prepared_params = NO_NATIVE_PARAMS
-            prepared_operation = operation
+        # param_approach = self._determine_parameter_approach(parameters)
+        # if param_approach == ParameterApproach.NONE:
+        #     prepared_params = NO_NATIVE_PARAMS
+        #     prepared_operation = operation
+        #
+        # elif param_approach == ParameterApproach.INLINE:
+        #     prepared_operation, prepared_params = self._prepare_inline_parameters(
+        #         operation, parameters
+        #     )
+        # elif param_approach == ParameterApproach.NATIVE:
+        #     normalized_parameters = self._normalize_tparametercollection(parameters)
+        #     param_structure = self._determine_parameter_structure(normalized_parameters)
+        #     transformed_operation = transform_paramstyle(
+        #         operation, normalized_parameters, param_structure
+        #     )
+        #     prepared_operation, prepared_params = self._prepare_native_parameters(
+        #         transformed_operation, normalized_parameters, param_structure
+        #     )
 
-        elif param_approach == ParameterApproach.INLINE:
-            prepared_operation, prepared_params = self._prepare_inline_parameters(
-                operation, parameters
-            )
-        elif param_approach == ParameterApproach.NATIVE:
-            normalized_parameters = self._normalize_tparametercollection(parameters)
-            param_structure = self._determine_parameter_structure(normalized_parameters)
-            transformed_operation = transform_paramstyle(
-                operation, normalized_parameters, param_structure
-            )
-            prepared_operation, prepared_params = self._prepare_native_parameters(
-                transformed_operation, normalized_parameters, param_structure
-            )
+        temp_prepared_operation="""INSERT INTO ___________________first.jprakash.complex_types (
+                  user_id, name, emails
+                ) VALUES (
+                  :user_id, :name, :emails
+                )"""
 
+        temp_prepared_params=[
+            TSparkParameter(
+                name="user_id",
+                type="STRING",
+                value=TSparkParameterValue(stringValue="u123")
+            ),
+            TSparkParameter(
+                name="name",
+                type="STRING",
+                value=TSparkParameterValue(stringValue="John Doe")
+            ),
+            TSparkParameter(
+                name="emails",
+                type="ARRAY",
+                arguments=[
+                    TSparkParameterValueArg(
+                        type="STRING",
+                        value="john.doe@example.com"
+                    ),
+                    TSparkParameterValueArg(
+                        type="STRING",
+                        value="jd@example.org"
+                    )
+                ]
+            )
+        ]
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
-            operation=prepared_operation,
+            operation=temp_prepared_operation,
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
-            parameters=prepared_params,
+            parameters=temp_prepared_params,
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
