@@ -2,6 +2,7 @@ import logging
 import random
 import time
 import typing
+from importlib.metadata import version
 from enum import Enum
 from typing import List, Optional, Tuple, Union
 
@@ -308,8 +309,11 @@ class DatabricksRetryPolicy(Retry):
 
         current_attempt = self.stop_after_attempts_count - int(self.total or 0)
         proposed_backoff = (2**current_attempt) * self.delay_min
-        if self.backoff_jitter != 0.0:
-            proposed_backoff += random.random() * self.backoff_jitter
+
+        library_version = version("urllib3")
+        if int(library_version.split(".")[0]) >= 2:
+            if self.backoff_jitter != 0.0:
+                proposed_backoff += random.random() * self.backoff_jitter
 
         proposed_backoff = min(proposed_backoff, self.delay_max)
         self.check_proposed_wait(proposed_backoff)
