@@ -2,6 +2,7 @@ import logging
 import random
 import time
 import typing
+from importlib.metadata import version
 from enum import Enum
 from typing import List, Optional, Tuple, Union
 
@@ -16,7 +17,6 @@ except ImportError:
     from urllib3 import HTTPResponse as BaseHTTPResponse
 from urllib3 import Retry
 from urllib3.util.retry import RequestHistory
-from packaging import version
 
 
 from databricks.sql.exc import (
@@ -312,7 +312,9 @@ class DatabricksRetryPolicy(Retry):
 
         current_attempt = self.stop_after_attempts_count - int(self.total or 0)
         proposed_backoff = (2**current_attempt) * self.delay_min
-        if version.parse(urllib3.__version__) >= version.parse("2.0.0"):
+
+        library_version = version("urllib3")
+        if int(library_version.split(".")[0]) >= 2:
             if self.backoff_jitter != 0.0:
                 proposed_backoff += random.random() * self.backoff_jitter
 
