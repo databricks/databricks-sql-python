@@ -1,5 +1,9 @@
 # Release History
 
+# 3.7.4 (2025-04-21)
+
+- Fix: compatibility with urllib3 versions less than 2.x (databricks/databricks-sql-python#545 by @jprakash-db)
+
 # 3.7.3 (2025-03-28)
 
 - Fix: Unable to poll small results in execute_async function (databricks/databricks-sql-python#515 by @jprakash-db) 
