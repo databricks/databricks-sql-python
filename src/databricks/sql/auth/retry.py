@@ -17,7 +17,6 @@ except ImportError:
     from urllib3 import HTTPResponse as BaseHTTPResponse
 from urllib3 import Retry
 from urllib3.util.retry import RequestHistory
-from packaging import version
 
 
 
