@@ -1,5 +1,9 @@
 # Release History
 
+# 4.0.3 (2025-04-22)
+
+- Fix: Removed `packaging` dependency in favour of default libraries, for `urllib3` version checks (databricks/databricks-sql-python#547 by @jprakash-db)
+- 
 # 4.0.2 (2025-04-01)
 
 - Fix: Relaxed the pin for `python-dateutil` to be `^2.8.0` (databricks/databricks-sql-python#538 by @jprakash-db)
