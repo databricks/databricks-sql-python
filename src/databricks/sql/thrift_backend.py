@@ -934,6 +934,7 @@ class ThriftBackend:
                 maxRows=max_rows, maxBytes=max_bytes
             ),
         )
+        ## commment
         resp = self.make_request(self._client.GetCatalogs, req)
         return self._handle_execute_response(resp, cursor)
 
