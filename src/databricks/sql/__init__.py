@@ -10,7 +10,7 @@ paramstyle = "named"
 
 import re
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
     # Use this import purely for type annotations, a la https://mypy.readthedocs.io/en/latest/runtime_troubles.html#import-cycles
@@ -84,7 +84,32 @@ def TimestampFromTicks(ticks):
     return Timestamp(*time.localtime(ticks)[:6])
 
 
-def connect(server_hostname, http_path, access_token=None, **kwargs) -> "Connection":
+def singleton(class_):
+    instances = {}
+
+    def getinstance(*args, **kwargs):
+        if class_ not in instances:
+            instances[class_] = class_(*args, **kwargs)
+        return instances[class_]
+
+    return getinstance
+
+
+@singleton
+class DefaultNone(object):
+    """Used to represent a default value of None so that this code can distinguish between
+    the user passing None versus a default value of None being used.
+    """
+
+    pass
+
+
+def connect(
+    server_hostname,
+    http_path,
+    access_token: Optional[Union[str, DefaultNone]] = DefaultNone,
+    **kwargs
+) -> "Connection":
     from .client import Connection
 
     return Connection(server_hostname, http_path, access_token, **kwargs)
