@@ -38,9 +38,16 @@ permissions:
 
 jobs:
   test-token-federation:
-    runs-on: ubuntu-latest
+    runs-on:
+        group: databricks-protected-runner-group
+        labels: linux-ubuntu-latest
     
     steps:
+      - name: Debug OIDC Claims
+        uses: github/actions-oidc-debugger@main
+        with:
+          audience: '${{ github.server_url }}/${{ github.repository_owner }}'
+          
       - name: Checkout code
         uses: actions/checkout@v4
       
