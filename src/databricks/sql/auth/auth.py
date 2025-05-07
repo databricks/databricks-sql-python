@@ -5,6 +5,7 @@ from databricks.sql.auth.authenticators import (
     AuthProvider,
     AccessTokenAuthProvider,
     ExternalAuthProvider,
+    CredentialsProvider,
     DatabricksOAuthProvider,
 )
 
@@ -12,6 +13,7 @@ from databricks.sql.auth.authenticators import (
 class AuthType(Enum):
     DATABRICKS_OAUTH = "databricks-oauth"
     AZURE_OAUTH = "azure-oauth"
+    TOKEN_FEDERATION = "token-federation"
     # other supported types (access_token) can be inferred
     # we can add more types as needed later
 
@@ -29,6 +31,7 @@ class ClientContext:
         tls_client_cert_file: Optional[str] = None,
         oauth_persistence=None,
         credentials_provider=None,
+        identity_federation_client_id: Optional[str] = None,
     ):
         self.hostname = hostname
         self.access_token = access_token
@@ -40,11 +43,44 @@ class ClientContext:
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
         self.credentials_provider = credentials_provider
+        self.identity_federation_client_id = identity_federation_client_id
 
 
 def get_auth_provider(cfg: ClientContext):
     if cfg.credentials_provider:
+        # If token federation is enabled and credentials provider is provided,
+        # wrap the credentials provider with DatabricksTokenFederationProvider
+        if cfg.auth_type == AuthType.TOKEN_FEDERATION.value:
+            from databricks.sql.auth.token_federation import DatabricksTokenFederationProvider
+            federation_provider = DatabricksTokenFederationProvider(
+                cfg.credentials_provider,
+                cfg.hostname,
+                cfg.identity_federation_client_id
+            )
+            return ExternalAuthProvider(federation_provider)
+        
+        # If access token is provided with token federation, create a SimpleCredentialsProvider
+        elif cfg.auth_type == AuthType.TOKEN_FEDERATION.value and cfg.access_token:
+            from databricks.sql.auth.token_federation import create_token_federation_provider
+            federation_provider = create_token_federation_provider(
+                cfg.access_token,
+                cfg.hostname,
+                cfg.identity_federation_client_id
+            )
+            return ExternalAuthProvider(federation_provider)
+            
         return ExternalAuthProvider(cfg.credentials_provider)
+    
+    if cfg.auth_type == AuthType.TOKEN_FEDERATION.value and cfg.access_token:
+        # If only access_token is provided with token federation, use create_token_federation_provider
+        from databricks.sql.auth.token_federation import create_token_federation_provider
+        federation_provider = create_token_federation_provider(
+            cfg.access_token,
+            cfg.hostname,
+            cfg.identity_federation_client_id
+        )
+        return ExternalAuthProvider(federation_provider)
+        
     if cfg.auth_type in [AuthType.DATABRICKS_OAUTH.value, AuthType.AZURE_OAUTH.value]:
         assert cfg.oauth_redirect_port_range is not None
         assert cfg.oauth_client_id is not None
@@ -125,5 +161,6 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
+        identity_federation_client_id=kwargs.get("identity_federation_client_id"),
     )
     return get_auth_provider(cfg)
