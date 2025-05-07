@@ -62,6 +62,45 @@ jobs:
           pip install -e .
           pip install pyarrow
       
+      - name: Create debugging patch script
+        run: |
+          cat > patch_for_debugging.py << 'EOF'
+          #!/usr/bin/env python3
+          
+          def patch_code():
+              with open('src/databricks/sql/auth/token_federation.py', 'r') as f:
+                  content = f.read()
+              
+              # Add verbose request debugging
+              modified = content.replace(
+                  'try:\n            # Make the token exchange request',
+                  'try:\n            import urllib.parse\n            # Debug full request\n            print(f"Token endpoint: {self.token_endpoint}")\n            print(f"Request parameters: {urllib.parse.urlencode(params)}")\n            print(f"Request headers: {headers}")\n            # Make the token exchange request'
+              )
+              
+              # Add verbose response debugging
+              modified = modified.replace(
+                  'response = requests.post(self.token_endpoint, data=params, headers=headers)',
+                  'response = requests.post(self.token_endpoint, data=params, headers=headers)\n            print(f"Response status: {response.status_code}")\n            print(f"Response headers: {dict(response.headers)}")\n            print(f"Response body: {response.text}")'
+              )
+              
+              # Improve error handling
+              modified = modified.replace(
+                  'except RequestException as e:',
+                  'except RequestException as e:\n            if hasattr(e, "response") and e.response:\n                print(f"Error response status: {e.response.status_code}")\n                print(f"Error response headers: {dict(e.response.headers)}")\n                print(f"Error response text: {e.response.text}")'
+              )
+              
+              with open('src/databricks/sql/auth/token_federation.py', 'w') as f:
+                  f.write(modified)
+
+          if __name__ == "__main__":
+              patch_code()
+          EOF
+          
+          chmod +x patch_for_debugging.py
+      
+      - name: Apply debugging patches to token_federation.py
+        run: python patch_for_debugging.py
+      
       - name: Get GitHub OIDC token
         id: get-id-token
         uses: actions/github-script@v7
