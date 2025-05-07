@@ -214,14 +214,17 @@ jobs:
           
           # Create a properly URL-encoded request
           echo "Creating token exchange request..."
-          curl_data=$(cat <<EOF
-client_id=$IDENTITY_FEDERATION_CLIENT_ID&\
-subject_token=$OIDC_TOKEN&\
-subject_token_type=urn:ietf:params:oauth:token-type:jwt&\
-grant_type=urn:ietf:params:oauth:grant-type:token-exchange&\
-scope=sql
-EOF
+          curl_data=$(cat << 'EOF'
+          client_id=$IDENTITY_FEDERATION_CLIENT_ID&\
+          subject_token=$OIDC_TOKEN&\
+          subject_token_type=urn:ietf:params:oauth:token-type:jwt&\
+          grant_type=urn:ietf:params:oauth:grant-type:token-exchange&\
+          scope=sql
+          EOF
           )
+          
+          # Substitute environment variables in the curl data
+          curl_data=$(eval echo "$curl_data")
           
           # Print request details (except the token)
           echo "Request URL: https://$DATABRICKS_HOST/oidc/v1/token"
