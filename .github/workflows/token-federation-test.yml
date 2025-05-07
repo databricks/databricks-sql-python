@@ -108,9 +108,9 @@ jobs:
                   sys.exit(1)
               
               # Get Databricks connection parameters
-              host = os.environ.get("DATABRICKS_HOST")
-              http_path = os.environ.get("DATABRICKS_HTTP_PATH")
-              identity_federation_client_id = os.environ.get("IDENTITY_FEDERATION_CLIENT_ID")
+              host = os.environ.get("DATABRICKS_HOST_FOR_TF")
+              http_path = os.environ.get("DATABRICKS_HTTP_PATH_FOR_TF")
+              identity_federation_client_id = os.environ.get("IDENTITY_FEDERATION_CLIENT_ID_FOR_TF")
               
               if not host or not http_path:
                   print("Missing Databricks connection parameters")
@@ -158,8 +158,8 @@ jobs:
       
       - name: Test token federation with GitHub OIDC token
         env:
-          DATABRICKS_HOST: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_host || secrets.DATABRICKS_HOST }}
-          DATABRICKS_HTTP_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_http_path || secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_HOST_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_host || secrets.DATABRICKS_HOST_FOR_TF }}
+          DATABRICKS_HTTP_PATH_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_http_path || secrets.DATABRICKS_HTTP_PATH_FOR_TF }}
           IDENTITY_FEDERATION_CLIENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.identity_federation_client_id || secrets.IDENTITY_FEDERATION_CLIENT_ID }}
           OIDC_TOKEN: ${{ steps.get-id-token.outputs.token }}
         run: |
