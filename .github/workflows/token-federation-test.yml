@@ -186,8 +186,8 @@ jobs:
       
       - name: Debug token exchange with curl
         env:
-          DATABRICKS_HOST: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_host || secrets.DATABRICKS_HOST_FOR_TF }}
-          IDENTITY_FEDERATION_CLIENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.identity_federation_client_id || secrets.IDENTITY_FEDERATION_CLIENT_ID_FOR_TF }}
+          DATABRICKS_HOST_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_host || secrets.DATABRICKS_HOST_FOR_TF }}
+          IDENTITY_FEDERATION_CLIENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.identity_federation_client_id || secrets.IDENTITY_FEDERATION_CLIENT_ID }}
           OIDC_TOKEN: ${{ steps.get-id-token.outputs.token }}
         run: |
           echo "Attempting direct token exchange with curl..."
@@ -232,7 +232,7 @@ jobs:
           
           # Make the request with detailed info
           echo "Sending request..."
-          response=$(curl -v -s -X POST "https://$DATABRICKS_HOST/oidc/v1/token" \
+          response=$(curl -v -s -X POST "https://$DATABRICKS_HOST_FOR_TF/oidc/v1/token" \
             --data-raw "$curl_data" \
             -H "Content-Type: application/x-www-form-urlencoded" \
             -H "Accept: application/json" \
