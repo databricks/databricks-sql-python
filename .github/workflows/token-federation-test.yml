@@ -169,14 +169,14 @@ jobs:
               
               # Print important claims
               print("\n=== GITHUB OIDC TOKEN CLAIMS ===")
-              print(f"Issuer (iss): {claims.get(\"iss\")}")
-              print(f"Subject (sub): {claims.get(\"sub\")}")
-              print(f"Audience (aud): {claims.get(\"aud\")}")
-              print(f"Repository: {claims.get(\"repository\")}")
-              print(f"Repository owner: {claims.get(\"repository_owner\")}")
-              print(f"Event name: {claims.get(\"event_name\")}")
-              print(f"Ref: {claims.get(\"ref\")}")
-              print(f"Workflow ref: {claims.get(\"workflow_ref\")}")
+              print(f"Issuer (iss): {claims.get('iss')}")
+              print(f"Subject (sub): {claims.get('sub')}")
+              print(f"Audience (aud): {claims.get('aud')}")
+              print(f"Repository: {claims.get('repository')}")
+              print(f"Repository owner: {claims.get('repository_owner')}")
+              print(f"Event name: {claims.get('event_name')}")
+              print(f"Ref: {claims.get('ref')}")
+              print(f"Workflow ref: {claims.get('workflow_ref')}")
               print("\n=== FULL CLAIMS ===")
               print(json.dumps(claims, indent=2))
               print("===========================\n")
@@ -312,9 +312,9 @@ jobs:
                   # Add debugging info
                   claims = decode_jwt(token)
                   if claims:
-                      print(f"Token issuer: {claims.get(\'iss\', \'unknown\')}")
-                      print(f"Token subject: {claims.get(\'sub\', \'unknown\')}")
-                      print(f"Token audience: {claims.get(\'aud\', \'unknown\')}")
+                      print(f"Token issuer: {claims.get('iss', 'unknown')}")
+                      print(f"Token subject: {claims.get('sub', 'unknown')}")
+                      print(f"Token audience: {claims.get('aud', 'unknown')}")
                       
                       # If audience was specified in policy but doesn't match token
                       if audience and audience != claims.get('aud'):
@@ -358,13 +358,13 @@ jobs:
               claims = decode_jwt(github_token)
               if claims:
                   print("\n=== GitHub OIDC Token Claims ===")
-                  print(f"Token issuer: {claims.get(\'iss\', \'unknown\')}")
-                  print(f"Token subject: {claims.get(\'sub\', \'unknown\')}")
-                  print(f"Token audience: {claims.get(\'aud\', \'unknown\')}")
-                  print(f"Token expiration: {claims.get(\'exp\', \'unknown\')}")
-                  print(f"Repository: {claims.get(\'repository\', \'unknown\')}")
-                  print(f"Workflow ref: {claims.get(\'workflow_ref\', \'unknown\')}")
-                  print(f"Event name: {claims.get(\'event_name\', \'unknown\')}")
+                  print(f"Token issuer: {claims.get('iss')}")
+                  print(f"Token subject: {claims.get('sub')}")
+                  print(f"Token audience: {claims.get('aud')}")
+                  print(f"Token expiration: {claims.get('exp', 'unknown')}")
+                  print(f"Repository: {claims.get('repository', 'unknown')}")
+                  print(f"Workflow ref: {claims.get('workflow_ref', 'unknown')}")
+                  print(f"Event name: {claims.get('event_name', 'unknown')}")
                   print("===============================\n")
               
               # Try token exchange with several possible audience values
@@ -443,7 +443,7 @@ jobs:
         env:
           DATABRICKS_HOST_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_host || secrets.DATABRICKS_HOST_FOR_TF }}
           DATABRICKS_HTTP_PATH_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_http_path || secrets.DATABRICKS_HTTP_PATH_FOR_TF }}
-          IDENTITY_FEDERATION_CLIENT_ID_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.identity_federation_client_id || secrets.IDENTITY_FEDERATION_CLIENT_ID_FOR_TF }}
+          IDENTITY_FEDERATION_CLIENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.identity_federation_client_id || secrets.IDENTITY_FEDERATION_CLIENT_ID }}
           OIDC_TOKEN: ${{ steps.get-id-token.outputs.token }}
         run: |
           python test_github_token_federation.py
