@@ -69,13 +69,13 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         self.credentials_provider = credentials_provider
         self.hostname = hostname
         self.identity_federation_client_id = identity_federation_client_id
-        self.external_provider_headers = {}
+        self.external_provider_headers: Dict[str, str] = {}
         self.token = None
-        self.token_endpoint = None
+        self.token_endpoint: Optional[str] = None
         self.idp_endpoints = None
         self.openid_config = None
-        self.last_exchanged_token = None
-        self.last_external_token = None
+        self.last_exchanged_token: Optional[Token] = None
+        self.last_external_token: Optional[str] = None
         
     def auth_type(self) -> str:
         """Return the auth type from the underlying credentials provider."""
@@ -321,6 +321,10 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         """
         if not self.token_endpoint:
             self._init_oidc_discovery()
+            
+        # Ensure token_endpoint is set
+        if not self.token_endpoint:
+            raise ValueError("Token endpoint could not be determined")
             
         # Create request parameters
         params = dict(TOKEN_EXCHANGE_PARAMS)
