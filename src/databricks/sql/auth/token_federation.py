@@ -81,6 +81,16 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         """Return the auth type from the underlying credentials provider."""
         return self.credentials_provider.auth_type()
     
+    @property
+    def host(self) -> str:
+        """
+        Alias for hostname to maintain compatibility with code expecting a host attribute.
+        
+        Returns:
+            str: The hostname value
+        """
+        return self.hostname
+    
     def __call__(self, *args, **kwargs) -> HeaderFactory:
         """
         Configure and return a HeaderFactory that provides authentication headers.
