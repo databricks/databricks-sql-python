@@ -153,12 +153,25 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             
             # Fallback to default token endpoint if discovery fails
             if not self.token_endpoint:
-                self.token_endpoint = f"{self.hostname}oidc/v1/token"
+                # Make sure hostname has proper format with https:// prefix and trailing slash
+                hostname = self.hostname
+                if not hostname.startswith('https://'):
+                    hostname = f'https://{hostname}'
+                if not hostname.endswith('/'):
+                    hostname = f'{hostname}/'
+                self.token_endpoint = f"{hostname}oidc/v1/token"
                 logger.info(f"Using default token endpoint: {self.token_endpoint}")
                 
         except Exception as e:
             logger.warning(f"OIDC discovery failed: {str(e)}. Using default token endpoint.")
-            self.token_endpoint = f"{self.hostname}oidc/v1/token"
+            # Make sure hostname has proper format with https:// prefix and trailing slash
+            hostname = self.hostname
+            if not hostname.startswith('https://'):
+                hostname = f'https://{hostname}'
+            if not hostname.endswith('/'):
+                hostname = f'{hostname}/'
+            self.token_endpoint = f"{hostname}oidc/v1/token"
+            logger.info(f"Using default token endpoint after error: {self.token_endpoint}")
     
     def _extract_token_info_from_header(self, headers: Dict[str, str]) -> Tuple[str, str]:
         """Extract token type and token value from authorization header."""
