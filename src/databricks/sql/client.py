@@ -1423,8 +1423,8 @@ class ResultSet:
                 results = pyarrow.concat_tables([results, partial_results])
             self._next_row_index += partial_results.num_rows
 
-        # If PyArrow is installed and we have a ColumnTable result,
-        # convert it to a PyArrow Table for consistency with pre-3.5.0 behavior
+        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
+        # Valid only for metadata commands result set
         if isinstance(results, ColumnTable) and pyarrow:
             data = {
                 name: col
