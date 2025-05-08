@@ -335,15 +335,8 @@ class Connection:
     @staticmethod
     def get_protocol_version(openSessionResp):
         """
-        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
-        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
+        Return the serverProtocolVersion from the OpenSessionResponse.
         """
-        if (
-            openSessionResp.sessionHandle
-            and hasattr(openSessionResp.sessionHandle, "serverProtocolVersion")
-            and openSessionResp.sessionHandle.serverProtocolVersion
-        ):
-            return openSessionResp.sessionHandle.serverProtocolVersion
         return openSessionResp.serverProtocolVersion
 
     @staticmethod
@@ -754,7 +747,6 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
-        enforce_embedded_schema_correctness=False,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -819,7 +811,6 @@ class Cursor:
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
             async_op=False,
-            enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
         self.active_result_set = ResultSet(
             self.connection,
@@ -841,7 +832,6 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
-        enforce_embedded_schema_correctness=False,
     ) -> "Cursor":
         """
 
@@ -882,7 +872,6 @@ class Cursor:
             use_cloud_fetch=self.connection.use_cloud_fetch,
             parameters=prepared_params,
             async_op=True,
-            enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
 
         return self
