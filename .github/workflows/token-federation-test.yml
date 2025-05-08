@@ -214,18 +214,19 @@ jobs:
           
           # Create a properly URL-encoded request
           echo "Creating token exchange request..."
-          # URL encode the token
-          encoded_token=$(echo -n "$OIDC_TOKEN" | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=""))')
-          curl_data="client_id=$IDENTITY_FEDERATION_CLIENT_ID&subject_token=$encoded_token&subject_token_type=urn:ietf:params:oauth:token-type:jwt&grant_type=urn:ietf:params:oauth:grant-type:token-exchange&scope=sql"
           
           # Print request details (except the token)
           echo "Request URL: https://$DATABRICKS_HOST_FOR_TF/oidc/v1/token"
-          echo "Request data: $(echo "$curl_data" | sed 's/subject_token=.*&/subject_token=REDACTED&/')"
+          echo "Request data: client_id=$IDENTITY_FEDERATION_CLIENT_ID&subject_token=REDACTED&subject_token_type=urn:ietf:params:oauth:token-type:jwt&grant_type=urn:ietf:params:oauth:grant-type:token-exchange&scope=sql"
           
           # Make the request with detailed info
           echo "Sending request..."
           response=$(curl -v -s -X POST "https://$DATABRICKS_HOST_FOR_TF/oidc/v1/token" \
-            --data-raw "$curl_data" \
+            --data-urlencode "client_id=$IDENTITY_FEDERATION_CLIENT_ID" \
+            --data-urlencode "subject_token=$OIDC_TOKEN" \
+            --data-urlencode "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
+            --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+            --data-urlencode "scope=sql" \
             -H "Content-Type: application/x-www-form-urlencoded" \
             -H "Accept: application/json" \
             2>&1)
