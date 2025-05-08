@@ -283,33 +283,56 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
     def _refresh_token(self, access_token: str, token_type: str) -> Dict[str, str]:
         """
-        Attempt to refresh an expired token.
+        Attempt to refresh an expired token by first getting a fresh external token
+        and then exchanging it for a new Databricks token.
 
-        For most OAuth implementations, refreshing involves a new token exchange
-        with the latest external token.
+        This implementation follows the JDBC driver approach by first requesting
+        a fresh token from the underlying credentials provider before performing
+        the token exchange.
 
         Args:
-            access_token: The original external access token
+            access_token: The original external access token (will be replaced)
             token_type: The token type (Bearer, etc.)
 
         Returns:
             The headers with the fresh token
         """
         try:
-            logger.info("Refreshing expired token via new token exchange")
-            # For most federation implementations, refresh is just a new token exchange
-            token_claims = self._parse_jwt_claims(access_token)
+            logger.info("Refreshing expired token by getting a new external token")
+
+            # ENHANCEMENT: Get a fresh token from the underlying credentials provider
+            # instead of reusing the same access_token
+            fresh_headers = self.credentials_provider()()
+
+            # Extract the fresh token from the headers
+            auth_header = fresh_headers.get("Authorization", "")
+            if not auth_header:
+                logger.error("No Authorization header in fresh headers")
+                return self.external_provider_headers
+
+            parts = auth_header.split(" ", 1)
+            if len(parts) != 2:
+                logger.error(f"Invalid Authorization header format: {auth_header}")
+                return self.external_provider_headers
+
+            fresh_token_type = parts[0]
+            fresh_access_token = parts[1]
+
+            logger.debug("Got fresh external token")
+
+            # Now process the fresh token
+            token_claims = self._parse_jwt_claims(fresh_access_token)
             idp_type = self._detect_idp_from_claims(token_claims)
 
-            # Perform a new token exchange
-            refreshed_token = self._exchange_token(access_token, idp_type)
+            # Perform a new token exchange with the fresh token
+            refreshed_token = self._exchange_token(fresh_access_token, idp_type)
 
             # Update the stored token
             self.last_exchanged_token = refreshed_token
-            self.last_external_token = access_token
+            self.last_external_token = fresh_access_token
 
             # Create new headers with the refreshed token
-            headers = dict(self.external_provider_headers)
+            headers = dict(fresh_headers)  # Use the fresh headers as base
             headers[
                 "Authorization"
             ] = f"{refreshed_token.token_type} {refreshed_token.access_token}"

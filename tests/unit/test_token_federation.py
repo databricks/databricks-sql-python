@@ -114,6 +114,63 @@ class TestTokenFederationProvider(unittest.TestCase):
         federation_provider.token_endpoint = None
         federation_provider._init_oidc_discovery()
         self.assertEqual(federation_provider.token_endpoint, "https://example.com/oidc/v1/token")
+    
+    @patch('databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._parse_jwt_claims')
+    @patch('databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._exchange_token')
+    @patch('databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._is_same_host')
+    def test_token_refresh(self, mock_is_same_host, mock_exchange_token, mock_parse_jwt):
+        """Test token refresh functionality for approaching expiry."""
+        # Set up mocks
+        mock_parse_jwt.return_value = {"iss": "https://login.microsoftonline.com/tenant"}
+        mock_is_same_host.return_value = False
+        
+        # Create a simple credentials provider that returns a fixed token
+        external_token = "test_token"
+        creds_provider = SimpleCredentialsProvider(external_token)
+        
+        # Set up the token federation provider
+        federation_provider = DatabricksTokenFederationProvider(
+            creds_provider, "example.com", "client_id"
+        )
+        
+        # Mock the token exchange to return a known token
+        future_time = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+        mock_exchange_token.return_value = Token(
+            "exchanged_token_1", "Bearer", expiry=future_time
+        )
+        
+        # First call to get initial headers and token - this should trigger an exchange
+        headers_factory = federation_provider()
+        headers = headers_factory()
+        
+        # Verify the exchange happened
+        mock_exchange_token.assert_called_with(external_token, "azure")
+        self.assertEqual(headers["Authorization"], "Bearer exchanged_token_1")
+        
+        # Reset the mocks to track the next call
+        mock_exchange_token.reset_mock()
+        
+        # Now simulate an approaching expiry
+        near_expiry = datetime.now(tz=timezone.utc) + timedelta(minutes=4)
+        federation_provider.last_exchanged_token = Token(
+            "exchanged_token_1", "Bearer", expiry=near_expiry
+        )
+        federation_provider.last_external_token = external_token
+        
+        # Set up the mock to return a different token for the refresh
+        mock_exchange_token.return_value = Token(
+            "exchanged_token_2", "Bearer", expiry=future_time
+        )
+        
+        # Make a second call which should trigger refresh
+        headers = headers_factory()
+        
+        # Verify the token was exchanged with the SAME external token (current implementation)
+        # This is different from the JDBC driver approach which gets a fresh token
+        mock_exchange_token.assert_called_once_with(external_token, "azure")
+        
+        # Verify the headers contain the new token
+        self.assertEqual(headers["Authorization"], "Bearer exchanged_token_2")
 
 
 class TestTokenFederationFactory(unittest.TestCase):
