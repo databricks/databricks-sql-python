@@ -41,19 +41,19 @@ class TestToken(unittest.TestCase):
         self.assertFalse(token.is_expired())
     
     def test_token_needs_refresh(self):
-        """Test Token needs_refresh method."""
+        """Test Token needs_refresh method using actual TOKEN_REFRESH_BUFFER_SECONDS."""
         # Token with expiry in the past
         past = datetime.now(tz=timezone.utc) - timedelta(hours=1)
         token = Token("access_token", "Bearer", expiry=past)
         self.assertTrue(token.needs_refresh())
         
         # Token with expiry in the near future (within refresh buffer)
-        near_future = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS - 60)
+        near_future = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS - 1)
         token = Token("access_token", "Bearer", expiry=near_future)
         self.assertTrue(token.needs_refresh())
         
         # Token with expiry far in the future
-        far_future = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS + 60)
+        far_future = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS + 10)
         token = Token("access_token", "Bearer", expiry=far_future)
         self.assertFalse(token.needs_refresh())
 
@@ -127,23 +127,19 @@ class TestTokenFederationProvider(unittest.TestCase):
         mock_is_same_host.return_value = False
         mock_detect_idp.return_value = "azure"
         
-        # Create mock credentials provider that can return different tokens for different calls
-        mock_creds_provider = MagicMock()
-        
-        # First call returns initial_token, second call returns fresh_token
+        # Create the initial header factory
         initial_headers = {"Authorization": "Bearer initial_token"}
-        fresh_headers = {"Authorization": "Bearer fresh_token"}
-        
-        # Set up initial header factory
         initial_header_factory = MagicMock()
         initial_header_factory.return_value = initial_headers
         
-        # Set up fresh header factory for second call
+        # Create the fresh header factory for later use
+        fresh_headers = {"Authorization": "Bearer fresh_token"}
         fresh_header_factory = MagicMock()
         fresh_header_factory.return_value = fresh_headers
         
-        # Configure the mock to return factories
-        mock_creds_provider.side_effect = [initial_header_factory, fresh_header_factory]
+        # Create the credentials provider that will return the header factory
+        mock_creds_provider = MagicMock()
+        mock_creds_provider.return_value = initial_header_factory
         
         # Set up the token federation provider
         federation_provider = DatabricksTokenFederationProvider(
@@ -166,15 +162,17 @@ class TestTokenFederationProvider(unittest.TestCase):
         
         # Reset the mocks to track the next call
         mock_exchange_token.reset_mock()
-        mock_creds_provider.reset_mock()
-        mock_creds_provider.return_value = fresh_header_factory
         
         # Now simulate an approaching expiry
-        near_expiry = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS - 60)
+        near_expiry = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS - 1)
         federation_provider.last_exchanged_token = Token(
             "exchanged_token_1", "Bearer", expiry=near_expiry
         )
         federation_provider.last_external_token = "initial_token"
+        
+        # For the refresh call, we need the credentials provider to return a fresh token
+        # Update the mock to return fresh_header_factory for the second call
+        mock_creds_provider.return_value = fresh_header_factory
         
         # Set up the mock to return a different token for the refresh
         mock_exchange_token.return_value = Token(
@@ -184,8 +182,7 @@ class TestTokenFederationProvider(unittest.TestCase):
         # Make a second call which should trigger refresh
         headers = headers_factory()
         
-        # Verify a fresh token was requested from the credentials provider
-        # and the exchange was performed with the fresh token
+        # Verify the exchange was performed with the fresh token
         mock_exchange_token.assert_called_once_with("fresh_token", "azure")
         
         # Verify the headers contain the new token
