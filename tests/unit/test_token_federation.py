@@ -13,7 +13,8 @@ from databricks.sql.auth.token_federation import (
     Token,
     DatabricksTokenFederationProvider,
     SimpleCredentialsProvider,
-    create_token_federation_provider
+    create_token_federation_provider,
+    TOKEN_REFRESH_BUFFER_SECONDS
 )
 
 
@@ -47,12 +48,12 @@ class TestToken(unittest.TestCase):
         self.assertTrue(token.needs_refresh())
         
         # Token with expiry in the near future (within refresh buffer)
-        near_future = datetime.now(tz=timezone.utc) + timedelta(minutes=4)
+        near_future = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS - 60)
         token = Token("access_token", "Bearer", expiry=near_future)
         self.assertTrue(token.needs_refresh())
         
         # Token with expiry far in the future
-        far_future = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+        far_future = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS + 60)
         token = Token("access_token", "Bearer", expiry=far_future)
         self.assertFalse(token.needs_refresh())
 
@@ -118,22 +119,30 @@ class TestTokenFederationProvider(unittest.TestCase):
     @patch('databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._parse_jwt_claims')
     @patch('databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._exchange_token')
     @patch('databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._is_same_host')
-    def test_token_refresh(self, mock_is_same_host, mock_exchange_token, mock_parse_jwt):
+    @patch('databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._detect_idp_from_claims')
+    def test_token_refresh(self, mock_detect_idp, mock_is_same_host, mock_exchange_token, mock_parse_jwt):
         """Test token refresh functionality for approaching expiry."""
         # Set up mocks
         mock_parse_jwt.return_value = {"iss": "https://login.microsoftonline.com/tenant"}
         mock_is_same_host.return_value = False
+        mock_detect_idp.return_value = "azure"
         
-        # Create a mock credentials provider that can return different tokens
+        # Create mock credentials provider that can return different tokens for different calls
         mock_creds_provider = MagicMock()
-        # Initial token factory
-        initial_header_factory = MagicMock()
-        initial_header_factory.return_value = {"Authorization": "Bearer initial_token"}
-        # Fresh token factory for refresh
-        fresh_header_factory = MagicMock()
-        fresh_header_factory.return_value = {"Authorization": "Bearer fresh_token"}
         
-        # Configure the mock to return different header factories on consecutive calls
+        # First call returns initial_token, second call returns fresh_token
+        initial_headers = {"Authorization": "Bearer initial_token"}
+        fresh_headers = {"Authorization": "Bearer fresh_token"}
+        
+        # Set up initial header factory
+        initial_header_factory = MagicMock()
+        initial_header_factory.return_value = initial_headers
+        
+        # Set up fresh header factory for second call
+        fresh_header_factory = MagicMock()
+        fresh_header_factory.return_value = fresh_headers
+        
+        # Configure the mock to return factories
         mock_creds_provider.side_effect = [initial_header_factory, fresh_header_factory]
         
         # Set up the token federation provider
@@ -157,9 +166,11 @@ class TestTokenFederationProvider(unittest.TestCase):
         
         # Reset the mocks to track the next call
         mock_exchange_token.reset_mock()
+        mock_creds_provider.reset_mock()
+        mock_creds_provider.return_value = fresh_header_factory
         
         # Now simulate an approaching expiry
-        near_expiry = datetime.now(tz=timezone.utc) + timedelta(minutes=4)
+        near_expiry = datetime.now(tz=timezone.utc) + timedelta(seconds=TOKEN_REFRESH_BUFFER_SECONDS - 60)
         federation_provider.last_exchanged_token = Token(
             "exchanged_token_1", "Bearer", expiry=near_expiry
         )
