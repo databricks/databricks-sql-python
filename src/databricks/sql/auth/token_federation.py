@@ -39,7 +39,15 @@ class Token:
         self.access_token = access_token
         self.token_type = token_type
         self.refresh_token = refresh_token
-        self.expiry = expiry or datetime.now(tz=timezone.utc)
+
+        # Ensure expiry is timezone-aware
+        if expiry is None:
+            self.expiry = datetime.now(tz=timezone.utc)
+        elif expiry.tzinfo is None:
+            # Convert naive datetime to aware datetime
+            self.expiry = expiry.replace(tzinfo=timezone.utc)
+        else:
+            self.expiry = expiry
 
     def is_expired(self) -> bool:
         """Check if the token is expired."""
@@ -129,7 +137,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                     and self.last_exchanged_token.needs_refresh()
                 ):
                     # The token is approaching expiry, try to refresh
-                    logger.debug("Exchanged token approaching expiry, refreshing...")
+                    logger.info(
+                        "Exchanged token approaching expiry, refreshing with fresh external token..."
+                    )
                     return self._refresh_token(access_token, token_type)
 
                 # Parse the JWT to get claims
@@ -138,14 +148,16 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                 # Check if token needs to be exchanged
                 if self._is_same_host(token_claims.get("iss", ""), self.hostname):
                     # Token is from the same host, no need to exchange
+                    logger.debug("Token from same host, no exchange needed")
                     return self.external_provider_headers
                 else:
                     # Token is from a different host, need to exchange
+                    logger.debug("Token from different host, attempting exchange")
                     return self._try_token_exchange_or_fallback(
                         access_token, token_type
                     )
             except Exception as e:
-                logger.error(f"Failed to process token: {str(e)}")
+                logger.error(f"Error processing token: {str(e)}")
                 # Fall back to original headers in case of error
                 return self.external_provider_headers
 
@@ -238,25 +250,6 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             logger.error(f"Failed to parse JWT: {str(e)}")
             raise
 
-    def _detect_idp_from_claims(self, token_claims: Dict[str, Any]) -> str:
-        """
-        Detect the identity provider type from token claims.
-
-        This can be used to adjust token exchange parameters based on the IdP.
-        """
-        issuer = token_claims.get("iss", "")
-
-        if "login.microsoftonline.com" in issuer or "sts.windows.net" in issuer:
-            return "azure"
-        elif "token.actions.githubusercontent.com" in issuer:
-            return "github"
-        elif "accounts.google.com" in issuer:
-            return "google"
-        elif "cognito-idp" in issuer and "amazonaws.com" in issuer:
-            return "aws"
-        else:
-            return "unknown"
-
     def _is_same_host(self, url1: str, url2: str) -> bool:
         """Check if two URLs have the same host."""
         try:
@@ -283,7 +276,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             The headers with the fresh token
         """
         try:
-            logger.info("Refreshing expired token by getting a new external token")
+            logger.info(
+                "Refreshing token using proactive approach (getting fresh external token first)"
+            )
 
             # Get a fresh token from the underlying credentials provider
             # instead of reusing the same access_token
@@ -303,14 +298,14 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             fresh_token_type = parts[0]
             fresh_access_token = parts[1]
 
-            logger.debug("Got fresh external token")
-
-            # Now process the fresh token
-            token_claims = self._parse_jwt_claims(fresh_access_token)
-            idp_type = self._detect_idp_from_claims(token_claims)
+            # Check if we got the same token back
+            if fresh_access_token == access_token:
+                logger.warning(
+                    "Credentials provider returned the same token during refresh"
+                )
 
             # Perform a new token exchange with the fresh token
-            refreshed_token = self._exchange_token(fresh_access_token, idp_type)
+            refreshed_token = self._exchange_token(fresh_access_token)
 
             # Update the stored token
             self.last_exchanged_token = refreshed_token
@@ -321,6 +316,10 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             headers[
                 "Authorization"
             ] = f"{refreshed_token.token_type} {refreshed_token.access_token}"
+
+            logger.info(
+                f"Successfully refreshed token, new expiry: {refreshed_token.expiry}"
+            )
             return headers
         except Exception as e:
             logger.error(
@@ -334,12 +333,8 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
     ) -> Dict[str, str]:
         """Try to exchange the token or fall back to the original token."""
         try:
-            # Parse the token to get claims for IdP-specific adjustments
-            token_claims = self._parse_jwt_claims(access_token)
-            idp_type = self._detect_idp_from_claims(token_claims)
-
             # Exchange the token
-            exchanged_token = self._exchange_token(access_token, idp_type)
+            exchanged_token = self._exchange_token(access_token)
 
             # Store the exchanged token for potential refresh later
             self.last_exchanged_token = exchanged_token
@@ -358,13 +353,12 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             # Fall back to original headers
             return self.external_provider_headers
 
-    def _exchange_token(self, access_token: str, idp_type: str = "unknown") -> Token:
+    def _exchange_token(self, access_token: str) -> Token:
         """
         Exchange an external token for a Databricks token.
 
         Args:
             access_token: The external token to exchange
-            idp_type: The detected identity provider type (azure, github, etc.)
 
         Returns:
             A Token object containing the exchanged token
@@ -383,14 +377,6 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         # Add client ID if available
         if self.identity_federation_client_id:
             params["client_id"] = self.identity_federation_client_id
-
-        # Make IdP-specific adjustments
-        if idp_type == "azure":
-            # For Azure AD, add special handling if needed
-            pass
-        elif idp_type == "github":
-            # For GitHub Actions, add special handling if needed
-            pass
 
         # Set up headers
         headers = {"Accept": "*/*", "Content-Type": "application/x-www-form-urlencoded"}
@@ -441,7 +427,7 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             return token
         except RequestException as e:
             logger.error(f"Failed to perform token exchange: {str(e)}")
-            raise
+            raise ValueError(f"Request error during token exchange: {str(e)}")
 
 
 class SimpleCredentialsProvider(CredentialsProvider):
