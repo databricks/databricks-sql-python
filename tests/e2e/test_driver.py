@@ -801,6 +801,13 @@ class TestPySQLCoreSuite(
                 decimal_type = arrow_df.field(0).type
                 assert pyarrow.types.is_decimal(decimal_type)
 
+    @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
+    def test_catalogs_returns_arrow_table(self):
+        with self.cursor() as cursor:
+            cursor.catalogs()
+            results = cursor.fetchall_arrow()
+            assert isinstance(results, pyarrow.Table)
+
     def test_close_connection_closes_cursors(self):
 
         from databricks.sql.thrift_api.TCLIService import ttypes
