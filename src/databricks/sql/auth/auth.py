@@ -14,7 +14,7 @@ class AuthType(Enum):
     DATABRICKS_OAUTH = "databricks-oauth"
     AZURE_OAUTH = "azure-oauth"
     # TODO: Token federation should be a feature that works with different auth types,
-    # not an auth type itself. This will be refactored in a future release.
+    # not an auth type itself. This will be refactored in a future change.
     TOKEN_FEDERATION = "token-federation"
     # other supported types (access_token) can be inferred
     # we can add more types as needed later
@@ -68,19 +68,10 @@ def get_auth_provider(cfg: ClientContext):
             )
             return ExternalAuthProvider(federation_provider)
 
-        # If access token is provided with token federation, create a SimpleCredentialsProvider
-        elif cfg.auth_type == AuthType.TOKEN_FEDERATION.value and cfg.access_token:
-            from databricks.sql.auth.token_federation import (
-                create_token_federation_provider,
-            )
-
-            federation_provider = create_token_federation_provider(
-                cfg.access_token, cfg.hostname, cfg.identity_federation_client_id
-            )
-            return ExternalAuthProvider(federation_provider)
-
+        # If not token federation, just use the credentials provider directly
         return ExternalAuthProvider(cfg.credentials_provider)
 
+    # If we don't have a credentials provider but have token federation auth type with access token
     if cfg.auth_type == AuthType.TOKEN_FEDERATION.value and cfg.access_token:
         # If only access_token is provided with token federation, use create_token_federation_provider
         from databricks.sql.auth.token_federation import (
