@@ -52,7 +52,7 @@ def get_auth_provider(cfg: ClientContext):
     # TODO: In a future refactoring, token federation should be a feature that wraps
     # any auth provider, not a separate auth type. The code below treats it as an auth type
     # for backward compatibility, but this approach will be revised.
-    
+
     if cfg.credentials_provider:
         # If token federation is enabled and credentials provider is provided,
         # wrap the credentials provider with DatabricksTokenFederationProvider
