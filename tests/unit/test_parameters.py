@@ -42,15 +42,17 @@ class TestSessionHandleChecks(object):
             (
                 TOpenSessionResp(
                     serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
-                    sessionHandle=TSessionHandle(1),
+                    sessionHandle=TSessionHandle(1, None),
                 ),
                 ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
             ),
-            # This test no longer tests serverProtocolVersion precedence since TSessionHandle was changed
+            # Ensure that protocol version inside sessionhandle takes precedence.
             (
                 TOpenSessionResp(
-                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
-                    sessionHandle=TSessionHandle(1),
+                    serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
+                    sessionHandle=TSessionHandle(
+                        1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+                    ),
                 ),
                 ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
             ),
