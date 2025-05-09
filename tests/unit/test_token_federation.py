@@ -124,13 +124,21 @@ class TestTokenFederationProvider(unittest.TestCase):
         mock_parse_jwt.return_value = {"iss": "https://login.microsoftonline.com/tenant"}
         mock_is_same_host.return_value = False
         
-        # Create a simple credentials provider that returns a fixed token
-        external_token = "test_token"
-        creds_provider = SimpleCredentialsProvider(external_token)
+        # Create a mock credentials provider that can return different tokens
+        mock_creds_provider = MagicMock()
+        # Initial token factory
+        initial_header_factory = MagicMock()
+        initial_header_factory.return_value = {"Authorization": "Bearer initial_token"}
+        # Fresh token factory for refresh
+        fresh_header_factory = MagicMock()
+        fresh_header_factory.return_value = {"Authorization": "Bearer fresh_token"}
+        
+        # Configure the mock to return different header factories on consecutive calls
+        mock_creds_provider.side_effect = [initial_header_factory, fresh_header_factory]
         
         # Set up the token federation provider
         federation_provider = DatabricksTokenFederationProvider(
-            creds_provider, "example.com", "client_id"
+            mock_creds_provider, "example.com", "client_id"
         )
         
         # Mock the token exchange to return a known token
@@ -143,8 +151,8 @@ class TestTokenFederationProvider(unittest.TestCase):
         headers_factory = federation_provider()
         headers = headers_factory()
         
-        # Verify the exchange happened
-        mock_exchange_token.assert_called_with(external_token, "azure")
+        # Verify the exchange happened with the initial token
+        mock_exchange_token.assert_called_with("initial_token", "azure")
         self.assertEqual(headers["Authorization"], "Bearer exchanged_token_1")
         
         # Reset the mocks to track the next call
@@ -155,7 +163,7 @@ class TestTokenFederationProvider(unittest.TestCase):
         federation_provider.last_exchanged_token = Token(
             "exchanged_token_1", "Bearer", expiry=near_expiry
         )
-        federation_provider.last_external_token = external_token
+        federation_provider.last_external_token = "initial_token"
         
         # Set up the mock to return a different token for the refresh
         mock_exchange_token.return_value = Token(
@@ -165,9 +173,9 @@ class TestTokenFederationProvider(unittest.TestCase):
         # Make a second call which should trigger refresh
         headers = headers_factory()
         
-        # Verify the token was exchanged with the SAME external token (current implementation)
-        # This is different from the JDBC driver approach which gets a fresh token
-        mock_exchange_token.assert_called_once_with(external_token, "azure")
+        # Verify a fresh token was requested from the credentials provider
+        # and the exchange was performed with the fresh token
+        mock_exchange_token.assert_called_once_with("fresh_token", "azure")
         
         # Verify the headers contain the new token
         self.assertEqual(headers["Authorization"], "Bearer exchanged_token_2")
