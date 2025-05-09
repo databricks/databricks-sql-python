@@ -116,7 +116,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             self.external_provider_headers = header_factory()
 
             # Extract the token from the headers
-            token_info = self._extract_token_info_from_header(self.external_provider_headers)
+            token_info = self._extract_token_info_from_header(
+                self.external_provider_headers
+            )
             token_type, access_token = token_info
 
             try:
@@ -139,7 +141,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                     return self.external_provider_headers
                 else:
                     # Token is from a different host, need to exchange
-                    return self._try_token_exchange_or_fallback(access_token, token_type)
+                    return self._try_token_exchange_or_fallback(
+                        access_token, token_type
+                    )
             except Exception as e:
                 logger.error(f"Failed to process token: {str(e)}")
                 # Fall back to original headers in case of error
@@ -159,8 +163,10 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
             if self.idp_endpoints:
                 # Get the OpenID configuration URL
-                openid_config_url = self.idp_endpoints.get_openid_config_url(self.hostname)
-                
+                openid_config_url = self.idp_endpoints.get_openid_config_url(
+                    self.hostname
+                )
+
                 # Fetch the OpenID configuration
                 response = requests.get(openid_config_url)
                 if response.status_code == 200:
@@ -184,7 +190,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             )
             hostname = self._format_hostname(self.hostname)
             self.token_endpoint = f"{hostname}oidc/v1/token"
-            logger.info(f"Using default token endpoint after error: {self.token_endpoint}")
+            logger.info(
+                f"Using default token endpoint after error: {self.token_endpoint}"
+            )
 
     def _format_hostname(self, hostname: str) -> str:
         """Format hostname to ensure it has proper https:// prefix and trailing slash."""
@@ -194,7 +202,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             hostname = f"{hostname}/"
         return hostname
 
-    def _extract_token_info_from_header(self, headers: Dict[str, str]) -> Tuple[str, str]:
+    def _extract_token_info_from_header(
+        self, headers: Dict[str, str]
+    ) -> Tuple[str, str]:
         """Extract token type and token value from authorization header."""
         auth_header = headers.get("Authorization")
         if not auth_header:
@@ -308,14 +318,20 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
             # Create new headers with the refreshed token
             headers = dict(fresh_headers)  # Use the fresh headers as base
-            headers["Authorization"] = f"{refreshed_token.token_type} {refreshed_token.access_token}"
+            headers[
+                "Authorization"
+            ] = f"{refreshed_token.token_type} {refreshed_token.access_token}"
             return headers
         except Exception as e:
-            logger.error(f"Token refresh failed, falling back to original token: {str(e)}")
+            logger.error(
+                f"Token refresh failed, falling back to original token: {str(e)}"
+            )
             # If refresh fails, fall back to the original headers
             return self.external_provider_headers
 
-    def _try_token_exchange_or_fallback(self, access_token: str, token_type: str) -> Dict[str, str]:
+    def _try_token_exchange_or_fallback(
+        self, access_token: str, token_type: str
+    ) -> Dict[str, str]:
         """Try to exchange the token or fall back to the original token."""
         try:
             # Parse the token to get claims for IdP-specific adjustments
@@ -331,10 +347,14 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
             # Create new headers with the exchanged token
             headers = dict(self.external_provider_headers)
-            headers["Authorization"] = f"{exchanged_token.token_type} {exchanged_token.access_token}"
+            headers[
+                "Authorization"
+            ] = f"{exchanged_token.token_type} {exchanged_token.access_token}"
             return headers
         except Exception as e:
-            logger.error(f"Token exchange failed, falling back to using external token: {str(e)}")
+            logger.error(
+                f"Token exchange failed, falling back to using external token: {str(e)}"
+            )
             # Fall back to original headers
             return self.external_provider_headers
 
@@ -396,10 +416,14 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                 try:
                     # Calculate expiry by adding expires_in seconds to current time
                     expires_in_seconds = int(resp_data["expires_in"])
-                    token.expiry = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in_seconds)
+                    token.expiry = datetime.now(tz=timezone.utc) + timedelta(
+                        seconds=expires_in_seconds
+                    )
                     logger.debug(f"Token expiry set from expires_in: {token.expiry}")
                 except (ValueError, TypeError) as e:
-                    logger.warning(f"Could not parse expires_in from response: {str(e)}")
+                    logger.warning(
+                        f"Could not parse expires_in from response: {str(e)}"
+                    )
 
             # If expires_in wasn't available, try to parse expiry from the token JWT
             if token.expiry == datetime.now(tz=timezone.utc):
@@ -408,7 +432,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                     exp_time = token_claims.get("exp")
                     if exp_time:
                         token.expiry = datetime.fromtimestamp(exp_time, tz=timezone.utc)
-                        logger.debug(f"Token expiry set from JWT exp claim: {token.expiry}")
+                        logger.debug(
+                            f"Token expiry set from JWT exp claim: {token.expiry}"
+                        )
                 except Exception as e:
                     logger.warning(f"Could not parse expiry from token: {str(e)}")
 

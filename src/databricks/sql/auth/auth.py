@@ -13,6 +13,8 @@ from databricks.sql.auth.authenticators import (
 class AuthType(Enum):
     DATABRICKS_OAUTH = "databricks-oauth"
     AZURE_OAUTH = "azure-oauth"
+    # TODO: Token federation should be a feature that works with different auth types,
+    # not an auth type itself. This will be refactored in a future release.
     TOKEN_FEDERATION = "token-federation"
     # other supported types (access_token) can be inferred
     # we can add more types as needed later
@@ -47,6 +49,10 @@ class ClientContext:
 
 
 def get_auth_provider(cfg: ClientContext):
+    # TODO: In a future refactoring, token federation should be a feature that wraps
+    # any auth provider, not a separate auth type. The code below treats it as an auth type
+    # for backward compatibility, but this approach will be revised.
+    
     if cfg.credentials_provider:
         # If token federation is enabled and credentials provider is provided,
         # wrap the credentials provider with DatabricksTokenFederationProvider
@@ -153,6 +159,10 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
             "Please use OAuth or access token instead."
         )
 
+    # TODO: Future refactoring needed:
+    # - Add a use_token_federation flag that can be combined with any auth type
+    # - Remove TOKEN_FEDERATION as an auth_type and properly handle the underlying auth type
+    # - Maintain backward compatibility during transition
     cfg = ClientContext(
         hostname=normalize_host_name(hostname),
         auth_type=auth_type,
