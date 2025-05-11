@@ -275,10 +275,18 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             Dict[str, str]: Headers with the refreshed token
         """
         try:
-            # Exchange the token for a new one
-            exchanged_token = self._exchange_token(access_token)
+            # Get a fresh token from the underlying provider
+            fresh_headers = self.credentials_provider()()
+
+            # Extract the fresh token from the headers
+            fresh_token_type, fresh_access_token = self._extract_token_info_from_header(
+                fresh_headers
+            )
+
+            # Exchange the fresh token for a new Databricks token
+            exchanged_token = self._exchange_token(fresh_access_token)
             self.last_exchanged_token = exchanged_token
-            self.last_external_token = access_token
+            self.last_external_token = fresh_access_token
 
             # Update the headers with the new token
             return {
