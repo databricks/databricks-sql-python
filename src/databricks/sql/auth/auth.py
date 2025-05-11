@@ -15,6 +15,7 @@ class AuthType(Enum):
     AZURE_OAUTH = "azure-oauth"
     # TODO: Token federation should be a feature that works with different auth types,
     # not an auth type itself. This will be refactored in a future change.
+    # We will add a use_token_federation flag that can be used with any auth type.
     TOKEN_FEDERATION = "token-federation"
     # other supported types (access_token) can be inferred
     # we can add more types as needed later
@@ -49,10 +50,28 @@ class ClientContext:
 
 
 def get_auth_provider(cfg: ClientContext):
-    # TODO: In a future refactoring, token federation should be a feature that wraps
-    # any auth provider, not a separate auth type. The code below treats it as an auth type
-    # for backward compatibility, but this approach will be revised.
-
+    """
+    Get an appropriate auth provider based on the provided configuration.
+    
+    Token Federation Support:
+    -----------------------
+    Currently, token federation is implemented as a separate auth type, but the goal is to
+    refactor it as a feature that can work with any auth type. The current implementation
+    is maintained for backward compatibility while the refactoring is planned.
+    
+    Future refactoring will introduce a `use_token_federation` flag that can be combined
+    with any auth type to enable token federation.
+    
+    Args:
+        cfg: The client context containing configuration parameters
+        
+    Returns:
+        An appropriate AuthProvider instance
+        
+    Raises:
+        RuntimeError: If no valid authentication settings are provided
+    """
+    # If credentials_provider is explicitly provided
     if cfg.credentials_provider:
         # If token federation is enabled and credentials provider is provided,
         # wrap the credentials provider with DatabricksTokenFederationProvider
@@ -73,13 +92,15 @@ def get_auth_provider(cfg: ClientContext):
 
     # If we don't have a credentials provider but have token federation auth type with access token
     if cfg.auth_type == AuthType.TOKEN_FEDERATION.value and cfg.access_token:
-        # If only access_token is provided with token federation, use create_token_federation_provider
+        # Create a simple credentials provider and wrap it with token federation provider
         from databricks.sql.auth.token_federation import (
-            create_token_federation_provider,
+            DatabricksTokenFederationProvider,
+            SimpleCredentialsProvider,
         )
 
-        federation_provider = create_token_federation_provider(
-            cfg.access_token, cfg.hostname, cfg.identity_federation_client_id
+        simple_provider = SimpleCredentialsProvider(cfg.access_token)
+        federation_provider = DatabricksTokenFederationProvider(
+            simple_provider, cfg.hostname, cfg.identity_federation_client_id
         )
         return ExternalAuthProvider(federation_provider)
 
@@ -140,6 +161,27 @@ def get_client_id_and_redirect_port(use_azure_auth: bool):
 
 
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
+    """
+    Get an auth provider for the Python SQL connector.
+    
+    This function is the main entry point for authentication in the SQL connector.
+    It processes the parameters and creates an appropriate auth provider.
+    
+    TODO: Future refactoring needed:
+    1. Add a use_token_federation flag that can be combined with any auth type
+    2. Remove TOKEN_FEDERATION as an auth_type while maintaining backward compatibility
+    3. Create a token federation wrapper that can wrap any existing auth provider
+    
+    Args:
+        hostname: The Databricks server hostname
+        **kwargs: Additional configuration parameters
+        
+    Returns:
+        An appropriate AuthProvider instance
+        
+    Raises:
+        ValueError: If username/password authentication is attempted (no longer supported)
+    """
     auth_type = kwargs.get("auth_type")
     (client_id, redirect_port_range) = get_client_id_and_redirect_port(
         auth_type == AuthType.AZURE_OAUTH.value
@@ -150,10 +192,6 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
             "Please use OAuth or access token instead."
         )
 
-    # TODO: Future refactoring needed:
-    # - Add a use_token_federation flag that can be combined with any auth type
-    # - Remove TOKEN_FEDERATION as an auth_type and properly handle the underlying auth type
-    # - Maintain backward compatibility during transition
     cfg = ClientContext(
         hostname=normalize_host_name(hostname),
         auth_type=auth_type,

@@ -14,6 +14,8 @@ import json
 import base64
 import logging
 from databricks import sql
+import jwt
+
 
 
 logging.basicConfig(
@@ -34,20 +36,10 @@ def decode_jwt(token):
         dict: The decoded token claims or None if decoding fails
     """
     try:
-        parts = token.split(".")
-        if len(parts) != 3:
-            raise ValueError("Invalid JWT format")
-        
-        payload = parts[1]
-        # Add padding if needed
-        padding = '=' * (4 - len(payload) % 4)
-        payload += padding
-        
-        decoded = base64.b64decode(payload)
-        return json.loads(decoded)
+        return jwt.decode(token, options={"verify_signature": False})
     except Exception as e:
-        logger.error(f"Failed to decode token: {str(e)}")
-        return None
+        logger.error(f"Failed to decode token with PyJWT: {str(e)}")
+        return {}
 
 
 def get_environment_variables():
@@ -56,22 +48,11 @@ def get_environment_variables():
     
     Returns:
         tuple: (github_token, host, http_path, identity_federation_client_id)
-    
-    Raises:
-        SystemExit: If any required environment variable is missing
     """
     github_token = os.environ.get("OIDC_TOKEN")
-    if not github_token:
-        logger.error("GitHub OIDC token not available")
-        sys.exit(1)
-    
     host = os.environ.get("DATABRICKS_HOST_FOR_TF")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH_FOR_TF")
     identity_federation_client_id = os.environ.get("IDENTITY_FEDERATION_CLIENT_ID")
-    
-    if not host or not http_path:
-        logger.error("Missing Databricks connection parameters")
-        sys.exit(1)
     
     return github_token, host, http_path, identity_federation_client_id
 
@@ -145,6 +126,14 @@ def main():
     try:
         # Get environment variables
         github_token, host, http_path, identity_federation_client_id = get_environment_variables()
+        
+        if not github_token:
+            logger.error("Missing GitHub OIDC token (OIDC_TOKEN)")
+            sys.exit(1)
+            
+        if not host or not http_path:
+            logger.error("Missing Databricks connection parameters (DATABRICKS_HOST_FOR_TF, DATABRICKS_HTTP_PATH_FOR_TF)")
+            sys.exit(1)
         
         # Display token claims
         claims = decode_jwt(github_token)
