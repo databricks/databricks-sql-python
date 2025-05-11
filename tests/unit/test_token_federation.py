@@ -13,7 +13,6 @@ from databricks.sql.auth.token_federation import (
     Token,
     DatabricksTokenFederationProvider,
     SimpleCredentialsProvider,
-    create_token_federation_provider,
     TOKEN_REFRESH_BUFFER_SECONDS,
 )
 
@@ -136,19 +135,25 @@ def test_init_oidc_discovery(mock_request_get, mock_get_oauth_endpoints):
 
 @pytest.fixture
 def mock_parse_jwt_claims():
-    with patch("databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._parse_jwt_claims") as mock:
+    with patch(
+        "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._parse_jwt_claims"
+    ) as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_exchange_token():
-    with patch("databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._exchange_token") as mock:
+    with patch(
+        "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._exchange_token"
+    ) as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_is_same_host():
-    with patch("databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._is_same_host") as mock:
+    with patch(
+        "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._is_same_host"
+    ) as mock:
         yield mock
 
 

@@ -14,13 +14,17 @@ import json
 import base64
 import logging
 from databricks import sql
-import jwt
 
+try:
+    import jwt
+
+    HAS_JWT_LIBRARY = True
+except ImportError:
+    HAS_JWT_LIBRARY = False
 
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -35,10 +39,29 @@ def decode_jwt(token):
     Returns:
         dict: The decoded token claims or None if decoding fails
     """
+    if HAS_JWT_LIBRARY:
+        try:
+            # Using PyJWT library (preferred method)
+            # Note: we're not verifying the signature as this is just for debugging
+            return jwt.decode(token, options={"verify_signature": False})
+        except Exception as e:
+            logger.error(f"Failed to decode token with PyJWT: {str(e)}")
+
+    # Fallback to manual decoding
     try:
-        return jwt.decode(token, options={"verify_signature": False})
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("Invalid JWT format")
+
+        payload = parts[1]
+        # Add padding if needed
+        padding = "=" * (4 - len(payload) % 4)
+        payload += padding
+
+        decoded = base64.b64decode(payload)
+        return json.loads(decoded)
     except Exception as e:
-        logger.error(f"Failed to decode token with PyJWT: {str(e)}")
+        logger.error(f"Failed to decode token: {str(e)}")
         return {}
 
 
@@ -53,7 +76,7 @@ def get_environment_variables():
     host = os.environ.get("DATABRICKS_HOST_FOR_TF")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH_FOR_TF")
     identity_federation_client_id = os.environ.get("IDENTITY_FEDERATION_CLIENT_ID")
-    
+
     return github_token, host, http_path, identity_federation_client_id
 
 
@@ -62,7 +85,7 @@ def display_token_info(claims):
     if not claims:
         logger.warning("No token claims available to display")
         return
-        
+
     logger.info("=== GitHub OIDC Token Claims ===")
     logger.info(f"Token issuer: {claims.get('iss')}")
     logger.info(f"Token subject: {claims.get('sub')}")
@@ -74,7 +97,9 @@ def display_token_info(claims):
     logger.info("===============================")
 
 
-def test_databricks_connection(host, http_path, github_token, identity_federation_client_id):
+def test_databricks_connection(
+    host, http_path, github_token, identity_federation_client_id
+):
     """
     Test connection to Databricks using token federation.
     
@@ -90,7 +115,7 @@ def test_databricks_connection(host, http_path, github_token, identity_federatio
     logger.info("=== Testing Connection via Connector ===")
     logger.info(f"Connecting to Databricks at {host}{http_path}")
     logger.info(f"Using client ID: {identity_federation_client_id}")
-    
+
     connection_params = {
         "server_hostname": host,
         "http_path": http_path,
@@ -98,22 +123,22 @@ def test_databricks_connection(host, http_path, github_token, identity_federatio
         "auth_type": "token-federation",
         "identity_federation_client_id": identity_federation_client_id,
     }
-    
+
     try:
         with sql.connect(**connection_params) as connection:
             logger.info("Connection established successfully")
-            
+
             # Execute a simple query
             cursor = connection.cursor()
             cursor.execute("SELECT 1 + 1 as result")
             result = cursor.fetchall()
             logger.info(f"Query result: {result[0][0]}")
-            
+
             # Show current user
             cursor.execute("SELECT current_user() as user")
             result = cursor.fetchall()
             logger.info(f"Connected as user: {result[0][0]}")
-            
+
             logger.info("Token federation test successful!")
             return True
     except Exception as e:
@@ -125,29 +150,34 @@ def main():
     """Main entry point for the test script."""
     try:
         # Get environment variables
-        github_token, host, http_path, identity_federation_client_id = get_environment_variables()
-        
+        github_token, host, http_path, identity_federation_client_id = (
+            get_environment_variables()
+        )
+
         if not github_token:
             logger.error("Missing GitHub OIDC token (OIDC_TOKEN)")
             sys.exit(1)
-            
+
         if not host or not http_path:
-            logger.error("Missing Databricks connection parameters (DATABRICKS_HOST_FOR_TF, DATABRICKS_HTTP_PATH_FOR_TF)")
+            logger.error(
+                "Missing Databricks connection parameters "
+                "(DATABRICKS_HOST_FOR_TF, DATABRICKS_HTTP_PATH_FOR_TF)"
+            )
             sys.exit(1)
-        
+
         # Display token claims
         claims = decode_jwt(github_token)
         display_token_info(claims)
-        
+
         # Test Databricks connection
         success = test_databricks_connection(
             host, http_path, github_token, identity_federation_client_id
         )
-        
+
         if not success:
             logger.error("Token federation test failed")
             sys.exit(1)
-            
+
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         sys.exit(1)

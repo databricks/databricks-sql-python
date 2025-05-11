@@ -150,9 +150,7 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                 else:
                     # Token is from a different host, need to exchange
                     logger.debug("Token from different host, attempting exchange")
-                    return self._try_token_exchange_or_fallback(
-                        access_token, token_type
-                    )
+                    return self._try_token_exchange_or_fallback(access_token, token_type)
             except Exception as e:
                 logger.error(f"Error processing token: {str(e)}")
                 # Fall back to original headers in case of error
@@ -172,9 +170,7 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
             if idp_endpoints:
                 # Get the OpenID configuration URL
-                openid_config_url = idp_endpoints.get_openid_config_url(
-                    self.hostname
-                )
+                openid_config_url = idp_endpoints.get_openid_config_url(self.hostname)
 
                 # Fetch the OpenID configuration
                 response = requests.get(openid_config_url)
@@ -185,7 +181,8 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                     logger.info(f"Discovered token endpoint: {self.token_endpoint}")
                 else:
                     logger.warning(
-                        f"Failed to fetch OpenID configuration from {openid_config_url}: {response.status_code}"
+                        f"Failed to fetch OpenID configuration from {openid_config_url}: "
+                        f"{response.status_code}"
                     )
         except Exception as e:
             logger.warning(
@@ -282,9 +279,15 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             self.last_external_token = access_token
 
             # Update the headers with the new token
-            return {"Authorization": f"{exchanged_token.token_type} {exchanged_token.access_token}"}
+            return {
+                "Authorization": (
+                    f"{exchanged_token.token_type} {exchanged_token.access_token}"
+                )
+            }
         except Exception as e:
-            logger.error(f"Token refresh failed: {str(e)}, falling back to original token")
+            logger.error(
+                f"Token refresh failed: {str(e)}, falling back to original token"
+            )
             return self.external_provider_headers
 
     def _try_token_exchange_or_fallback(
@@ -305,12 +308,20 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             self.last_exchanged_token = exchanged_token
             self.last_external_token = access_token
 
-            return {"Authorization": f"{exchanged_token.token_type} {exchanged_token.access_token}"}
+            return {
+                "Authorization": (
+                    f"{exchanged_token.token_type} {exchanged_token.access_token}"
+                )
+            }
         except Exception as e:
-            logger.warning(f"Token exchange failed: {str(e)}, falling back to original token")
+            logger.warning(
+                f"Token exchange failed: {str(e)}, falling back to original token"
+            )
             return self.external_provider_headers
 
-    def _send_token_exchange_request(self, token_exchange_data: Dict[str, str]) -> Dict[str, Any]:
+    def _send_token_exchange_request(
+        self, token_exchange_data: Dict[str, str]
+    ) -> Dict[str, Any]:
         """
         Send the token exchange request to the token endpoint.
         
@@ -325,20 +336,19 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         """
         if not self.token_endpoint:
             raise ValueError("Token endpoint not initialized")
-            
+
         headers = {"Accept": "*/*", "Content-Type": "application/x-www-form-urlencoded"}
-        
+
         response = requests.post(
-            self.token_endpoint,
-            data=token_exchange_data,
-            headers=headers
+            self.token_endpoint, data=token_exchange_data, headers=headers
         )
-        
+
         if response.status_code != 200:
             raise ValueError(
-                f"Token exchange failed with status code {response.status_code}: {response.text}"
+                f"Token exchange failed with status code {response.status_code}: "
+                f"{response.text}"
             )
-            
+
         return response.json()
 
     def _exchange_token(self, access_token: str) -> Token:
@@ -365,26 +375,28 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         try:
             # Send the token exchange request
             resp_data = self._send_token_exchange_request(token_exchange_data)
-            
+
             # Extract token information
             new_access_token = resp_data.get("access_token")
             if not new_access_token:
                 raise ValueError("No access token in exchange response")
-                
+
             token_type = resp_data.get("token_type", "Bearer")
             refresh_token = resp_data.get("refresh_token", "")
-            
+
             # Parse expiry time from token claims if possible
             expiry = datetime.now(tz=timezone.utc)
-            
+
             # First try to get expiry from the response's expires_in field
             if "expires_in" in resp_data and resp_data["expires_in"]:
                 try:
                     expires_in = int(resp_data["expires_in"])
-                    expiry = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
+                    expiry = datetime.now(tz=timezone.utc) + timedelta(
+                        seconds=expires_in
+                    )
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Invalid expires_in value: {str(e)}")
-            
+
             # If that didn't work, try to parse JWT claims for expiry
             if expiry == datetime.now(tz=timezone.utc):
                 token_claims = self._parse_jwt_claims(new_access_token)
@@ -394,9 +406,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                         expiry = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
                     except (ValueError, TypeError) as e:
                         logger.warning(f"Invalid exp claim in token: {str(e)}")
-            
+
             return Token(new_access_token, token_type, refresh_token, expiry)
-            
+
         except Exception as e:
             logger.error(f"Token exchange failed: {str(e)}")
             raise
