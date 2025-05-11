@@ -52,22 +52,22 @@ class ClientContext:
 def get_auth_provider(cfg: ClientContext):
     """
     Get an appropriate auth provider based on the provided configuration.
-    
+
     Token Federation Support:
     -----------------------
     Currently, token federation is implemented as a separate auth type, but the goal is to
     refactor it as a feature that can work with any auth type. The current implementation
     is maintained for backward compatibility while the refactoring is planned.
-    
+
     Future refactoring will introduce a `use_token_federation` flag that can be combined
     with any auth type to enable token federation.
-    
+
     Args:
         cfg: The client context containing configuration parameters
-        
+
     Returns:
         An appropriate AuthProvider instance
-        
+
     Raises:
         RuntimeError: If no valid authentication settings are provided
     """
@@ -163,22 +163,22 @@ def get_client_id_and_redirect_port(use_azure_auth: bool):
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
     """
     Get an auth provider for the Python SQL connector.
-    
+
     This function is the main entry point for authentication in the SQL connector.
     It processes the parameters and creates an appropriate auth provider.
-    
+
     TODO: Future refactoring needed:
     1. Add a use_token_federation flag that can be combined with any auth type
     2. Remove TOKEN_FEDERATION as an auth_type while maintaining backward compatibility
     3. Create a token federation wrapper that can wrap any existing auth provider
-    
+
     Args:
         hostname: The Databricks server hostname
         **kwargs: Additional configuration parameters
-        
+
     Returns:
         An appropriate AuthProvider instance
-        
+
     Raises:
         ValueError: If username/password authentication is attempted (no longer supported)
     """

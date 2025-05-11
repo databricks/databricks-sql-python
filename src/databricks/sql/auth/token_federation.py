@@ -150,7 +150,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                 else:
                     # Token is from a different host, need to exchange
                     logger.debug("Token from different host, attempting exchange")
-                    return self._try_token_exchange_or_fallback(access_token, token_type)
+                    return self._try_token_exchange_or_fallback(
+                        access_token, token_type
+                    )
             except Exception as e:
                 logger.error(f"Error processing token: {str(e)}")
                 # Fall back to original headers in case of error
@@ -324,13 +326,13 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
     ) -> Dict[str, Any]:
         """
         Send the token exchange request to the token endpoint.
-        
+
         Args:
             token_exchange_data: The data to send in the request
-            
+
         Returns:
             Dict[str, Any]: The parsed JSON response
-            
+
         Raises:
             Exception: If the request fails
         """
