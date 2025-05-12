@@ -6,243 +6,397 @@ Unit tests for token federation functionality in the Databricks SQL connector.
 
 import pytest
 from unittest.mock import MagicMock, patch
-import json
 from datetime import datetime, timezone, timedelta
+import jwt
 
+from databricks.sql.auth.token import Token
 from databricks.sql.auth.token_federation import (
-    Token,
     DatabricksTokenFederationProvider,
     SimpleCredentialsProvider,
-    TOKEN_REFRESH_BUFFER_SECONDS,
 )
+from databricks.sql.auth.oidc_utils import OIDCDiscoveryUtil
 
 
 # Tests for Token class
-def test_token_initialization():
-    """Test Token initialization."""
-    token = Token("access_token_value", "Bearer", "refresh_token_value")
-    assert token.access_token == "access_token_value"
-    assert token.token_type == "Bearer"
-    assert token.refresh_token == "refresh_token_value"
+class TestToken:
+    """Tests for the Token class."""
 
+    def test_token_initialization_and_properties(self):
+        """Test Token initialization, properties and methods."""
+        # Test with minimum required parameters plus expiry
+        future = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+        token = Token("access_token_value", "Bearer", expiry=future)
+        assert token.access_token == "access_token_value"
+        assert token.token_type == "Bearer"
+        assert token.refresh_token == ""
+        assert token.expiry == future
+        assert token.is_valid()
 
-def test_token_is_expired():
-    """Test Token is_expired method."""
-    # Token with expiry in the past
-    past = datetime.now(tz=timezone.utc) - timedelta(hours=1)
-    token = Token("access_token", "Bearer", expiry=past)
-    assert token.is_expired()
+        # Test expired token
+        past = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+        expired_token = Token("expired", "Bearer", expiry=past)
+        assert not expired_token.is_valid()
 
-    # Token with expiry in the future
-    future = datetime.now(tz=timezone.utc) + timedelta(hours=1)
-    token = Token("access_token", "Bearer", expiry=future)
-    assert not token.is_expired()
+        # Test almost expired token (will expire within buffer)
+        almost_expired = datetime.now(tz=timezone.utc) + timedelta(
+            seconds=5
+        )  # Less than MIN_VALIDITY_BUFFER
+        almost_token = Token("almost", "Bearer", expiry=almost_expired)
+        assert not almost_token.is_valid()  # Not valid due to buffer
 
-
-def test_token_needs_refresh():
-    """Test Token needs_refresh method using actual TOKEN_REFRESH_BUFFER_SECONDS."""
-    # Token with expiry in the past
-    past = datetime.now(tz=timezone.utc) - timedelta(hours=1)
-    token = Token("access_token", "Bearer", expiry=past)
-    assert token.needs_refresh()
-
-    # Token with expiry in the near future (within refresh buffer)
-    near_future = datetime.now(tz=timezone.utc) + timedelta(
-        seconds=TOKEN_REFRESH_BUFFER_SECONDS - 1
-    )
-    token = Token("access_token", "Bearer", expiry=near_future)
-    assert token.needs_refresh()
-
-    # Token with expiry far in the future
-    far_future = datetime.now(tz=timezone.utc) + timedelta(
-        seconds=TOKEN_REFRESH_BUFFER_SECONDS + 10
-    )
-    token = Token("access_token", "Bearer", expiry=far_future)
-    assert not token.needs_refresh()
+        # Test string representation
+        assert str(token) == "Bearer access_token_value"
 
 
 # Tests for SimpleCredentialsProvider
-def test_simple_credentials_provider():
-    """Test SimpleCredentialsProvider."""
-    provider = SimpleCredentialsProvider(
-        "token_value", "Bearer", "custom_auth_type"
-    )
-    assert provider.auth_type() == "custom_auth_type"
+class TestSimpleCredentialsProvider:
+    """Tests for the SimpleCredentialsProvider class."""
 
-    header_factory = provider()
-    headers = header_factory()
-    assert headers == {"Authorization": "Bearer token_value"}
+    def test_provider_initialization(self):
+        """Test initialization and methods of SimpleCredentialsProvider."""
+        provider = SimpleCredentialsProvider("token1", "Bearer", "token")
+        assert provider.auth_type() == "token"
+
+        # Test header factory
+        header_factory = provider()
+        headers = header_factory()
+        assert headers == {"Authorization": "Bearer token1"}
+
+
+# Tests for OIDCDiscoveryUtil
+class TestOIDCDiscoveryUtil:
+    """Tests for the OIDCDiscoveryUtil class."""
+
+    def test_discover_token_endpoint(self):
+        """Test token endpoint creation for Databricks workspaces."""
+        # Test with different hostname formats
+        # Without protocol and without trailing slash
+        token_endpoint = OIDCDiscoveryUtil.discover_token_endpoint("databricks.com")
+        assert token_endpoint == "https://databricks.com/oidc/v1/token"
+
+        # With protocol but without trailing slash
+        token_endpoint = OIDCDiscoveryUtil.discover_token_endpoint(
+            "https://databricks.com"
+        )
+        assert token_endpoint == "https://databricks.com/oidc/v1/token"
+
+        # With protocol and trailing slash
+        token_endpoint = OIDCDiscoveryUtil.discover_token_endpoint(
+            "https://databricks.com/"
+        )
+        assert token_endpoint == "https://databricks.com/oidc/v1/token"
+
+    def test_format_hostname(self):
+        """Test hostname formatting."""
+        # Without protocol and without trailing slash
+        assert (
+            OIDCDiscoveryUtil.format_hostname("databricks.com")
+            == "https://databricks.com/"
+        )
+
+        # With protocol but without trailing slash
+        assert (
+            OIDCDiscoveryUtil.format_hostname("https://databricks.com")
+            == "https://databricks.com/"
+        )
+
+        # With protocol and trailing slash
+        assert (
+            OIDCDiscoveryUtil.format_hostname("https://databricks.com/")
+            == "https://databricks.com/"
+        )
 
 
 # Tests for DatabricksTokenFederationProvider
-def test_host_property():
-    """Test the host property of DatabricksTokenFederationProvider."""
-    creds_provider = SimpleCredentialsProvider("token")
-    federation_provider = DatabricksTokenFederationProvider(
-        creds_provider, "example.com", "client_id"
-    )
-    assert federation_provider.host == "example.com"
-    assert federation_provider.hostname == "example.com"
+class TestDatabricksTokenFederationProvider:
+    """Tests for the DatabricksTokenFederationProvider class."""
 
+    @pytest.fixture
+    def mock_credentials_provider(self):
+        """Fixture for a mock credentials provider."""
+        provider = MagicMock()
+        provider.auth_type.return_value = "mock_auth_type"
+        header_factory = MagicMock()
+        header_factory.return_value = {"Authorization": "Bearer mock_token"}
+        provider.return_value = header_factory
+        return provider
 
-@pytest.fixture
-def mock_request_get():
-    with patch("databricks.sql.auth.token_federation.requests.get") as mock:
-        yield mock
+    @pytest.fixture
+    def federation_provider(self, mock_credentials_provider):
+        """Fixture for a token federation provider."""
+        return DatabricksTokenFederationProvider(
+            mock_credentials_provider, "databricks.com", "client_id"
+        )
 
+    @pytest.fixture
+    def mock_discover_token_endpoint(self):
+        """Fixture for mocking OIDCDiscoveryUtil.discover_token_endpoint."""
+        with patch(
+            "databricks.sql.auth.oidc_utils.OIDCDiscoveryUtil.discover_token_endpoint"
+        ) as mock:
+            mock.return_value = "https://databricks.com/token"
+            yield mock
 
-@pytest.fixture
-def mock_get_oauth_endpoints():
-    with patch("databricks.sql.auth.token_federation.get_oauth_endpoints") as mock:
-        yield mock
+    @pytest.fixture
+    def mock_parse_jwt_claims(self):
+        """Fixture for mocking _parse_jwt_claims."""
+        with patch(
+            "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._parse_jwt_claims"
+        ) as mock:
+            yield mock
 
+    @pytest.fixture
+    def mock_exchange_token(self):
+        """Fixture for mocking _exchange_token."""
+        with patch(
+            "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._exchange_token"
+        ) as mock:
+            yield mock
 
-def test_init_oidc_discovery(mock_request_get, mock_get_oauth_endpoints):
-    """Test _init_oidc_discovery method."""
-    # Mock the get_oauth_endpoints function
-    mock_endpoints = MagicMock()
-    mock_endpoints.get_openid_config_url.return_value = (
-        "https://example.com/openid-config"
-    )
-    mock_get_oauth_endpoints.return_value = mock_endpoints
+    @pytest.fixture
+    def mock_is_same_host(self):
+        """Fixture for mocking _is_same_host."""
+        with patch(
+            "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._is_same_host"
+        ) as mock:
+            yield mock
 
-    # Mock the requests.get response
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "token_endpoint": "https://example.com/token"
-    }
-    mock_request_get.return_value = mock_response
+    @pytest.fixture
+    def mock_request_post(self):
+        """Fixture for mocking requests.post."""
+        with patch("databricks.sql.auth.token_federation.requests.post") as mock:
+            yield mock
 
-    # Create the provider
-    creds_provider = SimpleCredentialsProvider("token")
-    federation_provider = DatabricksTokenFederationProvider(
-        creds_provider, "example.com", "client_id"
-    )
+    def test_host_and_auth_type(self, federation_provider):
+        """Test the host property and auth_type of DatabricksTokenFederationProvider."""
+        assert federation_provider.host == "databricks.com"
+        assert federation_provider.hostname == "databricks.com"
+        assert federation_provider.auth_type() == "mock_auth_type"
 
-    # Call the method
-    federation_provider._init_oidc_discovery()
+    def test_is_same_host(self, federation_provider):
+        """Test the _is_same_host method with various URL combinations."""
+        # Same host
+        assert federation_provider._is_same_host(
+            "https://databricks.com", "https://databricks.com"
+        )
+        # Different host
+        assert not federation_provider._is_same_host(
+            "https://databricks.com", "https://different.com"
+        )
+        # Same host with paths
+        assert federation_provider._is_same_host(
+            "https://databricks.com/path", "https://databricks.com/other"
+        )
+        # Missing protocol
+        assert federation_provider._is_same_host(
+            "databricks.com", "https://databricks.com"
+        )
 
-    # Check if the token endpoint was set correctly
-    assert federation_provider.token_endpoint == "https://example.com/token"
+    def test_extract_token_info_from_header(self, federation_provider):
+        """Test _extract_token_info_from_header with valid and invalid headers."""
+        # Valid headers
+        assert federation_provider._extract_token_info_from_header(
+            {"Authorization": "Bearer token"}
+        ) == ("Bearer", "token")
 
-    # Test fallback when discovery fails
-    mock_request_get.side_effect = Exception("Connection error")
-    federation_provider.token_endpoint = None
-    federation_provider._init_oidc_discovery()
-    assert federation_provider.token_endpoint == "https://example.com/oidc/v1/token"
+        assert federation_provider._extract_token_info_from_header(
+            {"Authorization": "CustomType token"}
+        ) == ("CustomType", "token")
 
+        # Invalid headers
+        with pytest.raises(ValueError):
+            federation_provider._extract_token_info_from_header({})
 
-@pytest.fixture
-def mock_parse_jwt_claims():
-    with patch(
-        "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._parse_jwt_claims"
-    ) as mock:
-        yield mock
+        with pytest.raises(ValueError):
+            federation_provider._extract_token_info_from_header({"Authorization": ""})
 
+        with pytest.raises(ValueError):
+            federation_provider._extract_token_info_from_header(
+                {"Authorization": "Bearer"}
+            )
 
-@pytest.fixture
-def mock_exchange_token():
-    with patch(
-        "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._exchange_token"
-    ) as mock:
-        yield mock
+    def test_token_reuse(
+        self,
+        federation_provider,
+        mock_exchange_token,
+    ):
+        """Test token reuse when token is still valid."""
+        # Set up the initial token
+        future_time = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+        initial_token = Token("exchanged_token", "Bearer", expiry=future_time)
+        federation_provider.current_token = initial_token
+        federation_provider.external_headers = {
+            "Authorization": "Bearer external_token"
+        }
 
+        # Get headers and verify the token is reused without calling exchange
+        headers = federation_provider.get_auth_headers()
+        assert headers["Authorization"] == "Bearer exchanged_token"
+        # Verify exchange was not called
+        mock_exchange_token.assert_not_called()
 
-@pytest.fixture
-def mock_is_same_host():
-    with patch(
-        "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._is_same_host"
-    ) as mock:
-        yield mock
+    def test_refresh_token_method(
+        self,
+        federation_provider,
+        mock_parse_jwt_claims,
+        mock_exchange_token,
+        mock_is_same_host,
+        mock_discover_token_endpoint,
+    ):
+        """Test the refactored refresh_token method for both exchange and non-exchange cases."""
+        # CASE 1: Token from different host (needs exchange)
+        # Set up mocks
+        mock_parse_jwt_claims.return_value = {
+            "iss": "https://login.microsoftonline.com/tenant"
+        }
+        mock_is_same_host.return_value = False
 
+        # Set up headers that the credentials provider will return
+        headers = {"Authorization": "Bearer test_token"}
+        header_factory = MagicMock()
+        header_factory.return_value = headers
 
-def test_token_refresh(mock_parse_jwt_claims, mock_exchange_token, mock_is_same_host):
-    """Test token refresh functionality for approaching expiry."""
-    # Set up mocks
-    mock_parse_jwt_claims.return_value = {
-        "iss": "https://login.microsoftonline.com/tenant"
-    }
-    mock_is_same_host.return_value = False
+        # Configure the credentials provider
+        mock_creds_provider = MagicMock()
+        mock_creds_provider.return_value = header_factory
+        federation_provider.credentials_provider = mock_creds_provider
 
-    # Create the initial header factory
-    initial_headers = {"Authorization": "Bearer initial_token"}
-    initial_header_factory = MagicMock()
-    initial_header_factory.return_value = initial_headers
+        # Configure the mock token exchange
+        future_time = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+        mock_exchange_token.return_value = Token(
+            "exchanged_token", "Bearer", expiry=future_time
+        )
 
-    # Create the fresh header factory for later use
-    fresh_headers = {"Authorization": "Bearer fresh_token"}
-    fresh_header_factory = MagicMock()
-    fresh_header_factory.return_value = fresh_headers
+        # Call the refresh_token method
+        token = federation_provider.refresh_token()
 
-    # Create the credentials provider that will return the header factory
-    mock_creds_provider = MagicMock()
-    mock_creds_provider.return_value = initial_header_factory
+        # Verify the token was exchanged
+        mock_exchange_token.assert_called_with("test_token")
+        assert token.access_token == "exchanged_token"
+        assert token == federation_provider.current_token
 
-    # Set up the token federation provider
-    federation_provider = DatabricksTokenFederationProvider(
-        mock_creds_provider, "example.com", "client_id"
-    )
+        # CASE 2: Token from same host (no exchange needed)
+        mock_is_same_host.return_value = True
+        mock_exchange_token.reset_mock()
 
-    # Mock the token exchange to return a known token
-    future_time = datetime.now(tz=timezone.utc) + timedelta(hours=1)
-    mock_exchange_token.return_value = Token(
-        "exchanged_token_1", "Bearer", expiry=future_time
-    )
+        # Mock the JWT expiry extraction
+        expiry_time = datetime.now(tz=timezone.utc) + timedelta(hours=2)
+        with patch(
+            "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._get_expiry_from_jwt",
+            return_value=expiry_time,
+        ):
+            # Call refresh_token again
+            token = federation_provider.refresh_token()
 
-    # First call to get initial headers and token - this should trigger an exchange
-    headers_factory = federation_provider()
-    headers = headers_factory()
+            # Verify no exchange was performed
+            mock_exchange_token.assert_not_called()
+            # Verify token was created directly
+            assert token.access_token == "test_token"
+            assert token.expiry == expiry_time
 
-    # Verify the exchange happened with the initial token
-    mock_exchange_token.assert_called_with("initial_token")
-    assert headers["Authorization"] == "Bearer exchanged_token_1"
+    def test_call_method_returns_auth_headers_directly(
+        self,
+        federation_provider,
+        mock_discover_token_endpoint,
+    ):
+        """Test that __call__ directly returns the get_auth_headers method."""
+        # Mock get_auth_headers to verify it's called directly
+        with patch.object(
+            federation_provider,
+            "get_auth_headers",
+            return_value={"Authorization": "Bearer test_auth"},
+        ) as mock_get_auth:
+            # Get the header factory from __call__
+            result = federation_provider()
 
-    # Reset the mocks to track the next call
-    mock_exchange_token.reset_mock()
+            # In our refactored implementation, __call__ returns get_auth_headers directly
+            assert result is federation_provider.get_auth_headers
 
-    # Now simulate an approaching expiry
-    near_expiry = datetime.now(tz=timezone.utc) + timedelta(
-        seconds=TOKEN_REFRESH_BUFFER_SECONDS - 1
-    )
-    federation_provider.last_exchanged_token = Token(
-        "exchanged_token_1", "Bearer", expiry=near_expiry
-    )
-    federation_provider.last_external_token = "initial_token"
+            # Now call the result and verify it returns what get_auth_headers returns
+            headers = result()
+            assert headers == {"Authorization": "Bearer test_auth"}
+            mock_get_auth.assert_called_once()
 
-    # For the refresh call, we need the credentials provider to return a fresh token
-    # Update the mock to return fresh_header_factory for the second call
-    mock_creds_provider.return_value = fresh_header_factory
+    def test_get_expiry_from_jwt(self, federation_provider):
+        """Test extracting expiry from JWT token."""
+        # Create a JWT token with expiry
+        expiry_timestamp = int(
+            (datetime.now(tz=timezone.utc) + timedelta(hours=1)).timestamp()
+        )
+        payload = {
+            "exp": expiry_timestamp,
+            "iat": int(datetime.now(tz=timezone.utc).timestamp()),
+            "sub": "test-subject",
+        }
 
-    # Set up the mock to return a different token for the refresh
-    mock_exchange_token.return_value = Token(
-        "exchanged_token_2", "Bearer", expiry=future_time
-    )
+        # Create JWT token
+        token = jwt.encode(payload, "secret", algorithm="HS256")
 
-    # Make a second call which should trigger refresh
-    headers = headers_factory()
+        # Test the method
+        expiry = federation_provider._get_expiry_from_jwt(token)
 
-    # Verify the exchange was performed with the fresh token
-    mock_exchange_token.assert_called_once_with("fresh_token")
+        # Verify the expiry is extracted correctly
+        assert expiry is not None
+        assert isinstance(expiry, datetime)
+        assert expiry.tzinfo is not None  # Should be timezone-aware
+        assert (
+            abs(
+                (
+                    expiry - datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc)
+                ).total_seconds()
+            )
+            < 1
+        )  # Allow for small rounding differences
 
-    # Verify the headers contain the new token
-    assert headers["Authorization"] == "Bearer exchanged_token_2"
+        # Test with invalid token
+        expiry = federation_provider._get_expiry_from_jwt("invalid-token")
+        assert expiry is None
 
+        # Test with token missing expiry
+        payload = {"sub": "test-subject"}
+        token_without_exp = jwt.encode(payload, "secret", algorithm="HS256")
+        expiry = federation_provider._get_expiry_from_jwt(token_without_exp)
+        assert expiry is None
 
-def test_create_token_federation_provider():
-    """Test creation of a federation provider with a simple token provider."""
-    # Create a simple provider
-    simple_provider = SimpleCredentialsProvider("token_value", "Bearer")
-    
-    # Create a federation provider with the simple provider
-    federation_provider = DatabricksTokenFederationProvider(
-        simple_provider, "example.com", "client_id"
-    )
+    def test_exchange_token(
+        self, federation_provider, mock_request_post, mock_discover_token_endpoint
+    ):
+        """Test the _exchange_token method with success and failure cases."""
+        # SUCCESS CASE
+        # Mock the response data
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "access_token": "new_token",
+            "token_type": "Bearer",
+            "refresh_token": "refresh_value",
+            "expires_in": 3600,
+        }
+        mock_request_post.return_value = mock_response
 
-    assert isinstance(federation_provider, DatabricksTokenFederationProvider)
-    assert federation_provider.hostname == "example.com"
-    assert federation_provider.identity_federation_client_id == "client_id"
+        # Set the token endpoint
+        federation_provider.token_endpoint = "https://databricks.com/token"
 
-    # Test that the underlying credentials provider was set up correctly
-    assert federation_provider.credentials_provider.token == "token_value"
-    assert federation_provider.credentials_provider.token_type == "Bearer"
+        # Call the method
+        token = federation_provider._exchange_token("original_token")
+
+        # Verify the token was created correctly
+        assert token.access_token == "new_token"
+        assert token.token_type == "Bearer"
+        assert token.refresh_token == "refresh_value"
+        # Expiry should be around 1 hour in the future
+        assert token.expiry > datetime.now(tz=timezone.utc)
+        assert token.expiry < datetime.now(tz=timezone.utc) + timedelta(seconds=3601)
+
+        # FAILURE CASE
+        # Mock the response data for failure
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "Unauthorized"
+        mock_request_post.return_value = mock_response
+
+        # Call the method and expect an exception
+        with pytest.raises(
+            ValueError, match="Token exchange failed with status code 401"
+        ):
+            federation_provider._exchange_token("original_token")
