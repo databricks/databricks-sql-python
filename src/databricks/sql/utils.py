@@ -624,7 +624,6 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
             # create the target decimal type
             dtype = pyarrow.decimal128(precision, scale)
 
-            # convert the column directly using PyArrow's cast operation
             new_col = col.cast(dtype)
             new_field = field.with_type(dtype)
 
