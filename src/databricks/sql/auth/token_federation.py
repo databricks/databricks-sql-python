@@ -15,14 +15,6 @@ from databricks.sql.auth.token import Token
 
 logger = logging.getLogger(__name__)
 
-# Token exchange constants
-TOKEN_EXCHANGE_PARAMS = {
-    "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-    "scope": "sql",
-    "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-    "return_original_token_if_authenticated": "true",
-}
-
 
 class DatabricksTokenFederationProvider(CredentialsProvider):
     """
@@ -38,6 +30,14 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
     EXCHANGE_HEADERS = {
         "Accept": "*/*",
         "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    # Token exchange parameters
+    TOKEN_EXCHANGE_PARAMS = {
+        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+        "scope": "sql",
+        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+        "return_original_token_if_authenticated": "true",
     }
 
     def __init__(
@@ -317,7 +317,7 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             ValueError: If token exchange fails
         """
         # Prepare the request data
-        token_exchange_data = dict(TOKEN_EXCHANGE_PARAMS)
+        token_exchange_data = dict(self.TOKEN_EXCHANGE_PARAMS)
         token_exchange_data["subject_token"] = access_token
 
         # Add client_id if provided
