@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Test script for Databricks SQL token federation with GitHub Actions OIDC tokens.
 

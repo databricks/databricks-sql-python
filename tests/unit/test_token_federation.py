@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-
-"""
-Unit tests for token federation functionality in the Databricks SQL connector.
-"""
-
 import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone, timedelta
@@ -134,7 +128,7 @@ class TestDatabricksTokenFederationProvider:
         with patch(
             "databricks.sql.auth.oidc_utils.OIDCDiscoveryUtil.discover_token_endpoint"
         ) as mock:
-            mock.return_value = "https://databricks.com/token"
+            mock.return_value = "https://databricks.com/oidc/v1/token"
             yield mock
 
     @pytest.fixture
@@ -375,7 +369,7 @@ class TestDatabricksTokenFederationProvider:
         mock_request_post.return_value = mock_response
 
         # Set the token endpoint
-        federation_provider.token_endpoint = "https://databricks.com/token"
+        federation_provider.token_endpoint = "https://databricks.com/oidc/v1/token"
 
         # Call the method
         token = federation_provider._exchange_token("original_token")
