@@ -788,68 +788,176 @@ class Cursor:
         :returns self
         """
 
-        # param_approach = self._determine_parameter_approach(parameters)
-        # if param_approach == ParameterApproach.NONE:
-        #     prepared_params = NO_NATIVE_PARAMS
-        #     prepared_operation = operation
-        #
-        # elif param_approach == ParameterApproach.INLINE:
-        #     prepared_operation, prepared_params = self._prepare_inline_parameters(
-        #         operation, parameters
-        #     )
-        # elif param_approach == ParameterApproach.NATIVE:
-        #     normalized_parameters = self._normalize_tparametercollection(parameters)
-        #     param_structure = self._determine_parameter_structure(normalized_parameters)
-        #     transformed_operation = transform_paramstyle(
-        #         operation, normalized_parameters, param_structure
-        #     )
-        #     prepared_operation, prepared_params = self._prepare_native_parameters(
-        #         transformed_operation, normalized_parameters, param_structure
-        #     )
+        param_approach = self._determine_parameter_approach(parameters)
+        if param_approach == ParameterApproach.NONE:
+            prepared_params = NO_NATIVE_PARAMS
+            prepared_operation = operation
 
-        temp_prepared_operation="""INSERT INTO ___________________first.jprakash.complex_types (
-                  user_id, name, emails
-                ) VALUES (
-                  :user_id, :name, :emails
-                )"""
-
-        temp_prepared_params=[
-            TSparkParameter(
-                name="user_id",
-                type="STRING",
-                value=TSparkParameterValue(stringValue="u123")
-            ),
-            TSparkParameter(
-                name="name",
-                type="STRING",
-                value=TSparkParameterValue(stringValue="John Doe")
-            ),
-            TSparkParameter(
-                name="emails",
-                type="ARRAY",
-                arguments=[
-                    TSparkParameterValueArg(
-                        type="STRING",
-                        value="john.doe@example.com"
-                    ),
-                    TSparkParameterValueArg(
-                        type="STRING",
-                        value="jd@example.org"
-                    )
-                ]
+        elif param_approach == ParameterApproach.INLINE:
+            prepared_operation, prepared_params = self._prepare_inline_parameters(
+                operation, parameters
             )
-        ]
+        elif param_approach == ParameterApproach.NATIVE:
+            normalized_parameters = self._normalize_tparametercollection(parameters)
+            param_structure = self._determine_parameter_structure(normalized_parameters)
+            transformed_operation = transform_paramstyle(
+                operation, normalized_parameters, param_structure
+            )
+            prepared_operation, prepared_params = self._prepare_native_parameters(
+                transformed_operation, normalized_parameters, param_structure
+            )
+
+        # temp_prepared_operation="""INSERT INTO ___________________first.jprakash.complex_types (
+        #           user_id, name, emails, preferences, address, recent_orders
+        #         ) VALUES (
+        #           :user_id, :name, :emails, :preferences,:address, :recent_orders
+        #         )"""
+        #
+        # temp_prepared_params=[
+        #     TSparkParameter(
+        #         name="user_id",
+        #         type="STRING",
+        #         value=TSparkParameterValue(stringValue="11")
+        #     ),
+        #     TSparkParameter(
+        #         name="name",
+        #         type="STRING",
+        #         value=TSparkParameterValue(stringValue="John Doe"),
+        #     ),
+        #     TSparkParameter(
+        #         name="emails",
+        #         # type="ARRAY",
+        #         arguments=[
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="john.doe@example.com"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="jd@example.org"
+        #             )
+        #         ]
+        #     ),
+        #     TSparkParameter(
+        #         name="preferences",
+        #         type="MAP",
+        #         arguments=[
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="theme"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="dark"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="language"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="en"
+        #             ),
+        #         ]
+        #
+        #     ),
+        #     TSparkParameter(
+        #         name="address",
+        #         type="NAMED_STRUCT",
+        #         arguments=[
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="street"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="123 Main St"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="city"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="Metropolis"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="zip"
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="STRING",
+        #                 value="12345"
+        #             ),
+        #         ]
+        #     ),
+        #     # TSparkParameter(
+        #     #     name="address",
+        #     #     type="STRUCT",
+        #     #     arguments=[
+        #     #         TSparkParameterValueArg(
+        #     #             type="STRING",
+        #     #             value="123 Main St"
+        #     #         ),
+        #     #         TSparkParameterValueArg(
+        #     #             type="STRING",
+        #     #             value="Metropolis"
+        #     #         ),
+        #     #         TSparkParameterValueArg(
+        #     #             type="STRING",
+        #     #             value="12345"
+        #     #         ),
+        #     #     ]
+        #     # ),
+        #     TSparkParameter(
+        #         name="recent_orders",
+        #         type="ARRAY",
+        #         arguments=[
+        #             TSparkParameterValueArg(
+        #                 type="NAMED_STRUCT",
+        #                 arguments=[
+        #                     TSparkParameterValueArg(type="STRING", value="order_id"),
+        #                     TSparkParameterValueArg(type="STRING", value="ord001"),
+        #                     TSparkParameterValueArg(type="STRING", value="amount"),
+        #                     TSparkParameterValueArg(type="DECIMAL(10,2)", value="199.99"),
+        #                     TSparkParameterValueArg(type="STRING", value="items"),
+        #                     TSparkParameterValueArg(type="ARRAY", arguments=[
+        #                         TSparkParameterValueArg(type="STRING", value="item1"),
+        #                         TSparkParameterValueArg(type="STRING", value="item2")
+        #                     ])
+        #                 ]
+        #             ),
+        #             TSparkParameterValueArg(
+        #                 type="NAMED_STRUCT",
+        #                 arguments=[
+        #                     TSparkParameterValueArg(type="STRING", value="order_id"),
+        #                     TSparkParameterValueArg(type="STRING", value="ord002"),
+        #                     TSparkParameterValueArg(type="STRING", value="amount"),
+        #                     TSparkParameterValueArg(type="DECIMAL(10,2)", value="49.95"),
+        #                     TSparkParameterValueArg(type="STRING", value="items"),
+        #                     TSparkParameterValueArg(type="ARRAY", arguments=[
+        #                         TSparkParameterValueArg(type="STRING", value="item3"),
+        #                     ])
+        #                 ]
+        #             ),
+        #         ]
+        #     )
+        # ]
+
+        print("LINE 947")
+        print(prepared_params)
+
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
-            operation=temp_prepared_operation,
+            operation=prepared_operation,
             session_handle=self.connection._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
             cursor=self,
             use_cloud_fetch=self.connection.use_cloud_fetch,
-            parameters=temp_prepared_params,
+            parameters=prepared_params,
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
