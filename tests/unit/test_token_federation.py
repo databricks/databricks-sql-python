@@ -344,6 +344,11 @@ class TestDatabricksTokenFederationProvider:
         """Test successful token exchange."""
         # Mock successful response
         with patch("databricks.sql.auth.token_federation.requests.post") as mock_post:
+            # Create a token with a valid expiry
+            expiry_timestamp = int(
+                (datetime.now(tz=timezone.utc) + timedelta(hours=1)).timestamp()
+            )
+
             # Configure mock response
             mock_response = MagicMock()
             mock_response.status_code = 200
@@ -351,13 +356,14 @@ class TestDatabricksTokenFederationProvider:
                 "access_token": "new_token",
                 "token_type": "Bearer",
                 "refresh_token": "refresh_value",
-                "expires_in": 3600,
             }
             mock_post.return_value = mock_response
 
-            # Patch the _get_expiry_from_jwt method to return None (forcing use of expires_in)
+            # Mock JWT expiry extraction to return a valid expiry
             with patch.object(
-                federation_provider, "_get_expiry_from_jwt", return_value=None
+                federation_provider,
+                "_get_expiry_from_jwt",
+                return_value=datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc),
             ):
                 # Call the exchange method
                 token = federation_provider._exchange_token("original_token")
@@ -367,10 +373,11 @@ class TestDatabricksTokenFederationProvider:
                 assert token.token_type == "Bearer"
                 assert token.refresh_token == "refresh_value"
 
-                # Verify expiry time (should be ~1 hour in future)
-                now = datetime.now(tz=timezone.utc)
-                assert token.expiry > now
-                assert token.expiry < now + timedelta(seconds=3601)
+                # Verify expiry time is correctly set
+                expiry_datetime = datetime.fromtimestamp(
+                    expiry_timestamp, tz=timezone.utc
+                )
+                assert token.expiry == expiry_datetime
 
     def test_token_exchange_failure(self, federation_provider):
         """Test token exchange failure handling."""

@@ -335,44 +335,12 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         token_type = resp_data.get("token_type", "Bearer")
         refresh_token = resp_data.get("refresh_token", "")
 
-        # Determine token expiry - first try from JWT claims
+        # Extract expiry from JWT claims
         expiry = self._get_expiry_from_jwt(new_access_token)
-
-        # If JWT expiry not available, use expires_in from response
         if expiry is None:
-            expiry = self._get_expiry_from_response(resp_data)
-
-        # If we still don't have an expiry, we can't proceed
-        if expiry is None:
-            raise ValueError(
-                "Unable to determine token expiry from response or JWT claims"
-            )
+            raise ValueError("Unable to determine token expiry from JWT claims")
 
         return Token(new_access_token, token_type, refresh_token, expiry)
-
-    def _get_expiry_from_response(
-        self, resp_data: Dict[str, Any]
-    ) -> Optional[datetime]:
-        """
-        Extract expiry datetime from response data.
-
-        Args:
-            resp_data: Response data from token exchange
-
-        Returns:
-            Optional[datetime]: Expiry datetime if found in response, None otherwise
-        """
-        if "expires_in" not in resp_data or not resp_data["expires_in"]:
-            return None
-
-        try:
-            expires_in = int(resp_data["expires_in"])
-            expiry = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
-            logger.debug(f"Using expiry from expires_in: {expiry}")
-            return expiry
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Invalid expires_in value: {str(e)}")
-            return None
 
 
 class SimpleCredentialsProvider(CredentialsProvider):
