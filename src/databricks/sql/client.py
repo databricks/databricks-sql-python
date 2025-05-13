@@ -456,7 +456,16 @@ class Cursor:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+        try:
+            logger.debug("Cursor context manager exiting, calling close()")
+            self.close()
+        except Exception as e:
+            logger.warning(f"Exception during cursor close in __exit__: {e}")
+            # Don't suppress the original exception if there was one
+            if exc_type is None:
+                # Only raise our new exception if there wasn't already one in progress
+                raise
+        return False
 
     def __iter__(self):
         if self.active_result_set:
@@ -1163,7 +1172,17 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
-        self.active_op_handle = None
+        
+        # Close active operation handle if it exists
+        if self.active_op_handle:
+            try:
+                self.thrift_backend.close_command(self.active_op_handle)
+            except Exception as e:
+                # Log the error but continue with cleanup
+                logging.warning(f"Error closing operation handle: {e}")
+            finally:
+                self.active_op_handle = None
+                
         if self.active_result_set:
             self._close_and_clear_active_result_set()
 
