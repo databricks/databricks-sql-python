@@ -683,22 +683,17 @@ class ClientTestSuite(unittest.TestCase):
         mock_connection = Mock()
         mock_op_handle = Mock()
         
-        # Setup backend to raise an exception when close_command is called
         mock_backend.close_command.side_effect = Exception("Test error")
 
         cursor = client.Cursor(mock_connection, mock_backend)
         cursor.active_op_handle = mock_op_handle
 
-        # This should not raise an exception
         cursor.close()
 
-        # Verify close_command was attempted
         mock_backend.close_command.assert_called_once_with(mock_op_handle)
         
-        # Verify active_op_handle was cleared despite the exception
         self.assertIsNone(cursor.active_op_handle)
         
-        # Verify open status is set to False
         self.assertFalse(cursor.open)
 
     def test_cursor_context_manager_handles_exit_exception(self):
