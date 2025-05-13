@@ -1172,7 +1172,7 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
-        
+
         # Close active operation handle if it exists
         if self.active_op_handle:
             try:
@@ -1182,7 +1182,7 @@ class Cursor:
                 logging.warning(f"Error closing operation handle: {e}")
             finally:
                 self.active_op_handle = None
-                
+
         if self.active_result_set:
             self._close_and_clear_active_result_set()
 
