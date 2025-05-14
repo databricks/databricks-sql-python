@@ -1179,13 +1179,10 @@ class Cursor:
                 self.thrift_backend.close_command(self.active_op_handle)
             except RequestError as e:
                 if isinstance(e.args[1], CursorAlreadyClosedError):
-                    # This is the specific message expected by the test
                     logger.info("Operation was canceled by a prior request")
                 else:
-                    # For other types of errors, keep the generic logging
                     logging.warning(f"Error closing operation handle: {e}")
             except Exception as e:
-                # For non-RequestError exceptions
                 logging.warning(f"Error closing operation handle: {e}")
             finally:
                 self.active_op_handle = None
