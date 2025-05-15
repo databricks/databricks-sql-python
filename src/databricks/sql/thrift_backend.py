@@ -894,6 +894,7 @@ class ThriftBackend:
     ):
         assert session_handle is not None
 
+        logger.debug(f"ThriftBackend.execute_command(operation={operation}, session_handle={session_handle})")
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
             decimalAsArrow=self._use_arrow_native_decimals,
