@@ -215,7 +215,9 @@ class Connection:
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
         logger.debug(
-            f"Connection.__init__(server_hostname={server_hostname}, http_path={http_path})"
+            "Connection.__init__(server_hostname=%s, http_path=%s)",
+            server_hostname,
+            http_path,
         )
 
         if access_token:
@@ -791,7 +793,9 @@ class Cursor:
 
         :returns self
         """
-        logger.debug(f"Cursor.execute(operation={operation}, parameters={parameters})")
+        logger.debug(
+            "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
+        )
 
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
