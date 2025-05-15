@@ -131,6 +131,8 @@ class ThriftBackend:
         # max_download_threads
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
+        logger.debug(f"ThriftBackend.__init__(server_hostname={server_hostname}, port={port}, http_path={http_path})")
+
         port = port or 443
         if kwargs.get("_connection_uri"):
             uri = kwargs.get("_connection_uri")
@@ -390,6 +392,8 @@ class ThriftBackend:
 
                 # TODO: don't use exception handling for GOS polling...
 
+                logger.debug(f"ThriftBackend.attempt_request: HTTPError: {err}")
+
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
                     delay_default = (
@@ -404,6 +408,7 @@ class ThriftBackend:
                 else:
                     raise err
             except OSError as err:
+                logger.debug(f"ThriftBackend.attempt_request: OSError: {err}")
                 error = err
                 error_message = str(err)
                 # fmt: off
@@ -434,6 +439,7 @@ class ThriftBackend:
                     else:
                         logger.warning(log_string)
             except Exception as err:
+                logger.debug(f"ThriftBackend.attempt_request: Exception: {err}")
                 error = err
                 retry_delay = extract_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
@@ -1074,6 +1080,7 @@ class ThriftBackend:
         return queue, resp.hasMoreRows
 
     def close_command(self, op_handle):
+        logger.debug(f"ThriftBackend.close_command(op_handle={op_handle})")
         req = ttypes.TCloseOperationReq(operationHandle=op_handle)
         resp = self.make_request(self._client.CloseOperation, req)
         return resp.status
