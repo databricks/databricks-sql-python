@@ -214,7 +214,9 @@ class Connection:
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
-        logger.debug(f"Connection.__init__(server_hostname={server_hostname}, http_path={http_path})")
+        logger.debug(
+            f"Connection.__init__(server_hostname={server_hostname}, http_path={http_path})"
+        )
 
         if access_token:
             access_token_kv = {"access_token": access_token}
