@@ -15,6 +15,10 @@ class VolumeClient:
         :param conn: Connection object to Databricks.
         """
         self.conn = conn
+    
+    def is_staging_operation_allowed(self, condition) -> bool:
+        if not condition:
+            raise ValueError("Staging operation is not allowed")
 
     def get_object(
         self, catalog: str, schema: str, volume: str, object_path: str, local_path: str
@@ -22,7 +26,12 @@ class VolumeClient:
         get_object_query = StringUtil.create_get_object_query(
             catalog, schema, volume, object_path, local_path
         )
-        return True
+
+        with self.conn.cursor() as cursor:
+            cursor.execute(get_object_query)
+            self.is_staging_operation_allowed(cursor.active_result_set.is_staging_operation)
+            volume_processor = VolumeProcessor(local_path=local_path)
+            return True
 
     def get_object(
         self, catalog: str, schema: str, volume: str, object_path: str
