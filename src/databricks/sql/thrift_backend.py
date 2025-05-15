@@ -413,7 +413,6 @@ class ThriftBackend:
                 else:
                     raise err
             except OSError as err:
-                logger.error("ThriftBackend.attempt_request: OSError: %s", err)
                 error = err
                 error_message = str(err)
                 # fmt: off
