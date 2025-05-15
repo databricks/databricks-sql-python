@@ -132,7 +132,10 @@ class ThriftBackend:
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
         logger.debug(
-            f"ThriftBackend.__init__(server_hostname={server_hostname}, port={port}, http_path={http_path})"
+            "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)",
+            server_hostname,
+            port,
+            http_path,
         )
 
         port = port or 443
@@ -394,7 +397,7 @@ class ThriftBackend:
 
                 # TODO: don't use exception handling for GOS polling...
 
-                logger.error(f"ThriftBackend.attempt_request: HTTPError: {err}")
+                logger.error("ThriftBackend.attempt_request: HTTPError: %s", err)
 
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
@@ -410,7 +413,7 @@ class ThriftBackend:
                 else:
                     raise err
             except OSError as err:
-                logger.error(f"ThriftBackend.attempt_request: OSError: {err}")
+                logger.error("ThriftBackend.attempt_request: OSError: %s", err)
                 error = err
                 error_message = str(err)
                 # fmt: off
@@ -441,7 +444,7 @@ class ThriftBackend:
                     else:
                         logger.warning(log_string)
             except Exception as err:
-                logger.error(f"ThriftBackend.attempt_request: Exception: {err}")
+                logger.error("ThriftBackend.attempt_request: Exception: %s", err)
                 error = err
                 retry_delay = extract_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
@@ -897,7 +900,9 @@ class ThriftBackend:
         assert session_handle is not None
 
         logger.debug(
-            f"ThriftBackend.execute_command(operation={operation}, session_handle={session_handle})"
+            "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
+            operation,
+            session_handle,
         )
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
