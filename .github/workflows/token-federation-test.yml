@@ -1,0 +1,78 @@
+name: Token Federation Test
+
+# Tests token federation functionality with GitHub Actions OIDC tokens
+on:
+  # Manual trigger with required inputs
+  workflow_dispatch:
+    inputs:
+      databricks_host:
+        description: 'Databricks host URL (e.g., example.cloud.databricks.com)'
+        required: true
+      databricks_http_path:
+        description: 'Databricks HTTP path (e.g., /sql/1.0/warehouses/abc123)'
+        required: true
+      identity_federation_client_id:
+        description: 'Identity federation client ID'
+        required: true
+  
+  # Run on PRs that might affect token federation
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/databricks/sql/auth/**'
+      - 'examples/token_federation_*.py'
+      - 'tests/token_federation/**'
+      - '.github/workflows/token-federation-test.yml'
+  
+  # Run on push to main that affects token federation
+  push:
+    branches: [main]
+    paths:
+      - 'src/databricks/sql/auth/**'
+      - 'examples/token_federation_*.py'
+      - 'tests/token_federation/**'
+      - '.github/workflows/token-federation-test.yml'
+
+permissions:
+  id-token: write  # Required for GitHub OIDC token
+  contents: read
+
+jobs:
+  test-token-federation:
+    name: Test Token Federation
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyarrow
+      
+      - name: Get GitHub OIDC token
+        id: get-id-token
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('https://github.com/databricks')
+            core.setSecret(token)
+            core.setOutput('token', token)
+      
+      - name: Test token federation with GitHub OIDC token
+        env:
+          DATABRICKS_HOST_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_host || secrets.DATABRICKS_HOST_FOR_TF }}
+          DATABRICKS_HTTP_PATH_FOR_TF: ${{ github.event_name == 'workflow_dispatch' && inputs.databricks_http_path || secrets.DATABRICKS_HTTP_PATH_FOR_TF }}
+          IDENTITY_FEDERATION_CLIENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.identity_federation_client_id || secrets.IDENTITY_FEDERATION_CLIENT_ID }}
+          OIDC_TOKEN: ${{ steps.get-id-token.outputs.token }}
+        run: python tests/token_federation/github_oidc_test.py
