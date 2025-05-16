@@ -223,7 +223,8 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
-
+        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
+        
         auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
         )
@@ -1254,6 +1255,7 @@ class ResultSet:
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
         self._use_cloud_fetch = use_cloud_fetch
+        self.is_staging_operation = execute_response.is_staging_operation
 
         if execute_response.arrow_queue:
             # In this case the server has taken the fast path and returned an initial batch of
