@@ -1433,9 +1433,22 @@ class ResultSet:
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results = pyarrow.concat_tables([results, partial_results])
+            if isinstance(results, ColumnTable) and isinstance(
+                partial_results, ColumnTable
+            ):
+                results = self.merge_columnar(results, partial_results)
+            else:
+                results = pyarrow.concat_tables([results, partial_results])
             self._next_row_index += partial_results.num_rows
 
+        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
+        # Valid only for metadata commands result set
+        if isinstance(results, ColumnTable) and pyarrow:
+            data = {
+                name: col
+                for name, col in zip(results.column_names, results.column_table)
+            }
+            return pyarrow.Table.from_pydict(data)
         return results
 
     def fetchall_columnar(self):
