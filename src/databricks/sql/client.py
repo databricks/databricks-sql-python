@@ -48,7 +48,9 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
-    TOperationState, TSparkParameterValue, TSparkParameterValueArg,
+    TOperationState,
+    TSparkParameterValue,
+    TSparkParameterValueArg,
 )
 
 
@@ -806,146 +808,6 @@ class Cursor:
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, normalized_parameters, param_structure
             )
-
-        # temp_prepared_operation="""INSERT INTO ___________________first.jprakash.complex_types (
-        #           user_id, name, emails, preferences, address, recent_orders
-        #         ) VALUES (
-        #           :user_id, :name, :emails, :preferences,:address, :recent_orders
-        #         )"""
-        #
-        # temp_prepared_params=[
-        #     TSparkParameter(
-        #         name="user_id",
-        #         type="STRING",
-        #         value=TSparkParameterValue(stringValue="11")
-        #     ),
-        #     TSparkParameter(
-        #         name="name",
-        #         type="STRING",
-        #         value=TSparkParameterValue(stringValue="John Doe"),
-        #     ),
-        #     TSparkParameter(
-        #         name="emails",
-        #         # type="ARRAY",
-        #         arguments=[
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="john.doe@example.com"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="jd@example.org"
-        #             )
-        #         ]
-        #     ),
-        #     TSparkParameter(
-        #         name="preferences",
-        #         type="MAP",
-        #         arguments=[
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="theme"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="dark"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="language"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="en"
-        #             ),
-        #         ]
-        #
-        #     ),
-        #     TSparkParameter(
-        #         name="address",
-        #         type="NAMED_STRUCT",
-        #         arguments=[
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="street"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="123 Main St"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="city"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="Metropolis"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="zip"
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="STRING",
-        #                 value="12345"
-        #             ),
-        #         ]
-        #     ),
-        #     # TSparkParameter(
-        #     #     name="address",
-        #     #     type="STRUCT",
-        #     #     arguments=[
-        #     #         TSparkParameterValueArg(
-        #     #             type="STRING",
-        #     #             value="123 Main St"
-        #     #         ),
-        #     #         TSparkParameterValueArg(
-        #     #             type="STRING",
-        #     #             value="Metropolis"
-        #     #         ),
-        #     #         TSparkParameterValueArg(
-        #     #             type="STRING",
-        #     #             value="12345"
-        #     #         ),
-        #     #     ]
-        #     # ),
-        #     TSparkParameter(
-        #         name="recent_orders",
-        #         type="ARRAY",
-        #         arguments=[
-        #             TSparkParameterValueArg(
-        #                 type="NAMED_STRUCT",
-        #                 arguments=[
-        #                     TSparkParameterValueArg(type="STRING", value="order_id"),
-        #                     TSparkParameterValueArg(type="STRING", value="ord001"),
-        #                     TSparkParameterValueArg(type="STRING", value="amount"),
-        #                     TSparkParameterValueArg(type="DECIMAL(10,2)", value="199.99"),
-        #                     TSparkParameterValueArg(type="STRING", value="items"),
-        #                     TSparkParameterValueArg(type="ARRAY", arguments=[
-        #                         TSparkParameterValueArg(type="STRING", value="item1"),
-        #                         TSparkParameterValueArg(type="STRING", value="item2")
-        #                     ])
-        #                 ]
-        #             ),
-        #             TSparkParameterValueArg(
-        #                 type="NAMED_STRUCT",
-        #                 arguments=[
-        #                     TSparkParameterValueArg(type="STRING", value="order_id"),
-        #                     TSparkParameterValueArg(type="STRING", value="ord002"),
-        #                     TSparkParameterValueArg(type="STRING", value="amount"),
-        #                     TSparkParameterValueArg(type="DECIMAL(10,2)", value="49.95"),
-        #                     TSparkParameterValueArg(type="STRING", value="items"),
-        #                     TSparkParameterValueArg(type="ARRAY", arguments=[
-        #                         TSparkParameterValueArg(type="STRING", value="item3"),
-        #                     ])
-        #                 ]
-        #             ),
-        #         ]
-        #     )
-        # ]
-
-        print("LINE 947")
-        print(prepared_params)
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()

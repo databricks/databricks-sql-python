@@ -6,13 +6,21 @@
 #  options string: py
 #
 
-from thrift.Thrift import TType, TMessageType, TFrozenDict, TException, TApplicationException
+from thrift.Thrift import (
+    TType,
+    TMessageType,
+    TFrozenDict,
+    TException,
+    TApplicationException,
+)
 from thrift.protocol.TProtocol import TProtocolException
 from thrift.TRecursive import fix_spec
 
 import sys
 from .ttypes import *
-PRIMITIVE_TYPES = set((
+
+PRIMITIVE_TYPES = set(
+    (
         0,
         1,
         2,
@@ -30,40 +38,45 @@ PRIMITIVE_TYPES = set((
         19,
         20,
         21,
-))
-COMPLEX_TYPES = set((
+    )
+)
+COMPLEX_TYPES = set(
+    (
         10,
         11,
         12,
         13,
         14,
-))
-COLLECTION_TYPES = set((
+    )
+)
+COLLECTION_TYPES = set(
+    (
         10,
         11,
-))
+    )
+)
 TYPE_NAMES = {
-        10: "ARRAY",
-        4: "BIGINT",
-        9: "BINARY",
-        0: "BOOLEAN",
-        19: "CHAR",
-        17: "DATE",
-        15: "DECIMAL",
-        6: "DOUBLE",
-        5: "FLOAT",
-        21: "INTERVAL_DAY_TIME",
-        20: "INTERVAL_YEAR_MONTH",
-        3: "INT",
-        11: "MAP",
-        16: "NULL",
-        2: "SMALLINT",
-        7: "STRING",
-        12: "STRUCT",
-        8: "TIMESTAMP",
-        1: "TINYINT",
-        13: "UNIONTYPE",
-        18: "VARCHAR",
+    10: "ARRAY",
+    4: "BIGINT",
+    9: "BINARY",
+    0: "BOOLEAN",
+    19: "CHAR",
+    17: "DATE",
+    15: "DECIMAL",
+    6: "DOUBLE",
+    5: "FLOAT",
+    21: "INTERVAL_DAY_TIME",
+    20: "INTERVAL_YEAR_MONTH",
+    3: "INT",
+    11: "MAP",
+    16: "NULL",
+    2: "SMALLINT",
+    7: "STRING",
+    12: "STRUCT",
+    8: "TIMESTAMP",
+    1: "TINYINT",
+    13: "UNIONTYPE",
+    18: "VARCHAR",
 }
 CHARACTER_MAXIMUM_LENGTH = "characterMaximumLength"
 PRECISION = "precision"
