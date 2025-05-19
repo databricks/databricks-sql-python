@@ -665,7 +665,7 @@ class ThriftBackend:
         return pyarrow.schema([convert_col(col) for col in t_table_schema.columns])
 
     @staticmethod
-    def _col_to_description(col):
+    def _col_to_description(col, field):
         type_entry = col.typeDesc.types[0]
 
         if type_entry.primitiveEntry:
@@ -692,12 +692,36 @@ class ThriftBackend:
         else:
             precision, scale = None, None
 
+        # Extract variant type from field if available
+        if field is not None:
+            try:
+                # Check for variant type in metadata
+                if field.metadata and b"Spark:DataType:SqlName" in field.metadata:
+                    sql_type = field.metadata.get(b"Spark:DataType:SqlName")
+                    if sql_type == b"VARIANT":
+                        cleaned_type = "variant"
+            except Exception as e:
+                logger.debug(f"Could not extract variant type from field: {e}")
+
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
-    def _hive_schema_to_description(t_table_schema):
+    def _hive_schema_to_description(t_table_schema, schema_bytes=None):
+        # Create a field lookup dictionary for efficient column access
+        field_dict = {}
+        if pyarrow and schema_bytes:
+            try:
+                arrow_schema = pyarrow.ipc.read_schema(pyarrow.py_buffer(schema_bytes))
+                # Build a dictionary mapping column names to fields
+                for field in arrow_schema:
+                    field_dict[field.name] = field
+            except Exception as e:
+                logger.debug(f"Could not parse arrow schema: {e}")
+
+        # Process each column with its corresponding Arrow field (if available)
         return [
-            ThriftBackend._col_to_description(col) for col in t_table_schema.columns
+            ThriftBackend._col_to_description(col, field_dict.get(col.columnName))
+            for col in t_table_schema.columns
         ]
 
     def _results_message_to_execute_response(self, resp, operation_state):
@@ -726,9 +750,6 @@ class ThriftBackend:
             or (not direct_results.resultSet)
             or direct_results.resultSet.hasMoreRows
         )
-        description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema
-        )
 
         if pyarrow:
             schema_bytes = (
@@ -739,6 +760,10 @@ class ThriftBackend:
             )
         else:
             schema_bytes = None
+
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema, schema_bytes
+        )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
@@ -793,9 +818,6 @@ class ThriftBackend:
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         has_more_rows = resp.hasMoreRows
-        description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema
-        )
 
         if pyarrow:
             schema_bytes = (
@@ -806,6 +828,10 @@ class ThriftBackend:
             )
         else:
             schema_bytes = None
+
+            description = self._hive_schema_to_description(
+                t_result_set_metadata_resp.schema, schema_bytes
+            )
 
         queue = ResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
