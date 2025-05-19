@@ -841,7 +841,6 @@ class TestPySQLCoreSuite(
             conn.close()
         assert "Session appears to have been closed already" in caplog.text
 
-        # --- Integrated KeyboardInterrupt test ---
         conn = None
         try:
             with pytest.raises(KeyboardInterrupt):
@@ -866,7 +865,6 @@ class TestPySQLCoreSuite(
                 if cursor.open:
                     cursor.close()
 
-        # --- Integrated KeyboardInterrupt test ---
         conn = None
         cursor = None
         try:
