@@ -315,7 +315,13 @@ class Connection:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+        try:
+            self.close()
+        except BaseException as e:
+            logger.warning(f"Exception during connection close in __exit__: {e}")
+            if exc_type is None:
+                raise
+        return False
 
     def __del__(self):
         if self.open:
@@ -459,11 +465,9 @@ class Cursor:
         try:
             logger.debug("Cursor context manager exiting, calling close()")
             self.close()
-        except Exception as e:
+        except BaseException as e:
             logger.warning(f"Exception during cursor close in __exit__: {e}")
-            # Don't suppress the original exception if there was one
             if exc_type is None:
-                # Only raise our new exception if there wasn't already one in progress
                 raise
         return False
 

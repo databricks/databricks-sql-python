@@ -284,6 +284,15 @@ class ClientTestSuite(unittest.TestCase):
             cursor.close = mock_close
         mock_close.assert_called_once_with()
 
+        cursor = client.Cursor(Mock(), Mock())
+        cursor.close = Mock()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                with cursor:
+                    raise KeyboardInterrupt("Simulated interrupt")
+        finally:
+            cursor.close.assert_called()
+
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_context_manager_closes_connection(self, mock_client_class):
         instance = mock_client_class.return_value
@@ -298,6 +307,15 @@ class ClientTestSuite(unittest.TestCase):
         # Check the close session request has an id of x22
         close_session_id = instance.close_session.call_args[0][0].sessionId
         self.assertEqual(close_session_id, b"\x22")
+
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        connection.close = Mock()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                with connection:
+                    raise KeyboardInterrupt("Simulated interrupt")
+        finally:
+            connection.close.assert_called()
 
     def dict_product(self, dicts):
         """
