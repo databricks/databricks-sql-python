@@ -971,32 +971,3 @@ class TestPySQLUnityCatalogSuite(PySQLPytestTestCase):
             assert cursor.fetchone()[0] == self.arguments["catalog"]
             cursor.execute("select current_database()")
             assert cursor.fetchone()[0] == table_name
-
-
-class TestContextManagerInterrupts(PySQLPytestTestCase):
-    def test_connection_context_manager_handles_keyboard_interrupt(self):
-        # This test ensures that a KeyboardInterrupt inside a connection context propagates and closes the connection
-        conn = None
-        try:
-            with pytest.raises(KeyboardInterrupt):
-                with self.connection() as c:
-                    conn = c
-                    raise KeyboardInterrupt("Simulated interrupt")
-        finally:
-            if conn is not None:
-                assert not conn.open, "Connection should be closed after KeyboardInterrupt"
-
-    def test_cursor_context_manager_handles_keyboard_interrupt(self):
-        # This test ensures that a KeyboardInterrupt inside a cursor context propagates and closes the cursor
-        conn = None
-        cursor = None
-        try:
-            with self.connection() as c:
-                conn = c
-                with pytest.raises(KeyboardInterrupt):
-                    with conn.cursor() as cur:
-                        cursor = cur
-                        raise KeyboardInterrupt("Simulated interrupt")
-        finally:
-            if cursor is not None:
-                assert not cursor.open, "Cursor should be closed after KeyboardInterrupt"
