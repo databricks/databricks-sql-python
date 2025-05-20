@@ -81,11 +81,97 @@ class ClientTestSuite(unittest.TestCase):
         "access_token": "tok",
     }
 
-    @patch(
-        "%s.session.ThriftDatabricksClient" % PACKAGE_NAME,
-        ThriftDatabricksClientMockFactory.new(),
-    )
-    def test_closing_connection_closes_commands(self):
+    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
+    def test_close_uses_the_correct_session_id(self, mock_client_class):
+        instance = mock_client_class.return_value
+
+        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
+        mock_open_session_resp.sessionHandle.sessionId = b"\x22"
+        instance.open_session.return_value = mock_open_session_resp
+
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        connection.close()
+
+        # Check the close session request has an id of x22
+        close_session_id = instance.close_session.call_args[0][0].sessionId
+        self.assertEqual(close_session_id, b"\x22")
+
+    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
+    def test_auth_args(self, mock_client_class):
+        # Test that the following auth args work:
+        # token = foo,
+        # token = None, _tls_client_cert_file = something, _use_cert_as_auth = True
+        connection_args = [
+            {
+                "server_hostname": "foo",
+                "http_path": None,
+                "access_token": "tok",
+            },
+            {
+                "server_hostname": "foo",
+                "http_path": None,
+                "_tls_client_cert_file": "something",
+                "_use_cert_as_auth": True,
+                "access_token": None,
+            },
+        ]
+
+        for args in connection_args:
+            connection = databricks.sql.connect(**args)
+            host, port, http_path, *_ = mock_client_class.call_args[0]
+            self.assertEqual(args["server_hostname"], host)
+            self.assertEqual(args["http_path"], http_path)
+            connection.close()
+
+    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
+    def test_http_header_passthrough(self, mock_client_class):
+        http_headers = [("foo", "bar")]
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, http_headers=http_headers)
+
+        call_args = mock_client_class.call_args[0][3]
+        self.assertIn(("foo", "bar"), call_args)
+
+    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
+    def test_tls_arg_passthrough(self, mock_client_class):
+        databricks.sql.connect(
+            **self.DUMMY_CONNECTION_ARGS,
+            _tls_verify_hostname="hostname",
+            _tls_trusted_ca_file="trusted ca file",
+            _tls_client_cert_key_file="trusted client cert",
+            _tls_client_cert_key_password="key password",
+        )
+
+        kwargs = mock_client_class.call_args[1]
+        self.assertEqual(kwargs["_tls_verify_hostname"], "hostname")
+        self.assertEqual(kwargs["_tls_trusted_ca_file"], "trusted ca file")
+        self.assertEqual(kwargs["_tls_client_cert_key_file"], "trusted client cert")
+        self.assertEqual(kwargs["_tls_client_cert_key_password"], "key password")
+
+    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
+    def test_useragent_header(self, mock_client_class):
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+
+        http_headers = mock_client_class.call_args[0][3]
+        user_agent_header = (
+            "User-Agent",
+            "{}/{}".format(databricks.sql.USER_AGENT_NAME, databricks.sql.__version__),
+        )
+        self.assertIn(user_agent_header, http_headers)
+
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, user_agent_entry="foobar")
+        user_agent_header_with_entry = (
+            "User-Agent",
+            "{}/{} ({})".format(
+                databricks.sql.USER_AGENT_NAME, databricks.sql.__version__, "foobar"
+            ),
+        )
+        http_headers = mock_client_class.call_args[0][3]
+        self.assertIn(user_agent_header_with_entry, http_headers)
+
+    @patch("%s.session.ThriftBackend" % PACKAGE_NAME, ThriftBackendMockFactory.new())
+    @patch("%s.client.ResultSet" % PACKAGE_NAME)
+    def test_closing_connection_closes_commands(self, mock_result_set_class):
+        # Test once with has_been_closed_server side, once without
         for closed in (True, False):
             with self.subTest(closed=closed):
                 connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
