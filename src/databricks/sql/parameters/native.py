@@ -652,7 +652,9 @@ def dbsql_parameter_from_primitive(
     # havoc. We can't use TYPE_INFERRENCE_MAP because mypy doesn't trust
     # its logic
 
-    if isinstance(value, int):
+    if isinstance(value, bool):
+        return BooleanParameter(value=value, name=name)
+    elif isinstance(value, int):
         return dbsql_parameter_from_int(value, name=name)
     elif isinstance(value, str):
         return StringParameter(value=value, name=name)
@@ -662,8 +664,6 @@ def dbsql_parameter_from_primitive(
         return TimestampParameter(value=value, name=name)
     elif isinstance(value, datetime.date):
         return DateParameter(value=value, name=name)
-    elif isinstance(value, bool):
-        return BooleanParameter(value=value, name=name)
     elif isinstance(value, decimal.Decimal):
         return DecimalParameter(value=value, name=name)
     elif isinstance(value, dict):
