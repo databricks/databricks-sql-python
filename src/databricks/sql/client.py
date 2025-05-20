@@ -308,7 +308,7 @@ class Connection:
         return False
 
     def __del__(self):
-        if self.session.open:
+        if self.open:
             logger.debug(
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
@@ -357,7 +357,7 @@ class Connection:
 
         Will throw an Error if the connection has been closed.
         """
-        if not self.session.open:
+        if not self.open:
             raise Error("Cannot create cursor from closed connection")
 
         cursor = Cursor(
