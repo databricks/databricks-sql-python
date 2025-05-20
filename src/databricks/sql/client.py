@@ -19,6 +19,8 @@ from databricks.sql.exc import (
     OperationalError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
+    Error,
+    NotSupportedError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
@@ -306,7 +308,7 @@ class Connection:
         return False
 
     def __del__(self):
-        if self.open:
+        if self.session.open:
             logger.debug(
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
@@ -340,13 +342,6 @@ class Connection:
         """Delegate to Session class static method"""
         return Session.get_protocol_version(openSessionResp)
 
-    @property
-    def open(self) -> bool:
-        """Return whether the connection is open by checking if the session is open."""
-        # NOTE: we have to check for the existence of session in case the __del__ is called
-        # before the session is instantiated
-        return hasattr(self, "session") and self.session.open
-
     def cursor(
         self,
         arraysize: int = DEFAULT_ARRAY_SIZE,
@@ -357,7 +352,7 @@ class Connection:
 
         Will throw an Error if the connection has been closed.
         """
-        if not self.open:
+        if not self.session.open:
             raise Error("Cannot create cursor from closed connection")
 
         cursor = Cursor(
