@@ -235,10 +235,13 @@ class Connection:
             catalog,
             schema,
             _use_arrow_native_complex_types,
-            **kwargs
+            **kwargs,
         )
-        
-        logger.info("Successfully opened connection with session " + str(self.get_session_id_hex()))
+
+        logger.info(
+            "Successfully opened connection with session "
+            + str(self.get_session_id_hex())
+        )
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
