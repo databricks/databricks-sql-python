@@ -146,7 +146,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.open = True
         type(mock_connection).session = PropertyMock(return_value=mock_session)
-        
+
         result_set = client.ResultSet(
             mock_connection, mock_results_response, mock_thrift_backend
         )

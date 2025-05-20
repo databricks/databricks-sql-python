@@ -26,13 +26,13 @@ class Session:
     ) -> None:
         """
         Create a session to a Databricks SQL endpoint or a Databricks cluster.
-        
+
         This class handles all session-related behavior and communication with the backend.
         """
         self.open = False
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
-        
+
         auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
         )
@@ -143,4 +143,4 @@ class Session:
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
-        self.open = False 
+        self.open = False
