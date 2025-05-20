@@ -429,7 +429,7 @@ class RequestErrorInfo(
 # Taken from PyHive
 class ParamEscaper:
     _DATE_FORMAT = "%Y-%m-%d"
-    _TIME_FORMAT = "%H:%M:%S.%f"
+    _TIME_FORMAT = "%H:%M:%S.%f %z"
     _DATETIME_FORMAT = "{} {}".format(_DATE_FORMAT, _TIME_FORMAT)
 
     def escape_args(self, parameters):
@@ -459,6 +459,7 @@ class ParamEscaper:
 
     def escape_sequence(self, item):
         l = map(self.escape_item, item)
+        l = list(map(str, l))
         return "ARRAY(" + ",".join(l) + ")"
 
     def escape_mapping(self, item):
@@ -466,6 +467,7 @@ class ParamEscaper:
             self.escape_item,
             (element for key, value in item.items() for element in (key, value)),
         )
+        l = list(map(str, l))
         return "MAP(" + ",".join(l) + ")"
 
     def escape_datetime(self, item, format, cutoff=0):

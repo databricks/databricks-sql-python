@@ -26,6 +26,8 @@ from databricks.sql.parameters.native import (
     TimestampParameter,
     TinyIntParameter,
     VoidParameter,
+    ArrayParameter,
+    MapParameter,
 )
 from tests.e2e.test_driver import PySQLPytestTestCase
 
@@ -50,6 +52,8 @@ class Primitive(Enum):
     DOUBLE = 3.14
     FLOAT = 3.15
     SMALLINT = 51
+    ARRAYS = ["a", "b", "c"]
+    MAPS = {"a": 1, "b": 2, "c": 3}
 
 
 class PrimitiveExtra(Enum):
@@ -103,6 +107,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         Primitive.BOOL: "boolean_col",
         Primitive.DATE: "date_col",
         Primitive.TIMESTAMP: "timestamp_col",
+        Primitive.ARRAYS: "array_col",
+        Primitive.MAPS: "map_col",
         Primitive.NONE: "null_col",
     }
 
@@ -134,7 +140,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             string_col STRING,
             boolean_col BOOLEAN,
             date_col DATE,
-            timestamp_col TIMESTAMP
+            timestamp_col TIMESTAMP,
+            array_col ARRAY<STRING>,
+            map_col MAP<STRING, INT>
             ) USING DELTA
         """
 
@@ -167,9 +175,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             This is a no-op but is included to make the test-code easier to read.
         """
         target_column = self._get_inline_table_column(params.get("p"))
-        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
-        DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
+        INSERT_QUERY = f"INSERT INTO ___________________first.jprakash.pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
+        SELECT_QUERY = f"SELECT {target_column} `col` FROM ___________________first.jprakash.pysql_e2e_inline_param_test_table LIMIT 1"
+        DELETE_QUERY = "DELETE FROM ___________________first.jprakash.pysql_e2e_inline_param_test_table"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
             with conn.cursor() as cursor:
@@ -229,10 +237,18 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         If primitive is Primitive.DOUBLE than an extra quantize step is performed before
         making the assertion.
         """
-        if expected in (Primitive.DOUBLE, Primitive.FLOAT):
-            return self._quantize(actual) == self._quantize(expected.value)
+        actual_parsed = actual
+        expected_parsed = expected.value
 
-        return actual == expected.value
+        if expected in (Primitive.DOUBLE, Primitive.FLOAT):
+            actual_parsed = self._quantize(actual)
+            expected_parsed = self._quantize(expected.value)
+        elif expected == Primitive.ARRAYS:
+            actual_parsed = actual.tolist()
+        elif expected == Primitive.MAPS:
+            expected_parsed = list(expected.value.items())
+        
+        return actual_parsed == expected_parsed
 
     @pytest.mark.parametrize("primitive", Primitive)
     @pytest.mark.parametrize(
@@ -278,6 +294,8 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             (Primitive.SMALLINT, SmallIntParameter),
             (PrimitiveExtra.TIMESTAMP_NTZ, TimestampNTZParameter),
             (PrimitiveExtra.TINYINT, TinyIntParameter),
+            (Primitive.ARRAYS, ArrayParameter),
+            (Primitive.MAPS, MapParameter),
         ],
     )
     def test_dbsqlparameter_single(
