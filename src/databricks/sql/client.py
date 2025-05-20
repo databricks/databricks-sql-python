@@ -313,6 +313,11 @@ class Connection:
         """Delegate to Session class static method"""
         return Session.get_protocol_version(openSessionResp)
 
+    @property
+    def open(self) -> bool:
+        """Return whether the connection is open by checking if the session is open."""
+        return self.session.open
+
     def cursor(
         self,
         arraysize: int = DEFAULT_ARRAY_SIZE,
