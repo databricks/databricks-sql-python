@@ -19,6 +19,8 @@ from databricks.sql.exc import (
     OperationalError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
+    Error,
+    NotSupportedError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
@@ -45,6 +47,7 @@ from databricks.sql.parameters.native import (
 from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
+from databricks.sql.session import Session
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -218,66 +221,24 @@ class Connection:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
 
-        self.open = False
-        self.host = server_hostname
-        self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
-
-        auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, **kwargs
-        )
-
-        user_agent_entry = kwargs.get("user_agent_entry")
-        if user_agent_entry is None:
-            user_agent_entry = kwargs.get("_user_agent_entry")
-            if user_agent_entry is not None:
-                logger.warning(
-                    "[WARN] Parameter '_user_agent_entry' is deprecated; use 'user_agent_entry' instead. "
-                    "This parameter will be removed in the upcoming releases."
-                )
-
-        if user_agent_entry:
-            useragent_header = "{}/{} ({})".format(
-                USER_AGENT_NAME, __version__, user_agent_entry
-            )
-        else:
-            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
-
-        base_headers = [("User-Agent", useragent_header)]
-
-        self._ssl_options = SSLOptions(
-            # Double negation is generally a bad thing, but we have to keep backward compatibility
-            tls_verify=not kwargs.get(
-                "_tls_no_verify", False
-            ),  # by default - verify cert and host
-            tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
-            tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
-            tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
-            tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
-            tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
-        )
-
-        self.thrift_backend = ThriftBackend(
-            self.host,
-            self.port,
-            http_path,
-            (http_headers or []) + base_headers,
-            auth_provider,
-            ssl_options=self._ssl_options,
-            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
-            **kwargs,
-        )
-
-        self._open_session_resp = self.thrift_backend.open_session(
-            session_configuration, catalog, schema
-        )
-        self._session_handle = self._open_session_resp.sessionHandle
-        self.protocol_version = self.get_protocol_version(self._open_session_resp)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
-        self.open = True
-        logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
+
+        # Create the session
+        self.session = Session(
+            server_hostname,
+            http_path,
+            http_headers,
+            session_configuration,
+            catalog,
+            schema,
+            _use_arrow_native_complex_types,
+            **kwargs
+        )
+        
+        logger.info("Successfully opened connection with session " + str(self.get_session_id_hex()))
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
@@ -318,7 +279,7 @@ class Connection:
         self.close()
 
     def __del__(self):
-        if self.open:
+        if self.session.open:
             logger.debug(
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
@@ -330,34 +291,27 @@ class Connection:
                 logger.debug("Couldn't close unclosed connection: {}".format(e.message))
 
     def get_session_id(self):
-        return self.thrift_backend.handle_to_id(self._session_handle)
+        """Get the session ID from the Session object"""
+        return self.session.get_session_id()
 
-    @staticmethod
-    def get_protocol_version(openSessionResp):
-        """
-        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
-        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
-        """
-        if (
-            openSessionResp.sessionHandle
-            and hasattr(openSessionResp.sessionHandle, "serverProtocolVersion")
-            and openSessionResp.sessionHandle.serverProtocolVersion
-        ):
-            return openSessionResp.sessionHandle.serverProtocolVersion
-        return openSessionResp.serverProtocolVersion
+    def get_session_id_hex(self):
+        """Get the session ID in hex format from the Session object"""
+        return self.session.get_session_id_hex()
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
-        if (
-            protocolVersion
-            and protocolVersion >= ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
-        ):
-            return True
-        else:
-            return False
+        """Delegate to Session class static method"""
+        return Session.server_parameterized_queries_enabled(protocolVersion)
 
-    def get_session_id_hex(self):
-        return self.thrift_backend.handle_to_hex_id(self._session_handle)
+    @property
+    def protocol_version(self):
+        """Get the protocol version from the Session object"""
+        return self.session.protocol_version
+
+    @staticmethod
+    def get_protocol_version(openSessionResp):
+        """Delegate to Session class static method"""
+        return Session.get_protocol_version(openSessionResp)
 
     def cursor(
         self,
@@ -369,12 +323,12 @@ class Connection:
 
         Will throw an Error if the connection has been closed.
         """
-        if not self.open:
+        if not self.session.open:
             raise Error("Cannot create cursor from closed connection")
 
         cursor = Cursor(
             self,
-            self.thrift_backend,
+            self.session.thrift_backend,
             arraysize=arraysize,
             result_buffer_size_bytes=buffer_size_bytes,
         )
@@ -390,28 +344,10 @@ class Connection:
             for cursor in self._cursors:
                 cursor.close()
 
-        logger.info(f"Closing session {self.get_session_id_hex()}")
-        if not self.open:
-            logger.debug("Session appears to have been closed already")
-
         try:
-            self.thrift_backend.close_session(self._session_handle)
-        except RequestError as e:
-            if isinstance(e.args[1], SessionAlreadyClosedError):
-                logger.info("Session was closed by a prior request")
-        except DatabaseError as e:
-            if "Invalid SessionHandle" in str(e):
-                logger.warning(
-                    f"Attempted to close session that was already closed: {e}"
-                )
-            else:
-                logger.warning(
-                    f"Attempt to close session raised an exception at the server: {e}"
-                )
+            self.session.close()
         except Exception as e:
-            logger.error(f"Attempt to close session raised a local exception: {e}")
-
-        self.open = False
+            logger.error(f"Attempt to close session raised an exception: {e}")
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
@@ -811,7 +747,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection._session_handle,
+            session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -874,7 +810,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
         self.thrift_backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection._session_handle,
+            session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -970,7 +906,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.get_catalogs(
-            session_handle=self.connection._session_handle,
+            session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -996,7 +932,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.get_schemas(
-            session_handle=self.connection._session_handle,
+            session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1029,7 +965,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         execute_response = self.thrift_backend.get_tables(
-            session_handle=self.connection._session_handle,
+            session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1064,7 +1000,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         execute_response = self.thrift_backend.get_columns(
-            session_handle=self.connection._session_handle,
+            session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1493,7 +1429,7 @@ class ResultSet:
             if (
                 self.op_state != self.thrift_backend.CLOSED_OP_STATE
                 and not self.has_been_closed_server_side
-                and self.connection.open
+                and self.connection.session.open
             ):
                 self.thrift_backend.close_command(self.command_id)
         except RequestError as e:
