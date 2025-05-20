@@ -11,7 +11,7 @@ import databricks.sql
 
 class SessionTestSuite(unittest.TestCase):
     """
-    Unit tests for Session functionality 
+    Unit tests for Session functionality
     """
 
     PACKAGE_NAME = "databricks.sql"
@@ -184,4 +184,4 @@ class SessionTestSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()
