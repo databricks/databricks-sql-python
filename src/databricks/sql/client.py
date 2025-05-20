@@ -19,6 +19,8 @@ from databricks.sql.exc import (
     OperationalError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
+    Error,
+    NotSupportedError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
@@ -250,6 +252,20 @@ class Connection:
             + str(self.get_session_id_hex())
         )
 
+        # Create the session
+        self.session = Session(
+            server_hostname,
+            http_path,
+            http_headers,
+            session_configuration,
+            catalog,
+            schema,
+            _use_arrow_native_complex_types,
+            **kwargs
+        )
+        
+        logger.info("Successfully opened connection with session " + str(self.get_session_id_hex()))
+
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )
@@ -295,7 +311,7 @@ class Connection:
         return False
 
     def __del__(self):
-        if self.open:
+        if self.session.open:
             logger.debug(
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
@@ -344,7 +360,7 @@ class Connection:
 
         Will throw an Error if the connection has been closed.
         """
-        if not self.open:
+        if not self.session.open:
             raise Error("Cannot create cursor from closed connection")
 
         cursor = Cursor(
@@ -1502,7 +1518,7 @@ class ResultSet:
             if (
                 self.op_state != ttypes.TOperationState.CLOSED_STATE
                 and not self.has_been_closed_server_side
-                and self.connection.open
+                and self.connection.session.open
             ):
                 self.backend.close_command(self.command_id)
         except RequestError as e:
