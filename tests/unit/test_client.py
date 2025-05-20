@@ -80,93 +80,6 @@ class ClientTestSuite(unittest.TestCase):
         "access_token": "tok",
     }
 
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_close_uses_the_correct_session_id(self, mock_client_class):
-        instance = mock_client_class.return_value
-
-        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
-        mock_open_session_resp.sessionHandle.sessionId = b"\x22"
-        instance.open_session.return_value = mock_open_session_resp
-
-        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
-        connection.close()
-
-        # Check the close session request has an id of x22
-        close_session_id = instance.close_session.call_args[0][0].sessionId
-        self.assertEqual(close_session_id, b"\x22")
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_auth_args(self, mock_client_class):
-        # Test that the following auth args work:
-        # token = foo,
-        # token = None, _tls_client_cert_file = something, _use_cert_as_auth = True
-        connection_args = [
-            {
-                "server_hostname": "foo",
-                "http_path": None,
-                "access_token": "tok",
-            },
-            {
-                "server_hostname": "foo",
-                "http_path": None,
-                "_tls_client_cert_file": "something",
-                "_use_cert_as_auth": True,
-                "access_token": None,
-            },
-        ]
-
-        for args in connection_args:
-            connection = databricks.sql.connect(**args)
-            host, port, http_path, *_ = mock_client_class.call_args[0]
-            self.assertEqual(args["server_hostname"], host)
-            self.assertEqual(args["http_path"], http_path)
-            connection.close()
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_http_header_passthrough(self, mock_client_class):
-        http_headers = [("foo", "bar")]
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, http_headers=http_headers)
-
-        call_args = mock_client_class.call_args[0][3]
-        self.assertIn(("foo", "bar"), call_args)
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_tls_arg_passthrough(self, mock_client_class):
-        databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS,
-            _tls_verify_hostname="hostname",
-            _tls_trusted_ca_file="trusted ca file",
-            _tls_client_cert_key_file="trusted client cert",
-            _tls_client_cert_key_password="key password",
-        )
-
-        kwargs = mock_client_class.call_args[1]
-        self.assertEqual(kwargs["_tls_verify_hostname"], "hostname")
-        self.assertEqual(kwargs["_tls_trusted_ca_file"], "trusted ca file")
-        self.assertEqual(kwargs["_tls_client_cert_key_file"], "trusted client cert")
-        self.assertEqual(kwargs["_tls_client_cert_key_password"], "key password")
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_useragent_header(self, mock_client_class):
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
-
-        http_headers = mock_client_class.call_args[0][3]
-        user_agent_header = (
-            "User-Agent",
-            "{}/{}".format(databricks.sql.USER_AGENT_NAME, databricks.sql.__version__),
-        )
-        self.assertIn(user_agent_header, http_headers)
-
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, user_agent_entry="foobar")
-        user_agent_header_with_entry = (
-            "User-Agent",
-            "{}/{} ({})".format(
-                databricks.sql.USER_AGENT_NAME, databricks.sql.__version__, "foobar"
-            ),
-        )
-        http_headers = mock_client_class.call_args[0][3]
-        self.assertIn(user_agent_header_with_entry, http_headers)
-
     @patch("%s.session.ThriftBackend" % PACKAGE_NAME, ThriftBackendMockFactory.new())
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_result_set_class):
@@ -290,21 +203,6 @@ class ClientTestSuite(unittest.TestCase):
             cursor.close = mock_close
         mock_close.assert_called_once_with()
 
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_context_manager_closes_connection(self, mock_client_class):
-        instance = mock_client_class.return_value
-
-        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
-        mock_open_session_resp.sessionHandle.sessionId = b"\x22"
-        instance.open_session.return_value = mock_open_session_resp
-
-        with databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS) as connection:
-            pass
-
-        # Check the close session request has an id of x22
-        close_session_id = instance.close_session.call_args[0][0].sessionId
-        self.assertEqual(close_session_id, b"\x22")
-
     def dict_product(self, dicts):
         """
         Generate cartesion product of values in input dictionary, outputting a dictionary
@@ -403,21 +301,6 @@ class ClientTestSuite(unittest.TestCase):
         self.assertTrue(logger_instance.warning.called)
         self.assertFalse(mock_thrift_backend.cancel_command.called)
 
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_max_number_of_retries_passthrough(self, mock_client_class):
-        databricks.sql.connect(
-            _retry_stop_after_attempts_count=54, **self.DUMMY_CONNECTION_ARGS
-        )
-
-        self.assertEqual(
-            mock_client_class.call_args[1]["_retry_stop_after_attempts_count"], 54
-        )
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_socket_timeout_passthrough(self, mock_client_class):
-        databricks.sql.connect(_socket_timeout=234, **self.DUMMY_CONNECTION_ARGS)
-        self.assertEqual(mock_client_class.call_args[1]["_socket_timeout"], 234)
-
     def test_version_is_canonical(self):
         version = databricks.sql.__version__
         canonical_version_re = (
@@ -425,33 +308,6 @@ class ClientTestSuite(unittest.TestCase):
             r"(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$"
         )
         self.assertIsNotNone(re.match(canonical_version_re, version))
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_configuration_passthrough(self, mock_client_class):
-        mock_session_config = Mock()
-        databricks.sql.connect(
-            session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
-        )
-
-        self.assertEqual(
-            mock_client_class.return_value.open_session.call_args[0][0],
-            mock_session_config,
-        )
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_initial_namespace_passthrough(self, mock_client_class):
-        mock_cat = Mock()
-        mock_schem = Mock()
-
-        databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS, catalog=mock_cat, schema=mock_schem
-        )
-        self.assertEqual(
-            mock_client_class.return_value.open_session.call_args[0][1], mock_cat
-        )
-        self.assertEqual(
-            mock_client_class.return_value.open_session.call_args[0][2], mock_schem
-        )
 
     def test_execute_parameter_passthrough(self):
         mock_thrift_backend = ThriftBackendMockFactory.new()
@@ -609,23 +465,6 @@ class ClientTestSuite(unittest.TestCase):
                     "third_col": expected[2],
                 },
             )
-
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
-    def test_finalizer_closes_abandoned_connection(self, mock_client_class):
-        instance = mock_client_class.return_value
-
-        mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
-        mock_open_session_resp.sessionHandle.sessionId = b"\x22"
-        instance.open_session.return_value = mock_open_session_resp
-
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
-
-        # not strictly necessary as the refcount is 0, but just to be sure
-        gc.collect()
-
-        # Check the close session request has an id of x22
-        close_session_id = instance.close_session.call_args[0][0].sessionId
-        self.assertEqual(close_session_id, b"\x22")
 
     @patch("%s.session.ThriftBackend" % PACKAGE_NAME)
     def test_cursor_keeps_connection_alive(self, mock_client_class):
