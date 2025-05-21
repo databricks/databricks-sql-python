@@ -175,7 +175,7 @@ class ThriftBackend:
 
         if _max_redirects:
             if _max_redirects > self._retry_stop_after_attempts_count:
-                logger.warn(
+                logger.warning(
                     "_retry_max_redirects > _retry_stop_after_attempts_count so it will have no affect!"
                 )
             urllib3_kwargs = {"redirect": _max_redirects}
