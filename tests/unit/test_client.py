@@ -218,6 +218,15 @@ class ClientTestSuite(unittest.TestCase):
         finally:
             cursor.close.assert_called()
 
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        connection.close = Mock()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                with connection:
+                    raise KeyboardInterrupt("Simulated interrupt")
+        finally:
+            connection.close.assert_called()
+
     def dict_product(self, dicts):
         """
         Generate cartesion product of values in input dictionary, outputting a dictionary
