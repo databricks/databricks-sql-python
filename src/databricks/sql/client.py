@@ -277,7 +277,13 @@ class Connection:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+        try:
+            self.close()
+        except BaseException as e:
+            logger.warning(f"Exception during connection close in __exit__: {e}")
+            if exc_type is None:
+                raise
+        return False
 
     def __del__(self):
         if self.open:
@@ -400,7 +406,14 @@ class Cursor:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
+        try:
+            logger.debug("Cursor context manager exiting, calling close()")
+            self.close()
+        except BaseException as e:
+            logger.warning(f"Exception during cursor close in __exit__: {e}")
+            if exc_type is None:
+                raise
+        return False
 
     def __iter__(self):
         if self.active_result_set:
@@ -1107,7 +1120,21 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
-        self.active_op_handle = None
+
+        # Close active operation handle if it exists
+        if self.active_op_handle:
+            try:
+                self.thrift_backend.close_command(self.active_op_handle)
+            except RequestError as e:
+                if isinstance(e.args[1], CursorAlreadyClosedError):
+                    logger.info("Operation was canceled by a prior request")
+                else:
+                    logging.warning(f"Error closing operation handle: {e}")
+            except Exception as e:
+                logging.warning(f"Error closing operation handle: {e}")
+            finally:
+                self.active_op_handle = None
+
         if self.active_result_set:
             self._close_and_clear_active_result_set()
 
