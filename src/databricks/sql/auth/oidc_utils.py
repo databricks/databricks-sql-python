@@ -1,6 +1,7 @@
 import logging
 import requests
 from typing import Optional
+from urllib.parse import urlparse
 
 from databricks.sql.auth.endpoint import (
     get_oauth_endpoints,
@@ -56,3 +57,19 @@ class OIDCDiscoveryUtil:
         if not hostname.endswith("/"):
             hostname = f"{hostname}/"
         return hostname
+
+
+def is_same_host(url1: str, url2: str) -> bool:
+    """
+    Check if two URLs have the same host.
+    """
+    try:
+        if not url1.startswith(("http://", "https://")):
+            url1 = f"https://{url1}"
+        if not url2.startswith(("http://", "https://")):
+            url2 = f"https://{url2}"
+        parsed1 = urlparse(url1)
+        parsed2 = urlparse(url2)
+        return parsed1.netloc.lower() == parsed2.netloc.lower()
+    except Exception:
+        return False

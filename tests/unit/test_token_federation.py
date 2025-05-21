@@ -145,7 +145,7 @@ class TestDatabricksTokenFederationProvider:
                     "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._exchange_token"
                 ) as mock_exchange:
                     with patch(
-                        "databricks.sql.auth.token_federation.DatabricksTokenFederationProvider._is_same_host"
+                        "databricks.sql.auth.oidc_utils.is_same_host"
                     ) as mock_is_same_host:
                         with patch(
                             "databricks.sql.auth.token_federation.requests.post"
@@ -179,9 +179,11 @@ class TestDatabricksTokenFederationProvider:
             ("databricks.com", "https://databricks.com", True),
         ],
     )
-    def test_is_same_host(self, federation_provider, url1, url2, expected):
+    def test_is_same_host(self, url1, url2, expected):
         """Test host comparison logic with various URL formats."""
-        assert federation_provider._is_same_host(url1, url2) is expected
+        from databricks.sql.auth.oidc_utils import is_same_host
+
+        assert is_same_host(url1, url2) is expected
 
     @pytest.mark.parametrize(
         "headers,expected_result,should_raise",
@@ -389,7 +391,9 @@ class TestDatabricksTokenFederationProvider:
             mock_post.return_value = mock_response
 
             # Call the method and expect an exception
+            import requests
+
             with pytest.raises(
-                ValueError, match="Token exchange failed with status code 401"
+                requests.HTTPError, match="Token exchange failed with status code 401"
             ):
                 federation_provider._exchange_token("original_token")

@@ -10,7 +10,7 @@ import jwt
 from requests.exceptions import RequestException
 
 from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
-from databricks.sql.auth.oidc_utils import OIDCDiscoveryUtil
+from databricks.sql.auth.oidc_utils import OIDCDiscoveryUtil, is_same_host
 from databricks.sql.auth.token import Token
 
 logger = logging.getLogger(__name__)
@@ -79,15 +79,6 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         Configure and return a HeaderFactory that provides authentication headers.
         This is called by the ExternalAuthProvider to get headers for authentication.
         """
-        # First call the underlying credentials provider to get its headers
-        header_factory = self.credentials_provider(*args, **kwargs)
-
-        # Get the standard token endpoint if not already set
-        if self.token_endpoint is None:
-            self.token_endpoint = OIDCDiscoveryUtil.discover_token_endpoint(
-                self.hostname
-            )
-
         # Return a function that will get authentication headers
         return self.get_auth_headers
 
@@ -156,34 +147,6 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
         return None
 
-    def _is_same_host(self, url1: str, url2: str) -> bool:
-        """
-        Check if two URLs have the same host.
-
-        Args:
-            url1: First URL
-            url2: Second URL
-
-        Returns:
-            bool: True if hosts are the same, False otherwise
-        """
-        try:
-            # Add protocol if missing to ensure proper parsing
-            if not url1.startswith(("http://", "https://")):
-                url1 = f"https://{url1}"
-            if not url2.startswith(("http://", "https://")):
-                url2 = f"https://{url2}"
-
-            # Parse the URLs
-            parsed1 = urlparse(url1)
-            parsed2 = urlparse(url2)
-
-            # Compare the hostnames
-            return parsed1.netloc.lower() == parsed2.netloc.lower()
-        except Exception as e:
-            logger.warning(f"Error comparing hosts: {str(e)}")
-            return False
-
     def refresh_token(self) -> Token:
         """
         Refresh the token and return the new Token object.
@@ -210,24 +173,34 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         token_claims = self._parse_jwt_claims(access_token)
 
         # Create new token based on whether it's from the same host or not
-        if self._is_same_host(token_claims.get("iss", ""), self.hostname):
+        if is_same_host(token_claims.get("iss", ""), self.hostname):
             # Token is from the same host, no need to exchange
             logger.debug("Token from same host, creating token without exchange")
-
             expiry = self._get_expiry_from_jwt(access_token)
             if expiry is None:
                 raise ValueError("Could not determine token expiry from JWT")
-
             new_token = Token(access_token, token_type, "", expiry)
+            self.current_token = new_token
+            return new_token
         else:
             # Token is from a different host, need to exchange
             logger.debug("Token from different host, exchanging token")
-            new_token = self._exchange_token(access_token)
-
-        # Store the token
-        self.current_token = new_token
-
-        return new_token
+            try:
+                new_token = self._exchange_token(access_token)
+                self.current_token = new_token
+                return new_token
+            except Exception as e:
+                logger.error(
+                    f"Token exchange failed: {e}. Using external token as fallback."
+                )
+                expiry = self._get_expiry_from_jwt(access_token)
+                if expiry is None:
+                    raise ValueError(
+                        "Could not determine token expiry from JWT (after exchange failure)"
+                    )
+                fallback_token = Token(access_token, token_type, "", expiry)
+                self.current_token = fallback_token
+                return fallback_token
 
     def get_current_token(self) -> Token:
         """
@@ -254,24 +227,19 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         """
         Get authorization headers using the current token.
 
-        This method gets the current token and returns it formatted
-        as authorization headers.
-
         Returns:
-            Dict[str, str]: Authorization headers
+            Dict[str, str]: Authorization headers (may include extra headers from provider)
         """
         try:
             token = self.get_current_token()
-            return {"Authorization": f"{token.token_type} {token.access_token}"}
+            # Always get the latest headers from the credentials provider
+            header_factory = self.credentials_provider()
+            headers = dict(header_factory()) if header_factory else {}
+            headers["Authorization"] = f"{token.token_type} {token.access_token}"
+            return headers
         except Exception as e:
             logger.error(f"Error getting auth headers: {str(e)}")
-
-            # Fall back to external headers if available
-            if self.external_headers:
-                return self.external_headers
-
-            # Return empty dict as a last resort
-            return {}
+            return dict(self.external_headers) if self.external_headers else {}
 
     def _send_token_exchange_request(
         self, token_exchange_data: Dict[str, str]
@@ -286,7 +254,7 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             Dict[str, Any]: Token exchange response
 
         Raises:
-            ValueError: If token exchange fails
+            requests.HTTPError: If token exchange fails
         """
         if not self.token_endpoint:
             raise ValueError("Token endpoint not initialized")
@@ -296,9 +264,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         )
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Token exchange failed with status code {response.status_code}: "
-                f"{response.text}"
+            raise requests.HTTPError(
+                f"Token exchange failed with status code {response.status_code}: {response.text}",
+                response=response,
             )
 
         return response.json()
@@ -316,6 +284,10 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         Raises:
             ValueError: If token exchange fails
         """
+        if self.token_endpoint is None:
+            self.token_endpoint = OIDCDiscoveryUtil.discover_token_endpoint(
+                self.hostname
+            )
         # Prepare the request data
         token_exchange_data = dict(self.TOKEN_EXCHANGE_PARAMS)
         token_exchange_data["subject_token"] = access_token
