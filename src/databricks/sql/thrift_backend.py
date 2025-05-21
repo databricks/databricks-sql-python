@@ -363,6 +363,7 @@ class ThriftBackend:
             # - non-None retry_delay -> sleep delay before retry
             # - error, error_message always set when available
 
+            exception_occurred = False
             error, error_message, retry_delay = None, None, None
             try:
                 this_method_name = getattr(method, "__name__")
@@ -386,6 +387,7 @@ class ThriftBackend:
                 return response
 
             except urllib3.exceptions.HTTPError as err:
+                exception_occurred = True
                 # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
 
                 # TODO: don't use exception handling for GOS polling...
@@ -404,6 +406,7 @@ class ThriftBackend:
                 else:
                     raise err
             except OSError as err:
+                exception_occurred = True
                 error = err
                 error_message = str(err)
                 # fmt: off
@@ -434,12 +437,14 @@ class ThriftBackend:
                     else:
                         logger.warning(log_string)
             except Exception as err:
+                exception_occurred = True
                 error = err
                 retry_delay = extract_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
-            finally:
+
+            if exception_occurred:
                 # Calling `close()` here releases the active HTTP connection back to the pool
                 self._transport.close()
 
