@@ -334,16 +334,16 @@ class ClientTestSuite(unittest.TestCase):
                 expected_query,
             )
 
-    @patch("%s.client.ThriftDatabricksClient" % PACKAGE_NAME)
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_executemany_parameter_passhthrough_and_uses_last_result_set(
-        self, mock_result_set_class, mock_thrift_backend
+        self, mock_result_set_class
     ):
         # Create a new mock result set each time the class is instantiated
         mock_result_set_instances = [Mock(), Mock(), Mock()]
         mock_result_set_class.side_effect = mock_result_set_instances
         mock_backend = ThriftDatabricksClientMockFactory.new()
-        cursor = client.Cursor(Mock(), mock_backend())
+
+        cursor = client.Cursor(Mock(), mock_backend)
 
         params = [{"x": None}, {"x": "foo1"}, {"x": "bar2"}]
         expected_queries = ["SELECT NULL", "SELECT 'foo1'", "SELECT 'bar2'"]
@@ -351,13 +351,13 @@ class ClientTestSuite(unittest.TestCase):
         cursor.executemany("SELECT %(x)s", seq_of_parameters=params)
 
         self.assertEqual(
-            len(mock_thrift_backend.execute_command.call_args_list),
+            len(mock_backend.execute_command.call_args_list),
             len(expected_queries),
             "Expected execute_command to be called the same number of times as params were passed",
         )
 
         for expected_query, call_args in zip(
-            expected_queries, mock_thrift_backend.execute_command.call_args_list
+            expected_queries, mock_backend.execute_command.call_args_list
         ):
             self.assertEqual(call_args[1]["operation"], expected_query)
 
