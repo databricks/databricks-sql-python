@@ -314,6 +314,14 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
         return Token(new_access_token, token_type, refresh_token, expiry)
 
+    def add_headers(self, request_headers: Dict[str, str]):
+        """
+        Add authentication headers to the request.
+        """
+        headers = self.get_auth_headers()
+        for k, v in headers.items():
+            request_headers[k] = v
+
 
 class SimpleCredentialsProvider(CredentialsProvider):
     """A simple credentials provider that returns a fixed token."""
