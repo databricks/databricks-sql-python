@@ -81,7 +81,7 @@ class ClientTestSuite(unittest.TestCase):
         "access_token": "tok",
     }
 
-    @patch("%s.session.ThriftBackend" % PACKAGE_NAME, ThriftBackendMockFactory.new())
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME, ThriftDatabricksClientMockFactory.new())
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_result_set_class):
         # Test once with has_been_closed_server side, once without
