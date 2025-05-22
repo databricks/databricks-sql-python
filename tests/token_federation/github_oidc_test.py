@@ -105,10 +105,9 @@ def test_databricks_connection(
         "server_hostname": host,
         "http_path": http_path,
         "access_token": github_token,
-        "auth_type": "token-federation",
+        "use_token_federation": True,
     }
 
-    # Add identity federation client ID if provided
     if identity_federation_client_id:
         connection_params[
             "identity_federation_client_id"
