@@ -35,6 +35,7 @@ class ClientContext:
         oauth_persistence=None,
         credentials_provider=None,
         identity_federation_client_id: Optional[str] = None,
+        use_token_federation: bool = False,
     ):
         self.hostname = hostname
         self.access_token = access_token
@@ -47,6 +48,7 @@ class ClientContext:
         self.oauth_persistence = oauth_persistence
         self.credentials_provider = credentials_provider
         self.identity_federation_client_id = identity_federation_client_id
+        self.use_token_federation = use_token_federation
 
 
 def get_auth_provider(cfg: ClientContext):
@@ -71,45 +73,16 @@ def get_auth_provider(cfg: ClientContext):
     Raises:
         RuntimeError: If no valid authentication settings are provided
     """
-    # If credentials_provider is explicitly provided
+    from databricks.sql.auth.token_federation import DatabricksTokenFederationProvider
     if cfg.credentials_provider:
-        # If token federation is enabled and credentials provider is provided,
-        # wrap the credentials provider with DatabricksTokenFederationProvider
-        if cfg.auth_type == AuthType.TOKEN_FEDERATION.value:
-            from databricks.sql.auth.token_federation import (
-                DatabricksTokenFederationProvider,
-            )
-
-            federation_provider = DatabricksTokenFederationProvider(
-                cfg.credentials_provider,
-                cfg.hostname,
-                cfg.identity_federation_client_id,
-            )
-            return ExternalAuthProvider(federation_provider)
-
-        # If not token federation, just use the credentials provider directly
-        return ExternalAuthProvider(cfg.credentials_provider)
-
-    # If we don't have a credentials provider but have token federation auth type with access token
-    if cfg.auth_type == AuthType.TOKEN_FEDERATION.value and cfg.access_token:
-        # Create a simple credentials provider and wrap it with token federation provider
-        from databricks.sql.auth.token_federation import (
-            DatabricksTokenFederationProvider,
-            SimpleCredentialsProvider,
-        )
-
-        simple_provider = SimpleCredentialsProvider(cfg.access_token)
-        federation_provider = DatabricksTokenFederationProvider(
-            simple_provider, cfg.hostname, cfg.identity_federation_client_id
-        )
-        return ExternalAuthProvider(federation_provider)
-
-    if cfg.auth_type in [AuthType.DATABRICKS_OAUTH.value, AuthType.AZURE_OAUTH.value]:
+        base_provider = ExternalAuthProvider(cfg.credentials_provider)
+    elif cfg.access_token is not None:
+        base_provider = AccessTokenAuthProvider(cfg.access_token)
+    elif cfg.auth_type in [AuthType.DATABRICKS_OAUTH.value, AuthType.AZURE_OAUTH.value]:
         assert cfg.oauth_redirect_port_range is not None
         assert cfg.oauth_client_id is not None
         assert cfg.oauth_scopes is not None
-
-        return DatabricksOAuthProvider(
+        base_provider = DatabricksOAuthProvider(
             cfg.hostname,
             cfg.oauth_persistence,
             cfg.oauth_redirect_port_range,
@@ -117,18 +90,15 @@ def get_auth_provider(cfg: ClientContext):
             cfg.oauth_scopes,
             cfg.auth_type,
         )
-    elif cfg.access_token is not None:
-        return AccessTokenAuthProvider(cfg.access_token)
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
-        # no op authenticator. authentication is performed using ssl certificate outside of headers
-        return AuthProvider()
+        base_provider = AuthProvider()
     else:
         if (
             cfg.oauth_redirect_port_range is not None
             and cfg.oauth_client_id is not None
             and cfg.oauth_scopes is not None
         ):
-            return DatabricksOAuthProvider(
+            base_provider = DatabricksOAuthProvider(
                 cfg.hostname,
                 cfg.oauth_persistence,
                 cfg.oauth_redirect_port_range,
@@ -137,6 +107,13 @@ def get_auth_provider(cfg: ClientContext):
             )
         else:
             raise RuntimeError("No valid authentication settings!")
+
+    if getattr(cfg, "use_token_federation", False):
+        base_provider = DatabricksTokenFederationProvider(
+            base_provider, cfg.hostname, cfg.identity_federation_client_id
+        )
+
+    return base_provider
 
 
 PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
@@ -206,5 +183,6 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
         identity_federation_client_id=kwargs.get("identity_federation_client_id"),
+        use_token_federation=kwargs.get("use_token_federation", False),
     )
     return get_auth_provider(cfg)
