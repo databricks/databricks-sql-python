@@ -9,6 +9,7 @@ except ImportError:
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from databricks.sql.thrift_backend import ThriftDatabricksClient
 
 
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
@@ -39,7 +40,7 @@ class FetchTests(unittest.TestCase):
         arrow_queue = ArrowQueue(arrow_table, len(initial_results), 0)
         rs = client.ResultSet(
             connection=Mock(),
-            thrift_backend=None,
+            backend=None,
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=True,
@@ -79,13 +80,13 @@ class FetchTests(unittest.TestCase):
 
             return results, batch_index < len(batch_list)
 
-        mock_thrift_backend = Mock()
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_thrift_backend.fetch_results = fetch_results
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
 
         rs = client.ResultSet(
             connection=Mock(),
-            thrift_backend=mock_thrift_backend,
+            backend=mock_thrift_backend,
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=False,
