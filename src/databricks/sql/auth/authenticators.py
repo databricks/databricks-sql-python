@@ -41,17 +41,25 @@ class CredentialsProvider(abc.ABC):
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class AccessTokenAuthProvider(AuthProvider):
+class AccessTokenAuthProvider(AuthProvider, CredentialsProvider):
     def __init__(self, access_token: str):
         self.__authorization_header_value = "Bearer {}".format(access_token)
 
     def add_headers(self, request_headers: Dict[str, str]):
         request_headers["Authorization"] = self.__authorization_header_value
 
+    def auth_type(self) -> str:
+        return "access-token"
+
+    def __call__(self, *args, **kwargs) -> HeaderFactory:
+        def get_headers():
+            return {"Authorization": self.__authorization_header_value}
+        return get_headers
+
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
-class DatabricksOAuthProvider(AuthProvider):
+class DatabricksOAuthProvider(AuthProvider, CredentialsProvider):
     SCOPE_DELIM = " "
 
     def __init__(
@@ -92,6 +100,15 @@ class DatabricksOAuthProvider(AuthProvider):
     def add_headers(self, request_headers: Dict[str, str]):
         self._update_token_if_expired()
         request_headers["Authorization"] = f"Bearer {self._access_token}"
+
+    def auth_type(self) -> str:
+        return "databricks-oauth"
+
+    def __call__(self, *args, **kwargs) -> HeaderFactory:
+        def get_headers():
+            self._update_token_if_expired()
+            return {"Authorization": f"Bearer {self._access_token}"}
+        return get_headers
 
     def _initial_get_token(self):
         try:
@@ -144,7 +161,7 @@ class DatabricksOAuthProvider(AuthProvider):
             raise e
 
 
-class ExternalAuthProvider(AuthProvider):
+class ExternalAuthProvider(AuthProvider, CredentialsProvider):
     def __init__(self, credentials_provider: CredentialsProvider) -> None:
         self._header_factory = credentials_provider()
 
@@ -152,3 +169,9 @@ class ExternalAuthProvider(AuthProvider):
         headers = self._header_factory()
         for k, v in headers.items():
             request_headers[k] = v
+
+    def auth_type(self) -> str:
+        return "external-auth"
+
+    def __call__(self, *args, **kwargs) -> HeaderFactory:
+        return self._header_factory
