@@ -1,22 +1,5 @@
 import time
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
-import uuid
-from databricks.sql.telemetry.TelemetryEvent import TelemetryEvent
-from databricks.sql.telemetry.DriverSystemConfiguration import DriverSystemConfiguration
-from databricks.sql.telemetry.TelemetryClient import TelemetryClient
-from databricks.sql.telemetry.NoopTelemetryClient import NoopTelemetryClient
-from databricks.sql.telemetry.TelemetryFrontendLog import TelemetryFrontendLog
-from databricks.sql.telemetry.FrontendLogContext import FrontendLogContext
-from databricks.sql.telemetry.TelemetryClientContext import TelemetryClientContext
-from databricks.sql.telemetry.FrontendLogEntry import FrontendLogEntry
-from databricks.sql.auth.auth import AuthType
-from databricks.sql.auth.authenticators import (
-    DatabricksOAuthProvider,
-    ExternalAuthProvider,
-    AuthProvider,
-    AccessTokenAuthProvider,
-)
-
 import pandas
 
 try:
@@ -256,25 +239,6 @@ class Connection:
             self.client_telemetry_enabled and self.server_telemetry_enabled
         )
         telemetry_batch_size = kwargs.get("telemetry_batch_size", 200)
-
-        if self.telemetry_enabled:
-            self.telemetry_client = TelemetryClient(
-                host=self.host,
-                connection_uuid="test-connection-uuid",
-                auth_provider=auth_provider,
-                is_authenticated=(
-                    isinstance(auth_provider, AccessTokenAuthProvider)
-                    or isinstance(auth_provider, DatabricksOAuthProvider)
-                    or isinstance(auth_provider, ExternalAuthProvider)
-                    or (
-                        isinstance(auth_provider, AuthProvider)
-                        and hasattr(auth_provider, "_header_factory")
-                    )
-                ),
-                batch_size=telemetry_batch_size,
-            )
-        else:
-            self.telemetry_client = NoopTelemetryClient()
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
