@@ -804,7 +804,7 @@ class Cursor:
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
-            self.thrift_backend,
+            self.backend,
             self.buffer_size_bytes,
             self.arraysize,
             self.connection.use_cloud_fetch,
