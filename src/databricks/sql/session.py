@@ -7,7 +7,8 @@ from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
-from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql.thrift_backend import ThriftDatabricksClient
+from databricks.sql.db_client_interface import DatabricksClient
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        self.thrift_backend = ThriftBackend(
+        self.backend: DatabricksClient = ThriftDatabricksClient(
             self.host,
             self.port,
             http_path,
@@ -78,7 +79,7 @@ class Session:
             **kwargs,
         )
 
-        self._open_session_resp = self.thrift_backend.open_session(
+        self._open_session_resp = self.backend.open_session(
             session_configuration, catalog, schema
         )
         self._session_handle = self._open_session_resp.sessionHandle
@@ -114,10 +115,10 @@ class Session:
         return self._session_handle
 
     def get_session_id(self):
-        return self.thrift_backend.handle_to_id(self._session_handle)
+        return self.backend.handle_to_id(self._session_handle)
 
     def get_session_id_hex(self):
-        return self.thrift_backend.handle_to_hex_id(self._session_handle)
+        return self.backend.handle_to_hex_id(self._session_handle)
 
     def close(self) -> None:
         """Close the underlying session."""
@@ -127,7 +128,7 @@ class Session:
             return
 
         try:
-            self.thrift_backend.close_session(self._session_handle)
+            self.backend.close_session(self._session_handle)
         except RequestError as e:
             if isinstance(e.args[1], SessionAlreadyClosedError):
                 logger.info("Session was closed by a prior request")

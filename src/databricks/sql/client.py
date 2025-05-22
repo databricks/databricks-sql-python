@@ -21,7 +21,8 @@ from databricks.sql.exc import (
     CursorAlreadyClosedError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql.thrift_backend import ThriftDatabricksClient
+from databricks.sql.db_client_interface import DatabricksClient
 from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
@@ -336,7 +337,7 @@ class Connection:
 
         cursor = Cursor(
             self,
-            self.session.thrift_backend,
+            self.session.backend,
             arraysize=arraysize,
             result_buffer_size_bytes=buffer_size_bytes,
         )
@@ -369,7 +370,7 @@ class Cursor:
     def __init__(
         self,
         connection: Connection,
-        thrift_backend: ThriftBackend,
+        backend: DatabricksClient,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = DEFAULT_ARRAY_SIZE,
     ) -> None:
@@ -388,7 +389,7 @@ class Cursor:
         # Note that Cursor closed => active result set closed, but not vice versa
         self.open = True
         self.executing_command_id = None
-        self.thrift_backend = thrift_backend
+        self.backend = backend
         self.active_op_handle = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
@@ -753,7 +754,8 @@ class Cursor:
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        execute_response = self.thrift_backend.execute_command(
+        print("here")
+        execute_response = self.backend.execute_command(
             operation=prepared_operation,
             session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
@@ -768,7 +770,7 @@ class Cursor:
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
-            self.thrift_backend,
+            self.backend,
             self.buffer_size_bytes,
             self.arraysize,
             self.connection.use_cloud_fetch,
@@ -776,7 +778,7 @@ class Cursor:
 
         if execute_response.is_staging_operation:
             self._handle_staging_operation(
-                staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
+                staging_allowed_local_path=self.backend.staging_allowed_local_path
             )
 
         return self
@@ -816,7 +818,7 @@ class Cursor:
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        self.thrift_backend.execute_command(
+        self.backend.execute_command(
             operation=prepared_operation,
             session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
@@ -838,7 +840,7 @@ class Cursor:
         :return:
         """
         self._check_not_closed()
-        return self.thrift_backend.get_query_state(self.active_op_handle)
+        return self.backend.get_query_state(self.active_op_handle)
 
     def is_query_pending(self):
         """
@@ -868,20 +870,20 @@ class Cursor:
 
         operation_state = self.get_query_state()
         if operation_state == ttypes.TOperationState.FINISHED_STATE:
-            execute_response = self.thrift_backend.get_execution_result(
+            execute_response = self.backend.get_execution_result(
                 self.active_op_handle, self
             )
             self.active_result_set = ResultSet(
                 self.connection,
                 execute_response,
-                self.thrift_backend,
+                self.backend,
                 self.buffer_size_bytes,
                 self.arraysize,
             )
 
             if execute_response.is_staging_operation:
                 self._handle_staging_operation(
-                    staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
+                    staging_allowed_local_path=self.backend.staging_allowed_local_path
                 )
 
             return self
@@ -913,7 +915,7 @@ class Cursor:
         """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        execute_response = self.thrift_backend.get_catalogs(
+        execute_response = self.backend.get_catalogs(
             session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -922,9 +924,10 @@ class Cursor:
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
-            self.thrift_backend,
+            self.backend,
             self.buffer_size_bytes,
             self.arraysize,
+            self.connection.use_cloud_fetch,
         )
         return self
 
@@ -939,7 +942,7 @@ class Cursor:
         """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        execute_response = self.thrift_backend.get_schemas(
+        execute_response = self.backend.get_schemas(
             session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -950,9 +953,10 @@ class Cursor:
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
-            self.thrift_backend,
+            self.backend,
             self.buffer_size_bytes,
             self.arraysize,
+            self.connection.use_cloud_fetch,
         )
         return self
 
@@ -972,7 +976,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
-        execute_response = self.thrift_backend.get_tables(
+        execute_response = self.backend.get_tables(
             session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -985,9 +989,10 @@ class Cursor:
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
-            self.thrift_backend,
+            self.backend,
             self.buffer_size_bytes,
             self.arraysize,
+            self.connection.use_cloud_fetch,
         )
         return self
 
@@ -1007,7 +1012,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
-        execute_response = self.thrift_backend.get_columns(
+        execute_response = self.backend.get_columns(
             session_handle=self.connection.session._session_handle,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -1020,9 +1025,10 @@ class Cursor:
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,
-            self.thrift_backend,
+            self.backend,
             self.buffer_size_bytes,
             self.arraysize,
+            self.connection.use_cloud_fetch,
         )
         return self
 
@@ -1097,7 +1103,7 @@ class Cursor:
         This method can be called from another thread.
         """
         if self.active_op_handle is not None:
-            self.thrift_backend.cancel_command(self.active_op_handle)
+            self.backend.cancel_command(self.active_op_handle)
         else:
             logger.warning(
                 "Attempting to cancel a command, but there is no "
@@ -1172,7 +1178,7 @@ class ResultSet:
         self,
         connection: Connection,
         execute_response: ExecuteResponse,
-        thrift_backend: ThriftBackend,
+        backend: DatabricksClient,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
@@ -1182,8 +1188,10 @@ class ResultSet:
 
         :param connection: The parent connection that was used to execute this command
         :param execute_response: A `ExecuteResponse` class returned by a command execution
-        :param result_buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
-        amount :param arraysize: The max number of rows to fetch at a time (PEP-249)
+        :param backend: The DatabricksClient instance to use for fetching results
+        :param result_buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch amount
+        :param arraysize: The max number of rows to fetch at a time (PEP-249)
+        :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
         """
         self.connection = connection
         self.command_id = execute_response.command_handle
@@ -1193,7 +1201,7 @@ class ResultSet:
         self.buffer_size_bytes = result_buffer_size_bytes
         self.lz4_compressed = execute_response.lz4_compressed
         self.arraysize = arraysize
-        self.thrift_backend = thrift_backend
+        self.backend = backend
         self.description = execute_response.description
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._next_row_index = 0
@@ -1216,8 +1224,15 @@ class ResultSet:
                 break
 
     def _fill_results_buffer(self):
-        # At initialization or if the server does not have cloud fetch result links available
-        results, has_more_rows = self.thrift_backend.fetch_results(
+        if not isinstance(self.backend, ThriftDatabricksClient):
+            # This specific logic is for Thrift. SEA will have its own way.
+            raise NotImplementedError(
+                "Fetching further result batches is currently only implemented for the Thrift backend."
+            )
+
+        # Now we know self.backend is ThriftDatabricksClient, so it has fetch_results
+        thrift_backend_instance = self.backend # type: ThriftDatabricksClient
+        results, has_more_rows = thrift_backend_instance.fetch_results(
             op_handle=self.command_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -1433,19 +1448,20 @@ class ResultSet:
         If the connection has not been closed, and the cursor has not already
         been closed on the server for some other reason, issue a request to the server to close it.
         """
+        # TODO: the state is still thrift specific, define some ENUM for status that each service has to map to 
         try:
             if (
-                self.op_state != self.thrift_backend.CLOSED_OP_STATE
+                self.op_state != ttypes.TOperationState.CLOSED_STATE
                 and not self.has_been_closed_server_side
                 and self.connection.open
             ):
-                self.thrift_backend.close_command(self.command_id)
+                self.backend.close_command(self.command_id)
         except RequestError as e:
             if isinstance(e.args[1], CursorAlreadyClosedError):
                 logger.info("Operation was canceled by a prior request")
         finally:
             self.has_been_closed_server_side = True
-            self.op_state = self.thrift_backend.CLOSED_OP_STATE
+            self.op_state = ttypes.TOperationState.CLOSED_STATE
 
     @staticmethod
     def _get_schema_description(table_schema_message):

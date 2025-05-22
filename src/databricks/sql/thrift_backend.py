@@ -41,6 +41,7 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 from databricks.sql.types import SSLOptions
+from databricks.sql.db_client_interface import DatabricksClient
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ _retry_policy = {  # (type, default, min, max)
 }
 
 
-class ThriftBackend:
+class ThriftDatabricksClient(DatabricksClient):
     CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
     ERROR_OP_STATE = ttypes.TOperationState.ERROR_STATE
 
@@ -143,7 +144,7 @@ class ThriftBackend:
         else:
             raise ValueError("No valid connection settings.")
 
-        self.staging_allowed_local_path = staging_allowed_local_path
+        self._staging_allowed_local_path = staging_allowed_local_path
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
@@ -154,7 +155,7 @@ class ThriftBackend:
         )
 
         # Cloud fetch
-        self.max_download_threads = kwargs.get("max_download_threads", 10)
+        self._max_download_threads = kwargs.get("max_download_threads", 10)
 
         self._ssl_options = ssl_options
 
@@ -216,6 +217,18 @@ class ThriftBackend:
             raise
 
         self._request_lock = threading.RLock()
+
+    @property
+    def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
+        return self._staging_allowed_local_path
+    
+    @property
+    def ssl_options(self) -> SSLOptions:
+        return self._ssl_options
+        
+    @property
+    def max_download_threads(self) -> int:
+        return self._max_download_threads
 
     # TODO: Move this bounding logic into DatabricksRetryPolicy for v3 (PECO-918)
     def _initialize_retry_args(self, kwargs):
@@ -436,7 +449,7 @@ class ThriftBackend:
             except Exception as err:
                 error = err
                 retry_delay = extract_retry_delay(attempt)
-                error_message = ThriftBackend._extract_error_message_from_headers(
+                error_message = ThriftDatabricksClient._extract_error_message_from_headers(
                     getattr(self._transport, "headers", {})
                 )
             finally:
@@ -473,7 +486,7 @@ class ThriftBackend:
             if not isinstance(response_or_error_info, RequestErrorInfo):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
-                ThriftBackend._check_response_for_error(response)
+                ThriftDatabricksClient._check_response_for_error(response)
                 return response
 
             error_info = response_or_error_info
@@ -697,7 +710,7 @@ class ThriftBackend:
     @staticmethod
     def _hive_schema_to_description(t_table_schema):
         return [
-            ThriftBackend._col_to_description(col) for col in t_table_schema.columns
+            ThriftDatabricksClient._col_to_description(col) for col in t_table_schema.columns
         ]
 
     def _results_message_to_execute_response(self, resp, operation_state):
@@ -857,19 +870,19 @@ class ThriftBackend:
     def _check_direct_results_for_error(t_spark_direct_results):
         if t_spark_direct_results:
             if t_spark_direct_results.operationStatus:
-                ThriftBackend._check_response_for_error(
+                ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.operationStatus
                 )
             if t_spark_direct_results.resultSetMetadata:
-                ThriftBackend._check_response_for_error(
+                ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.resultSetMetadata
                 )
             if t_spark_direct_results.resultSet:
-                ThriftBackend._check_response_for_error(
+                ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.resultSet
                 )
             if t_spark_direct_results.closeOperation:
-                ThriftBackend._check_response_for_error(
+                ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.closeOperation
                 )
 
