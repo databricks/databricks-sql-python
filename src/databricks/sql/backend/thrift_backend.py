@@ -946,6 +946,12 @@ class ThriftDatabricksClient(DatabricksClient):
             thrift_handle,
         )
 
+        logger.debug(
+            "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
+            operation,
+            session_handle,
+        )
+
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
             decimalAsArrow=self._use_arrow_native_decimals,
