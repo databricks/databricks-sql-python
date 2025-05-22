@@ -31,7 +31,7 @@ class FetchBenchmarkTests(unittest.TestCase):
         arrow_queue = ArrowQueue(arrow_table, arrow_table.num_rows, 0)
         rs = client.ResultSet(
             connection=None,
-            thrift_backend=None,
+            backend=None,
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=True,
