@@ -1,12 +1,13 @@
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Any
 
 from databricks.sql.exc import NotSupportedError
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TSparkParameterValue,
+    TSparkParameterValueArg,
 )
 
 import datetime
@@ -54,7 +55,17 @@ class DatabricksSupportedType(Enum):
 
 
 TAllowedParameterValue = Union[
-    str, int, float, datetime.datetime, datetime.date, bool, decimal.Decimal, None
+    str,
+    int,
+    float,
+    datetime.datetime,
+    datetime.date,
+    bool,
+    decimal.Decimal,
+    None,
+    list,
+    dict,
+    tuple,
 ]
 
 
@@ -82,6 +93,7 @@ class DbsqlParameterBase:
 
     CAST_EXPR: str
     name: Optional[str]
+    value: Any
 
     def as_tspark_param(self, named: bool) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
@@ -97,6 +109,10 @@ class DbsqlParameterBase:
 
     def _tspark_param_value(self):
         return TSparkParameterValue(stringValue=str(self.value))
+
+    def _tspark_value_arg(self):
+        """Returns a TSparkParameterValueArg object that can be passed to the DBR thrift server."""
+        return TSparkParameterValueArg(value=str(self.value), type=self._cast_expr())
 
     def _cast_expr(self):
         return self.CAST_EXPR
@@ -428,6 +444,99 @@ class TinyIntParameter(DbsqlParameterBase):
     CAST_EXPR = DatabricksSupportedType.TINYINT.name
 
 
+class ArrayParameter(DbsqlParameterBase):
+    """Wrap a Python `Sequence` that will be bound to a Databricks SQL ARRAY type."""
+
+    def __init__(self, value: Sequence[Any], name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a ARRAY.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        self.name = name
+        self.value = [dbsql_parameter_from_primitive(val) for val in value]
+
+    def as_tspark_param(self, named: bool = False) -> TSparkParameter:
+        """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
+
+        tsp = TSparkParameter(type=self._cast_expr())
+        tsp.arguments = [val._tspark_value_arg() for val in self.value]
+
+        if named:
+            tsp.name = self.name
+            tsp.ordinal = False
+        elif not named:
+            tsp.ordinal = True
+        return tsp
+
+    def _tspark_value_arg(self):
+        """Returns a TSparkParameterValueArg object that can be passed to the DBR thrift server."""
+        tva = TSparkParameterValueArg(type=self._cast_expr())
+        tva.arguments = [val._tspark_value_arg() for val in self.value]
+        return tva
+
+    CAST_EXPR = DatabricksSupportedType.ARRAY.name
+
+
+class MapParameter(DbsqlParameterBase):
+    """Wrap a Python `dict` that will be bound to a Databricks SQL MAP type."""
+
+    def __init__(self, value: dict, name: Optional[str] = None):
+        """
+        :value:
+            The value to bind for this parameter. This will be casted to a MAP.
+        :name:
+            If None, your query must contain a `?` marker. Like:
+
+            ```sql
+               SELECT * FROM table WHERE field = ?
+            ```
+            If not None, your query should contain a named parameter marker. Like:
+            ```sql
+                SELECT * FROM table WHERE field = :my_param
+            ```
+
+            The `name` argument to this function would be `my_param`.
+        """
+        self.name = name
+        self.value = [
+            dbsql_parameter_from_primitive(item)
+            for key, val in value.items()
+            for item in (key, val)
+        ]
+
+    def as_tspark_param(self, named: bool = False) -> TSparkParameter:
+        """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
+
+        tsp = TSparkParameter(type=self._cast_expr())
+        tsp.arguments = [val._tspark_value_arg() for val in self.value]
+        if named:
+            tsp.name = self.name
+            tsp.ordinal = False
+        elif not named:
+            tsp.ordinal = True
+        return tsp
+
+    def _tspark_value_arg(self):
+        """Returns a TSparkParameterValueArg object that can be passed to the DBR thrift server."""
+        tva = TSparkParameterValueArg(type=self._cast_expr())
+        tva.arguments = [val._tspark_value_arg() for val in self.value]
+        return tva
+
+    CAST_EXPR = DatabricksSupportedType.MAP.name
+
+
 class DecimalParameter(DbsqlParameterBase):
     """Wrap a Python `Decimal` that will be bound to a Databricks SQL DECIMAL type."""
 
@@ -543,23 +652,26 @@ def dbsql_parameter_from_primitive(
     # havoc. We can't use TYPE_INFERRENCE_MAP because mypy doesn't trust
     # its logic
 
-    if type(value) is int:
-        return dbsql_parameter_from_int(value, name=name)
-    elif type(value) is str:
-        return StringParameter(value=value, name=name)
-    elif type(value) is float:
-        return FloatParameter(value=value, name=name)
-    elif type(value) is datetime.datetime:
-        return TimestampParameter(value=value, name=name)
-    elif type(value) is datetime.date:
-        return DateParameter(value=value, name=name)
-    elif type(value) is bool:
+    if isinstance(value, bool):
         return BooleanParameter(value=value, name=name)
-    elif type(value) is decimal.Decimal:
+    elif isinstance(value, int):
+        return dbsql_parameter_from_int(value, name=name)
+    elif isinstance(value, str):
+        return StringParameter(value=value, name=name)
+    elif isinstance(value, float):
+        return FloatParameter(value=value, name=name)
+    elif isinstance(value, datetime.datetime):
+        return TimestampParameter(value=value, name=name)
+    elif isinstance(value, datetime.date):
+        return DateParameter(value=value, name=name)
+    elif isinstance(value, decimal.Decimal):
         return DecimalParameter(value=value, name=name)
+    elif isinstance(value, dict):
+        return MapParameter(value=value, name=name)
+    elif isinstance(value, Sequence) and not isinstance(value, str):
+        return ArrayParameter(value=value, name=name)
     elif value is None:
         return VoidParameter(value=value, name=name)
-
     else:
         raise NotSupportedError(
             f"Could not infer parameter type from value: {value} - {type(value)} \n"
@@ -581,6 +693,8 @@ TDbsqlParameter = Union[
     TimestampNTZParameter,
     TinyIntParameter,
     DecimalParameter,
+    ArrayParameter,
+    MapParameter,
 ]
 
 
