@@ -120,22 +120,36 @@ class TestIndividualFormatters(object):
         assert pe.escape_datetime(INPUT, FORMAT) == OUTPUT
 
     def test_escape_sequence_integer(self):
-        assert pe.escape_sequence([1, 2, 3, 4]) == "(1,2,3,4)"
+        assert pe.escape_sequence([1, 2, 3, 4]) == "ARRAY(1,2,3,4)"
 
     def test_escape_sequence_float(self):
-        assert pe.escape_sequence([1.1, 2.2, 3.3, 4.4]) == "(1.1,2.2,3.3,4.4)"
+        assert pe.escape_sequence([1.1, 2.2, 3.3, 4.4]) == "ARRAY(1.1,2.2,3.3,4.4)"
 
     def test_escape_sequence_string(self):
         assert (
             pe.escape_sequence(["his", "name", "was", "robert", "palmer"])
-            == "('his','name','was','robert','palmer')"
+            == "ARRAY('his','name','was','robert','palmer')"
         )
 
     def test_escape_sequence_sequence_of_strings(self):
-        # This is not valid SQL.
         INPUT = [["his", "name"], ["was", "robert"], ["palmer"]]
-        OUTPUT = "(('his','name'),('was','robert'),('palmer'))"
+        OUTPUT = "ARRAY(ARRAY('his','name'),ARRAY('was','robert'),ARRAY('palmer'))"
 
+        assert pe.escape_sequence(INPUT) == OUTPUT
+    
+    def test_escape_map_string_int(self):
+        INPUT = {"a": 1, "b": 2}
+        OUTPUT = "MAP('a',1,'b',2)"
+        assert pe.escape_mapping(INPUT) == OUTPUT
+
+    def test_escape_map_string_sequence_of_floats(self):
+        INPUT = {"a": [1.1, 2.2, 3.3], "b": [4.4, 5.5, 6.6]}
+        OUTPUT = "MAP('a',ARRAY(1.1,2.2,3.3),'b',ARRAY(4.4,5.5,6.6))"
+        assert pe.escape_mapping(INPUT) == OUTPUT
+    
+    def test_escape_sequence_of_map_int_string(self):
+        INPUT = [{1: "a", 2: "foo"}, {3: "b", 4: "bar"}]
+        OUTPUT = "ARRAY(MAP(1,'a',2,'foo'),MAP(3,'b',4,'bar'))"
         assert pe.escape_sequence(INPUT) == OUTPUT
 
 

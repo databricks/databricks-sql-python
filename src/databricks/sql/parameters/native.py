@@ -467,7 +467,7 @@ class ArrayParameter(DbsqlParameterBase):
         self.name = name
         self.value = [dbsql_parameter_from_primitive(val) for val in value]
 
-    def as_tspark_param(self, named: bool) -> TSparkParameter:
+    def as_tspark_param(self, named: bool = None) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
 
         tsp = TSparkParameter(type=self._cast_expr())
@@ -516,7 +516,7 @@ class MapParameter(DbsqlParameterBase):
             for item in (key, val)
         ]
 
-    def as_tspark_param(self, named: bool) -> TSparkParameter:
+    def as_tspark_param(self, named: bool = None) -> TSparkParameter:
         """Returns a TSparkParameter object that can be passed to the DBR thrift server."""
 
         tsp = TSparkParameter(type=self._cast_expr())

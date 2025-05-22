@@ -12,4 +12,6 @@ from databricks.sql.parameters.native import (
     TimestampNTZParameter,
     TinyIntParameter,
     DecimalParameter,
+    MapParameter,
+    ArrayParameter,
 )

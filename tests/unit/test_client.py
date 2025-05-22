@@ -455,7 +455,7 @@ class ClientTestSuite(unittest.TestCase):
             ("SELECT %(x)s", "SELECT NULL", {"x": None}),
             ("SELECT %(int_value)d", "SELECT 48", {"int_value": 48}),
             ("SELECT %(float_value).2f", "SELECT 48.20", {"float_value": 48.2}),
-            ("SELECT %(iter)s", "SELECT (1,2,3,4,5)", {"iter": [1, 2, 3, 4, 5]}),
+            ("SELECT %(iter)s", "SELECT ARRAY(1,2,3,4,5)", {"iter": [1, 2, 3, 4, 5]}),
             (
                 "SELECT %(datetime)s",
                 "SELECT '2022-02-01 10:23:00.000000'",

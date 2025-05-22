@@ -473,7 +473,7 @@ class ParamEscaper:
     def escape_datetime(self, item, format, cutoff=0):
         dt_str = item.strftime(format)
         formatted = dt_str[:-cutoff] if cutoff and format.endswith(".%f") else dt_str
-        return "'{}'".format(formatted)
+        return "'{}'".format(formatted.strip())
 
     def escape_decimal(self, item):
         return str(item)

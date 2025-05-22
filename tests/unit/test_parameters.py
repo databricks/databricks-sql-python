@@ -21,10 +21,14 @@ from databricks.sql.parameters import (
     TimestampParameter,
     TinyIntParameter,
     VoidParameter,
+    MapParameter,
+    ArrayParameter,
 )
 from databricks.sql.parameters.native import (
     TDbsqlParameter,
+    TSparkParameter,
     TSparkParameterValue,
+    TSparkParameterValueArg,
     dbsql_parameter_from_primitive,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -112,6 +116,8 @@ class Primitive(Enum):
     DOUBLE = 3.14
     FLOAT = 3.15
     SMALLINT = 51
+    ARRAY = [1, 2, 3]
+    MAP = {"a": 1, "b": 2}
 
 
 class TestDbsqlParameter:
@@ -131,6 +137,8 @@ class TestDbsqlParameter:
             (TimestampParameter, Primitive.TIMESTAMP, "TIMESTAMP"),
             (TimestampNTZParameter, Primitive.TIMESTAMP, "TIMESTAMP_NTZ"),
             (TinyIntParameter, Primitive.INT, "TINYINT"),
+            (MapParameter, Primitive.MAP, "MAP"),
+            (ArrayParameter, Primitive.ARRAY, "ARRAY"),
         ),
     )
     def test_cast_expression(
@@ -165,6 +173,18 @@ class TestDbsqlParameter:
             assert output == None
         else:
             assert output == TSparkParameterValue(stringValue=str(prim.value))
+    
+    @pytest.mark.parametrize(
+            "base_type,input,expected_output",[
+                (ArrayParameter, [1,2,3], TSparkParameter(ordinal=True, name=None, type='ARRAY', value=None, arguments=[TSparkParameterValueArg(type='INT', value='1', arguments=None), TSparkParameterValueArg(type='INT', value='2', arguments=None), TSparkParameterValueArg(type='INT', value='3', arguments=None)])),
+                (MapParameter, {"a": 1, "b": 2}, TSparkParameter(ordinal=True, name=None, type='MAP', value=None, arguments=[TSparkParameterValueArg(type='STRING', value='a', arguments=None), TSparkParameterValueArg(type='INT', value='1', arguments=None), TSparkParameterValueArg(type='STRING', value='b', arguments=None), TSparkParameterValueArg(type='INT', value='2', arguments=None)])),
+                (ArrayParameter,[{"a":1,"b":2},{"c":3,"d":4}], TSparkParameter(ordinal=True, name=None, type='ARRAY', value=None, arguments=[TSparkParameterValueArg(type='MAP', value=None, arguments=[TSparkParameterValueArg(type='STRING', value='a', arguments=None), TSparkParameterValueArg(type='INT', value='1', arguments=None), TSparkParameterValueArg(type='STRING', value='b', arguments=None), TSparkParameterValueArg(type='INT', value='2', arguments=None)]), TSparkParameterValueArg(type='MAP', value=None, arguments=[TSparkParameterValueArg(type='STRING', value='c', arguments=None), TSparkParameterValueArg(type='INT', value='3', arguments=None), TSparkParameterValueArg(type='STRING', value='d', arguments=None), TSparkParameterValueArg(type='INT', value='4', arguments=None)])])),
+            ]
+    )
+    def test_complex_type_tspark_param(self,base_type,input,expected_output):
+        p = base_type(input)
+        tsp = p.as_tspark_param()
+        assert tsp == expected_output
 
     def test_tspark_param_named(self):
         p = dbsql_parameter_from_primitive(Primitive.INT.value, name="p")
@@ -192,6 +212,8 @@ class TestDbsqlParameter:
             (FloatParameter, Primitive.FLOAT),
             (VoidParameter, Primitive.NONE),
             (TimestampParameter, Primitive.TIMESTAMP),
+            (MapParameter, Primitive.MAP),
+            (ArrayParameter, Primitive.ARRAY),
         ),
     )
     def test_inference(self, _type: TDbsqlParameter, prim: Primitive):
