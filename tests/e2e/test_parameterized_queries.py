@@ -115,7 +115,6 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         Primitive.NONE: "null_col",
     }
 
-
     def _get_inline_table_column(self, value):
         return self.inline_type_map[Primitive(value)]
 
@@ -225,7 +224,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         if approach == ParameterApproach.INLINE:
             # inline mode always uses ParamStyle.PYFORMAT
             # inline mode doesn't support positional parameters
-            return self._inline_roundtrip(params, paramstyle=ParamStyle.PYFORMAT,target_column=self._get_inline_table_column(params.get("p")))
+            return self._inline_roundtrip(
+                params,
+                paramstyle=ParamStyle.PYFORMAT,
+                target_column=self._get_inline_table_column(params.get("p")),
+            )
         elif approach == ParameterApproach.NATIVE:
             # native mode can use either ParamStyle.NAMED or ParamStyle.PYFORMAT
             # native mode can use either ParameterStructure.NAMED or ParameterStructure.POSITIONAL
@@ -252,7 +255,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             actual_parsed = actual.tolist()
         elif expected == Primitive.MAPS:
             expected_parsed = list(expected.value.items())
-        
+
         return actual_parsed == expected_parsed
 
     def _parse_to_common_type(self, value):
@@ -263,11 +266,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         MAP Datatype on server is returned as a list of tuples
             Ex:
                 {"a":1,"b":2} -> [("a",1),("b",2)]
-        
+
         ARRAY Datatype on server is returned as a numpy array
             Ex:
                 ["a","b","c"] -> np.array(["a","b","c"],dtype=object)
-        
+
         Primitive datatype on server is returned as a numpy primitive
             Ex:
                 1 -> np.int64(1)
@@ -275,16 +278,18 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         """
         if value is None:
             return None
-        elif isinstance(value, (Sequence,np.ndarray)) and not isinstance(value, (str, bytes)):
+        elif isinstance(value, (Sequence, np.ndarray)) and not isinstance(
+            value, (str, bytes)
+        ):
             return tuple(value)
-        elif isinstance(value,dict):
+        elif isinstance(value, dict):
             return tuple(value.items())
         elif isinstance(value, np.generic):
             return value.item()
         else:
             return value
 
-    def _recursive_compare(self,actual, expected):
+    def _recursive_compare(self, actual, expected):
         """
         Function to compare the :actual and :expected values, recursively checks and ensures that all the data matches till the leaf level
 
@@ -301,10 +306,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         if isinstance(actual_parsed, (list, tuple)):
             if len(actual_parsed) != len(expected_parsed):
                 return False
-            return all(self._recursive_compare(o1, o2) for o1, o2 in zip(actual_parsed, expected_parsed))
+            return all(
+                self._recursive_compare(o1, o2)
+                for o1, o2 in zip(actual_parsed, expected_parsed)
+            )
 
-        return actual_parsed==expected_parsed
-
+        return actual_parsed == expected_parsed
 
     @pytest.mark.parametrize("primitive", Primitive)
     @pytest.mark.parametrize(
@@ -436,24 +443,33 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         assert result[0].p == "foo"
 
     @pytest.mark.parametrize(
-        "col_name,data",[
-        ("array_map_col", [{"a": 1, "b": 2}, {"c": 3, "d": 4}]),
-        ("map_array_col", {1: ["a", "b"], 2: ["c", "d"]}),
-    ])
-    def test_inline_recursive_complex_type(self,col_name,data):
-        params = {'p':data}
-        result = self._inline_roundtrip(params=params,paramstyle=ParamStyle.PYFORMAT,target_column=col_name)
+        "col_name,data",
+        [
+            ("array_map_col", [{"a": 1, "b": 2}, {"c": 3, "d": 4}]),
+            ("map_array_col", {1: ["a", "b"], 2: ["c", "d"]}),
+        ],
+    )
+    def test_inline_recursive_complex_type(self, col_name, data):
+        params = {"p": data}
+        result = self._inline_roundtrip(
+            params=params, paramstyle=ParamStyle.PYFORMAT, target_column=col_name
+        )
         assert self._recursive_compare(result.col, data)
-    
-    
+
     @pytest.mark.parametrize(
         "description,data",
         [
-            ("ARRAY<MAP<STRING,INT>>",[{"a": 1, "b": 2}, {"c": 3, "d": 4}]),
-            ("MAP<INT,ARRAY<STRING>>",{1: ["a", "b"], 2: ["c", "d"]}),
-            ("ARRAY<ARRAY<INT>>",[[1,2,3],[1,2,3]]),
-            ("ARRAY<ARRAY<ARRAY<INT>>>",[[[1,2,3],[1,2,3]],[[1,2,3],[1,2,3]]]),
-            ("MAP<STRING,MAP<STRING,STRING>>",{"a":{"b":"c","d":"e"},"f":{"g":"h","i":"j"}})
+            ("ARRAY<MAP<STRING,INT>>", [{"a": 1, "b": 2}, {"c": 3, "d": 4}]),
+            ("MAP<INT,ARRAY<STRING>>", {1: ["a", "b"], 2: ["c", "d"]}),
+            ("ARRAY<ARRAY<INT>>", [[1, 2, 3], [1, 2, 3]]),
+            (
+                "ARRAY<ARRAY<ARRAY<INT>>>",
+                [[[1, 2, 3], [1, 2, 3]], [[1, 2, 3], [1, 2, 3]]],
+            ),
+            (
+                "MAP<STRING,MAP<STRING,STRING>>",
+                {"a": {"b": "c", "d": "e"}, "f": {"g": "h", "i": "j"}},
+            ),
         ],
     )
     @pytest.mark.parametrize(
@@ -462,14 +478,20 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             (ParamStyle.NONE, ParameterStructure.POSITIONAL),
             (ParamStyle.PYFORMAT, ParameterStructure.NAMED),
             (ParamStyle.NAMED, ParameterStructure.NAMED),
-        ]
+        ],
     )
-    def test_native_recursive_complex_type(self,description,data,paramstyle,parameter_structure):
-        if(paramstyle==ParamStyle.NONE):
-            params=[data]
+    def test_native_recursive_complex_type(
+        self, description, data, paramstyle, parameter_structure
+    ):
+        if paramstyle == ParamStyle.NONE:
+            params = [data]
         else:
-            params={'p':data}
-        result = self._native_roundtrip(parameters=params,paramstyle=paramstyle,parameter_structure=parameter_structure)
+            params = {"p": data}
+        result = self._native_roundtrip(
+            parameters=params,
+            paramstyle=paramstyle,
+            parameter_structure=parameter_structure,
+        )
         assert self._recursive_compare(result.col, data)
 
 

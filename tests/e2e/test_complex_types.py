@@ -45,7 +45,14 @@ class TestComplexTypes(PySQLPytestTestCase):
 
     @pytest.mark.parametrize(
         "field,expected_type",
-        [("array_col", ndarray), ("map_col", list), ("struct_col", dict), ("array_array_col", ndarray), ("array_map_col", ndarray), ("map_array_col", list)],
+        [
+            ("array_col", ndarray),
+            ("map_col", list),
+            ("struct_col", dict),
+            ("array_array_col", ndarray),
+            ("array_map_col", ndarray),
+            ("map_array_col", list),
+        ],
     )
     def test_read_complex_types_as_arrow(self, field, expected_type, table_fixture):
         """Confirms the return types of a complex type field when reading as arrow"""
@@ -54,10 +61,20 @@ class TestComplexTypes(PySQLPytestTestCase):
             result = cursor.execute(
                 "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
             ).fetchone()
-        
+
         assert isinstance(result[field], expected_type)
 
-    @pytest.mark.parametrize("field", [("array_col"), ("map_col"), ("struct_col"), ("array_array_col"), ("array_map_col"), ("map_array_col")])
+    @pytest.mark.parametrize(
+        "field",
+        [
+            ("array_col"),
+            ("map_col"),
+            ("struct_col"),
+            ("array_array_col"),
+            ("array_map_col"),
+            ("map_array_col"),
+        ],
+    )
     def test_read_complex_types_as_string(self, field, table_fixture):
         """Confirms the return type of a complex type that is returned as a string"""
         with self.cursor(

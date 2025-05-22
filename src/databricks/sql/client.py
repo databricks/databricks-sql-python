@@ -789,7 +789,7 @@ class Cursor:
 
         :returns self
         """
-        
+
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
@@ -808,7 +808,7 @@ class Cursor:
             prepared_operation, prepared_params = self._prepare_native_parameters(
                 transformed_operation, normalized_parameters, param_structure
             )
-        
+
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(

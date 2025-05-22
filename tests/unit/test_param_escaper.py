@@ -136,7 +136,7 @@ class TestIndividualFormatters(object):
         OUTPUT = "ARRAY(ARRAY('his','name'),ARRAY('was','robert'),ARRAY('palmer'))"
 
         assert pe.escape_sequence(INPUT) == OUTPUT
-    
+
     def test_escape_map_string_int(self):
         INPUT = {"a": 1, "b": 2}
         OUTPUT = "MAP('a',1,'b',2)"
@@ -146,7 +146,7 @@ class TestIndividualFormatters(object):
         INPUT = {"a": [1.1, 2.2, 3.3], "b": [4.4, 5.5, 6.6]}
         OUTPUT = "MAP('a',ARRAY(1.1,2.2,3.3),'b',ARRAY(4.4,5.5,6.6))"
         assert pe.escape_mapping(INPUT) == OUTPUT
-    
+
     def test_escape_sequence_of_map_int_string(self):
         INPUT = [{1: "a", 2: "foo"}, {3: "b", 4: "bar"}]
         OUTPUT = "ARRAY(MAP(1,'a',2,'foo'),MAP(3,'b',4,'bar'))"
