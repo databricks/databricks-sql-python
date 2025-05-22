@@ -1,0 +1,24 @@
+import json
+from dataclasses import dataclass, asdict
+from databricks.sql.telemetry.HostDetails import HostDetails
+from databricks.sql.telemetry.enums.AuthMech import AuthMech
+from databricks.sql.telemetry.enums.AuthFlow import AuthFlow
+from databricks.sql.telemetry.enums.DatabricksClientType import DatabricksClientType
+
+
+@dataclass
+class DriverConnectionParameters:
+    http_path: str
+    driver_mode: DatabricksClientType
+    host_details: HostDetails
+    auth_mech: AuthMech
+    auth_flow: AuthFlow
+    auth_scope: str
+    discovery_url: str
+    allowed_volume_ingestion_paths: str
+    enable_complex_datatype_support: bool
+    azure_tenant_id: str
+    socket_timeout: int
+
+    def to_json(self):
+        return json.dumps(asdict(self))

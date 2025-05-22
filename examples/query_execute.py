@@ -8,7 +8,7 @@ with sql.connect(
 ) as connection:
 
     with connection.cursor() as cursor:
-        cursor.execute("SELECT * FROM default.diamonds LIMIT 2")
+        cursor.execute("SELECT * FROM main.eng_lumberjack.staging_frontend_log_sql_driver_log limit 1")
         result = cursor.fetchall()
 
         for row in result:
