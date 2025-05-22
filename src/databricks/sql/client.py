@@ -754,7 +754,6 @@ class Cursor:
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        print("here")
         execute_response = self.backend.execute_command(
             operation=prepared_operation,
             session_handle=self.connection.session._session_handle,
