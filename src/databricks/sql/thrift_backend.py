@@ -1090,7 +1090,7 @@ class ThriftBackend:
         return queue, resp.hasMoreRows
 
     def close_command(self, op_handle):
-        logger.debug(f"ThriftBackend.close_command(op_handle={op_handle})")
+        logger.debug("ThriftBackend.close_command(op_handle=%s)", op_handle)
         req = ttypes.TCloseOperationReq(operationHandle=op_handle)
         resp = self.make_request(self._client.CloseOperation, req)
         return resp.status
