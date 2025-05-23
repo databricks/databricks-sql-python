@@ -43,11 +43,15 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def close_command(self, operation_handle: ttypes.TOperationHandle) -> ttypes.TStatus:
+    def close_command(
+        self, operation_handle: ttypes.TOperationHandle
+    ) -> ttypes.TStatus:
         pass
 
     @abstractmethod
-    def get_query_state(self, operation_handle: ttypes.TOperationHandle) -> ttypes.TOperationState:
+    def get_query_state(
+        self, operation_handle: ttypes.TOperationHandle
+    ) -> ttypes.TOperationState:
         pass
 
     @abstractmethod
@@ -132,4 +136,4 @@ class DatabricksClient(ABC):
     @property
     @abstractmethod
     def max_download_threads(self) -> int:
-        pass 
+        pass

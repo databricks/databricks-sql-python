@@ -21,8 +21,8 @@ from databricks.sql.exc import (
     CursorAlreadyClosedError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.thrift_backend import ThriftDatabricksClient
-from databricks.sql.db_client_interface import DatabricksClient
+from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.utils import (
     ExecuteResponse,
     ParamEscaper,
@@ -1230,7 +1230,7 @@ class ResultSet:
             )
 
         # Now we know self.backend is ThriftDatabricksClient, so it has fetch_results
-        thrift_backend_instance = self.backend # type: ThriftDatabricksClient
+        thrift_backend_instance = self.backend  # type: ThriftDatabricksClient
         results, has_more_rows = thrift_backend_instance.fetch_results(
             op_handle=self.command_id,
             max_rows=self.arraysize,
@@ -1447,7 +1447,8 @@ class ResultSet:
         If the connection has not been closed, and the cursor has not already
         been closed on the server for some other reason, issue a request to the server to close it.
         """
-        # TODO: the state is still thrift specific, define some ENUM for status that each service has to map to 
+        # TODO: the state is still thrift specific, define some ENUM for status that each service has to map to
+        # when we generalise the ResultSet
         try:
             if (
                 self.op_state != ttypes.TOperationState.CLOSED_STATE
