@@ -1,8 +1,5 @@
 import json
 from dataclasses import dataclass, asdict
-import platform
-import sys
-import locale
 from databricks.sql import __version__
 
 
@@ -20,18 +17,20 @@ class DriverSystemConfiguration:
     driver_name: str
     char_set_encoding: str
 
-    def __init__(self):
-        self.driver_version = __version__
-        self.os_name = platform.system()
-        self.os_version = platform.version()
-        self.os_arch = platform.machine()
-        self.runtime_name = platform.python_implementation()
-        self.runtime_version = platform.python_version()
-        self.runtime_vendor = sys.implementation.name
-        self.client_app_name = "databricks-sql-python"
-        self.locale_name = locale.getdefaultlocale()[0]
-        self.driver_name = "databricks-sql-python"
-        self.char_set_encoding = "UTF-8"
-
     def to_json(self):
         return json.dumps(asdict(self))
+    
+# Part of TelemetryEvent
+# DriverSystemConfiguration systemConfig = new DriverSystemConfiguration(
+#     driver_version = "2.9.3",  
+#     os_name = "Darwin",        
+#     os_version = "24.4.0",     
+#     os_arch = "arm64",         
+#     runtime_name = "CPython",   
+#     runtime_version = "3.13.3", 
+#     runtime_vendor = "cpython",
+#     client_app_name = "databricks-sql-python", 
+#     locale_name = "en_US", 
+#     driver_name = "databricks-sql-python",     
+#     char_set_encoding = "UTF-8" 
+# )
