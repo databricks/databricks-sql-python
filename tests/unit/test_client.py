@@ -20,7 +20,6 @@ from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 import databricks.sql
 import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
-from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.types import Row
 from databricks.sql.result_set import ResultSet, ThriftResultSet
 

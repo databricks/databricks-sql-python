@@ -50,7 +50,7 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
-from databricks.sql.exc import SessionAlreadyClosedError, CursorAlreadyClosedError
+from databricks.sql.exc import SessionAlreadyClosedError
 
 log = logging.getLogger(__name__)
 
@@ -820,6 +820,7 @@ class TestPySQLCoreSuite(
             ars = cursor.active_result_set
 
             # We must manually run this check because thrift_backend always forces `has_been_closed_server_side` to True
+
             # Cursor op state should be open before connection is closed
             status_request = ttypes.TGetOperationStatusReq(
                 operationHandle=ars.command_id.to_thrift_handle(),
@@ -845,6 +846,7 @@ class TestPySQLCoreSuite(
         with self.connection() as conn:
             # First .close() call is explicit here
             conn.close()
+
         assert "Session appears to have been closed already" in caplog.text
 
         conn = None

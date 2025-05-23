@@ -217,12 +217,6 @@ class Connection:
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
 
-        logger.debug(
-            "Connection.__init__(server_hostname=%s, http_path=%s)",
-            server_hostname,
-            http_path,
-        )
-
         if access_token:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
@@ -297,13 +291,7 @@ class Connection:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        try:
-            self.close()
-        except BaseException as e:
-            logger.warning(f"Exception during connection close in __exit__: {e}")
-            if exc_type is None:
-                raise
-        return False
+        self.close()
 
     def __del__(self):
         if self.open:
@@ -426,14 +414,7 @@ class Cursor:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        try:
-            logger.debug("Cursor context manager exiting, calling close()")
-            self.close()
-        except BaseException as e:
-            logger.warning(f"Exception during cursor close in __exit__: {e}")
-            if exc_type is None:
-                raise
-        return False
+        self.close()
 
     def __iter__(self):
         if self.active_result_set:
@@ -764,9 +745,6 @@ class Cursor:
 
         :returns self
         """
-        logger.debug(
-            "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
-        )
 
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
