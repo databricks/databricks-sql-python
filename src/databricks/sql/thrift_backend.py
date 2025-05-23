@@ -131,13 +131,6 @@ class ThriftBackend:
         # max_download_threads
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
-        logger.debug(
-            "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)",
-            server_hostname,
-            port,
-            http_path,
-        )
-
         port = port or 443
         if kwargs.get("_connection_uri"):
             uri = kwargs.get("_connection_uri")
@@ -397,8 +390,6 @@ class ThriftBackend:
 
                 # TODO: don't use exception handling for GOS polling...
 
-                logger.error("ThriftBackend.attempt_request: HTTPError: %s", err)
-
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
                     delay_default = (
@@ -443,7 +434,6 @@ class ThriftBackend:
                     else:
                         logger.warning(log_string)
             except Exception as err:
-                logger.error("ThriftBackend.attempt_request: Exception: %s", err)
                 error = err
                 retry_delay = extract_retry_delay(attempt)
                 error_message = ThriftBackend._extract_error_message_from_headers(
@@ -898,12 +888,6 @@ class ThriftBackend:
     ):
         assert session_handle is not None
 
-        logger.debug(
-            "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
-            operation,
-            session_handle,
-        )
-
         spark_arrow_types = ttypes.TSparkArrowTypes(
             timestampAsArrow=self._use_arrow_native_timestamps,
             decimalAsArrow=self._use_arrow_native_decimals,
@@ -1090,7 +1074,6 @@ class ThriftBackend:
         return queue, resp.hasMoreRows
 
     def close_command(self, op_handle):
-        logger.debug("ThriftBackend.close_command(op_handle=%s)", op_handle)
         req = ttypes.TCloseOperationReq(operationHandle=op_handle)
         resp = self.make_request(self._client.CloseOperation, req)
         return resp.status

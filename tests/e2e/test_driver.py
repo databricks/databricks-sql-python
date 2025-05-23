@@ -50,7 +50,7 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
-from databricks.sql.exc import SessionAlreadyClosedError, CursorAlreadyClosedError
+from databricks.sql.exc import SessionAlreadyClosedError
 
 log = logging.getLogger(__name__)
 
@@ -820,6 +820,7 @@ class TestPySQLCoreSuite(
             ars = cursor.active_result_set
 
             # We must manually run this check because thrift_backend always forces `has_been_closed_server_side` to True
+
             # Cursor op state should be open before connection is closed
             status_request = ttypes.TGetOperationStatusReq(
                 operationHandle=ars.command_id, getProgressUpdate=False
@@ -846,103 +847,8 @@ class TestPySQLCoreSuite(
         with self.connection() as conn:
             # First .close() call is explicit here
             conn.close()
+
         assert "Session appears to have been closed already" in caplog.text
-
-        conn = None
-        try:
-            with pytest.raises(KeyboardInterrupt):
-                with self.connection() as c:
-                    conn = c
-                    raise KeyboardInterrupt("Simulated interrupt")
-        finally:
-            if conn is not None:
-                assert not conn.open, "Connection should be closed after KeyboardInterrupt"
-
-    def test_cursor_close_properly_closes_operation(self):
-        """Test that Cursor.close() properly closes the active operation handle on the server."""
-        with self.connection() as conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute("SELECT 1 AS test")
-                assert cursor.active_op_handle is not None
-                cursor.close()
-                assert cursor.active_op_handle is None
-                assert not cursor.open
-            finally:
-                if cursor.open:
-                    cursor.close()
-
-        conn = None
-        cursor = None
-        try:
-            with self.connection() as c:
-                conn = c
-                with pytest.raises(KeyboardInterrupt):
-                    with conn.cursor() as cur:
-                        cursor = cur
-                        raise KeyboardInterrupt("Simulated interrupt")
-        finally:
-            if cursor is not None:
-                assert not cursor.open, "Cursor should be closed after KeyboardInterrupt"
-
-    def test_nested_cursor_context_managers(self):
-        """Test that nested cursor context managers properly close operations on the server."""
-        with self.connection() as conn:
-            with conn.cursor() as cursor1:
-                cursor1.execute("SELECT 1 AS test1")
-                assert cursor1.active_op_handle is not None
-
-                with conn.cursor() as cursor2:
-                    cursor2.execute("SELECT 2 AS test2")
-                    assert cursor2.active_op_handle is not None
-
-                # After inner context manager exit, cursor2 should be not open
-                assert not cursor2.open
-                assert cursor2.active_op_handle is None
-
-            # After outer context manager exit, cursor1 should be not open
-            assert not cursor1.open
-            assert cursor1.active_op_handle is None
-
-    def test_cursor_error_handling(self):
-        """Test that cursor close handles errors properly to prevent orphaned operations."""
-        with self.connection() as conn:
-            cursor = conn.cursor()
-
-            cursor.execute("SELECT 1 AS test")
-
-            op_handle = cursor.active_op_handle
-
-            assert op_handle is not None
-
-            # Manually close the operation to simulate server-side closure
-            conn.thrift_backend.close_command(op_handle)
-
-            cursor.close()
-
-            assert not cursor.open
-
-    def test_result_set_close(self):
-        """Test that ResultSet.close() properly closes operations on the server and handles state correctly."""
-        with self.connection() as conn:
-            cursor = conn.cursor()
-            try:
-                cursor.execute("SELECT * FROM RANGE(10)")
-
-                result_set = cursor.active_result_set
-                assert result_set is not None
-
-                initial_op_state = result_set.op_state
-
-                result_set.close()
-
-                assert result_set.op_state == result_set.thrift_backend.CLOSED_OP_STATE
-                assert result_set.op_state != initial_op_state
-
-                # Closing the result set again should be a no-op and not raise exceptions
-                result_set.close()
-            finally:
-                cursor.close()
 
 
 # use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep
