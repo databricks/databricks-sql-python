@@ -10,6 +10,7 @@ class HostDetails:
     def to_json(self):
         return json.dumps(asdict(self))
 
+
 # Part of DriverConnectionParameters
 # HostDetails hostDetails = new HostDetails(
 #     hostUrl = "https://my-workspace.cloud.databricks.com",

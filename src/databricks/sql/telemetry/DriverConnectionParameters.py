@@ -16,13 +16,13 @@ class DriverConnectionParameters:
     auth_scope: str
     discovery_url: str
     allowed_volume_ingestion_paths: str
-    enable_complex_datatype_support: bool
     azure_tenant_id: str
     socket_timeout: int
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
+
 # Part of TelemetryEvent
 # DriverConnectionParameters connectionParams = new DriverConnectionParameters(
 #     httpPath = " /sql/1.0/endpoints/1234567890abcdef",
@@ -36,7 +36,6 @@ class DriverConnectionParameters:
 #     authScope = "sql",
 #     discoveryUrl = "https://example-url",
 #     allowedVolumeIngestionPaths = "[]",
-#     enableComplexDatatypeSupport = true,
 #     azureTenantId = "1234567890abcdef",
 #     socketTimeout = 10000
-# )     
+# )

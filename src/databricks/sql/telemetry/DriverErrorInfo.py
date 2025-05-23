@@ -10,7 +10,8 @@ class DriverErrorInfo:
     def to_json(self):
         return json.dumps(asdict(self))
 
-# Required for ErrorLogs  
+
+# Required for ErrorLogs
 # DriverErrorInfo errorInfo = new DriverErrorInfo(
 #     errorName="CONNECTION_ERROR",
 #     stackTrace="Connection failure while using the Databricks SQL Python connector. Failed to connect to server: https://my-workspace.cloud.databricks.com\n" +

@@ -9,7 +9,8 @@ class FrontendLogContext:
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
+
 # used in TelemetryFrontendLog
 # FrontendLogContext frontendLogContext = new FrontendLogContext(
 #     clientContext = new TelemetryClientContext(
