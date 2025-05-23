@@ -241,6 +241,7 @@ class Connection:
             _use_arrow_native_complex_types,
             **kwargs,
         )
+        self.session.open()
 
         logger.info(
             "Successfully opened connection with session "
@@ -329,9 +330,7 @@ class Connection:
     @property
     def open(self) -> bool:
         """Return whether the connection is open by checking if the session is open."""
-        # NOTE: we have to check for the existence of session in case the __del__ is called
-        # before the session is instantiated
-        return hasattr(self, "session") and self.session.open
+        return self.session.is_open
 
     def cursor(
         self,
