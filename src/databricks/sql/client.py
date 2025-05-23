@@ -343,7 +343,9 @@ class Connection:
     @property
     def open(self) -> bool:
         """Return whether the connection is open by checking if the session is open."""
-        return self.session.is_open
+        # NOTE: we have to check for the existence of session in case the __del__ is called
+        # before the session is instantiated
+        return hasattr(self, "session") and self.session.open
 
     def cursor(
         self,
