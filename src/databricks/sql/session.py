@@ -31,7 +31,7 @@ class Session:
 
         This class handles all session-related behavior and communication with the backend.
         """
-        self.open = False
+        self.is_open = False
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
 
@@ -151,4 +151,4 @@ class Session:
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
-        self.open = False
+        self.is_open = False
