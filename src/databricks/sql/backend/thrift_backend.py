@@ -138,6 +138,13 @@ class ThriftDatabricksClient(DatabricksClient):
         # max_download_threads
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
+        logger.debug(
+            "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)",
+            server_hostname,
+            port,
+            http_path,
+        )
+
         port = port or 443
         if kwargs.get("_connection_uri"):
             uri = kwargs.get("_connection_uri")
@@ -409,6 +416,8 @@ class ThriftDatabricksClient(DatabricksClient):
 
                 # TODO: don't use exception handling for GOS polling...
 
+                logger.error("ThriftBackend.attempt_request: HTTPError: %s", err)
+
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 if method.__name__ == gos_name:
                     delay_default = (
@@ -453,6 +462,7 @@ class ThriftDatabricksClient(DatabricksClient):
                     else:
                         logger.warning(log_string)
             except Exception as err:
+                logger.error("ThriftBackend.attempt_request: Exception: %s", err)
                 error = err
                 retry_delay = extract_retry_delay(attempt)
                 error_message = (
@@ -940,6 +950,12 @@ class ThriftDatabricksClient(DatabricksClient):
             "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
             operation,
             thrift_handle,
+        )
+
+        logger.debug(
+            "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
+            operation,
+            session_handle,
         )
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
