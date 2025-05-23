@@ -29,7 +29,7 @@ class Session:
 
         This class handles all session-related behavior and communication with the backend.
         """
-        self.open = False
+        self.is_open = False
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
 
@@ -77,13 +77,12 @@ class Session:
             _use_arrow_native_complex_types=_use_arrow_native_complex_types,
             **kwargs,
         )
-
         self._open_session_resp = self.thrift_backend.open_session(
             session_configuration, catalog, schema
         )
         self._session_handle = self._open_session_resp.sessionHandle
         self.protocol_version = self.get_protocol_version(self._open_session_resp)
-        self.open = True
+        self.is_open = True
         logger.info("Successfully opened session " + str(self.get_session_id_hex()))
 
     @staticmethod
@@ -122,7 +121,7 @@ class Session:
     def close(self) -> None:
         """Close the underlying session."""
         logger.info(f"Closing session {self.get_session_id_hex()}")
-        if not self.open:
+        if not self.is_open:
             logger.debug("Session appears to have been closed already")
             return
 
@@ -143,4 +142,4 @@ class Session:
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
-        self.open = False
+        self.is_open = False
