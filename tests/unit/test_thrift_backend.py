@@ -17,7 +17,7 @@ from databricks.sql.types import SSLOptions
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
-from databricks.sql.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 
 
 def retry_policy_factory():

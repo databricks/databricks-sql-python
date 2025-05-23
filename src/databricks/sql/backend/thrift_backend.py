@@ -41,7 +41,7 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.db_client_interface import DatabricksClient
+from databricks.sql.backend.databricks_client import DatabricksClient
 
 logger = logging.getLogger(__name__)
 
@@ -221,11 +221,11 @@ class ThriftDatabricksClient(DatabricksClient):
     @property
     def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
         return self._staging_allowed_local_path
-    
+
     @property
     def ssl_options(self) -> SSLOptions:
         return self._ssl_options
-        
+
     @property
     def max_download_threads(self) -> int:
         return self._max_download_threads
@@ -449,8 +449,10 @@ class ThriftDatabricksClient(DatabricksClient):
             except Exception as err:
                 error = err
                 retry_delay = extract_retry_delay(attempt)
-                error_message = ThriftDatabricksClient._extract_error_message_from_headers(
-                    getattr(self._transport, "headers", {})
+                error_message = (
+                    ThriftDatabricksClient._extract_error_message_from_headers(
+                        getattr(self._transport, "headers", {})
+                    )
                 )
             finally:
                 # Calling `close()` here releases the active HTTP connection back to the pool
@@ -710,7 +712,8 @@ class ThriftDatabricksClient(DatabricksClient):
     @staticmethod
     def _hive_schema_to_description(t_table_schema):
         return [
-            ThriftDatabricksClient._col_to_description(col) for col in t_table_schema.columns
+            ThriftDatabricksClient._col_to_description(col)
+            for col in t_table_schema.columns
         ]
 
     def _results_message_to_execute_response(self, resp, operation_state):

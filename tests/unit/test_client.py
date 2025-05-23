@@ -15,7 +15,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     THandleIdentifier,
     TOperationType,
 )
-from databricks.sql.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 
 import databricks.sql
 import databricks.sql.client as client

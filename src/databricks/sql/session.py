@@ -7,8 +7,8 @@ from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
-from databricks.sql.thrift_backend import ThriftDatabricksClient
-from databricks.sql.db_client_interface import DatabricksClient
+from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.databricks_client import DatabricksClient
 
 logger = logging.getLogger(__name__)
 
