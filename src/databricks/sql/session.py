@@ -134,7 +134,7 @@ class Session:
     def close(self) -> None:
         """Close the underlying session."""
         logger.info(f"Closing session {self.get_id_hex()}")
-        if not self.open:
+        if not self.is_open:
             logger.debug("Session appears to have been closed already")
             return
 
