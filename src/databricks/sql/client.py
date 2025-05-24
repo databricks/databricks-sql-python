@@ -306,11 +306,11 @@ class Connection:
 
     def get_session_id(self):
         """Get the session ID from the Session object"""
-        return self.session.get_session_id()
+        return self.session.get_id()
 
     def get_session_id_hex(self):
         """Get the session ID in hex format from the Session object"""
-        return self.session.get_session_id_hex()
+        return self.session.get_id_hex()
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
@@ -776,7 +776,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection.session._session_handle,
+            session_handle=self.connection.session.get_handle(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -839,7 +839,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
         self.thrift_backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection.session._session_handle,
+            session_handle=self.connection.session.get_handle(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -935,7 +935,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.get_catalogs(
-            session_handle=self.connection.session._session_handle,
+            session_handle=self.connection.session.get_handle(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -961,7 +961,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.get_schemas(
-            session_handle=self.connection.session._session_handle,
+            session_handle=self.connection.session.get_handle(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -994,7 +994,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         execute_response = self.thrift_backend.get_tables(
-            session_handle=self.connection.session._session_handle,
+            session_handle=self.connection.session.get_handle(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1029,7 +1029,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         execute_response = self.thrift_backend.get_columns(
-            session_handle=self.connection.session._session_handle,
+            session_handle=self.connection.session.get_handle(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,

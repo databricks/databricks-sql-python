@@ -82,17 +82,17 @@ class Session:
             **kwargs,
         )
 
-        self._session_handle = None
+        self._handle = None
         self.protocol_version = None
 
     def open(self) -> None:
         self._open_session_resp = self.thrift_backend.open_session(
             self.session_configuration, self.catalog, self.schema
         )
-        self._session_handle = self._open_session_resp.sessionHandle
+        self._handle = self._open_session_resp.sessionHandle
         self.protocol_version = self.get_protocol_version(self._open_session_resp)
         self.is_open = True
-        logger.info("Successfully opened session " + str(self.get_session_id_hex()))
+        logger.info("Successfully opened session " + str(self.get_id_hex()))
 
     @staticmethod
     def get_protocol_version(openSessionResp):
@@ -118,30 +118,30 @@ class Session:
         else:
             return False
 
-    def get_session_handle(self):
-        return self._session_handle
+    def get_handle(self):
+        return self._handle
 
-    def get_session_id(self):
-        session_handle = self.get_session_handle()
-        if session_handle is None:
+    def get_id(self):
+        handle = self.get_handle()
+        if handle is None:
             return None
-        return self.thrift_backend.handle_to_id(session_handle)
+        return self.thrift_backend.handle_to_id(handle)
 
-    def get_session_id_hex(self):
-        session_handle = self.get_session_handle()
-        if session_handle is None:
+    def get_id_hex(self):
+        handle = self.get_handle()
+        if handle is None:
             return None
-        return self.thrift_backend.handle_to_hex_id(session_handle)
+        return self.thrift_backend.handle_to_hex_id(handle)
 
     def close(self) -> None:
         """Close the underlying session."""
-        logger.info(f"Closing session {self.get_session_id_hex()}")
+        logger.info(f"Closing session {self.get_id_hex()}")
         if not self.is_open:
             logger.debug("Session appears to have been closed already")
             return
 
         try:
-            self.thrift_backend.close_session(self.get_session_handle())
+            self.thrift_backend.close_session(self.get_handle())
         except RequestError as e:
             if isinstance(e.args[1], SessionAlreadyClosedError):
                 logger.info("Session was closed by a prior request")
