@@ -126,8 +126,6 @@ class ThriftResultSet(ResultSet):
             self._fill_results_buffer()
 
     def _fill_results_buffer(self):
-        """Fill the results buffer using the ThriftDatabricksClient directly."""
-        # Use the thrift_client (backend) directly to fetch results
         results, has_more_rows = self.backend.fetch_results(
             op_handle=self.command_id,
             max_rows=self.arraysize,
@@ -302,7 +300,6 @@ class ThriftResultSet(ResultSet):
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
-
         if isinstance(self.results, ColumnQueue):
             res = self._convert_columnar_table(self.fetchmany_columnar(1))
         else:
