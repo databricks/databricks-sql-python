@@ -18,6 +18,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.result_set import ResultSet, ThriftResultSet
 
 
 def retry_policy_factory():
@@ -1146,7 +1147,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        thrift_backend.execute_command("foo", Mock(), 100, 200, Mock(), cursor_mock)
+        result = thrift_backend.execute_command("foo", Mock(), 100, 200, Mock(), cursor_mock)
+        # Verify the result is a ResultSet
+        self.assertIsInstance(result, ResultSet)
+
         # Check call to client
         req = tcli_service_instance.ExecuteStatement.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
@@ -1175,7 +1179,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        thrift_backend.get_catalogs(Mock(), 100, 200, cursor_mock)
+        result = thrift_backend.get_catalogs(Mock(), 100, 200, cursor_mock)
+        # Verify the result is a ResultSet
+        self.assertIsInstance(result, ResultSet)
+
         # Check call to client
         req = tcli_service_instance.GetCatalogs.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
@@ -1203,7 +1210,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        thrift_backend.get_schemas(
+        result = thrift_backend.get_schemas(
             Mock(),
             100,
             200,
@@ -1211,6 +1218,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
             catalog_name="catalog_pattern",
             schema_name="schema_pattern",
         )
+        # Verify the result is a ResultSet
+        self.assertIsInstance(result, ResultSet)
+
         # Check call to client
         req = tcli_service_instance.GetSchemas.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
@@ -1240,7 +1250,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        thrift_backend.get_tables(
+        result = thrift_backend.get_tables(
             Mock(),
             100,
             200,
@@ -1250,6 +1260,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
             table_name="table_pattern",
             table_types=["type1", "type2"],
         )
+        # Verify the result is a ResultSet
+        self.assertIsInstance(result, ResultSet)
+
         # Check call to client
         req = tcli_service_instance.GetTables.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
@@ -1281,7 +1294,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        thrift_backend.get_columns(
+        result = thrift_backend.get_columns(
             Mock(),
             100,
             200,
@@ -1291,6 +1304,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
             table_name="table_pattern",
             column_name="column_pattern",
         )
+        # Verify the result is a ResultSet
+        self.assertIsInstance(result, ResultSet)
+
         # Check call to client
         req = tcli_service_instance.GetColumns.call_args[0][0]
         get_direct_results = ttypes.TSparkGetDirectResults(maxRows=100, maxBytes=200)
