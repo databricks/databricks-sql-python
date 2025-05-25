@@ -5,6 +5,11 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.utils import ExecuteResponse
 from databricks.sql.types import SSLOptions
 
+# Forward reference for type hints
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from databricks.sql.result_set import ResultSet
+
 
 class DatabricksClient(ABC):
     # == Connection and Session Management ==
@@ -35,7 +40,7 @@ class DatabricksClient(ABC):
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> Any:
+    ) -> "ResultSet":  # Changed return type to ResultSet
         pass
 
     @abstractmethod

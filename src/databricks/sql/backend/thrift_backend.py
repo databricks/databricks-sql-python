@@ -42,6 +42,7 @@ from databricks.sql.utils import (
 )
 from databricks.sql.types import SSLOptions
 from databricks.sql.backend.databricks_client import DatabricksClient
+from databricks.sql.result_set import ThriftResultSet
 
 logger = logging.getLogger(__name__)
 
@@ -833,7 +834,7 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
         )
 
-        return ExecuteResponse(
+        execute_response = ExecuteResponse(
             arrow_queue=queue,
             status=resp.status,
             has_been_closed_server_side=False,
@@ -843,6 +844,15 @@ class ThriftDatabricksClient(DatabricksClient):
             command_handle=op_handle,
             description=description,
             arrow_schema_bytes=schema_bytes,
+        )
+        
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=cursor.buffer_size_bytes,
+            arraysize=cursor.arraysize,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -938,8 +948,18 @@ class ThriftDatabricksClient(DatabricksClient):
 
         if async_op:
             self._handle_execute_response_async(resp, cursor)
+            return None
         else:
-            return self._handle_execute_response(resp, cursor)
+            execute_response = self._handle_execute_response(resp, cursor)
+            
+            return ThriftResultSet(
+                connection=cursor.connection,
+                execute_response=execute_response,
+                thrift_client=self,
+                buffer_size_bytes=max_bytes,
+                arraysize=max_rows,
+                use_cloud_fetch=use_cloud_fetch
+            )
 
     def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
         assert session_handle is not None
@@ -951,7 +971,17 @@ class ThriftDatabricksClient(DatabricksClient):
             ),
         )
         resp = self.make_request(self._client.GetCatalogs, req)
-        return self._handle_execute_response(resp, cursor)
+        
+        execute_response = self._handle_execute_response(resp, cursor)
+        
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch
+        )
 
     def get_schemas(
         self,
@@ -973,7 +1003,17 @@ class ThriftDatabricksClient(DatabricksClient):
             schemaName=schema_name,
         )
         resp = self.make_request(self._client.GetSchemas, req)
-        return self._handle_execute_response(resp, cursor)
+        
+        execute_response = self._handle_execute_response(resp, cursor)
+        
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch
+        )
 
     def get_tables(
         self,
@@ -999,7 +1039,17 @@ class ThriftDatabricksClient(DatabricksClient):
             tableTypes=table_types,
         )
         resp = self.make_request(self._client.GetTables, req)
-        return self._handle_execute_response(resp, cursor)
+        
+        execute_response = self._handle_execute_response(resp, cursor)
+        
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch
+        )
 
     def get_columns(
         self,
@@ -1025,7 +1075,17 @@ class ThriftDatabricksClient(DatabricksClient):
             columnName=column_name,
         )
         resp = self.make_request(self._client.GetColumns, req)
-        return self._handle_execute_response(resp, cursor)
+        
+        execute_response = self._handle_execute_response(resp, cursor)
+        
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch
+        )
 
     def _handle_execute_response(self, resp, cursor):
         cursor.active_op_handle = resp.operationHandle
