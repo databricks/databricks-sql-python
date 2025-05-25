@@ -127,7 +127,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
         ]
 
         t_table_schema = ttypes.TTableSchema(columns)
-        arrow_schema = ThriftDatabricksClient._hive_schema_to_arrow_schema(t_table_schema)
+        arrow_schema = ThriftDatabricksClient._hive_schema_to_arrow_schema(
+            t_table_schema
+        )
 
         self.assertEqual(arrow_schema.field(0).name, "column 1")
         self.assertEqual(arrow_schema.field(1).name, "column 2")
@@ -1147,7 +1149,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
-        result = thrift_backend.execute_command("foo", Mock(), 100, 200, Mock(), cursor_mock)
+        result = thrift_backend.execute_command(
+            "foo", Mock(), 100, 200, Mock(), cursor_mock
+        )
         # Verify the result is a ResultSet
         self.assertIsInstance(result, ResultSet)
 
@@ -1419,8 +1423,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(OperationalError):
             thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
-    @patch("databricks.sql.backend.thrift_backend.convert_arrow_based_set_to_arrow_table")
-    @patch("databricks.sql.backend.thrift_backend.convert_column_based_set_to_arrow_table")
+    @patch(
+        "databricks.sql.backend.thrift_backend.convert_arrow_based_set_to_arrow_table"
+    )
+    @patch(
+        "databricks.sql.backend.thrift_backend.convert_column_based_set_to_arrow_table"
+    )
     def test_create_arrow_table_calls_correct_conversion_method(
         self, convert_col_mock, convert_arrow_mock
     ):
@@ -1643,7 +1651,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         "databricks.sql.thrift_api.TCLIService.TCLIService.Client.GetOperationStatus"
     )
     @patch(
-        "databricks.sql.backend.thrift_backend._retry_policy", new_callable=retry_policy_factory
+        "databricks.sql.backend.thrift_backend._retry_policy",
+        new_callable=retry_policy_factory,
     )
     def test_make_request_will_retry_GetOperationStatus(
         self, mock_retry_policy, mock_GetOperationStatus, t_transport_class
@@ -1718,7 +1727,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         "databricks.sql.thrift_api.TCLIService.TCLIService.Client.GetOperationStatus"
     )
     @patch(
-        "databricks.sql.backend.thrift_backend._retry_policy", new_callable=retry_policy_factory
+        "databricks.sql.backend.thrift_backend._retry_policy",
+        new_callable=retry_policy_factory,
     )
     def test_make_request_will_retry_GetOperationStatus_for_http_error(
         self, mock_retry_policy, mock_gos
@@ -1795,7 +1805,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch(
-        "databricks.sql.backend.thrift_backend._retry_policy", new_callable=retry_policy_factory
+        "databricks.sql.backend.thrift_backend._retry_policy",
+        new_callable=retry_policy_factory,
     )
     def test_make_request_will_retry_stop_after_attempts_count_if_retryable(
         self, mock_retry_policy, t_transport_class
@@ -1975,7 +1986,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_retry_args_bounding(self, mock_http_client):
         retry_delay_test_args_and_expected_values = {}
-        for k, (_, _, min, max) in databricks.sql.backend.thrift_backend._retry_policy.items():
+        for k, (
+            _,
+            _,
+            min,
+            max,
+        ) in databricks.sql.backend.thrift_backend._retry_policy.items():
             retry_delay_test_args_and_expected_values[k] = (
                 (min - 1, min),
                 (max + 1, max),
@@ -2171,7 +2187,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
-    @patch("databricks.sql.backend.thrift_backend.ThriftDatabricksClient._handle_execute_response")
+    @patch(
+        "databricks.sql.backend.thrift_backend.ThriftDatabricksClient._handle_execute_response"
+    )
     def test_execute_command_sets_complex_type_fields_correctly(
         self, mock_handle_execute_response, tcli_service_class
     ):
