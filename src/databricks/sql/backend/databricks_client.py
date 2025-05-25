@@ -7,6 +7,7 @@ from databricks.sql.types import SSLOptions
 
 # Forward reference for type hints
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from databricks.sql.result_set import ResultSet
 

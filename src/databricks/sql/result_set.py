@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 class ResultSet(ABC):
     """
     Abstract base class for result sets returned by different backend implementations.
-    
+
     This class defines the interface that all concrete result set implementations must follow.
     """
-    
+
     def __init__(self, connection, backend, arraysize: int, buffer_size_bytes: int):
         """Initialize the base ResultSet with common properties."""
         self.connection = connection
@@ -33,7 +33,7 @@ class ResultSet(ABC):
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
         self.description = None
-    
+
     def __iter__(self):
         while True:
             row = self.fetchone()
@@ -41,42 +41,42 @@ class ResultSet(ABC):
                 yield row
             else:
                 break
-    
+
     @property
     def rownumber(self):
         return self._next_row_index
-    
+
     # Define abstract methods that concrete implementations must implement
     @abstractmethod
     def _fill_results_buffer(self):
         """Fill the results buffer from the backend."""
         pass
-    
+
     @abstractmethod
     def fetchone(self) -> Optional[Row]:
         """Fetch the next row of a query result set."""
         pass
-    
+
     @abstractmethod
     def fetchmany(self, size: int) -> List[Row]:
         """Fetch the next set of rows of a query result."""
         pass
-    
+
     @abstractmethod
     def fetchall(self) -> List[Row]:
         """Fetch all remaining rows of a query result."""
         pass
-    
+
     @abstractmethod
     def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
         pass
-    
+
     @abstractmethod
     def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
         pass
-    
+
     @abstractmethod
     def close(self) -> None:
         """Close the result set and release any resources."""
@@ -85,7 +85,7 @@ class ResultSet(ABC):
 
 class ThriftResultSet(ResultSet):
     """ResultSet implementation for the Thrift backend."""
-    
+
     def __init__(
         self,
         connection,
@@ -97,7 +97,7 @@ class ThriftResultSet(ResultSet):
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
-        
+
         Args:
             connection: The parent connection
             execute_response: Response from the execute command
@@ -107,7 +107,7 @@ class ThriftResultSet(ResultSet):
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
         """
         super().__init__(connection, thrift_client, arraysize, buffer_size_bytes)
-        
+
         # Initialize ThriftResultSet-specific attributes
         self.command_id = execute_response.command_handle
         self.op_state = execute_response.status
@@ -124,7 +124,7 @@ class ThriftResultSet(ResultSet):
             self.results = execute_response.arrow_queue
         else:
             self._fill_results_buffer()
-    
+
     def _fill_results_buffer(self):
         """Fill the results buffer using the ThriftDatabricksClient directly."""
         # Use the thrift_client (backend) directly to fetch results
@@ -140,7 +140,7 @@ class ThriftResultSet(ResultSet):
         )
         self.results = results
         self.has_more_rows = has_more_rows
-    
+
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
