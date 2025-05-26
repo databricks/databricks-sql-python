@@ -4,6 +4,11 @@ on:
     paths-ignore:
       - "**.MD"
       - "**.md"
+  pull_request:
+    branches:
+      - main
+      - sea-migration
+      - telemetry
 
 jobs:
   run-e2e-tests:
