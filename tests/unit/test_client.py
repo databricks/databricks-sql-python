@@ -612,9 +612,9 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_resultset_close_handles_cursor_already_closed_error(self):
         """Test that ResultSet.close() handles CursorAlreadyClosedError properly."""
-        result_set = client.ResultSet.__new__(client.ResultSet)
-        result_set.thrift_backend = Mock()
-        result_set.thrift_backend.CLOSED_OP_STATE = 'CLOSED'
+        result_set = client.ThriftResultSet.__new__(client.ThriftResultSet)
+        result_set.backend = Mock()
+        result_set.backend.CLOSED_OP_STATE = 'CLOSED'
         result_set.connection = Mock()
         result_set.connection.open = True
         result_set.op_state = 'RUNNING'
@@ -625,29 +625,29 @@ class ClientTestSuite(unittest.TestCase):
             def __init__(self):
                 self.args = ["Error message", CursorAlreadyClosedError()]
         
-        result_set.thrift_backend.close_command.side_effect = MockRequestError()
+        result_set.backend.close_command.side_effect = MockRequestError()
         
         original_close = client.ResultSet.close
         try:
             try:
                 if (
-                    result_set.op_state != result_set.thrift_backend.CLOSED_OP_STATE
+                    result_set.op_state != result_set.backend.CLOSED_OP_STATE
                     and not result_set.has_been_closed_server_side
                     and result_set.connection.open
                 ):
-                    result_set.thrift_backend.close_command(result_set.command_id)
+                    result_set.backend.close_command(result_set.command_id)
             except MockRequestError as e:
                 if isinstance(e.args[1], CursorAlreadyClosedError):
                     pass
             finally:
                 result_set.has_been_closed_server_side = True
-                result_set.op_state = result_set.thrift_backend.CLOSED_OP_STATE
+                result_set.op_state = result_set.backend.CLOSED_OP_STATE
                 
-            result_set.thrift_backend.close_command.assert_called_once_with(result_set.command_id)
+            result_set.backend.close_command.assert_called_once_with(result_set.command_id)
             
             assert result_set.has_been_closed_server_side is True
             
-            assert result_set.op_state == result_set.thrift_backend.CLOSED_OP_STATE
+            assert result_set.op_state == result_set.backend.CLOSED_OP_STATE
         finally:
             pass
 
