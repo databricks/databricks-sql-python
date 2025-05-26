@@ -204,6 +204,16 @@ class ClientTestSuite(unittest.TestCase):
             cursor.close = mock_close
         mock_close.assert_called_once_with()
 
+        cursor = client.Cursor(Mock(), Mock())
+        cursor.close = Mock() 
+
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                with cursor: 
+                    raise KeyboardInterrupt("Simulated interrupt")
+        finally:
+            cursor.close.assert_called()
+
     def dict_product(self, dicts):
         """
         Generate cartesion product of values in input dictionary, outputting a dictionary
