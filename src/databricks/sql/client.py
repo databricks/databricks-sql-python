@@ -431,9 +431,6 @@ class Connection:
 
         self.open = False
 
-        if hasattr(self, "telemetry_client"):
-            self.telemetry_client.close()
-
     def commit(self):
         """No-op because Databricks does not support transactions"""
         pass
