@@ -824,7 +824,7 @@ class TestPySQLCoreSuite(
             status_request = ttypes.TGetOperationStatusReq(
                 operationHandle=ars.command_id, getProgressUpdate=False
             )
-            op_status_at_server = ars.thrift_backend._client.GetOperationStatus(
+            op_status_at_server = ars.backend._client.GetOperationStatus(
                 status_request
             )
             assert (
@@ -836,7 +836,7 @@ class TestPySQLCoreSuite(
 
             # When connection closes, any cursor operations should no longer exist at the server
             with pytest.raises(SessionAlreadyClosedError) as cm:
-                op_status_at_server = ars.thrift_backend._client.GetOperationStatus(
+                op_status_at_server = ars.backend._client.GetOperationStatus(
                     status_request
                 )
 
@@ -916,7 +916,7 @@ class TestPySQLCoreSuite(
             assert op_handle is not None
 
             # Manually close the operation to simulate server-side closure
-            conn.thrift_backend.close_command(op_handle)
+            conn.session.backend.close_command(op_handle)
 
             cursor.close()
 
@@ -936,7 +936,7 @@ class TestPySQLCoreSuite(
 
                 result_set.close()
 
-                assert result_set.op_state == result_set.thrift_backend.CLOSED_OP_STATE
+                assert result_set.op_state == result_set.backend.CLOSED_OP_STATE
                 assert result_set.op_state != initial_op_state
 
                 # Closing the result set again should be a no-op and not raise exceptions
