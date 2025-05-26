@@ -14,8 +14,9 @@ class DriverVolumeOperation:
         return json.dumps(asdict(self))
 
 
-# Part of TelemetryEvent
-# DriverVolumeOperation volumeOperation = new DriverVolumeOperation(
-#     volumeOperationType = "LIST",
-#     volumePath = "/path/to/volume"
-# )
+""" Part of TelemetryEvent
+DriverVolumeOperation volumeOperation = new DriverVolumeOperation(
+    volumeOperationType = "LIST",
+    volumePath = "/path/to/volume"
+)
+"""

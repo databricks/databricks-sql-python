@@ -15,10 +15,10 @@ class SqlExecutionEvent:
         return json.dumps(asdict(self))
 
 
-# Part of TelemetryEvent
-# SqlExecutionEvent sqlExecutionEvent = new SqlExecutionEvent(
-#     statementType = "QUERY",
-#     isCompressed = true,
-#     executionResult = "INLINE_ARROW",
-#     retryCount = 0
-# )
+"""Part of TelemetryEvent
+SqlExecutionEvent sqlExecutionEvent = new SqlExecutionEvent(
+    statementType = "QUERY",
+    isCompressed = true,
+    executionResult = "INLINE_ARROW",
+    retryCount = 0
+)"""

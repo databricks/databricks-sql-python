@@ -23,19 +23,19 @@ class DriverConnectionParameters:
         return json.dumps(asdict(self))
 
 
-# Part of TelemetryEvent
-# DriverConnectionParameters connectionParams = new DriverConnectionParameters(
-#     httpPath = " /sql/1.0/endpoints/1234567890abcdef",
-#     driverMode = "THRIFT",
-#     hostDetails = new HostDetails(
-#         hostUrl = "https://my-workspace.cloud.databricks.com",
-#         port = 443
-#     ),
-#     authMech = "OAUTH",
-#     authFlow = "AZURE_MANAGED_IDENTITIES",
-#     authScope = "sql",
-#     discoveryUrl = "https://example-url",
-#     allowedVolumeIngestionPaths = "[]",
-#     azureTenantId = "1234567890abcdef",
-#     socketTimeout = 10000
-# )
+""" Part of TelemetryEvent
+DriverConnectionParameters connectionParams = new DriverConnectionParameters(
+    httpPath = " /sql/1.0/endpoints/1234567890abcdef",
+    driverMode = "THRIFT",
+    hostDetails = new HostDetails(
+        hostUrl = "https://my-workspace.cloud.databricks.com",
+        port = 443
+    ),
+    authMech = "OAUTH",
+    authFlow = "AZURE_MANAGED_IDENTITIES",
+    authScope = "sql",
+    discoveryUrl = "https://example-url",
+    allowedVolumeIngestionPaths = "[]",
+    azureTenantId = "1234567890abcdef",
+    socketTimeout = 10000
+)"""

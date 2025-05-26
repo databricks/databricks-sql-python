@@ -11,8 +11,9 @@ class HostDetails:
         return json.dumps(asdict(self))
 
 
-# Part of DriverConnectionParameters
-# HostDetails hostDetails = new HostDetails(
-#     hostUrl = "https://my-workspace.cloud.databricks.com",
-#     port = 443
-# )
+""" Part of DriverConnectionParameters
+HostDetails hostDetails = new HostDetails(
+    hostUrl = "https://my-workspace.cloud.databricks.com",
+    port = 443
+)
+"""
