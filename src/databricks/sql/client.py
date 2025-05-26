@@ -1138,7 +1138,7 @@ class Cursor:
         # Close active operation handle if it exists
         if self.active_op_handle:
             try:
-                self.thrift_backend.close_command(self.active_op_handle)
+                self.backend.close_command(self.active_op_handle)
             except RequestError as e:
                 if isinstance(e.args[1], CursorAlreadyClosedError):
                     logger.info("Operation was canceled by a prior request")
