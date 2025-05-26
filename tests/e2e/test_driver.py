@@ -824,7 +824,7 @@ class TestPySQLCoreSuite(
             status_request = ttypes.TGetOperationStatusReq(
                 operationHandle=ars.command_id, getProgressUpdate=False
             )
-            op_status_at_server = ars.thrift_backend._client.GetOperationStatus(
+            op_status_at_server = ars.backend._client.GetOperationStatus(
                 status_request
             )
             assert (
