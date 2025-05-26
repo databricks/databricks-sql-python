@@ -9,3 +9,10 @@ class TelemetryClientContext:
 
     def to_json(self):
         return json.dumps(asdict(self))
+
+
+# used in FrontendLogContext
+# TelemetryClientContext clientContext = new TelemetryClientContext(
+#     timestampMillis = 1716489600000,
+#     userAgent = "databricks-sql-python-test"
+# )

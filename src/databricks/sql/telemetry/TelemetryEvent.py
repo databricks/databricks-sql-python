@@ -19,7 +19,7 @@ class TelemetryEvent:
     vol_operation: DriverVolumeOperation
     sql_operation: SqlExecutionEvent
     error_info: DriverErrorInfo
-    latency: int
+    operation_latency_ms: int
 
     def to_json(self):
         return json.dumps(asdict(self))
