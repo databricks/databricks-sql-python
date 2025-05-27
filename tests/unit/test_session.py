@@ -146,11 +146,11 @@ class SessionTestSuite(unittest.TestCase):
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_configuration_passthrough(self, mock_client_class):
         mock_session_config = Mock()
-        
+
         # Create a mock SessionId that will be returned by open_session
         mock_session_id = SessionId(BackendType.THRIFT, b"\x22", b"\x33")
         mock_client_class.return_value.open_session.return_value = mock_session_id
-        
+
         databricks.sql.connect(
             session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
         )
@@ -171,11 +171,11 @@ class SessionTestSuite(unittest.TestCase):
         databricks.sql.connect(
             **self.DUMMY_CONNECTION_ARGS, catalog=mock_cat, schema=mock_schem
         )
-        
+
         # Check that open_session was called with the correct catalog and schema as positional arguments
         call_args = mock_client_class.return_value.open_session.call_args[0]
-        self.assertEqual(call_args[1], mock_cat)  # catalog is second positional argument
-        self.assertEqual(call_args[2], mock_schem)  # schema is third positional argument
+        self.assertEqual(call_args[1], mock_cat)
+        self.assertEqual(call_args[2], mock_schem)
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_finalizer_closes_abandoned_connection(self, mock_client_class):
