@@ -403,7 +403,7 @@ class Cursor:
         self.open = True
         self.executing_command_id = None
         self.backend = backend
-        self.active_op_handle = None
+        self.active_command_id = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
@@ -862,7 +862,7 @@ class Cursor:
         :return:
         """
         self._check_not_closed()
-        return self.backend.get_query_state(self.active_op_handle)
+        return self.backend.get_query_state(self.active_command_id)
 
     def is_query_pending(self):
         """
@@ -893,7 +893,7 @@ class Cursor:
         operation_state = self.get_query_state()
         if operation_state == ttypes.TOperationState.FINISHED_STATE:
             execute_response = self.backend.get_execution_result(
-                self.active_op_handle, self
+                self.active_command_id, self
             )
             self.active_result_set = ResultSet(
                 self.connection,
@@ -1124,8 +1124,8 @@ class Cursor:
         The command should be closed to free resources from the server.
         This method can be called from another thread.
         """
-        if self.active_op_handle is not None:
-            self.backend.cancel_command(self.active_op_handle)
+        if self.active_command_id is not None:
+            self.backend.cancel_command(self.active_command_id)
         else:
             logger.warning(
                 "Attempting to cancel a command, but there is no "
@@ -1137,9 +1137,9 @@ class Cursor:
         self.open = False
 
         # Close active operation handle if it exists
-        if self.active_op_handle:
+        if self.active_command_id:
             try:
-                self.backend.close_command(self.active_op_handle)
+                self.backend.close_command(self.active_command_id)
             except RequestError as e:
                 if isinstance(e.args[1], CursorAlreadyClosedError):
                     logger.info("Operation was canceled by a prior request")
@@ -1148,7 +1148,7 @@ class Cursor:
             except Exception as e:
                 logging.warning(f"Error closing operation handle: {e}")
             finally:
-                self.active_op_handle = None
+                self.active_command_id = None
 
         if self.active_result_set:
             self._close_and_clear_active_result_set()
@@ -1161,8 +1161,8 @@ class Cursor:
         This attribute will be ``None`` if the cursor has not had an operation
         invoked via the execute method yet, or if cursor was closed.
         """
-        if self.active_op_handle is not None:
-            return self.active_op_handle.to_hex_id()
+        if self.active_command_id is not None:
+            return self.active_command_id.to_hex_id()
         return None
 
     @property
