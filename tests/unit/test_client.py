@@ -216,11 +216,11 @@ class ClientTestSuite(unittest.TestCase):
         mock_close.assert_called_once_with()
 
         cursor = client.Cursor(Mock(), Mock())
-        cursor.close = Mock() 
+        cursor.close = Mock()
 
         try:
             with self.assertRaises(KeyboardInterrupt):
-                with cursor: 
+                with cursor:
                     raise KeyboardInterrupt("Simulated interrupt")
         finally:
             cursor.close.assert_called()
