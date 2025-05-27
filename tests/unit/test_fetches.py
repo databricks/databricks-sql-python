@@ -47,7 +47,7 @@ class FetchTests(unittest.TestCase):
                 has_more_rows=False,
                 description=Mock(),
                 lz4_compressed=Mock(),
-                command_handle=None,
+                command_id=None,
                 arrow_queue=arrow_queue,
                 arrow_schema_bytes=schema.serialize().to_pybytes(),
                 is_staging_operation=False,
@@ -96,7 +96,7 @@ class FetchTests(unittest.TestCase):
                     for col_id in range(num_cols)
                 ],
                 lz4_compressed=Mock(),
-                command_handle=None,
+                command_id=None,
                 arrow_queue=None,
                 arrow_schema_bytes=None,
                 is_staging_operation=False,

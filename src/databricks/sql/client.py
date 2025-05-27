@@ -1230,7 +1230,7 @@ class ResultSet:
         :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
         """
         self.connection = connection
-        self.command_id = execute_response.command_handle
+        self.command_id = execute_response.command_id
         self.op_state = execute_response.status
         self.has_been_closed_server_side = execute_response.has_been_closed_server_side
         self.has_more_rows = execute_response.has_more_rows

@@ -37,7 +37,7 @@ class FetchBenchmarkTests(unittest.TestCase):
                 has_been_closed_server_side=True,
                 has_more_rows=False,
                 description=Mock(),
-                command_handle=None,
+                command_id=None,
                 arrow_queue=arrow_queue,
                 arrow_schema=arrow_table.schema,
             ),

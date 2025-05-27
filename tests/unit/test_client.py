@@ -42,7 +42,7 @@ class ThriftDatabricksClientMockFactory:
             description=None,
             arrow_queue=None,
             is_staging_operation=False,
-            command_handle=b"\x22",
+            command_id=None,
             has_been_closed_server_side=True,
             has_more_rows=True,
             lz4_compressed=True,
@@ -155,7 +155,7 @@ class ClientTestSuite(unittest.TestCase):
         result_set.close()
 
         mock_thrift_backend.close_command.assert_called_once_with(
-            mock_results_response.command_handle
+            mock_results_response.command_id
         )
 
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
