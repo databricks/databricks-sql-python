@@ -5,14 +5,18 @@ from databricks.sql.telemetry.telemetry_event import TelemetryEvent
 
 @dataclass
 class TelemetryClientContext:
-    timestamp_millis: int
-    user_agent: str
+    """
+    Used in FrontendLogContext
 
-    """used in FrontendLogContext
+    Example:
     TelemetryClientContext clientContext = new TelemetryClientContext(
         timestampMillis = 1716489600000,
         userAgent = "databricks-sql-python-test"
-    )"""
+    )
+    """
+
+    timestamp_millis: int
+    user_agent: str
 
     def to_json(self):
         return json.dumps(asdict(self))
