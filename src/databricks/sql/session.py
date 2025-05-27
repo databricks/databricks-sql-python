@@ -86,7 +86,7 @@ class Session:
 
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.open = True
-        logger.info("Successfully opened session " + str(self.get_session_id_hex()))
+        logger.info("Successfully opened session " + str(self.get_id_hex()))
 
     @staticmethod
     def get_protocol_version(sessionId: SessionId):
