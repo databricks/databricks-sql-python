@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Tuple, List, Optional, Any, Union
 
 from databricks.sql.thrift_api.TCLIService import ttypes
+from databricks.sql.ids import SessionId, CommandId
 from databricks.sql.utils import ExecuteResponse
 from databricks.sql.types import SSLOptions
 
@@ -14,11 +15,11 @@ class DatabricksClient(ABC):
         session_configuration: Optional[Dict[str, Any]],
         catalog: Optional[str],
         schema: Optional[str],
-    ) -> ttypes.TOpenSessionResp:
+    ) -> SessionId:
         pass
 
     @abstractmethod
-    def close_session(self, session_handle: ttypes.TSessionHandle) -> None:
+    def close_session(self, session_id: SessionId) -> None:
         pass
 
     # == Query Execution, Command Management ==
@@ -26,7 +27,7 @@ class DatabricksClient(ABC):
     def execute_command(
         self,
         operation: str,
-        session_handle: ttypes.TSessionHandle,
+        session_id: SessionId,
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
@@ -39,25 +40,21 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def cancel_command(self, operation_handle: ttypes.TOperationHandle) -> None:
+    def cancel_command(self, command_id: CommandId) -> None:
         pass
 
     @abstractmethod
-    def close_command(
-        self, operation_handle: ttypes.TOperationHandle
-    ) -> ttypes.TStatus:
+    def close_command(self, command_id: CommandId) -> ttypes.TStatus:
         pass
 
     @abstractmethod
-    def get_query_state(
-        self, operation_handle: ttypes.TOperationHandle
-    ) -> ttypes.TOperationState:
+    def get_query_state(self, command_id: CommandId) -> ttypes.TOperationState:
         pass
 
     @abstractmethod
     def get_execution_result(
         self,
-        operation_handle: ttypes.TOperationHandle,
+        command_id: CommandId,
         cursor: Any,
     ) -> ExecuteResponse:
         pass
@@ -66,7 +63,7 @@ class DatabricksClient(ABC):
     @abstractmethod
     def get_catalogs(
         self,
-        session_handle: ttypes.TSessionHandle,
+        session_id: SessionId,
         max_rows: int,
         max_bytes: int,
         cursor: Any,
@@ -76,7 +73,7 @@ class DatabricksClient(ABC):
     @abstractmethod
     def get_schemas(
         self,
-        session_handle: ttypes.TSessionHandle,
+        session_id: SessionId,
         max_rows: int,
         max_bytes: int,
         cursor: Any,
@@ -88,7 +85,7 @@ class DatabricksClient(ABC):
     @abstractmethod
     def get_tables(
         self,
-        session_handle: ttypes.TSessionHandle,
+        session_id: SessionId,
         max_rows: int,
         max_bytes: int,
         cursor: Any,
@@ -102,7 +99,7 @@ class DatabricksClient(ABC):
     @abstractmethod
     def get_columns(
         self,
-        session_handle: ttypes.TSessionHandle,
+        session_id: SessionId,
         max_rows: int,
         max_bytes: int,
         cursor: Any,
@@ -115,11 +112,11 @@ class DatabricksClient(ABC):
 
     # == Utility Methods ==
     @abstractmethod
-    def handle_to_id(self, handle: ttypes.TSessionHandle) -> bytes:
+    def handle_to_id(self, session_id: SessionId) -> Any:
         pass
 
     @abstractmethod
-    def handle_to_hex_id(self, handle: ttypes.TSessionHandle) -> str:
+    def handle_to_hex_id(self, session_id: SessionId) -> str:
         pass
 
     # Properties related to specific backend features
