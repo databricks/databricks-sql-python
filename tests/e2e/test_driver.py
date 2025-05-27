@@ -822,7 +822,8 @@ class TestPySQLCoreSuite(
             # We must manually run this check because thrift_backend always forces `has_been_closed_server_side` to True
             # Cursor op state should be open before connection is closed
             status_request = ttypes.TGetOperationStatusReq(
-                operationHandle=ars.command_id, getProgressUpdate=False
+                operationHandle=ars.command_id.to_thrift_handle(),
+                getProgressUpdate=False,
             )
             op_status_at_server = ars.backend._client.GetOperationStatus(status_request)
             assert (
