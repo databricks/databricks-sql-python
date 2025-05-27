@@ -250,18 +250,6 @@ class Connection:
             + str(self.get_session_id_hex())
         )
 
-        # Create the session
-        self.session = Session(
-            server_hostname,
-            http_path,
-            http_headers,
-            session_configuration,
-            catalog,
-            schema,
-            _use_arrow_native_complex_types,
-            **kwargs
-        )
-
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )

@@ -949,7 +949,7 @@ class ThriftDatabricksClient(DatabricksClient):
         logger.debug(
             "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
             operation,
-            session_handle,
+            thrift_handle,
         )
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
