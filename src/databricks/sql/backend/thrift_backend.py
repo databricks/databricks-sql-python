@@ -8,6 +8,7 @@ import threading
 from typing import List, Union
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
+from databricks.sql.ids import SessionId, CommandId, BackendType, guid_to_hex_id
 
 try:
     import pyarrow
@@ -550,7 +551,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 )
             )
 
-    def open_session(self, session_configuration, catalog, schema):
+    def open_session(self, session_configuration, catalog, schema) -> SessionId:
         try:
             self._transport.open()
             session_configuration = {
@@ -578,13 +579,17 @@ class ThriftDatabricksClient(DatabricksClient):
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            return response
+            return SessionId.from_thrift_handle(response.sessionHandle)
         except:
             self._transport.close()
             raise
 
-    def close_session(self, session_handle) -> None:
-        req = ttypes.TCloseSessionReq(sessionHandle=session_handle)
+    def close_session(self, session_id: SessionId) -> None:
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
+
+        req = ttypes.TCloseSessionReq(sessionHandle=thrift_handle)
         try:
             self.make_request(self._client.CloseSession, req)
         finally:
@@ -599,7 +604,7 @@ class ThriftDatabricksClient(DatabricksClient):
                     get_operations_resp.displayMessage,
                     {
                         "operation-id": op_handle
-                        and self.guid_to_hex_id(op_handle.operationId.guid),
+                        and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
                 )
@@ -608,18 +613,18 @@ class ThriftDatabricksClient(DatabricksClient):
                     get_operations_resp.errorMessage,
                     {
                         "operation-id": op_handle
-                        and self.guid_to_hex_id(op_handle.operationId.guid),
+                        and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
                 "Command {} unexpectedly closed server side".format(
-                    op_handle and self.guid_to_hex_id(op_handle.operationId.guid)
+                    op_handle and guid_to_hex_id(op_handle.operationId.guid)
                 ),
                 {
                     "operation-id": op_handle
-                    and self.guid_to_hex_id(op_handle.operationId.guid)
+                    and guid_to_hex_id(op_handle.operationId.guid)
                 },
             )
 
@@ -784,6 +789,8 @@ class ThriftDatabricksClient(DatabricksClient):
             )
         else:
             arrow_queue_opt = None
+
+        command_id = CommandId.from_thrift_handle(resp.operationHandle)
         return ExecuteResponse(
             arrow_queue=arrow_queue_opt,
             status=operation_state,
@@ -791,21 +798,22 @@ class ThriftDatabricksClient(DatabricksClient):
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
             is_staging_operation=is_staging_operation,
-            command_handle=resp.operationHandle,
+            command_id=command_id,
             description=description,
             arrow_schema_bytes=schema_bytes,
         )
 
-    def get_execution_result(self, op_handle, cursor):
-
-        assert op_handle is not None
+    def get_execution_result(self, command_id: CommandId, cursor):
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
 
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
-                op_handle.operationId,
-                op_handle.operationType,
+                thrift_handle.operationId,
+                thrift_handle.operationType,
                 False,
-                op_handle.modifiedRowCount,
+                thrift_handle.modifiedRowCount,
             ),
             maxRows=cursor.arraysize,
             maxBytes=cursor.buffer_size_bytes,
@@ -851,7 +859,7 @@ class ThriftDatabricksClient(DatabricksClient):
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
             is_staging_operation=is_staging_operation,
-            command_handle=op_handle,
+            command_id=command_id,
             description=description,
             arrow_schema_bytes=schema_bytes,
         )
@@ -883,10 +891,14 @@ class ThriftDatabricksClient(DatabricksClient):
             self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
-    def get_query_state(self, op_handle) -> "TOperationState":
-        poll_resp = self._poll_for_status(op_handle)
+    def get_query_state(self, command_id: CommandId) -> "TOperationState":
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
+
+        poll_resp = self._poll_for_status(thrift_handle)
         operation_state = poll_resp.operationState
-        self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
+        self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
         return operation_state
 
     @staticmethod
@@ -911,23 +923,25 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def execute_command(
         self,
-        operation,
-        session_handle,
-        max_rows,
-        max_bytes,
-        lz4_compression,
-        cursor,
+        operation: str,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        lz4_compression: bool,
+        cursor: Any,
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
         enforce_embedded_schema_correctness=False,
     ):
-        assert session_handle is not None
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         logger.debug(
             "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
             operation,
-            session_handle,
+            thrift_handle,
         )
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
@@ -939,7 +953,7 @@ class ThriftDatabricksClient(DatabricksClient):
             intervalTypesAsArrow=False,
         )
         req = ttypes.TExecuteStatementReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             statement=operation,
             runAsync=True,
             # For async operation we don't want the direct results
@@ -977,11 +991,19 @@ class ThriftDatabricksClient(DatabricksClient):
                 use_cloud_fetch=use_cloud_fetch,
             )
 
-    def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
-        assert session_handle is not None
+    def get_catalogs(
+        self,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Any,
+    ):
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetCatalogsReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
@@ -1001,17 +1023,19 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def get_schemas(
         self,
-        session_handle,
-        max_rows,
-        max_bytes,
-        cursor,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Any,
         catalog_name=None,
         schema_name=None,
     ):
-        assert session_handle is not None
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetSchemasReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
@@ -1033,19 +1057,21 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def get_tables(
         self,
-        session_handle,
-        max_rows,
-        max_bytes,
-        cursor,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Any,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         table_types=None,
     ):
-        assert session_handle is not None
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetTablesReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
@@ -1069,19 +1095,21 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def get_columns(
         self,
-        session_handle,
-        max_rows,
-        max_bytes,
-        cursor,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Any,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         column_name=None,
     ):
-        assert session_handle is not None
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetColumnsReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
@@ -1112,7 +1140,12 @@ class ThriftDatabricksClient(DatabricksClient):
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        return self._results_message_to_execute_response(resp, final_operation_state)
+        execute_response = self._results_message_to_execute_response(
+            resp, final_operation_state
+        )
+        command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        execute_response = execute_response._replace(command_id=command_id)
+        return execute_response
 
     def _handle_execute_response_async(self, resp, cursor):
         cursor.active_op_handle = resp.operationHandle
@@ -1120,23 +1153,25 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def fetch_results(
         self,
-        op_handle,
-        max_rows,
-        max_bytes,
-        expected_row_start_offset,
-        lz4_compressed,
+        command_id: CommandId,
+        max_rows: int,
+        max_bytes: int,
+        expected_row_start_offset: int,
+        lz4_compressed: bool,
         arrow_schema_bytes,
         description,
         use_cloud_fetch=True,
     ):
-        assert op_handle is not None
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
 
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
-                op_handle.operationId,
-                op_handle.operationType,
+                thrift_handle.operationId,
+                thrift_handle.operationType,
                 False,
-                op_handle.modifiedRowCount,
+                thrift_handle.modifiedRowCount,
             ),
             maxRows=max_rows,
             maxBytes=max_bytes,
@@ -1165,46 +1200,33 @@ class ThriftDatabricksClient(DatabricksClient):
 
         return queue, resp.hasMoreRows
 
-    def close_command(self, op_handle):
-        logger.debug("ThriftBackend.close_command(op_handle=%s)", op_handle)
-        req = ttypes.TCloseOperationReq(operationHandle=op_handle)
+    def cancel_command(self, command_id: CommandId) -> None:
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
+
+        logger.debug("Cancelling command {}".format(command_id.guid))
+        req = ttypes.TCancelOperationReq(thrift_handle)
+        self.make_request(self._client.CancelOperation, req)
+
+    def close_command(self, command_id: CommandId):
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
+
+        logger.debug("ThriftBackend.close_command(command_id=%s)", command_id)
+        req = ttypes.TCloseOperationReq(operationHandle=thrift_handle)
         resp = self.make_request(self._client.CloseOperation, req)
         return resp.status
 
-    def cancel_command(self, active_op_handle):
-        logger.debug(
-            "Cancelling command {}".format(
-                self.guid_to_hex_id(active_op_handle.operationId.guid)
-            )
-        )
-        req = ttypes.TCancelOperationReq(active_op_handle)
-        self.make_request(self._client.CancelOperation, req)
+    def handle_to_id(self, session_id: SessionId) -> Any:
+        """Get the raw session ID from a SessionId"""
+        if session_id.backend_type != BackendType.THRIFT:
+            raise ValueError("Not a valid Thrift session ID")
+        return session_id.guid
 
-    @staticmethod
-    def handle_to_id(session_handle):
-        return session_handle.sessionId.guid
-
-    @staticmethod
-    def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
-        this_uuid = uuid.UUID(bytes=session_handle.sessionId.guid)
-        return str(this_uuid)
-
-    @staticmethod
-    def guid_to_hex_id(guid: bytes) -> str:
-        """Return a hexadecimal string instead of bytes
-
-        Example:
-            IN   b'\x01\xee\x1d)\xa4\x19\x1d\xb6\xa9\xc0\x8d\xf1\xfe\xbaB\xdd'
-            OUT  '01ee1d29-a419-1db6-a9c0-8df1feba42dd'
-
-        If conversion to hexadecimal fails, the original bytes are returned
-        """
-
-        this_uuid: Union[bytes, uuid.UUID]
-
-        try:
-            this_uuid = uuid.UUID(bytes=guid)
-        except Exception as e:
-            logger.debug(f"Unable to convert bytes to UUID: {bytes} -- {str(e)}")
-            this_uuid = guid
-        return str(this_uuid)
+    def handle_to_hex_id(self, session_id: SessionId) -> str:
+        """Get the hex representation of a session ID"""
+        if session_id.backend_type != BackendType.THRIFT:
+            raise ValueError("Not a valid Thrift session ID")
+        return guid_to_hex_id(session_id.guid)

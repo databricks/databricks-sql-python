@@ -47,6 +47,7 @@ from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
+from databricks.sql.ids import CommandId, BackendType
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -317,12 +318,12 @@ class Connection:
                 logger.debug("Couldn't close unclosed connection: {}".format(e.message))
 
     def get_session_id(self):
-        """Get the session ID from the Session object"""
-        return self.session.get_session_id()
+        """Get the raw session ID (backend-specific)"""
+        return self.session.get_id()
 
     def get_session_id_hex(self):
-        """Get the session ID in hex format from the Session object"""
-        return self.session.get_session_id_hex()
+        """Get the session ID in hex format"""
+        return self.session.get_id_hex()
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
@@ -791,7 +792,7 @@ class Cursor:
 
         self.active_result_set = self.backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection.session._session_handle,
+            session_id=self.connection.session.get_session_id(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -854,7 +855,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
         self.backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection.session._session_handle,
+            session_id=self.connection.session.get_session_id(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -1148,7 +1149,7 @@ class Cursor:
         invoked via the execute method yet, or if cursor was closed.
         """
         if self.active_op_handle is not None:
-            return str(UUID(bytes=self.active_op_handle.operationId.guid))
+            return self.active_op_handle.to_hex_id()
         return None
 
     @property
