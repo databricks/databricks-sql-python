@@ -98,9 +98,9 @@ class Session:
         Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
         precedence over the serverProtocolVersion defined in the OpenSessionResponse.
         """
-        if sessionId.backend_type != BackendType.THRIFT:
+        if session_id.backend_type != BackendType.THRIFT:
             return None
-        session_handle = sessionId.to_thrift_handle()
+        session_handle = session_id.to_thrift_handle()
         if (
             session_handle
             and hasattr(session_handle, "serverProtocolVersion")
