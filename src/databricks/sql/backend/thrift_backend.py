@@ -5,7 +5,7 @@ import math
 import time
 import uuid
 import threading
-from typing import List, Union
+from typing import List, Union, Any
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.ids import SessionId, CommandId, BackendType, guid_to_hex_id
