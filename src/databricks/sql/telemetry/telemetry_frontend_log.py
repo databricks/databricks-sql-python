@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass, asdict
 from databricks.sql.telemetry.telemetry_event import TelemetryEvent
 
+
 @dataclass
 class TelemetryClientContext:
     timestamp_millis: int
@@ -15,7 +16,7 @@ class TelemetryClientContext:
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
 
 @dataclass
 class FrontendLogContext:
@@ -23,7 +24,7 @@ class FrontendLogContext:
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
 
 @dataclass
 class FrontendLogEntry:

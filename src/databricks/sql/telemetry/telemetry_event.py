@@ -1,6 +1,13 @@
 import json
 from dataclasses import dataclass, asdict
-from databricks.sql.telemetry.enums import AuthMech, AuthFlow, DatabricksClientType, DriverVolumeOperationType, StatementType, ExecutionResultFormat
+from databricks.sql.telemetry.enums import (
+    AuthMech,
+    AuthFlow,
+    DatabricksClientType,
+    DriverVolumeOperationType,
+    StatementType,
+    ExecutionResultFormat,
+)
 
 
 @dataclass
@@ -51,7 +58,7 @@ class DriverConnectionParameters:
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
 
 @dataclass
 class DriverSystemConfiguration:
@@ -85,7 +92,7 @@ class DriverSystemConfiguration:
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
 
 @dataclass
 class DriverVolumeOperation:
@@ -101,7 +108,7 @@ class DriverVolumeOperation:
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
 
 @dataclass
 class DriverErrorInfo:
@@ -141,7 +148,7 @@ class SqlExecutionEvent:
 
     def to_json(self):
         return json.dumps(asdict(self))
-    
+
 
 @dataclass
 class TelemetryEvent:
