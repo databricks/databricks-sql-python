@@ -6,7 +6,7 @@ from databricks.sql.telemetry.telemetry_event import TelemetryEvent
 @dataclass
 class TelemetryClientContext:
     """
-    Used in FrontendLogContext
+    Used in FrontendLogContext.
 
     Example:
     TelemetryClientContext clientContext = new TelemetryClientContext(

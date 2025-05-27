@@ -13,7 +13,7 @@ from databricks.sql.telemetry.enums import (
 @dataclass
 class HostDetails:
     """
-    Part of DriverConnectionParameters
+    Part of DriverConnectionParameters.
 
     Example:
     HostDetails hostDetails = new HostDetails(
@@ -32,7 +32,7 @@ class HostDetails:
 @dataclass
 class DriverConnectionParameters:
     """
-    Part of TelemetryEvent
+    Part of TelemetryEvent.
 
     Example:
     DriverConnectionParameters connectionParams = new DriverConnectionParameters(
@@ -70,7 +70,7 @@ class DriverConnectionParameters:
 @dataclass
 class DriverSystemConfiguration:
     """
-    Part of TelemetryEvent
+    Part of TelemetryEvent.
 
     Example:
     DriverSystemConfiguration systemConfig = new DriverSystemConfiguration(
@@ -107,7 +107,7 @@ class DriverSystemConfiguration:
 @dataclass
 class DriverVolumeOperation:
     """
-    Part of TelemetryEvent
+    Part of TelemetryEvent.
 
     Example:
     DriverVolumeOperation volumeOperation = new DriverVolumeOperation(
@@ -126,7 +126,7 @@ class DriverVolumeOperation:
 @dataclass
 class DriverErrorInfo:
     """
-    Required for ErrorLogs
+    Required for ErrorLogs.
 
     Example:
     DriverErrorInfo errorInfo = new DriverErrorInfo(
@@ -151,7 +151,7 @@ class DriverErrorInfo:
 @dataclass
 class SqlExecutionEvent:
     """
-    Part of TelemetryEvent
+    Part of TelemetryEvent.
 
     Example:
     SqlExecutionEvent sqlExecutionEvent = new SqlExecutionEvent(
