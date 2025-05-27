@@ -579,6 +579,8 @@ class ThriftDatabricksClient(DatabricksClient):
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
+            if response.sessionHandle is None:
+                return None
             return SessionId.from_thrift_handle(response.sessionHandle)
         except:
             self._transport.close()
@@ -1132,7 +1134,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
 
     def _handle_execute_response(self, resp, cursor):
-        cursor.active_op_handle = resp.operationHandle
+        command_id = CommandId.from_thrift_handle(resp.operationHandle)
+
+        cursor.active_command_id = command_id
         self._check_direct_results_for_error(resp.directResults)
 
         final_operation_state = self._wait_until_command_done(
@@ -1143,12 +1147,12 @@ class ThriftDatabricksClient(DatabricksClient):
         execute_response = self._results_message_to_execute_response(
             resp, final_operation_state
         )
-        command_id = CommandId.from_thrift_handle(resp.operationHandle)
         execute_response = execute_response._replace(command_id=command_id)
         return execute_response
 
     def _handle_execute_response_async(self, resp, cursor):
-        cursor.active_op_handle = resp.operationHandle
+        command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        cursor.active_command_id = command_id
         self._check_direct_results_for_error(resp.directResults)
 
     def fetch_results(

@@ -67,6 +67,9 @@ class SessionId:
         Returns:
             A SessionId instance
         """
+        if session_handle is None or session_handle.sessionId is None:
+            return None
+
         guid_bytes = session_handle.sessionId.guid
         secret_bytes = session_handle.sessionId.secret
 
@@ -171,6 +174,9 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+        if operation_handle is None or operation_handle.operationId is None:
+            return None
+
         guid_bytes = operation_handle.operationId.guid
         secret_bytes = operation_handle.operationId.secret
 
