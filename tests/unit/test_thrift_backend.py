@@ -18,6 +18,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.ids import CommandId, SessionId, BackendType
 
 
 def retry_policy_factory():
@@ -126,7 +127,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
         ]
 
         t_table_schema = ttypes.TTableSchema(columns)
-        arrow_schema = ThriftDatabricksClient._hive_schema_to_arrow_schema(t_table_schema)
+        arrow_schema = ThriftDatabricksClient._hive_schema_to_arrow_schema(
+            t_table_schema
+        )
 
         self.assertEqual(arrow_schema.field(0).name, "column 1")
         self.assertEqual(arrow_schema.field(1).name, "column 2")
@@ -1064,7 +1067,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 thrift_backend._handle_execute_response(execute_resp, Mock())
                 _, has_more_rows_resp = thrift_backend.fetch_results(
-                    op_handle=Mock(),
+                    command_id=Mock(),
                     max_rows=1,
                     max_bytes=1,
                     expected_row_start_offset=0,
@@ -1117,7 +1120,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
         )
         arrow_queue, has_more_results = thrift_backend.fetch_results(
-            op_handle=Mock(),
+            command_id=Mock(),
             max_rows=1,
             max_bytes=1,
             expected_row_start_offset=0,
@@ -1331,7 +1334,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend.close_command(self.operation_handle)
+        command_id = CommandId.from_thrift_handle(self.operation_handle)
+        thrift_backend.close_command(command_id)
         self.assertEqual(
             tcli_service_instance.CloseOperation.call_args[0][0].operationHandle,
             self.operation_handle,
@@ -1348,7 +1352,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend.close_session(self.session_handle)
+        session_id = SessionId.from_thrift_handle(self.session_handle)
+        thrift_backend.close_session(session_id)
         self.assertEqual(
             tcli_service_instance.CloseSession.call_args[0][0].sessionHandle,
             self.session_handle,
@@ -1403,8 +1408,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         with self.assertRaises(OperationalError):
             thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
-    @patch("databricks.sql.backend.thrift_backend.convert_arrow_based_set_to_arrow_table")
-    @patch("databricks.sql.backend.thrift_backend.convert_column_based_set_to_arrow_table")
+    @patch(
+        "databricks.sql.backend.thrift_backend.convert_arrow_based_set_to_arrow_table"
+    )
+    @patch(
+        "databricks.sql.backend.thrift_backend.convert_column_based_set_to_arrow_table"
+    )
     def test_create_arrow_table_calls_correct_conversion_method(
         self, convert_col_mock, convert_arrow_mock
     ):
@@ -1602,12 +1611,13 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
 
         thrift_backend = self._make_fake_thrift_backend()
-        active_op_handle_mock = Mock()
-        thrift_backend.cancel_command(active_op_handle_mock)
+        # Create a proper CommandId from the existing operation_handle
+        command_id = CommandId.from_thrift_handle(self.operation_handle)
+        thrift_backend.cancel_command(command_id)
 
         self.assertEqual(
             tcli_service_instance.CancelOperation.call_args[0][0].operationHandle,
-            active_op_handle_mock,
+            self.operation_handle,
         )
 
     def test_handle_execute_response_sets_active_op_handle(self):
@@ -1615,19 +1625,27 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._check_direct_results_for_error = Mock()
         thrift_backend._wait_until_command_done = Mock()
         thrift_backend._results_message_to_execute_response = Mock()
+
+        # Create a mock response with a real operation handle
         mock_resp = Mock()
+        mock_resp.operationHandle = (
+            self.operation_handle
+        )  # Use the real operation handle from the test class
         mock_cursor = Mock()
 
         thrift_backend._handle_execute_response(mock_resp, mock_cursor)
 
-        self.assertEqual(mock_resp.operationHandle, mock_cursor.active_op_handle)
+        self.assertEqual(
+            mock_resp.operationHandle, mock_cursor.active_command_id.to_thrift_handle()
+        )
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch(
         "databricks.sql.thrift_api.TCLIService.TCLIService.Client.GetOperationStatus"
     )
     @patch(
-        "databricks.sql.backend.thrift_backend._retry_policy", new_callable=retry_policy_factory
+        "databricks.sql.backend.thrift_backend._retry_policy",
+        new_callable=retry_policy_factory,
     )
     def test_make_request_will_retry_GetOperationStatus(
         self, mock_retry_policy, mock_GetOperationStatus, t_transport_class
@@ -1702,7 +1720,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         "databricks.sql.thrift_api.TCLIService.TCLIService.Client.GetOperationStatus"
     )
     @patch(
-        "databricks.sql.backend.thrift_backend._retry_policy", new_callable=retry_policy_factory
+        "databricks.sql.backend.thrift_backend._retry_policy",
+        new_callable=retry_policy_factory,
     )
     def test_make_request_will_retry_GetOperationStatus_for_http_error(
         self, mock_retry_policy, mock_gos
@@ -1779,7 +1798,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch(
-        "databricks.sql.backend.thrift_backend._retry_policy", new_callable=retry_policy_factory
+        "databricks.sql.backend.thrift_backend._retry_policy",
+        new_callable=retry_policy_factory,
     )
     def test_make_request_will_retry_stop_after_attempts_count_if_retryable(
         self, mock_retry_policy, t_transport_class
@@ -1959,7 +1979,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("thrift.transport.THttpClient.THttpClient")
     def test_retry_args_bounding(self, mock_http_client):
         retry_delay_test_args_and_expected_values = {}
-        for k, (_, _, min, max) in databricks.sql.backend.thrift_backend._retry_policy.items():
+        for k, (
+            _,
+            _,
+            min,
+            max,
+        ) in databricks.sql.backend.thrift_backend._retry_policy.items():
             retry_delay_test_args_and_expected_values[k] = (
                 (min - 1, min),
                 (max + 1, max),
@@ -2155,7 +2180,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
-    @patch("databricks.sql.backend.thrift_backend.ThriftDatabricksClient._handle_execute_response")
+    @patch(
+        "databricks.sql.backend.thrift_backend.ThriftDatabricksClient._handle_execute_response"
+    )
     def test_execute_command_sets_complex_type_fields_correctly(
         self, mock_handle_execute_response, tcli_service_class
     ):
