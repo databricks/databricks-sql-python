@@ -84,16 +84,18 @@ class Session:
             **kwargs,
         )
 
+    def open(self):
         self._session_id = self.backend.open_session(
-            session_configuration=session_configuration, catalog=catalog, schema=schema
+            session_configuration=self.session_configuration,
+            catalog=self.catalog,
+            schema=self.schema,
         )
-
         self.protocol_version = self.get_protocol_version(self._session_id)
-        self.open = True
+        self.is_open = True
         logger.info("Successfully opened session " + str(self.get_id_hex()))
 
     @staticmethod
-    def get_protocol_version(sessionId: SessionId):
+    def get_protocol_version(session_id: SessionId):
         """
         Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
         precedence over the serverProtocolVersion defined in the OpenSessionResponse.
