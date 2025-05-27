@@ -824,9 +824,7 @@ class TestPySQLCoreSuite(
             status_request = ttypes.TGetOperationStatusReq(
                 operationHandle=ars.command_id, getProgressUpdate=False
             )
-            op_status_at_server = ars.backend._client.GetOperationStatus(
-                status_request
-            )
+            op_status_at_server = ars.backend._client.GetOperationStatus(status_request)
             assert (
                 op_status_at_server.operationState
                 != ttypes.TOperationState.CLOSED_STATE
@@ -856,7 +854,9 @@ class TestPySQLCoreSuite(
                     raise KeyboardInterrupt("Simulated interrupt")
         finally:
             if conn is not None:
-                assert not conn.open, "Connection should be closed after KeyboardInterrupt"
+                assert (
+                    not conn.open
+                ), "Connection should be closed after KeyboardInterrupt"
 
     def test_cursor_close_properly_closes_operation(self):
         """Test that Cursor.close() properly closes the active operation handle on the server."""
@@ -864,9 +864,9 @@ class TestPySQLCoreSuite(
             cursor = conn.cursor()
             try:
                 cursor.execute("SELECT 1 AS test")
-                assert cursor.active_op_handle is not None
+                assert cursor.active_command_id is not None
                 cursor.close()
-                assert cursor.active_op_handle is None
+                assert cursor.active_command_id is None
                 assert not cursor.open
             finally:
                 if cursor.open:
@@ -883,26 +883,28 @@ class TestPySQLCoreSuite(
                         raise KeyboardInterrupt("Simulated interrupt")
         finally:
             if cursor is not None:
-                assert not cursor.open, "Cursor should be closed after KeyboardInterrupt"
+                assert (
+                    not cursor.open
+                ), "Cursor should be closed after KeyboardInterrupt"
 
     def test_nested_cursor_context_managers(self):
         """Test that nested cursor context managers properly close operations on the server."""
         with self.connection() as conn:
             with conn.cursor() as cursor1:
                 cursor1.execute("SELECT 1 AS test1")
-                assert cursor1.active_op_handle is not None
+                assert cursor1.active_command_id is not None
 
                 with conn.cursor() as cursor2:
                     cursor2.execute("SELECT 2 AS test2")
-                    assert cursor2.active_op_handle is not None
+                    assert cursor2.active_command_id is not None
 
                 # After inner context manager exit, cursor2 should be not open
                 assert not cursor2.open
-                assert cursor2.active_op_handle is None
+                assert cursor2.active_command_id is None
 
             # After outer context manager exit, cursor1 should be not open
             assert not cursor1.open
-            assert cursor1.active_op_handle is None
+            assert cursor1.active_command_id is None
 
     def test_cursor_error_handling(self):
         """Test that cursor close handles errors properly to prevent orphaned operations."""
@@ -911,7 +913,7 @@ class TestPySQLCoreSuite(
 
             cursor.execute("SELECT 1 AS test")
 
-            op_handle = cursor.active_op_handle
+            op_handle = cursor.active_command_id
 
             assert op_handle is not None
 

@@ -66,7 +66,7 @@ class FetchTests(unittest.TestCase):
         batch_index = 0
 
         def fetch_results(
-            op_handle,
+            command_id,
             max_rows,
             max_bytes,
             expected_row_start_offset,

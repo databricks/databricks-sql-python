@@ -1067,7 +1067,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 thrift_backend._handle_execute_response(execute_resp, Mock())
                 _, has_more_rows_resp = thrift_backend.fetch_results(
-                    op_handle=Mock(),
+                    command_id=Mock(),
                     max_rows=1,
                     max_bytes=1,
                     expected_row_start_offset=0,
@@ -1120,7 +1120,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
         )
         arrow_queue, has_more_results = thrift_backend.fetch_results(
-            op_handle=Mock(),
+            command_id=Mock(),
             max_rows=1,
             max_bytes=1,
             expected_row_start_offset=0,
@@ -1351,7 +1351,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend.close_command(self.operation_handle)
+        command_id = CommandId.from_thrift_handle(self.operation_handle)
+        thrift_backend.close_command(command_id)
         self.assertEqual(
             tcli_service_instance.CloseOperation.call_args[0][0].operationHandle,
             self.operation_handle,
@@ -1368,7 +1369,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend.close_session(self.session_handle)
+        session_id = SessionId.from_thrift_handle(self.session_handle)
+        thrift_backend.close_session(session_id)
         self.assertEqual(
             tcli_service_instance.CloseSession.call_args[0][0].sessionHandle,
             self.session_handle,
@@ -1626,12 +1628,13 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
 
         thrift_backend = self._make_fake_thrift_backend()
-        active_op_handle_mock = Mock()
-        thrift_backend.cancel_command(active_op_handle_mock)
+        # Create a proper CommandId from the existing operation_handle
+        command_id = CommandId.from_thrift_handle(self.operation_handle)
+        thrift_backend.cancel_command(command_id)
 
         self.assertEqual(
             tcli_service_instance.CancelOperation.call_args[0][0].operationHandle,
-            active_op_handle_mock,
+            self.operation_handle,
         )
 
     def test_handle_execute_response_sets_active_op_handle(self):
@@ -1639,12 +1642,19 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._check_direct_results_for_error = Mock()
         thrift_backend._wait_until_command_done = Mock()
         thrift_backend._results_message_to_execute_response = Mock()
+
+        # Create a mock response with a real operation handle
         mock_resp = Mock()
+        mock_resp.operationHandle = (
+            self.operation_handle
+        )  # Use the real operation handle from the test class
         mock_cursor = Mock()
 
         thrift_backend._handle_execute_response(mock_resp, mock_cursor)
 
-        self.assertEqual(mock_resp.operationHandle, mock_cursor.active_op_handle)
+        self.assertEqual(
+            mock_resp.operationHandle, mock_cursor.active_command_id.to_thrift_handle()
+        )
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
     @patch(

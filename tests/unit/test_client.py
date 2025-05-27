@@ -81,7 +81,10 @@ class ClientTestSuite(unittest.TestCase):
         "access_token": "tok",
     }
 
-    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME, ThriftDatabricksClientMockFactory.new())
+    @patch(
+        "%s.session.ThriftDatabricksClient" % PACKAGE_NAME,
+        ThriftDatabricksClientMockFactory.new(),
+    )
     @patch("%s.client.ResultSet" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_result_set_class):
         # Test once with has_been_closed_server side, once without
@@ -294,10 +297,10 @@ class ClientTestSuite(unittest.TestCase):
     def test_cancel_command_calls_the_backend(self):
         mock_thrift_backend = Mock()
         cursor = client.Cursor(Mock(), mock_thrift_backend)
-        mock_op_handle = Mock()
-        cursor.active_op_handle = mock_op_handle
+        mock_command_id = Mock()
+        cursor.active_command_id = mock_command_id
         cursor.cancel()
-        mock_thrift_backend.cancel_command.assert_called_with(mock_op_handle)
+        mock_thrift_backend.cancel_command.assert_called_with(mock_command_id)
 
     @patch("databricks.sql.client.logger")
     def test_cancel_command_will_issue_warning_for_cancel_with_no_executing_command(
@@ -531,9 +534,13 @@ class ClientTestSuite(unittest.TestCase):
 
         self.assertIsNone(cursor.query_id)
 
-        cursor.active_op_handle = TOperationHandle(
-            operationId=THandleIdentifier(guid=UUID(operation_id).bytes, secret=0x00),
-            operationType=TOperationType.EXECUTE_STATEMENT,
+        cursor.active_command_id = CommandId.from_thrift_handle(
+            TOperationHandle(
+                operationId=THandleIdentifier(
+                    guid=UUID(operation_id).bytes, secret=0x00
+                ),
+                operationType=TOperationType.EXECUTE_STATEMENT,
+            )
         )
         self.assertEqual(cursor.query_id.upper(), operation_id.upper())
 
@@ -544,70 +551,72 @@ class ClientTestSuite(unittest.TestCase):
         """Test that Cursor.close() handles exceptions from close_command properly."""
         mock_backend = Mock()
         mock_connection = Mock()
-        mock_op_handle = Mock()
-        
+        mock_command_id = Mock()
+
         mock_backend.close_command.side_effect = Exception("Test error")
 
         cursor = client.Cursor(mock_connection, mock_backend)
-        cursor.active_op_handle = mock_op_handle
+        cursor.active_command_id = mock_command_id
 
         cursor.close()
 
-        mock_backend.close_command.assert_called_once_with(mock_op_handle)
-        
-        self.assertIsNone(cursor.active_op_handle)
-        
+        mock_backend.close_command.assert_called_once_with(mock_command_id)
+
+        self.assertIsNone(cursor.active_command_id)
+
         self.assertFalse(cursor.open)
 
     def test_cursor_context_manager_handles_exit_exception(self):
         """Test that cursor's context manager handles exceptions during __exit__."""
         mock_backend = Mock()
         mock_connection = Mock()
-        
+
         cursor = client.Cursor(mock_connection, mock_backend)
         original_close = cursor.close
         cursor.close = Mock(side_effect=Exception("Test error during close"))
-        
+
         try:
             with cursor:
                 raise ValueError("Test error inside context")
         except ValueError:
             pass
-        
+
         cursor.close.assert_called_once()
 
     def test_connection_close_handles_cursor_close_exception(self):
         """Test that _close handles exceptions from cursor.close() properly."""
         cursors_closed = []
-        
+
         def mock_close_with_exception():
             cursors_closed.append(1)
             raise Exception("Test error during close")
-        
+
         cursor1 = Mock()
         cursor1.close = mock_close_with_exception
-        
+
         def mock_close_normal():
             cursors_closed.append(2)
-        
+
         cursor2 = Mock()
         cursor2.close = mock_close_normal
-        
+
         mock_backend = Mock()
         mock_session_handle = Mock()
-        
+
         try:
             for cursor in [cursor1, cursor2]:
                 try:
                     cursor.close()
                 except Exception:
                     pass
-                    
+
             mock_backend.close_session(mock_session_handle)
         except Exception as e:
             self.fail(f"Connection close should handle exceptions: {e}")
-        
-        self.assertEqual(cursors_closed, [1, 2], "Both cursors should have close called")
+
+        self.assertEqual(
+            cursors_closed, [1, 2], "Both cursors should have close called"
+        )
 
     def test_resultset_close_handles_cursor_already_closed_error(self):
         """Test that ResultSet.close() handles CursorAlreadyClosedError properly."""
@@ -616,7 +625,7 @@ class ClientTestSuite(unittest.TestCase):
         result_set.backend.CLOSED_OP_STATE = 'CLOSED'
         result_set.connection = Mock()
         result_set.connection.open = True
-        result_set.op_state = 'RUNNING'
+        result_set.op_state = "RUNNING"
         result_set.has_been_closed_server_side = False
         result_set.command_id = Mock()
 
