@@ -155,9 +155,9 @@ class SessionTestSuite(unittest.TestCase):
             session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
         )
 
-        # Check that open_session was called with the correct session_configuration as first positional argument
-        call_args = mock_client_class.return_value.open_session.call_args[0]
-        self.assertEqual(call_args[0], mock_session_config)
+        # Check that open_session was called with the correct session_configuration as keyword argument
+        call_kwargs = mock_client_class.return_value.open_session.call_args[1]
+        self.assertEqual(call_kwargs["session_configuration"], mock_session_config)
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_initial_namespace_passthrough(self, mock_client_class):
@@ -172,10 +172,10 @@ class SessionTestSuite(unittest.TestCase):
             **self.DUMMY_CONNECTION_ARGS, catalog=mock_cat, schema=mock_schem
         )
 
-        # Check that open_session was called with the correct catalog and schema as positional arguments
-        call_args = mock_client_class.return_value.open_session.call_args[0]
-        self.assertEqual(call_args[1], mock_cat)
-        self.assertEqual(call_args[2], mock_schem)
+        # Check that open_session was called with the correct catalog and schema as keyword arguments
+        call_kwargs = mock_client_class.return_value.open_session.call_args[1]
+        self.assertEqual(call_kwargs["catalog"], mock_cat)
+        self.assertEqual(call_kwargs["schema"], mock_schem)
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_finalizer_closes_abandoned_connection(self, mock_client_class):
