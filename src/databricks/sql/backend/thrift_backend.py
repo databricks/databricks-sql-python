@@ -1164,11 +1164,6 @@ class ThriftDatabricksClient(DatabricksClient):
         cursor.active_command_id = command_id
         self._check_direct_results_for_error(resp.directResults)
 
-    def _handle_execute_response_async(self, resp, cursor):
-        command_id = CommandId.from_thrift_handle(resp.operationHandle)
-        cursor.active_command_id = command_id
-        self._check_direct_results_for_error(resp.directResults)
-
     def fetch_results(
         self,
         command_id: CommandId,
