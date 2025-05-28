@@ -96,20 +96,7 @@ class Session:
 
     @staticmethod
     def get_protocol_version(session_id: SessionId):
-        """
-        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
-        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
-        """
-        if session_id.backend_type != BackendType.THRIFT:
-            return None
-        session_handle = session_id.to_thrift_handle()
-        if (
-            session_handle
-            and hasattr(session_handle, "serverProtocolVersion")
-            and session_handle.serverProtocolVersion
-        ):
-            return session_handle.serverProtocolVersion
-        return None
+        return session_id.get_protocol_version()
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
