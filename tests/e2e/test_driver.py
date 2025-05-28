@@ -856,7 +856,9 @@ class TestPySQLCoreSuite(
                     raise KeyboardInterrupt("Simulated interrupt")
         finally:
             if conn is not None:
-                assert not conn.open, "Connection should be closed after KeyboardInterrupt"
+                assert (
+                    not conn.open
+                ), "Connection should be closed after KeyboardInterrupt"
 
     def test_cursor_close_properly_closes_operation(self):
         """Test that Cursor.close() properly closes the active operation handle on the server."""
@@ -883,7 +885,9 @@ class TestPySQLCoreSuite(
                         raise KeyboardInterrupt("Simulated interrupt")
         finally:
             if cursor is not None:
-                assert not cursor.open, "Cursor should be closed after KeyboardInterrupt"
+                assert (
+                    not cursor.open
+                ), "Cursor should be closed after KeyboardInterrupt"
 
     def test_nested_cursor_context_managers(self):
         """Test that nested cursor context managers properly close operations on the server."""
@@ -916,7 +920,7 @@ class TestPySQLCoreSuite(
             assert op_handle is not None
 
             # Manually close the operation to simulate server-side closure
-            conn.thrift_backend.close_command(op_handle)
+            conn.session.thrift_backend.close_command(op_handle)
 
             cursor.close()
 
