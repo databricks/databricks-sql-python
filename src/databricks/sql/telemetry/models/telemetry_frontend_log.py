@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, asdict
 from databricks.sql.telemetry.models.telemetry_event import TelemetryEvent
+from typing import Optional
 
 
 @dataclass
@@ -67,10 +68,10 @@ class TelemetryFrontendLog:
         entry (FrontendLogEntry): The actual telemetry event data
     """
 
-    workspace_id: int
     frontend_log_event_id: str
     context: FrontendLogContext
     entry: FrontendLogEntry
+    workspace_id: Optional[int] = None
 
     def to_json(self):
         return json.dumps(asdict(self))

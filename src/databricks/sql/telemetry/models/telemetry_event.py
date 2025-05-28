@@ -176,9 +176,9 @@ class TelemetryEvent:
     """
 
     session_id: str
-    sql_statement_id: Optional[str] = None
     system_configuration: DriverSystemConfiguration
     driver_connection_params: DriverConnectionParameters
+    sql_statement_id: Optional[str] = None
     auth_type: Optional[str] = None
     vol_operation: Optional[DriverVolumeOperation] = None
     sql_operation: Optional[SqlExecutionEvent] = None
