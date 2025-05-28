@@ -23,6 +23,7 @@ from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedErr
 from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.types import Row
 from databricks.sql.result_set import ResultSet, ThriftResultSet
+from databricks.sql.backend.types import CommandId
 
 from tests.unit.test_fetches import FetchTests
 from tests.unit.test_thrift_backend import ThriftBackendTestSuite
