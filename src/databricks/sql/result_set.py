@@ -46,6 +46,12 @@ class ResultSet(ABC):
     def rownumber(self):
         return self._next_row_index
 
+    @property
+    @abstractmethod
+    def is_staging_operation(self) -> bool:
+        """Whether this result set represents a staging operation."""
+        pass
+
     # Define abstract methods that concrete implementations must implement
     @abstractmethod
     def _fill_results_buffer(self):
@@ -117,7 +123,7 @@ class ThriftResultSet(ResultSet):
         self.description = execute_response.description
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
-        self.is_staging_operation = execute_response.is_staging_operation
+        self._is_staging_operation = execute_response.is_staging_operation
 
         # Initialize results queue
         if execute_response.arrow_queue:
@@ -350,3 +356,8 @@ class ThriftResultSet(ResultSet):
         finally:
             self.has_been_closed_server_side = True
             self.op_state = ttypes.TOperationState.CLOSED_STATE
+
+    @property
+    def is_staging_operation(self) -> bool:
+        """Whether this result set represents a staging operation."""
+        return self._is_staging_operation

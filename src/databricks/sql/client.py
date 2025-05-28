@@ -783,7 +783,7 @@ class Cursor:
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
 
-        if self.active_result_set.is_staging_operation:
+        if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
                 staging_allowed_local_path=self.backend.staging_allowed_local_path
             )
@@ -879,7 +879,7 @@ class Cursor:
                 self.active_op_handle, self
             )
 
-            if self.active_result_set.is_staging_operation:
+            if self.active_result_set and self.active_result_set.is_staging_operation:
                 self._handle_staging_operation(
                     staging_allowed_local_path=self.backend.staging_allowed_local_path
                 )

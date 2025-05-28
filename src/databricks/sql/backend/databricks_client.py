@@ -42,7 +42,7 @@ class DatabricksClient(ABC):
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> "ResultSet":
+    ) -> Union["ResultSet", None]:
         pass
 
     @abstractmethod
@@ -62,7 +62,7 @@ class DatabricksClient(ABC):
         self,
         command_id: CommandId,
         cursor: Any,
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         pass
 
     # == Metadata Operations ==
