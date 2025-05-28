@@ -1256,7 +1256,7 @@ class ResultSet:
 
     def _fill_results_buffer(self):
         if not isinstance(self.backend, ThriftDatabricksClient):
-            # This specific logic is for Thrift. SEA will have its own way.
+            # currently, we are assuming only the Thrift backend exists
             raise NotImplementedError(
                 "Fetching further result batches is currently only implemented for the Thrift backend."
             )
