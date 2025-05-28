@@ -42,7 +42,7 @@ class DatabricksClient(ABC):
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> "ResultSet":  # Changed return type to ResultSet
+    ) -> "ResultSet":
         pass
 
     @abstractmethod
@@ -73,7 +73,7 @@ class DatabricksClient(ABC):
         max_rows: int,
         max_bytes: int,
         cursor: Any,
-    ) -> Any:
+    ) -> "ResultSet":
         pass
 
     @abstractmethod
@@ -85,7 +85,7 @@ class DatabricksClient(ABC):
         cursor: Any,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> Any:
+    ) -> "ResultSet":
         pass
 
     @abstractmethod
@@ -99,7 +99,7 @@ class DatabricksClient(ABC):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> Any:
+    ) -> "ResultSet":
         pass
 
     @abstractmethod
@@ -113,7 +113,7 @@ class DatabricksClient(ABC):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> Any:
+    ) -> "ResultSet":
         pass
 
     # == Utility Methods ==
