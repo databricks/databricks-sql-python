@@ -14,7 +14,7 @@ class TestComplexTypes(PySQLPytestTestCase):
             # Create the table
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS pysql_test_complex_types_table (
+                CREATE TABLE IF NOT EXISTS pysql_e2e_test_complex_types_table (
                     array_col ARRAY<STRING>,
                     map_col MAP<STRING, INTEGER>,
                     struct_col STRUCT<field1: STRING, field2: INTEGER>
@@ -24,7 +24,7 @@ class TestComplexTypes(PySQLPytestTestCase):
             # Insert a record
             cursor.execute(
                 """
-                INSERT INTO pysql_test_complex_types_table
+                INSERT INTO pysql_e2e_test_complex_types_table
                 VALUES (
                     ARRAY('a', 'b', 'c'),
                     MAP('a', 1, 'b', 2, 'c', 3),
@@ -34,7 +34,7 @@ class TestComplexTypes(PySQLPytestTestCase):
             )
             yield
             # Clean up the table after the test
-            cursor.execute("DROP TABLE IF EXISTS pysql_test_complex_types_table")
+            cursor.execute("DROP TABLE IF EXISTS pysql_e2e_test_complex_types_table")
 
     @pytest.mark.parametrize(
         "field,expected_type",
@@ -45,7 +45,7 @@ class TestComplexTypes(PySQLPytestTestCase):
 
         with self.cursor() as cursor:
             result = cursor.execute(
-                "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
+                "SELECT * FROM pysql_e2e_test_complex_types_table LIMIT 1"
             ).fetchone()
 
         assert isinstance(result[field], expected_type)
@@ -57,7 +57,7 @@ class TestComplexTypes(PySQLPytestTestCase):
             extra_params={"_use_arrow_native_complex_types": False}
         ) as cursor:
             result = cursor.execute(
-                "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
+                "SELECT * FROM pysql_e2e_test_complex_types_table LIMIT 1"
             ).fetchone()
 
         assert isinstance(result[field], str)
