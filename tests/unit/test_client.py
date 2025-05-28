@@ -102,10 +102,8 @@ class ClientTestSuite(unittest.TestCase):
                 # Close the connection
                 connection.close()
 
-                self.assertTrue(
-                    mock_result_set_class.return_value.has_been_closed_server_side
-                )
-                mock_result_set_class.return_value.close.assert_called_once_with()
+                # Check that the manually created mock result set's close method was called
+                mock_result_set.close.assert_called_once_with()
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):

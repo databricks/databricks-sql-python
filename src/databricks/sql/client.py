@@ -782,14 +782,6 @@ class Cursor:
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
-        self.active_result_set = ResultSet(
-            self.connection,
-            execute_response,
-            self.backend,
-            self.buffer_size_bytes,
-            self.arraysize,
-            self.connection.use_cloud_fetch,
-        )
 
         if self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
