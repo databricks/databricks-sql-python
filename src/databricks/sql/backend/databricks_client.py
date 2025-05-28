@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Tuple, List, Optional, Any, Union
 
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.ids import SessionId, CommandId
+from databricks.sql.backend.types import SessionId, CommandId
 from databricks.sql.utils import ExecuteResponse
 from databricks.sql.types import SSLOptions
 

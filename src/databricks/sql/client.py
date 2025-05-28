@@ -47,7 +47,7 @@ from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
-from databricks.sql.ids import CommandId, BackendType
+from databricks.sql.backend.types import CommandId, BackendType
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,

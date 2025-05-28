@@ -7,7 +7,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSessionHandle,
     THandleIdentifier,
 )
-from databricks.sql.ids import SessionId, BackendType
+from databricks.sql.backend.types import SessionId, BackendType
 
 import databricks.sql
 

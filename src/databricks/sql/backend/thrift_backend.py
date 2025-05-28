@@ -8,7 +8,7 @@ import threading
 from typing import List, Union, Any
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
-from databricks.sql.ids import SessionId, CommandId, BackendType, guid_to_hex_id
+from databricks.sql.backend.types import SessionId, CommandId, BackendType, guid_to_hex_id
 
 try:
     import pyarrow
