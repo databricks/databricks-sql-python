@@ -855,20 +855,9 @@ class Cursor:
         :return:
         """
         self._check_not_closed()
+        if self.active_command_id is None:
+            raise Error("No active command to get state for")
         return self.backend.get_query_state(self.active_command_id)
-
-    def is_query_pending(self):
-        """
-        Checks whether the async executing query is in pending state or not
-
-        :return:
-        """
-        operation_state = self.get_query_state()
-
-        return not operation_state or operation_state in [
-            ttypes.TOperationState.RUNNING_STATE,
-            ttypes.TOperationState.PENDING_STATE,
-        ]
 
     def is_query_pending(self):
         """
