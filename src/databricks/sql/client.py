@@ -47,7 +47,7 @@ from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
-from databricks.sql.backend.types import CommandId, BackendType
+from databricks.sql.backend.types import CommandId, BackendType, SessionId
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -325,9 +325,9 @@ class Connection:
         return self.session.protocol_version
 
     @staticmethod
-    def get_protocol_version(openSessionResp):
+    def get_protocol_version(session_id: SessionId):
         """Delegate to Session class static method"""
-        return Session.get_protocol_version(openSessionResp)
+        return Session.get_protocol_version(session_id)
 
     @property
     def open(self) -> bool:
@@ -854,19 +854,6 @@ class Cursor:
         """
         self._check_not_closed()
         return self.backend.get_query_state(self.active_command_id)
-
-    def is_query_pending(self):
-        """
-        Checks whether the async executing query is in pending state or not
-
-        :return:
-        """
-        operation_state = self.get_query_state()
-
-        return not operation_state or operation_state in [
-            ttypes.TOperationState.RUNNING_STATE,
-            ttypes.TOperationState.PENDING_STATE,
-        ]
 
     def is_query_pending(self):
         """
