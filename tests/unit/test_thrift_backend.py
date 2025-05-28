@@ -18,7 +18,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
-from databricks.sql.ids import CommandId, SessionId, BackendType
+from databricks.sql.backend.types import CommandId, SessionId, BackendType
 
 
 def retry_policy_factory():

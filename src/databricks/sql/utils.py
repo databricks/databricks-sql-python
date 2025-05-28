@@ -26,7 +26,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.ids import CommandId
+from databricks.sql.backend.types import CommandId
 
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
