@@ -108,6 +108,9 @@ class Connection:
             :param schema: An optional initial schema to use. Requires DBR version 9.0+
 
         Other Parameters:
+            backend_type: `str`, optional (default is 'thrift')
+                The backend type to use. Can be 'thrift' (default) or 'sea'.
+                When set to 'sea', the connector will use the Statement Execution API.
             use_inline_params: `boolean` | str, optional (default is False)
                 When True, parameterized calls to cursor.execute() will try to render parameter values inline with the
                 query text instead of using native bound parameters supported in DBR 14.1 and above. This connector will attempt to

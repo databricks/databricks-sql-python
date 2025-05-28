@@ -1,0 +1,9 @@
+"""Constants for the Statement Execution API."""
+
+BASE_PATH = "/api/2.0/sql/"
+SESSION_PATH = BASE_PATH + "sessions/"
+SESSION_PATH_WITH_ID = SESSION_PATH + "{}"
+STATEMENT_PATH = BASE_PATH + "statements/"
+STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "{}"
+CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "{}/cancel"
+RESULT_CHUNK_PATH = STATEMENT_PATH_WITH_ID + "/result/chunks/{}"

@@ -8,6 +8,7 @@ from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, Request
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.sea_backend import SEADatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 
@@ -73,16 +74,30 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        self.backend: DatabricksClient = ThriftDatabricksClient(
-            self.host,
-            self.port,
-            http_path,
-            (http_headers or []) + base_headers,
-            auth_provider,
-            ssl_options=self._ssl_options,
-            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
-            **kwargs,
-        )
+        # Determine which backend to use
+        backend_type = kwargs.get("backend_type", "thrift").lower()
+        if backend_type == "sea":
+            self.backend: DatabricksClient = SEADatabricksClient(
+                self.host,
+                self.port,
+                http_path,
+                (http_headers or []) + base_headers,
+                auth_provider,
+                ssl_options=self._ssl_options,
+                _use_arrow_native_complex_types=_use_arrow_native_complex_types,
+                **kwargs,
+            )
+        else:  # Default to Thrift
+            self.backend: DatabricksClient = ThriftDatabricksClient(
+                self.host,
+                self.port,
+                http_path,
+                (http_headers or []) + base_headers,
+                auth_provider,
+                ssl_options=self._ssl_options,
+                _use_arrow_native_complex_types=_use_arrow_native_complex_types,
+                **kwargs,
+            )
 
     def open(self):
         self._session_id = self.backend.open_session(
