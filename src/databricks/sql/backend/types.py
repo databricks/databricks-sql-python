@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Any, Union
+from typing import Dict, Optional, Any, Union
 import uuid
 import logging
 
@@ -43,6 +43,7 @@ class SessionId:
         backend_type: BackendType,
         guid: Any,
         secret: Optional[Any] = None,
+        info: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize a SessionId.
@@ -51,13 +52,15 @@ class SessionId:
             backend_type: The type of backend (THRIFT or SEA)
             guid: The primary identifier for the session
             secret: The secret part of the identifier (only used for Thrift)
+            info: Additional information about the session
         """
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
+        self.info = info or {}
 
     @classmethod
-    def from_thrift_handle(cls, session_handle):
+    def from_thrift_handle(cls, session_handle, info: Optional[Dict[str, Any]] = None):
         """
         Create a SessionId from a Thrift session handle.
 
@@ -67,16 +70,23 @@ class SessionId:
         Returns:
             A SessionId instance
         """
-        if session_handle is None or session_handle.sessionId is None:
+        if session_handle is None:
             return None
 
         guid_bytes = session_handle.sessionId.guid
         secret_bytes = session_handle.sessionId.secret
 
-        return cls(BackendType.THRIFT, guid_bytes, secret_bytes)
+        if session_handle.serverProtocolVersion is not None:
+            if info is None:
+                info = {}
+            info["serverProtocolVersion"] = session_handle.serverProtocolVersion
+
+        return cls(BackendType.THRIFT, guid_bytes, secret_bytes, info)
 
     @classmethod
-    def from_sea_session_id(cls, session_id: str):
+    def from_sea_session_id(
+        cls, session_id: str, info: Optional[Dict[str, Any]] = None
+    ):
         """
         Create a SessionId from a SEA session ID.
 
@@ -86,7 +96,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
-        return cls(BackendType.SEA, session_id)
+        return cls(BackendType.SEA, session_id, info=info)
 
     def to_thrift_handle(self):
         """
@@ -101,7 +111,10 @@ class SessionId:
         from databricks.sql.thrift_api.TCLIService import ttypes
 
         handle_identifier = ttypes.THandleIdentifier(guid=self.guid, secret=self.secret)
-        return ttypes.TSessionHandle(sessionId=handle_identifier)
+        server_protocol_version = self.info.get("serverProtocolVersion")
+        return ttypes.TSessionHandle(
+            sessionId=handle_identifier, serverProtocolVersion=server_protocol_version
+        )
 
     def to_sea_session_id(self):
         """
@@ -129,19 +142,12 @@ class SessionId:
 
     def get_protocol_version(self):
         """
-        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
-        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
+        Get the server protocol version for this session.
+
+        Returns:
+            The server protocol version or None if this is not a Thrift session ID
         """
-        if self.backend_type != BackendType.THRIFT:
-            return None
-        session_handle = self.to_thrift_handle()
-        if (
-            session_handle
-            and hasattr(session_handle, "serverProtocolVersion")
-            and session_handle.serverProtocolVersion
-        ):
-            return session_handle.serverProtocolVersion
-        return None
+        return self.info.get("serverProtocolVersion")
 
 
 class CommandId:
@@ -190,7 +196,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
-        if operation_handle is None or operation_handle.operationId is None:
+        if operation_handle is None:
             return None
 
         guid_bytes = operation_handle.operationId.guid

@@ -8,7 +8,12 @@ import threading
 from typing import List, Union, Any
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
-from databricks.sql.backend.types import SessionId, CommandId, BackendType, guid_to_hex_id
+from databricks.sql.backend.types import (
+    SessionId,
+    CommandId,
+    BackendType,
+    guid_to_hex_id,
+)
 
 try:
     import pyarrow
@@ -581,7 +586,12 @@ class ThriftDatabricksClient(DatabricksClient):
             self._check_protocol_version(response)
             if response.sessionHandle is None:
                 return None
-            return SessionId.from_thrift_handle(response.sessionHandle)
+            info = (
+                {"serverProtocolVersion": response.serverProtocolVersion}
+                if response.serverProtocolVersion
+                else {}
+            )
+            return SessionId.from_thrift_handle(response.sessionHandle, info)
         except:
             self._transport.close()
             raise
