@@ -1224,7 +1224,7 @@ class ThriftDatabricksClient(DatabricksClient):
         req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 
-    def close_command(self, command_id: CommandId):
+    def close_command(self, command_id: CommandId) -> None:
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -1232,7 +1232,9 @@ class ThriftDatabricksClient(DatabricksClient):
         logger.debug("ThriftBackend.close_command(command_id=%s)", command_id)
         req = ttypes.TCloseOperationReq(operationHandle=thrift_handle)
         resp = self.make_request(self._client.CloseOperation, req)
-        return resp.status
+        logger.debug(
+            "ThriftBackend.close_command(command_id=%s) -> %s", command_id, resp
+        )
 
     def handle_to_id(self, session_id: SessionId) -> Any:
         """Get the raw session ID from a SessionId"""

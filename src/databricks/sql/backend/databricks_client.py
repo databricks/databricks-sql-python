@@ -50,7 +50,7 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def close_command(self, command_id: CommandId) -> ttypes.TStatus:
+    def close_command(self, command_id: CommandId) -> None:
         pass
 
     @abstractmethod
