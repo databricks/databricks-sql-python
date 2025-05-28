@@ -127,6 +127,22 @@ class SessionId:
         else:
             return str(self.guid)
 
+    def get_protocol_version(self):
+        """
+        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
+        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
+        """
+        if self.backend_type != BackendType.THRIFT:
+            return None
+        session_handle = self.to_thrift_handle()
+        if (
+            session_handle
+            and hasattr(session_handle, "serverProtocolVersion")
+            and session_handle.serverProtocolVersion
+        ):
+            return session_handle.serverProtocolVersion
+        return None
+
 
 class CommandId:
     """
