@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Tuple, List, Optional, Any, Union
 
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.backend.types import SessionId, CommandId
+from databricks.sql.backend.types import SessionId, CommandId, CommandState
 from databricks.sql.utils import ExecuteResponse
 from databricks.sql.types import SSLOptions
 
@@ -54,7 +54,7 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def get_query_state(self, command_id: CommandId) -> ttypes.TOperationState:
+    def get_query_state(self, command_id: CommandId) -> CommandState:
         pass
 
     @abstractmethod

@@ -47,7 +47,7 @@ from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
-from databricks.sql.backend.types import CommandId, BackendType, SessionId
+from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -846,7 +846,7 @@ class Cursor:
 
         return self
 
-    def get_query_state(self) -> "TOperationState":
+    def get_query_state(self) -> CommandState:
         """
         Get the state of the async executing query or basically poll the status of the query
 
@@ -862,11 +862,7 @@ class Cursor:
         :return:
         """
         operation_state = self.get_query_state()
-
-        return not operation_state or operation_state in [
-            ttypes.TOperationState.RUNNING_STATE,
-            ttypes.TOperationState.PENDING_STATE,
-        ]
+        return operation_state in [CommandState.PENDING, CommandState.RUNNING]
 
     def get_async_execution_result(self):
         """
@@ -882,7 +878,7 @@ class Cursor:
             time.sleep(self.ASYNC_DEFAULT_POLLING_INTERVAL)
 
         operation_state = self.get_query_state()
-        if operation_state == ttypes.TOperationState.FINISHED_STATE:
+        if operation_state == CommandState.SUCCEEDED:
             self.active_result_set = self.backend.get_execution_result(
                 self.active_op_handle, self
             )

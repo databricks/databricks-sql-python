@@ -9,6 +9,7 @@ from typing import List, Union, Any
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
+    CommandState,
     SessionId,
     CommandId,
     BackendType,
@@ -903,7 +904,7 @@ class ThriftDatabricksClient(DatabricksClient):
             self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
-    def get_query_state(self, command_id: CommandId) -> "TOperationState":
+    def get_query_state(self, command_id: CommandId) -> CommandState:
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -911,7 +912,7 @@ class ThriftDatabricksClient(DatabricksClient):
         poll_resp = self._poll_for_status(thrift_handle)
         operation_state = poll_resp.operationState
         self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
-        return operation_state
+        return CommandState.from_thrift_state(operation_state)
 
     @staticmethod
     def _check_direct_results_for_error(t_spark_direct_results):

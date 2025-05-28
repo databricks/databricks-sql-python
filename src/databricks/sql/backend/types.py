@@ -3,7 +3,36 @@ from typing import Dict, Optional, Any, Union
 import uuid
 import logging
 
+from databricks.sql.thrift_api.TCLIService import ttypes
+
 logger = logging.getLogger(__name__)
+
+
+class CommandState(Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"
+
+    @classmethod
+    def from_thrift_state(cls, state: ttypes.TOperationState) -> "CommandState":
+        match state:
+            case ttypes.TOperationState.INITIALIZED_STATE | ttypes.TOperationState.PENDING_STATE:
+                return cls.PENDING
+            case ttypes.TOperationState.RUNNING_STATE:
+                return cls.RUNNING
+            case ttypes.TOperationState.FINISHED_STATE:
+                return cls.SUCCEEDED
+            case ttypes.TOperationState.ERROR_STATE | ttypes.TOperationState.TIMEDOUT_STATE | ttypes.TOperationState.UKNOWN_STATE:
+                return cls.FAILED
+            case ttypes.TOperationState.CLOSED_STATE:
+                return cls.CLOSED
+            case ttypes.TOperationState.CANCELLED_STATE:
+                return cls.CANCELLED
+            case _:
+                raise ValueError(f"Unknown command state: {state}")
 
 
 def guid_to_hex_id(guid: bytes) -> str:
