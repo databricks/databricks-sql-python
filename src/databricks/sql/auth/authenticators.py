@@ -11,7 +11,11 @@ from databricks.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_h
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
-from databricks.sql.auth.endpoint import AzureOAuthEndpointCollection, InHouseOAuthEndpointCollection
+from databricks.sql.auth.endpoint import (
+    AzureOAuthEndpointCollection,
+    InHouseOAuthEndpointCollection,
+)
+
 
 class AuthProvider:
     def add_headers(self, request_headers: Dict[str, str]):
@@ -56,7 +60,9 @@ class AccessTokenAuthProvider(AuthProvider, CredentialsProvider):
     def __call__(self, *args, **kwargs) -> HeaderFactory:
         def get_headers():
             return {"Authorization": self.__authorization_header_value}
+
         return get_headers
+
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
@@ -81,11 +87,8 @@ class DatabricksOAuthProvider(AuthProvider, CredentialsProvider):
 
         idp_endpoint = get_oauth_endpoints(hostname, auth_type == "azure-oauth")
         if not idp_endpoint:
-            raise NotImplementedError(
-                    f"OAuth is not supported for host ${hostname}"
-                )
+            raise NotImplementedError(f"OAuth is not supported for host ${hostname}")
 
-        
         cloud_scopes = idp_endpoint.get_scopes_mapping(scopes)
         self._scopes_as_str = self.SCOPE_DELIM.join(cloud_scopes)
 
@@ -107,6 +110,7 @@ class DatabricksOAuthProvider(AuthProvider, CredentialsProvider):
         def get_headers():
             self._update_token_if_expired()
             return {"Authorization": "Bearer {}".format(self._access_token)}
+
         return get_headers
 
     def _initial_get_token(self):
@@ -170,14 +174,14 @@ class ClientCredentialsProvider(CredentialsProvider, AuthProvider):
         client_id: str,
         client_secret: str,
         token_endpoint: str,
-        auth_type_value: str = "client-credentials"
+        auth_type_value: str = "client-credentials",
     ):
         """
         Initialize a ClientCredentialsProvider.
-        
+
         Args:
             client_id: OAuth client ID
-            client_secret: OAuth client secret  
+            client_secret: OAuth client secret
             token_endpoint: OAuth token endpoint URL
             auth_type_value: Auth type identifier
         """
@@ -185,10 +189,9 @@ class ClientCredentialsProvider(CredentialsProvider, AuthProvider):
         self.client_secret = client_secret
         self.token_endpoint = token_endpoint
         self.auth_type_value = auth_type_value
-        
+
         self._cached_token = None
         self._token_expires_at = None
-        
 
     def auth_type(self) -> str:
         return self.auth_type_value
@@ -197,8 +200,9 @@ class ClientCredentialsProvider(CredentialsProvider, AuthProvider):
         def get_headers() -> Dict[str, str]:
             token = self._get_access_token()
             return {"Authorization": "Bearer {}".format(token)}
+
         return get_headers
-    
+
     def add_headers(self, request_headers: Dict[str, str]):
         token = self._get_access_token()
         request_headers["Authorization"] = "Bearer {}".format(token)
@@ -206,41 +210,44 @@ class ClientCredentialsProvider(CredentialsProvider, AuthProvider):
     def _get_access_token(self) -> str:
         """Get a valid access token using client credentials flow, with caching."""
         # Check if we have a valid cached token (with 40 second buffer since azure doesn't respect a token with less than 30s expiry)
-        if (self._cached_token and self._token_expires_at and 
-            time.time() < self._token_expires_at - 40):
+        if (
+            self._cached_token
+            and self._token_expires_at
+            and time.time() < self._token_expires_at - 40
+        ):
             return self._cached_token
-        
+
         # Get new token using client credentials flow
         token_data = self._request_token()
-        
-        self._cached_token = token_data['access_token']
+
+        self._cached_token = token_data["access_token"]
         # expires_in is in seconds, convert to absolute time
-        self._token_expires_at = time.time() + token_data.get('expires_in', 3600)
-        
+        self._token_expires_at = time.time() + token_data.get("expires_in", 3600)
+
         return self._cached_token
 
     def _request_token(self) -> dict:
         """Request a new token using OAuth client credentials flow."""
         data = {
-            'grant_type': 'client_credentials',
-            'client_id': self.client_id,
-            'client_secret': self.client_secret,
-            'scope': self.AZURE_DATABRICKS_SCOPE,
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "scope": self.AZURE_DATABRICKS_SCOPE,
         }
-        
-        headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-        
+
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
         try:
             response = requests.post(self.token_endpoint, data=data, headers=headers)
             response.raise_for_status()
-            
+
             token_data = response.json()
-            
-            if 'access_token' not in token_data:
+
+            if "access_token" not in token_data:
                 raise ValueError("No access_token in response: {}".format(token_data))
-                
+
             return token_data
-            
+
         except requests.exceptions.RequestException as e:
             raise RuntimeError("Token request failed: {}".format(e)) from e
         except ValueError as e:

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class DatabricksTokenFederationProvider(CredentialsProvider):
     """
     Token federation provider that exchanges external tokens for Databricks tokens.
-    
+
     This implementation follows the JDBC pattern:
     1. Try token exchange without HTTP Basic authentication (per RFC 8693)
     2. Fall back to using external token directly if exchange fails
@@ -118,7 +118,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             Dict[str, Any]: Parsed JWT claims
         """
         try:
-            return jwt.decode(token, options={"verify_signature": False, "verify_aud": False})
+            return jwt.decode(
+                token, options={"verify_signature": False, "verify_aud": False}
+            )
         except Exception as e:
             logger.debug("Failed to parse JWT: %s", str(e))
             return {}
@@ -142,7 +144,6 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                 return datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc)
             except (ValueError, TypeError) as e:
                 logger.warning("Invalid JWT expiry value: %s", e)
-
 
     def refresh_token(self) -> Token:
         """
@@ -184,7 +185,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
                 self.current_token = new_token
                 return new_token
             except Exception as e:
-                logger.debug("Token exchange failed: %s. Using external token as fallback.", e)
+                logger.debug(
+                    "Token exchange failed: %s. Using external token as fallback.", e
+                )
                 expiry = self._get_expiry_from_jwt(access_token)
                 fallback_token = Token(access_token, token_type, "", expiry)
                 self.current_token = fallback_token
@@ -223,7 +226,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             # Always get the latest headers from the credentials provider
             header_factory = self.credentials_provider()
             headers = dict(header_factory()) if header_factory else {}
-            headers["Authorization"] = "{} {}".format(token.token_type, token.access_token)
+            headers["Authorization"] = "{} {}".format(
+                token.token_type, token.access_token
+            )
             return headers
         except Exception as e:
             return dict(self.external_headers) if self.external_headers else {}
@@ -233,7 +238,7 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
     ) -> Dict[str, Any]:
         """
         Send the token exchange request to the token endpoint.
-        
+
         For M2M flows, this should include HTTP Basic authentication using client credentials.
         For U2M flows, token exchange is validated purely based on the JWT token and federation policies.
 
@@ -250,23 +255,29 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             raise ValueError("Token endpoint not initialized")
 
         auth = None
-        if hasattr(self.credentials_provider, 'client_id') and hasattr(self.credentials_provider, 'client_secret'):
+        if hasattr(self.credentials_provider, "client_id") and hasattr(
+            self.credentials_provider, "client_secret"
+        ):
             client_id = self.credentials_provider.client_id
             client_secret = self.credentials_provider.client_secret
             auth = (client_id, client_secret)
         else:
-            logger.debug("No client credentials available, sending request without authentication")
-        
+            logger.debug(
+                "No client credentials available, sending request without authentication"
+            )
+
         response = requests.post(
-            self.token_endpoint, 
-            data=token_exchange_data, 
+            self.token_endpoint,
+            data=token_exchange_data,
             headers=self.EXCHANGE_HEADERS,
-            auth=auth
+            auth=auth,
         )
 
         if response.status_code != 200:
             raise requests.HTTPError(
-                "Token exchange failed with status code {}: {}".format(response.status_code, response.text),
+                "Token exchange failed with status code {}: {}".format(
+                    response.status_code, response.text
+                ),
                 response=response,
             )
 
@@ -289,7 +300,7 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             self.token_endpoint = OIDCDiscoveryUtil.discover_token_endpoint(
                 self.hostname
             )
-            
+
         # Prepare the request data according to RFC 8693
         token_exchange_data = dict(self.TOKEN_EXCHANGE_PARAMS)
         token_exchange_data["subject_token"] = access_token

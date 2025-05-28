@@ -4,9 +4,7 @@ from datetime import datetime, timezone, timedelta
 import jwt
 
 from databricks.sql.auth.token import Token
-from databricks.sql.auth.token_federation import (
-    DatabricksTokenFederationProvider
-)
+from databricks.sql.auth.token_federation import DatabricksTokenFederationProvider
 from databricks.sql.auth.oidc_utils import OIDCDiscoveryUtil
 
 

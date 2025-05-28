@@ -15,6 +15,7 @@ class AuthType(Enum):
     AZURE_OAUTH = "azure-oauth"
     CLIENT_CREDENTIALS = "client-credentials"
 
+
 class ClientContext:
     def __init__(
         self,
@@ -48,31 +49,42 @@ class ClientContext:
         self.oauth_client_secret = oauth_client_secret
         self.tenant_id = tenant_id
 
-def _create_azure_client_credentials_provider(cfg: ClientContext) -> ClientCredentialsProvider:
+
+def _create_azure_client_credentials_provider(
+    cfg: ClientContext,
+) -> ClientCredentialsProvider:
     """Create an Azure client credentials provider."""
     if not cfg.oauth_client_id or not cfg.oauth_client_secret or not cfg.tenant_id:
-        raise ValueError("Azure client credentials flow requires oauth_client_id, oauth_client_secret, and tenant_id")
-    
-    token_endpoint = "https://login.microsoftonline.com/{}/oauth2/v2.0/token".format(cfg.tenant_id)
+        raise ValueError(
+            "Azure client credentials flow requires oauth_client_id, oauth_client_secret, and tenant_id"
+        )
+
+    token_endpoint = "https://login.microsoftonline.com/{}/oauth2/v2.0/token".format(
+        cfg.tenant_id
+    )
     return ClientCredentialsProvider(
         client_id=cfg.oauth_client_id,
         client_secret=cfg.oauth_client_secret,
         token_endpoint=token_endpoint,
-        auth_type_value="azure-client-credentials"
+        auth_type_value="azure-client-credentials",
     )
 
 
-def _create_databricks_client_credentials_provider(cfg: ClientContext) -> ClientCredentialsProvider:
+def _create_databricks_client_credentials_provider(
+    cfg: ClientContext,
+) -> ClientCredentialsProvider:
     """Create a Databricks client credentials provider for service principals."""
     if not cfg.oauth_client_id or not cfg.oauth_client_secret:
-        raise ValueError("Databricks client credentials flow requires oauth_client_id and oauth_client_secret")
-    
+        raise ValueError(
+            "Databricks client credentials flow requires oauth_client_id and oauth_client_secret"
+        )
+
     token_endpoint = "{}oidc/v1/token".format(cfg.hostname)
     return ClientCredentialsProvider(
         client_id=cfg.oauth_client_id,
         client_secret=cfg.oauth_client_secret,
         token_endpoint=token_endpoint,
-        auth_type_value="client-credentials"
+        auth_type_value="client-credentials",
     )
 
 
@@ -102,9 +114,9 @@ def get_auth_provider(cfg: ClientContext):
         RuntimeError: If no valid authentication settings are provided
     """
     from databricks.sql.auth.token_federation import DatabricksTokenFederationProvider
-    
+
     base_provider = None
-    
+
     if cfg.credentials_provider:
         base_provider = ExternalAuthProvider(cfg.credentials_provider)
     elif cfg.access_token is not None:
