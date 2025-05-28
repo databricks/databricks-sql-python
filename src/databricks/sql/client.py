@@ -232,7 +232,6 @@ class Connection:
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._cursors = []  # type: List[Cursor]
 
-        # Create the session
         self.session = Session(
             server_hostname,
             http_path,
@@ -244,11 +243,6 @@ class Connection:
             **kwargs,
         )
         self.session.open()
-
-        logger.info(
-            "Successfully opened connection with session "
-            + str(self.get_session_id_hex())
-        )
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
@@ -788,6 +782,14 @@ class Cursor:
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
+        self.active_result_set = ResultSet(
+            self.connection,
+            execute_response,
+            self.backend,
+            self.buffer_size_bytes,
+            self.arraysize,
+            self.connection.use_cloud_fetch,
+        )
 
         if self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
@@ -853,6 +855,8 @@ class Cursor:
         :return:
         """
         self._check_not_closed()
+        if self.active_command_id is None:
+            raise Error("No active command to get state for")
         return self.backend.get_query_state(self.active_command_id)
 
     def is_query_pending(self):

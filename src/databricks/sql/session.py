@@ -84,6 +84,8 @@ class Session:
             **kwargs,
         )
 
+        self.protocol_version = None
+
     def open(self):
         self._session_id = self.backend.open_session(
             session_configuration=self.session_configuration,

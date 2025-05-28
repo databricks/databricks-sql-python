@@ -178,7 +178,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         for protocol_version in good_protocol_versions:
             t_http_client_instance.OpenSession.return_value = ttypes.TOpenSessionResp(
-                status=self.okay_status, serverProtocolVersion=protocol_version
+                status=self.okay_status,
+                serverProtocolVersion=protocol_version,
+                sessionHandle=self.session_handle,
             )
 
             thrift_backend = self._make_fake_thrift_backend()
@@ -2079,6 +2081,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
             canUseMultipleCatalogs=can_use_multiple_cats,
             initialNamespace=ttypes.TNamespace(catalogName=cat, schemaName=schem),
+            sessionHandle=self.session_handle,
         )
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
@@ -2178,6 +2181,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V3,
             canUseMultipleCatalogs=True,
             initialNamespace=ttypes.TNamespace(catalogName="cat", schemaName="schem"),
+            sessionHandle=self.session_handle,
         )
 
         backend = ThriftDatabricksClient(
