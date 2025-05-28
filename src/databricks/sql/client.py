@@ -776,7 +776,6 @@ class Cursor:
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-
         self.active_result_set = self.backend.execute_command(
             operation=prepared_operation,
             session_id=self.connection.session.get_session_id(),
@@ -788,14 +787,6 @@ class Cursor:
             parameters=prepared_params,
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
-        )
-        self.active_result_set = ResultSet(
-            self.connection,
-            execute_response,
-            self.backend,
-            self.buffer_size_bytes,
-            self.arraysize,
-            self.connection.use_cloud_fetch,
         )
 
         if self.active_result_set.is_staging_operation:
@@ -944,7 +935,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         self.active_result_set = self.backend.get_catalogs(
-            session_handle=self.connection.session._session_handle,
+            session_id=self.connection.session.get_session_id(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -963,7 +954,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         self.active_result_set = self.backend.get_schemas(
-            session_handle=self.connection.session._session_handle,
+            session_id=self.connection.session.get_session_id(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -989,7 +980,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         self.active_result_set = self.backend.get_tables(
-            session_handle=self.connection.session._session_handle,
+            session_id=self.connection.session.get_session_id(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1017,7 +1008,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         self.active_result_set = self.backend.get_columns(
-            session_handle=self.connection.session._session_handle,
+            session_id=self.connection.session.get_session_id(),
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,

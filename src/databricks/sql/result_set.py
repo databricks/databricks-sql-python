@@ -109,7 +109,7 @@ class ThriftResultSet(ResultSet):
         super().__init__(connection, thrift_client, arraysize, buffer_size_bytes)
 
         # Initialize ThriftResultSet-specific attributes
-        self.command_id = execute_response.command_handle
+        self.command_id = execute_response.command_id
         self.op_state = execute_response.status
         self.has_been_closed_server_side = execute_response.has_been_closed_server_side
         self.has_more_rows = execute_response.has_more_rows
@@ -127,7 +127,7 @@ class ThriftResultSet(ResultSet):
 
     def _fill_results_buffer(self):
         results, has_more_rows = self.backend.fetch_results(
-            op_handle=self.command_id,
+            command_id=self.command_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             expected_row_start_offset=self._next_row_index,

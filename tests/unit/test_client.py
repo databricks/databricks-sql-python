@@ -632,7 +632,7 @@ class ClientTestSuite(unittest.TestCase):
         """Test that ResultSet.close() handles CursorAlreadyClosedError properly."""
         result_set = client.ThriftResultSet.__new__(client.ThriftResultSet)
         result_set.backend = Mock()
-        result_set.backend.CLOSED_OP_STATE = 'CLOSED'
+        result_set.backend.CLOSED_OP_STATE = "CLOSED"
         result_set.connection = Mock()
         result_set.connection.open = True
         result_set.op_state = "RUNNING"
@@ -642,9 +642,9 @@ class ClientTestSuite(unittest.TestCase):
         class MockRequestError(Exception):
             def __init__(self):
                 self.args = ["Error message", CursorAlreadyClosedError()]
-        
+
         result_set.backend.close_command.side_effect = MockRequestError()
-        
+
         original_close = client.ResultSet.close
         try:
             try:
@@ -660,11 +660,13 @@ class ClientTestSuite(unittest.TestCase):
             finally:
                 result_set.has_been_closed_server_side = True
                 result_set.op_state = result_set.backend.CLOSED_OP_STATE
-                
-            result_set.backend.close_command.assert_called_once_with(result_set.command_id)
-            
+
+            result_set.backend.close_command.assert_called_once_with(
+                result_set.command_id
+            )
+
             assert result_set.has_been_closed_server_side is True
-            
+
             assert result_set.op_state == result_set.backend.CLOSED_OP_STATE
         finally:
             pass
