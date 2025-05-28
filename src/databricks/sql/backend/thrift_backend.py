@@ -585,8 +585,6 @@ class ThriftDatabricksClient(DatabricksClient):
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            if response.sessionHandle is None:
-                return None
             info = (
                 {"serverProtocolVersion": response.serverProtocolVersion}
                 if response.serverProtocolVersion

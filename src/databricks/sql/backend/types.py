@@ -35,7 +35,7 @@ class CommandState(Enum):
             return cls.FAILED
         elif state == ttypes.TOperationState.CLOSED_STATE:
             return cls.CLOSED
-        elif state == ttypes.TOperationState.CANCELLED_STATE:
+        elif state == ttypes.TOperationState.CANCELED_STATE:
             return cls.CANCELLED
         else:
             raise ValueError(f"Unknown command state: {state}")
