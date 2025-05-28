@@ -49,6 +49,8 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TOperationState,
+    TSparkParameterValue,
+    TSparkParameterValueArg,
 )
 
 
