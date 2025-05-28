@@ -5,8 +5,7 @@ import jwt
 
 from databricks.sql.auth.token import Token
 from databricks.sql.auth.token_federation import (
-    DatabricksTokenFederationProvider,
-    SimpleCredentialsProvider,
+    DatabricksTokenFederationProvider
 )
 from databricks.sql.auth.oidc_utils import OIDCDiscoveryUtil
 
@@ -54,21 +53,6 @@ class TestToken:
         token = Token("almost", "Bearer", expiry=almost_expired)
 
         assert not token.is_valid()
-
-
-class TestSimpleCredentialsProvider:
-    """Tests for the SimpleCredentialsProvider class."""
-
-    def test_provider_initialization_and_headers(self):
-        """Test SimpleCredentialsProvider initialization and header generation."""
-        provider = SimpleCredentialsProvider("token1", "Bearer", "token")
-
-        # Check auth type
-        assert provider.auth_type() == "token"
-
-        # Check header generation
-        headers = provider()()
-        assert headers == {"Authorization": "Bearer token1"}
 
 
 class TestOIDCDiscoveryUtil:

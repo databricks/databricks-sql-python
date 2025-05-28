@@ -5,21 +5,15 @@ from databricks.sql.auth.authenticators import (
     AuthProvider,
     AccessTokenAuthProvider,
     ExternalAuthProvider,
-    CredentialsProvider,
     DatabricksOAuthProvider,
+    ClientCredentialsProvider,
 )
 
 
 class AuthType(Enum):
     DATABRICKS_OAUTH = "databricks-oauth"
     AZURE_OAUTH = "azure-oauth"
-    # TODO: Token federation should be a feature that works with different auth types,
-    # not an auth type itself. This will be refactored in a future change.
-    # We will add a use_token_federation flag that can be used with any auth type.
-    TOKEN_FEDERATION = "token-federation"
-    # other supported types (access_token) can be inferred
-    # we can add more types as needed later
-
+    CLIENT_CREDENTIALS = "client-credentials"
 
 class ClientContext:
     def __init__(
@@ -34,8 +28,10 @@ class ClientContext:
         tls_client_cert_file: Optional[str] = None,
         oauth_persistence=None,
         credentials_provider=None,
-        identity_federation_client_id: Optional[str] = None,
+        oauth_client_secret: Optional[str] = None,
+        tenant_id: Optional[str] = None,
         use_token_federation: bool = False,
+        identity_federation_client_id: Optional[str] = None,
     ):
         self.hostname = hostname
         self.access_token = access_token
@@ -49,20 +45,52 @@ class ClientContext:
         self.credentials_provider = credentials_provider
         self.identity_federation_client_id = identity_federation_client_id
         self.use_token_federation = use_token_federation
+        self.oauth_client_secret = oauth_client_secret
+        self.tenant_id = tenant_id
+
+def _create_azure_client_credentials_provider(cfg: ClientContext) -> ClientCredentialsProvider:
+    """Create an Azure client credentials provider."""
+    if not cfg.oauth_client_id or not cfg.oauth_client_secret or not cfg.tenant_id:
+        raise ValueError("Azure client credentials flow requires oauth_client_id, oauth_client_secret, and tenant_id")
+    
+    token_endpoint = "https://login.microsoftonline.com/{}/oauth2/v2.0/token".format(cfg.tenant_id)
+    return ClientCredentialsProvider(
+        client_id=cfg.oauth_client_id,
+        client_secret=cfg.oauth_client_secret,
+        token_endpoint=token_endpoint,
+        auth_type_value="azure-client-credentials"
+    )
+
+
+def _create_databricks_client_credentials_provider(cfg: ClientContext) -> ClientCredentialsProvider:
+    """Create a Databricks client credentials provider for service principals."""
+    if not cfg.oauth_client_id or not cfg.oauth_client_secret:
+        raise ValueError("Databricks client credentials flow requires oauth_client_id and oauth_client_secret")
+    
+    token_endpoint = "{}oidc/v1/token".format(cfg.hostname)
+    return ClientCredentialsProvider(
+        client_id=cfg.oauth_client_id,
+        client_secret=cfg.oauth_client_secret,
+        token_endpoint=token_endpoint,
+        auth_type_value="client-credentials"
+    )
 
 
 def get_auth_provider(cfg: ClientContext):
     """
     Get an appropriate auth provider based on the provided configuration.
 
+    OAuth Flow Support:
+    This function supports multiple OAuth flows:
+    1. Interactive OAuth (databricks-oauth, azure-oauth) - for user authentication
+    2. Client Credentials (client-credentials) - for machine-to-machine authentication
+    3. Token Federation - implemented as a feature flag that wraps any auth type
+
     Token Federation Support:
     -----------------------
-    Currently, token federation is implemented as a separate auth type, but the goal is to
-    refactor it as a feature that can work with any auth type. The current implementation
-    is maintained for backward compatibility while the refactoring is planned.
-
-    Future refactoring will introduce a `use_token_federation` flag that can be combined
-    with any auth type to enable token federation.
+    Token federation is implemented as a feature flag (`use_token_federation=True`) that
+    can be combined with any auth type. When enabled, it wraps the base auth provider
+    in a DatabricksTokenFederationProvider for token exchange functionality.
 
     Args:
         cfg: The client context containing configuration parameters
@@ -74,21 +102,31 @@ def get_auth_provider(cfg: ClientContext):
         RuntimeError: If no valid authentication settings are provided
     """
     from databricks.sql.auth.token_federation import DatabricksTokenFederationProvider
+    
+    base_provider = None
+    
     if cfg.credentials_provider:
         base_provider = ExternalAuthProvider(cfg.credentials_provider)
     elif cfg.access_token is not None:
         base_provider = AccessTokenAuthProvider(cfg.access_token)
+    elif cfg.auth_type == AuthType.CLIENT_CREDENTIALS.value:
+        if cfg.tenant_id:
+            # Azure client credentials flow
+            base_provider = _create_azure_client_credentials_provider(cfg)
+        else:
+            # Databricks service principal client credentials flow
+            base_provider = _create_databricks_client_credentials_provider(cfg)
     elif cfg.auth_type in [AuthType.DATABRICKS_OAUTH.value, AuthType.AZURE_OAUTH.value]:
         assert cfg.oauth_redirect_port_range is not None
         assert cfg.oauth_client_id is not None
         assert cfg.oauth_scopes is not None
         base_provider = DatabricksOAuthProvider(
-            cfg.hostname,
-            cfg.oauth_persistence,
-            cfg.oauth_redirect_port_range,
-            cfg.oauth_client_id,
-            cfg.oauth_scopes,
-            cfg.auth_type,
+            hostname=cfg.hostname,
+            oauth_persistence=cfg.oauth_persistence,
+            redirect_port_range=cfg.oauth_redirect_port_range,
+            client_id=cfg.oauth_client_id,
+            scopes=cfg.oauth_scopes,
+            auth_type=cfg.auth_type,
         )
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
         base_provider = AuthProvider()
@@ -99,11 +137,11 @@ def get_auth_provider(cfg: ClientContext):
             and cfg.oauth_scopes is not None
         ):
             base_provider = DatabricksOAuthProvider(
-                cfg.hostname,
-                cfg.oauth_persistence,
-                cfg.oauth_redirect_port_range,
-                cfg.oauth_client_id,
-                cfg.oauth_scopes,
+                hostname=cfg.hostname,
+                oauth_persistence=cfg.oauth_persistence,
+                redirect_port_range=cfg.oauth_redirect_port_range,
+                client_id=cfg.oauth_client_id,
+                scopes=cfg.oauth_scopes,
             )
         else:
             raise RuntimeError("No valid authentication settings!")
@@ -126,7 +164,7 @@ PYSQL_OAUTH_AZURE_REDIRECT_PORT_RANGE = [8030]
 def normalize_host_name(hostname: str):
     maybe_scheme = "https://" if not hostname.startswith("https://") else ""
     maybe_trailing_slash = "/" if not hostname.endswith("/") else ""
-    return f"{maybe_scheme}{hostname}{maybe_trailing_slash}"
+    return "{}{}{}".format(maybe_scheme, hostname, maybe_trailing_slash)
 
 
 def get_client_id_and_redirect_port(use_azure_auth: bool):
@@ -144,14 +182,25 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
     This function is the main entry point for authentication in the SQL connector.
     It processes the parameters and creates an appropriate auth provider.
 
-    TODO: Future refactoring needed:
-    1. Add a use_token_federation flag that can be combined with any auth type
-    2. Remove TOKEN_FEDERATION as an auth_type while maintaining backward compatibility
-    3. Create a token federation wrapper that can wrap any existing auth provider
+    Supported Authentication Methods:
+    --------------------------------
+    1. Access Token: Provide 'access_token' parameter
+    2. Interactive OAuth: Set 'auth_type' to 'databricks-oauth' or 'azure-oauth'
+    3. Client Credentials: Set 'auth_type' to 'client-credentials' with client_id, client_secret, tenant_id
+    4. External Provider: Provide 'credentials_provider' parameter
+    5. Token Federation: Set 'use_token_federation=True' with any of the above
 
     Args:
         hostname: The Databricks server hostname
-        **kwargs: Additional configuration parameters
+        **kwargs: Additional configuration parameters including:
+            - auth_type: Authentication type
+            - access_token: Static access token
+            - oauth_client_id: OAuth client ID
+            - oauth_client_secret: OAuth client secret
+            - tenant_id: Azure AD tenant ID (for Azure flows)
+            - credentials_provider: External credentials provider
+            - use_token_federation: Enable token federation
+            - identity_federation_client_id: Federation client ID
 
     Returns:
         An appropriate AuthProvider instance
@@ -182,6 +231,8 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
+        oauth_client_secret=kwargs.get("oauth_client_secret"),
+        tenant_id=kwargs.get("tenant_id"),
         identity_federation_client_id=kwargs.get("identity_federation_client_id"),
         use_token_federation=kwargs.get("use_token_federation", False),
     )

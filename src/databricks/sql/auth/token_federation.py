@@ -18,21 +18,21 @@ logger = logging.getLogger(__name__)
 
 class DatabricksTokenFederationProvider(CredentialsProvider):
     """
-    Implementation of the Credential Provider that exchanges a third party access token
-    for a Databricks token.
-
-    This provider wraps an existing credentials provider and handles token exchange when
-    the token is from a different host than the Databricks host. It also manages token
-    refresh when tokens are expired.
+    Token federation provider that exchanges external tokens for Databricks tokens.
+    
+    This implementation follows the JDBC pattern:
+    1. Try token exchange without HTTP Basic authentication (per RFC 8693)
+    2. Fall back to using external token directly if exchange fails
+    3. Compare token issuer with Databricks host to determine if exchange is needed
     """
 
-    # HTTP request configuration
+    # HTTP request configuration (no authentication)
     EXCHANGE_HEADERS = {
         "Accept": "*/*",
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
-    # Token exchange parameters
+    # Token exchange parameters following RFC 8693
     TOKEN_EXCHANGE_PARAMS = {
         "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
         "scope": "sql",
@@ -118,9 +118,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             Dict[str, Any]: Parsed JWT claims
         """
         try:
-            return jwt.decode(token, options={"verify_signature": False})
+            return jwt.decode(token, options={"verify_signature": False, "verify_aud": False})
         except Exception as e:
-            logger.error(f"Failed to parse JWT: {str(e)}")
+            logger.debug("Failed to parse JWT: %s", str(e))
             return {}
 
     def _get_expiry_from_jwt(self, token: str) -> Optional[datetime]:
@@ -138,14 +138,11 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         # Look for standard JWT expiry claim ("exp")
         if "exp" in claims:
             try:
-                # JWT expiry is in seconds since epoch
                 expiry_timestamp = int(claims["exp"])
-                # Convert to datetime
                 return datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc)
             except (ValueError, TypeError) as e:
-                logger.warning(f"Invalid JWT expiry value: {e}")
+                logger.warning("Invalid JWT expiry value: %s", e)
 
-        return None
 
     def refresh_token(self) -> Token:
         """
@@ -177,27 +174,18 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             # Token is from the same host, no need to exchange
             logger.debug("Token from same host, creating token without exchange")
             expiry = self._get_expiry_from_jwt(access_token)
-            if expiry is None:
-                raise ValueError("Could not determine token expiry from JWT")
             new_token = Token(access_token, token_type, "", expiry)
             self.current_token = new_token
             return new_token
         else:
-            # Token is from a different host, need to exchange
-            logger.debug("Token from different host, exchanging token")
+            logger.debug("Token from different host, attempting token exchange")
             try:
                 new_token = self._exchange_token(access_token)
                 self.current_token = new_token
                 return new_token
             except Exception as e:
-                logger.error(
-                    f"Token exchange failed: {e}. Using external token as fallback."
-                )
+                logger.debug("Token exchange failed: %s. Using external token as fallback.", e)
                 expiry = self._get_expiry_from_jwt(access_token)
-                if expiry is None:
-                    raise ValueError(
-                        "Could not determine token expiry from JWT (after exchange failure)"
-                    )
                 fallback_token = Token(access_token, token_type, "", expiry)
                 self.current_token = fallback_token
                 return fallback_token
@@ -235,10 +223,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             # Always get the latest headers from the credentials provider
             header_factory = self.credentials_provider()
             headers = dict(header_factory()) if header_factory else {}
-            headers["Authorization"] = f"{token.token_type} {token.access_token}"
+            headers["Authorization"] = "{} {}".format(token.token_type, token.access_token)
             return headers
         except Exception as e:
-            logger.error(f"Error getting auth headers: {str(e)}")
             return dict(self.external_headers) if self.external_headers else {}
 
     def _send_token_exchange_request(
@@ -246,6 +233,9 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
     ) -> Dict[str, Any]:
         """
         Send the token exchange request to the token endpoint.
+        
+        For M2M flows, this should include HTTP Basic authentication using client credentials.
+        For U2M flows, token exchange is validated purely based on the JWT token and federation policies.
 
         Args:
             token_exchange_data: Token exchange request data
@@ -259,13 +249,24 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         if not self.token_endpoint:
             raise ValueError("Token endpoint not initialized")
 
+        auth = None
+        if hasattr(self.credentials_provider, 'client_id') and hasattr(self.credentials_provider, 'client_secret'):
+            client_id = self.credentials_provider.client_id
+            client_secret = self.credentials_provider.client_secret
+            auth = (client_id, client_secret)
+        else:
+            logger.debug("No client credentials available, sending request without authentication")
+        
         response = requests.post(
-            self.token_endpoint, data=token_exchange_data, headers=self.EXCHANGE_HEADERS
+            self.token_endpoint, 
+            data=token_exchange_data, 
+            headers=self.EXCHANGE_HEADERS,
+            auth=auth
         )
 
         if response.status_code != 200:
             raise requests.HTTPError(
-                f"Token exchange failed with status code {response.status_code}: {response.text}",
+                "Token exchange failed with status code {}: {}".format(response.status_code, response.text),
                 response=response,
             )
 
@@ -288,15 +289,15 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
             self.token_endpoint = OIDCDiscoveryUtil.discover_token_endpoint(
                 self.hostname
             )
-        # Prepare the request data
+            
+        # Prepare the request data according to RFC 8693
         token_exchange_data = dict(self.TOKEN_EXCHANGE_PARAMS)
         token_exchange_data["subject_token"] = access_token
 
-        # Add client_id if provided
+        # Add client_id if provided for federation policy identification
         if self.identity_federation_client_id:
             token_exchange_data["client_id"] = self.identity_federation_client_id
 
-        # Send the token exchange request
         resp_data = self._send_token_exchange_request(token_exchange_data)
 
         # Extract token information
@@ -309,8 +310,6 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
 
         # Extract expiry from JWT claims
         expiry = self._get_expiry_from_jwt(new_access_token)
-        if expiry is None:
-            raise ValueError("Unable to determine token expiry from JWT claims")
 
         return Token(new_access_token, token_type, refresh_token, expiry)
 
@@ -321,31 +320,3 @@ class DatabricksTokenFederationProvider(CredentialsProvider):
         headers = self.get_auth_headers()
         for k, v in headers.items():
             request_headers[k] = v
-
-
-class SimpleCredentialsProvider(CredentialsProvider):
-    """A simple credentials provider that returns a fixed token."""
-
-    def __init__(
-        self, token: str, token_type: str = "Bearer", auth_type_value: str = "token"
-    ):
-        """
-        Initialize a SimpleCredentialsProvider.
-        """
-        self.token = token
-        self.token_type = token_type
-        self.auth_type_value = auth_type_value
-
-    def auth_type(self) -> str:
-        """Return the auth type value."""
-        return self.auth_type_value
-
-    def __call__(self, *args, **kwargs) -> HeaderFactory:
-        """
-        Return a HeaderFactory that provides a fixed token.
-        """
-
-        def get_headers() -> Dict[str, str]:
-            return {"Authorization": f"{self.token_type} {self.token}"}
-
-        return get_headers
