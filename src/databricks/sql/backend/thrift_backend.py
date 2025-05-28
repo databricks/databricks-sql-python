@@ -875,6 +875,66 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
         )
 
+    def get_execution_result(self, op_handle, cursor):
+
+        assert op_handle is not None
+
+        req = ttypes.TFetchResultsReq(
+            operationHandle=ttypes.TOperationHandle(
+                op_handle.operationId,
+                op_handle.operationType,
+                False,
+                op_handle.modifiedRowCount,
+            ),
+            maxRows=cursor.arraysize,
+            maxBytes=cursor.buffer_size_bytes,
+            orientation=ttypes.TFetchOrientation.FETCH_NEXT,
+            includeResultSetMetadata=True,
+        )
+
+        resp = self.make_request(self._client.FetchResults, req)
+
+        t_result_set_metadata_resp = resp.resultSetMetadata
+
+        lz4_compressed = t_result_set_metadata_resp.lz4Compressed
+        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
+        has_more_rows = resp.hasMoreRows
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema
+        )
+
+        if pyarrow:
+            schema_bytes = (
+                t_result_set_metadata_resp.arrowSchema
+                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                .serialize()
+                .to_pybytes()
+            )
+        else:
+            schema_bytes = None
+
+        queue = ResultSetQueueFactory.build_queue(
+            row_set_type=resp.resultSetMetadata.resultFormat,
+            t_row_set=resp.results,
+            arrow_schema_bytes=schema_bytes,
+            max_download_threads=self.max_download_threads,
+            lz4_compressed=lz4_compressed,
+            description=description,
+            ssl_options=self._ssl_options,
+        )
+
+        return ExecuteResponse(
+            arrow_queue=queue,
+            status=resp.status,
+            has_been_closed_server_side=False,
+            has_more_rows=has_more_rows,
+            lz4_compressed=lz4_compressed,
+            is_staging_operation=is_staging_operation,
+            command_handle=op_handle,
+            description=description,
+            arrow_schema_bytes=schema_bytes,
+        )
+
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
         if initial_operation_status_resp:
             self._check_command_not_in_error_or_closed_state(
@@ -944,6 +1004,12 @@ class ThriftDatabricksClient(DatabricksClient):
             "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
             operation,
             thrift_handle,
+        )
+
+        logger.debug(
+            "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
+            operation,
+            session_handle,
         )
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
@@ -1103,6 +1169,10 @@ class ThriftDatabricksClient(DatabricksClient):
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
         cursor.active_command_id = command_id
+        self._check_direct_results_for_error(resp.directResults)
+
+    def _handle_execute_response_async(self, resp, cursor):
+        cursor.active_op_handle = resp.operationHandle
         self._check_direct_results_for_error(resp.directResults)
 
     def fetch_results(
