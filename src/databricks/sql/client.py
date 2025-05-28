@@ -1,8 +1,10 @@
 import time
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
 
-import pandas
-
+try:
+    import pandas
+except ImportError:
+    pandas = None
 try:
     import pyarrow
 except ImportError:
