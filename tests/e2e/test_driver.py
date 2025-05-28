@@ -920,7 +920,7 @@ class TestPySQLCoreSuite(
             assert op_handle is not None
 
             # Manually close the operation to simulate server-side closure
-            conn.thrift_backend.close_command(op_handle)
+            conn.session.thrift_backend.close_command(op_handle)
 
             cursor.close()
 
