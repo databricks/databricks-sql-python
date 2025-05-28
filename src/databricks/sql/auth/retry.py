@@ -19,7 +19,6 @@ from urllib3 import Retry
 from urllib3.util.retry import RequestHistory
 
 
-
 from databricks.sql.exc import (
     CursorAlreadyClosedError,
     MaxRetryDurationError,

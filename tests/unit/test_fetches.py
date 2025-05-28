@@ -12,7 +12,6 @@ from databricks.sql.utils import ExecuteResponse, ArrowQueue
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 
 
-
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
 class FetchTests(unittest.TestCase):
     """
