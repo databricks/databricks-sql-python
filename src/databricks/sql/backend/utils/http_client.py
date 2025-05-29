@@ -10,7 +10,7 @@ from databricks.sql.types import SSLOptions
 logger = logging.getLogger(__name__)
 
 
-class SEAHttpClient:
+class CustomHttpClient:
     """
     HTTP client for Statement Execution API (SEA).
 
@@ -46,14 +46,11 @@ class SEAHttpClient:
         self.auth_provider = auth_provider
         self.ssl_options = ssl_options
 
-        # Base URL for API requests
         self.base_url = f"https://{server_hostname}:{port}"
 
-        # Convert headers list to dictionary
         self.headers = dict(http_headers)
         self.headers.update({"Content-Type": "application/json"})
 
-        # Session retry configuration
         self.max_retries = kwargs.get("_retry_stop_after_attempts_count", 30)
 
         # Create a session for connection pooling
@@ -109,15 +106,7 @@ class SEAHttpClient:
         url = urljoin(self.base_url, path)
         headers = {**self.headers, **self._get_auth_headers()}
 
-        # Log request details (without sensitive information)
-        logger.debug(f"Making {method} request to {url}")
-        logger.debug(f"Headers: {[k for k in headers.keys()]}")
-        if data:
-            # Don't log sensitive data like access tokens
-            safe_data = {
-                k: v for k, v in data.items() if k not in ["access_token", "token"]
-            }
-            logger.debug(f"Request data: {safe_data}")
+        logger.debug(f"making {method} request to {url}")
 
         try:
             if method.upper() == "GET":
@@ -135,7 +124,6 @@ class SEAHttpClient:
 
             # Log response details
             logger.debug(f"Response status: {response.status_code}")
-            logger.debug(f"Response headers: {dict(response.headers)}")
 
             # Parse JSON response
             if response.content:
@@ -168,7 +156,11 @@ class SEAHttpClient:
                     )
                 except (ValueError, KeyError):
                     # If we can't parse the JSON, just log the raw content
-                    content_str = e.response.content.decode('utf-8', errors='replace') if isinstance(e.response.content, bytes) else str(e.response.content)
+                    content_str = (
+                        e.response.content.decode("utf-8", errors="replace")
+                        if isinstance(e.response.content, bytes)
+                        else str(e.response.content)
+                    )
                     logger.error(
                         f"Response status: {e.response.status_code}, Raw content: {content_str}"
                     )

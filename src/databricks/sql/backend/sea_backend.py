@@ -8,14 +8,14 @@ if TYPE_CHECKING:
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.exc import Error, NotSupportedError
-from databricks.sql.sea.http_client import SEAHttpClient
+from databricks.sql.backend.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
 logger = logging.getLogger(__name__)
 
 
-class SEADatabricksClient(DatabricksClient):
+class SeaDatabricksClient(DatabricksClient):
     """
     Statement Execution API (SEA) implementation of the DatabricksClient interface.
 
@@ -67,28 +67,10 @@ class SEADatabricksClient(DatabricksClient):
         self._max_download_threads = kwargs.get("max_download_threads", 10)
 
         # Extract warehouse ID from http_path
-        # Format could be either:
-        # - /sql/1.0/endpoints/{warehouse_id}
-        # - /sql/1.0/warehouses/{warehouse_id}
-        path_parts = http_path.strip("/").split("/")
-        self.warehouse_id = None
-
-        if len(path_parts) >= 3:
-            if path_parts[-2] in ["endpoints", "warehouses"]:
-                self.warehouse_id = path_parts[-1]
-                logger.debug(
-                    f"Extracted warehouse ID: {self.warehouse_id} from path: {http_path}"
-                )
-
-        if not self.warehouse_id:
-            logger.warning(
-                "Could not extract warehouse ID from http_path: %s. "
-                "Session creation may fail if warehouse ID is required.",
-                http_path,
-            )
+        self.warehouse_id = self._extract_warehouse_id(http_path)
 
         # Initialize HTTP client
-        self.http_client = SEAHttpClient(
+        self.http_client = CustomHttpClient(
             server_hostname=server_hostname,
             port=port,
             http_path=http_path,
@@ -97,6 +79,41 @@ class SEADatabricksClient(DatabricksClient):
             ssl_options=ssl_options,
             **kwargs,
         )
+
+    def _extract_warehouse_id(self, http_path: str) -> str:
+        """
+        Extract the warehouse ID from the HTTP path.
+
+        The warehouse ID is expected to be the last segment of the path when the
+        second-to-last segment is either 'warehouses' or 'endpoints'.
+        This matches the JDBC implementation which supports both formats.
+
+        Args:
+            http_path: The HTTP path from which to extract the warehouse ID
+
+        Returns:
+            The extracted warehouse ID
+
+        Raises:
+            Error: If the warehouse ID cannot be extracted from the path
+        """
+        path_parts = http_path.strip("/").split("/")
+        warehouse_id = None
+
+        if len(path_parts) >= 3 and path_parts[-2] in ["warehouses", "endpoints"]:
+            warehouse_id = path_parts[-1]
+            logger.debug(f"Extracted warehouse ID: {warehouse_id} from path: {http_path}")
+
+        if not warehouse_id:
+            error_message = (
+                f"Could not extract warehouse ID from http_path: {http_path}. "
+                f"Expected format: /path/to/warehouses/{{warehouse_id}} or "
+                f"/path/to/endpoints/{{warehouse_id}}"
+            )
+            logger.error(error_message)
+            raise ValueError(error_message)
+
+        return warehouse_id
 
     @property
     def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
@@ -115,7 +132,7 @@ class SEADatabricksClient(DatabricksClient):
 
     def open_session(
         self,
-        session_configuration: Optional[Dict[str, Any]],
+        session_configuration: Optional[Dict[str, str]],
         catalog: Optional[str],
         schema: Optional[str],
     ) -> SessionId:
@@ -141,36 +158,23 @@ class SEADatabricksClient(DatabricksClient):
             schema,
         )
 
-        # Prepare request payload
-        request_data: Dict[str, Any] = {}
-
-        if self.warehouse_id:
-            request_data["warehouse_id"] = self.warehouse_id
-
+        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
         if session_configuration:
-            # The SEA API expects "session_confs" as the key for session configuration
             request_data["session_confs"] = session_configuration
-
         if catalog:
             request_data["catalog"] = catalog
-
         if schema:
             request_data["schema"] = schema
 
-        # Make API request
         response = self.http_client._make_request(
             method="POST", path=self.SESSION_PATH, data=request_data
         )
 
-        # Extract session ID from response
         session_id = response.get("session_id")
         if not session_id:
             raise Error("Failed to create session: No session ID returned")
 
-        # Create and return SessionId object
-        return SessionId.from_sea_session_id(
-            session_id, {"warehouse_id": self.warehouse_id}
-        )
+        return SessionId.from_sea_session_id(session_id)
 
     def close_session(self, session_id: SessionId) -> None:
         """
@@ -185,16 +189,11 @@ class SEADatabricksClient(DatabricksClient):
         """
         logger.debug("SEADatabricksClient.close_session(session_id=%s)", session_id)
 
-        # Validate session ID
         if session_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA session ID")
-
         sea_session_id = session_id.to_sea_session_id()
 
-        # Make API request with warehouse_id as a query parameter
-        request_data = {}
-        if self.warehouse_id:
-            request_data["warehouse_id"] = self.warehouse_id
+        request_data = {"warehouse_id": self.warehouse_id}
 
         self.http_client._make_request(
             method="DELETE",
