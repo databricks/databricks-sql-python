@@ -238,7 +238,6 @@ class Connection:
         self.telemetry_enabled = (
             self.client_telemetry_enabled and self.server_telemetry_enabled
         )
-        telemetry_batch_size = kwargs.get("telemetry_batch_size", 200)
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
