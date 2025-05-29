@@ -72,7 +72,7 @@ class SessionId:
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
-            return f"{self.to_hex_id()}|{guid_to_hex_id(self.secret) if isinstance(self.secret, bytes) else str(self.secret)}"
+            return f"{self.get_hex_id()}|{guid_to_hex_id(self.secret) if isinstance(self.secret, bytes) else str(self.secret)}"
         return str(self.guid)
 
     @classmethod
