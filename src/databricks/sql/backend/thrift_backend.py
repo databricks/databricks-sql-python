@@ -5,7 +5,10 @@ import math
 import time
 import uuid
 import threading
-from typing import List, Union, Any
+from typing import List, Union, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from databricks.sql.client import Cursor
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
@@ -585,12 +588,12 @@ class ThriftDatabricksClient(DatabricksClient):
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            info = (
+            properties = (
                 {"serverProtocolVersion": response.serverProtocolVersion}
                 if response.serverProtocolVersion
                 else {}
             )
-            return SessionId.from_thrift_handle(response.sessionHandle, info)
+            return SessionId.from_thrift_handle(response.sessionHandle, properties)
         except:
             self._transport.close()
             raise
@@ -802,6 +805,7 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_queue_opt = None
 
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
+
         return ExecuteResponse(
             arrow_queue=arrow_queue_opt,
             status=operation_state,
@@ -814,7 +818,9 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
         )
 
-    def get_execution_result(self, command_id: CommandId, cursor):
+    def get_execution_result(
+        self, command_id: CommandId, cursor: "Cursor"
+    ) -> ExecuteResponse:
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -939,7 +945,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: Any,
+        cursor: "Cursor",
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
@@ -1037,7 +1043,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: "Cursor",
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
@@ -1071,7 +1077,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: "Cursor",
         catalog_name=None,
         schema_name=None,
         table_name=None,
@@ -1109,7 +1115,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: "Cursor",
         catalog_name=None,
         schema_name=None,
         table_name=None,
@@ -1230,18 +1236,4 @@ class ThriftDatabricksClient(DatabricksClient):
         logger.debug("ThriftBackend.close_command(command_id=%s)", command_id)
         req = ttypes.TCloseOperationReq(operationHandle=thrift_handle)
         resp = self.make_request(self._client.CloseOperation, req)
-        logger.debug(
-            "ThriftBackend.close_command(command_id=%s) -> %s", command_id, resp
-        )
-
-    def handle_to_id(self, session_id: SessionId) -> Any:
-        """Get the raw session ID from a SessionId"""
-        if session_id.backend_type != BackendType.THRIFT:
-            raise ValueError("Not a valid Thrift session ID")
-        return session_id.guid
-
-    def handle_to_hex_id(self, session_id: SessionId) -> str:
-        """Get the hex representation of a session ID"""
-        if session_id.backend_type != BackendType.THRIFT:
-            raise ValueError("Not a valid Thrift session ID")
-        return guid_to_hex_id(session_id.guid)
+        return resp.status
