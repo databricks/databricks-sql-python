@@ -334,30 +334,6 @@ class DatabricksClient(ABC):
         """
         pass
 
-    # == Properties ==
-    @property
-    @abstractmethod
-    def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
-        """
-        Gets the allowed local paths for staging operations.
-
-        Returns:
-            Union[None, str, List[str]]: The allowed local paths for staging operations,
-            or None if staging is not allowed
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def ssl_options(self) -> SSLOptions:
-        """
-        Gets the SSL options for this client.
-
-        Returns:
-            SSLOptions: The SSL configuration options
-        """
-        pass
-
     @property
     @abstractmethod
     def max_download_threads(self) -> int:

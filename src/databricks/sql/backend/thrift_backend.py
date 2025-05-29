@@ -101,7 +101,6 @@ class ThriftDatabricksClient(DatabricksClient):
         http_headers,
         auth_provider: AuthProvider,
         ssl_options: SSLOptions,
-        staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
@@ -160,7 +159,6 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             raise ValueError("No valid connection settings.")
 
-        self._staging_allowed_local_path = staging_allowed_local_path
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
@@ -233,14 +231,6 @@ class ThriftDatabricksClient(DatabricksClient):
             raise
 
         self._request_lock = threading.RLock()
-
-    @property
-    def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
-        return self._staging_allowed_local_path
-
-    @property
-    def ssl_options(self) -> SSLOptions:
-        return self._ssl_options
 
     @property
     def max_download_threads(self) -> int:
