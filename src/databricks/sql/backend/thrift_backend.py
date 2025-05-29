@@ -801,6 +801,7 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_queue_opt = None
 
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
+
         return ExecuteResponse(
             arrow_queue=arrow_queue_opt,
             status=operation_state,
