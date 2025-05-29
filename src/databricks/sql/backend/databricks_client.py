@@ -121,7 +121,7 @@ class DatabricksClient(ABC):
     def get_execution_result(
         self,
         command_id: CommandId,
-        cursor: Any,
+        cursor: "Cursor",
     ) -> "ResultSet":
         pass
 
@@ -132,7 +132,7 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: "Cursor",
     ) -> "ResultSet":
         pass
 
