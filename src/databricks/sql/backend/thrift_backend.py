@@ -5,9 +5,11 @@ import math
 import time
 import uuid
 import threading
-from typing import List, Union, Any
+from typing import List, Union, Any, TYPE_CHECKING
 
-from databricks.sql.client import Cursor
+if TYPE_CHECKING:
+    from databricks.sql.client import Cursor
+
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
     SessionId,
@@ -814,7 +816,7 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
         )
 
-    def get_execution_result(self, command_id: CommandId, cursor):
+    def get_execution_result(self, command_id: CommandId, cursor: "Cursor") -> ExecuteResponse:
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -930,7 +932,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: Cursor,
+        cursor: "Cursor",
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
@@ -988,7 +990,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
     ) -> ExecuteResponse:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -1008,7 +1010,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
         catalog_name=None,
         schema_name=None,
     ) -> ExecuteResponse:
@@ -1032,7 +1034,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
         catalog_name=None,
         schema_name=None,
         table_name=None,
@@ -1060,7 +1062,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
         catalog_name=None,
         schema_name=None,
         table_name=None,
