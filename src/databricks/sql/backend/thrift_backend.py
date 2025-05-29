@@ -820,7 +820,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def get_execution_result(
         self, command_id: CommandId, cursor: "Cursor"
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
