@@ -11,9 +11,11 @@ Implementations of this class are responsible for:
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple, List, Optional, Any, Union
+from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
 
-from databricks.sql.client import Cursor
+if TYPE_CHECKING:
+    from databricks.sql.client import Cursor
+
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.types import SessionId, CommandId
 from databricks.sql.utils import ExecuteResponse
@@ -76,7 +78,7 @@ class DatabricksClient(ABC):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: Cursor,
+        cursor: "Cursor",
         use_cloud_fetch: bool,
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
@@ -174,7 +176,7 @@ class DatabricksClient(ABC):
     def get_execution_result(
         self,
         command_id: CommandId,
-        cursor: Cursor,
+        cursor: "Cursor",
     ) -> ExecuteResponse:
         """
         Retrieves the results of a previously executed command.
@@ -202,13 +204,13 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
     ) -> ExecuteResponse:
         """
         Retrieves a list of available catalogs.
         
-        This method fetches metadata about the catalogs that are available
-        in the current session.
+        This method fetches metadata about all catalogs available in the current
+        session's context.
         
         Args:
             session_id: The session identifier
@@ -231,23 +233,23 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
     ) -> ExecuteResponse:
         """
-        Retrieves a list of available schemas.
+        Retrieves a list of schemas, optionally filtered by catalog and schema name patterns.
         
-        This method fetches metadata about the schemas that are available
-        in the specified catalog.
+        This method fetches metadata about schemas available in the specified catalog
+        or all catalogs if no catalog is specified.
         
         Args:
             session_id: The session identifier
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional catalog name to filter schemas
-            schema_name: Optional schema pattern to filter schemas by name
+            catalog_name: Optional catalog name pattern to filter by
+            schema_name: Optional schema name pattern to filter by
             
         Returns:
             ExecuteResponse: An object containing the schema metadata
@@ -264,27 +266,27 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
     ) -> ExecuteResponse:
         """
-        Retrieves a list of available tables.
+        Retrieves a list of tables, optionally filtered by catalog, schema, table name, and table types.
         
-        This method fetches metadata about the tables that are available
-        in the specified catalog and schema.
+        This method fetches metadata about tables available in the specified catalog
+        and schema, or all catalogs and schemas if not specified.
         
         Args:
             session_id: The session identifier
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional catalog name to filter tables
-            schema_name: Optional schema name to filter tables
-            table_name: Optional table pattern to filter tables by name
-            table_types: Optional list of table types to include (e.g., "TABLE", "VIEW")
+            catalog_name: Optional catalog name pattern to filter by
+            schema_name: Optional schema name pattern to filter by
+            table_name: Optional table name pattern to filter by
+            table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
             
         Returns:
             ExecuteResponse: An object containing the table metadata
@@ -301,27 +303,27 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Cursor,
+        cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
     ) -> ExecuteResponse:
         """
-        Retrieves column metadata for tables.
+        Retrieves a list of columns, optionally filtered by catalog, schema, table, and column name patterns.
         
-        This method fetches metadata about the columns in the specified
-        catalog, schema, and table.
+        This method fetches metadata about columns available in the specified table,
+        or all tables if not specified.
         
         Args:
             session_id: The session identifier
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            catalog_name: Optional catalog name to filter columns
-            schema_name: Optional schema name to filter columns
-            table_name: Optional table name to filter columns
-            column_name: Optional column pattern to filter columns by name
+            catalog_name: Optional catalog name pattern to filter by
+            schema_name: Optional schema name pattern to filter by
+            table_name: Optional table name pattern to filter by
+            column_name: Optional column name pattern to filter by
             
         Returns:
             ExecuteResponse: An object containing the column metadata
@@ -332,57 +334,16 @@ class DatabricksClient(ABC):
         """
         pass
 
-    # == Utility Methods ==
-    @abstractmethod
-    def handle_to_id(self, session_id: SessionId) -> Any:
-        """
-        Gets the raw session ID from a SessionId object.
-        
-        This method extracts the underlying protocol-specific identifier
-        from the SessionId abstraction.
-        
-        Args:
-            session_id: The session identifier
-            
-        Returns:
-            The raw session ID as used by the underlying protocol
-            
-        Raises:
-            ValueError: If the session ID is not valid for this client's backend type
-        """
-        pass
-
-    @abstractmethod
-    def handle_to_hex_id(self, session_id: SessionId) -> str:
-        """
-        Gets a hexadecimal string representation of a session ID.
-        
-        This method converts the session ID to a human-readable hexadecimal string
-        that can be used for logging and debugging.
-        
-        Args:
-            session_id: The session identifier
-            
-        Returns:
-            str: A hexadecimal string representation of the session ID
-            
-        Raises:
-            ValueError: If the session ID is not valid for this client's backend type
-        """
-        pass
-
-    # Properties related to specific backend features
+    # == Properties ==
     @property
     @abstractmethod
     def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
         """
-        Gets the local path(s) allowed for staging data.
-        
-        This property returns the path or paths on the local filesystem that
-        are allowed to be used for staging data when uploading to the server.
+        Gets the allowed local paths for staging operations.
         
         Returns:
-            Union[None, str, List[str]]: The allowed local path(s) or None if staging is not allowed
+            Union[None, str, List[str]]: The allowed local paths for staging operations,
+            or None if staging is not allowed
         """
         pass
 
@@ -390,10 +351,7 @@ class DatabricksClient(ABC):
     @abstractmethod
     def ssl_options(self) -> SSLOptions:
         """
-        Gets the SSL options used by this client.
-        
-        This property returns the SSL configuration options that are used
-        for secure communication with the server.
+        Gets the SSL options for this client.
         
         Returns:
             SSLOptions: The SSL configuration options
@@ -404,10 +362,7 @@ class DatabricksClient(ABC):
     @abstractmethod
     def max_download_threads(self) -> int:
         """
-        Gets the maximum number of threads for handling cloud fetch downloads.
-        
-        This property returns the maximum number of concurrent threads that
-        can be used for downloading result data when using cloud fetch.
+        Gets the maximum number of download threads for cloud fetch operations.
         
         Returns:
             int: The maximum number of download threads

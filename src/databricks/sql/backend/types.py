@@ -144,7 +144,13 @@ class SessionId:
 
         return self.guid
 
-    def to_hex_id(self) -> str:
+    def get_id(self) -> Any:
+        """
+        Get the ID of the session.
+        """
+        return self.guid
+
+    def get_hex_id(self) -> str:
         """
         Get a hexadecimal string representation of the session ID.
 
