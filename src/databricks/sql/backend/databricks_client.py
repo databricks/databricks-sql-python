@@ -33,18 +33,18 @@ class DatabricksClient(ABC):
     ) -> SessionId:
         """
         Opens a new session with the Databricks SQL service.
-        
+
         This method establishes a new session with the server and returns a session
         identifier that can be used for subsequent operations.
-        
+
         Args:
             session_configuration: Optional dictionary of configuration parameters for the session
             catalog: Optional catalog name to use as the initial catalog for the session
             schema: Optional schema name to use as the initial schema for the session
-            
+
         Returns:
             SessionId: A session identifier object that can be used for subsequent operations
-            
+
         Raises:
             Error: If the session configuration is invalid
             OperationalError: If there's an error establishing the session
@@ -56,13 +56,13 @@ class DatabricksClient(ABC):
     def close_session(self, session_id: SessionId) -> None:
         """
         Closes an existing session with the Databricks SQL service.
-        
+
         This method terminates the session identified by the given session ID and
         releases any resources associated with it.
-        
+
         Args:
             session_id: The session identifier returned by open_session()
-            
+
         Raises:
             ValueError: If the session ID is invalid
             OperationalError: If there's an error closing the session
@@ -86,10 +86,10 @@ class DatabricksClient(ABC):
     ) -> Any:
         """
         Executes a SQL command or query within the specified session.
-        
+
         This method sends a SQL command to the server for execution and handles
         the response. It can operate in both synchronous and asynchronous modes.
-        
+
         Args:
             operation: The SQL command or query to execute
             session_id: The session identifier in which to execute the command
@@ -101,12 +101,12 @@ class DatabricksClient(ABC):
             parameters: List of parameters to bind to the query
             async_op: Whether to execute the command asynchronously
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
-            
+
         Returns:
             If async_op is False, returns an ExecuteResponse object containing the
             query results and metadata. If async_op is True, returns None and the
             results must be fetched later using get_execution_result().
-            
+
         Raises:
             ValueError: If the session ID is invalid
             OperationalError: If there's an error executing the command
@@ -118,13 +118,13 @@ class DatabricksClient(ABC):
     def cancel_command(self, command_id: CommandId) -> None:
         """
         Cancels a running command or query.
-        
+
         This method attempts to cancel a command that is currently being executed.
         It can be called from a different thread than the one executing the command.
-        
+
         Args:
             command_id: The command identifier to cancel
-            
+
         Raises:
             ValueError: If the command ID is invalid
             OperationalError: If there's an error canceling the command
@@ -135,16 +135,16 @@ class DatabricksClient(ABC):
     def close_command(self, command_id: CommandId) -> ttypes.TStatus:
         """
         Closes a command and releases associated resources.
-        
+
         This method informs the server that the client is done with the command
         and any resources associated with it can be released.
-        
+
         Args:
             command_id: The command identifier to close
-            
+
         Returns:
             ttypes.TStatus: The status of the close operation
-            
+
         Raises:
             ValueError: If the command ID is invalid
             OperationalError: If there's an error closing the command
@@ -155,15 +155,15 @@ class DatabricksClient(ABC):
     def get_query_state(self, command_id: CommandId) -> ttypes.TOperationState:
         """
         Gets the current state of a query or command.
-        
+
         This method retrieves the current execution state of a command from the server.
-        
+
         Args:
             command_id: The command identifier to check
-            
+
         Returns:
             ttypes.TOperationState: The current state of the command
-            
+
         Raises:
             ValueError: If the command ID is invalid
             OperationalError: If there's an error retrieving the state
@@ -180,17 +180,17 @@ class DatabricksClient(ABC):
     ) -> ExecuteResponse:
         """
         Retrieves the results of a previously executed command.
-        
+
         This method fetches the results of a command that was executed asynchronously
         or retrieves additional results from a command that has more rows available.
-        
+
         Args:
             command_id: The command identifier for which to retrieve results
             cursor: The cursor object that will handle the results
-            
+
         Returns:
             ExecuteResponse: An object containing the query results and metadata
-            
+
         Raises:
             ValueError: If the command ID is invalid
             OperationalError: If there's an error retrieving the results
@@ -208,19 +208,19 @@ class DatabricksClient(ABC):
     ) -> ExecuteResponse:
         """
         Retrieves a list of available catalogs.
-        
+
         This method fetches metadata about all catalogs available in the current
         session's context.
-        
+
         Args:
             session_id: The session identifier
             max_rows: Maximum number of rows to fetch in a single batch
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
-            
+
         Returns:
             ExecuteResponse: An object containing the catalog metadata
-            
+
         Raises:
             ValueError: If the session ID is invalid
             OperationalError: If there's an error retrieving the catalogs
@@ -239,10 +239,10 @@ class DatabricksClient(ABC):
     ) -> ExecuteResponse:
         """
         Retrieves a list of schemas, optionally filtered by catalog and schema name patterns.
-        
+
         This method fetches metadata about schemas available in the specified catalog
         or all catalogs if no catalog is specified.
-        
+
         Args:
             session_id: The session identifier
             max_rows: Maximum number of rows to fetch in a single batch
@@ -250,10 +250,10 @@ class DatabricksClient(ABC):
             cursor: The cursor object that will handle the results
             catalog_name: Optional catalog name pattern to filter by
             schema_name: Optional schema name pattern to filter by
-            
+
         Returns:
             ExecuteResponse: An object containing the schema metadata
-            
+
         Raises:
             ValueError: If the session ID is invalid
             OperationalError: If there's an error retrieving the schemas
@@ -274,10 +274,10 @@ class DatabricksClient(ABC):
     ) -> ExecuteResponse:
         """
         Retrieves a list of tables, optionally filtered by catalog, schema, table name, and table types.
-        
+
         This method fetches metadata about tables available in the specified catalog
         and schema, or all catalogs and schemas if not specified.
-        
+
         Args:
             session_id: The session identifier
             max_rows: Maximum number of rows to fetch in a single batch
@@ -287,10 +287,10 @@ class DatabricksClient(ABC):
             schema_name: Optional schema name pattern to filter by
             table_name: Optional table name pattern to filter by
             table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
-            
+
         Returns:
             ExecuteResponse: An object containing the table metadata
-            
+
         Raises:
             ValueError: If the session ID is invalid
             OperationalError: If there's an error retrieving the tables
@@ -311,10 +311,10 @@ class DatabricksClient(ABC):
     ) -> ExecuteResponse:
         """
         Retrieves a list of columns, optionally filtered by catalog, schema, table, and column name patterns.
-        
+
         This method fetches metadata about columns available in the specified table,
         or all tables if not specified.
-        
+
         Args:
             session_id: The session identifier
             max_rows: Maximum number of rows to fetch in a single batch
@@ -324,10 +324,10 @@ class DatabricksClient(ABC):
             schema_name: Optional schema name pattern to filter by
             table_name: Optional table name pattern to filter by
             column_name: Optional column name pattern to filter by
-            
+
         Returns:
             ExecuteResponse: An object containing the column metadata
-            
+
         Raises:
             ValueError: If the session ID is invalid
             OperationalError: If there's an error retrieving the columns
@@ -340,7 +340,7 @@ class DatabricksClient(ABC):
     def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
         """
         Gets the allowed local paths for staging operations.
-        
+
         Returns:
             Union[None, str, List[str]]: The allowed local paths for staging operations,
             or None if staging is not allowed
@@ -352,7 +352,7 @@ class DatabricksClient(ABC):
     def ssl_options(self) -> SSLOptions:
         """
         Gets the SSL options for this client.
-        
+
         Returns:
             SSLOptions: The SSL configuration options
         """
@@ -363,7 +363,7 @@ class DatabricksClient(ABC):
     def max_download_threads(self) -> int:
         """
         Gets the maximum number of download threads for cloud fetch operations.
-        
+
         Returns:
             int: The maximum number of download threads
         """

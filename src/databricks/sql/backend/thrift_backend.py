@@ -816,7 +816,9 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
         )
 
-    def get_execution_result(self, command_id: CommandId, cursor: "Cursor") -> ExecuteResponse:
+    def get_execution_result(
+        self, command_id: CommandId, cursor: "Cursor"
+    ) -> ExecuteResponse:
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -1170,4 +1172,3 @@ class ThriftDatabricksClient(DatabricksClient):
         req = ttypes.TCloseOperationReq(operationHandle=thrift_handle)
         resp = self.make_request(self._client.CloseOperation, req)
         return resp.status
-

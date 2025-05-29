@@ -76,7 +76,9 @@ class SessionId:
         return str(self.guid)
 
     @classmethod
-    def from_thrift_handle(cls, session_handle, properties: Optional[Dict[str, Any]] = None):
+    def from_thrift_handle(
+        cls, session_handle, properties: Optional[Dict[str, Any]] = None
+    ):
         """
         Create a SessionId from a Thrift session handle.
 
