@@ -169,7 +169,7 @@ class SessionId:
         Get the server protocol version for this session.
 
         Returns:
-            The server protocol version or None if it does not exist 
+            The server protocol version or None if it does not exist
             It is not expected to exist for SEA sessions.
         """
         return self.properties.get("serverProtocolVersion")
