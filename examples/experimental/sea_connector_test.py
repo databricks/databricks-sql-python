@@ -6,6 +6,60 @@ from databricks.sql.client import Connection
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+def test_sea_query_execution():
+    """
+    Test executing a query using the SEA backend.
+    
+    This function connects to a Databricks SQL endpoint using the SEA backend,
+    executes a simple query, and verifies that execution completes successfully.
+    """
+    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
+    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
+    access_token = os.environ.get("DATABRICKS_TOKEN")
+    catalog = os.environ.get("DATABRICKS_CATALOG")
+    
+    if not all([server_hostname, http_path, access_token]):
+        logger.error("Missing required environment variables.")
+        logger.error("Please set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, and DATABRICKS_TOKEN.")
+        sys.exit(1)
+    
+    try:
+        # Create connection with SEA backend
+        connection = Connection(
+            server_hostname=server_hostname,
+            http_path=http_path,
+            access_token=access_token,
+            catalog=catalog,
+            schema="default",
+            use_sea=True,
+            user_agent_entry="SEA-Test-Client"
+        )
+        
+        logger.info(f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}")
+        logger.info(f"backend type: {type(connection.session.backend)}")
+        
+        # Create a cursor and execute a simple query
+        cursor = connection.cursor()
+        
+        logger.info("Executing query: SELECT 1 as test_value")
+        cursor.execute("SELECT 1 as test_value")
+        
+        # We don't fetch results yet since we haven't implemented the fetch functionality
+        logger.info("Query executed successfully")
+        
+        # Close cursor and connection
+        cursor.close()
+        connection.close()
+        logger.info("Successfully closed SEA session")
+        
+    except Exception as e:
+        logger.error(f"Error during SEA query execution test: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)
+    
+    logger.info("SEA query execution test completed successfully")
+
 def test_sea_session():
     """
     Test opening and closing a SEA session using the connector.
@@ -62,4 +116,8 @@ def test_sea_session():
     logger.info("SEA session test completed successfully")
 
 if __name__ == "__main__":
+    # Test session management
     test_sea_session()
+    
+    # Test query execution
+    test_sea_query_execution()

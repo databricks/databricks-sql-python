@@ -1,9 +1,11 @@
 import logging
 import uuid
+import time
 from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
+    from databricks.sql.result_set import ResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
@@ -213,37 +215,237 @@ class SeaDatabricksClient(DatabricksClient):
         lz4_compression: bool,
         cursor: "Cursor",
         use_cloud_fetch: bool,
-        parameters: List[ttypes.TSparkParameter],
+        parameters: List,
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ):
-        """Not implemented yet."""
-        raise NotSupportedError(
-            "execute_command is not yet implemented for SEA backend"
+    ) -> Union["ResultSet", None]:
+        """
+        Execute a SQL command using the SEA backend.
+        
+        Args:
+            operation: SQL command to execute
+            session_id: Session identifier
+            max_rows: Maximum number of rows to fetch
+            max_bytes: Maximum number of bytes to fetch
+            lz4_compression: Whether to use LZ4 compression
+            cursor: Cursor executing the command
+            use_cloud_fetch: Whether to use cloud fetch
+            parameters: SQL parameters
+            async_op: Whether to execute asynchronously
+            enforce_embedded_schema_correctness: Whether to enforce schema correctness
+            
+        Returns:
+            ResultSet: A SeaResultSet instance for the executed command
+        """
+        if session_id.backend_type != BackendType.SEA:
+            raise ValueError("Not a valid SEA session ID")
+        
+        sea_session_id = session_id.to_sea_session_id()
+        
+        # Prepare request data
+        request_data: Dict[str, Any] = {
+            "warehouse_id": self.warehouse_id,
+            "statement": operation,
+            "disposition": "EXTERNAL_LINKS",  # Prefer EXTERNAL_LINKS for larger result sets
+            "format": "JSON_ARRAY",  # Start with JSON_ARRAY format
+            "wait_timeout": "0s" if async_op else "10s",  # Use async mode if requested
+        }
+        
+        # Add parameters if provided
+        if parameters:
+            sea_parameters = []
+            for param in parameters:
+                sea_param: Dict[str, Any] = {
+                    "name": param.name,
+                    "value": param.value,
+                }
+                
+                # Add type if specified
+                if param.type:
+                    sea_param["type"] = param.type
+                    
+                sea_parameters.append(sea_param)
+            
+            request_data["parameters"] = sea_parameters
+        
+        # Execute the statement
+        response = self.http_client._make_request(
+            method="POST",
+            path=self.STATEMENT_PATH,
+            data=request_data,
         )
+        
+        # Create a command ID from the statement ID
+        statement_id = response.get("statement_id")
+        if not statement_id:
+            raise Error("Failed to execute command: No statement ID returned")
+        
+        command_id = CommandId.from_sea_statement_id(statement_id)
+        
+        # Store the command ID in the cursor
+        cursor.active_command_id = command_id
+        
+        # If async operation, return None and let the client poll for results
+        if async_op:
+            return None
+        
+        # For synchronous operation, wait for the statement to complete
+        # Poll until the statement is done (similar to Thrift's _wait_until_command_done)
+        status = response.get("status", {})
+        state = status.get("state")
+        
+        # Keep polling until we reach a terminal state
+        while state in ["PENDING", "RUNNING"]:
+            # Add a small delay to avoid excessive API calls
+            time.sleep(0.5)
+            
+            poll_response = self.http_client._make_request(
+                method="GET",
+                path=self.STATEMENT_PATH_WITH_ID.format(statement_id),
+                data={"warehouse_id": self.warehouse_id},
+            )
+            
+            status = poll_response.get("status", {})
+            state = status.get("state")
+            
+            # Check for errors
+            if state == "FAILED":
+                error_message = status.get("error", {}).get("message", "Unknown error")
+                raise Error(f"Statement execution failed: {error_message}")
+            
+            # Check for cancellation
+            if state == "CANCELED":
+                raise Error("Statement execution was canceled")
+        
+        # Get the final result
+        return self.get_execution_result(command_id, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
-        """Not implemented yet."""
-        raise NotSupportedError("cancel_command is not yet implemented for SEA backend")
+        """
+        Cancel a running command.
+        
+        Args:
+            command_id: Command identifier to cancel
+            
+        Raises:
+            ValueError: If the command ID is invalid
+        """
+        if command_id.backend_type != BackendType.SEA:
+            raise ValueError("Not a valid SEA command ID")
+        
+        sea_statement_id = command_id.to_sea_statement_id()
+        
+        # Prepare the cancel request
+        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
+        
+        # Send the cancel request
+        self.http_client._make_request(
+            method="POST",
+            path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            data=request_data,
+        )
 
     def close_command(self, command_id: CommandId) -> None:
-        """Not implemented yet."""
-        raise NotSupportedError("close_command is not yet implemented for SEA backend")
+        """
+        Close a command and release resources.
+        
+        Args:
+            command_id: Command identifier to close
+            
+        Raises:
+            ValueError: If the command ID is invalid
+        """
+        if command_id.backend_type != BackendType.SEA:
+            raise ValueError("Not a valid SEA command ID")
+        
+        sea_statement_id = command_id.to_sea_statement_id()
+        
+        # Prepare the close request
+        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
+        
+        # Send the close request - SEA uses DELETE for closing statements
+        self.http_client._make_request(
+            method="DELETE",
+            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            data=request_data,
+        )
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
-        """Not implemented yet."""
-        raise NotSupportedError(
-            "get_query_state is not yet implemented for SEA backend"
+        """
+        Get the state of a running query.
+        
+        Args:
+            command_id: Command identifier
+            
+        Returns:
+            CommandState: The current state of the command
+            
+        Raises:
+            ValueError: If the command ID is invalid
+        """
+        if command_id.backend_type != BackendType.SEA:
+            raise ValueError("Not a valid SEA command ID")
+        
+        sea_statement_id = command_id.to_sea_statement_id()
+        
+        # Prepare the request
+        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
+        
+        # Get the statement status
+        response = self.http_client._make_request(
+            method="GET",
+            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            data=request_data,
         )
+        
+        # Extract the status
+        status = response.get("status", {})
+        state = status.get("state")
+        
+        # Map SEA state to CommandState
+        return CommandState.from_sea_state(state)
 
     def get_execution_result(
         self,
         command_id: CommandId,
         cursor: "Cursor",
-    ):
-        """Not implemented yet."""
-        raise NotSupportedError(
-            "get_execution_result is not yet implemented for SEA backend"
+    ) -> "ResultSet":
+        """
+        Get the result of a command execution.
+        
+        Args:
+            command_id: Command identifier
+            cursor: Cursor executing the command
+            
+        Returns:
+            ResultSet: A SeaResultSet instance with the execution results
+            
+        Raises:
+            ValueError: If the command ID is invalid
+        """
+        if command_id.backend_type != BackendType.SEA:
+            raise ValueError("Not a valid SEA command ID")
+        
+        sea_statement_id = command_id.to_sea_statement_id()
+        
+        # Prepare the request
+        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
+        
+        # Get the statement result
+        response = self.http_client._make_request(
+            method="GET",
+            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            data=request_data,
+        )
+        
+        # Create and return a SeaResultSet
+        from databricks.sql.backend.sea_result_set import SeaResultSet
+        return SeaResultSet(
+            connection=cursor.connection,
+            sea_response=response,
+            sea_client=self,
+            buffer_size_bytes=cursor.buffer_size_bytes,
+            arraysize=cursor.arraysize,
         )
 
     # == Metadata Operations ==
@@ -254,9 +456,22 @@ class SeaDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: "Cursor",
-    ):
-        """Not implemented yet."""
-        raise NotSupportedError("get_catalogs is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get available catalogs by executing 'SHOW CATALOGS'."""
+        result = self.execute_command(
+            operation="SHOW CATALOGS",
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+        return result
 
     def get_schemas(
         self,
@@ -266,9 +481,28 @@ class SeaDatabricksClient(DatabricksClient):
         cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ):
-        """Not implemented yet."""
-        raise NotSupportedError("get_schemas is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get schemas by executing 'SHOW SCHEMAS [IN catalog]'."""
+        operation = "SHOW SCHEMAS"
+        if catalog_name:
+            operation += f" IN `{catalog_name}`"
+        if schema_name:
+            operation += f" LIKE '{schema_name}'"
+            
+        result = self.execute_command(
+            operation=operation,
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+        return result
 
     def get_tables(
         self,
@@ -280,9 +514,32 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ):
-        """Not implemented yet."""
-        raise NotSupportedError("get_tables is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get tables by executing 'SHOW TABLES [IN catalog.schema]'."""
+        operation = "SHOW TABLES"
+        
+        if catalog_name and schema_name:
+            operation += f" IN `{catalog_name}`.`{schema_name}`"
+        elif schema_name:
+            operation += f" IN `{schema_name}`"
+            
+        if table_name:
+            operation += f" LIKE '{table_name}'"
+            
+        result = self.execute_command(
+            operation=operation,
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+        return result
 
     def get_columns(
         self,
@@ -294,6 +551,33 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ):
-        """Not implemented yet."""
-        raise NotSupportedError("get_columns is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get columns by executing 'DESCRIBE TABLE [catalog.schema.]table'."""
+        if not table_name:
+            raise ValueError("Table name is required for get_columns")
+            
+        operation = "DESCRIBE TABLE "
+        
+        if catalog_name and schema_name:
+            operation += f"`{catalog_name}`.`{schema_name}`."
+        elif schema_name:
+            operation += f"`{schema_name}`."
+            
+        operation += f"`{table_name}`"
+        
+        # Column name filtering will be done client-side
+        
+        result = self.execute_command(
+            operation=operation,
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+        return result
