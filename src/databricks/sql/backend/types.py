@@ -43,7 +43,7 @@ class SessionId:
         backend_type: BackendType,
         guid: Any,
         secret: Optional[Any] = None,
-        info: Optional[Dict[str, Any]] = None,
+        properties: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize a SessionId.
@@ -57,7 +57,7 @@ class SessionId:
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
-        self.info = info or {}
+        self.properties = properties or {}
 
     def __str__(self) -> str:
         """
@@ -76,7 +76,7 @@ class SessionId:
         return str(self.guid)
 
     @classmethod
-    def from_thrift_handle(cls, session_handle, info: Optional[Dict[str, Any]] = None):
+    def from_thrift_handle(cls, session_handle, properties: Optional[Dict[str, Any]] = None):
         """
         Create a SessionId from a Thrift session handle.
 
@@ -93,15 +93,15 @@ class SessionId:
         secret_bytes = session_handle.sessionId.secret
 
         if session_handle.serverProtocolVersion is not None:
-            if info is None:
-                info = {}
-            info["serverProtocolVersion"] = session_handle.serverProtocolVersion
+            if properties is None:
+                properties = {}
+            properties["serverProtocolVersion"] = session_handle.serverProtocolVersion
 
-        return cls(BackendType.THRIFT, guid_bytes, secret_bytes, info)
+        return cls(BackendType.THRIFT, guid_bytes, secret_bytes, properties)
 
     @classmethod
     def from_sea_session_id(
-        cls, session_id: str, info: Optional[Dict[str, Any]] = None
+        cls, session_id: str, properties: Optional[Dict[str, Any]] = None
     ):
         """
         Create a SessionId from a SEA session ID.
@@ -112,7 +112,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
-        return cls(BackendType.SEA, session_id, info=info)
+        return cls(BackendType.SEA, session_id, properties=properties)
 
     def to_thrift_handle(self):
         """
@@ -127,7 +127,7 @@ class SessionId:
         from databricks.sql.thrift_api.TCLIService import ttypes
 
         handle_identifier = ttypes.THandleIdentifier(guid=self.guid, secret=self.secret)
-        server_protocol_version = self.info.get("serverProtocolVersion")
+        server_protocol_version = self.properties.get("serverProtocolVersion")
         return ttypes.TSessionHandle(
             sessionId=handle_identifier, serverProtocolVersion=server_protocol_version
         )
@@ -169,7 +169,7 @@ class SessionId:
         Returns:
             The server protocol version or None if this is not a Thrift session ID
         """
-        return self.info.get("serverProtocolVersion")
+        return self.properties.get("serverProtocolVersion")
 
 
 class CommandId:

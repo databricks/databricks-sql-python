@@ -5,11 +5,9 @@ import math
 import time
 import uuid
 import threading
-from typing import List, Union, Any, TYPE_CHECKING
+from typing import List, Union, Any
 
-if TYPE_CHECKING:
-    from databricks.sql.client import Cursor
-
+from databricks.sql.client import Cursor
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
     SessionId,
@@ -586,12 +584,12 @@ class ThriftDatabricksClient(DatabricksClient):
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            info = (
+            properties = (
                 {"serverProtocolVersion": response.serverProtocolVersion}
                 if response.serverProtocolVersion
                 else {}
             )
-            return SessionId.from_thrift_handle(response.sessionHandle, info)
+            return SessionId.from_thrift_handle(response.sessionHandle, properties)
         except:
             self._transport.close()
             raise
@@ -815,7 +813,7 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
         )
 
-    def get_execution_result(self, command_id: CommandId, cursor: "Cursor"):
+    def get_execution_result(self, command_id: CommandId, cursor):
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -931,7 +929,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: "Cursor",
+        cursor: Cursor,
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
@@ -989,7 +987,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
     ) -> ExecuteResponse:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -1009,7 +1007,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
     ) -> ExecuteResponse:
@@ -1033,7 +1031,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
@@ -1061,7 +1059,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,

@@ -64,12 +64,12 @@ class TestSessionHandleChecks(object):
         ],
     )
     def test_get_protocol_version_fallback_behavior(self, test_input, expected):
-        info = (
+        properties = (
             {"serverProtocolVersion": test_input.serverProtocolVersion}
             if test_input.serverProtocolVersion
             else {}
         )
-        session_id = SessionId.from_thrift_handle(test_input.sessionHandle, info)
+        session_id = SessionId.from_thrift_handle(test_input.sessionHandle, properties)
         assert Connection.get_protocol_version(session_id) == expected
 
     @pytest.mark.parametrize(
