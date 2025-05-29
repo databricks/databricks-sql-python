@@ -76,7 +76,7 @@ class Session:
 
         # Determine which backend to use
         use_sea = kwargs.get("use_sea", False)
-        
+
         if use_sea:
             self.backend: DatabricksClient = SEADatabricksClient(
                 self.host,
@@ -89,7 +89,7 @@ class Session:
                 **kwargs,
             )
         else:
-            self.backend: DatabricksClient = ThriftDatabricksClient(
+            self.backend = ThriftDatabricksClient(
                 self.host,
                 self.port,
                 http_path,
