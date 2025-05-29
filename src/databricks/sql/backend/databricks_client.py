@@ -13,6 +13,7 @@ Implementations of this class are responsible for:
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, List, Optional, Any, Union
 
+from databricks.sql.client import Cursor
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.types import SessionId, CommandId
 from databricks.sql.utils import ExecuteResponse
@@ -75,7 +76,7 @@ class DatabricksClient(ABC):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: Any,
+        cursor: Cursor,
         use_cloud_fetch: bool,
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
@@ -173,7 +174,7 @@ class DatabricksClient(ABC):
     def get_execution_result(
         self,
         command_id: CommandId,
-        cursor: Any,
+        cursor: Cursor,
     ) -> ExecuteResponse:
         """
         Retrieves the results of a previously executed command.
@@ -201,8 +202,8 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
-    ) -> Any:
+        cursor: Cursor,
+    ) -> ExecuteResponse:
         """
         Retrieves a list of available catalogs.
         
@@ -230,10 +231,10 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> Any:
+    ) -> ExecuteResponse:
         """
         Retrieves a list of available schemas.
         
@@ -263,12 +264,12 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> Any:
+    ) -> ExecuteResponse:
         """
         Retrieves a list of available tables.
         
@@ -300,12 +301,12 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> Any:
+    ) -> ExecuteResponse:
         """
         Retrieves column metadata for tables.
         

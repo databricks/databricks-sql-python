@@ -7,6 +7,7 @@ import uuid
 import threading
 from typing import List, Union, Any
 
+from databricks.sql.client import Cursor
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
     SessionId,
@@ -928,7 +929,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: Any,
+        cursor: Cursor,
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
@@ -986,8 +987,8 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
-    ):
+        cursor: Cursor,
+    ) -> ExecuteResponse:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1006,10 +1007,10 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
-    ):
+    ) -> ExecuteResponse:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1030,12 +1031,12 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         table_types=None,
-    ):
+    ) -> ExecuteResponse:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1058,12 +1059,12 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: Any,
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         column_name=None,
-    ):
+    ) -> ExecuteResponse:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
