@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass, asdict
-from databricks.sql.telemetry.enums import (
+from databricks.sql.telemetry.models.enums import (
     AuthMech,
     AuthFlow,
     DatabricksClientType,
