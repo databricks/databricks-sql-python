@@ -18,4 +18,4 @@ def guid_to_hex_id(guid: bytes) -> str:
     except Exception as e:
         logger.debug(f"Unable to convert bytes to UUID: {guid!r} -- {str(e)}")
         return str(guid)
-    return str(this_uuid) 
+    return str(this_uuid)
