@@ -1367,9 +1367,17 @@ class ResultSet:
             pyarrow.float64(): pandas.Float64Dtype(),
             pyarrow.string(): pandas.StringDtype(),
         }
+
+        arrow_pandas_type_override = self.connection._arrow_pandas_type_override
+        if not isinstance(arrow_pandas_type_override, dict):
+            logger.debug(
+                "_arrow_pandas_type_override on connection was not a dict, using default type mapping"
+            )
+            arrow_pandas_type_override = {}
+
         dtype_mapping = {
             **DEFAULT_DTYPE_MAPPING,
-            **self.connection._arrow_pandas_type_override,
+            **arrow_pandas_type_override,
         }
 
         to_pandas_kwargs: dict[str, Any] = {
@@ -1377,7 +1385,14 @@ class ResultSet:
             "date_as_object": True,
             "timestamp_as_object": True,
         }
-        to_pandas_kwargs.update(self.connection._arrow_to_pandas_kwargs)
+
+        arrow_to_pandas_kwargs = self.connection._arrow_to_pandas_kwargs
+        if isinstance(arrow_to_pandas_kwargs, dict):
+            to_pandas_kwargs.update(arrow_to_pandas_kwargs)
+        else:
+            logger.debug(
+                "_arrow_to_pandas_kwargs on connection was not a dict, using default arguments"
+            )
 
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
