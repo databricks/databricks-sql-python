@@ -3,11 +3,9 @@ Abstract client interface for interacting with Databricks SQL services.
 
 Implementations of this class are responsible for:
 - Managing connections to Databricks SQL services
-- Handling authentication
 - Executing SQL queries and commands
 - Retrieving query results
 - Fetching metadata about catalogs, schemas, tables, and columns
-- Managing error handling and retries
 """
 
 from abc import ABC, abstractmethod
@@ -110,11 +108,44 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def close_command(self, command_id: CommandId) -> None:
+    def close_command(self, command_id: CommandId) -> ttypes.TStatus:
+        """
+        Closes a command and releases associated resources.
+
+        This method informs the server that the client is done with the command
+        and any resources associated with it can be released.
+
+        Args:
+            command_id: The command identifier to close
+
+        Returns:
+            ttypes.TStatus: The status of the close operation
+
+        Raises:
+            ValueError: If the command ID is invalid
+            OperationalError: If there's an error closing the command
+        """
         pass
 
     @abstractmethod
-    def get_query_state(self, command_id: CommandId) -> CommandState:
+    def get_query_state(self, command_id: CommandId) -> ttypes.TOperationState:
+        """
+        Gets the current state of a query or command.
+
+        This method retrieves the current execution state of a command from the server.
+
+        Args:
+            command_id: The command identifier to check
+
+        Returns:
+            ttypes.TOperationState: The current state of the command
+
+        Raises:
+            ValueError: If the command ID is invalid
+            OperationalError: If there's an error retrieving the state
+            ServerOperationError: If the command is in an error state
+            DatabaseError: If the command has been closed unexpectedly
+        """
         pass
 
     @abstractmethod
@@ -173,30 +204,29 @@ class DatabricksClient(ABC):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> "ResultSet":
-        pass
-
-    # == Properties ==
-    @property
-    @abstractmethod
-    def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
+    ) -> ExecuteResponse:
         """
-        Gets the allowed local paths for staging operations.
+        Retrieves a list of columns, optionally filtered by catalog, schema, table, and column name patterns.
+
+        This method fetches metadata about columns available in the specified table,
+        or all tables if not specified.
+
+        Args:
+            session_id: The session identifier
+            max_rows: Maximum number of rows to fetch in a single batch
+            max_bytes: Maximum number of bytes to fetch in a single batch
+            cursor: The cursor object that will handle the results
+            catalog_name: Optional catalog name pattern to filter by
+            schema_name: Optional schema name pattern to filter by
+            table_name: Optional table name pattern to filter by
+            column_name: Optional column name pattern to filter by
 
         Returns:
-            Union[None, str, List[str]]: The allowed local paths for staging operations,
-            or None if staging is not allowed
-        """
-        pass
+            ExecuteResponse: An object containing the column metadata
 
-    @property
-    @abstractmethod
-    def ssl_options(self) -> SSLOptions:
-        """
-        Gets the SSL options for this client.
-
-        Returns:
-            SSLOptions: The SSL configuration options
+        Raises:
+            ValueError: If the session ID is invalid
+            OperationalError: If there's an error retrieving the columns
         """
         pass
 

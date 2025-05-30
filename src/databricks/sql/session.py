@@ -116,11 +116,11 @@ class Session:
 
     def get_id(self):
         """Get the raw session ID (backend-specific)"""
-        return self._session_id.get_id()
+        return self._session_id.get_guid()
 
     def get_id_hex(self) -> str:
         """Get the session ID in hex format"""
-        return self._session_id.get_hex_id()
+        return self._session_id.get_hex_guid()
 
     def close(self) -> None:
         """Close the underlying session."""

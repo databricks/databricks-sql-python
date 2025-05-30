@@ -1,65 +1,16 @@
 from enum import Enum
 from typing import Dict, Optional, Any, Union
-import uuid
 import logging
 
-from databricks.sql.thrift_api.TCLIService import ttypes
+from databricks.sql.backend.utils import guid_to_hex_id
 
 logger = logging.getLogger(__name__)
 
 
-class CommandState(Enum):
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    SUCCEEDED = "SUCCEEDED"
-    FAILED = "FAILED"
-    CLOSED = "CLOSED"
-    CANCELLED = "CANCELLED"
-
-    @classmethod
-    def from_thrift_state(cls, state: ttypes.TOperationState) -> "CommandState":
-        if state in (
-            ttypes.TOperationState.INITIALIZED_STATE,
-            ttypes.TOperationState.PENDING_STATE,
-        ):
-            return cls.PENDING
-        elif state == ttypes.TOperationState.RUNNING_STATE:
-            return cls.RUNNING
-        elif state == ttypes.TOperationState.FINISHED_STATE:
-            return cls.SUCCEEDED
-        elif state in (
-            ttypes.TOperationState.ERROR_STATE,
-            ttypes.TOperationState.TIMEDOUT_STATE,
-            ttypes.TOperationState.UKNOWN_STATE,
-        ):
-            return cls.FAILED
-        elif state == ttypes.TOperationState.CLOSED_STATE:
-            return cls.CLOSED
-        elif state == ttypes.TOperationState.CANCELED_STATE:
-            return cls.CANCELLED
-        else:
-            raise ValueError(f"Unknown command state: {state}")
-
-
-def guid_to_hex_id(guid: bytes) -> str:
-    """Return a hexadecimal string instead of bytes
-
-    Example:
-        IN   b'\x01\xee\x1d)\xa4\x19\x1d\xb6\xa9\xc0\x8d\xf1\xfe\xbaB\xdd'
-        OUT  '01ee1d29-a419-1db6-a9c0-8df1feba42dd'
-
-    If conversion to hexadecimal fails, the original bytes are returned
-    """
-    try:
-        this_uuid = uuid.UUID(bytes=guid)
-    except Exception as e:
-        logger.debug(f"Unable to convert bytes to UUID: {guid!r} -- {str(e)}")
-        return str(guid)
-    return str(this_uuid)
-
-
 class BackendType(Enum):
-    """Enum representing the type of backend."""
+    """
+    Enum representing the type of backend
+    """
 
     THRIFT = "thrift"
     SEA = "sea"
@@ -87,7 +38,7 @@ class SessionId:
             backend_type: The type of backend (THRIFT or SEA)
             guid: The primary identifier for the session
             secret: The secret part of the identifier (only used for Thrift)
-            info: Additional information about the session
+            properties: Additional information about the session
         """
         self.backend_type = backend_type
         self.guid = guid
@@ -107,7 +58,12 @@ class SessionId:
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
-            return f"{self.get_hex_id()}|{guid_to_hex_id(self.secret) if isinstance(self.secret, bytes) else str(self.secret)}"
+            secret_hex = (
+                guid_to_hex_id(self.secret)
+                if isinstance(self.secret, bytes)
+                else str(self.secret)
+            )
+            return f"{self.get_hex_guid()}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
@@ -181,13 +137,13 @@ class SessionId:
 
         return self.guid
 
-    def get_id(self) -> Any:
+    def get_guid(self) -> Any:
         """
         Get the ID of the session.
         """
         return self.guid
 
-    def get_hex_id(self) -> str:
+    def get_hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the session ID.
 
@@ -316,7 +272,7 @@ class CommandId:
 
         return self.guid
 
-    def to_hex_id(self) -> str:
+    def to_hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the command ID.
 

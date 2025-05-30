@@ -247,6 +247,7 @@ class Connection:
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )
+        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -785,7 +786,7 @@ class Cursor:
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
-                staging_allowed_local_path=self.backend.staging_allowed_local_path
+                staging_allowed_local_path=self.connection.staging_allowed_local_path
             )
 
         return self
@@ -881,7 +882,7 @@ class Cursor:
 
             if self.active_result_set and self.active_result_set.is_staging_operation:
                 self._handle_staging_operation(
-                    staging_allowed_local_path=self.backend.staging_allowed_local_path
+                    staging_allowed_local_path=self.connection.staging_allowed_local_path
                 )
 
             return self
@@ -1106,7 +1107,7 @@ class Cursor:
         invoked via the execute method yet, or if cursor was closed.
         """
         if self.active_command_id is not None:
-            return self.active_command_id.to_hex_id()
+            return self.active_command_id.to_hex_guid()
         return None
 
     @property

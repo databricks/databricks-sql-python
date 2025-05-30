@@ -53,6 +53,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     open_session_resp = ttypes.TOpenSessionResp(
         status=okay_status,
         serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V4,
+        sessionHandle=session_handle,
     )
 
     metadata_resp = ttypes.TGetResultSetMetadataResp(
