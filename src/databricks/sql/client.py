@@ -50,6 +50,7 @@ from databricks.sql.session import Session
 from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TOpenSessionResp,
     TSparkParameter,
     TOperationState,
 )
@@ -320,8 +321,16 @@ class Connection:
         return self.session.protocol_version
 
     @staticmethod
-    def get_protocol_version(session_id: SessionId):
+    def get_protocol_version(openSessionResp: TOpenSessionResp):
         """Delegate to Session class static method"""
+        properties = (
+            {"serverProtocolVersion": openSessionResp.serverProtocolVersion}
+            if openSessionResp.serverProtocolVersion
+            else {}
+        )
+        session_id = SessionId.from_thrift_handle(
+            openSessionResp.sessionHandle, properties
+        )
         return Session.get_protocol_version(session_id)
 
     @property
