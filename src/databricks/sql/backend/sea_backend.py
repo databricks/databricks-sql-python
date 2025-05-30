@@ -14,6 +14,19 @@ from databricks.sql.backend.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
+from databricks.sql.backend.models import (
+    ExecuteStatementRequest,
+    GetStatementRequest,
+    CancelStatementRequest,
+    CloseStatementRequest,
+    CreateSessionRequest,
+    DeleteSessionRequest,
+    StatementParameter,
+    ExecuteStatementResponse,
+    GetStatementResponse,
+    CreateSessionResponse
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -160,19 +173,22 @@ class SeaDatabricksClient(DatabricksClient):
             schema,
         )
 
-        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
-        if session_configuration:
-            request_data["session_confs"] = session_configuration
-        if catalog:
-            request_data["catalog"] = catalog
-        if schema:
-            request_data["schema"] = schema
-
-        response = self.http_client._make_request(
-            method="POST", path=self.SESSION_PATH, data=request_data
+        request = CreateSessionRequest(
+            warehouse_id=self.warehouse_id,
+            session_confs=session_configuration,
+            catalog=catalog,
+            schema=schema
         )
 
-        session_id = response.get("session_id")
+        # Send the request
+        response = self.http_client._make_request(
+            method="POST", path=self.SESSION_PATH, data=request.to_dict()
+        )
+
+        # Parse the response
+        session_response = CreateSessionResponse.from_dict(response)
+        session_id = session_response.session_id
+
         if not session_id:
             raise Error("Failed to create session: No session ID returned")
 
@@ -195,16 +211,18 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
-        request_data = {"warehouse_id": self.warehouse_id}
+        # Create the request model
+        request = DeleteSessionRequest(
+            warehouse_id=self.warehouse_id,
+            session_id=sea_session_id
+        )
 
+        # Send the request
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            data=request_data,
+            data=request.to_dict()
         )
-
-    # == Not Implemented Operations ==
-    # These methods will be implemented in future iterations
 
     def execute_command(
         self,
@@ -242,41 +260,42 @@ class SeaDatabricksClient(DatabricksClient):
         
         sea_session_id = session_id.to_sea_session_id()
         
-        # Prepare request data
-        request_data: Dict[str, Any] = {
-            "warehouse_id": self.warehouse_id,
-            "statement": operation,
-            "disposition": "EXTERNAL_LINKS",  # Prefer EXTERNAL_LINKS for larger result sets
-            "format": "JSON_ARRAY",  # Start with JSON_ARRAY format
-            "wait_timeout": "0s" if async_op else "10s",  # Use async mode if requested
-        }
-        
-        # Add parameters if provided
+        # Convert parameters to StatementParameter objects
+        sea_parameters = []
         if parameters:
-            sea_parameters = []
             for param in parameters:
-                sea_param: Dict[str, Any] = {
-                    "name": param.name,
-                    "value": param.value,
-                }
-                
-                # Add type if specified
-                if param.type:
-                    sea_param["type"] = param.type
-                    
-                sea_parameters.append(sea_param)
-            
-            request_data["parameters"] = sea_parameters
+                sea_parameters.append(StatementParameter(
+                    name=param.name,
+                    value=param.value,
+                    type=param.type if hasattr(param, 'type') else None
+                ))
         
-        # Execute the statement
-        response = self.http_client._make_request(
-            method="POST",
-            path=self.STATEMENT_PATH,
-            data=request_data,
+        # Create the request model
+        request = ExecuteStatementRequest(
+            warehouse_id=self.warehouse_id,
+            session_id=sea_session_id,
+            statement=operation,
+            disposition="EXTERNAL_LINKS" if use_cloud_fetch else "INLINE",
+            format="ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY",
+            wait_timeout="0s" if async_op else "30s",
+            on_wait_timeout="CONTINUE",
+            row_limit=max_rows if max_rows > 0 else None,
+            byte_limit=max_bytes if max_bytes > 0 else None,
+            parameters=sea_parameters if sea_parameters else None
         )
         
+        # Execute the statement
+        response_data = self.http_client._make_request(
+            method="POST",
+            path=self.STATEMENT_PATH,
+            data=request.to_dict()
+        )
+        
+        # Parse the response
+        response = ExecuteStatementResponse.from_dict(response_data)
+        
         # Create a command ID from the statement ID
-        statement_id = response.get("statement_id")
+        statement_id = response.statement_id
         if not statement_id:
             raise Error("Failed to execute command: No statement ID returned")
         
@@ -290,27 +309,36 @@ class SeaDatabricksClient(DatabricksClient):
             return None
         
         # For synchronous operation, wait for the statement to complete
-        # Poll until the statement is done (similar to Thrift's _wait_until_command_done)
-        status = response.get("status", {})
-        state = status.get("state")
+        # Poll until the statement is done
+        status = response.status
+        state = status.state
         
         # Keep polling until we reach a terminal state
         while state in ["PENDING", "RUNNING"]:
             # Add a small delay to avoid excessive API calls
             time.sleep(0.5)
             
-            poll_response = self.http_client._make_request(
-                method="GET",
-                path=self.STATEMENT_PATH_WITH_ID.format(statement_id),
-                data={"warehouse_id": self.warehouse_id},
+            # Create the request model
+            get_request = GetStatementRequest(
+                warehouse_id=self.warehouse_id,
+                statement_id=statement_id
             )
             
-            status = poll_response.get("status", {})
-            state = status.get("state")
+            # Get the statement status
+            poll_response_data = self.http_client._make_request(
+                method="GET",
+                path=self.STATEMENT_PATH_WITH_ID.format(statement_id),
+                data=get_request.to_dict()
+            )
+            
+            # Parse the response
+            poll_response = GetStatementResponse.from_dict(poll_response_data)
+            status = poll_response.status
+            state = status.state
             
             # Check for errors
-            if state == "FAILED":
-                error_message = status.get("error", {}).get("message", "Unknown error")
+            if state == "FAILED" and status.error:
+                error_message = status.error.message
                 raise Error(f"Statement execution failed: {error_message}")
             
             # Check for cancellation
@@ -335,14 +363,17 @@ class SeaDatabricksClient(DatabricksClient):
         
         sea_statement_id = command_id.to_sea_statement_id()
         
-        # Prepare the cancel request
-        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
+        # Create the request model
+        request = CancelStatementRequest(
+            warehouse_id=self.warehouse_id,
+            statement_id=sea_statement_id
+        )
         
         # Send the cancel request
         self.http_client._make_request(
             method="POST",
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request_data,
+            data=request.to_dict()
         )
 
     def close_command(self, command_id: CommandId) -> None:
@@ -360,14 +391,17 @@ class SeaDatabricksClient(DatabricksClient):
         
         sea_statement_id = command_id.to_sea_statement_id()
         
-        # Prepare the close request
-        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
+        # Create the request model
+        request = CloseStatementRequest(
+            warehouse_id=self.warehouse_id,
+            statement_id=sea_statement_id
+        )
         
         # Send the close request - SEA uses DELETE for closing statements
         self.http_client._make_request(
             method="DELETE",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request_data,
+            data=request.to_dict()
         )
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
@@ -388,19 +422,24 @@ class SeaDatabricksClient(DatabricksClient):
         
         sea_statement_id = command_id.to_sea_statement_id()
         
-        # Prepare the request
-        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
-        
-        # Get the statement status
-        response = self.http_client._make_request(
-            method="GET",
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request_data,
+        # Create the request model
+        request = GetStatementRequest(
+            warehouse_id=self.warehouse_id,
+            statement_id=sea_statement_id
         )
         
+        # Get the statement status
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            data=request.to_dict()
+        )
+        
+        # Parse the response
+        response = GetStatementResponse.from_dict(response_data)
+        
         # Extract the status
-        status = response.get("status", {})
-        state = status.get("state")
+        state = response.status.state
         
         # Map SEA state to CommandState
         return CommandState.from_sea_state(state)
@@ -428,21 +467,24 @@ class SeaDatabricksClient(DatabricksClient):
         
         sea_statement_id = command_id.to_sea_statement_id()
         
-        # Prepare the request
-        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
+        # Create the request model
+        request = GetStatementRequest(
+            warehouse_id=self.warehouse_id,
+            statement_id=sea_statement_id
+        )
         
         # Get the statement result
-        response = self.http_client._make_request(
+        response_data = self.http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request_data,
+            data=request.to_dict()
         )
         
         # Create and return a SeaResultSet
         from databricks.sql.backend.sea_result_set import SeaResultSet
         return SeaResultSet(
             connection=cursor.connection,
-            sea_response=response,
+            sea_response=response_data,
             sea_client=self,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,

@@ -1,0 +1,60 @@
+"""
+Base models for the SEA (Statement Execution API) backend.
+
+These models define the common structures used in SEA API requests and responses.
+"""
+
+from typing import Dict, List, Any, Optional, Union
+from dataclasses import dataclass, field
+
+
+@dataclass
+class ServiceError:
+    """Error information returned by the SEA API."""
+    message: str
+    error_code: Optional[str] = None
+
+
+@dataclass
+class StatementStatus:
+    """Status information for a statement execution."""
+    state: str
+    error: Optional[ServiceError] = None
+    sql_state: Optional[str] = None
+
+
+@dataclass
+class ExternalLink:
+    """External link information for result data."""
+    external_link: str
+    expiration: str
+    chunk_index: int
+
+
+@dataclass
+class ResultData:
+    """Result data from a statement execution."""
+    data: Optional[List[List[Any]]] = None
+    external_links: Optional[List[ExternalLink]] = None
+
+
+@dataclass
+class ColumnInfo:
+    """Information about a column in the result set."""
+    name: str
+    type_name: str
+    type_text: str
+    nullable: bool = True
+    precision: Optional[int] = None
+    scale: Optional[int] = None
+    ordinal_position: Optional[int] = None
+
+
+@dataclass
+class ResultManifest:
+    """Manifest information for a result set."""
+    schema: List[ColumnInfo]
+    total_row_count: int
+    total_byte_count: int
+    truncated: bool = False
+    chunk_count: Optional[int] = None
