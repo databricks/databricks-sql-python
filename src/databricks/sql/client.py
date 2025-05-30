@@ -1160,7 +1160,7 @@ class Cursor:
         invoked via the execute method yet, or if cursor was closed.
         """
         if self.active_command_id is not None:
-            return self.active_command_id.to_hex_id()
+            return self.active_command_id.to_hex_guid()
         return None
 
     @property
