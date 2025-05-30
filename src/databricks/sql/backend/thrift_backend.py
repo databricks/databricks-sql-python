@@ -1214,7 +1214,7 @@ class ThriftDatabricksClient(DatabricksClient):
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
-        logger.debug("Cancelling command {}".format(command_id.guid))
+        logger.debug("Cancelling command {}".format(guid_to_hex_id(command_id.guid)))
         req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 
