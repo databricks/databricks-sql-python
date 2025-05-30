@@ -7,7 +7,9 @@ from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
-from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.databricks_client import DatabricksClient
+from databricks.sql.backend.types import SessionId, BackendType
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +73,7 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        self.thrift_backend = ThriftBackend(
+        self.backend: DatabricksClient = ThriftDatabricksClient(
             self.host,
             self.port,
             http_path,
@@ -82,31 +84,21 @@ class Session:
             **kwargs,
         )
 
-        self._handle = None
         self.protocol_version = None
 
-    def open(self) -> None:
-        self._open_session_resp = self.thrift_backend.open_session(
-            self.session_configuration, self.catalog, self.schema
+    def open(self):
+        self._session_id = self.backend.open_session(
+            session_configuration=self.session_configuration,
+            catalog=self.catalog,
+            schema=self.schema,
         )
-        self._handle = self._open_session_resp.sessionHandle
-        self.protocol_version = self.get_protocol_version(self._open_session_resp)
+        self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True
         logger.info("Successfully opened session " + str(self.get_id_hex()))
 
     @staticmethod
-    def get_protocol_version(openSessionResp):
-        """
-        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
-        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
-        """
-        if (
-            openSessionResp.sessionHandle
-            and hasattr(openSessionResp.sessionHandle, "serverProtocolVersion")
-            and openSessionResp.sessionHandle.serverProtocolVersion
-        ):
-            return openSessionResp.sessionHandle.serverProtocolVersion
-        return openSessionResp.serverProtocolVersion
+    def get_protocol_version(session_id: SessionId):
+        return session_id.get_protocol_version()
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
@@ -118,20 +110,17 @@ class Session:
         else:
             return False
 
-    def get_handle(self):
-        return self._handle
+    def get_session_id(self) -> SessionId:
+        """Get the normalized session ID"""
+        return self._session_id
 
     def get_id(self):
-        handle = self.get_handle()
-        if handle is None:
-            return None
-        return self.thrift_backend.handle_to_id(handle)
+        """Get the raw session ID (backend-specific)"""
+        return self._session_id.get_guid()
 
-    def get_id_hex(self):
-        handle = self.get_handle()
-        if handle is None:
-            return None
-        return self.thrift_backend.handle_to_hex_id(handle)
+    def get_id_hex(self) -> str:
+        """Get the session ID in hex format"""
+        return self._session_id.get_hex_guid()
 
     def close(self) -> None:
         """Close the underlying session."""
@@ -141,7 +130,7 @@ class Session:
             return
 
         try:
-            self.thrift_backend.close_session(self.get_handle())
+            self.backend.close_session(self._session_id)
         except RequestError as e:
             if isinstance(e.args[1], SessionAlreadyClosedError):
                 logger.info("Session was closed by a prior request")
