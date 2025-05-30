@@ -1,10 +1,44 @@
 from enum import Enum
-from typing import Dict, Optional, Any, Union
+from typing import Dict, Optional, Any
 import logging
 
 from databricks.sql.backend.utils import guid_to_hex_id
+from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
+
+
+class CommandState(Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"
+
+    @classmethod
+    def from_thrift_state(cls, state: ttypes.TOperationState) -> "CommandState":
+        if state in (
+            ttypes.TOperationState.INITIALIZED_STATE,
+            ttypes.TOperationState.PENDING_STATE,
+        ):
+            return cls.PENDING
+        elif state == ttypes.TOperationState.RUNNING_STATE:
+            return cls.RUNNING
+        elif state == ttypes.TOperationState.FINISHED_STATE:
+            return cls.SUCCEEDED
+        elif state in (
+            ttypes.TOperationState.ERROR_STATE,
+            ttypes.TOperationState.TIMEDOUT_STATE,
+            ttypes.TOperationState.UKNOWN_STATE,
+        ):
+            return cls.FAILED
+        elif state == ttypes.TOperationState.CLOSED_STATE:
+            return cls.CLOSED
+        elif state == ttypes.TOperationState.CANCELED_STATE:
+            return cls.CANCELLED
+        else:
+            raise ValueError(f"Unknown command state: {state}")
 
 
 class BackendType(Enum):

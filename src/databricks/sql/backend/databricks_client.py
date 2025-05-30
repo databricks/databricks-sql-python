@@ -108,7 +108,7 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def close_command(self, command_id: CommandId) -> ttypes.TStatus:
+    def close_command(self, command_id: CommandId) -> None:
         """
         Closes a command and releases associated resources.
 
@@ -118,9 +118,6 @@ class DatabricksClient(ABC):
         Args:
             command_id: The command identifier to close
 
-        Returns:
-            ttypes.TStatus: The status of the close operation
-
         Raises:
             ValueError: If the command ID is invalid
             OperationalError: If there's an error closing the command
@@ -128,7 +125,7 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def get_query_state(self, command_id: CommandId) -> ttypes.TOperationState:
+    def get_query_state(self, command_id: CommandId) -> CommandState:
         """
         Gets the current state of a query or command.
 
@@ -204,7 +201,7 @@ class DatabricksClient(ABC):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         """
         Retrieves a list of columns, optionally filtered by catalog, schema, table, and column name patterns.
 

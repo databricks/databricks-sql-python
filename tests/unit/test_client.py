@@ -133,7 +133,6 @@ class ClientTestSuite(unittest.TestCase):
 
         result_set = ThriftResultSet(
             connection=mock_connection,
-            backend=mock_backend,
             execute_response=Mock(),
             thrift_client=mock_backend,
         )

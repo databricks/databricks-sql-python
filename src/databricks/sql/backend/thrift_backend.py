@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
+    CommandState,
     SessionId,
     CommandId,
     BackendType,
