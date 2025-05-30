@@ -63,7 +63,7 @@ class SessionId:
                 if isinstance(self.secret, bytes)
                 else str(self.secret)
             )
-            return f"{self.get_hex_id()}|{secret_hex}"
+            return f"{self.get_hex_guid()}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
@@ -137,13 +137,13 @@ class SessionId:
 
         return self.guid
 
-    def get_id(self) -> Any:
+    def get_guid(self) -> Any:
         """
         Get the ID of the session.
         """
         return self.guid
 
-    def get_hex_id(self) -> str:
+    def get_hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the session ID.
 
@@ -214,7 +214,12 @@ class CommandId:
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
-            return f"{self.to_hex_id()}|{guid_to_hex_id(self.secret) if isinstance(self.secret, bytes) else str(self.secret)}"
+            secret_hex = (
+                guid_to_hex_id(self.secret)
+                if isinstance(self.secret, bytes)
+                else str(self.secret)
+            )
+            return f"{self.to_hex_guid()}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
@@ -288,7 +293,7 @@ class CommandId:
 
         return self.guid
 
-    def to_hex_id(self) -> str:
+    def to_hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the command ID.
 
