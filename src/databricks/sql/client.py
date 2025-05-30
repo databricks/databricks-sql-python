@@ -213,6 +213,11 @@ class Connection:
         # (True by default)
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
+        # _arrow_pandas_type_override
+        # Override the default pandas dtype mapping for Arrow types.
+        # This is a dictionary of Arrow types to pandas dtypes.
+        # _arrow_to_pandas_kwargs
+        # Additional or modified arguments to pass to pandas.DataFrame constructor.
 
         logger.debug(
             "Connection.__init__(server_hostname=%s, http_path=%s)",
@@ -1346,7 +1351,7 @@ class ResultSet:
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
         # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
+        DEFAULT_DTYPE_MAPPING: Dict[pyarrow.DataType, pandas.api.extensions.ExtensionDtype] = {
             pyarrow.int8(): pandas.Int8Dtype(),
             pyarrow.int16(): pandas.Int16Dtype(),
             pyarrow.int32(): pandas.Int32Dtype(),
@@ -1360,14 +1365,18 @@ class ResultSet:
             pyarrow.float64(): pandas.Float64Dtype(),
             pyarrow.string(): pandas.StringDtype(),
         }
+        dtype_mapping = {**DEFAULT_DTYPE_MAPPING, **self.connection._arrow_pandas_type_override}
+
+        to_pandas_kwargs: dict[str, Any] = {
+            "types_mapper": dtype_mapping.get,
+            "date_as_object": True,
+            "timestamp_as_object": True,
+        }
+        to_pandas_kwargs.update(self.connection._arrow_to_pandas_kwargs)
 
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
+        df = table_renamed.to_pandas(**to_pandas_kwargs)
 
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
