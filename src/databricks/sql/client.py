@@ -1351,7 +1351,9 @@ class ResultSet:
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
         # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        DEFAULT_DTYPE_MAPPING: Dict[pyarrow.DataType, pandas.api.extensions.ExtensionDtype] = {
+        DEFAULT_DTYPE_MAPPING: Dict[
+            pyarrow.DataType, pandas.api.extensions.ExtensionDtype
+        ] = {
             pyarrow.int8(): pandas.Int8Dtype(),
             pyarrow.int16(): pandas.Int16Dtype(),
             pyarrow.int32(): pandas.Int32Dtype(),
@@ -1365,7 +1367,10 @@ class ResultSet:
             pyarrow.float64(): pandas.Float64Dtype(),
             pyarrow.string(): pandas.StringDtype(),
         }
-        dtype_mapping = {**DEFAULT_DTYPE_MAPPING, **self.connection._arrow_pandas_type_override}
+        dtype_mapping = {
+            **DEFAULT_DTYPE_MAPPING,
+            **self.connection._arrow_pandas_type_override,
+        }
 
         to_pandas_kwargs: dict[str, Any] = {
             "types_mapper": dtype_mapping.get,
