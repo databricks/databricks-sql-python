@@ -102,7 +102,9 @@ class SeaDatabricksClient(DatabricksClient):
 
         if len(path_parts) >= 3 and path_parts[-2] in ["warehouses", "endpoints"]:
             warehouse_id = path_parts[-1]
-            logger.debug(f"Extracted warehouse ID: {warehouse_id} from path: {http_path}")
+            logger.debug(
+                f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
+            )
 
         if not warehouse_id:
             error_message = (
