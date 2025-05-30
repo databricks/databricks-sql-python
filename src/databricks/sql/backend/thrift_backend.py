@@ -1149,11 +1149,7 @@ class ThriftDatabricksClient(DatabricksClient):
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        execute_response = self._results_message_to_execute_response(
-            resp, final_operation_state
-        )
-        execute_response = execute_response._replace(command_id=command_id)
-        return execute_response
+        return self._results_message_to_execute_response(resp, final_operation_state)
 
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
