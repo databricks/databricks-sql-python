@@ -1,6 +1,5 @@
 import time
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
-
 import pandas
 
 try:
@@ -232,6 +231,12 @@ class Connection:
 
         auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
+        )
+
+        self.server_telemetry_enabled = True
+        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
+        self.telemetry_enabled = (
+            self.client_telemetry_enabled and self.server_telemetry_enabled
         )
 
         user_agent_entry = kwargs.get("user_agent_entry")
