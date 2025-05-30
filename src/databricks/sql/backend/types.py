@@ -8,7 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 class BackendType(Enum):
-    """Enum representing the type of backend."""
+    """
+    Enum representing the type of backend
+    """
 
     THRIFT = "thrift"
     SEA = "sea"
@@ -36,7 +38,7 @@ class SessionId:
             backend_type: The type of backend (THRIFT or SEA)
             guid: The primary identifier for the session
             secret: The secret part of the identifier (only used for Thrift)
-            info: Additional information about the session
+            properties: Additional information about the session
         """
         self.backend_type = backend_type
         self.guid = guid
@@ -56,7 +58,12 @@ class SessionId:
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
-            return f"{self.get_hex_id()}|{guid_to_hex_id(self.secret) if isinstance(self.secret, bytes) else str(self.secret)}"
+            secret_hex = (
+                guid_to_hex_id(self.secret)
+                if isinstance(self.secret, bytes)
+                else str(self.secret)
+            )
+            return f"{self.get_hex_id()}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
