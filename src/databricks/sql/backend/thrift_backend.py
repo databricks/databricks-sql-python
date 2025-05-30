@@ -5,7 +5,7 @@ import math
 import time
 import uuid
 import threading
-from typing import List, Union, Any, TYPE_CHECKING
+from typing import List, Optional, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -929,7 +929,7 @@ class ThriftDatabricksClient(DatabricksClient):
         parameters=[],
         async_op=False,
         enforce_embedded_schema_correctness=False,
-    ):
+    ) -> Optional[ExecuteResponse]:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -974,6 +974,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         if async_op:
             self._handle_execute_response_async(resp, cursor)
+            return None
         else:
             return self._handle_execute_response(resp, cursor)
 

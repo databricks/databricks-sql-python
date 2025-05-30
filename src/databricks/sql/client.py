@@ -783,6 +783,8 @@ class Cursor:
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
         )
+        assert execute_response is not None  # async_op = False above
+
         self.active_result_set = ResultSet(
             self.connection,
             execute_response,

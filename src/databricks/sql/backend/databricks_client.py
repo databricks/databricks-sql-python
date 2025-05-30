@@ -83,7 +83,7 @@ class DatabricksClient(ABC):
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> Any:
+    ) -> Optional[ExecuteResponse]:
         """
         Executes a SQL command or query within the specified session.
 
