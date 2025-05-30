@@ -139,6 +139,14 @@ class DeleteSessionRequest:
     warehouse_id: str
     session_id: str
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert the request to a dictionary for JSON serialization."""
-        return {"warehouse_id": self.warehouse_id, "session_id": self.session_id}
+    def to_query_params(self) -> Dict[str, str]:
+        """
+        Convert the request to query parameters.
+
+        In the SEA API, only the warehouse_id is sent as a query parameter.
+        The session_id is included in the URL path.
+
+        Returns:
+            A dictionary containing the warehouse_id as a query parameter
+        """
+        return {"warehouse_id": self.warehouse_id}

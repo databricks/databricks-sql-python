@@ -58,7 +58,7 @@ class SeaResultSet(ResultSet):
         if manifest_data:
             schema_data = manifest_data.get("schema", [])
             columns = []
-            for col_data in schema_data.get("columns", []):
+            for col_data in schema_data:
                 columns.append(
                     ColumnInfo(
                         name=col_data.get("name", ""),
@@ -142,28 +142,35 @@ class SeaResultSet(ResultSet):
 
     def _fill_results_buffer(self) -> None:
         """Fill the results buffer from the backend."""
-        raise NotImplementedError
+        raise NotImplementedError("Not implemented yet")
 
     def fetchone(self) -> Optional[Row]:
         """Fetch the next row of a query result set."""
-        raise NotImplementedError
+        raise NotImplementedError("Not implemented yet")
 
     def fetchmany(self, size: int) -> List[Row]:
         """Fetch the next set of rows of a query result."""
-        raise NotImplementedError
+        raise NotImplementedError("Not implemented yet")
 
     def fetchall(self) -> List[Row]:
         """Fetch all remaining rows of a query result."""
-        raise NotImplementedError
+        raise NotImplementedError("Not implemented yet")
 
     def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
-        raise NotImplementedError
+        raise NotImplementedError("Not implemented yet")
 
     def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
-        raise NotImplementedError
+        raise NotImplementedError("Not implemented yet")
 
     def close(self) -> None:
         """Close the result set and release any resources."""
-        logger.info("Closing SeaResultSet (but not really)")
+        # Basic implementation to close the statement
+        if self.connection.open and self.statement_id:
+            try:
+                self.backend.close_command(
+                    CommandId.from_sea_statement_id(self.statement_id)
+                )
+            except Exception as e:
+                logger.warning(f"Error closing SEA statement: {e}")

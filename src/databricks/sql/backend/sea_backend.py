@@ -222,7 +222,7 @@ class SeaDatabricksClient(DatabricksClient):
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            data=request.to_dict(),
+            data=request.to_query_params(),  # Use to_query_params to get only the warehouse_id
         )
 
     def execute_command(
@@ -338,7 +338,7 @@ class SeaDatabricksClient(DatabricksClient):
 
             # Check for errors
             if state == "FAILED" and status.error:
-                error_message = status.error.message
+                error_message = status.error["message"]
                 raise Error(f"Statement execution failed: {error_message}")
 
             # Check for cancellation
