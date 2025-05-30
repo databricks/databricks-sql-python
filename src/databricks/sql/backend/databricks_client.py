@@ -3,11 +3,9 @@ Abstract client interface for interacting with Databricks SQL services.
 
 Implementations of this class are responsible for:
 - Managing connections to Databricks SQL services
-- Handling authentication
 - Executing SQL queries and commands
 - Retrieving query results
 - Fetching metadata about catalogs, schemas, tables, and columns
-- Managing error handling and retries
 """
 
 from abc import ABC, abstractmethod
