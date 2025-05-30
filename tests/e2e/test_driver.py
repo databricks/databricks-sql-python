@@ -822,11 +822,10 @@ class TestPySQLCoreSuite(
             # We must manually run this check because thrift_backend always forces `has_been_closed_server_side` to True
             # Cursor op state should be open before connection is closed
             status_request = ttypes.TGetOperationStatusReq(
-                operationHandle=ars.command_id, getProgressUpdate=False
+                operationHandle=ars.command_id.to_thrift_handle(),
+                getProgressUpdate=False,
             )
-            op_status_at_server = ars.thrift_backend._client.GetOperationStatus(
-                status_request
-            )
+            op_status_at_server = ars.backend._client.GetOperationStatus(status_request)
             assert (
                 op_status_at_server.operationState
                 != ttypes.TOperationState.CLOSED_STATE
@@ -836,7 +835,7 @@ class TestPySQLCoreSuite(
 
             # When connection closes, any cursor operations should no longer exist at the server
             with pytest.raises(SessionAlreadyClosedError) as cm:
-                op_status_at_server = ars.thrift_backend._client.GetOperationStatus(
+                op_status_at_server = ars.backend._client.GetOperationStatus(
                     status_request
                 )
 
@@ -866,9 +865,9 @@ class TestPySQLCoreSuite(
             cursor = conn.cursor()
             try:
                 cursor.execute("SELECT 1 AS test")
-                assert cursor.active_op_handle is not None
+                assert cursor.active_command_id is not None
                 cursor.close()
-                assert cursor.active_op_handle is None
+                assert cursor.active_command_id is None
                 assert not cursor.open
             finally:
                 if cursor.open:
@@ -894,19 +893,19 @@ class TestPySQLCoreSuite(
         with self.connection() as conn:
             with conn.cursor() as cursor1:
                 cursor1.execute("SELECT 1 AS test1")
-                assert cursor1.active_op_handle is not None
+                assert cursor1.active_command_id is not None
 
                 with conn.cursor() as cursor2:
                     cursor2.execute("SELECT 2 AS test2")
-                    assert cursor2.active_op_handle is not None
+                    assert cursor2.active_command_id is not None
 
                 # After inner context manager exit, cursor2 should be not open
                 assert not cursor2.open
-                assert cursor2.active_op_handle is None
+                assert cursor2.active_command_id is None
 
             # After outer context manager exit, cursor1 should be not open
             assert not cursor1.open
-            assert cursor1.active_op_handle is None
+            assert cursor1.active_command_id is None
 
     def test_cursor_error_handling(self):
         """Test that cursor close handles errors properly to prevent orphaned operations."""
@@ -915,12 +914,12 @@ class TestPySQLCoreSuite(
 
             cursor.execute("SELECT 1 AS test")
 
-            op_handle = cursor.active_op_handle
+            op_handle = cursor.active_command_id
 
             assert op_handle is not None
 
             # Manually close the operation to simulate server-side closure
-            conn.session.thrift_backend.close_command(op_handle)
+            conn.session.backend.close_command(op_handle)
 
             cursor.close()
 
@@ -940,7 +939,7 @@ class TestPySQLCoreSuite(
 
                 result_set.close()
 
-                assert result_set.op_state == result_set.thrift_backend.CLOSED_OP_STATE
+                assert result_set.op_state == result_set.backend.CLOSED_OP_STATE
                 assert result_set.op_state != initial_op_state
 
                 # Closing the result set again should be a no-op and not raise exceptions

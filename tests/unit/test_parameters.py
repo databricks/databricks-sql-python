@@ -24,6 +24,7 @@ from databricks.sql.parameters import (
     MapParameter,
     ArrayParameter,
 )
+from databricks.sql.backend.types import SessionId
 from databricks.sql.parameters.native import (
     TDbsqlParameter,
     TSparkParameter,
@@ -46,7 +47,10 @@ class TestSessionHandleChecks(object):
             (
                 TOpenSessionResp(
                     serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
-                    sessionHandle=TSessionHandle(1, None),
+                    sessionHandle=TSessionHandle(
+                        sessionId=ttypes.THandleIdentifier(guid=0x36, secret=0x37),
+                        serverProtocolVersion=None,
+                    ),
                 ),
                 ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
             ),
@@ -55,7 +59,8 @@ class TestSessionHandleChecks(object):
                 TOpenSessionResp(
                     serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V7,
                     sessionHandle=TSessionHandle(
-                        1, ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
+                        sessionId=ttypes.THandleIdentifier(guid=0x36, secret=0x37),
+                        serverProtocolVersion=ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
                     ),
                 ),
                 ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8,
@@ -63,7 +68,13 @@ class TestSessionHandleChecks(object):
         ],
     )
     def test_get_protocol_version_fallback_behavior(self, test_input, expected):
-        assert Connection.get_protocol_version(test_input) == expected
+        properties = (
+            {"serverProtocolVersion": test_input.serverProtocolVersion}
+            if test_input.serverProtocolVersion
+            else {}
+        )
+        session_id = SessionId.from_thrift_handle(test_input.sessionHandle, properties)
+        assert Connection.get_protocol_version(session_id) == expected
 
     @pytest.mark.parametrize(
         "test_input,expected",
