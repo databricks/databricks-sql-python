@@ -88,6 +88,30 @@ class DatabricksClient(ABC):
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
     ) -> Union["ResultSet", None]:
+        """
+        Executes a SQL command or query within the specified session.
+        This method sends a SQL command to the server for execution and handles
+        the response. It can operate in both synchronous and asynchronous modes.
+        Args:
+            operation: The SQL command or query to execute
+            session_id: The session identifier in which to execute the command
+            max_rows: Maximum number of rows to fetch in a single fetch batch
+            max_bytes: Maximum number of bytes to fetch in a single fetch batch
+            lz4_compression: Whether to use LZ4 compression for result data
+            cursor: The cursor object that will handle the results
+            use_cloud_fetch: Whether to use cloud fetch for retrieving large result sets
+            parameters: List of parameters to bind to the query
+            async_op: Whether to execute the command asynchronously
+            enforce_embedded_schema_correctness: Whether to enforce schema correctness
+        Returns:
+            If async_op is False, returns an ExecuteResponse object containing the
+            query results and metadata. If async_op is True, returns None and the
+            results must be fetched later using get_execution_result().
+        Raises:
+            ValueError: If the session ID is invalid
+            OperationalError: If there's an error executing the command
+            ServerOperationError: If the server encounters an error during execution
+        """
         pass
 
     @abstractmethod
@@ -151,6 +175,19 @@ class DatabricksClient(ABC):
         command_id: CommandId,
         cursor: "Cursor",
     ) -> "ResultSet":
+        """
+        Retrieves the results of a previously executed command.
+        This method fetches the results of a command that was executed asynchronously
+        or retrieves additional results from a command that has more rows available.
+        Args:
+            command_id: The command identifier for which to retrieve results
+            cursor: The cursor object that will handle the results
+        Returns:
+            ExecuteResponse: An object containing the query results and metadata
+        Raises:
+            ValueError: If the command ID is invalid
+            OperationalError: If there's an error retrieving the results
+        """
         pass
 
     # == Metadata Operations ==
@@ -162,6 +199,21 @@ class DatabricksClient(ABC):
         max_bytes: int,
         cursor: "Cursor",
     ) -> "ResultSet":
+        """
+        Retrieves a list of available catalogs.
+        This method fetches metadata about all catalogs available in the current
+        session's context.
+        Args:
+            session_id: The session identifier
+            max_rows: Maximum number of rows to fetch in a single batch
+            max_bytes: Maximum number of bytes to fetch in a single batch
+            cursor: The cursor object that will handle the results
+        Returns:
+            ExecuteResponse: An object containing the catalog metadata
+        Raises:
+            ValueError: If the session ID is invalid
+            OperationalError: If there's an error retrieving the catalogs
+        """
         pass
 
     @abstractmethod
@@ -174,6 +226,23 @@ class DatabricksClient(ABC):
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
     ) -> "ResultSet":
+        """
+        Retrieves a list of schemas, optionally filtered by catalog and schema name patterns.
+        This method fetches metadata about schemas available in the specified catalog
+        or all catalogs if no catalog is specified.
+        Args:
+            session_id: The session identifier
+            max_rows: Maximum number of rows to fetch in a single batch
+            max_bytes: Maximum number of bytes to fetch in a single batch
+            cursor: The cursor object that will handle the results
+            catalog_name: Optional catalog name pattern to filter by
+            schema_name: Optional schema name pattern to filter by
+        Returns:
+            ExecuteResponse: An object containing the schema metadata
+        Raises:
+            ValueError: If the session ID is invalid
+            OperationalError: If there's an error retrieving the schemas
+        """
         pass
 
     @abstractmethod
@@ -188,6 +257,25 @@ class DatabricksClient(ABC):
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
     ) -> "ResultSet":
+        """
+        Retrieves a list of tables, optionally filtered by catalog, schema, table name, and table types.
+        This method fetches metadata about tables available in the specified catalog
+        and schema, or all catalogs and schemas if not specified.
+        Args:
+            session_id: The session identifier
+            max_rows: Maximum number of rows to fetch in a single batch
+            max_bytes: Maximum number of bytes to fetch in a single batch
+            cursor: The cursor object that will handle the results
+            catalog_name: Optional catalog name pattern to filter by
+            schema_name: Optional schema name pattern to filter by
+            table_name: Optional table name pattern to filter by
+            table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
+        Returns:
+            ExecuteResponse: An object containing the table metadata
+        Raises:
+            ValueError: If the session ID is invalid
+            OperationalError: If there's an error retrieving the tables
+        """
         pass
 
     @abstractmethod
