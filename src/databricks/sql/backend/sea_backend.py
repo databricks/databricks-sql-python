@@ -24,7 +24,7 @@ from databricks.sql.backend.models import (
     StatementParameter,
     ExecuteStatementResponse,
     GetStatementResponse,
-    CreateSessionResponse
+    CreateSessionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,9 @@ class SeaDatabricksClient(DatabricksClient):
 
         if len(path_parts) >= 3 and path_parts[-2] in ["warehouses", "endpoints"]:
             warehouse_id = path_parts[-1]
-            logger.debug(f"Extracted warehouse ID: {warehouse_id} from path: {http_path}")
+            logger.debug(
+                f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
+            )
 
         if not warehouse_id:
             error_message = (
@@ -177,7 +179,7 @@ class SeaDatabricksClient(DatabricksClient):
             warehouse_id=self.warehouse_id,
             session_confs=session_configuration,
             catalog=catalog,
-            schema=schema
+            schema=schema,
         )
 
         # Send the request
@@ -213,15 +215,14 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Create the request model
         request = DeleteSessionRequest(
-            warehouse_id=self.warehouse_id,
-            session_id=sea_session_id
+            warehouse_id=self.warehouse_id, session_id=sea_session_id
         )
 
         # Send the request
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            data=request.to_dict()
+            data=request.to_dict(),
         )
 
     def execute_command(
@@ -239,7 +240,7 @@ class SeaDatabricksClient(DatabricksClient):
     ) -> Union["ResultSet", None]:
         """
         Execute a SQL command using the SEA backend.
-        
+
         Args:
             operation: SQL command to execute
             session_id: Session identifier
@@ -251,25 +252,27 @@ class SeaDatabricksClient(DatabricksClient):
             parameters: SQL parameters
             async_op: Whether to execute asynchronously
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
-            
+
         Returns:
             ResultSet: A SeaResultSet instance for the executed command
         """
         if session_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA session ID")
-        
+
         sea_session_id = session_id.to_sea_session_id()
-        
+
         # Convert parameters to StatementParameter objects
         sea_parameters = []
         if parameters:
             for param in parameters:
-                sea_parameters.append(StatementParameter(
-                    name=param.name,
-                    value=param.value,
-                    type=param.type if hasattr(param, 'type') else None
-                ))
-        
+                sea_parameters.append(
+                    StatementParameter(
+                        name=param.name,
+                        value=param.value,
+                        type=param.type if hasattr(param, "type") else None,
+                    )
+                )
+
         # Create the request model
         request = ExecuteStatementRequest(
             warehouse_id=self.warehouse_id,
@@ -281,166 +284,160 @@ class SeaDatabricksClient(DatabricksClient):
             on_wait_timeout="CONTINUE",
             row_limit=max_rows if max_rows > 0 else None,
             byte_limit=max_bytes if max_bytes > 0 else None,
-            parameters=sea_parameters if sea_parameters else None
+            parameters=sea_parameters if sea_parameters else None,
         )
-        
+
         # Execute the statement
         response_data = self.http_client._make_request(
-            method="POST",
-            path=self.STATEMENT_PATH,
-            data=request.to_dict()
+            method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
         )
-        
+
         # Parse the response
         response = ExecuteStatementResponse.from_dict(response_data)
-        
+
         # Create a command ID from the statement ID
         statement_id = response.statement_id
         if not statement_id:
             raise Error("Failed to execute command: No statement ID returned")
-        
+
         command_id = CommandId.from_sea_statement_id(statement_id)
-        
+
         # Store the command ID in the cursor
         cursor.active_command_id = command_id
-        
+
         # If async operation, return None and let the client poll for results
         if async_op:
             return None
-        
+
         # For synchronous operation, wait for the statement to complete
         # Poll until the statement is done
         status = response.status
         state = status.state
-        
+
         # Keep polling until we reach a terminal state
         while state in ["PENDING", "RUNNING"]:
             # Add a small delay to avoid excessive API calls
             time.sleep(0.5)
-            
+
             # Create the request model
             get_request = GetStatementRequest(
-                warehouse_id=self.warehouse_id,
-                statement_id=statement_id
+                warehouse_id=self.warehouse_id, statement_id=statement_id
             )
-            
+
             # Get the statement status
             poll_response_data = self.http_client._make_request(
                 method="GET",
                 path=self.STATEMENT_PATH_WITH_ID.format(statement_id),
-                data=get_request.to_dict()
+                data=get_request.to_dict(),
             )
-            
+
             # Parse the response
             poll_response = GetStatementResponse.from_dict(poll_response_data)
             status = poll_response.status
             state = status.state
-            
+
             # Check for errors
             if state == "FAILED" and status.error:
                 error_message = status.error.message
                 raise Error(f"Statement execution failed: {error_message}")
-            
+
             # Check for cancellation
             if state == "CANCELED":
                 raise Error("Statement execution was canceled")
-        
+
         # Get the final result
         return self.get_execution_result(command_id, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
         Cancel a running command.
-        
+
         Args:
             command_id: Command identifier to cancel
-            
+
         Raises:
             ValueError: If the command ID is invalid
         """
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
-        
+
         sea_statement_id = command_id.to_sea_statement_id()
-        
+
         # Create the request model
         request = CancelStatementRequest(
-            warehouse_id=self.warehouse_id,
-            statement_id=sea_statement_id
+            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
         )
-        
+
         # Send the cancel request
         self.http_client._make_request(
             method="POST",
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict()
+            data=request.to_dict(),
         )
 
     def close_command(self, command_id: CommandId) -> None:
         """
         Close a command and release resources.
-        
+
         Args:
             command_id: Command identifier to close
-            
+
         Raises:
             ValueError: If the command ID is invalid
         """
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
-        
+
         sea_statement_id = command_id.to_sea_statement_id()
-        
+
         # Create the request model
         request = CloseStatementRequest(
-            warehouse_id=self.warehouse_id,
-            statement_id=sea_statement_id
+            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
         )
-        
+
         # Send the close request - SEA uses DELETE for closing statements
         self.http_client._make_request(
             method="DELETE",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict()
+            data=request.to_dict(),
         )
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         """
         Get the state of a running query.
-        
+
         Args:
             command_id: Command identifier
-            
+
         Returns:
             CommandState: The current state of the command
-            
+
         Raises:
             ValueError: If the command ID is invalid
         """
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
-        
+
         sea_statement_id = command_id.to_sea_statement_id()
-        
+
         # Create the request model
         request = GetStatementRequest(
-            warehouse_id=self.warehouse_id,
-            statement_id=sea_statement_id
+            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
         )
-        
+
         # Get the statement status
         response_data = self.http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict()
+            data=request.to_dict(),
         )
-        
+
         # Parse the response
         response = GetStatementResponse.from_dict(response_data)
-        
+
         # Extract the status
         state = response.status.state
-        
+
         # Map SEA state to CommandState
         return CommandState.from_sea_state(state)
 
@@ -451,37 +448,37 @@ class SeaDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         """
         Get the result of a command execution.
-        
+
         Args:
             command_id: Command identifier
             cursor: Cursor executing the command
-            
+
         Returns:
             ResultSet: A SeaResultSet instance with the execution results
-            
+
         Raises:
             ValueError: If the command ID is invalid
         """
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
-        
+
         sea_statement_id = command_id.to_sea_statement_id()
-        
+
         # Create the request model
         request = GetStatementRequest(
-            warehouse_id=self.warehouse_id,
-            statement_id=sea_statement_id
+            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
         )
-        
+
         # Get the statement result
         response_data = self.http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict()
+            data=request.to_dict(),
         )
-        
+
         # Create and return a SeaResultSet
         from databricks.sql.backend.sea_result_set import SeaResultSet
+
         return SeaResultSet(
             connection=cursor.connection,
             sea_response=response_data,
@@ -530,7 +527,7 @@ class SeaDatabricksClient(DatabricksClient):
             operation += f" IN `{catalog_name}`"
         if schema_name:
             operation += f" LIKE '{schema_name}'"
-            
+
         result = self.execute_command(
             operation=operation,
             session_id=session_id,
@@ -559,15 +556,15 @@ class SeaDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         """Get tables by executing 'SHOW TABLES [IN catalog.schema]'."""
         operation = "SHOW TABLES"
-        
+
         if catalog_name and schema_name:
             operation += f" IN `{catalog_name}`.`{schema_name}`"
         elif schema_name:
             operation += f" IN `{schema_name}`"
-            
+
         if table_name:
             operation += f" LIKE '{table_name}'"
-            
+
         result = self.execute_command(
             operation=operation,
             session_id=session_id,
@@ -597,18 +594,18 @@ class SeaDatabricksClient(DatabricksClient):
         """Get columns by executing 'DESCRIBE TABLE [catalog.schema.]table'."""
         if not table_name:
             raise ValueError("Table name is required for get_columns")
-            
+
         operation = "DESCRIBE TABLE "
-        
+
         if catalog_name and schema_name:
             operation += f"`{catalog_name}`.`{schema_name}`."
         elif schema_name:
             operation += f"`{schema_name}`."
-            
+
         operation += f"`{table_name}`"
-        
+
         # Column name filtering will be done client-side
-        
+
         result = self.execute_command(
             operation=operation,
             session_id=session_id,

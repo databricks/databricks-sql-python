@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 @dataclass
 class ServiceError:
     """Error information returned by the SEA API."""
+
     message: str
     error_code: Optional[str] = None
 
@@ -18,6 +19,7 @@ class ServiceError:
 @dataclass
 class StatementStatus:
     """Status information for a statement execution."""
+
     state: str
     error: Optional[ServiceError] = None
     sql_state: Optional[str] = None
@@ -26,6 +28,7 @@ class StatementStatus:
 @dataclass
 class ExternalLink:
     """External link information for result data."""
+
     external_link: str
     expiration: str
     chunk_index: int
@@ -34,6 +37,7 @@ class ExternalLink:
 @dataclass
 class ResultData:
     """Result data from a statement execution."""
+
     data: Optional[List[List[Any]]] = None
     external_links: Optional[List[ExternalLink]] = None
 
@@ -41,6 +45,7 @@ class ResultData:
 @dataclass
 class ColumnInfo:
     """Information about a column in the result set."""
+
     name: str
     type_name: str
     type_text: str
@@ -53,6 +58,7 @@ class ColumnInfo:
 @dataclass
 class ResultManifest:
     """Manifest information for a result set."""
+
     schema: List[ColumnInfo]
     total_row_count: int
     total_byte_count: int

@@ -39,15 +39,15 @@ class CommandState(Enum):
             return cls.CANCELLED
         else:
             raise ValueError(f"Unknown command state: {state}")
-            
+
     @classmethod
     def from_sea_state(cls, state: str) -> "CommandState":
         """
         Map SEA state string to CommandState enum.
-        
+
         Args:
             state: SEA state string
-            
+
         Returns:
             CommandState: The corresponding CommandState enum value
         """
@@ -59,7 +59,7 @@ class CommandState(Enum):
             "CLOSED": cls.CLOSED,
             "CANCELED": cls.CANCELLED,
         }
-        
+
         return state_mapping.get(state, cls.PENDING)  # Default to PENDING if unknown
 
 
