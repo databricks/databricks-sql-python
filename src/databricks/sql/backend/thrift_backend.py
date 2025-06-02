@@ -1221,5 +1221,4 @@ class ThriftDatabricksClient(DatabricksClient):
 
         logger.debug("ThriftBackend.close_command(command_id=%s)", command_id)
         req = ttypes.TCloseOperationReq(operationHandle=thrift_handle)
-        resp = self.make_request(self._client.CloseOperation, req)
-        return resp.status
+        self.make_request(self._client.CloseOperation, req)
