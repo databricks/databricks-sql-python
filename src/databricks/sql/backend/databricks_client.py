@@ -107,7 +107,7 @@ class DatabricksClient(ABC):
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
 
         Returns:
-            If async_op is False, returns an ExecuteResponse object containing the
+            If async_op is False, returns a ResultSet object containing the
             query results and metadata. If async_op is True, returns None and the
             results must be fetched later using get_execution_result().
 
@@ -190,7 +190,7 @@ class DatabricksClient(ABC):
             cursor: The cursor object that will handle the results
 
         Returns:
-            ExecuteResponse: An object containing the query results and metadata
+            ResultSet: An object containing the query results and metadata
 
         Raises:
             ValueError: If the command ID is invalid
@@ -220,7 +220,7 @@ class DatabricksClient(ABC):
             cursor: The cursor object that will handle the results
 
         Returns:
-            ExecuteResponse: An object containing the catalog metadata
+            ResultSet: An object containing the catalog metadata
 
         Raises:
             ValueError: If the session ID is invalid
@@ -253,7 +253,7 @@ class DatabricksClient(ABC):
             schema_name: Optional schema name pattern to filter by
 
         Returns:
-            ExecuteResponse: An object containing the schema metadata
+            ResultSet: An object containing the schema metadata
 
         Raises:
             ValueError: If the session ID is invalid
@@ -290,7 +290,7 @@ class DatabricksClient(ABC):
             table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
 
         Returns:
-            ExecuteResponse: An object containing the table metadata
+            ResultSet: An object containing the table metadata
 
         Raises:
             ValueError: If the session ID is invalid
@@ -327,7 +327,7 @@ class DatabricksClient(ABC):
             column_name: Optional column name pattern to filter by
 
         Returns:
-            ExecuteResponse: An object containing the column metadata
+            ResultSet: An object containing the column metadata
 
         Raises:
             ValueError: If the session ID is invalid
