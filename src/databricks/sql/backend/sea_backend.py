@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
-from databricks.sql.exc import Error, NotSupportedError
+from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 from databricks.sql.backend.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
@@ -192,7 +192,13 @@ class SeaDatabricksClient(DatabricksClient):
         session_id = session_response.session_id
 
         if not session_id:
-            raise Error("Failed to create session: No session ID returned")
+            raise ServerOperationError(
+                "Failed to create session: No session ID returned",
+                {
+                    "operation-id": None,
+                    "diagnostic-info": None,
+                },
+            )
 
         return SessionId.from_sea_session_id(session_id)
 
@@ -302,7 +308,13 @@ class SeaDatabricksClient(DatabricksClient):
         # Create a command ID from the statement ID
         statement_id = response.statement_id
         if not statement_id:
-            raise Error("Failed to execute command: No statement ID returned")
+            raise ServerOperationError(
+                "Failed to execute command: No statement ID returned",
+                {
+                    "operation-id": None,
+                    "diagnostic-info": None,
+                },
+            )
 
         command_id = CommandId.from_sea_statement_id(statement_id)
 
@@ -320,32 +332,17 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Keep polling until we reach a terminal state
         while state in [CommandState.PENDING, CommandState.RUNNING]:
-            # Add a small delay to avoid excessive API calls
-            time.sleep(0.5)
+            time.sleep(0.5)  # add a small delay to avoid excessive API calls
+            state = self.get_query_state(command_id)
 
-            # Create the request model
-            get_request = GetStatementRequest(statement_id=statement_id)
-
-            # Get the statement status
-            poll_response_data = self.http_client._make_request(
-                method="GET",
-                path=self.STATEMENT_PATH_WITH_ID.format(statement_id),
-                data=get_request.to_dict(),
+        if state != CommandState.SUCCEEDED:
+            raise ServerOperationError(
+                f"Statement execution did not succeed: {status.error.message}",
+                {
+                    "operation-id": command_id.to_sea_statement_id(),
+                    "diagnostic-info": None,
+                },
             )
-
-            # Parse the response
-            poll_response = GetStatementResponse.from_dict(poll_response_data)
-            status = poll_response.status
-            state = status.state
-
-            # Check for errors
-            if state == CommandState.FAILED and status.error:
-                error_message = status.error.message
-                raise Error(f"Statement execution failed: {error_message}")
-
-            # Check for cancellation
-            if state == CommandState.CANCELLED:
-                raise Error("Statement execution was canceled")
 
         # Get the final result
         return self.get_execution_result(command_id, cursor)
