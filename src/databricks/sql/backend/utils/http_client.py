@@ -114,7 +114,6 @@ class CustomHttpClient:
             elif method.upper() == "POST":
                 response = self.session.post(url, headers=headers, json=data)
             elif method.upper() == "DELETE":
-                # For DELETE requests, use params for data (query parameters)
                 response = self.session.delete(url, headers=headers, params=data)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
@@ -128,14 +127,12 @@ class CustomHttpClient:
             # Parse JSON response
             if response.content:
                 result = response.json()
+
                 # Log response content (but limit it for large responses)
                 content_str = json.dumps(result, indent=4, sort_keys=True)
-                if len(content_str) > 1000:
-                    logger.debug(
-                        f"Response content (truncated): {content_str[:1000]}..."
-                    )
-                else:
-                    logger.debug(f"Response content: {content_str}")
+                content_str = content_str[:1000] + "..." if len(content_str) > 1000 else content_str
+                logger.debug(f"Response content: {content_str}")
+
                 return result
             return {}
 
