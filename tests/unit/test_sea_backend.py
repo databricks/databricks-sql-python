@@ -180,7 +180,7 @@ class TestSeaBackend:
         mock_http_client._make_request.assert_called_once_with(
             method="DELETE",
             path=sea_client.SESSION_PATH_WITH_ID.format("test-session-789"),
-            data={"session_id": "test-session-789", "warehouse_id": "abc123"},
+            params={"session_id": "test-session-789", "warehouse_id": "abc123"},
         )
 
     def test_close_session_invalid_id_type(self, sea_client):
@@ -415,7 +415,7 @@ class TestSeaBackend:
         mock_http_client._make_request.side_effect = [
             error_response,  # Initial response
             Error(
-                "Statement execution failed: Syntax error in SQL"
+                "Statement execution did not succeed: Syntax error in SQL"
             ),  # Will be raised during polling
         ]
 
@@ -436,7 +436,7 @@ class TestSeaBackend:
                     enforce_embedded_schema_correctness=False,
                 )
 
-            assert "Statement execution failed" in str(excinfo.value)
+            assert "Statement execution did not succeed" in str(excinfo.value)
 
     def test_cancel_command(self, sea_client, mock_http_client, sea_command_id):
         """Test canceling a command."""
@@ -571,15 +571,51 @@ class TestSeaBackend:
             assert kwargs["max_rows"] == 100
             assert kwargs["max_bytes"] == 1000
             assert kwargs["cursor"] == mock_cursor
+            assert kwargs["lz4_compression"] is False
+            assert kwargs["use_cloud_fetch"] is False
+            assert kwargs["parameters"] == []
             assert kwargs["async_op"] is False
+            assert kwargs["enforce_embedded_schema_correctness"] is False
 
-    def test_get_schemas(self, sea_client, mock_cursor, sea_session_id):
-        """Test getting schemas."""
+    def test_get_schemas_with_catalog_only(
+        self, sea_client, mock_cursor, sea_session_id
+    ):
+        """Test getting schemas with only catalog name."""
         # Mock execute_command to verify it's called with the right parameters
         with patch.object(
             sea_client, "execute_command", return_value="mock_result_set"
         ) as mock_execute:
-            # Call the method with catalog and schema
+            # Call the method with only catalog
+            result = sea_client.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            # Verify the result
+            assert result == "mock_result_set"
+
+            # Verify execute_command was called with the right parameters
+            mock_execute.assert_called_once()
+            args, kwargs = mock_execute.call_args
+            assert kwargs["operation"] == "SHOW SCHEMAS IN `test_catalog`"
+            assert kwargs["session_id"] == sea_session_id
+            assert kwargs["max_rows"] == 100
+            assert kwargs["max_bytes"] == 1000
+            assert kwargs["cursor"] == mock_cursor
+            assert kwargs["async_op"] is False
+
+    def test_get_schemas_with_catalog_and_schema_pattern(
+        self, sea_client, mock_cursor, sea_session_id
+    ):
+        """Test getting schemas with catalog and schema pattern."""
+        # Mock execute_command to verify it's called with the right parameters
+        with patch.object(
+            sea_client, "execute_command", return_value="mock_result_set"
+        ) as mock_execute:
+            # Call the method with catalog and schema pattern
             result = sea_client.get_schemas(
                 session_id=sea_session_id,
                 max_rows=100,
@@ -605,13 +641,89 @@ class TestSeaBackend:
             assert kwargs["cursor"] == mock_cursor
             assert kwargs["async_op"] is False
 
-    def test_get_tables(self, sea_client, mock_cursor, sea_session_id):
-        """Test getting tables."""
+    def test_get_schemas_no_catalog_name(self, sea_client, mock_cursor, sea_session_id):
+        """Test getting schemas without a catalog name raises an error."""
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name=None,  # No catalog name
+                schema_name="test_schema",
+            )
+
+        assert "Catalog name is required for get_schemas" in str(excinfo.value)
+
+    def test_get_tables_with_catalog_only(
+        self, sea_client, mock_cursor, sea_session_id
+    ):
+        """Test getting tables with only catalog name."""
         # Mock execute_command to verify it's called with the right parameters
         with patch.object(
             sea_client, "execute_command", return_value="mock_result_set"
         ) as mock_execute:
-            # Call the method with catalog, schema, and table name
+            # Call the method with only catalog
+            result = sea_client.get_tables(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            # Verify the result
+            assert result == "mock_result_set"
+
+            # Verify execute_command was called with the right parameters
+            mock_execute.assert_called_once()
+            args, kwargs = mock_execute.call_args
+            assert kwargs["operation"] == "SHOW TABLES IN CATALOG `test_catalog`"
+            assert kwargs["session_id"] == sea_session_id
+            assert kwargs["max_rows"] == 100
+            assert kwargs["max_bytes"] == 1000
+            assert kwargs["cursor"] == mock_cursor
+            assert kwargs["async_op"] is False
+
+    def test_get_tables_with_all_catalogs(
+        self, sea_client, mock_cursor, sea_session_id
+    ):
+        """Test getting tables from all catalogs using wildcard."""
+        # Mock execute_command to verify it's called with the right parameters
+        with patch.object(
+            sea_client, "execute_command", return_value="mock_result_set"
+        ) as mock_execute:
+            # Call the method with wildcard catalog
+            result = sea_client.get_tables(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="*",
+            )
+
+            # Verify the result
+            assert result == "mock_result_set"
+
+            # Verify execute_command was called with the right parameters
+            mock_execute.assert_called_once()
+            args, kwargs = mock_execute.call_args
+            assert kwargs["operation"] == "SHOW TABLES IN ALL CATALOGS"
+            assert kwargs["session_id"] == sea_session_id
+            assert kwargs["max_rows"] == 100
+            assert kwargs["max_bytes"] == 1000
+            assert kwargs["cursor"] == mock_cursor
+            assert kwargs["async_op"] is False
+
+    def test_get_tables_with_schema_and_table_patterns(
+        self, sea_client, mock_cursor, sea_session_id
+    ):
+        """Test getting tables with schema and table patterns."""
+        # Mock execute_command to verify it's called with the right parameters
+        with patch.object(
+            sea_client, "execute_command", return_value="mock_result_set"
+        ) as mock_execute:
+            # Call the method with catalog, schema, and table patterns
             result = sea_client.get_tables(
                 session_id=sea_session_id,
                 max_rows=100,
@@ -630,7 +742,7 @@ class TestSeaBackend:
             args, kwargs = mock_execute.call_args
             assert (
                 kwargs["operation"]
-                == "SHOW TABLES IN `test_catalog`.`test_schema` LIKE 'test_table'"
+                == "SHOW TABLES IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema' LIKE 'test_table'"
             )
             assert kwargs["session_id"] == sea_session_id
             assert kwargs["max_rows"] == 100
@@ -638,13 +750,60 @@ class TestSeaBackend:
             assert kwargs["cursor"] == mock_cursor
             assert kwargs["async_op"] is False
 
-    def test_get_columns(self, sea_client, mock_cursor, sea_session_id):
-        """Test getting columns."""
+    def test_get_tables_no_catalog_name(self, sea_client, mock_cursor, sea_session_id):
+        """Test getting tables without a catalog name raises an error."""
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.get_tables(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name=None,  # No catalog name
+                schema_name="test_schema",
+                table_name="test_table",
+            )
+
+        assert "Catalog name is required for get_tables" in str(excinfo.value)
+
+    def test_get_columns_with_catalog_only(
+        self, sea_client, mock_cursor, sea_session_id
+    ):
+        """Test getting columns with only catalog name."""
         # Mock execute_command to verify it's called with the right parameters
         with patch.object(
             sea_client, "execute_command", return_value="mock_result_set"
         ) as mock_execute:
-            # Call the method with catalog, schema, and table name
+            # Call the method with only catalog
+            result = sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            # Verify the result
+            assert result == "mock_result_set"
+
+            # Verify execute_command was called with the right parameters
+            mock_execute.assert_called_once()
+            args, kwargs = mock_execute.call_args
+            assert kwargs["operation"] == "SHOW COLUMNS IN CATALOG `test_catalog`"
+            assert kwargs["session_id"] == sea_session_id
+            assert kwargs["max_rows"] == 100
+            assert kwargs["max_bytes"] == 1000
+            assert kwargs["cursor"] == mock_cursor
+            assert kwargs["async_op"] is False
+
+    def test_get_columns_with_all_patterns(
+        self, sea_client, mock_cursor, sea_session_id
+    ):
+        """Test getting columns with all patterns specified."""
+        # Mock execute_command to verify it's called with the right parameters
+        with patch.object(
+            sea_client, "execute_command", return_value="mock_result_set"
+        ) as mock_execute:
+            # Call the method with all patterns
             result = sea_client.get_columns(
                 session_id=sea_session_id,
                 max_rows=100,
@@ -653,6 +812,7 @@ class TestSeaBackend:
                 catalog_name="test_catalog",
                 schema_name="test_schema",
                 table_name="test_table",
+                column_name="test_column",
             )
 
             # Verify the result
@@ -663,7 +823,7 @@ class TestSeaBackend:
             args, kwargs = mock_execute.call_args
             assert (
                 kwargs["operation"]
-                == "SHOW COLUMNS IN `test_catalog` SCHEMA LIKE 'test_schema' TABLE LIKE 'test_table'"
+                == "SHOW COLUMNS IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema' TABLE LIKE 'test_table' LIKE 'test_column'"
             )
             assert kwargs["session_id"] == sea_session_id
             assert kwargs["max_rows"] == 100
@@ -684,4 +844,4 @@ class TestSeaBackend:
                 table_name="test_table",
             )
 
-        assert "Catalog name is required" in str(excinfo.value)
+        assert "Catalog name is required for get_columns" in str(excinfo.value)

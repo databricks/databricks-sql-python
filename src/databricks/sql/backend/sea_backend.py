@@ -101,7 +101,6 @@ class SeaDatabricksClient(DatabricksClient):
 
         The warehouse ID is expected to be the last segment of the path when the
         second-to-last segment is either 'warehouses' or 'endpoints'.
-        This matches the JDBC implementation which supports both formats.
 
         Args:
             http_path: The HTTP path from which to extract the warehouse ID
@@ -182,7 +181,6 @@ class SeaDatabricksClient(DatabricksClient):
             schema=schema,
         )
 
-        # Send the request
         response = self.http_client._make_request(
             method="POST", path=self.SESSION_PATH, data=request.to_dict()
         )
@@ -219,16 +217,14 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
-        # Create the request model
         request = DeleteSessionRequest(
             warehouse_id=self.warehouse_id, session_id=sea_session_id
         )
 
-        # Send the request
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            data=request.to_dict(),
+            params=request.to_dict(),
         )
 
     def execute_command(
@@ -279,11 +275,8 @@ class SeaDatabricksClient(DatabricksClient):
                     )
                 )
 
-        # Determine format and disposition based on use_cloud_fetch
         format = "ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY"
         disposition = "EXTERNAL_LINKS" if use_cloud_fetch else "INLINE"
-
-        # Create the request model
         request = ExecuteStatementRequest(
             warehouse_id=self.warehouse_id,
             session_id=sea_session_id,
@@ -297,15 +290,10 @@ class SeaDatabricksClient(DatabricksClient):
             parameters=sea_parameters if sea_parameters else None,
         )
 
-        # Execute the statement
         response_data = self.http_client._make_request(
             method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
         )
-
-        # Parse the response
         response = ExecuteStatementResponse.from_dict(response_data)
-
-        # Create a command ID from the statement ID
         statement_id = response.statement_id
         if not statement_id:
             raise ServerOperationError(
@@ -344,7 +332,6 @@ class SeaDatabricksClient(DatabricksClient):
                 },
             )
 
-        # Get the final result
         return self.get_execution_result(command_id, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
@@ -362,10 +349,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         sea_statement_id = command_id.to_sea_statement_id()
 
-        # Create the request model
         request = CancelStatementRequest(statement_id=sea_statement_id)
-
-        # Send the cancel request
         self.http_client._make_request(
             method="POST",
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
@@ -387,10 +371,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         sea_statement_id = command_id.to_sea_statement_id()
 
-        # Create the request model
         request = CloseStatementRequest(statement_id=sea_statement_id)
-
-        # Send the close request - SEA uses DELETE for closing statements
         self.http_client._make_request(
             method="DELETE",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
@@ -415,10 +396,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         sea_statement_id = command_id.to_sea_statement_id()
 
-        # Create the request model
         request = GetStatementRequest(statement_id=sea_statement_id)
-
-        # Get the statement status
         response_data = self.http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
@@ -427,8 +405,6 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Parse the response
         response = GetStatementResponse.from_dict(response_data)
-
-        # Return the state directly since it's already a CommandState
         return response.status.state
 
     def get_execution_result(
@@ -509,10 +485,12 @@ class SeaDatabricksClient(DatabricksClient):
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
     ) -> "ResultSet":
-        """Get schemas by executing 'SHOW SCHEMAS [IN catalog]'."""
-        operation = "SHOW SCHEMAS"
-        if catalog_name:
-            operation += f" IN `{catalog_name}`"
+        """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
+        if not catalog_name:
+            raise ValueError("Catalog name is required for get_schemas")
+
+        operation = f"SHOW SCHEMAS IN `{catalog_name}`"
+
         if schema_name:
             operation += f" LIKE '{schema_name}'"
 
@@ -542,13 +520,18 @@ class SeaDatabricksClient(DatabricksClient):
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
     ) -> "ResultSet":
-        """Get tables by executing 'SHOW TABLES [IN catalog.schema]'."""
-        operation = "SHOW TABLES"
+        """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
+        if not catalog_name:
+            raise ValueError("Catalog name is required for get_tables")
 
-        if catalog_name and schema_name:
-            operation += f" IN `{catalog_name}`.`{schema_name}`"
-        elif schema_name:
-            operation += f" IN `{schema_name}`"
+        operation = "SHOW TABLES IN " + (
+            "ALL CATALOGS"
+            if catalog_name in [None, "*", "%"]
+            else f"CATALOG `{catalog_name}`"
+        )
+
+        if schema_name:
+            operation += f" SCHEMA LIKE '{schema_name}'"
 
         if table_name:
             operation += f" LIKE '{table_name}'"
@@ -579,11 +562,11 @@ class SeaDatabricksClient(DatabricksClient):
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
     ) -> "ResultSet":
-        """Get columns by executing 'SHOW COLUMNS IN catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
+        """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
         if not catalog_name:
             raise ValueError("Catalog name is required for get_columns")
 
-        operation = f"SHOW COLUMNS IN `{catalog_name}`"
+        operation = f"SHOW COLUMNS IN CATALOG `{catalog_name}`"
 
         if schema_name:
             operation += f" SCHEMA LIKE '{schema_name}'"

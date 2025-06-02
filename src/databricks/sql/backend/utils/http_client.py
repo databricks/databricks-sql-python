@@ -87,7 +87,11 @@ class CustomHttpClient:
         return headers
 
     def _make_request(
-        self, method: str, path: str, data: Optional[Dict[str, Any]] = None
+        self,
+        method: str,
+        path: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Make an HTTP request to the SEA endpoint.
@@ -109,12 +113,18 @@ class CustomHttpClient:
         logger.debug(f"making {method} request to {url}")
 
         try:
+            args = {
+                "url": url,
+                "headers": headers,
+                "json": data,
+                "params": params,
+            }
             if method.upper() == "GET":
-                response = self.session.get(url, headers=headers, params=data)
+                response = self.session.get(**args)
             elif method.upper() == "POST":
-                response = self.session.post(url, headers=headers, json=data)
+                response = self.session.post(**args)
             elif method.upper() == "DELETE":
-                response = self.session.delete(url, headers=headers, params=data)
+                response = self.session.delete(**args)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -130,7 +140,11 @@ class CustomHttpClient:
 
                 # Log response content (but limit it for large responses)
                 content_str = json.dumps(result, indent=4, sort_keys=True)
-                content_str = content_str[:1000] + "..." if len(content_str) > 1000 else content_str
+                content_str = (
+                    content_str[:1000] + "..."
+                    if len(content_str) > 1000
+                    else content_str
+                )
                 logger.debug(f"Response content: {content_str}")
 
                 return result
