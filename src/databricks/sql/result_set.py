@@ -101,12 +101,12 @@ class ResultSet(ABC):
         pass
 
     @abstractmethod
-    def fetchmany_arrow(self, size: int) -> Any:
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """Fetch the next set of rows as an Arrow table."""
         pass
 
     @abstractmethod
-    def fetchall_arrow(self) -> Any:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all remaining rows as an Arrow table."""
         pass
 
@@ -251,7 +251,7 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2):
+    def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
         Function to merge / combining the columnar results into a single result
         :param result1:
