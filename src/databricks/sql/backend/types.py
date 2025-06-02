@@ -33,7 +33,9 @@ class CommandState(Enum):
     CANCELLED = "CANCELLED"
 
     @classmethod
-    def from_thrift_state(cls, state: ttypes.TOperationState) -> "CommandState":
+    def from_thrift_state(
+        cls, state: ttypes.TOperationState
+    ) -> Optional["CommandState"]:
         """
         Convert a Thrift TOperationState to a normalized CommandState.
 
@@ -75,7 +77,7 @@ class CommandState(Enum):
         elif state == ttypes.TOperationState.CANCELED_STATE:
             return cls.CANCELLED
         else:
-            raise ValueError(f"Unknown command state: {state}")
+            return None
 
 
 class BackendType(Enum):

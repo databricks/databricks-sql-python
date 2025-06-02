@@ -9,6 +9,7 @@ from typing import List, Optional, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
+    from databricks.sql.result_set import ResultSet, ThriftResultSet
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
@@ -52,7 +53,6 @@ from databricks.sql.utils import (
 )
 from databricks.sql.types import SSLOptions
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.result_set import ResultSet, ThriftResultSet
 
 logger = logging.getLogger(__name__)
 
@@ -811,6 +811,8 @@ class ThriftDatabricksClient(DatabricksClient):
     def get_execution_result(
         self, command_id: CommandId, cursor: "Cursor"
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -906,7 +908,10 @@ class ThriftDatabricksClient(DatabricksClient):
         poll_resp = self._poll_for_status(thrift_handle)
         operation_state = poll_resp.operationState
         self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
-        return CommandState.from_thrift_state(operation_state)
+        state = CommandState.from_thrift_state(operation_state)
+        if state is None:
+            raise ValueError(f"Unknown command state: {operation_state}")
+        return state
 
     @staticmethod
     def _check_direct_results_for_error(t_spark_direct_results):
@@ -941,6 +946,8 @@ class ThriftDatabricksClient(DatabricksClient):
         async_op=False,
         enforce_embedded_schema_correctness=False,
     ) -> Union["ResultSet", None]:
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1005,6 +1012,8 @@ class ThriftDatabricksClient(DatabricksClient):
         max_bytes: int,
         cursor: "Cursor",
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1037,6 +1046,8 @@ class ThriftDatabricksClient(DatabricksClient):
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1073,6 +1084,8 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         table_types=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1111,6 +1124,8 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         column_name=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
