@@ -7,10 +7,12 @@ These models define the structures used in SEA API responses.
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 
+from databricks.sql.backend.types import CommandState
 from databricks.sql.backend.models.base import (
     StatementStatus,
     ResultManifest,
     ResultData,
+    ServiceError,
 )
 
 
@@ -27,14 +29,17 @@ class ExecuteStatementResponse:
     def from_dict(cls, data: Dict[str, Any]) -> "ExecuteStatementResponse":
         """Create an ExecuteStatementResponse from a dictionary."""
         status_data = data.get("status", {})
+        error = None
+        if "error" in status_data:
+            error_data = status_data["error"]
+            error = ServiceError(
+                message=error_data.get("message", ""),
+                error_code=error_data.get("error_code"),
+            )
+
         status = StatementStatus(
-            state=status_data.get("state", ""),
-            error=None
-            if "error" not in status_data
-            else {
-                "message": status_data["error"].get("message", ""),
-                "error_code": status_data["error"].get("error_code"),
-            },
+            state=CommandState.from_sea_state(status_data.get("state", "")),
+            error=error,
             sql_state=status_data.get("sql_state"),
         )
 
@@ -59,14 +64,17 @@ class GetStatementResponse:
     def from_dict(cls, data: Dict[str, Any]) -> "GetStatementResponse":
         """Create a GetStatementResponse from a dictionary."""
         status_data = data.get("status", {})
+        error = None
+        if "error" in status_data:
+            error_data = status_data["error"]
+            error = ServiceError(
+                message=error_data.get("message", ""),
+                error_code=error_data.get("error_code"),
+            )
+
         status = StatementStatus(
-            state=status_data.get("state", ""),
-            error=None
-            if "error" not in status_data
-            else {
-                "message": status_data["error"].get("message", ""),
-                "error_code": status_data["error"].get("error_code"),
-            },
+            state=CommandState.from_sea_state(status_data.get("state", "")),
+            error=error,
             sql_state=status_data.get("sql_state"),
         )
 

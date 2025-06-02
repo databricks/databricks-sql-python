@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union
+from typing import List, Optional, Any, Union, Tuple
 
 import logging
 import time
@@ -32,7 +32,7 @@ class ResultSet(ABC):
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
-        self.description = None
+        self.description: Optional[Any] = None
 
     def __iter__(self):
         while True:

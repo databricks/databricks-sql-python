@@ -273,13 +273,17 @@ class SeaDatabricksClient(DatabricksClient):
                     )
                 )
 
+        # Determine format and disposition based on use_cloud_fetch
+        format = "ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY"
+        disposition = "EXTERNAL_LINKS" if use_cloud_fetch else "INLINE"
+
         # Create the request model
         request = ExecuteStatementRequest(
             warehouse_id=self.warehouse_id,
             session_id=sea_session_id,
             statement=operation,
-            disposition="EXTERNAL_LINKS" if use_cloud_fetch else "INLINE",
-            format="ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY",
+            disposition=disposition,
+            format=format,
             wait_timeout="0s" if async_op else "30s",
             on_wait_timeout="CONTINUE",
             row_limit=max_rows if max_rows > 0 else None,
@@ -315,7 +319,7 @@ class SeaDatabricksClient(DatabricksClient):
         state = status.state
 
         # Keep polling until we reach a terminal state
-        while state in ["PENDING", "RUNNING"]:
+        while state in [CommandState.PENDING, CommandState.RUNNING]:
             # Add a small delay to avoid excessive API calls
             time.sleep(0.5)
 
@@ -337,12 +341,12 @@ class SeaDatabricksClient(DatabricksClient):
             state = status.state
 
             # Check for errors
-            if state == "FAILED" and status.error:
-                error_message = status.error["message"]
+            if state == CommandState.FAILED and status.error:
+                error_message = status.error.message
                 raise Error(f"Statement execution failed: {error_message}")
 
             # Check for cancellation
-            if state == "CANCELED":
+            if state == CommandState.CANCELLED:
                 raise Error("Statement execution was canceled")
 
         # Get the final result
@@ -435,11 +439,8 @@ class SeaDatabricksClient(DatabricksClient):
         # Parse the response
         response = GetStatementResponse.from_dict(response_data)
 
-        # Extract the status
-        state = response.status.state
-
-        # Map SEA state to CommandState
-        return CommandState.from_sea_state(state)
+        # Return the state directly since it's already a CommandState
+        return response.status.state
 
     def get_execution_result(
         self,
@@ -591,20 +592,20 @@ class SeaDatabricksClient(DatabricksClient):
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
     ) -> "ResultSet":
-        """Get columns by executing 'DESCRIBE TABLE [catalog.schema.]table'."""
-        if not table_name:
-            raise ValueError("Table name is required for get_columns")
+        """Get columns by executing 'SHOW COLUMNS IN catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
+        if not catalog_name:
+            raise ValueError("Catalog name is required for get_columns")
 
-        operation = "DESCRIBE TABLE "
+        operation = f"SHOW COLUMNS IN `{catalog_name}`"
 
-        if catalog_name and schema_name:
-            operation += f"`{catalog_name}`.`{schema_name}`."
-        elif schema_name:
-            operation += f"`{schema_name}`."
+        if schema_name:
+            operation += f" SCHEMA LIKE '{schema_name}'"
 
-        operation += f"`{table_name}`"
+        if table_name:
+            operation += f" TABLE LIKE '{table_name}'"
 
-        # Column name filtering will be done client-side
+        if column_name:
+            operation += f" LIKE '{column_name}'"
 
         result = self.execute_command(
             operation=operation,

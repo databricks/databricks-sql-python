@@ -7,6 +7,8 @@ These models define the common structures used in SEA API requests and responses
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 
+from databricks.sql.backend.types import CommandState
+
 
 @dataclass
 class ServiceError:
@@ -20,7 +22,7 @@ class ServiceError:
 class StatementStatus:
     """Status information for a statement execution."""
 
-    state: str
+    state: CommandState
     error: Optional[ServiceError] = None
     sql_state: Optional[str] = None
 

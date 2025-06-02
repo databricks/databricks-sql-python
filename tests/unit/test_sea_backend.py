@@ -524,7 +524,7 @@ class TestSeaBackend:
 
         # Verify basic properties of the result
         assert result.statement_id == "test-statement-123"
-        assert result.status.state == "SUCCEEDED"
+        assert result.status.state == CommandState.SUCCEEDED
         assert len(result.description) == 1
         assert result.description[0][0] == "col1"  # column name
 
@@ -657,7 +657,7 @@ class TestSeaBackend:
             args, kwargs = mock_execute.call_args
             assert (
                 kwargs["operation"]
-                == "DESCRIBE TABLE `test_catalog`.`test_schema`.`test_table`"
+                == "SHOW COLUMNS IN `test_catalog` SCHEMA LIKE 'test_schema' TABLE LIKE 'test_table'"
             )
             assert kwargs["session_id"] == sea_session_id
             assert kwargs["max_rows"] == 100
@@ -665,17 +665,17 @@ class TestSeaBackend:
             assert kwargs["cursor"] == mock_cursor
             assert kwargs["async_op"] is False
 
-    def test_get_columns_no_table_name(self, sea_client, mock_cursor, sea_session_id):
-        """Test getting columns without a table name raises an error."""
+    def test_get_columns_no_catalog_name(self, sea_client, mock_cursor, sea_session_id):
+        """Test getting columns without a catalog name raises an error."""
         with pytest.raises(ValueError) as excinfo:
             sea_client.get_columns(
                 session_id=sea_session_id,
                 max_rows=100,
                 max_bytes=1000,
                 cursor=mock_cursor,
-                catalog_name="test_catalog",
+                catalog_name=None,  # No catalog name
                 schema_name="test_schema",
-                table_name=None,  # No table name
+                table_name="test_table",
             )
 
-        assert "Table name is required" in str(excinfo.value)
+        assert "Catalog name is required" in str(excinfo.value)

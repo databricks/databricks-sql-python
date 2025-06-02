@@ -36,7 +36,7 @@ class ExecuteStatementRequest:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
-        result = {
+        result: Dict[str, Any] = {
             "warehouse_id": self.warehouse_id,
             "session_id": self.session_id,
             "statement": self.statement,
@@ -118,7 +118,7 @@ class CreateSessionRequest:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
-        result = {"warehouse_id": self.warehouse_id}
+        result: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
 
         if self.session_confs:
             result["session_confs"] = self.session_confs

@@ -10,7 +10,7 @@ from typing import Optional, List, Any, Dict, Tuple
 
 from databricks.sql.result_set import ResultSet
 from databricks.sql.types import Row
-from databricks.sql.backend.types import CommandId
+from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.exc import Error
 
 from databricks.sql.backend.models import (
@@ -18,6 +18,7 @@ from databricks.sql.backend.models import (
     ResultManifest,
     ResultData,
     ColumnInfo,
+    ServiceError,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,14 +43,17 @@ class SeaResultSet(ResultSet):
 
         # Parse the status
         status_data = sea_response.get("status", {})
+        error = None
+        if "error" in status_data:
+            error_data = status_data["error"]
+            error = ServiceError(
+                message=error_data.get("message", ""),
+                error_code=error_data.get("error_code"),
+            )
+
         self.status = StatementStatus(
-            state=status_data.get("state", ""),
-            error=None
-            if "error" not in status_data
-            else {
-                "message": status_data["error"].get("message", ""),
-                "error_code": status_data["error"].get("error_code"),
-            },
+            state=CommandState.from_sea_state(status_data.get("state", "")),
+            error=error,
             sql_state=status_data.get("sql_state"),
         )
 
@@ -71,7 +75,7 @@ class SeaResultSet(ResultSet):
                     )
                 )
 
-            self.manifest = ResultManifest(
+            self.manifest: Optional[ResultManifest] = ResultManifest(
                 schema=columns,
                 total_row_count=manifest_data.get("total_row_count", 0),
                 total_byte_count=manifest_data.get("total_byte_count", 0),
@@ -84,7 +88,7 @@ class SeaResultSet(ResultSet):
         # Parse the result data
         result_data = sea_response.get("result")
         if result_data:
-            self.result = ResultData(
+            self.result: Optional[ResultData] = ResultData(
                 data=result_data.get("data"),
                 external_links=result_data.get("external_links"),
             )
@@ -112,7 +116,9 @@ class SeaResultSet(ResultSet):
 
     def _extract_description_from_manifest(
         self,
-    ) -> List[Tuple[str, str, None, None, None, None, bool]]:
+    ) -> Optional[
+        List[Tuple[str, str, None, None, Optional[int], Optional[int], bool]]
+    ]:
         """
         Extract column descriptions from the SEA manifest.
 
@@ -121,7 +127,7 @@ class SeaResultSet(ResultSet):
             (name, type_code, display_size, internal_size, precision, scale, null_ok)
         """
         if not self.manifest or not self.manifest.schema:
-            return []
+            return None
 
         description = []
         for col in self.manifest.schema:
