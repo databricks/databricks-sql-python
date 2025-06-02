@@ -21,6 +21,7 @@ class StatementParameter:
 class ExecuteStatementRequest:
     """Request to execute a SQL statement."""
 
+    # TODO: result_compression key
     warehouse_id: str
     statement: str
     session_id: str
@@ -75,36 +76,33 @@ class ExecuteStatementRequest:
 class GetStatementRequest:
     """Request to get information about a statement."""
 
-    warehouse_id: str
     statement_id: str
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
-        return {"warehouse_id": self.warehouse_id, "statement_id": self.statement_id}
+        return {"statement_id": self.statement_id}
 
 
 @dataclass
 class CancelStatementRequest:
     """Request to cancel a statement."""
 
-    warehouse_id: str
     statement_id: str
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
-        return {"warehouse_id": self.warehouse_id, "statement_id": self.statement_id}
+        return {"statement_id": self.statement_id}
 
 
 @dataclass
 class CloseStatementRequest:
     """Request to close a statement."""
 
-    warehouse_id: str
     statement_id: str
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
-        return {"warehouse_id": self.warehouse_id, "statement_id": self.statement_id}
+        return {"statement_id": self.statement_id}
 
 
 @dataclass
@@ -139,7 +137,7 @@ class DeleteSessionRequest:
     warehouse_id: str
     session_id: str
 
-    def to_query_params(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, str]:
         """
         Convert the request to query parameters.
 
@@ -149,4 +147,4 @@ class DeleteSessionRequest:
         Returns:
             A dictionary containing the warehouse_id as a query parameter
         """
-        return {"warehouse_id": self.warehouse_id}
+        return {"warehouse_id": self.warehouse_id, "session_id": self.session_id}

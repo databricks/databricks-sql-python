@@ -222,7 +222,7 @@ class SeaDatabricksClient(DatabricksClient):
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            data=request.to_query_params(),  # Use to_query_params to get only the warehouse_id
+            data=request.to_dict(),
         )
 
     def execute_command(
@@ -284,7 +284,7 @@ class SeaDatabricksClient(DatabricksClient):
             statement=operation,
             disposition=disposition,
             format=format,
-            wait_timeout="0s" if async_op else "30s",
+            wait_timeout="0s" if async_op else "10s",
             on_wait_timeout="CONTINUE",
             row_limit=max_rows if max_rows > 0 else None,
             byte_limit=max_bytes if max_bytes > 0 else None,
@@ -324,9 +324,7 @@ class SeaDatabricksClient(DatabricksClient):
             time.sleep(0.5)
 
             # Create the request model
-            get_request = GetStatementRequest(
-                warehouse_id=self.warehouse_id, statement_id=statement_id
-            )
+            get_request = GetStatementRequest(statement_id=statement_id)
 
             # Get the statement status
             poll_response_data = self.http_client._make_request(
@@ -368,9 +366,7 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         # Create the request model
-        request = CancelStatementRequest(
-            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
-        )
+        request = CancelStatementRequest(statement_id=sea_statement_id)
 
         # Send the cancel request
         self.http_client._make_request(
@@ -395,9 +391,7 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         # Create the request model
-        request = CloseStatementRequest(
-            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
-        )
+        request = CloseStatementRequest(statement_id=sea_statement_id)
 
         # Send the close request - SEA uses DELETE for closing statements
         self.http_client._make_request(
@@ -425,9 +419,7 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         # Create the request model
-        request = GetStatementRequest(
-            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
-        )
+        request = GetStatementRequest(statement_id=sea_statement_id)
 
         # Get the statement status
         response_data = self.http_client._make_request(
@@ -466,9 +458,7 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         # Create the request model
-        request = GetStatementRequest(
-            warehouse_id=self.warehouse_id, statement_id=sea_statement_id
-        )
+        request = GetStatementRequest(statement_id=sea_statement_id)
 
         # Get the statement result
         response_data = self.http_client._make_request(

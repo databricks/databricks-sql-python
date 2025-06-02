@@ -5,6 +5,7 @@ This module provides the ResultSet implementation for the SEA backend,
 which handles the result data returned by the SEA API.
 """
 
+import json
 import logging
 from typing import Optional, List, Any, Dict, Tuple
 
@@ -60,9 +61,8 @@ class SeaResultSet(ResultSet):
         # Parse the manifest
         manifest_data = sea_response.get("manifest")
         if manifest_data:
-            schema_data = manifest_data.get("schema", [])
             columns = []
-            for col_data in schema_data:
+            for col_data in manifest_data.get("schema", {}).get("columns", []):
                 columns.append(
                     ColumnInfo(
                         name=col_data.get("name", ""),

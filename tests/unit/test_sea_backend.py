@@ -5,10 +5,12 @@ This module contains tests for the SeaDatabricksClient class, which implements
 the Databricks SQL connector's SEA backend functionality.
 """
 
+import json
 import pytest
 from unittest.mock import patch, MagicMock, Mock
 
 from databricks.sql.backend.sea_backend import SeaDatabricksClient
+from databricks.sql.backend.sea_result_set import SeaResultSet
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
@@ -178,7 +180,7 @@ class TestSeaBackend:
         mock_http_client._make_request.assert_called_once_with(
             method="DELETE",
             path=sea_client.SESSION_PATH_WITH_ID.format("test-session-789"),
-            data={"warehouse_id": "abc123"},
+            data={"session_id": "test-session-789", "warehouse_id": "abc123"},
         )
 
     def test_close_session_invalid_id_type(self, sea_client):
@@ -451,8 +453,6 @@ class TestSeaBackend:
         assert kwargs["path"] == sea_client.CANCEL_STATEMENT_PATH_WITH_ID.format(
             "test-statement-123"
         )
-        assert "warehouse_id" in kwargs["data"]
-        assert kwargs["data"]["warehouse_id"] == "abc123"
 
     def test_close_command(self, sea_client, mock_http_client, sea_command_id):
         """Test closing a command."""
@@ -469,8 +469,6 @@ class TestSeaBackend:
         assert kwargs["path"] == sea_client.STATEMENT_PATH_WITH_ID.format(
             "test-statement-123"
         )
-        assert "warehouse_id" in kwargs["data"]
-        assert kwargs["data"]["warehouse_id"] == "abc123"
 
     def test_get_query_state(self, sea_client, mock_http_client, sea_command_id):
         """Test getting the state of a query."""
@@ -493,40 +491,50 @@ class TestSeaBackend:
         assert kwargs["path"] == sea_client.STATEMENT_PATH_WITH_ID.format(
             "test-statement-123"
         )
-        assert "warehouse_id" in kwargs["data"]
-        assert kwargs["data"]["warehouse_id"] == "abc123"
 
     def test_get_execution_result(
         self, sea_client, mock_http_client, mock_cursor, sea_command_id
     ):
         """Test getting the result of a command execution."""
         # Set up mock response
-        mock_http_client._make_request.return_value = {
+        sea_response = {
             "statement_id": "test-statement-123",
             "status": {"state": "SUCCEEDED"},
             "manifest": {
-                "schema": [
-                    {
-                        "name": "col1",
-                        "type_name": "STRING",
-                        "type_text": "string",
-                        "nullable": True,
-                    }
-                ],
+                "format": "JSON_ARRAY",
+                "schema": {
+                    "column_count": 1,
+                    "columns": [
+                        {
+                            "name": "test_value",
+                            "type_text": "INT",
+                            "type_name": "INT",
+                            "position": 0,
+                        }
+                    ],
+                },
+                "total_chunk_count": 1,
+                "chunks": [{"chunk_index": 0, "row_offset": 0, "row_count": 1}],
                 "total_row_count": 1,
-                "total_byte_count": 100,
+                "truncated": False,
             },
-            "result": {"data": [["value1"]]},
+            "result": {
+                "chunk_index": 0,
+                "row_offset": 0,
+                "row_count": 1,
+                "data_array": [["1"]],
+            },
         }
+        mock_http_client._make_request.return_value = sea_response
 
         # Create a real result set to verify the implementation
         result = sea_client.get_execution_result(sea_command_id, mock_cursor)
+        print(result)
 
         # Verify basic properties of the result
         assert result.statement_id == "test-statement-123"
         assert result.status.state == CommandState.SUCCEEDED
-        assert len(result.description) == 1
-        assert result.description[0][0] == "col1"  # column name
+        assert result.manifest.schema[0].name == "test_value"
 
         # Verify the HTTP request
         mock_http_client._make_request.assert_called_once()
@@ -535,8 +543,6 @@ class TestSeaBackend:
         assert kwargs["path"] == sea_client.STATEMENT_PATH_WITH_ID.format(
             "test-statement-123"
         )
-        assert "warehouse_id" in kwargs["data"]
-        assert kwargs["data"]["warehouse_id"] == "abc123"
 
     # Tests for metadata operations
 

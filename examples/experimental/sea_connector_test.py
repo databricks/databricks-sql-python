@@ -45,7 +45,7 @@ def test_sea_query_execution():
         logger.info(f"backend type: {type(connection.session.backend)}")
 
         # Create a cursor and execute a simple query
-        cursor = connection.cursor(buffer_size_bytes=0)
+        cursor = connection.cursor(arraysize=0, buffer_size_bytes=0)
 
         logger.info("Executing query: SELECT 1 as test_value")
         cursor.execute("SELECT 1 as test_value")
