@@ -103,7 +103,7 @@ class ClientTestSuite(unittest.TestCase):
 
                 # Check that the manually created mock result set's close method was called
                 self.assertEqual(
-                    mock_result_set.has_been_closed_server_side, 
+                    mock_result_set.has_been_closed_server_side,
                     closed,
                 )
                 mock_result_set.close.assert_called_once_with()
@@ -169,16 +169,11 @@ class ClientTestSuite(unittest.TestCase):
             mock_results_response.command_id
         )
 
-    @patch("%s.result_set.ThriftResultSet" % PACKAGE_NAME)
-    def test_executing_multiple_commands_uses_the_most_recent_command(
-        self, mock_result_set_class
-    ):
+    def test_executing_multiple_commands_uses_the_most_recent_command(self):
         mock_result_sets = [Mock(), Mock()]
         # Set is_staging_operation to False to avoid _handle_staging_operation being called
         for mock_rs in mock_result_sets:
             mock_rs.is_staging_operation = False
-
-        mock_result_set_class.side_effect = mock_result_sets
 
         mock_backend = ThriftDatabricksClientMockFactory.new()
         mock_backend.execute_command.side_effect = mock_result_sets
@@ -360,17 +355,13 @@ class ClientTestSuite(unittest.TestCase):
                 expected_query,
             )
 
-    @patch("%s.result_set.ThriftResultSet" % PACKAGE_NAME)
-    def test_executemany_parameter_passhthrough_and_uses_last_result_set(
-        self, mock_result_set_class
-    ):
+    def test_executemany_parameter_passhthrough_and_uses_last_result_set(self):
         # Create a new mock result set each time the class is instantiated
         mock_result_set_instances = [Mock(), Mock(), Mock()]
         # Set is_staging_operation to False to avoid _handle_staging_operation being called
         for mock_rs in mock_result_set_instances:
             mock_rs.is_staging_operation = False
 
-        mock_result_set_class.side_effect = mock_result_set_instances
         mock_backend = ThriftDatabricksClientMockFactory.new()
         mock_backend.execute_command.side_effect = mock_result_set_instances
 
