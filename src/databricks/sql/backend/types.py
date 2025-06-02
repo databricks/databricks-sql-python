@@ -9,6 +9,22 @@ logger = logging.getLogger(__name__)
 
 
 class CommandState(Enum):
+    """
+    Enum representing the execution state of a command in Databricks SQL.
+
+    This enum maps Thrift operation states to normalized command states,
+    providing a consistent interface for tracking command execution status
+    across different backend implementations.
+
+    Attributes:
+        PENDING: Command is queued or initialized but not yet running
+        RUNNING: Command is currently executing
+        SUCCEEDED: Command completed successfully
+        FAILED: Command failed due to error, timeout, or unknown state
+        CLOSED: Command has been closed
+        CANCELLED: Command was cancelled before completion
+    """
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     SUCCEEDED = "SUCCEEDED"
@@ -18,6 +34,27 @@ class CommandState(Enum):
 
     @classmethod
     def from_thrift_state(cls, state: ttypes.TOperationState) -> "CommandState":
+        """
+        Convert a Thrift TOperationState to a normalized CommandState.
+
+        Args:
+            state: A TOperationState from the Thrift API representing the current
+                  state of an operation
+
+        Returns:
+            CommandState: The corresponding normalized command state
+
+        Raises:
+            ValueError: If the provided state is not a recognized TOperationState
+
+        State Mappings:
+            - INITIALIZED_STATE, PENDING_STATE -> PENDING
+            - RUNNING_STATE -> RUNNING
+            - FINISHED_STATE -> SUCCEEDED
+            - ERROR_STATE, TIMEDOUT_STATE, UKNOWN_STATE -> FAILED
+            - CLOSED_STATE -> CLOSED
+            - CANCELED_STATE -> CANCELLED
+        """
         if state in (
             ttypes.TOperationState.INITIALIZED_STATE,
             ttypes.TOperationState.PENDING_STATE,
