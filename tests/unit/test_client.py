@@ -102,6 +102,10 @@ class ClientTestSuite(unittest.TestCase):
                 connection.close()
 
                 # Check that the manually created mock result set's close method was called
+                self.assertEqual(
+                    mock_result_set.has_been_closed_server_side, 
+                    closed,
+                )
                 mock_result_set.close.assert_called_once_with()
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
