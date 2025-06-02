@@ -86,8 +86,7 @@ class ClientTestSuite(unittest.TestCase):
         "%s.session.ThriftDatabricksClient" % PACKAGE_NAME,
         ThriftDatabricksClientMockFactory.new(),
     )
-    @patch("%s.client.ResultSet" % PACKAGE_NAME)
-    def test_closing_connection_closes_commands(self, mock_result_set_class):
+    def test_closing_connection_closes_commands(self):
         # Test once with has_been_closed_server side, once without
         for closed in (True, False):
             with self.subTest(closed=closed):
