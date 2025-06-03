@@ -107,7 +107,6 @@ class Session:
             logger.debug("Creating Thrift backend client")
             databricks_client_class = ThriftDatabricksClient
 
-        # Prepare common arguments
         common_args = {
             "server_hostname": server_hostname,
             "port": self.port,
@@ -118,7 +117,6 @@ class Session:
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }
-
         return databricks_client_class(**common_args)
 
     def open(self):
