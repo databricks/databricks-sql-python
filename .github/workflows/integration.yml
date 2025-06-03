@@ -1,10 +1,14 @@
 name: Integration Tests
-
 on:
-  push:            
+  push:
+    paths-ignore:
+      - "**.MD"
+      - "**.md"
+  pull_request:
     branches:
       - main
-  pull_request:   
+      - sea-migration
+      - telemetry
 
 jobs:
   run-e2e-tests:
