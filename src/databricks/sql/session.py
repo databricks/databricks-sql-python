@@ -93,12 +93,13 @@ class Session:
         http_path: str,
         all_headers: List[Tuple[str, str]],
         auth_provider,
-        _use_arrow_native_complex_types: bool,
+        _use_arrow_native_complex_types: Optional[bool],
         kwargs: dict,
     ) -> DatabricksClient:
         """Create and return the appropriate backend client."""
         use_sea = kwargs.get("use_sea", False)
 
+        databricks_client_class: Type[DatabricksClient]
         if use_sea:
             logger.debug("Creating SEA backend client")
             databricks_client_class = SeaDatabricksClient
