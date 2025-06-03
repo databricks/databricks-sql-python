@@ -315,8 +315,8 @@ class ThriftBackend:
             network_request_error = RequestError(
                 user_friendly_error_message,
                 full_error_info_context,
+                self.get_connection_uuid(),
                 error_info.error,
-                connection_uuid=self.get_connection_uuid(),
             )
             logger.info(network_request_error.message_with_context())
 
