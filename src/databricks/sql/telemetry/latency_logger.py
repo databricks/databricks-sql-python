@@ -11,7 +11,7 @@ from databricks.sql.telemetry.models.enums import ExecutionResultFormat, Stateme
 from databricks.sql.utils import ColumnQueue
 
 # Helper to get statement_id/query_id from instance if available
-def _get_statement_id_from_instance(instance) -> Optional[str]:
+def _get_statement_id(instance) -> Optional[str]:
     """
     Get statement ID from an instance using various methods:
     1. For Cursor: Use query_id property which returns UUID from active_op_handle
@@ -19,28 +19,22 @@ def _get_statement_id_from_instance(instance) -> Optional[str]:
     3. For objects with active_op_handle: Convert operationId to UUID string
     4. For ThriftBackend: Get operation ID from session_handle if available
     """
-    # Case 1: Direct query_id property (Cursor class)
     if hasattr(instance, "query_id"):
         return instance.query_id
 
-    # Case 2: Direct command_id (ResultSet class)
     if hasattr(instance, "command_id"):
         return instance.guid_to_hex_id(instance.command_id.operationId.guid)
 
-    # Case 3: Direct active_op_handle (Cursor class)
     if hasattr(instance, "active_op_handle"):
         return instance.guid_to_hex_id(instance.active_op_handle.operationId.guid)
 
-    # Case 4: For ThriftBackend, get operation ID from session_handle
-    if instance.__class__.__name__ == "ThriftBackend" and hasattr(
-        instance, "_session_handle"
-    ):
+    if hasattr(instance, "_session_handle") and hasattr(instance, "handle_to_hex_id"):
         return instance.handle_to_hex_id(instance._session_handle)
 
     return None
 
 
-def _get_connection_uuid_from_instance(instance) -> Optional[str]:
+def _get_connection_uuid(instance) -> Optional[str]:
     if hasattr(instance, "connection") and instance.connection:
         return instance.connection.get_session_id_hex()
     if hasattr(instance, "get_session_id_hex"):
@@ -90,17 +84,14 @@ def _get_execution_result(instance) -> ExecutionResultFormat:
     2. For Cursor: Check through active_result_set
     3. For ThriftBackend: Check result format from server
     """
-    # Check if using cloud fetch
     if hasattr(instance, "_use_cloud_fetch") and instance._use_cloud_fetch:
         return ExecutionResultFormat.EXTERNAL_LINKS
 
-    # Check result format from ResultSet
     if hasattr(instance, "active_result_set") and instance.active_result_set:
         if isinstance(instance.active_result_set.results, ColumnQueue):
             return ExecutionResultFormat.COLUMNAR_INLINE
         return ExecutionResultFormat.INLINE_ARROW
 
-    # Check result format from ThriftBackend
     if hasattr(instance, "thrift_backend") and instance.thrift_backend:
         if hasattr(instance.thrift_backend, "_use_arrow_native_complex_types"):
             return ExecutionResultFormat.INLINE_ARROW
@@ -110,46 +101,15 @@ def _get_execution_result(instance) -> ExecutionResultFormat:
 
 def _get_retry_count(instance) -> int:
     """
-    Get retry count from instance:
-    1. Direct retry_policy attribute (ThriftBackend)
-    2. Through thrift_backend attribute (Cursor/ResultSet)
-    3. Through connection attribute (Cursor/ResultSet)
+    Get retry count from instance by checking retry_policy.history length.
+    The retry_policy is only accessible through thrift_backend.
     """
-    # Case 1: Direct retry_policy (ThriftBackend)
-    if hasattr(instance, "retry_policy") and instance.retry_policy:
-        # Get attempts from history length
-        return (
-            len(instance.retry_policy.history) if instance.retry_policy.history else 0
-        )
-
-    # Case 2: Through thrift_backend (Cursor/ResultSet)
     if hasattr(instance, "thrift_backend") and instance.thrift_backend:
         if (
             hasattr(instance.thrift_backend, "retry_policy")
             and instance.thrift_backend.retry_policy
         ):
-            return (
-                len(instance.thrift_backend.retry_policy.history)
-                if instance.thrift_backend.retry_policy.history
-                else 0
-            )
-
-    # Case 3: Through connection (Cursor/ResultSet)
-    if hasattr(instance, "connection") and instance.connection:
-        if (
-            hasattr(instance.connection, "thrift_backend")
-            and instance.connection.thrift_backend
-        ):
-            if (
-                hasattr(instance.connection.thrift_backend, "retry_policy")
-                and instance.connection.thrift_backend.retry_policy
-            ):
-                return (
-                    len(instance.connection.thrift_backend.retry_policy.history)
-                    if instance.connection.thrift_backend.retry_policy.history
-                    else 0
-                )
-
+            return len(instance.thrift_backend.retry_policy.history)
     return 0
 
 
@@ -166,7 +126,7 @@ def log_latency():
                 end_time = time.perf_counter()
                 duration_ms = int((end_time - start_time) * 1000)
 
-                connection_uuid = _get_connection_uuid_from_instance(self)
+                connection_uuid = _get_connection_uuid(self)
 
                 if connection_uuid:
                     # Check if this is a volume operation
@@ -184,7 +144,7 @@ def log_latency():
                         )
                     else:
                         # Regular SQL execution
-                        statement_id = _get_statement_id_from_instance(self)
+                        statement_id = _get_statement_id(self)
                         statement_type = _get_statement_type(func.__name__)
                         is_compressed = _get_is_compressed(self)
                         execution_result = _get_execution_result(self)
