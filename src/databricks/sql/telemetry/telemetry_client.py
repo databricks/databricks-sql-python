@@ -26,8 +26,6 @@ import platform
 import uuid
 import locale
 
-logger = logging.getLogger(__name__)
-
 
 class BaseTelemetryClient(ABC):
     """Abstract base class for telemetry clients."""
@@ -90,34 +88,23 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _send_telemetry(self, events):
         # Send telemetry events to the server
-        try:
-            request = {
-                "uploadTime": int(time.time() * 1000),
-                "items": [],
-                "protoLogs": [event.to_json() for event in events],
-            }
+        request = {
+            "uploadTime": int(time.time() * 1000),
+            "items": [],
+            "protoLogs": [event.to_json() for event in events],
+        }
 
-            path = "/telemetry-ext" if self.is_authenticated else "/telemetry-unauth"
-            url = f"https://{self.host_url}{path}"
+        path = "/telemetry-ext" if self.is_authenticated else "/telemetry-unauth"
+        url = f"https://{self.host_url}{path}"
 
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
-            if self.is_authenticated and self.auth_provider:
-                self.auth_provider.add_headers(headers)
+        if self.is_authenticated and self.auth_provider:
+            self.auth_provider.add_headers(headers)
 
-            response = requests.post(
-                url, data=json.dumps(request), headers=headers, timeout=10
-            )
-
-            if response.status_code != 200:
-                logger.debug(
-                    "Failed to send telemetry: HTTP %d - %s",
-                    response.status_code,
-                    response.text,
-                )
-
-        except Exception as e:
-            logger.debug("Failed to send telemetry: %s", str(e))
+        response = requests.post(
+            url, data=json.dumps(request), headers=headers, timeout=10
+        )
 
     def close(self):
         # Flush remaining events and shut down executor
