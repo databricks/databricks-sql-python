@@ -29,31 +29,6 @@ import locale
 logger = logging.getLogger(__name__)
 
 
-class TelemetryHelper:
-    # Singleton instance of DriverSystemConfiguration
-    _DRIVER_SYSTEM_CONFIGURATION = None
-
-    @classmethod
-    def getDriverSystemConfiguration(cls) -> DriverSystemConfiguration:
-        if cls._DRIVER_SYSTEM_CONFIGURATION is None:
-            from databricks.sql import __version__
-
-            cls._DRIVER_SYSTEM_CONFIGURATION = DriverSystemConfiguration(
-                driver_name="Databricks SQL Python Connector",
-                driver_version=__version__,
-                runtime_name=f"Python {sys.version.split()[0]}",
-                runtime_vendor=platform.python_implementation(),
-                runtime_version=platform.python_version(),
-                os_name=platform.system(),
-                os_version=platform.release(),
-                os_arch=platform.machine(),
-                client_app_name=None,  # TODO: Add client app name
-                locale_name=locale.getlocale()[0] or locale.getdefaultlocale()[0],
-                char_set_encoding=sys.getdefaultencoding(),
-            )
-        return cls._DRIVER_SYSTEM_CONFIGURATION
-
-
 class BaseTelemetryClient(ABC):
     """Abstract base class for telemetry clients."""
 
@@ -109,7 +84,7 @@ class TelemetryClient(BaseTelemetryClient):
         with self.lock:
             events_to_flush = self.events_batch.copy()
             self.events_batch = []
-        print(f"Flushing {len(events_to_flush)} events", flush=True)
+
         if events_to_flush:
             self.executor.submit(self._send_telemetry, events_to_flush)
 
@@ -178,9 +153,7 @@ class TelemetryClient(BaseTelemetryClient):
             entry=FrontendLogEntry(
                 sql_driver_log=TelemetryEvent(
                     session_id=self.connection_uuid,
-                    # session_id = "test-session-auth-1234",
-                    # session_id = "test-session-unauth-1234",
-                    system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
                     driver_connection_params=self.DriverConnectionParameters,
                 )
             ),
@@ -201,7 +174,7 @@ class TelemetryClient(BaseTelemetryClient):
             entry=FrontendLogEntry(
                 sql_driver_log=TelemetryEvent(
                     session_id=self.connection_uuid,
-                    system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
                     driver_connection_params=self.DriverConnectionParameters,
                     error_info=error_info,
                 )
@@ -223,7 +196,7 @@ class TelemetryClient(BaseTelemetryClient):
             entry=FrontendLogEntry(
                 sql_driver_log=TelemetryEvent(
                     session_id=self.connection_uuid,
-                    system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
                     driver_connection_params=self.DriverConnectionParameters,
                     sql_statement_id=sql_statement_id,
                     sql_operation=sql_execution_event,
@@ -245,7 +218,7 @@ class TelemetryClient(BaseTelemetryClient):
             entry=FrontendLogEntry(
                 sql_driver_log=TelemetryEvent(
                     session_id=self.connection_uuid,
-                    system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
                     driver_connection_params=self.DriverConnectionParameters,
                     volume_operation=volume_operation,
                     operation_latency_ms=latency_ms,
@@ -271,12 +244,13 @@ class NoopTelemetryClient(BaseTelemetryClient):
         pass
 
 
-class SingletonTelemetryClient:
+class TelemetryManager:
     _instance = None
+    _DRIVER_SYSTEM_CONFIGURATION = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(SingletonTelemetryClient, cls).__new__(cls)
+            cls._instance = super(TelemetryManager, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
@@ -348,6 +322,26 @@ class SingletonTelemetryClient:
                     latency_ms, volume_operation
                 )
 
+    @classmethod
+    def getDriverSystemConfiguration(cls) -> DriverSystemConfiguration:
+        if cls._DRIVER_SYSTEM_CONFIGURATION is None:
+            from databricks.sql import __version__
+
+            cls._DRIVER_SYSTEM_CONFIGURATION = DriverSystemConfiguration(
+                driver_name="Databricks SQL Python Connector",
+                driver_version=__version__,
+                runtime_name=f"Python {sys.version.split()[0]}",
+                runtime_vendor=platform.python_implementation(),
+                runtime_version=platform.python_version(),
+                os_name=platform.system(),
+                os_version=platform.release(),
+                os_arch=platform.machine(),
+                client_app_name=None,  # TODO: Add client app name
+                locale_name=locale.getlocale()[0] or locale.getdefaultlocale()[0],
+                char_set_encoding=sys.getdefaultencoding(),
+            )
+        return cls._DRIVER_SYSTEM_CONFIGURATION
+
     def close(self, connection_uuid):
         """Close telemetry client(s)"""
         if connection_uuid:
@@ -357,4 +351,4 @@ class SingletonTelemetryClient:
 
 
 # Create a global instance
-telemetry_client = SingletonTelemetryClient()
+telemetry_client = TelemetryManager()

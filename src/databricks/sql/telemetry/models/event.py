@@ -97,10 +97,10 @@ class DriverSystemConfiguration:
     runtime_name: str
     runtime_version: str
     runtime_vendor: str
-    client_app_name: Optional[str]
-    locale_name: str
     driver_name: str
     char_set_encoding: str
+    client_app_name: Optional[str] = None
+    locale_name: Optional[str] = None
 
     def to_json(self):
         return json.dumps(asdict(self), cls=EnumEncoder)
