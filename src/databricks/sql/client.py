@@ -302,9 +302,9 @@ class Connection:
             telemetry_client.initialize(
                 host=self.host,
                 connection_uuid=self.get_session_id_hex(),
+                batch_size=telemetry_batch_size,
                 auth_provider=auth_provider,
                 is_authenticated=True,  # TODO: Add authentication logic later
-                batch_size=telemetry_batch_size,
                 user_agent=useragent_header,
             )
 

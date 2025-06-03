@@ -27,9 +27,9 @@ class TelemetryClient:
         self,
         host,
         connection_uuid,
+        batch_size,
         auth_provider=None,
         is_authenticated=False,
-        batch_size=200,
         user_agent=None,
     ):
         self.host_url = host
@@ -195,19 +195,19 @@ class TelemetryManager:
         self,
         host,
         connection_uuid,
-        auth_provider,
-        is_authenticated,
         batch_size,
-        user_agent,
+        auth_provider=None,
+        is_authenticated=False,
+        user_agent=None,
     ):
         """Initialize a telemetry client for a specific connection"""
         if connection_uuid not in self._clients:
             self._clients[connection_uuid] = TelemetryClient(
                 host=host,
                 connection_uuid=connection_uuid,
+                batch_size=batch_size,
                 auth_provider=auth_provider,
                 is_authenticated=is_authenticated,
-                batch_size=batch_size,
                 user_agent=user_agent,
             )
 
