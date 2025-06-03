@@ -7,10 +7,16 @@ if TYPE_CHECKING:
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
-from databricks.sql.exc import Error, NotSupportedError
+from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 from databricks.sql.backend.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
+
+from databricks.sql.backend.models import (
+    CreateSessionRequest,
+    DeleteSessionRequest,
+    CreateSessionResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,21 +169,27 @@ class SeaDatabricksClient(DatabricksClient):
             schema,
         )
 
-        request_data: Dict[str, Any] = {"warehouse_id": self.warehouse_id}
-        if session_configuration:
-            request_data["session_confs"] = session_configuration
-        if catalog:
-            request_data["catalog"] = catalog
-        if schema:
-            request_data["schema"] = schema
-
-        response = self.http_client._make_request(
-            method="POST", path=self.SESSION_PATH, data=request_data
+        request_data = CreateSessionRequest(
+            warehouse_id=self.warehouse_id,
+            session_confs=session_configuration,
+            catalog=catalog,
+            schema=schema,
         )
 
-        session_id = response.get("session_id")
+        response = self.http_client._make_request(
+            method="POST", path=self.SESSION_PATH, data=request_data.to_dict()
+        )
+
+        session_response = CreateSessionResponse.from_dict(response)
+        session_id = session_response.session_id
         if not session_id:
-            raise Error("Failed to create session: No session ID returned")
+            raise ServerOperationError(
+                "Failed to create session: No session ID returned",
+                {
+                    "operation-id": None,
+                    "diagnostic-info": None,
+                },
+            )
 
         return SessionId.from_sea_session_id(session_id)
 
@@ -199,12 +211,15 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
-        request_data = {"warehouse_id": self.warehouse_id}
+        request_data = DeleteSessionRequest(
+            warehouse_id=self.warehouse_id,
+            session_id=sea_session_id,
+        )
 
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            data=request_data,
+            data=request_data.to_dict(),
         )
 
     # == Not Implemented Operations ==

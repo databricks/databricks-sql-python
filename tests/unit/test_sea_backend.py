@@ -150,7 +150,7 @@ class TestSeaBackend:
         mock_http_client._make_request.assert_called_once_with(
             method="DELETE",
             path=sea_client.SESSION_PATH_WITH_ID.format("test-session-789"),
-            data={"warehouse_id": "abc123"},
+            data={"session_id": "test-session-789", "warehouse_id": "abc123"},
         )
 
     def test_close_session_invalid_id_type(self, sea_client):
