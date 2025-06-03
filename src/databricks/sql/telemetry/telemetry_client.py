@@ -162,70 +162,17 @@ class TelemetryClient(BaseTelemetryClient):
         self.export_event(telemetry_frontend_log)
 
     def export_failure_log(self, errorName, errorMessage):
-        error_info = DriverErrorInfo(error_name=errorName, stack_trace=errorMessage)
-
-        telemetry_frontend_log = TelemetryFrontendLog(
-            frontend_log_event_id=str(uuid.uuid4()),
-            context=FrontendLogContext(
-                client_context=TelemetryClientContext(
-                    timestamp_millis=int(time.time() * 1000), user_agent=self.user_agent
-                )
-            ),
-            entry=FrontendLogEntry(
-                sql_driver_log=TelemetryEvent(
-                    session_id=self.connection_uuid,
-                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
-                    driver_connection_params=self.DriverConnectionParameters,
-                    error_info=error_info,
-                )
-            ),
-        )
-        self.export_event(telemetry_frontend_log)
+        pass
 
     def export_sql_latency_log(
         self, latency_ms, sql_execution_event, sql_statement_id=None
     ):
         """Export telemetry for sql execution"""
-        telemetry_frontend_log = TelemetryFrontendLog(
-            frontend_log_event_id=str(uuid.uuid4()),
-            context=FrontendLogContext(
-                client_context=TelemetryClientContext(
-                    timestamp_millis=int(time.time() * 1000), user_agent=self.user_agent
-                )
-            ),
-            entry=FrontendLogEntry(
-                sql_driver_log=TelemetryEvent(
-                    session_id=self.connection_uuid,
-                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
-                    driver_connection_params=self.DriverConnectionParameters,
-                    sql_statement_id=sql_statement_id,
-                    sql_operation=sql_execution_event,
-                    operation_latency_ms=latency_ms,
-                )
-            ),
-        )
-        self.export_event(telemetry_frontend_log)
+        pass
 
     def export_volume_latency_log(self, latency_ms, volume_operation):
         """Export telemetry for volume operation"""
-        telemetry_frontend_log = TelemetryFrontendLog(
-            frontend_log_event_id=str(uuid.uuid4()),
-            context=FrontendLogContext(
-                client_context=TelemetryClientContext(
-                    timestamp_millis=int(time.time() * 1000), user_agent=self.user_agent
-                )
-            ),
-            entry=FrontendLogEntry(
-                sql_driver_log=TelemetryEvent(
-                    session_id=self.connection_uuid,
-                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
-                    driver_connection_params=self.DriverConnectionParameters,
-                    volume_operation=volume_operation,
-                    operation_latency_ms=latency_ms,
-                )
-            ),
-        )
-        self.export_event(telemetry_frontend_log)
+        pass
 
 
 class NoopTelemetryClient(BaseTelemetryClient):
@@ -283,11 +230,7 @@ class TelemetryManager:
 
     def export_failure_log(self, error_name, error_message, connection_uuid):
         """Export error logs for a specific connection or all connections if connection_uuid is None"""
-        if connection_uuid:
-            if connection_uuid in self._clients:
-                self._clients[connection_uuid].export_failure_log(
-                    error_name, error_message
-                )
+        pass
 
     def export_initial_telemetry_log(
         self, http_path, port, socket_timeout, connection_uuid
@@ -306,21 +249,13 @@ class TelemetryManager:
         connection_uuid=None,
     ):
         """Export latency logs for sql execution for a specific connection"""
-        if connection_uuid:
-            if connection_uuid in self._clients:
-                self._clients[connection_uuid].export_sql_latency_log(
-                    latency_ms, sql_execution_event, sql_statement_id
-                )
+        pass
 
     def export_volume_latency_log(
         self, latency_ms, volume_operation, connection_uuid=None
     ):
         """Export latency logs for volume operation for a specific connection"""
-        if connection_uuid:
-            if connection_uuid in self._clients:
-                self._clients[connection_uuid].export_volume_latency_log(
-                    latency_ms, volume_operation
-                )
+        pass
 
     @classmethod
     def getDriverSystemConfiguration(cls) -> DriverSystemConfiguration:

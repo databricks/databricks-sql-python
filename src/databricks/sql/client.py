@@ -53,8 +53,7 @@ from databricks.sql.telemetry.telemetry_client import (
     telemetry_client,
     NoopTelemetryClient,
 )
-from databricks.sql.telemetry.latency_logger import log_latency
-from databricks.sql.telemetry.models.enums import DriverVolumeOperationType
+
 
 logger = logging.getLogger(__name__)
 
@@ -457,9 +456,6 @@ class Connection:
 
         self.open = False
 
-        if self.telemetry_enabled:
-            telemetry_client.close(self.get_session_id_hex())
-
     def commit(self):
         """No-op because Databricks does not support transactions"""
         pass
@@ -517,10 +513,7 @@ class Cursor:
             for row in self.active_result_set:
                 yield row
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set")
 
     def _determine_parameter_approach(
         self, params: Optional[TParameterCollection]
@@ -657,10 +650,7 @@ class Cursor:
 
     def _check_not_closed(self):
         if not self.open:
-            raise Error(
-                "Attempting operation on closed cursor",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("Attempting operation on closed cursor")
 
     def _handle_staging_operation(
         self, staging_allowed_local_path: Union[None, str, List[str]]
@@ -678,8 +668,7 @@ class Cursor:
             _staging_allowed_local_paths = staging_allowed_local_path
         else:
             raise Error(
-                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands",
-                connection_uuid=self.connection.get_session_id_hex(),
+                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands"
             )
 
         abs_staging_allowed_local_paths = [
@@ -708,8 +697,7 @@ class Cursor:
                     continue
             if not allow_operation:
                 raise Error(
-                    "Local file operations are restricted to paths within the configured staging_allowed_local_path",
-                    connection_uuid=self.connection.get_session_id_hex(),
+                    "Local file operations are restricted to paths within the configured staging_allowed_local_path"
                 )
 
         # May be real headers, or could be json string
@@ -739,11 +727,9 @@ class Cursor:
         else:
             raise Error(
                 f"Operation {row.operation} is not supported. "
-                + "Supported operations are GET, PUT, and REMOVE",
-                connection_uuid=self.connection.get_session_id_hex(),
+                + "Supported operations are GET, PUT, and REMOVE"
             )
 
-    @log_latency()
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -753,13 +739,7 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error(
-                "Cannot perform PUT without specifying a local_file",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
-
-        self.volume_operation_type = DriverVolumeOperationType.PUT
-        self.volume_path = local_file
+            raise Error("Cannot perform PUT without specifying a local_file")
 
         with open(local_file, "rb") as fh:
             r = requests.put(url=presigned_url, data=fh, headers=headers)
@@ -776,8 +756,7 @@ class Cursor:
 
         if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
             raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
-                connection_uuid=self.connection.get_session_id_hex(),
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
             )
 
         if r.status_code == ACCEPTED:
@@ -786,7 +765,6 @@ class Cursor:
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
 
-    @log_latency()
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -796,13 +774,7 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error(
-                "Cannot perform GET without specifying a local_file",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
-
-        self.volume_operation_type = DriverVolumeOperationType.GET
-        self.volume_path = local_file
+            raise Error("Cannot perform GET without specifying a local_file")
 
         r = requests.get(url=presigned_url, headers=headers)
 
@@ -810,23 +782,16 @@ class Cursor:
         # Any 2xx or 3xx will evaluate r.ok == True
         if not r.ok:
             raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
-                connection_uuid=self.connection.get_session_id_hex(),
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
             )
 
         with open(local_file, "wb") as fp:
             fp.write(r.content)
 
-    @log_latency()
     def _handle_staging_remove(
         self, presigned_url: str, headers: Optional[dict] = None
     ):
         """Make an HTTP DELETE request to the presigned_url"""
-
-        self.volume_operation_type = DriverVolumeOperationType.DELETE
-        self.volume_path = (
-            presigned_url  # Using presigned URL as path since there's no local file
-        )
 
         r = requests.delete(url=presigned_url, headers=headers)
 
@@ -1031,8 +996,7 @@ class Cursor:
             return self
         else:
             raise Error(
-                f"get_execution_result failed with Operation status {operation_state}",
-                connection_uuid=self.connection.get_session_id_hex(),
+                f"get_execution_result failed with Operation status {operation_state}"
             )
 
     def executemany(self, operation, seq_of_parameters):
@@ -1182,10 +1146,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchall()
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set")
 
     def fetchone(self) -> Optional[Row]:
         """
@@ -1199,10 +1160,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchone()
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set")
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -1224,30 +1182,21 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchmany(size)
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set")
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set")
 
     def fetchmany_arrow(self, size) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set")
 
     def cancel(self) -> None:
         """
