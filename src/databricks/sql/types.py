@@ -158,6 +158,7 @@ class Row(tuple):
         >>> row.asDict(True) == {'key': 1, 'value': {'name': 'a', 'age': 2}}
         True
         """
+
         if not hasattr(self, "__fields__"):
             raise TypeError("Cannot convert a Row class into dict")
 
@@ -186,6 +187,7 @@ class Row(tuple):
     # let object acts like class
     def __call__(self, *args: Any) -> "Row":
         """create new Row object"""
+
         if len(args) > len(self):
             raise ValueError(
                 "Can not create Row with fields %s, expected %d values "
@@ -228,6 +230,7 @@ class Row(tuple):
         self,
     ) -> Union[str, Tuple[Any, ...]]:
         """Returns a tuple so Python knows how to pickle Row."""
+
         if hasattr(self, "__fields__"):
             return (_create_row, (self.__fields__, tuple(self)))
         else:
@@ -235,6 +238,7 @@ class Row(tuple):
 
     def __repr__(self) -> str:
         """Printable representation of Row used in Python REPL."""
+
         if hasattr(self, "__fields__"):
             return "Row(%s)" % ", ".join(
                 "%s=%r" % (k, v) for k, v in zip(self.__fields__, tuple(self))

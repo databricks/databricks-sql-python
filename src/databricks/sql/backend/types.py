@@ -57,6 +57,7 @@ class CommandState(Enum):
             - CLOSED_STATE -> CLOSED
             - CANCELED_STATE -> CANCELLED
         """
+
         if state in (
             ttypes.TOperationState.INITIALIZED_STATE,
             ttypes.TOperationState.PENDING_STATE,
@@ -113,6 +114,7 @@ class SessionId:
             secret: The secret part of the identifier (only used for Thrift)
             properties: Additional information about the session
         """
+
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
@@ -128,6 +130,7 @@ class SessionId:
         Returns:
             A string representation of the session ID
         """
+
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
@@ -152,6 +155,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
+
         if session_handle is None:
             return None
 
@@ -178,6 +182,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
+
         return cls(BackendType.SEA, session_id, properties=properties)
 
     def to_thrift_handle(self):
@@ -187,6 +192,7 @@ class SessionId:
         Returns:
             A TSessionHandle object or None if this is not a Thrift session ID
         """
+
         if self.backend_type != BackendType.THRIFT:
             return None
 
@@ -205,6 +211,7 @@ class SessionId:
         Returns:
             The session ID string or None if this is not a SEA session ID
         """
+
         if self.backend_type != BackendType.SEA:
             return None
 
@@ -214,6 +221,7 @@ class SessionId:
         """
         Get the ID of the session.
         """
+
         return self.guid
 
     def get_hex_guid(self) -> str:
@@ -223,6 +231,7 @@ class SessionId:
         Returns:
             A hexadecimal string representation
         """
+
         if isinstance(self.guid, bytes):
             return guid_to_hex_id(self.guid)
         else:
@@ -236,6 +245,7 @@ class SessionId:
             The server protocol version or None if it does not exist
             It is not expected to exist for SEA sessions.
         """
+
         return self.properties.get("serverProtocolVersion")
 
 
@@ -267,6 +277,7 @@ class CommandId:
             has_result_set: Whether the command has a result set
             modified_row_count: The number of rows modified by the command
         """
+
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
@@ -307,6 +318,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+
         if operation_handle is None:
             return None
 
@@ -333,6 +345,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+
         return cls(BackendType.SEA, statement_id)
 
     def to_thrift_handle(self):
@@ -342,6 +355,7 @@ class CommandId:
         Returns:
             A TOperationHandle object or None if this is not a Thrift command ID
         """
+
         if self.backend_type != BackendType.THRIFT:
             return None
 
@@ -362,6 +376,7 @@ class CommandId:
         Returns:
             The statement ID string or None if this is not a SEA statement ID
         """
+
         if self.backend_type != BackendType.SEA:
             return None
 
@@ -374,6 +389,7 @@ class CommandId:
         Returns:
             A hexadecimal string representation
         """
+
         if isinstance(self.guid, bytes):
             return guid_to_hex_id(self.guid)
         else:

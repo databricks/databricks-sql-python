@@ -397,6 +397,7 @@ class Cursor:
         Cursors are not isolated, i.e., any changes done to the database by a cursor are immediately
         visible by other cursors or connections.
         """
+
         self.connection = connection
         self.rowcount = -1  # Return -1 as this is not supported
         self.buffer_size_bytes = result_buffer_size_bytes
@@ -755,6 +756,7 @@ class Cursor:
 
         :returns self
         """
+
         logger.debug(
             "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
         )
@@ -814,6 +816,7 @@ class Cursor:
         :param parameters:
         :return:
         """
+
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
