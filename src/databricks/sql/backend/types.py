@@ -1,10 +1,84 @@
 from enum import Enum
-from typing import Dict, Optional, Any, Union
+from typing import Dict, Optional, Any
 import logging
 
 from databricks.sql.backend.utils import guid_to_hex_id
+from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
+
+
+class CommandState(Enum):
+    """
+    Enum representing the execution state of a command in Databricks SQL.
+
+    This enum maps Thrift operation states to normalized command states,
+    providing a consistent interface for tracking command execution status
+    across different backend implementations.
+
+    Attributes:
+        PENDING: Command is queued or initialized but not yet running
+        RUNNING: Command is currently executing
+        SUCCEEDED: Command completed successfully
+        FAILED: Command failed due to error, timeout, or unknown state
+        CLOSED: Command has been closed
+        CANCELLED: Command was cancelled before completion
+    """
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"
+
+    @classmethod
+    def from_thrift_state(
+        cls, state: ttypes.TOperationState
+    ) -> Optional["CommandState"]:
+        """
+        Convert a Thrift TOperationState to a normalized CommandState.
+
+        Args:
+            state: A TOperationState from the Thrift API representing the current
+                  state of an operation
+
+        Returns:
+            CommandState: The corresponding normalized command state
+
+        Raises:
+            ValueError: If the provided state is not a recognized TOperationState
+
+        State Mappings:
+            - INITIALIZED_STATE, PENDING_STATE -> PENDING
+            - RUNNING_STATE -> RUNNING
+            - FINISHED_STATE -> SUCCEEDED
+            - ERROR_STATE, TIMEDOUT_STATE, UKNOWN_STATE -> FAILED
+            - CLOSED_STATE -> CLOSED
+            - CANCELED_STATE -> CANCELLED
+        """
+
+        if state in (
+            ttypes.TOperationState.INITIALIZED_STATE,
+            ttypes.TOperationState.PENDING_STATE,
+        ):
+            return cls.PENDING
+        elif state == ttypes.TOperationState.RUNNING_STATE:
+            return cls.RUNNING
+        elif state == ttypes.TOperationState.FINISHED_STATE:
+            return cls.SUCCEEDED
+        elif state in (
+            ttypes.TOperationState.ERROR_STATE,
+            ttypes.TOperationState.TIMEDOUT_STATE,
+            ttypes.TOperationState.UKNOWN_STATE,
+        ):
+            return cls.FAILED
+        elif state == ttypes.TOperationState.CLOSED_STATE:
+            return cls.CLOSED
+        elif state == ttypes.TOperationState.CANCELED_STATE:
+            return cls.CANCELLED
+        else:
+            return None
 
 
 class BackendType(Enum):
@@ -40,6 +114,7 @@ class SessionId:
             secret: The secret part of the identifier (only used for Thrift)
             properties: Additional information about the session
         """
+
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
@@ -55,6 +130,7 @@ class SessionId:
         Returns:
             A string representation of the session ID
         """
+
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
@@ -79,6 +155,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
+
         if session_handle is None:
             return None
 
@@ -105,6 +182,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
+
         return cls(BackendType.SEA, session_id, properties=properties)
 
     def to_thrift_handle(self):
@@ -114,6 +192,7 @@ class SessionId:
         Returns:
             A TSessionHandle object or None if this is not a Thrift session ID
         """
+
         if self.backend_type != BackendType.THRIFT:
             return None
 
@@ -132,6 +211,7 @@ class SessionId:
         Returns:
             The session ID string or None if this is not a SEA session ID
         """
+
         if self.backend_type != BackendType.SEA:
             return None
 
@@ -141,6 +221,7 @@ class SessionId:
         """
         Get the ID of the session.
         """
+
         return self.guid
 
     def get_hex_guid(self) -> str:
@@ -150,6 +231,7 @@ class SessionId:
         Returns:
             A hexadecimal string representation
         """
+
         if isinstance(self.guid, bytes):
             return guid_to_hex_id(self.guid)
         else:
@@ -163,6 +245,7 @@ class SessionId:
             The server protocol version or None if it does not exist
             It is not expected to exist for SEA sessions.
         """
+
         return self.properties.get("serverProtocolVersion")
 
 
@@ -194,6 +277,7 @@ class CommandId:
             has_result_set: Whether the command has a result set
             modified_row_count: The number of rows modified by the command
         """
+
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
@@ -211,6 +295,7 @@ class CommandId:
         Returns:
             A string representation of the command ID
         """
+
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
@@ -233,6 +318,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+
         if operation_handle is None:
             return None
 
@@ -259,6 +345,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+
         return cls(BackendType.SEA, statement_id)
 
     def to_thrift_handle(self):
@@ -268,6 +355,7 @@ class CommandId:
         Returns:
             A TOperationHandle object or None if this is not a Thrift command ID
         """
+
         if self.backend_type != BackendType.THRIFT:
             return None
 
@@ -288,6 +376,7 @@ class CommandId:
         Returns:
             The statement ID string or None if this is not a SEA statement ID
         """
+
         if self.backend_type != BackendType.SEA:
             return None
 
@@ -300,6 +389,7 @@ class CommandId:
         Returns:
             A hexadecimal string representation
         """
+
         if isinstance(self.guid, bytes):
             return guid_to_hex_id(self.guid)
         else:

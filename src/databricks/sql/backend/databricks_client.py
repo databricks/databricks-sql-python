@@ -15,9 +15,15 @@ if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.backend.types import SessionId, CommandId
+from databricks.sql.backend.types import SessionId, CommandId, CommandState
 from databricks.sql.utils import ExecuteResponse
 from databricks.sql.types import SSLOptions
+
+# Forward reference for type hints
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from databricks.sql.result_set import ResultSet
 
 
 class DatabricksClient(ABC):
@@ -81,7 +87,7 @@ class DatabricksClient(ABC):
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> Optional[ExecuteResponse]:
+    ) -> Union["ResultSet", None]:
         """
         Executes a SQL command or query within the specified session.
 
@@ -101,7 +107,7 @@ class DatabricksClient(ABC):
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
 
         Returns:
-            If async_op is False, returns an ExecuteResponse object containing the
+            If async_op is False, returns a ResultSet object containing the
             query results and metadata. If async_op is True, returns None and the
             results must be fetched later using get_execution_result().
 
@@ -130,7 +136,7 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def close_command(self, command_id: CommandId) -> ttypes.TStatus:
+    def close_command(self, command_id: CommandId) -> None:
         """
         Closes a command and releases associated resources.
 
@@ -140,9 +146,6 @@ class DatabricksClient(ABC):
         Args:
             command_id: The command identifier to close
 
-        Returns:
-            ttypes.TStatus: The status of the close operation
-
         Raises:
             ValueError: If the command ID is invalid
             OperationalError: If there's an error closing the command
@@ -150,7 +153,7 @@ class DatabricksClient(ABC):
         pass
 
     @abstractmethod
-    def get_query_state(self, command_id: CommandId) -> ttypes.TOperationState:
+    def get_query_state(self, command_id: CommandId) -> CommandState:
         """
         Gets the current state of a query or command.
 
@@ -160,7 +163,7 @@ class DatabricksClient(ABC):
             command_id: The command identifier to check
 
         Returns:
-            ttypes.TOperationState: The current state of the command
+            CommandState: The current state of the command
 
         Raises:
             ValueError: If the command ID is invalid
@@ -175,7 +178,7 @@ class DatabricksClient(ABC):
         self,
         command_id: CommandId,
         cursor: "Cursor",
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         """
         Retrieves the results of a previously executed command.
 
@@ -187,7 +190,7 @@ class DatabricksClient(ABC):
             cursor: The cursor object that will handle the results
 
         Returns:
-            ExecuteResponse: An object containing the query results and metadata
+            ResultSet: An object containing the query results and metadata
 
         Raises:
             ValueError: If the command ID is invalid
@@ -203,7 +206,7 @@ class DatabricksClient(ABC):
         max_rows: int,
         max_bytes: int,
         cursor: "Cursor",
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         """
         Retrieves a list of available catalogs.
 
@@ -217,7 +220,7 @@ class DatabricksClient(ABC):
             cursor: The cursor object that will handle the results
 
         Returns:
-            ExecuteResponse: An object containing the catalog metadata
+            ResultSet: An object containing the catalog metadata
 
         Raises:
             ValueError: If the session ID is invalid
@@ -234,7 +237,7 @@ class DatabricksClient(ABC):
         cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         """
         Retrieves a list of schemas, optionally filtered by catalog and schema name patterns.
 
@@ -250,7 +253,7 @@ class DatabricksClient(ABC):
             schema_name: Optional schema name pattern to filter by
 
         Returns:
-            ExecuteResponse: An object containing the schema metadata
+            ResultSet: An object containing the schema metadata
 
         Raises:
             ValueError: If the session ID is invalid
@@ -269,7 +272,7 @@ class DatabricksClient(ABC):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         """
         Retrieves a list of tables, optionally filtered by catalog, schema, table name, and table types.
 
@@ -287,7 +290,7 @@ class DatabricksClient(ABC):
             table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
 
         Returns:
-            ExecuteResponse: An object containing the table metadata
+            ResultSet: An object containing the table metadata
 
         Raises:
             ValueError: If the session ID is invalid
@@ -306,7 +309,7 @@ class DatabricksClient(ABC):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> ExecuteResponse:
+    ) -> "ResultSet":
         """
         Retrieves a list of columns, optionally filtered by catalog, schema, table, and column name patterns.
 
@@ -324,7 +327,7 @@ class DatabricksClient(ABC):
             column_name: Optional column name pattern to filter by
 
         Returns:
-            ExecuteResponse: An object containing the column metadata
+            ResultSet: An object containing the column metadata
 
         Raises:
             ValueError: If the session ID is invalid

@@ -14,6 +14,7 @@ def guid_to_hex_id(guid: bytes) -> str:
     If conversion to hexadecimal fails, a string representation of the original
     bytes is returned
     """
+
     try:
         this_uuid = uuid.UUID(bytes=guid)
     except Exception as e:
