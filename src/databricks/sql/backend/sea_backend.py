@@ -277,6 +277,8 @@ class SeaDatabricksClient(DatabricksClient):
 
         format = "ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY"
         disposition = "EXTERNAL_LINKS" if use_cloud_fetch else "INLINE"
+        result_compression = "LZ4_FRAME" if lz4_compression else "NONE"
+        
         request = ExecuteStatementRequest(
             warehouse_id=self.warehouse_id,
             session_id=sea_session_id,
@@ -288,6 +290,7 @@ class SeaDatabricksClient(DatabricksClient):
             row_limit=max_rows if max_rows > 0 else None,
             byte_limit=max_bytes if max_bytes > 0 else None,
             parameters=sea_parameters if sea_parameters else None,
+            result_compression=result_compression,
         )
 
         response_data = self.http_client._make_request(

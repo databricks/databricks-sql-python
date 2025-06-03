@@ -7,7 +7,6 @@ These models define the structures used in SEA API requests.
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 
-
 @dataclass
 class StatementParameter:
     """Parameter for a SQL statement."""
@@ -21,7 +20,6 @@ class StatementParameter:
 class ExecuteStatementRequest:
     """Request to execute a SQL statement."""
 
-    # TODO: result_compression key
     warehouse_id: str
     statement: str
     session_id: str
@@ -34,6 +32,7 @@ class ExecuteStatementRequest:
     parameters: Optional[List[StatementParameter]] = None
     catalog: Optional[str] = None
     schema: Optional[str] = None
+    result_compression: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
@@ -58,6 +57,9 @@ class ExecuteStatementRequest:
 
         if self.schema:
             result["schema"] = self.schema
+            
+        if self.result_compression:
+            result["result_compression"] = self.result_compression
 
         if self.parameters:
             result["parameters"] = [
