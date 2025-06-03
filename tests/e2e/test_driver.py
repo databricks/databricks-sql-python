@@ -30,6 +30,7 @@ from databricks.sql import (
     OperationalError,
     RequestError,
 )
+from databricks.sql.backend.types import CommandState
 from tests.e2e.common.predicates import (
     pysql_has_version,
     pysql_supports_arrow,
@@ -826,10 +827,7 @@ class TestPySQLCoreSuite(
                 getProgressUpdate=False,
             )
             op_status_at_server = ars.backend._client.GetOperationStatus(status_request)
-            assert (
-                op_status_at_server.operationState
-                != ttypes.TOperationState.CLOSED_STATE
-            )
+            assert op_status_at_server.operationState != CommandState.CLOSED
 
             conn.close()
 
@@ -939,7 +937,7 @@ class TestPySQLCoreSuite(
 
                 result_set.close()
 
-                assert result_set.op_state == result_set.backend.CLOSED_OP_STATE
+                assert result_set.op_state == CommandState.CLOSED
                 assert result_set.op_state != initial_op_state
 
                 # Closing the result set again should be a no-op and not raise exceptions

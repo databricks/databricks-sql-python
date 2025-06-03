@@ -31,6 +31,7 @@ class Session:
 
         This class handles all session-related behavior and communication with the backend.
         """
+
         self.is_open = False
         self.host = server_hostname
         self.port = kwargs.get("_port", 443)
