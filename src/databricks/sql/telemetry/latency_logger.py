@@ -197,18 +197,6 @@ def log_latency():
                             retry_count=retry_count,
                         )
 
-                        # Only append class and method names if we have a statement_id
-                        if statement_id:
-                            statement_id = (
-                                statement_id
-                                + "_"
-                                + self.__class__.__name__
-                                + "_"
-                                + func.__name__
-                            )
-                        else:
-                            statement_id = self.__class__.__name__ + "_" + func.__name__
-
                         telemetry_client.export_sql_latency_log(
                             latency_ms=duration_ms,
                             sql_execution_event=sql_exec_event,
