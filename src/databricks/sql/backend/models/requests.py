@@ -7,6 +7,7 @@ These models define the structures used in SEA API requests.
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 
+
 @dataclass
 class StatementParameter:
     """Parameter for a SQL statement."""
@@ -57,7 +58,7 @@ class ExecuteStatementRequest:
 
         if self.schema:
             result["schema"] = self.schema
-            
+
         if self.result_compression:
             result["result_compression"] = self.result_compression
 
