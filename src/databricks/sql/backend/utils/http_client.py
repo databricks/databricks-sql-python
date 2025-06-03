@@ -116,7 +116,6 @@ class CustomHttpClient:
             elif method.upper() == "POST":
                 response = self.session.post(url, headers=headers, json=data)
             elif method.upper() == "DELETE":
-                # For DELETE requests, use params for data (query parameters)
                 response = self.session.delete(url, headers=headers, params=data)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
