@@ -9,6 +9,14 @@ from databricks.sql.telemetry.models.enums import (
     ExecutionResultFormat,
 )
 from typing import Optional
+from enum import Enum
+
+
+class EnumEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Enum):
+            return obj.value
+        return super().default(obj)
 
 
 @dataclass
@@ -50,16 +58,16 @@ class DriverConnectionParameters:
     http_path: str
     mode: DatabricksClientType
     host_info: HostDetails
-    auth_mech: AuthMech
-    auth_flow: AuthFlow
-    auth_scope: str
-    discovery_url: str
-    allowed_volume_ingestion_paths: str
-    azure_tenant_id: str
-    socket_timeout: int
+    auth_mech: Optional[AuthMech] = None
+    auth_flow: Optional[AuthFlow] = None
+    auth_scope: Optional[str] = None
+    discovery_url: Optional[str] = None
+    allowed_volume_ingestion_paths: Optional[str] = None
+    azure_tenant_id: Optional[str] = None
+    socket_timeout: Optional[int] = None
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -95,7 +103,7 @@ class DriverSystemConfiguration:
     char_set_encoding: str
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -113,7 +121,7 @@ class DriverVolumeOperation:
     volume_path: str
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -131,7 +139,7 @@ class DriverErrorInfo:
     stack_trace: str
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -153,7 +161,7 @@ class SqlExecutionEvent:
     retry_count: int
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -186,4 +194,4 @@ class TelemetryEvent:
     operation_latency_ms: Optional[int] = None
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)

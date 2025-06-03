@@ -41,6 +41,7 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 from databricks.sql.types import SSLOptions
+from databricks.sql.telemetry.latency_logger import log_latency
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,7 @@ class ThriftBackend:
             raise
 
         self._request_lock = threading.RLock()
+        self._session_handle = None
 
     # TODO: Move this bounding logic into DatabricksRetryPolicy for v3 (PECO-918)
     def _initialize_retry_args(self, kwargs):
@@ -311,7 +313,10 @@ class ThriftBackend:
                 no_retry_reason, attempt, elapsed
             )
             network_request_error = RequestError(
-                user_friendly_error_message, full_error_info_context, error_info.error
+                user_friendly_error_message,
+                full_error_info_context,
+                error_info.error,
+                connection_uuid=self.get_connection_uuid(),
             )
             logger.info(network_request_error.message_with_context())
 
@@ -497,7 +502,8 @@ class ThriftBackend:
             raise OperationalError(
                 "Error: expected server to use a protocol version >= "
                 "SPARK_CLI_SERVICE_PROTOCOL_V2, "
-                "instead got: {}".format(protocol_version)
+                "instead got: {}".format(protocol_version),
+                connection_uuid=self.get_connection_uuid(),
             )
 
     def _check_initial_namespace(self, catalog, schema, response):
@@ -510,14 +516,16 @@ class ThriftBackend:
         ):
             raise InvalidServerResponseError(
                 "Setting initial namespace not supported by the DBR version, "
-                "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0."
+                "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0.",
+                connection_uuid=self.get_connection_uuid(),
             )
 
         if catalog:
             if not response.canUseMultipleCatalogs:
                 raise InvalidServerResponseError(
                     "Unexpected response from server: Trying to set initial catalog to {}, "
-                    + "but server does not support multiple catalogs.".format(catalog)  # type: ignore
+                    + "but server does not support multiple catalogs.".format(catalog),  # type: ignore
+                    connection_uuid=self.get_connection_uuid(),
                 )
 
     def _check_session_configuration(self, session_configuration):
@@ -531,7 +539,8 @@ class ThriftBackend:
                 "while using the Databricks SQL connector, it must be false not {}".format(
                     TIMESTAMP_AS_STRING_CONFIG,
                     session_configuration[TIMESTAMP_AS_STRING_CONFIG],
-                )
+                ),
+                connection_uuid=self.get_connection_uuid(),
             )
 
     def open_session(self, session_configuration, catalog, schema):
@@ -562,6 +571,7 @@ class ThriftBackend:
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
+            self._session_handle = response.sessionHandle
             return response
         except:
             self._transport.close()
@@ -573,6 +583,11 @@ class ThriftBackend:
             self.make_request(self._client.CloseSession, req)
         finally:
             self._transport.close()
+
+    def get_connection_uuid(self):
+        if self._session_handle:
+            return self.handle_to_hex_id(self._session_handle)
+        return None
 
     def _check_command_not_in_error_or_closed_state(
         self, op_handle, get_operations_resp
@@ -586,6 +601,7 @@ class ThriftBackend:
                         and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
+                    connection_uuid=self.get_connection_uuid(),
                 )
             else:
                 raise ServerOperationError(
@@ -595,6 +611,7 @@ class ThriftBackend:
                         and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
+                    connection_uuid=self.get_connection_uuid(),
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
@@ -605,6 +622,7 @@ class ThriftBackend:
                     "operation-id": op_handle
                     and self.guid_to_hex_id(op_handle.operationId.guid)
                 },
+                connection_uuid=self.get_connection_uuid(),
             )
 
     def _poll_for_status(self, op_handle):
@@ -625,7 +643,10 @@ class ThriftBackend:
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
-            raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
+            raise OperationalError(
+                "Unsupported TRowSet instance {}".format(t_row_set),
+                connection_uuid=self.get_connection_uuid(),
+            )
         return convert_decimals_in_arrow_table(arrow_table, description), num_rows
 
     def _get_metadata_resp(self, op_handle):
@@ -727,7 +748,8 @@ class ThriftBackend:
                     ttypes.TSparkRowSetType._VALUES_TO_NAMES[
                         t_result_set_metadata_resp.resultFormat
                     ]
-                )
+                ),
+                connection_uuid=self.get_connection_uuid(),
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
@@ -883,6 +905,7 @@ class ThriftBackend:
                     t_spark_direct_results.closeOperation
                 )
 
+    @log_latency()
     def execute_command(
         self,
         operation,
@@ -941,6 +964,7 @@ class ThriftBackend:
         else:
             return self._handle_execute_response(resp, cursor)
 
+    @log_latency()
     def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
         assert session_handle is not None
 
@@ -953,6 +977,7 @@ class ThriftBackend:
         resp = self.make_request(self._client.GetCatalogs, req)
         return self._handle_execute_response(resp, cursor)
 
+    @log_latency()
     def get_schemas(
         self,
         session_handle,
@@ -975,6 +1000,7 @@ class ThriftBackend:
         resp = self.make_request(self._client.GetSchemas, req)
         return self._handle_execute_response(resp, cursor)
 
+    @log_latency()
     def get_tables(
         self,
         session_handle,
@@ -1001,6 +1027,7 @@ class ThriftBackend:
         resp = self.make_request(self._client.GetTables, req)
         return self._handle_execute_response(resp, cursor)
 
+    @log_latency()
     def get_columns(
         self,
         session_handle,
@@ -1042,6 +1069,7 @@ class ThriftBackend:
         cursor.active_op_handle = resp.operationHandle
         self._check_direct_results_for_error(resp.directResults)
 
+    @log_latency()
     def fetch_results(
         self,
         op_handle,

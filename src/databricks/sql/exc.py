@@ -1,5 +1,6 @@
 import json
 import logging
+from databricks.sql.telemetry.telemetry_client import telemetry_client
 
 logger = logging.getLogger(__name__)
 
@@ -11,10 +12,22 @@ class Error(Exception):
     `context`: Optional extra context about the error. MUST be JSON serializable
     """
 
-    def __init__(self, message=None, context=None, *args, **kwargs):
+    def __init__(
+        self, message=None, context=None, connection_uuid=None, *args, **kwargs
+    ):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}
+        self.connection_uuid = connection_uuid
+
+        try:
+            error_name = self.__class__.__name__
+            error_message = self.message_with_context()
+            telemetry_client.export_failure_log(
+                error_name, error_message, self.connection_uuid
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log error to telemetry: {str(e)}")
 
     def __str__(self):
         return self.message
