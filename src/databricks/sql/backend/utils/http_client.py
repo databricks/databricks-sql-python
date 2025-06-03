@@ -1,7 +1,7 @@
 import json
 import logging
 import requests
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional, Union, List, Tuple
 from urllib.parse import urljoin
 
 from databricks.sql.auth.authenticators import AuthProvider
@@ -23,7 +23,7 @@ class SeaHttpClient:
         server_hostname: str,
         port: int,
         http_path: str,
-        http_headers: List[tuple],
+        http_headers: List[Tuple[str, str]],
         auth_provider: AuthProvider,
         ssl_options: SSLOptions,
         **kwargs,
@@ -49,7 +49,7 @@ class SeaHttpClient:
 
         self.base_url = f"https://{server_hostname}:{port}"
 
-        self.headers = dict(http_headers)
+        self.headers: Dict[str, str] = dict(http_headers)
         self.headers.update({"Content-Type": "application/json"})
 
         self.max_retries = kwargs.get("_retry_stop_after_attempts_count", 30)
@@ -111,23 +111,32 @@ class SeaHttpClient:
         """
 
         url = urljoin(self.base_url, path)
-        headers = {**self.headers, **self._get_auth_headers()}
+        headers: Dict[str, str] = {**self.headers, **self._get_auth_headers()}
 
         logger.debug(f"making {method} request to {url}")
 
         try:
-            kwargs = {
-                "url": url,
-                "headers": headers,
-                "json": data,
-                "params": params,
-            }
             if method.upper() == "GET":
-                response = self.session.get(**kwargs)
+                response = self.session.get(
+                    url=url,
+                    headers=headers,
+                    json=data,
+                    params=params,
+                )
             elif method.upper() == "POST":
-                response = self.session.post(**kwargs)
+                response = self.session.post(
+                    url=url,
+                    headers=headers,
+                    json=data,
+                    params=params,
+                )
             elif method.upper() == "DELETE":
-                response = self.session.delete(**kwargs)
+                response = self.session.delete(
+                    url=url,
+                    headers=headers,
+                    json=data,
+                    params=params,
+                )
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
