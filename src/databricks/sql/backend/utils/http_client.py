@@ -142,31 +142,29 @@ class CustomHttpClient:
             return {}
 
         except requests.exceptions.RequestException as e:
-            # Handle request errors
+            # Handle request errors and extract details from response if available
             error_message = f"SEA HTTP request failed: {str(e)}"
-            logger.error(error_message)
 
-            # Extract error details from response if available
             if hasattr(e, "response") and e.response is not None:
+                status_code = e.response.status_code
                 try:
                     error_details = e.response.json()
                     error_message = (
                         f"{error_message}: {error_details.get('message', '')}"
                     )
                     logger.error(
-                        f"Response status: {e.response.status_code}, Error details: {error_details}"
+                        f"Request failed (status {status_code}): {error_details}"
                     )
                 except (ValueError, KeyError):
-                    # If we can't parse the JSON, just log the raw content
-                    content_str = (
+                    # If we can't parse JSON, log raw content
+                    content = (
                         e.response.content.decode("utf-8", errors="replace")
                         if isinstance(e.response.content, bytes)
                         else str(e.response.content)
                     )
-                    logger.error(
-                        f"Response status: {e.response.status_code}, Raw content: {content_str}"
-                    )
-                    pass
+                    logger.error(f"Request failed (status {status_code}): {content}")
+            else:
+                logger.error(error_message)
 
             # Re-raise as a RequestError
             from databricks.sql.exc import RequestError
