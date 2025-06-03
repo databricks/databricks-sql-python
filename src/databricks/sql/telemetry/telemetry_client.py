@@ -24,6 +24,7 @@ from databricks.sql.telemetry.models.enums import DatabricksClientType
 import sys
 import platform
 import uuid
+import locale
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,8 @@ class TelemetryHelper:
                 os_name=platform.system(),
                 os_version=platform.release(),
                 os_arch=platform.machine(),
-                client_app_name=None,  # TODO: Add client app name
-                locale_name=f"{platform.system()}_{platform.release()}",
+                client_app_name="unknown",  # TODO: Add client app name
+                locale_name=locale.getlocale()[0] or locale.getdefaultlocale()[0],
                 char_set_encoding=sys.getdefaultencoding(),
             )
         return cls._DRIVER_SYSTEM_CONFIGURATION

@@ -43,14 +43,13 @@ from databricks.sql.parameters.native import (
 
 from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
-from databricks.sql.telemetry.telemetry_client import (
-    telemetry_client,
-    NoopTelemetryClient,
-)
+from databricks.sql.experimental.oauth_persistence import OAuthPersistence
+
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TOperationState,
 )
+from databricks.sql.telemetry.telemetry_client import telemetry_client, NoopTelemetryClient
 from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.enums import DriverVolumeOperationType
 
@@ -241,9 +240,7 @@ class Connection:
         self.telemetry_enabled = (
             self.client_telemetry_enabled and self.server_telemetry_enabled
         )
-        telemetry_batch_size = kwargs.get(
-            "telemetry_batch_size", 100
-        )  # TODO: Decide on batch size
+        telemetry_batch_size = kwargs.get("telemetry_batch_size", 100) # TODO: Decide on batch size
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
@@ -305,16 +302,16 @@ class Connection:
                 host=self.host,
                 connection_uuid=self.get_session_id_hex(),
                 auth_provider=auth_provider,
-                is_authenticated=True,  # TODO: Add authentication logic later
+                is_authenticated=True, # TODO: Add authentication logic later
                 batch_size=telemetry_batch_size,
                 user_agent=useragent_header,
             )
-
+            
             telemetry_client.export_initial_telemetry_log(
-                http_path,
-                self.port,
+                http_path, 
+                self.port, 
                 kwargs.get("_socket_timeout", None),
-                self.get_session_id_hex(),
+                self.get_session_id_hex()
             )
         else:
             self.telemetry_client = NoopTelemetryClient()
@@ -515,10 +512,7 @@ class Cursor:
             for row in self.active_result_set:
                 yield row
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set", connection_uuid=self.connection.get_session_id_hex())
 
     def _determine_parameter_approach(
         self, params: Optional[TParameterCollection]
@@ -655,10 +649,7 @@ class Cursor:
 
     def _check_not_closed(self):
         if not self.open:
-            raise Error(
-                "Attempting operation on closed cursor",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("Attempting operation on closed cursor", connection_uuid=self.connection.get_session_id_hex())
 
     def _handle_staging_operation(
         self, staging_allowed_local_path: Union[None, str, List[str]]
@@ -677,7 +668,7 @@ class Cursor:
         else:
             raise Error(
                 "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands",
-                connection_uuid=self.connection.get_session_id_hex(),
+                connection_uuid=self.connection.get_session_id_hex()
             )
 
         abs_staging_allowed_local_paths = [
@@ -707,7 +698,7 @@ class Cursor:
             if not allow_operation:
                 raise Error(
                     "Local file operations are restricted to paths within the configured staging_allowed_local_path",
-                    connection_uuid=self.connection.get_session_id_hex(),
+                    connection_uuid=self.connection.get_session_id_hex()
                 )
 
         # May be real headers, or could be json string
@@ -738,7 +729,7 @@ class Cursor:
             raise Error(
                 f"Operation {row.operation} is not supported. "
                 + "Supported operations are GET, PUT, and REMOVE",
-                connection_uuid=self.connection.get_session_id_hex(),
+                connection_uuid=self.connection.get_session_id_hex()
             )
 
     @log_latency()
@@ -751,10 +742,7 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error(
-                "Cannot perform PUT without specifying a local_file",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("Cannot perform PUT without specifying a local_file", connection_uuid=self.connection.get_session_id_hex())
 
         self.volume_operation_type = DriverVolumeOperationType.PUT
         self.volume_path = local_file
@@ -774,8 +762,7 @@ class Cursor:
 
         if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
             raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
-                connection_uuid=self.connection.get_session_id_hex(),
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}", connection_uuid=self.connection.get_session_id_hex()
             )
 
         if r.status_code == ACCEPTED:
@@ -794,10 +781,7 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error(
-                "Cannot perform GET without specifying a local_file",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("Cannot perform GET without specifying a local_file", connection_uuid=self.connection.get_session_id_hex())
 
         self.volume_operation_type = DriverVolumeOperationType.GET
         self.volume_path = local_file
@@ -808,8 +792,7 @@ class Cursor:
         # Any 2xx or 3xx will evaluate r.ok == True
         if not r.ok:
             raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
-                connection_uuid=self.connection.get_session_id_hex(),
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}", connection_uuid=self.connection.get_session_id_hex()
             )
 
         with open(local_file, "wb") as fp:
@@ -822,9 +805,7 @@ class Cursor:
         """Make an HTTP DELETE request to the presigned_url"""
 
         self.volume_operation_type = DriverVolumeOperationType.DELETE
-        self.volume_path = (
-            presigned_url  # Using presigned URL as path since there's no local file
-        )
+        self.volume_path = presigned_url  # Using presigned URL as path since there's no local file
 
         r = requests.delete(url=presigned_url, headers=headers)
 
@@ -1029,8 +1010,7 @@ class Cursor:
             return self
         else:
             raise Error(
-                f"get_execution_result failed with Operation status {operation_state}",
-                connection_uuid=self.connection.get_session_id_hex(),
+                f"get_execution_result failed with Operation status {operation_state}", connection_uuid=self.connection.get_session_id_hex()
             )
 
     def executemany(self, operation, seq_of_parameters):
@@ -1180,10 +1160,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchall()
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set", connection_uuid=self.connection.get_session_id_hex())
 
     def fetchone(self) -> Optional[Row]:
         """
@@ -1197,10 +1174,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchone()
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set", connection_uuid=self.connection.get_session_id_hex())
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -1222,30 +1196,21 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchmany(size)
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set", connection_uuid=self.connection.get_session_id_hex())
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set", connection_uuid=self.connection.get_session_id_hex())
 
     def fetchmany_arrow(self, size) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
         else:
-            raise Error(
-                "There is no active result set",
-                connection_uuid=self.connection.get_session_id_hex(),
-            )
+            raise Error("There is no active result set", connection_uuid=self.connection.get_session_id_hex())
 
     def cancel(self) -> None:
         """
