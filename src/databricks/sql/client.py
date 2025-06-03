@@ -49,10 +49,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TOperationState,
 )
-from databricks.sql.telemetry.telemetry_client import (
-    telemetry_client,
-    NoopTelemetryClient,
-)
+from databricks.sql.telemetry.telemetry_client import telemetry_client
 
 
 logger = logging.getLogger(__name__)
@@ -317,8 +314,6 @@ class Connection:
                 kwargs.get("_socket_timeout", None),
                 self.get_session_id_hex(),
             )
-        else:
-            self.telemetry_client = NoopTelemetryClient()
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -455,6 +450,9 @@ class Connection:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
         self.open = False
+
+        if self.telemetry_enabled:
+            telemetry_client.close(self.get_session_id_hex())
 
     def commit(self):
         """No-op because Databricks does not support transactions"""

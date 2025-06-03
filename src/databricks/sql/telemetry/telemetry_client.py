@@ -3,15 +3,10 @@ import time
 import json
 import requests
 from concurrent.futures import ThreadPoolExecutor
-import logging
-from abc import ABC, abstractmethod
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverConnectionParameters,
     DriverSystemConfiguration,
-    DriverErrorInfo,
-    DriverVolumeOperation,
-    SqlExecutionEvent,
     HostDetails,
 )
 from databricks.sql.telemetry.models.frontend_logs import (
@@ -27,27 +22,7 @@ import uuid
 import locale
 
 
-class BaseTelemetryClient(ABC):
-    """Abstract base class for telemetry clients."""
-
-    @abstractmethod
-    def export_event(self, event):
-        pass
-
-    @abstractmethod
-    def flush(self):
-        pass
-
-    @abstractmethod
-    def close(self):
-        pass
-
-    @abstractmethod
-    def export_initial_telemetry_log(self, http_path, port, socket_timeout):
-        pass
-
-
-class TelemetryClient(BaseTelemetryClient):
+class TelemetryClient:
     def __init__(
         self,
         host,
@@ -71,14 +46,14 @@ class TelemetryClient(BaseTelemetryClient):
         self.DriverConnectionParameters = None
 
     def export_event(self, event):
-        # Add an event to the batch queue and flush if batch is full
+        """Add an event to the batch queue and flush if batch is full"""
         with self.lock:
             self.events_batch.append(event)
         if len(self.events_batch) >= self.batch_size:
             self.flush()
 
     def flush(self):
-        # Flush the current batch of events to the server
+        """Flush the current batch of events to the server"""
         with self.lock:
             events_to_flush = self.events_batch.copy()
             self.events_batch = []
@@ -87,7 +62,7 @@ class TelemetryClient(BaseTelemetryClient):
             self.executor.submit(self._send_telemetry, events_to_flush)
 
     def _send_telemetry(self, events):
-        # Send telemetry events to the server
+        """Send telemetry events to the server"""
         request = {
             "uploadTime": int(time.time() * 1000),
             "items": [],
@@ -102,12 +77,36 @@ class TelemetryClient(BaseTelemetryClient):
         if self.is_authenticated and self.auth_provider:
             self.auth_provider.add_headers(headers)
 
+        # print("\n=== Request Details ===", flush=True)
+        # print(f"URL: {url}", flush=True)
+        # print("\nHeaders:", flush=True)
+        # for key, value in headers.items():
+        #     print(f"  {key}: {value}", flush=True)
+
+        # print("\nRequest Body:", flush=True)
+        # print(json.dumps(request, indent=2), flush=True)
+        # sys.stdout.flush()
+
         response = requests.post(
             url, data=json.dumps(request), headers=headers, timeout=10
         )
 
+        # print("\n=== Response Details ===", flush=True)
+        # print(f"Status Code: {response.status_code}", flush=True)
+        # print("\nResponse Headers:", flush=True)
+        # for key, value in response.headers.items():
+        #     print(f"  {key}: {value}", flush=True)
+
+        # print("\nResponse Body:", flush=True)
+        # try:
+        #     response_json = response.json()
+        #     print(json.dumps(response_json, indent=2), flush=True)
+        # except json.JSONDecodeError:
+        #     print(response.text, flush=True)
+        # sys.stdout.flush()
+
     def close(self):
-        # Flush remaining events and shut down executor
+        """Flush remaining events and shut down executor"""
         self.flush()
         self.executor.shutdown(wait=True)
 
@@ -162,23 +161,20 @@ class TelemetryClient(BaseTelemetryClient):
         pass
 
 
-class NoopTelemetryClient(BaseTelemetryClient):
-    """A no-operation telemetry client that implements the same interface but does nothing"""
-
-    def export_event(self, event):
-        pass
-
-    def flush(self):
-        pass
-
-    def close(self):
-        pass
-
-    def export_initial_telemetry_log(self, http_path, port, socket_timeout):
-        pass
-
-
 class TelemetryManager:
+    """A singleton manager class that handles telemetry operations for SQL connections.
+
+    This class maintains a map of connection_uuid to TelemetryClient instances. The initialize()
+    method is only called from the connection class when telemetry is enabled for that connection.
+    All telemetry operations (initial logs, failure logs, latency logs) first check if the
+    connection_uuid exists in the map. If it doesn't exist (meaning telemetry was not enabled
+    for that connection), the operation is skipped. If it exists, the operation is delegated
+    to the corresponding TelemetryClient instance.
+
+    This design ensures that telemetry operations are only performed for connections where
+    telemetry was explicitly enabled during initialization.
+    """
+
     _instance = None
     _DRIVER_SYSTEM_CONFIGURATION = None
 
