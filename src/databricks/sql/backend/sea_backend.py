@@ -55,8 +55,9 @@ class SeaDatabricksClient(DatabricksClient):
             staging_allowed_local_path: Allowed local paths for staging operations
             **kwargs: Additional keyword arguments
         """
+
         logger.debug(
-            "SEADatabricksClient.__init__(server_hostname=%s, port=%s, http_path=%s)",
+            "SeaDatabricksClient.__init__(server_hostname=%s, port=%s, http_path=%s)",
             server_hostname,
             port,
             http_path,
@@ -97,6 +98,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             Error: If the warehouse ID cannot be extracted from the path
         """
+
         path_parts = http_path.strip("/").split("/")
         warehouse_id = None
 
@@ -153,8 +155,9 @@ class SeaDatabricksClient(DatabricksClient):
             Error: If the session configuration is invalid
             OperationalError: If there's an error establishing the session
         """
+
         logger.debug(
-            "SEADatabricksClient.open_session(session_configuration=%s, catalog=%s, schema=%s)",
+            "SeaDatabricksClient.open_session(session_configuration=%s, catalog=%s, schema=%s)",
             session_configuration,
             catalog,
             schema,
@@ -189,7 +192,8 @@ class SeaDatabricksClient(DatabricksClient):
             ValueError: If the session ID is invalid
             OperationalError: If there's an error closing the session
         """
-        logger.debug("SEADatabricksClient.close_session(session_id=%s)", session_id)
+
+        logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
         if session_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA session ID")

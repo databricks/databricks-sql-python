@@ -18,6 +18,7 @@ def test_sea_session():
     - DATABRICKS_HTTP_PATH: HTTP path for the SQL endpoint
     - DATABRICKS_TOKEN: Personal access token for authentication
     """
+
     server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
     access_token = os.environ.get("DATABRICKS_TOKEN")

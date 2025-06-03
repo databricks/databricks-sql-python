@@ -40,6 +40,7 @@ class CustomHttpClient:
             ssl_options: SSL configuration options
             **kwargs: Additional keyword arguments
         """
+
         self.server_hostname = server_hostname
         self.port = port
         self.http_path = http_path
@@ -103,6 +104,7 @@ class CustomHttpClient:
         Raises:
             RequestError: If the request fails
         """
+
         url = urljoin(self.base_url, path)
         headers = {**self.headers, **self._get_auth_headers()}
 
