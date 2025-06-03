@@ -96,9 +96,7 @@ class ClientTestSuite(unittest.TestCase):
 
                 mock_execute_response.command_id = Mock(spec=CommandId)
                 mock_execute_response.status = (
-                    TOperationState.FINISHED_STATE
-                    if not closed
-                    else TOperationState.CLOSED_STATE
+                    CommandState.SUCCEEDED if not closed else CommandState.CLOSED
                 )
                 mock_execute_response.has_been_closed_server_side = closed
                 mock_execute_response.is_staging_operation = False

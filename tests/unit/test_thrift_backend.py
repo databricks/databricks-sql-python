@@ -19,7 +19,7 @@ from databricks.sql import *
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ResultSet, ThriftResultSet
-from databricks.sql.backend.types import CommandId, SessionId, BackendType
+from databricks.sql.backend.types import CommandId, CommandState, SessionId, BackendType
 
 
 def retry_policy_factory():
@@ -883,7 +883,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 )
                 self.assertEqual(
                     results_message_response.status,
-                    ttypes.TOperationState.FINISHED_STATE,
+                    CommandState.SUCCEEDED,
                 )
 
     def test_handle_execute_response_can_handle_with_direct_results(self):

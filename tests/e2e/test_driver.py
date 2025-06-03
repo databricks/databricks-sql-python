@@ -827,10 +827,7 @@ class TestPySQLCoreSuite(
                 getProgressUpdate=False,
             )
             op_status_at_server = ars.backend._client.GetOperationStatus(status_request)
-            assert (
-                op_status_at_server.operationState
-                != ttypes.TOperationState.CLOSED_STATE
-            )
+            assert op_status_at_server.operationState != CommandState.CLOSED
 
             conn.close()
 

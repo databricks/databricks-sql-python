@@ -155,15 +155,12 @@ class ThriftResultSet(ResultSet):
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
         """
-        command_id = execute_response.command_id
-        op_state = CommandState.from_thrift_state(execute_response.status)
-        has_been_closed_server_side = execute_response.has_been_closed_server_side
         super().__init__(
             connection,
             thrift_client,
-            command_id,
-            op_state,
-            has_been_closed_server_side,
+            execute_response.command_id,
+            execute_response.status,
+            execute_response.has_been_closed_server_side,
             arraysize,
             buffer_size_bytes,
         )

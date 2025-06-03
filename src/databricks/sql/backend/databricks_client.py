@@ -163,7 +163,7 @@ class DatabricksClient(ABC):
             command_id: The command identifier to check
 
         Returns:
-            ttypes.TOperationState: The current state of the command
+            CommandState: The current state of the command
 
         Raises:
             ValueError: If the command ID is invalid

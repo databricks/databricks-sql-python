@@ -86,8 +86,8 @@ _retry_policy = {  # (type, default, min, max)
 
 
 class ThriftDatabricksClient(DatabricksClient):
-    CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
-    ERROR_OP_STATE = ttypes.TOperationState.ERROR_STATE
+    CLOSED_OP_STATE = CommandState.CLOSED
+    ERROR_OP_STATE = CommandState.FAILED
 
     _retry_delay_min: float
     _retry_delay_max: float
@@ -351,6 +351,7 @@ class ThriftDatabricksClient(DatabricksClient):
         Will stop retry attempts if total elapsed time + next retry delay would exceed
         _retry_stop_after_attempts_duration.
         """
+
         # basic strategy: build range iterator rep'ing number of available
         # retries. bounds can be computed from there. iterate over it with
         # retries until success or final failure achieved.
@@ -798,7 +799,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         return ExecuteResponse(
             arrow_queue=arrow_queue_opt,
-            status=operation_state,
+            status=CommandState.from_thrift_state(operation_state),
             has_been_closed_server_side=has_been_closed_server_side,
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
@@ -863,7 +864,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         execute_response = ExecuteResponse(
             arrow_queue=queue,
-            status=resp.status,
+            status=CommandState.from_thrift_state(resp.status),
             has_been_closed_server_side=False,
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
