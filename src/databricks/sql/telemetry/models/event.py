@@ -97,7 +97,7 @@ class DriverSystemConfiguration:
     runtime_name: str
     runtime_version: str
     runtime_vendor: str
-    client_app_name: str
+    client_app_name: Optional[str]
     locale_name: str
     driver_name: str
     char_set_encoding: str
