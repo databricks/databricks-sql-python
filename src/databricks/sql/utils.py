@@ -48,33 +48,82 @@ class ResultSetQueue(ABC):
         pass
 
 
+class JsonQueue(ResultSetQueue):
+    """Queue implementation for JSON_ARRAY format data."""
+    
+    def __init__(self, data_array):
+        """Initialize with JSON array data."""
+        self.data_array = data_array
+        self.cur_row_index = 0
+        self.n_valid_rows = len(data_array)
+    
+    def next_n_rows(self, num_rows):
+        """Get the next n rows from the data array."""
+        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
+        slice = self.data_array[self.cur_row_index:self.cur_row_index + length]
+        self.cur_row_index += length
+        return slice
+    
+    def remaining_rows(self):
+        """Get all remaining rows from the data array."""
+        slice = self.data_array[self.cur_row_index:]
+        self.cur_row_index += len(slice)
+        return slice
+
+
 class ResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
-        row_set_type: TSparkRowSetType,
-        t_row_set: TRowSet,
-        arrow_schema_bytes: bytes,
-        max_download_threads: int,
-        ssl_options: SSLOptions,
+        row_set_type: Optional[TSparkRowSetType] = None,
+        t_row_set: Optional[TRowSet] = None,
+        arrow_schema_bytes: Optional[bytes] = None,
+        max_download_threads: Optional[int] = None,
+        ssl_options: Optional[SSLOptions] = None,
         lz4_compressed: bool = True,
         description: Optional[List[List[Any]]] = None,
+        # SEA specific parameters
+        sea_result_data: Optional[Any] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
-
+        
+        This method is extended to handle both Thrift and SEA result formats.
+        For SEA, the sea_result_data parameter is used instead of row_set_type and t_row_set.
+        
         Args:
+            # Thrift parameters
             row_set_type (enum): Row set type (Arrow, Column, or URL).
             t_row_set (TRowSet): Result containing arrow batches, columns, or cloud fetch links.
+            
+            # Common parameters
             arrow_schema_bytes (bytes): Bytes representing the arrow schema.
             lz4_compressed (bool): Whether result data has been lz4 compressed.
             description (List[List[Any]]): Hive table schema description.
             max_download_threads (int): Maximum number of downloader thread pool threads.
             ssl_options (SSLOptions): SSLOptions object for CloudFetchQueue
-
+            
+            # SEA parameters
+            sea_result_data (ResultData): Result data from SEA response
+            
         Returns:
             ResultSetQueue
         """
-        if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
+        # Handle SEA result data
+        if sea_result_data is not None:
+            if sea_result_data.data:
+                # INLINE disposition with JSON_ARRAY format
+                return JsonQueue(sea_result_data.data)
+            elif sea_result_data.external_links:
+                # EXTERNAL_LINKS disposition (not implemented yet)
+                raise NotImplementedError(
+                    "EXTERNAL_LINKS disposition is not supported yet"
+                )
+            else:
+                # Empty result set
+                return JsonQueue([])
+        
+        # Handle Thrift result data (existing implementation)
+        if row_set_type == TSparkRowSetType.ARROW_BASED_SET and t_row_set is not None and arrow_schema_bytes is not None:
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
             )
@@ -82,7 +131,7 @@ class ResultSetQueueFactory(ABC):
                 arrow_table, description
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
-        elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
+        elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET and t_row_set is not None:
             column_table, column_names = convert_column_based_set_to_column_table(
                 t_row_set.columns, description
             )
@@ -92,7 +141,7 @@ class ResultSetQueueFactory(ABC):
             )
 
             return ColumnQueue(ColumnTable(converted_column_table, column_names))
-        elif row_set_type == TSparkRowSetType.URL_BASED_SET:
+        elif row_set_type == TSparkRowSetType.URL_BASED_SET and t_row_set is not None and arrow_schema_bytes is not None and max_download_threads is not None and ssl_options is not None:
             return CloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
