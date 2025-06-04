@@ -5,10 +5,23 @@ This module provides filtering capabilities for result sets returned by differen
 """
 
 import logging
-from typing import List, Optional, Any, Dict, Callable, TypeVar, Generic, cast
+from typing import (
+    List,
+    Optional,
+    Any,
+    Dict,
+    Callable,
+    TypeVar,
+    Generic,
+    cast,
+    TYPE_CHECKING,
+)
 
 # Import SeaResultSet for type checking
 from databricks.sql.backend.sea_result_set import SeaResultSet
+
+if TYPE_CHECKING:
+    from databricks.sql.result_set import ResultSet
 
 # Type variable for the result set type
 T = TypeVar("T")
@@ -25,8 +38,47 @@ class ResultSetFilter:
     """
 
     @staticmethod
+    def _filter_sea_result_set(
+        result_set: SeaResultSet, filter_func: Callable[[List[Any]], bool]
+    ) -> SeaResultSet:
+        """
+        Filter a SEA result set using the provided filter function.
+
+        Args:
+            result_set: The SEA result set to filter
+            filter_func: Function that takes a row and returns True if the row should be included
+
+        Returns:
+            A filtered SEA result set
+        """
+        # Create a filtered version of the result set
+        filtered_response = result_set._response.copy()
+
+        # If there's a result with rows, filter them
+        if (
+            "result" in filtered_response
+            and "data_array" in filtered_response["result"]
+        ):
+            rows = filtered_response["result"]["data_array"]
+            filtered_rows = [row for row in rows if filter_func(row)]
+            filtered_response["result"]["data_array"] = filtered_rows
+
+            # Update row count if present
+            if "row_count" in filtered_response["result"]:
+                filtered_response["result"]["row_count"] = len(filtered_rows)
+
+        # Create a new result set with the filtered data
+        return SeaResultSet(
+            connection=result_set.connection,
+            sea_response=filtered_response,
+            sea_client=result_set.backend,
+            buffer_size_bytes=result_set.buffer_size_bytes,
+            arraysize=result_set.arraysize,
+        )
+
+    @staticmethod
     def filter_by_column_values(
-        result_set: Any,
+        result_set: "ResultSet",
         column_index: int,
         allowed_values: List[str],
         case_sensitive: bool = False,
@@ -71,7 +123,7 @@ class ResultSetFilter:
 
     @staticmethod
     def filter_tables_by_type(
-        result_set: Any, table_types: Optional[List[str]] = None
+        result_set: "ResultSet", table_types: Optional[List[str]] = None
     ) -> Any:
         """
         Filter a result set of tables by the specified table types.
@@ -96,43 +148,4 @@ class ResultSetFilter:
         # Table type is typically in the 4th column (index 3)
         return ResultSetFilter.filter_by_column_values(
             result_set, 3, valid_types, case_sensitive=False
-        )
-
-    @staticmethod
-    def _filter_sea_result_set(
-        result_set: SeaResultSet, filter_func: Callable[[List[Any]], bool]
-    ) -> SeaResultSet:
-        """
-        Filter a SEA result set using the provided filter function.
-
-        Args:
-            result_set: The SEA result set to filter
-            filter_func: Function that takes a row and returns True if the row should be included
-
-        Returns:
-            A filtered SEA result set
-        """
-        # Create a filtered version of the result set
-        filtered_response = result_set._response.copy()
-
-        # If there's a result with rows, filter them
-        if (
-            "result" in filtered_response
-            and "data_array" in filtered_response["result"]
-        ):
-            rows = filtered_response["result"]["data_array"]
-            filtered_rows = [row for row in rows if filter_func(row)]
-            filtered_response["result"]["data_array"] = filtered_rows
-
-            # Update row count if present
-            if "row_count" in filtered_response["result"]:
-                filtered_response["result"]["row_count"] = len(filtered_rows)
-
-        # Create a new result set with the filtered data
-        return SeaResultSet(
-            connection=result_set.connection,
-            sea_response=filtered_response,
-            sea_client=result_set.backend,
-            buffer_size_bytes=result_set.buffer_size_bytes,
-            arraysize=result_set.arraysize,
         )
