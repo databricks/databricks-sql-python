@@ -277,7 +277,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         format = "ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY"
         disposition = "EXTERNAL_LINKS" if use_cloud_fetch else "INLINE"
-        result_compression = "LZ4_FRAME" if lz4_compression else "NONE"
+        result_compression = "LZ4_FRAME" if lz4_compression else None
 
         request = ExecuteStatementRequest(
             warehouse_id=self.warehouse_id,
