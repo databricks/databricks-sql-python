@@ -42,7 +42,6 @@ class SeaDatabricksClient(DatabricksClient):
         http_headers: List[Tuple[str, str]],
         auth_provider,
         ssl_options: SSLOptions,
-        staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
         """
@@ -55,7 +54,6 @@ class SeaDatabricksClient(DatabricksClient):
             http_headers: List of HTTP headers to include in requests
             auth_provider: Authentication provider
             ssl_options: SSL configuration options
-            staging_allowed_local_path: Allowed local paths for staging operations
             **kwargs: Additional keyword arguments
         """
 
@@ -66,8 +64,6 @@ class SeaDatabricksClient(DatabricksClient):
             http_path,
         )
 
-        self._staging_allowed_local_path = staging_allowed_local_path
-        self._ssl_options = ssl_options
         self._max_download_threads = kwargs.get("max_download_threads", 10)
 
         # Extract warehouse ID from http_path
