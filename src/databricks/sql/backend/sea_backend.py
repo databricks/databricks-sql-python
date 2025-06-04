@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
-from databricks.sql.backend.utils.http_client import CustomHttpClient
+from databricks.sql.backend.utils.http_client import SeaHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
@@ -77,7 +77,7 @@ class SeaDatabricksClient(DatabricksClient):
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
         # Initialize HTTP client
-        self.http_client = CustomHttpClient(
+        self.http_client = SeaHttpClient(
             server_hostname=server_hostname,
             port=port,
             http_path=http_path,

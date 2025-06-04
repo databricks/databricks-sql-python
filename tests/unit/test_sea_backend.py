@@ -15,7 +15,7 @@ class TestSeaBackend:
     def mock_http_client(self):
         """Create a mock HTTP client."""
         with patch(
-            "databricks.sql.backend.sea_backend.CustomHttpClient"
+            "databricks.sql.backend.sea_backend.SeaHttpClient"
         ) as mock_client_class:
             mock_client = mock_client_class.return_value
             yield mock_client
