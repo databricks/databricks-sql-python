@@ -23,9 +23,6 @@ from databricks.sql.backend.sea_result_set import SeaResultSet
 if TYPE_CHECKING:
     from databricks.sql.result_set import ResultSet
 
-# Type variable for the result set type
-T = TypeVar("T")
-
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +79,7 @@ class ResultSetFilter:
         column_index: int,
         allowed_values: List[str],
         case_sensitive: bool = False,
-    ) -> Any:
+    ) -> "ResultSet":
         """
         Filter a result set by values in a specific column.
 
@@ -124,7 +121,7 @@ class ResultSetFilter:
     @staticmethod
     def filter_tables_by_type(
         result_set: "ResultSet", table_types: Optional[List[str]] = None
-    ) -> Any:
+    ) -> "ResultSet":
         """
         Filter a result set of tables by the specified table types.
 

@@ -328,7 +328,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         if state != CommandState.SUCCEEDED:
             raise ServerOperationError(
-                f"Statement execution did not succeed: {status.error.message}",
+                f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
                 {
                     "operation-id": command_id.to_sea_statement_id(),
                     "diagnostic-info": None,
