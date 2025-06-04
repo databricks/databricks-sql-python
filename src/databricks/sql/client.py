@@ -311,12 +311,12 @@ class Connection:
             **telemetry_kwargs,
         )
 
-        intial_telmetry_kwargs = {
+        initial_telemetry_kwargs = {
             "http_path": http_path,
             "port": self.port,
             "socket_timeout": kwargs.get("_socket_timeout", None),
         }
-        self.telemetry_client.export_initial_telemetry_log(**intial_telmetry_kwargs)
+        self.telemetry_client.export_initial_telemetry_log(**initial_telemetry_kwargs)
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
