@@ -1,7 +1,15 @@
 name: Code Quality Checks
-
-on: [pull_request]
-
+on:
+  push:
+    branches:
+      - main
+      - sea-migration
+      - telemetry
+  pull_request:
+    branches:
+      - main
+      - sea-migration
+      - telemetry
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest

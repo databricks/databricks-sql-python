@@ -26,6 +26,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
+from databricks.sql.backend.types import CommandId
 
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
@@ -345,7 +346,7 @@ class CloudFetchQueue(ResultSetQueue):
 ExecuteResponse = namedtuple(
     "ExecuteResponse",
     "status has_been_closed_server_side has_more_rows description lz4_compressed is_staging_operation "
-    "command_handle arrow_queue arrow_schema_bytes",
+    "command_id arrow_queue arrow_schema_bytes",
 )
 
 
