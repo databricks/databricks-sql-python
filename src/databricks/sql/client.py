@@ -876,7 +876,7 @@ class Cursor:
         operation_state = self.get_query_state()
         if operation_state == CommandState.SUCCEEDED:
             self.active_result_set = self.backend.get_execution_result(
-                self.active_op_handle, self
+                self.active_command_id, self
             )
 
             if self.active_result_set and self.active_result_set.is_staging_operation:

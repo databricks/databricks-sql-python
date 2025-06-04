@@ -74,7 +74,7 @@ class ThriftResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue
         """
-        # Handle Thrift result data
+
         if (
             row_set_type == TSparkRowSetType.ARROW_BASED_SET
             and t_row_set is not None

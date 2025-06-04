@@ -3,32 +3,17 @@ Tests for the ResultSetQueueFactory classes.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
-import sys
-from typing import Dict, List, Any, Optional
-
-# Add the necessary path to import the modules
-sys.path.append("/home/varun.edachali/conn/databricks-sql-python/src")
-
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
+from unittest.mock import MagicMock
 
 from databricks.sql.utils import (
-    ThriftResultSetQueueFactory,
     SeaResultSetQueueFactory,
     JsonQueue,
-    ArrowQueue,
-    ColumnQueue,
-    CloudFetchQueue,
 )
-from databricks.sql.thrift_api.TCLIService.ttypes import TSparkRowSetType, TRowSet
 from databricks.sql.backend.models import ResultData
 
 
 class TestResultSetQueueFactories(unittest.TestCase):
-    """Tests for the ThriftResultSetQueueFactory and SeaResultSetQueueFactory classes."""
+    """Tests for the SeaResultSetQueueFactory classes."""
 
     def test_sea_result_set_queue_factory_with_data(self):
         """Test SeaResultSetQueueFactory with data."""
