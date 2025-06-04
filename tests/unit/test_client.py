@@ -187,10 +187,8 @@ class ClientTestSuite(unittest.TestCase):
                 mock_execute_response.has_been_closed_server_side = closed
                 mock_execute_response.is_staging_operation = False
 
-                # Mock the backend that will be used by the real ThriftResultSet
+                # Mock the backend that will be used 
                 mock_backend = Mock(spec=ThriftBackend)
-
-                # Configure the decorator's mock to return our specific mock_backend
                 mock_thrift_client_class.return_value = mock_backend
 
                 # Create connection and cursor
@@ -207,19 +205,16 @@ class ClientTestSuite(unittest.TestCase):
                 cursor.thrift_backend.execute_command = Mock(
                     return_value=mock_execute_response
                 )
-
-                # Execute a command - this should set cursor.active_result_set to our real result set
                 cursor.execute("SELECT 1")
 
                 # Verify that cursor.execute() set up the result set correctly
                 active_result_set = cursor.active_result_set
                 self.assertEqual(active_result_set.has_been_closed_server_side, closed)
 
-                # Close the connection - this should trigger the real close chain:
-                # connection.close() -> cursor.close() -> result_set.close()
+                # Close the connection 
                 connection.close()
 
-                # Verify the REAL close logic worked through the chain:
+                # Verify the close logic worked:
                 # 1. has_been_closed_server_side should always be True after close()
                 self.assertTrue(active_result_set.has_been_closed_server_side)
 
