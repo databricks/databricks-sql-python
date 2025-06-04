@@ -95,7 +95,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
         warehouse_pattern = re.compile(r".*/warehouses/(.+)")
         endpoint_pattern = re.compile(r".*/endpoints/(.+)")
-        
+
         for pattern in [warehouse_pattern, endpoint_pattern]:
             match = pattern.match(http_path)
             if match:
@@ -104,7 +104,7 @@ class SeaDatabricksClient(DatabricksClient):
                     f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
                 )
                 return warehouse_id
-            
+
         # If no match found, raise error
         error_message = (
             f"Could not extract warehouse ID from http_path: {http_path}. "
@@ -224,11 +224,15 @@ class SeaDatabricksClient(DatabricksClient):
 
     def cancel_command(self, command_id: CommandId) -> None:
         """Not implemented yet."""
-        raise NotImplementedError("cancel_command is not yet implemented for SEA backend")
+        raise NotImplementedError(
+            "cancel_command is not yet implemented for SEA backend"
+        )
 
     def close_command(self, command_id: CommandId) -> None:
         """Not implemented yet."""
-        raise NotImplementedError("close_command is not yet implemented for SEA backend")
+        raise NotImplementedError(
+            "close_command is not yet implemented for SEA backend"
+        )
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         """Not implemented yet."""
