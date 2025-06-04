@@ -98,12 +98,13 @@ class SeaDatabricksClient(DatabricksClient):
 
         for pattern in [warehouse_pattern, endpoint_pattern]:
             match = pattern.match(http_path)
-            if match:
-                warehouse_id = match.group(1)
-                logger.debug(
-                    f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
-                )
-                return warehouse_id
+            if not match:
+                continue
+            warehouse_id = match.group(1)
+            logger.debug(
+                f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
+            )
+            return warehouse_id
 
         # If no match found, raise error
         error_message = (
