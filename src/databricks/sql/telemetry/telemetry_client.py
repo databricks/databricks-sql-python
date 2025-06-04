@@ -20,16 +20,36 @@ import sys
 import platform
 import uuid
 import locale
+from abc import ABC, abstractmethod
 
 
-class TelemetryClient:
-    def __init__(
-        self,
-        telemetry_enabled,
-        batch_size,
-        connection_uuid,
-        **kwargs
-    ):
+class BaseTelemetryClient(ABC):
+    @abstractmethod
+    def export_initial_telemetry_log(self, **kwargs):
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+
+class NoopTelemetryClient(BaseTelemetryClient):
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
+        return cls._instance
+
+    def export_initial_telemetry_log(self, **kwargs):
+        pass
+
+    def close(self):
+        pass
+
+
+class TelemetryClient(BaseTelemetryClient):
+    def __init__(self, telemetry_enabled, batch_size, connection_uuid, **kwargs):
         self.telemetry_enabled = telemetry_enabled
         self.batch_size = batch_size
         self.connection_uuid = connection_uuid
@@ -55,11 +75,12 @@ class TelemetryClient:
             self.events_batch = []
 
         if events_to_flush:
-            telemetry_manager._send_telemetry(events_to_flush, self.host_url, self.is_authenticated, self.auth_provider)
-
-    def close(self):
-        """Flush remaining events before closing"""
-        self.flush()
+            telemetry_client_factory._send_telemetry(
+                events_to_flush,
+                self.host_url,
+                self.is_authenticated,
+                self.auth_provider,
+            )
 
     def export_initial_telemetry_log(self, **kwargs):
         http_path = kwargs.get("http_path", None)
@@ -94,7 +115,7 @@ class TelemetryClient:
             entry=FrontendLogEntry(
                 sql_driver_log=TelemetryEvent(
                     session_id=self.connection_uuid,
-                    system_configuration=TelemetryManager.getDriverSystemConfiguration(),
+                    system_configuration=telemetry_client_factory.getDriverSystemConfiguration(),
                     driver_connection_params=self.DriverConnectionParameters,
                 )
             ),
@@ -102,27 +123,20 @@ class TelemetryClient:
 
         self.export_event(telemetry_frontend_log)
 
+    def close(self):
+        """Flush remaining events before closing"""
+        self.flush()
+        telemetry_client_factory.close(self.connection_uuid)
 
-class TelemetryManager:
-    """A singleton manager class that handles telemetry operations for SQL connections.
 
-    This class maintains a map of connection_uuid to TelemetryClient instances. The initialize()
-    method is only called from the connection class when telemetry is enabled for that connection.
-    All telemetry operations (initial logs, failure logs, latency logs) first check if the
-    connection_uuid exists in the map. If it doesn't exist (meaning telemetry was not enabled
-    for that connection), the operation is skipped. If it exists, the operation is delegated
-    to the corresponding TelemetryClient instance.
-
-    This design ensures that telemetry operations are only performed for connections where
-    telemetry was explicitly enabled during initialization.
-    """
+class TelemetryClientFactory:
 
     _instance = None
     _DRIVER_SYSTEM_CONFIGURATION = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(TelemetryManager, cls).__new__(cls)
+            cls._instance = super(TelemetryClientFactory, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
@@ -131,15 +145,13 @@ class TelemetryManager:
             return
 
         self._clients = {}  # Map of connection_uuid -> TelemetryClient
-        self.executor = ThreadPoolExecutor(max_workers=10)  # Thread pool for async operations TODO: Decide on max workers
+        self.executor = ThreadPoolExecutor(
+            max_workers=10
+        )  # Thread pool for async operations TODO: Decide on max workers
         self._initialized = True
 
-    def initialize_telemetry_client(
-        self,
-        telemetry_enabled,
-        batch_size,
-        connection_uuid,
-        **kwargs
+    def get_telemetry_client(
+        self, telemetry_enabled, batch_size, connection_uuid, **kwargs
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         if telemetry_enabled:
@@ -148,8 +160,11 @@ class TelemetryManager:
                     telemetry_enabled=telemetry_enabled,
                     batch_size=batch_size,
                     connection_uuid=connection_uuid,
-                    **kwargs
+                    **kwargs,
                 )
+            return self._clients[connection_uuid]
+        else:
+            return NoopTelemetryClient()
 
     def _send_telemetry(self, events, host_url, is_authenticated, auth_provider):
         """Send telemetry events to the server"""
@@ -168,19 +183,8 @@ class TelemetryManager:
             auth_provider.add_headers(headers)
 
         self.executor.submit(
-            requests.post,
-            url,
-            data=json.dumps(request),
-            headers=headers,
-            timeout=10
+            requests.post, url, data=json.dumps(request), headers=headers, timeout=10
         )
-
-    def export_initial_telemetry_log(
-        self, connection_uuid, **kwargs
-    ):
-        """Export initial telemetry for a specific connection"""
-        if connection_uuid in self._clients:
-            self._clients[connection_uuid].export_initial_telemetry_log(**kwargs)
 
     @classmethod
     def getDriverSystemConfiguration(cls) -> DriverSystemConfiguration:
@@ -202,17 +206,13 @@ class TelemetryManager:
             )
         return cls._DRIVER_SYSTEM_CONFIGURATION
 
-    def close_telemetry_client(self, connection_uuid):
-        """Close telemetry client"""
-        if connection_uuid:
-            if connection_uuid in self._clients:
-                self._clients[connection_uuid].close()
-                del self._clients[connection_uuid]
-        
+    def close(self, connection_uuid):
+        del self._clients[connection_uuid]
+
         # Shutdown executor if no more clients
         if not self._clients:
             self.executor.shutdown(wait=True)
 
 
 # Create a global instance
-telemetry_manager = TelemetryManager()
+telemetry_client_factory = TelemetryClientFactory()
