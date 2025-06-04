@@ -143,7 +143,7 @@ class SeaResultSetQueueFactory(ABC):
             raise NotImplementedError("EXTERNAL_LINKS disposition is not supported yet")
         else:
             # Empty result set
-            return JsonQueue([])
+            raise AssertionError("Result data is not valid")
 
 
 class JsonQueue(ResultSetQueue):
