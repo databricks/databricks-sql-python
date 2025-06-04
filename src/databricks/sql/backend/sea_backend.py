@@ -554,75 +554,10 @@ class SeaDatabricksClient(DatabricksClient):
         assert result is not None, "execute_command returned None in synchronous mode"
 
         # Apply client-side filtering by table_types if specified
-        if table_types and len(table_types) > 0:
-            result = self._filter_tables_by_type(result, table_types)
+        from databricks.sql.backend.filters import ResultSetFilter
+        result = ResultSetFilter.filter_tables_by_type(result, table_types)
 
         return result
-
-    def _filter_tables_by_type(
-        self, result_set: "ResultSet", table_types: List[str]
-    ) -> "ResultSet":
-        """
-        Filter a result set of tables by the specified table types.
-
-        This is a client-side filter that processes the result set after it has been
-        retrieved from the server. It filters out tables whose type does not match
-        any of the types in the table_types list.
-
-        Args:
-            result_set: The original result set containing tables
-            table_types: List of table types to include (e.g., ["TABLE", "VIEW"])
-
-        Returns:
-            A filtered result set containing only tables of the specified types
-        """
-        # Default table types if none specified
-        DEFAULT_TABLE_TYPES = ["TABLE", "VIEW", "SYSTEM TABLE"]
-        valid_types = table_types if table_types else DEFAULT_TABLE_TYPES
-
-        # Convert to uppercase for case-insensitive comparison
-        valid_types_upper = [t.upper() for t in valid_types]
-
-        # Create a filtered version of the result set
-        from databricks.sql.backend.sea_result_set import SeaResultSet
-
-        if isinstance(result_set, SeaResultSet):
-            # For SEA result sets, we need to filter the rows in the response
-            filtered_response = result_set._response.copy()
-
-            # If there's a result with rows, filter them
-            if (
-                "result" in filtered_response
-                and "data_array" in filtered_response["result"]
-            ):
-                rows = filtered_response["result"]["data_array"]
-                # Table type is typically in the 4th column (index 3)
-                filtered_rows = [
-                    row
-                    for row in rows
-                    if len(row) > 3
-                    and (
-                        isinstance(row[3], str) and row[3].upper() in valid_types_upper
-                    )
-                ]
-                filtered_response["result"]["data_array"] = filtered_rows
-
-                # Update row count if present
-                if "row_count" in filtered_response["result"]:
-                    filtered_response["result"]["row_count"] = len(filtered_rows)
-
-            # Create a new result set with the filtered data
-            return SeaResultSet(
-                connection=result_set.connection,
-                sea_response=filtered_response,
-                sea_client=result_set._sea_client,
-                buffer_size_bytes=result_set._buffer_size_bytes,
-                arraysize=result_set._arraysize,
-            )
-
-        # For other result set types, return the original (should not happen with SEA)
-        logger.warning("Table type filtering not implemented for this result set type")
-        return result_set
 
     def get_columns(
         self,
