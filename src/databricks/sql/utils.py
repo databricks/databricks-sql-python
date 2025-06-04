@@ -135,10 +135,10 @@ class SeaResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue: The appropriate queue for the result data
         """
-        if sea_result_data.data:
+        if sea_result_data.data is not None:
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(sea_result_data.data)
-        elif sea_result_data.external_links:
+        elif sea_result_data.external_links is not None:
             # EXTERNAL_LINKS disposition (not implemented yet)
             raise NotImplementedError("EXTERNAL_LINKS disposition is not supported yet")
         else:
