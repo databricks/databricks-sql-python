@@ -1,13 +1,13 @@
 import logging
-import uuid
-from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
+import re
+from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
-from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
+from databricks.sql.exc import ServerOperationError
 from databricks.sql.backend.utils.http_client import SeaHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
@@ -88,10 +88,6 @@ class SeaDatabricksClient(DatabricksClient):
         """
         Extract the warehouse ID from the HTTP path.
 
-        The warehouse ID is expected to be the last segment of the path when the
-        second-to-last segment is either 'warehouses' or 'endpoints'.
-        This matches the JDBC implementation which supports both formats.
-
         Args:
             http_path: The HTTP path from which to extract the warehouse ID
 
@@ -99,38 +95,28 @@ class SeaDatabricksClient(DatabricksClient):
             The extracted warehouse ID
 
         Raises:
-            Error: If the warehouse ID cannot be extracted from the path
+            ValueError: If the warehouse ID cannot be extracted from the path
         """
-
-        path_parts = http_path.strip("/").split("/")
-        warehouse_id = None
-
-        if len(path_parts) >= 3 and path_parts[-2] in ["warehouses", "endpoints"]:
-            warehouse_id = path_parts[-1]
-            logger.debug(
-                f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
-            )
-
-        if not warehouse_id:
-            error_message = (
-                f"Could not extract warehouse ID from http_path: {http_path}. "
-                f"Expected format: /path/to/warehouses/{{warehouse_id}} or "
-                f"/path/to/endpoints/{{warehouse_id}}"
-            )
-            logger.error(error_message)
-            raise ValueError(error_message)
-
-        return warehouse_id
-
-    @property
-    def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
-        """Get the allowed local paths for staging operations."""
-        return self._staging_allowed_local_path
-
-    @property
-    def ssl_options(self) -> SSLOptions:
-        """Get the SSL options for this client."""
-        return self._ssl_options
+        warehouse_pattern = re.compile(r".*/warehouses/(.+)")
+        endpoint_pattern = re.compile(r".*/endpoints/(.+)")
+        
+        for pattern in [warehouse_pattern, endpoint_pattern]:
+            match = pattern.match(http_path)
+            if match:
+                warehouse_id = match.group(1)
+                logger.debug(
+                    f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
+                )
+                return warehouse_id
+            
+        # If no match found, raise error
+        error_message = (
+            f"Could not extract warehouse ID from http_path: {http_path}. "
+            f"Expected format: /path/to/warehouses/{{warehouse_id}} or "
+            f"/path/to/endpoints/{{warehouse_id}}"
+        )
+        logger.error(error_message)
+        raise ValueError(error_message)
 
     @property
     def max_download_threads(self) -> int:
@@ -236,21 +222,21 @@ class SeaDatabricksClient(DatabricksClient):
         enforce_embedded_schema_correctness: bool,
     ):
         """Not implemented yet."""
-        raise NotSupportedError(
+        raise NotImplementedError(
             "execute_command is not yet implemented for SEA backend"
         )
 
     def cancel_command(self, command_id: CommandId) -> None:
         """Not implemented yet."""
-        raise NotSupportedError("cancel_command is not yet implemented for SEA backend")
+        raise NotImplementedError("cancel_command is not yet implemented for SEA backend")
 
     def close_command(self, command_id: CommandId) -> None:
         """Not implemented yet."""
-        raise NotSupportedError("close_command is not yet implemented for SEA backend")
+        raise NotImplementedError("close_command is not yet implemented for SEA backend")
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         """Not implemented yet."""
-        raise NotSupportedError(
+        raise NotImplementedError(
             "get_query_state is not yet implemented for SEA backend"
         )
 
@@ -260,7 +246,7 @@ class SeaDatabricksClient(DatabricksClient):
         cursor: "Cursor",
     ):
         """Not implemented yet."""
-        raise NotSupportedError(
+        raise NotImplementedError(
             "get_execution_result is not yet implemented for SEA backend"
         )
 
@@ -274,7 +260,7 @@ class SeaDatabricksClient(DatabricksClient):
         cursor: "Cursor",
     ):
         """Not implemented yet."""
-        raise NotSupportedError("get_catalogs is not yet implemented for SEA backend")
+        raise NotImplementedError("get_catalogs is not yet implemented for SEA backend")
 
     def get_schemas(
         self,
@@ -286,7 +272,7 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
     ):
         """Not implemented yet."""
-        raise NotSupportedError("get_schemas is not yet implemented for SEA backend")
+        raise NotImplementedError("get_schemas is not yet implemented for SEA backend")
 
     def get_tables(
         self,
@@ -300,7 +286,7 @@ class SeaDatabricksClient(DatabricksClient):
         table_types: Optional[List[str]] = None,
     ):
         """Not implemented yet."""
-        raise NotSupportedError("get_tables is not yet implemented for SEA backend")
+        raise NotImplementedError("get_tables is not yet implemented for SEA backend")
 
     def get_columns(
         self,
@@ -314,4 +300,4 @@ class SeaDatabricksClient(DatabricksClient):
         column_name: Optional[str] = None,
     ):
         """Not implemented yet."""
-        raise NotSupportedError("get_columns is not yet implemented for SEA backend")
+        raise NotImplementedError("get_columns is not yet implemented for SEA backend")
