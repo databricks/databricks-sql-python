@@ -92,12 +92,11 @@ class SeaHttpClient:
         method = method.upper()
         if method == "GET":
             return self.session.get
-        elif method == "POST":
+        if method == "POST":
             return self.session.post
-        elif method == "DELETE":
+        if method == "DELETE":
             return self.session.delete
-        else:
-            raise ValueError(f"Unsupported HTTP method: {method}")
+        raise ValueError(f"Unsupported HTTP method: {method}")
 
     def _make_request(
         self,
