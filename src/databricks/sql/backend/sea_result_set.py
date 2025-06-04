@@ -18,7 +18,7 @@ from databricks.sql.result_set import ResultSet
 from databricks.sql.types import Row
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.exc import Error
-from databricks.sql.utils import ResultSetQueueFactory, JsonQueue
+from databricks.sql.utils import SeaResultSetQueueFactory, JsonQueue
 
 from databricks.sql.backend.models import (
     StatementStatus,
@@ -117,9 +117,9 @@ class SeaResultSet(ResultSet):
 
         # Initialize queue for result data
         if self.result:
-            self.results = ResultSetQueueFactory.build_queue(
+            self.results = SeaResultSetQueueFactory.build_queue(
                 sea_result_data=self.result,
-                description=cast(Optional[List[List[Any]]], self.description)
+                description=cast(Optional[List[List[Any]]], self.description),
             )
             self._has_more_rows = True if self.result.data else False
         else:
@@ -168,7 +168,7 @@ class SeaResultSet(ResultSet):
         if not self.result or not self.result.data:
             self._has_more_rows = False
             return
-        
+
         # For INLINE disposition, we already have all the data
         # No need to fetch more data from the backend
         self._has_more_rows = False  # No more rows to fetch for INLINE
@@ -177,21 +177,21 @@ class SeaResultSet(ResultSet):
         """Convert rows to Arrow table."""
         if not self.description:
             return pyarrow.Table.from_pylist([])
-        
+
         # Create dict of column data
         column_data = {}
         column_names = [col[0] for col in self.description]
-        
+
         for i, name in enumerate(column_names):
             column_data[name] = [row[i] for row in rows]
-        
+
         return pyarrow.Table.from_pydict(column_data)
 
     def _create_empty_arrow_table(self):
         """Create an empty Arrow table with the correct schema."""
         if not self.description:
             return pyarrow.Table.from_pylist([])
-        
+
         column_names = [col[0] for col in self.description]
         return pyarrow.Table.from_pydict({name: [] for name in column_names})
 
@@ -201,9 +201,9 @@ class SeaResultSet(ResultSet):
             rows = self.results.next_n_rows(1)
             if not rows:
                 return None
-            
+
             row = rows[0]
-            
+
             # Convert to Row object
             if self.description:
                 column_names = [col[0] for col in self.description]
@@ -219,13 +219,13 @@ class SeaResultSet(ResultSet):
         """Fetch the next set of rows of a query result."""
         if size is None:
             size = self.arraysize
-            
+
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-        
+
         if isinstance(self.results, JsonQueue):
             rows = self.results.next_n_rows(size)
-            
+
             # Convert to Row objects
             if self.description:
                 column_names = [col[0] for col in self.description]
@@ -241,7 +241,7 @@ class SeaResultSet(ResultSet):
         """Fetch all remaining rows of a query result."""
         if isinstance(self.results, JsonQueue):
             rows = self.results.remaining_rows()
-            
+
             # Convert to Row objects
             if self.description:
                 column_names = [col[0] for col in self.description]
@@ -257,12 +257,12 @@ class SeaResultSet(ResultSet):
         """Fetch the next set of rows as an Arrow table."""
         if not pyarrow:
             raise ImportError("PyArrow is required for Arrow support")
-        
+
         rows = self.fetchmany(size)
         if not rows:
             # Return empty Arrow table with schema
             return self._create_empty_arrow_table()
-        
+
         # Convert rows to Arrow table
         return self._convert_rows_to_arrow_table(rows)
 
@@ -270,12 +270,12 @@ class SeaResultSet(ResultSet):
         """Fetch all remaining rows as an Arrow table."""
         if not pyarrow:
             raise ImportError("PyArrow is required for Arrow support")
-        
+
         rows = self.fetchall()
         if not rows:
             # Return empty Arrow table with schema
             return self._create_empty_arrow_table()
-        
+
         # Convert rows to Arrow table
         return self._convert_rows_to_arrow_table(rows)
 

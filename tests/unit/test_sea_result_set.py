@@ -24,7 +24,7 @@ from databricks.sql.backend.models import (
     ColumnInfo,
     ServiceError,
 )
-from databricks.sql.utils import JsonQueue
+from databricks.sql.utils import JsonQueue, SeaResultSetQueueFactory
 
 
 class TestSeaResultSet(unittest.TestCase):
@@ -360,7 +360,7 @@ class TestSeaResultSet(unittest.TestCase):
         rows = result_set.fetchall()
         self.assertEqual(len(rows), 0)
 
-    @unittest.skipIf(not HAS_PYARROW, "PyArrow not installed")
+    @unittest.skipIf(pyarrow is None, "PyArrow not installed")
     def test_fetchmany_arrow(self):
         """Test fetchmany_arrow method."""
         result_set = SeaResultSet(
@@ -386,7 +386,7 @@ class TestSeaResultSet(unittest.TestCase):
         arrow_table = result_set.fetchmany_arrow(2)
         self.assertEqual(arrow_table.num_rows, 0)
 
-    @unittest.skipIf(not HAS_PYARROW, "PyArrow not installed")
+    @unittest.skipIf(pyarrow is None, "PyArrow not installed")
     def test_fetchall_arrow(self):
         """Test fetchall_arrow method."""
         result_set = SeaResultSet(
