@@ -39,6 +39,12 @@ class SeaResultSet(ResultSet):
         """Initialize a SeaResultSet with the response from a SEA query execution."""
         super().__init__(connection, sea_client, arraysize, buffer_size_bytes)
 
+        # Store the original response for filtering operations
+        self._response = sea_response
+        self._sea_client = sea_client
+        self._buffer_size_bytes = buffer_size_bytes
+        self._arraysize = arraysize
+
         # Extract and store SEA-specific properties
         self.statement_id = sea_response.get("statement_id")
 
@@ -89,7 +95,7 @@ class SeaResultSet(ResultSet):
         result_data = sea_response.get("result")
         if result_data:
             self.result: Optional[ResultData] = ResultData(
-                data=result_data.get("data"),
+                data=result_data.get("data_array"),  # Changed from data to data_array
                 external_links=result_data.get("external_links"),
             )
         else:

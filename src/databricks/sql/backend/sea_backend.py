@@ -555,6 +555,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Apply client-side filtering by table_types if specified
         from databricks.sql.backend.filters import ResultSetFilter
+
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
 
         return result
