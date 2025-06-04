@@ -1,7 +1,7 @@
 import json
 import logging
 import requests
-from typing import Dict, Any, Optional, Union, List, Tuple
+from typing import Callable, Dict, Any, Optional, Union, List, Tuple
 from urllib.parse import urljoin
 
 from databricks.sql.auth.authenticators import AuthProvider
@@ -87,6 +87,18 @@ class SeaHttpClient:
         self.auth_provider.add_headers(headers)
         return headers
 
+    def _get_call(self, method: str) -> Callable:
+        """Get the appropriate HTTP method function."""
+        method = method.upper()
+        if method == "GET":
+            return self.session.get
+        elif method == "POST":
+            return self.session.post
+        elif method == "DELETE":
+            return self.session.delete
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+
     def _make_request(
         self,
         method: str,
@@ -116,29 +128,13 @@ class SeaHttpClient:
         logger.debug(f"making {method} request to {url}")
 
         try:
-            if method.upper() == "GET":
-                response = self.session.get(
-                    url=url,
-                    headers=headers,
-                    json=data,
-                    params=params,
-                )
-            elif method.upper() == "POST":
-                response = self.session.post(
-                    url=url,
-                    headers=headers,
-                    json=data,
-                    params=params,
-                )
-            elif method.upper() == "DELETE":
-                response = self.session.delete(
-                    url=url,
-                    headers=headers,
-                    json=data,
-                    params=params,
-                )
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
+            call = self._get_call(method)
+            response = call(
+                url=url,
+                headers=headers,
+                json=data,
+                params=params,
+            )
 
             # Check for HTTP errors
             response.raise_for_status()
