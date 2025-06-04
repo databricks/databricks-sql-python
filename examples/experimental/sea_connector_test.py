@@ -72,18 +72,53 @@ def test_sea_result_set_json_array_inline():
         logger.info("Executing query for Arrow testing: SELECT * FROM range(1, 5) AS id, range(101, 105) AS value")
         cursor.execute("SELECT * FROM range(1, 5) AS id, range(101, 105) AS value")
         
-        # Test fetchmany_arrow
-        logger.info("Testing fetchmany_arrow(2)...")
-        arrow_batch = cursor.fetchmany_arrow(2)
-        logger.info(f"Arrow batch num rows: {arrow_batch.num_rows}")
-        logger.info(f"Arrow batch columns: {arrow_batch.column_names}")
-        logger.info(f"Arrow batch data: {arrow_batch.to_pydict()}")
+        try:
+            # Test fetchmany_arrow
+            logger.info("Testing fetchmany_arrow(2)...")
+            arrow_batch = cursor.fetchmany_arrow(2)
+            logger.info(f"Arrow batch num rows: {arrow_batch.num_rows}")
+            logger.info(f"Arrow batch columns: {arrow_batch.column_names}")
+            logger.info(f"Arrow batch data: {arrow_batch.to_pydict()}")
+            
+            # Test fetchall_arrow
+            logger.info("Testing fetchall_arrow...")
+            remaining_arrow_batch = cursor.fetchall_arrow()
+            logger.info(f"Remaining arrow batch num rows: {remaining_arrow_batch.num_rows}")
+            logger.info(f"Remaining arrow batch data: {remaining_arrow_batch.to_pydict()}")
+        except ImportError:
+            logger.warning("PyArrow not installed, skipping Arrow tests")
         
-        # Test fetchall_arrow
-        logger.info("Testing fetchall_arrow...")
-        remaining_arrow_batch = cursor.fetchall_arrow()
-        logger.info(f"Remaining arrow batch num rows: {remaining_arrow_batch.num_rows}")
-        logger.info(f"Remaining arrow batch data: {remaining_arrow_batch.to_pydict()}")
+        # Test metadata commands
+        logger.info("Testing metadata commands...")
+        
+        # Get catalogs
+        logger.info("Getting catalogs...")
+        cursor.catalogs()
+        catalogs = cursor.fetchall()
+        logger.info(f"Available catalogs: {[c.catalog for c in catalogs]}")
+        
+        # Get schemas
+        if catalog:
+            logger.info(f"Getting schemas for catalog '{catalog}'...")
+            cursor.schemas(catalog_name=catalog)
+            schemas = cursor.fetchall()
+            logger.info(f"Available schemas in {catalog}: {[s.databaseName for s in schemas]}")
+            
+            # Get tables for a schema
+            if schemas:
+                schema = schemas[0].databaseName
+                logger.info(f"Getting tables for schema '{schema}'...")
+                cursor.tables(catalog_name=catalog, schema_name=schema)
+                tables = cursor.fetchall()
+                logger.info(f"Available tables in {schema}: {[t.tableName for t in tables]}")
+                
+                # Get columns for a table
+                if tables:
+                    table = tables[0].tableName
+                    logger.info(f"Getting columns for table '{table}'...")
+                    cursor.columns(catalog_name=catalog, schema_name=schema, table_name=table)
+                    columns = cursor.fetchall()
+                    logger.info(f"Columns in {table}: {[c.column_name for c in columns]}")
         
         # Close cursor and connection
         cursor.close()
@@ -99,6 +134,70 @@ def test_sea_result_set_json_array_inline():
     logger.info("SEA result set test with JSON_ARRAY format and INLINE disposition completed successfully")
 
 
+def test_sea_session():
+    """
+    Test opening and closing a SEA session using the connector.
+
+    This function connects to a Databricks SQL endpoint using the SEA backend,
+    opens a session, and then closes it.
+
+    Required environment variables:
+    - DATABRICKS_SERVER_HOSTNAME: Databricks server hostname
+    - DATABRICKS_HTTP_PATH: HTTP path for the SQL endpoint
+    - DATABRICKS_TOKEN: Personal access token for authentication
+    """
+    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
+    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
+    access_token = os.environ.get("DATABRICKS_TOKEN")
+    catalog = os.environ.get("DATABRICKS_CATALOG")
+
+    if not all([server_hostname, http_path, access_token]):
+        logger.error("Missing required environment variables.")
+        logger.error(
+            "Please set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, and DATABRICKS_TOKEN."
+        )
+        sys.exit(1)
+
+    logger.info(f"Connecting to {server_hostname}")
+    logger.info(f"HTTP Path: {http_path}")
+    if catalog:
+        logger.info(f"Using catalog: {catalog}")
+
+    try:
+        logger.info("Creating connection with SEA backend...")
+        connection = Connection(
+            server_hostname=server_hostname,
+            http_path=http_path,
+            access_token=access_token,
+            catalog=catalog,
+            schema="default",
+            use_sea=True,
+            user_agent_entry="SEA-Test-Client",  # add custom user agent
+        )
+
+        logger.info(
+            f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
+        )
+        logger.info(f"backend type: {type(connection.session.backend)}")
+
+        # Close the connection
+        logger.info("Closing the SEA session...")
+        connection.close()
+        logger.info("Successfully closed SEA session")
+
+    except Exception as e:
+        logger.error(f"Error testing SEA session: {str(e)}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        sys.exit(1)
+
+    logger.info("SEA session test completed successfully")
+
+
 if __name__ == "__main__":
-    # Test result set implementation
+    # Test session management
+    test_sea_session()
+    
+    # Test result set implementation with metadata commands
     test_sea_result_set_json_array_inline()
