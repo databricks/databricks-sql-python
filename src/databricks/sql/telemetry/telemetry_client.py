@@ -25,24 +25,20 @@ import locale
 class TelemetryClient:
     def __init__(
         self,
-        host,
-        connection_uuid,
+        telemetry_enabled,
         batch_size,
-        auth_provider=None,
-        is_authenticated=False,
-        user_agent=None,
+        connection_uuid,
+        **kwargs
     ):
-        self.host_url = host
-        self.connection_uuid = connection_uuid
-        self.auth_provider = auth_provider
-        self.is_authenticated = is_authenticated
+        self.telemetry_enabled = telemetry_enabled
         self.batch_size = batch_size
-        self.user_agent = user_agent
+        self.connection_uuid = connection_uuid
+        self.host_url = kwargs.get("host_url", None)
+        self.auth_provider = kwargs.get("auth_provider", None)
+        self.is_authenticated = kwargs.get("is_authenticated", False)
+        self.user_agent = kwargs.get("user_agent", None)
         self.events_batch = []
         self.lock = threading.Lock()
-        self.executor = ThreadPoolExecutor(
-            max_workers=10  # TODO: Decide on max workers
-        )  # Thread pool for async operations
         self.DriverConnectionParameters = None
 
     def export_event(self, event):
@@ -59,58 +55,17 @@ class TelemetryClient:
             self.events_batch = []
 
         if events_to_flush:
-            self.executor.submit(self._send_telemetry, events_to_flush)
-
-    def _send_telemetry(self, events):
-        """Send telemetry events to the server"""
-        request = {
-            "uploadTime": int(time.time() * 1000),
-            "items": [],
-            "protoLogs": [event.to_json() for event in events],
-        }
-
-        path = "/telemetry-ext" if self.is_authenticated else "/telemetry-unauth"
-        url = f"https://{self.host_url}{path}"
-
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-
-        if self.is_authenticated and self.auth_provider:
-            self.auth_provider.add_headers(headers)
-
-        # print("\n=== Request Details ===", flush=True)
-        # print(f"URL: {url}", flush=True)
-        # print("\nHeaders:", flush=True)
-        # for key, value in headers.items():
-        #     print(f"  {key}: {value}", flush=True)
-
-        # print("\nRequest Body:", flush=True)
-        # print(json.dumps(request, indent=2), flush=True)
-        # sys.stdout.flush()
-
-        response = requests.post(
-            url, data=json.dumps(request), headers=headers, timeout=10
-        )
-
-        # print("\n=== Response Details ===", flush=True)
-        # print(f"Status Code: {response.status_code}", flush=True)
-        # print("\nResponse Headers:", flush=True)
-        # for key, value in response.headers.items():
-        #     print(f"  {key}: {value}", flush=True)
-
-        # print("\nResponse Body:", flush=True)
-        # try:
-        #     response_json = response.json()
-        #     print(json.dumps(response_json, indent=2), flush=True)
-        # except json.JSONDecodeError:
-        #     print(response.text, flush=True)
-        # sys.stdout.flush()
+            telemetry_manager._send_telemetry(events_to_flush, self.host_url, self.is_authenticated, self.auth_provider)
 
     def close(self):
-        """Flush remaining events and shut down executor"""
+        """Flush remaining events before closing"""
         self.flush()
-        self.executor.shutdown(wait=True)
 
-    def export_initial_telemetry_log(self, http_path, port, socket_timeout):
+    def export_initial_telemetry_log(self, **kwargs):
+        http_path = kwargs.get("http_path", None)
+        port = kwargs.get("port", None)
+        socket_timeout = kwargs.get("socket_timeout", None)
+
         discovery_url = None
         if hasattr(self.auth_provider, "oauth_manager") and hasattr(
             self.auth_provider.oauth_manager, "idp_endpoint"
@@ -147,19 +102,6 @@ class TelemetryClient:
 
         self.export_event(telemetry_frontend_log)
 
-    def export_failure_log(self, errorName, errorMessage):
-        pass
-
-    def export_sql_latency_log(
-        self, latency_ms, sql_execution_event, sql_statement_id=None
-    ):
-        """Export telemetry for sql execution"""
-        pass
-
-    def export_volume_latency_log(self, latency_ms, volume_operation):
-        """Export telemetry for volume operation"""
-        pass
-
 
 class TelemetryManager:
     """A singleton manager class that handles telemetry operations for SQL connections.
@@ -189,56 +131,56 @@ class TelemetryManager:
             return
 
         self._clients = {}  # Map of connection_uuid -> TelemetryClient
+        self.executor = ThreadPoolExecutor(max_workers=10)  # Thread pool for async operations TODO: Decide on max workers
         self._initialized = True
 
-    def initialize(
+    def initialize_telemetry_client(
         self,
-        host,
-        connection_uuid,
+        telemetry_enabled,
         batch_size,
-        auth_provider=None,
-        is_authenticated=False,
-        user_agent=None,
+        connection_uuid,
+        **kwargs
     ):
-        """Initialize a telemetry client for a specific connection"""
-        if connection_uuid not in self._clients:
-            self._clients[connection_uuid] = TelemetryClient(
-                host=host,
-                connection_uuid=connection_uuid,
-                batch_size=batch_size,
-                auth_provider=auth_provider,
-                is_authenticated=is_authenticated,
-                user_agent=user_agent,
-            )
+        """Initialize a telemetry client for a specific connection if telemetry is enabled"""
+        if telemetry_enabled:
+            if connection_uuid not in self._clients:
+                self._clients[connection_uuid] = TelemetryClient(
+                    telemetry_enabled=telemetry_enabled,
+                    batch_size=batch_size,
+                    connection_uuid=connection_uuid,
+                    **kwargs
+                )
 
-    def export_failure_log(self, error_name, error_message, connection_uuid):
-        """Export error logs for a specific connection or all connections if connection_uuid is None"""
-        pass
+    def _send_telemetry(self, events, host_url, is_authenticated, auth_provider):
+        """Send telemetry events to the server"""
+        request = {
+            "uploadTime": int(time.time() * 1000),
+            "items": [],
+            "protoLogs": [event.to_json() for event in events],
+        }
+
+        path = "/telemetry-ext" if is_authenticated else "/telemetry-unauth"
+        url = f"https://{host_url}{path}"
+
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+
+        if is_authenticated and auth_provider:
+            auth_provider.add_headers(headers)
+
+        self.executor.submit(
+            requests.post,
+            url,
+            data=json.dumps(request),
+            headers=headers,
+            timeout=10
+        )
 
     def export_initial_telemetry_log(
-        self, http_path, port, socket_timeout, connection_uuid
+        self, connection_uuid, **kwargs
     ):
         """Export initial telemetry for a specific connection"""
         if connection_uuid in self._clients:
-            self._clients[connection_uuid].export_initial_telemetry_log(
-                http_path, port, socket_timeout
-            )
-
-    def export_sql_latency_log(
-        self,
-        latency_ms,
-        sql_execution_event,
-        sql_statement_id=None,
-        connection_uuid=None,
-    ):
-        """Export latency logs for sql execution for a specific connection"""
-        pass
-
-    def export_volume_latency_log(
-        self, latency_ms, volume_operation, connection_uuid=None
-    ):
-        """Export latency logs for volume operation for a specific connection"""
-        pass
+            self._clients[connection_uuid].export_initial_telemetry_log(**kwargs)
 
     @classmethod
     def getDriverSystemConfiguration(cls) -> DriverSystemConfiguration:
@@ -260,13 +202,17 @@ class TelemetryManager:
             )
         return cls._DRIVER_SYSTEM_CONFIGURATION
 
-    def close(self, connection_uuid):
-        """Close telemetry client(s)"""
+    def close_telemetry_client(self, connection_uuid):
+        """Close telemetry client"""
         if connection_uuid:
             if connection_uuid in self._clients:
                 self._clients[connection_uuid].close()
                 del self._clients[connection_uuid]
+        
+        # Shutdown executor if no more clients
+        if not self._clients:
+            self.executor.shutdown(wait=True)
 
 
 # Create a global instance
-telemetry_client = TelemetryManager()
+telemetry_manager = TelemetryManager()

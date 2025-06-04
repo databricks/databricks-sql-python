@@ -49,7 +49,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TOperationState,
 )
-from databricks.sql.telemetry.telemetry_client import telemetry_client
+from databricks.sql.telemetry.telemetry_client import telemetry_manager
 
 
 logger = logging.getLogger(__name__)
@@ -297,23 +297,29 @@ class Connection:
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )
+        
+        telemetry_kwargs = {
+            "auth_provider": auth_provider,
+            "is_authenticated": True, # TODO: Add authentication logic later
+            "user_agent": useragent_header,
+            "host_url": server_hostname
+        }
+        telemetry_manager.initialize_telemetry_client(
+            telemetry_enabled=self.telemetry_enabled,
+            batch_size=telemetry_batch_size,
+            connection_uuid=self.get_session_id_hex(),
+            **telemetry_kwargs
+        )
 
-        if self.telemetry_enabled:
-            telemetry_client.initialize(
-                host=self.host,
-                connection_uuid=self.get_session_id_hex(),
-                batch_size=telemetry_batch_size,
-                auth_provider=auth_provider,
-                is_authenticated=True,  # TODO: Add authentication logic later
-                user_agent=useragent_header,
-            )
-
-            telemetry_client.export_initial_telemetry_log(
-                http_path,
-                self.port,
-                kwargs.get("_socket_timeout", None),
-                self.get_session_id_hex(),
-            )
+        intial_telmetry_kwargs = {
+            "http_path": http_path,
+            "port": self.port,
+            "socket_timeout": kwargs.get("_socket_timeout", None),
+        }
+        telemetry_manager.export_initial_telemetry_log(
+            connection_uuid=self.get_session_id_hex(),
+            **intial_telmetry_kwargs
+        )
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -451,8 +457,7 @@ class Connection:
 
         self.open = False
 
-        if self.telemetry_enabled:
-            telemetry_client.close(self.get_session_id_hex())
+        telemetry_manager.close_telemetry_client(self.get_session_id_hex())
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
