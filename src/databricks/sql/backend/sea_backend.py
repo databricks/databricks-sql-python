@@ -93,6 +93,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the warehouse ID cannot be extracted from the path
         """
+
         warehouse_pattern = re.compile(r".*/warehouses/(.+)")
         endpoint_pattern = re.compile(r".*/endpoints/(.+)")
 
