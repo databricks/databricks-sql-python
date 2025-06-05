@@ -194,7 +194,7 @@ def test_sea_result_set_json_array_inline():
                     log_metadata_results("columns", columns, logger)
                     
                     # Extract column names
-                    column_names = extract_key_values(columns, "column_name") or extract_key_values(columns, "columnName") or extract_key_values(columns, "COLUMN_NAME")
+                    column_names = extract_key_values(columns, "col_name")
                     if column_names:
                         logger.info(f"Column names: {column_names}")
         

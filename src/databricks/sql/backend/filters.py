@@ -153,7 +153,7 @@ class ResultSetFilter:
             table_types if table_types and len(table_types) > 0 else DEFAULT_TABLE_TYPES
         )
 
-        # Table type is typically in the 4th column (index 3)
+        # Table type is the 6th column (index 5)
         return ResultSetFilter.filter_by_column_values(
-            result_set, 3, valid_types, case_sensitive=False
+            result_set, 5, valid_types, case_sensitive=False
         )
