@@ -511,20 +511,20 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(instance.close_session.call_count, 0)
         cursor.close()
 
-    @patch("%s.utils.ExecuteResponse" % PACKAGE_NAME, autospec=True)
+    @patch("%s.backend.types.ExecuteResponse" % PACKAGE_NAME, autospec=True)
     @patch("%s.client.Cursor._handle_staging_operation" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_staging_operation_response_is_handled(
-        self, mock_client_class, mock_handle_staging_operation, mock_execute_response
+        self, mock_thrift_client_class, mock_handle_staging_operation, mock_execute_response
     ):
         # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
 
         ThriftDatabricksClientMockFactory.apply_property_to_mock(
             mock_execute_response, is_staging_operation=True
         )
-        mock_client = mock_client_class.return_value
-        mock_client.execute_command.return_value = Mock(is_staging_operation=True)
-        mock_client_class.return_value = mock_client
+        mock_thrift_client = mock_thrift_client_class.return_value
+        mock_thrift_client.execute_command.return_value = Mock(is_staging_operation=True)
+        mock_thrift_client_class.return_value = mock_thrift_client
 
         connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
         cursor = connection.cursor()

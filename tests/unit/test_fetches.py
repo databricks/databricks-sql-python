@@ -8,7 +8,8 @@ except ImportError:
     pa = None
 
 import databricks.sql.client as client
-from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from databricks.sql.utils import ArrowQueue
+from databricks.sql.backend.types import ExecuteResponse
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
 
@@ -48,12 +49,13 @@ class FetchTests(unittest.TestCase):
                 description=Mock(),
                 lz4_compressed=Mock(),
                 command_id=None,
-                arrow_queue=arrow_queue,
-                arrow_schema_bytes=schema.serialize().to_pybytes(),
+                results_queue=arrow_queue,
                 is_staging_operation=False,
             ),
             thrift_client=None,
         )
+        # Set arrow_schema_bytes directly on the instance
+        rs._arrow_schema_bytes = schema.serialize().to_pybytes()
         num_cols = len(initial_results[0]) if initial_results else 0
         rs.description = [
             (f"col{col_id}", "integer", None, None, None, None, None)
@@ -97,8 +99,7 @@ class FetchTests(unittest.TestCase):
                 ],
                 lz4_compressed=Mock(),
                 command_id=None,
-                arrow_queue=None,
-                arrow_schema_bytes=None,
+                results_queue=None,
                 is_staging_operation=False,
             ),
             thrift_client=mock_thrift_backend,

@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import Dict, Optional, Any, Union
+from typing import Dict, Optional, Any, Union, List, Tuple
+from dataclasses import dataclass
 import uuid
 import logging
 
@@ -349,3 +350,17 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
+
+
+@dataclass
+class ExecuteResponse:
+    """Response from executing a SQL command."""
+    
+    command_id: CommandId
+    status: CommandState
+    description: Optional[List[Tuple[str, str, None, None, Optional[int], Optional[int], bool]]] = None
+    has_more_rows: bool = False
+    results_queue: Optional[Any] = None
+    has_been_closed_server_side: bool = False
+    lz4_compressed: bool = True
+    is_staging_operation: bool = False

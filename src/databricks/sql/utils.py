@@ -26,7 +26,6 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.types import CommandId
 
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
@@ -143,7 +142,7 @@ class SeaResultSetQueueFactory(ABC):
             raise NotImplementedError("EXTERNAL_LINKS disposition is not supported yet")
         else:
             # Empty result set
-            raise AssertionError("Result data is not valid")
+            return JsonQueue([])
 
 
 class JsonQueue(ResultSetQueue):
@@ -404,13 +403,6 @@ class CloudFetchQueue(ResultSetQueue):
     def _create_empty_table(self) -> "pyarrow.Table":
         # Create a 0-row table with just the schema bytes
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
-
-
-ExecuteResponse = namedtuple(
-    "ExecuteResponse",
-    "status has_been_closed_server_side has_more_rows description lz4_compressed is_staging_operation "
-    "command_id arrow_queue arrow_schema_bytes",
-)
 
 
 def _bound(min_x, max_x, x):

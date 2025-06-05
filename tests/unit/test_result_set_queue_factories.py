@@ -37,8 +37,13 @@ class TestResultSetQueueFactories(unittest.TestCase):
         result_data.data = []
         result_data.external_links = None
 
-        with self.assertRaises(AssertionError):
-            SeaResultSetQueueFactory.build_queue(result_data)
+        # Build queue
+        queue = SeaResultSetQueueFactory.build_queue(result_data)
+
+        # Verify queue type and properties
+        self.assertIsInstance(queue, JsonQueue)
+        self.assertEqual(queue.n_valid_rows, 0)
+        self.assertEqual(queue.data_array, [])
 
     def test_sea_result_set_queue_factory_with_external_links(self):
         """Test SeaResultSetQueueFactory with external links."""
@@ -58,8 +63,13 @@ class TestResultSetQueueFactories(unittest.TestCase):
         result_data.data = None
         result_data.external_links = None
 
-        with self.assertRaises(AssertionError):
-            SeaResultSetQueueFactory.build_queue(result_data)
+        # Build queue
+        queue = SeaResultSetQueueFactory.build_queue(result_data)
+
+        # Verify queue type and properties
+        self.assertIsInstance(queue, JsonQueue)
+        self.assertEqual(queue.n_valid_rows, 0)
+        self.assertEqual(queue.data_array, [])
 
 
 if __name__ == "__main__":

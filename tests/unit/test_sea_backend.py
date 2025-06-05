@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock
 
 from databricks.sql.backend.sea_backend import SeaDatabricksClient
-from databricks.sql.backend.sea_result_set import SeaResultSet
+from databricks.sql.result_set import SeaResultSet
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
@@ -533,8 +533,9 @@ class TestSeaBackend:
 
         # Verify basic properties of the result
         assert result.statement_id == "test-statement-123"
-        assert result.status.state == CommandState.SUCCEEDED
-        assert result.manifest.schema[0].name == "test_value"
+        assert result.status == CommandState.SUCCEEDED
+        assert len(result.description) > 0
+        assert result.description[0][0] == "test_value"
 
         # Verify the HTTP request
         mock_http_client._make_request.assert_called_once()

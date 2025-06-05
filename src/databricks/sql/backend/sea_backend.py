@@ -8,11 +8,13 @@ if TYPE_CHECKING:
     from databricks.sql.result_set import ResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
+from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType, ExecuteResponse
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 from databricks.sql.backend.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
+from databricks.sql.utils import SeaResultSetQueueFactory
+from databricks.sql.backend.models.base import ResultData
 
 from databricks.sql.backend.models import (
     ExecuteStatementRequest,
@@ -225,6 +227,70 @@ class SeaDatabricksClient(DatabricksClient):
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             params=request.to_dict(),
+        )
+
+    def _results_message_to_execute_response(self, sea_response, command_id):
+        """
+        Convert a SEA response to an ExecuteResponse.
+        
+        Args:
+            sea_response: The response from the SEA API
+            command_id: The command ID
+            
+        Returns:
+            ExecuteResponse: The normalized execute response
+        """
+        # Extract status 
+        status_data = sea_response.get("status", {})
+        state = CommandState.from_sea_state(status_data.get("state", ""))
+        
+        # Extract description from manifest 
+        description = None
+        manifest_data = sea_response.get("manifest", {})
+        schema_data = manifest_data.get("schema", {})
+        columns_data = schema_data.get("columns", [])
+        
+        if columns_data:
+            columns = []
+            for col_data in columns_data:
+                if not isinstance(col_data, dict):
+                    continue
+                    
+                # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
+                columns.append(
+                    (
+                        col_data.get("name", ""),  # name
+                        col_data.get("type_name", ""),  # type_code
+                        None,  # display_size (not provided by SEA)
+                        None,  # internal_size (not provided by SEA)
+                        col_data.get("precision"),  # precision
+                        col_data.get("scale"),  # scale
+                        col_data.get("nullable", True),  # null_ok
+                    )
+                )
+            description = columns if columns else None
+        
+        # Create results queue
+        results_queue = None
+        result_data = sea_response.get("result", {})
+        if result_data:
+            results_queue = SeaResultSetQueueFactory.build_queue(
+                ResultData(
+                    data=result_data.get("data_array", None),
+                    external_links=result_data.get("external_links", None)
+                ),
+                description=description
+            )
+        
+        return ExecuteResponse(
+            command_id=command_id,
+            status=state,
+            description=description,
+            has_more_rows=False,
+            results_queue=results_queue,
+            has_been_closed_server_side=False,
+            lz4_compressed=False, # TODO: extract from response 
+            is_staging_operation=False,
         )
 
     def execute_command(
@@ -444,11 +510,14 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         # Create and return a SeaResultSet
-        from databricks.sql.backend.sea_result_set import SeaResultSet
-
+        from databricks.sql.result_set import SeaResultSet
+        
+        # Convert the response to an ExecuteResponse
+        execute_response = self._results_message_to_execute_response(response_data, command_id)
+        
         return SeaResultSet(
             connection=cursor.connection,
-            sea_response=response_data,
+            execute_response=execute_response,
             sea_client=self,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
