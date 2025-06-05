@@ -1,11 +1,11 @@
 import pytest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 
 from databricks.sql.backend.sea_backend import SeaDatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
-from databricks.sql.exc import Error, NotSupportedError
+from databricks.sql.exc import Error
 
 
 class TestSeaBackend:

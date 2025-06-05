@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, Tuple, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
