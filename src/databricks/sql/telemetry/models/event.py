@@ -13,6 +13,12 @@ from enum import Enum
 
 
 class EnumEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder to handle Enum values.
+    This is used to convert Enum values to their string representations.
+    Default JSON encoder does not handle Enum values.
+    """
+
     def default(self, obj):
         if isinstance(obj, Enum):
             return obj.value

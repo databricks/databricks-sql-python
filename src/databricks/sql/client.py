@@ -49,7 +49,15 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TOperationState,
 )
-from databricks.sql.telemetry.telemetry_client import telemetry_client_factory
+from databricks.sql.telemetry.telemetry_client import (
+    telemetry_client_factory,
+    TelemetryHelper,
+)
+from databricks.sql.telemetry.models.enums import DatabricksClientType
+from databricks.sql.telemetry.models.event import (
+    DriverConnectionParameters,
+    HostDetails,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -298,25 +306,25 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
 
-        telemetry_kwargs = {
-            "auth_provider": auth_provider,
-            "is_authenticated": True,  # TODO: Add authentication logic later
-            "user_agent": useragent_header,
-            "host_url": server_hostname,
-        }
+        driver_connection_params = DriverConnectionParameters(
+            http_path=http_path,
+            mode=DatabricksClientType.THRIFT,
+            host_info=HostDetails(host_url=server_hostname, port=self.port),
+            auth_mech=TelemetryHelper.get_auth_mechanism(auth_provider),
+            auth_flow=TelemetryHelper.get_auth_flow(auth_provider),
+            discovery_url=TelemetryHelper.get_discovery_url(auth_provider),
+            socket_timeout=kwargs.get("_socket_timeout", None),
+        )
         self.telemetry_client = telemetry_client_factory.get_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             batch_size=telemetry_batch_size,
             connection_uuid=self.get_session_id_hex(),
-            **telemetry_kwargs,
+            auth_provider=auth_provider,
+            user_agent=useragent_header,
+            driver_connection_params=driver_connection_params,
         )
 
-        initial_telemetry_kwargs = {
-            "http_path": http_path,
-            "port": self.port,
-            "socket_timeout": kwargs.get("_socket_timeout", None),
-        }
-        self.telemetry_client.export_initial_telemetry_log(**initial_telemetry_kwargs)
+        self.telemetry_client.export_initial_telemetry_log()
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
