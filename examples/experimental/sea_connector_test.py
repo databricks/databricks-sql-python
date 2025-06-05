@@ -7,6 +7,61 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
+def log_metadata_results(result_type: str, results, logger):
+    """
+    General function to log metadata results using Row.asDict() for any structure.
+    
+    Args:
+        result_type: String describing what type of metadata (e.g., "catalogs", "schemas")
+        results: List of Row objects from cursor.fetchall()
+        logger: Logger instance to use for output
+    """
+    if not results:
+        logger.info(f"No {result_type} found")
+        return
+        
+    logger.info(f"Found {len(results)} {result_type}:")
+    
+    # Log all results with full details
+    for i, row in enumerate(results):
+        row_dict = row.asDict()
+        logger.info(f"  {result_type}[{i}]: {row_dict}")
+        
+    # Show available fields for this result type
+    if results:
+        first_row_dict = results[0].asDict()
+        available_fields = list(first_row_dict.keys())
+        logger.info(f"  Available fields for {result_type}: {available_fields}")
+
+
+def extract_key_values(results, key_field):
+    """
+    Extract values for a specific key field from results using Row.asDict().
+    
+    Args:
+        results: List of Row objects
+        key_field: String name of the field to extract
+        
+    Returns:
+        List of values for the specified field, or empty list if field doesn't exist
+    """
+    if not results:
+        return []
+        
+    values = []
+    for row in results:
+        row_dict = row.asDict()
+        if key_field in row_dict:
+            values.append(row_dict[key_field])
+        else:
+            # Log available fields if the requested key doesn't exist
+            available_fields = list(row_dict.keys())
+            logger.warning(f"Field '{key_field}' not found. Available fields: {available_fields}")
+            break
+    
+    return values
+
+
 def test_sea_result_set_json_array_inline():
     """
     Test the SEA result set implementation with JSON_ARRAY format and INLINE disposition.
@@ -26,6 +81,9 @@ def test_sea_result_set_json_array_inline():
             "Please set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, and DATABRICKS_TOKEN."
         )
         sys.exit(1)
+
+    catalog = "samples"
+    schema = "tpch"
 
     try:
         # Create connection with SEA backend
@@ -88,37 +146,57 @@ def test_sea_result_set_json_array_inline():
         except ImportError:
             logger.warning("PyArrow not installed, skipping Arrow tests")
         
-        # Test metadata commands
+        # Test metadata commands with general logging
         logger.info("Testing metadata commands...")
         
         # Get catalogs
         logger.info("Getting catalogs...")
         cursor.catalogs()
         catalogs = cursor.fetchall()
-        logger.info(f"Available catalogs: {[c.catalog for c in catalogs]}")
+        log_metadata_results("catalogs", catalogs, logger)
+        
+        # Extract catalog names using the general function
+        catalog_names = extract_key_values(catalogs, "catalog")
+        if catalog_names:
+            logger.info(f"Catalog names: {catalog_names}")
         
         # Get schemas
         if catalog:
             logger.info(f"Getting schemas for catalog '{catalog}'...")
             cursor.schemas(catalog_name=catalog)
             schemas = cursor.fetchall()
-            logger.info(f"Available schemas in {catalog}: {[s.databaseName for s in schemas]}")
+            log_metadata_results("schemas", schemas, logger)
+            
+            # Extract schema names - try common field names
+            schema_names = extract_key_values(schemas, "databaseName") or extract_key_values(schemas, "schemaName") or extract_key_values(schemas, "schema_name")
+            if schema_names:
+                logger.info(f"Schema names: {schema_names}")
             
             # Get tables for a schema
-            if schemas:
-                schema = schemas[0].databaseName
+            if schemas and schema_names:
+                schema = schema_names[0]
                 logger.info(f"Getting tables for schema '{schema}'...")
                 cursor.tables(catalog_name=catalog, schema_name=schema)
                 tables = cursor.fetchall()
-                logger.info(f"Available tables in {schema}: {[t.tableName for t in tables]}")
+                log_metadata_results("tables", tables, logger)
+                
+                # Extract table names
+                table_names = extract_key_values(tables, "tableName") or extract_key_values(tables, "table_name")
+                if table_names:
+                    logger.info(f"Table names: {table_names}")
                 
                 # Get columns for a table
-                if tables:
-                    table = tables[0].tableName
+                if tables and table_names:
+                    table = table_names[0]
                     logger.info(f"Getting columns for table '{table}'...")
                     cursor.columns(catalog_name=catalog, schema_name=schema, table_name=table)
                     columns = cursor.fetchall()
-                    logger.info(f"Columns in {table}: {[c.column_name for c in columns]}")
+                    log_metadata_results("columns", columns, logger)
+                    
+                    # Extract column names
+                    column_names = extract_key_values(columns, "column_name") or extract_key_values(columns, "columnName") or extract_key_values(columns, "COLUMN_NAME")
+                    if column_names:
+                        logger.info(f"Column names: {column_names}")
         
         # Close cursor and connection
         cursor.close()
