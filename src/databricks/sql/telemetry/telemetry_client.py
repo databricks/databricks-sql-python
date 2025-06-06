@@ -2,6 +2,7 @@ import threading
 import time
 import json
 import requests
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
@@ -25,6 +26,8 @@ import uuid
 import locale
 from abc import ABC, abstractmethod
 from databricks.sql import __version__
+
+logger = logging.getLogger(__name__)
 
 
 class TelemetryHelper:
@@ -145,6 +148,7 @@ class TelemetryClient(BaseTelemetryClient):
         driver_connection_params,
         executor,
     ):
+        logger.info(f"Initializing TelemetryClient for connection: {connection_uuid}")
         self.telemetry_enabled = telemetry_enabled
         self.batch_size = 10  # TODO: Decide on batch size
         self.connection_uuid = connection_uuid
@@ -158,9 +162,13 @@ class TelemetryClient(BaseTelemetryClient):
 
     def export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
+        logger.debug(f"Exporting event for connection {self.connection_uuid}")
         with self.lock:
             self.events_batch.append(event)
         if len(self.events_batch) >= self.batch_size:
+            logger.debug(
+                f"Batch size limit reached ({self.batch_size}), flushing events"
+            )
             self.flush()
 
     def flush(self):
@@ -170,6 +178,7 @@ class TelemetryClient(BaseTelemetryClient):
             self.events_batch = []
 
         if events_to_flush:
+            logger.info(f"Flushing {len(events_to_flush)} telemetry events to server")
             self._send_telemetry(events_to_flush)
 
     def _send_telemetry(self, events):
@@ -189,11 +198,22 @@ class TelemetryClient(BaseTelemetryClient):
         if self.auth_provider:
             self.auth_provider.add_headers(headers)
 
-        self.executor.submit(
-            requests.post, url, data=json.dumps(request), headers=headers, timeout=10
-        )
+        try:
+            logger.debug("Submitting telemetry request to thread pool")
+            self.executor.submit(
+                requests.post,
+                url,
+                data=json.dumps(request),
+                headers=headers,
+                timeout=10,
+            )
+        except Exception as e:
+            logger.error(f"Failed to submit telemetry request: {e}")
 
     def export_initial_telemetry_log(self):
+        logger.info(
+            f"Exporting initial telemetry log for connection {self.connection_uuid}"
+        )
 
         telemetry_frontend_log = TelemetryFrontendLog(
             frontend_log_event_id=str(uuid.uuid4()),
@@ -215,6 +235,7 @@ class TelemetryClient(BaseTelemetryClient):
 
     def close(self):
         """Flush remaining events before closing"""
+        logger.info(f"Closing TelemetryClient for connection {self.connection_uuid}")
         self.flush()
         telemetry_client_factory.close(self.connection_uuid)
 
@@ -275,10 +296,12 @@ class TelemetryClientFactory:
 
     def close(self, connection_uuid):
         if connection_uuid in self._clients:
+            logger.debug(f"Removing telemetry client for connection {connection_uuid}")
             del self._clients[connection_uuid]
 
         # Shutdown executor if no more clients
         if not self._clients:
+            logger.info("No more telemetry clients, shutting down thread pool executor")
             self.executor.shutdown(wait=True)
 
 
