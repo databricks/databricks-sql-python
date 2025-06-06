@@ -3,15 +3,14 @@ from enum import Enum
 
 class AuthFlow(Enum):
     TOKEN_PASSTHROUGH = "token_passthrough"
-    CLIENT_CREDENTIALS = "client_credentials"
     BROWSER_BASED_AUTHENTICATION = "browser_based_authentication"
-    AZURE_MANAGED_IDENTITIES = "azure_managed_identities"
 
 
 class AuthMech(Enum):
-    OTHER = "other"
-    PAT = "pat"
-    OAUTH = "oauth"
+    OTHER = "OTHER"
+    PAT = "PAT"
+    DATABRICKS_OAUTH = "DATABRICKS_OAUTH"
+    EXTERNAL_AUTH = "EXTERNAL_AUTH"
 
 
 class DatabricksClientType(Enum):
