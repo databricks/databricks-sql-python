@@ -50,7 +50,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOperationState,
 )
 from databricks.sql.telemetry.telemetry_client import (
-    telemetry_client_factory,
+    TelemetryClientFactory,
     TelemetryHelper,
 )
 from databricks.sql.telemetry.models.enums import DatabricksClientType
@@ -303,6 +303,13 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
 
+        self.telemetry_client = TelemetryClientFactory.initialize_telemetry_client(
+            telemetry_enabled=self.telemetry_enabled,
+            connection_uuid=self.get_session_id_hex(),
+            auth_provider=auth_provider,
+            host_url=self.host,
+        )
+
         driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
             mode=DatabricksClientType.THRIFT,
@@ -313,15 +320,10 @@ class Connection:
             socket_timeout=kwargs.get("_socket_timeout", None),
         )
 
-        self.telemetry_client = telemetry_client_factory.initialize_telemetry_client(
-            telemetry_enabled=self.telemetry_enabled,
-            connection_uuid=self.get_session_id_hex(),
-            auth_provider=auth_provider,
-            user_agent=useragent_header,
+        self.telemetry_client.export_initial_telemetry_log(
             driver_connection_params=driver_connection_params,
+            user_agent=useragent_header,
         )
-
-        self.telemetry_client.export_initial_telemetry_log()
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
