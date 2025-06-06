@@ -60,7 +60,6 @@ class TestTelemetryClient(unittest.TestCase):
         
         self.client = TelemetryClient(
             telemetry_enabled=True,
-            batch_size=10,
             connection_uuid=self.connection_uuid,
             auth_provider=self.auth_provider,
             user_agent=self.user_agent,
@@ -123,7 +122,6 @@ class TestTelemetryClient(unittest.TestCase):
         """Test sending telemetry to the server without authentication."""
         unauthenticated_client = TelemetryClient(
             telemetry_enabled=True,
-            batch_size=10,
             connection_uuid=str(uuid.uuid4()),
             auth_provider=None,  # No auth provider
             user_agent=self.user_agent,
@@ -190,9 +188,8 @@ class TestTelemetryClientFactory(unittest.TestCase):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         
-        client = self.factory.get_telemetry_client(
+        client = self.factory.initialize_telemetry_client(
             telemetry_enabled=True,
-            batch_size=10,
             connection_uuid=connection_uuid,
             auth_provider=auth_provider,
             user_agent=user_agent,
@@ -202,7 +199,6 @@ class TestTelemetryClientFactory(unittest.TestCase):
         # Verify a new client was created and stored
         mock_client_class.assert_called_once_with(
             telemetry_enabled=True,
-            batch_size=10,
             connection_uuid=connection_uuid,
             auth_provider=auth_provider,
             user_agent=user_agent,
@@ -213,14 +209,7 @@ class TestTelemetryClientFactory(unittest.TestCase):
         self.assertEqual(self.factory._clients[connection_uuid], mock_client)
         
         # Call again with the same connection_uuid
-        client2 = self.factory.get_telemetry_client(
-            telemetry_enabled=True,
-            batch_size=10,
-            connection_uuid=connection_uuid,
-            auth_provider=auth_provider,
-            user_agent=user_agent,
-            driver_connection_params=driver_connection_params,
-        )
+        client2 = self.factory.get_telemetry_client(connection_uuid=connection_uuid)
         
         # Verify the same client was returned and no new client was created
         self.assertEqual(client2, mock_client)
@@ -228,9 +217,8 @@ class TestTelemetryClientFactory(unittest.TestCase):
 
     def test_get_telemetry_client_disabled(self):
         """Test getting a telemetry client when telemetry is disabled."""
-        client = self.factory.get_telemetry_client(
+        client = self.factory.initialize_telemetry_client(
             telemetry_enabled=False,
-            batch_size=10,
             connection_uuid="test-uuid",
             auth_provider=MagicMock(),
             user_agent="test-user-agent",
@@ -240,6 +228,9 @@ class TestTelemetryClientFactory(unittest.TestCase):
         # Verify a NoopTelemetryClient was returned
         self.assertIsInstance(client, NoopTelemetryClient)
         self.assertEqual(self.factory._clients, {})  # No client was stored
+
+        client2 = self.factory.get_telemetry_client("test-uuid")
+        self.assertIsInstance(client2, NoopTelemetryClient)
 
     @patch("databricks.sql.telemetry.telemetry_client.ThreadPoolExecutor")
     def test_close(self, mock_executor_class):

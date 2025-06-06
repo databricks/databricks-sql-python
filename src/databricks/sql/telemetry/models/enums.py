@@ -9,8 +9,8 @@ class AuthFlow(Enum):
 class AuthMech(Enum):
     OTHER = "OTHER"
     PAT = "PAT"
-    OAUTH = "OAUTH"
-    EXTERNAL = "EXTERNAL"
+    DATABRICKS_OAUTH = "DATABRICKS_OAUTH"
+    EXTERNAL_AUTH = "EXTERNAL_AUTH"
 
 
 class DatabricksClientType(Enum):

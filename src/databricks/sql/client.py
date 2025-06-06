@@ -247,9 +247,6 @@ class Connection:
         self.telemetry_enabled = (
             self.client_telemetry_enabled and self.server_telemetry_enabled
         )
-        telemetry_batch_size = kwargs.get(
-            "telemetry_batch_size", 100
-        )  # TODO: Decide on batch size
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
@@ -315,9 +312,8 @@ class Connection:
             discovery_url=TelemetryHelper.get_discovery_url(auth_provider),
             socket_timeout=kwargs.get("_socket_timeout", None),
         )
-        self.telemetry_client = telemetry_client_factory.get_telemetry_client(
+        self.telemetry_client = telemetry_client_factory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
-            batch_size=telemetry_batch_size,
             connection_uuid=self.get_session_id_hex(),
             auth_provider=auth_provider,
             user_agent=useragent_header,

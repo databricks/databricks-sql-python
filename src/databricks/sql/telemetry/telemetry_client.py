@@ -58,12 +58,14 @@ class TelemetryHelper:
         if not auth_provider:
             return None
         if isinstance(auth_provider, AccessTokenAuthProvider):
-            return AuthMech.PAT
+            return AuthMech.PAT  # Personal Access Token authentication
         elif isinstance(auth_provider, DatabricksOAuthProvider):
-            return AuthMech.OAUTH
+            return AuthMech.OAUTH  # Databricks-managed OAuth flow
         elif isinstance(auth_provider, ExternalAuthProvider):
-            return AuthMech.EXTERNAL
-        return AuthMech.OTHER
+            return (
+                AuthMech.EXTERNAL
+            )  # External identity provider (AWS IAM, Azure AD, etc.)
+        return AuthMech.OTHER  # Custom or unknown authentication provider
 
     @staticmethod
     def get_auth_flow(auth_provider):
@@ -72,14 +74,15 @@ class TelemetryHelper:
             return None
 
         if isinstance(auth_provider, DatabricksOAuthProvider):
-            if (
-                hasattr(auth_provider, "_refresh_token")
-                and auth_provider._refresh_token
-            ):
-                return AuthFlow.TOKEN_PASSTHROUGH
+            if auth_provider._access_token and auth_provider._refresh_token:
+                return (
+                    AuthFlow.TOKEN_PASSTHROUGH
+                )  # Has existing tokens, no user interaction needed
 
             if hasattr(auth_provider, "oauth_manager"):
-                return AuthFlow.BROWSER_BASED_AUTHENTICATION
+                return (
+                    AuthFlow.BROWSER_BASED_AUTHENTICATION
+                )  # Will initiate OAuth flow requiring browser
 
         return None
 
@@ -140,7 +143,6 @@ class TelemetryClient(BaseTelemetryClient):
     def __init__(
         self,
         telemetry_enabled,
-        batch_size,
         connection_uuid,
         auth_provider,
         user_agent,
@@ -148,7 +150,7 @@ class TelemetryClient(BaseTelemetryClient):
         executor,
     ):
         self.telemetry_enabled = telemetry_enabled
-        self.batch_size = batch_size
+        self.batch_size = 10  # TODO: Decide on batch size
         self.connection_uuid = connection_uuid
         self.auth_provider = auth_provider
         self.user_agent = user_agent
@@ -176,15 +178,12 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _send_telemetry(self, events):
         """Send telemetry events to the server"""
-        try:
-            request = {
-                "uploadTime": int(time.time() * 1000),
-                "items": [],
-                "protoLogs": [event.to_json() for event in events],
-            }
-        except Exception as e:
-            print(f"[DEBUG] Error creating telemetry request: {e}", flush=True)
-            raise e
+
+        request = {
+            "uploadTime": int(time.time() * 1000),
+            "items": [],
+            "protoLogs": [event.to_json() for event in events],
+        }
 
         path = "/telemetry-ext" if self.auth_provider else "/telemetry-unauth"
         url = f"https://{self.host_url}{path}"
@@ -248,10 +247,9 @@ class TelemetryClientFactory:
         )  # Thread pool for async operations TODO: Decide on max workers
         self._initialized = True
 
-    def get_telemetry_client(
+    def initialize_telemetry_client(
         self,
         telemetry_enabled,
-        batch_size,
         connection_uuid,
         auth_provider,
         user_agent,
@@ -262,13 +260,19 @@ class TelemetryClientFactory:
             if connection_uuid not in self._clients:
                 self._clients[connection_uuid] = TelemetryClient(
                     telemetry_enabled=telemetry_enabled,
-                    batch_size=batch_size,
                     connection_uuid=connection_uuid,
                     auth_provider=auth_provider,
                     user_agent=user_agent,
                     driver_connection_params=driver_connection_params,
                     executor=self.executor,
                 )
+            return self._clients[connection_uuid]
+        else:
+            return NoopTelemetryClient()
+
+    def get_telemetry_client(self, connection_uuid):
+        """Get the telemetry client for a specific connection"""
+        if connection_uuid in self._clients:
             return self._clients[connection_uuid]
         else:
             return NoopTelemetryClient()

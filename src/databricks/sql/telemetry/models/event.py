@@ -16,7 +16,7 @@ class EnumEncoder(json.JSONEncoder):
     """
     Custom JSON encoder to handle Enum values.
     This is used to convert Enum values to their string representations.
-    Default JSON encoder does not handle Enum values.
+    Default JSON encoder raises a TypeError for Enums.
     """
 
     def default(self, obj):
