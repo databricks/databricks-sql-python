@@ -312,6 +312,7 @@ class Connection:
             discovery_url=TelemetryHelper.get_discovery_url(auth_provider),
             socket_timeout=kwargs.get("_socket_timeout", None),
         )
+
         self.telemetry_client = telemetry_client_factory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             connection_uuid=self.get_session_id_hex(),
