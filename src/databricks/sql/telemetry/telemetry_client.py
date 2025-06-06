@@ -4,6 +4,7 @@ import json
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from typing import Dict
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -248,23 +249,27 @@ class TelemetryClientFactory:
     It uses a thread pool to handle asynchronous operations.
     """
 
-    _clients = {}  # Map of connection_uuid -> TelemetryClient
-    _executor = None
-    _initialized = False
+    _clients: Dict[
+        str, TelemetryClient
+    ] = {}  # Map of connection_uuid -> TelemetryClient
+    _executor: ThreadPoolExecutor = None
+    _initialized: bool = False
+    _lock = threading.Lock()  # Thread safety for factory operations
 
     @classmethod
     def _initialize(cls):
         """Initialize the factory if not already initialized"""
-        if not cls._initialized:
-            logger.info("Initializing TelemetryClientFactory")
-            cls._clients = {}
-            cls._executor = ThreadPoolExecutor(
-                max_workers=10
-            )  # Thread pool for async operations TODO: Decide on max workers
-            cls._initialized = True
-            logger.debug(
-                "TelemetryClientFactory initialized with thread pool (max_workers=10)"
-            )
+        with cls._lock:
+            if not cls._initialized:
+                logger.info("Initializing TelemetryClientFactory")
+                cls._clients = {}
+                cls._executor = ThreadPoolExecutor(
+                    max_workers=10
+                )  # Thread pool for async operations TODO: Decide on max workers
+                cls._initialized = True
+                logger.debug(
+                    "TelemetryClientFactory initialized with thread pool (max_workers=10)"
+                )
 
     @staticmethod
     def initialize_telemetry_client(
@@ -277,18 +282,19 @@ class TelemetryClientFactory:
         TelemetryClientFactory._initialize()
 
         if telemetry_enabled:
-            if connection_uuid not in TelemetryClientFactory._clients:
-                logger.info(
-                    f"Creating new TelemetryClient for connection {connection_uuid}"
-                )
-                TelemetryClientFactory._clients[connection_uuid] = TelemetryClient(
-                    telemetry_enabled=telemetry_enabled,
-                    connection_uuid=connection_uuid,
-                    auth_provider=auth_provider,
-                    host_url=host_url,
-                    executor=TelemetryClientFactory._executor,
-                )
-            return TelemetryClientFactory._clients[connection_uuid]
+            with TelemetryClientFactory._lock:
+                if connection_uuid not in TelemetryClientFactory._clients:
+                    logger.info(
+                        f"Creating new TelemetryClient for connection {connection_uuid}"
+                    )
+                    TelemetryClientFactory._clients[connection_uuid] = TelemetryClient(
+                        telemetry_enabled=telemetry_enabled,
+                        connection_uuid=connection_uuid,
+                        auth_provider=auth_provider,
+                        host_url=host_url,
+                        executor=TelemetryClientFactory._executor,
+                    )
+                return TelemetryClientFactory._clients[connection_uuid]
         else:
             return NoopTelemetryClient()
 
@@ -304,13 +310,18 @@ class TelemetryClientFactory:
     def close(connection_uuid):
         """Close and remove the telemetry client for a specific connection"""
 
-        if connection_uuid in TelemetryClientFactory._clients:
-            logger.debug(f"Removing telemetry client for connection {connection_uuid}")
-            del TelemetryClientFactory._clients[connection_uuid]
+        with TelemetryClientFactory._lock:
+            if connection_uuid in TelemetryClientFactory._clients:
+                logger.debug(
+                    f"Removing telemetry client for connection {connection_uuid}"
+                )
+                del TelemetryClientFactory._clients[connection_uuid]
 
-        # Shutdown executor if no more clients
-        if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
-            logger.info("No more telemetry clients, shutting down thread pool executor")
-            TelemetryClientFactory._executor.shutdown(wait=True)
-            TelemetryClientFactory._executor = None
-            TelemetryClientFactory._initialized = False
+            # Shutdown executor if no more clients
+            if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
+                logger.info(
+                    "No more telemetry clients, shutting down thread pool executor"
+                )
+                TelemetryClientFactory._executor.shutdown(wait=True)
+                TelemetryClientFactory._executor = None
+                TelemetryClientFactory._initialized = False
