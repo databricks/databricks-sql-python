@@ -4,7 +4,7 @@ import json
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict
+from typing import Dict, Optional
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -252,7 +252,7 @@ class TelemetryClientFactory:
     _clients: Dict[
         str, TelemetryClient
     ] = {}  # Map of connection_uuid -> TelemetryClient
-    _executor: ThreadPoolExecutor = None
+    _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.Lock()  # Thread safety for factory operations
 
