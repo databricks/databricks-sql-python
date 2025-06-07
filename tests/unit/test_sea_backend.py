@@ -102,7 +102,7 @@ class TestSeaBackend:
         mock_http_client._make_request.return_value = {"session_id": "test-session-456"}
 
         # Call the method with all parameters
-        session_config = {"spark.sql.shuffle.partitions": "10"}
+        session_config = {"ANSI_MODE": "FALSE", "STATEMENT_TIMEOUT": "3600"}
         catalog = "test_catalog"
         schema = "test_schema"
 
