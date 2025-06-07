@@ -376,12 +376,55 @@ class SeaCloudFetchQueue(ResultSetQueue):
         if chunk_index in self._fetched_chunk_indices:
             return [self._chunk_index_to_link[chunk_index]]
             
-        # Fetch links from SEA API
-        response = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
+        # Find the link that has this chunk_index as its next_chunk_index
+        next_chunk_link = None
+        next_chunk_internal_link = None
+        for link in self._chunk_index_to_link.values():
+            if link.next_chunk_index == chunk_index:
+                next_chunk_link = link
+                next_chunk_internal_link = link.next_chunk_internal_link
+                break
+                
+        if not next_chunk_internal_link:
+            # If we can't find a link with next_chunk_index, we can't fetch the chunk
+            logger.warning(f"Cannot find next_chunk_internal_link for chunk {chunk_index}")
+            return []
+            
+        logger.info(f"Fetching chunk {chunk_index} using next_chunk_internal_link: {next_chunk_internal_link}")
+            
+        # Use the next_chunk_internal_link to fetch the next chunk
+        # The link is relative to the base URL, so we need to remove the leading slash
+        path = next_chunk_internal_link.lstrip("/")
+        response_data = self._sea_client.http_client._make_request(
+            method="GET",
+            path=path,
+        )
         
-        # Update our tracking
-        links = response.external_links
-        for link in links:
+        # Extract the external_links from the response
+        external_links = response_data.get("external_links", [])
+        logger.info(f"Received {len(external_links)} external links for chunk {chunk_index}")
+        
+        # Convert the links to ExternalLink objects
+        from databricks.sql.backend.models.base import ExternalLink
+        links = []
+        for link_data in external_links:
+            link = ExternalLink(
+                external_link=link_data.get("external_link", ""),
+                expiration=link_data.get("expiration", ""),
+                chunk_index=link_data.get("chunk_index", 0),
+                byte_count=link_data.get("byte_count", 0),
+                row_count=link_data.get("row_count", 0),
+                row_offset=link_data.get("row_offset", 0),
+                next_chunk_index=link_data.get("next_chunk_index"),
+                next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
+                http_headers=link_data.get("http_headers", {}),
+            )
+            links.append(link)
+            
+            # Log link details
+            logger.info(f"Link details: chunk_index={link.chunk_index}, row_offset={link.row_offset}, row_count={link.row_count}, next_chunk_index={link.next_chunk_index}")
+            
+            # Update our tracking
             self._fetched_chunk_indices.add(link.chunk_index)
             self._chunk_index_to_link[link.chunk_index] = link
             
@@ -426,20 +469,46 @@ class SeaCloudFetchQueue(ResultSetQueue):
             return self._create_empty_table()
             
         results = pyarrow.Table.from_pydict({})  # Empty table
-        while self.table:
+        
+        # First, fetch the current table's remaining rows
+        if self.table_row_index < self.table.num_rows:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            
-            # Concatenate results if we have any
-            if results.num_rows > 0:
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
-                
+            results = table_slice
             self.table_row_index += table_slice.num_rows
-            self.table = self._create_next_table()
-            self.table_row_index = 0
+        
+        # Now, try to fetch all remaining chunks
+        for chunk_index in range(self._total_chunk_count):
+            if chunk_index not in self._fetched_chunk_indices:
+                try:
+                    # Try to fetch this chunk
+                    self._fetch_links_for_chunk(chunk_index)
+                except Exception as e:
+                    logger.error(f"Error fetching chunk {chunk_index}: {e}")
+                    continue
+                    
+                # If we successfully fetched the chunk, get its data
+                if chunk_index in self._fetched_chunk_indices:
+                    link = self._chunk_index_to_link[chunk_index]
+                    downloaded_file = self.download_manager.get_next_downloaded_file(link.row_offset)
+                    if downloaded_file:
+                        arrow_table = create_arrow_table_from_arrow_file(
+                            downloaded_file.file_bytes, self.description
+                        )
+                        
+                        # Ensure the table has the correct number of rows
+                        if arrow_table.num_rows > downloaded_file.row_count:
+                            arrow_table = arrow_table.slice(0, downloaded_file.row_count)
+                        
+                        # Concatenate with results
+                        if results.num_rows > 0:
+                            results = pyarrow.concat_tables([results, arrow_table])
+                        else:
+                            results = arrow_table
+            
+        self.table = None  # We've fetched everything, so clear the current table
+        self.table_row_index = 0
             
         return results
         
@@ -448,26 +517,50 @@ class SeaCloudFetchQueue(ResultSetQueue):
         # Get the next chunk index based on current state
         next_chunk_index = 0
         if self.table is not None:
-            # Find the chunk we're currently processing
+            # Find the current chunk we're processing
             current_chunk = None
-            for link in self._chunk_index_to_link.values():
+            for chunk_index, link in self._chunk_index_to_link.items():
+                # We're looking for the chunk that contains our current position
                 if link.row_offset <= self.table_row_index < link.row_offset + link.row_count:
                     current_chunk = link
                     break
                     
             if current_chunk and current_chunk.next_chunk_index is not None:
                 next_chunk_index = current_chunk.next_chunk_index
+                logger.info(f"Found next_chunk_index {next_chunk_index} from current chunk {current_chunk.chunk_index}")
             else:
                 # If we can't find the next chunk, try to fetch the next sequential one
                 next_chunk_index = max(self._fetched_chunk_indices) + 1 if self._fetched_chunk_indices else 0
+                logger.info(f"Using sequential next_chunk_index {next_chunk_index}")
+        
+        # Check if we've reached the end of all chunks
+        if next_chunk_index >= self._total_chunk_count:
+            logger.info(f"Reached end of chunks: next_chunk_index {next_chunk_index} >= total_chunk_count {self._total_chunk_count}")
+            return None
                 
         # Check if we need to fetch links for this chunk
-        if next_chunk_index not in self._fetched_chunk_indices and next_chunk_index < self._total_chunk_count:
-            self._fetch_links_for_chunk(next_chunk_index)
+        if next_chunk_index not in self._fetched_chunk_indices:
+            try:
+                logger.info(f"Fetching links for chunk {next_chunk_index}")
+                self._fetch_links_for_chunk(next_chunk_index)
+            except Exception as e:
+                logger.error(f"Error fetching links for chunk {next_chunk_index}: {e}")
+                # If we can't fetch the next chunk, try to return what we have
+                return None
+        else:
+            logger.info(f"Already have links for chunk {next_chunk_index}")
             
         # Find the next downloaded file
-        downloaded_file = self.download_manager.get_next_downloaded_file(next_chunk_index)
+        link = self._chunk_index_to_link.get(next_chunk_index)
+        if not link:
+            logger.error(f"No link found for chunk {next_chunk_index}")
+            return None
+            
+        row_offset = link.row_offset
+        logger.info(f"Getting downloaded file for chunk {next_chunk_index} with row_offset {row_offset}")
+        downloaded_file = self.download_manager.get_next_downloaded_file(row_offset)
         if not downloaded_file:
+            logger.error(f"No downloaded file found for chunk {next_chunk_index} with row_offset {row_offset}")
             return None
             
         arrow_table = create_arrow_table_from_arrow_file(
@@ -478,6 +571,7 @@ class SeaCloudFetchQueue(ResultSetQueue):
         if arrow_table.num_rows > downloaded_file.row_count:
             arrow_table = arrow_table.slice(0, downloaded_file.row_count)
 
+        logger.info(f"Created arrow table for chunk {next_chunk_index} with {arrow_table.num_rows} rows")
         return arrow_table
         
     def _create_empty_table(self) -> "pyarrow.Table":
