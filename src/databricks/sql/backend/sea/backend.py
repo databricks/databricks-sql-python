@@ -131,7 +131,9 @@ class SeaDatabricksClient(DatabricksClient):
         Opens a new session with the Databricks SQL service using SEA.
 
         Args:
-            session_configuration: Optional dictionary of configuration parameters for the session
+            session_configuration: Optional dictionary of configuration parameters for the session.
+                                   Only specific parameters are supported as documented at:
+                                   https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-parameters
             catalog: Optional catalog name to use as the initial catalog for the session
             schema: Optional schema name to use as the initial schema for the session
 
