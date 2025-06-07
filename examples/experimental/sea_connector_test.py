@@ -105,7 +105,7 @@ def test_sea_result_set_json_array_inline():
         )
         
         # Create cursor
-        cursor = connection.cursor(arraysize=0, buffer_size_bytes=0)
+        cursor = connection.cursor()
         
         # Execute a query that returns a small result set (will use INLINE disposition)
         logger.info("Executing query: SELECT * FROM range(1, 10) AS id")

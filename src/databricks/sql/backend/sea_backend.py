@@ -353,8 +353,7 @@ class SeaDatabricksClient(DatabricksClient):
             format=format,
             wait_timeout="0s" if async_op else "10s",
             on_wait_timeout="CONTINUE",
-            row_limit=max_rows if max_rows > 0 else None,
-            byte_limit=max_bytes if max_bytes > 0 else None,
+            row_limit=max_rows,
             parameters=sea_parameters if sea_parameters else None,
             result_compression=result_compression,
         )

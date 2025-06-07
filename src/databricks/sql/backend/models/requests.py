@@ -21,19 +21,16 @@ class StatementParameter:
 class ExecuteStatementRequest:
     """Request to execute a SQL statement."""
 
-    warehouse_id: str
-    statement: str
     session_id: str
+    statement: str
+    warehouse_id: str
     disposition: str = "EXTERNAL_LINKS"
     format: str = "JSON_ARRAY"
+    result_compression: Optional[str] = None
+    parameters: Optional[List[StatementParameter]] = None
     wait_timeout: str = "10s"
     on_wait_timeout: str = "CONTINUE"
     row_limit: Optional[int] = None
-    byte_limit: Optional[int] = None
-    parameters: Optional[List[StatementParameter]] = None
-    catalog: Optional[str] = None
-    schema: Optional[str] = None
-    result_compression: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
@@ -49,15 +46,6 @@ class ExecuteStatementRequest:
 
         if self.row_limit is not None and self.row_limit > 0:
             result["row_limit"] = self.row_limit
-
-        if self.byte_limit is not None and self.byte_limit > 0:
-            result["byte_limit"] = self.byte_limit
-
-        if self.catalog:
-            result["catalog"] = self.catalog
-
-        if self.schema:
-            result["schema"] = self.schema
 
         if self.result_compression:
             result["result_compression"] = self.result_compression
