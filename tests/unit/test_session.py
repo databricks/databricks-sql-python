@@ -1,12 +1,7 @@
 import unittest
-from unittest.mock import patch, MagicMock, Mock, PropertyMock
+from unittest.mock import patch, Mock
 import gc
 
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TOpenSessionResp,
-    TSessionHandle,
-    THandleIdentifier,
-)
 from databricks.sql.backend.types import SessionId, BackendType
 
 import databricks.sql
@@ -62,9 +57,9 @@ class SessionTestSuite(unittest.TestCase):
 
         for args in connection_args:
             connection = databricks.sql.connect(**args)
-            host, port, http_path, *_ = mock_client_class.call_args[0]
-            self.assertEqual(args["server_hostname"], host)
-            self.assertEqual(args["http_path"], http_path)
+            call_kwargs = mock_client_class.call_args[1]
+            self.assertEqual(args["server_hostname"], call_kwargs["server_hostname"])
+            self.assertEqual(args["http_path"], call_kwargs["http_path"])
             connection.close()
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
@@ -72,8 +67,8 @@ class SessionTestSuite(unittest.TestCase):
         http_headers = [("foo", "bar")]
         databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, http_headers=http_headers)
 
-        call_args = mock_client_class.call_args[0][3]
-        self.assertIn(("foo", "bar"), call_args)
+        call_kwargs = mock_client_class.call_args[1]
+        self.assertIn(("foo", "bar"), call_kwargs["http_headers"])
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_tls_arg_passthrough(self, mock_client_class):
@@ -95,7 +90,8 @@ class SessionTestSuite(unittest.TestCase):
     def test_useragent_header(self, mock_client_class):
         databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
 
-        http_headers = mock_client_class.call_args[0][3]
+        call_kwargs = mock_client_class.call_args[1]
+        http_headers = call_kwargs["http_headers"]
         user_agent_header = (
             "User-Agent",
             "{}/{}".format(databricks.sql.USER_AGENT_NAME, databricks.sql.__version__),
@@ -109,7 +105,8 @@ class SessionTestSuite(unittest.TestCase):
                 databricks.sql.USER_AGENT_NAME, databricks.sql.__version__, "foobar"
             ),
         )
-        http_headers = mock_client_class.call_args[0][3]
+        call_kwargs = mock_client_class.call_args[1]
+        http_headers = call_kwargs["http_headers"]
         self.assertIn(user_agent_header_with_entry, http_headers)
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
