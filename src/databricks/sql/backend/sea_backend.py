@@ -6,6 +6,7 @@ from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
+    from databricks.sql.backend.models.responses import GetChunksResponse
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType, ExecuteResponse
@@ -14,7 +15,7 @@ from databricks.sql.backend.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.utils import SeaResultSetQueueFactory
-from databricks.sql.backend.models.base import ResultData
+from databricks.sql.backend.models.base import ResultData, ExternalLink, ResultManifest
 
 from databricks.sql.backend.models import (
     ExecuteStatementRequest,
@@ -47,6 +48,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
+    CHUNKS_PATH_WITH_ID = STATEMENT_PATH + "/{}/result/chunks"
 
     def __init__(
         self,
@@ -229,6 +231,97 @@ class SeaDatabricksClient(DatabricksClient):
             params=request.to_dict(),
         )
 
+    def get_chunk_links(self, statement_id: str, chunk_index: int) -> "GetChunksResponse":
+        """
+        Get links for chunks starting from the specified index.
+        
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+            
+        Returns:
+            GetChunksResponse: Response containing external links
+        """
+        from databricks.sql.backend.models.responses import GetChunksResponse
+        
+        params = {"chunk_index": chunk_index}
+        
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=self.CHUNKS_PATH_WITH_ID.format(statement_id),
+            params=params,
+        )
+        
+        return GetChunksResponse.from_dict(response_data)
+        
+    def _get_schema_bytes(self, sea_response) -> Optional[bytes]:
+        """
+        Extract schema bytes from the SEA response.
+        
+        For ARROW format, we need to get the schema bytes from the first chunk.
+        If the first chunk is not available, we need to get it from the server.
+        
+        Args:
+            sea_response: The response from the SEA API
+            
+        Returns:
+            bytes: The schema bytes or None if not available
+        """
+        import requests
+        import lz4.frame
+        
+        # Check if we have the first chunk in the response
+        result_data = sea_response.get("result", {})
+        external_links = result_data.get("external_links", [])
+        
+        if not external_links:
+            return None
+        
+        # Find the first chunk (chunk_index = 0)
+        first_chunk = None
+        for link in external_links:
+            if link.get("chunk_index") == 0:
+                first_chunk = link
+                break
+        
+        if not first_chunk:
+            # Try to fetch the first chunk from the server
+            statement_id = sea_response.get("statement_id")
+            if not statement_id:
+                return None
+                
+            chunks_response = self.get_chunk_links(statement_id, 0)
+            if not chunks_response.external_links:
+                return None
+                
+            first_chunk = chunks_response.external_links[0].__dict__
+        
+        # Download the first chunk to get the schema bytes
+        external_link = first_chunk.get("external_link")
+        http_headers = first_chunk.get("http_headers", {})
+        
+        if not external_link:
+            return None
+        
+        # Use requests to download the first chunk
+        http_response = requests.get(
+            external_link,
+            headers=http_headers,
+            verify=self.ssl_options.tls_verify,
+        )
+        
+        if http_response.status_code != 200:
+            raise Error(f"Failed to download schema bytes: {http_response.text}")
+        
+        # Extract schema bytes from the Arrow file
+        # The schema is at the beginning of the file
+        data = http_response.content
+        if sea_response.get("manifest", {}).get("result_compression") == "LZ4_FRAME":
+            data = lz4.frame.decompress(data)
+        
+        # Return the schema bytes
+        return data
+        
     def _results_message_to_execute_response(self, sea_response, command_id):
         """
         Convert a SEA response to an ExecuteResponse.
@@ -270,16 +363,67 @@ class SeaDatabricksClient(DatabricksClient):
                 )
             description = columns if columns else None
         
+        # Extract schema bytes for Arrow format
+        schema_bytes = None
+        format = manifest_data.get("format")
+        if format == "ARROW_STREAM":
+            # For ARROW format, we need to get the schema bytes
+            schema_bytes = self._get_schema_bytes(sea_response)
+        
+        # Check for compression
+        lz4_compressed = manifest_data.get("result_compression") == "LZ4_FRAME"
+        
         # Create results queue
         results_queue = None
         result_data = sea_response.get("result", {})
         if result_data:
+            # Convert external links
+            external_links = None
+            if "external_links" in result_data:
+                external_links = []
+                for link_data in result_data["external_links"]:
+                    external_links.append(
+                        ExternalLink(
+                            external_link=link_data.get("external_link", ""),
+                            expiration=link_data.get("expiration", ""),
+                            chunk_index=link_data.get("chunk_index", 0),
+                            byte_count=link_data.get("byte_count", 0),
+                            row_count=link_data.get("row_count", 0),
+                            row_offset=link_data.get("row_offset", 0),
+                            next_chunk_index=link_data.get("next_chunk_index"),
+                            next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
+                            http_headers=link_data.get("http_headers", {}),
+                        )
+                    )
+            
+            # Create the result data object
+            result_data_obj = ResultData(
+                data=result_data.get("data_array"),
+                external_links=external_links
+            )
+            
+            # Create the manifest object
+            manifest_obj = ResultManifest(
+                format=manifest_data.get("format", ""),
+                schema=manifest_data.get("schema", {}),
+                total_row_count=manifest_data.get("total_row_count", 0),
+                total_byte_count=manifest_data.get("total_byte_count", 0),
+                total_chunk_count=manifest_data.get("total_chunk_count", 0),
+                truncated=manifest_data.get("truncated", False),
+                chunks=manifest_data.get("chunks"),
+                result_compression=manifest_data.get("result_compression")
+            )
+            
             results_queue = SeaResultSetQueueFactory.build_queue(
-                ResultData(
-                    data=result_data.get("data_array", None),
-                    external_links=result_data.get("external_links", None)
-                ),
-                description=description
+                result_data_obj,
+                manifest_obj,
+                command_id.to_sea_statement_id(),
+                description=description,
+                schema_bytes=schema_bytes,
+                max_download_threads=self.max_download_threads,
+                ssl_options=self.ssl_options,
+                sea_client=self,
+                lz4_compressed=lz4_compressed,
             )
         
         return ExecuteResponse(
@@ -289,7 +433,7 @@ class SeaDatabricksClient(DatabricksClient):
             has_more_rows=False,
             results_queue=results_queue,
             has_been_closed_server_side=False,
-            lz4_compressed=False, # TODO: extract from response 
+            lz4_compressed=lz4_compressed,
             is_staging_operation=False,
         )
 

@@ -13,7 +13,7 @@ except ImportError:
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue, ResultSetQueue, JsonQueue
+from databricks.sql.utils import ColumnTable, ColumnQueue, ResultSetQueue, JsonQueue, SeaCloudFetchQueue
 from databricks.sql.backend.types import CommandId
 
 logger = logging.getLogger(__name__)
@@ -487,9 +487,25 @@ class SeaResultSet(ResultSet):
             # Convert to Row object
             converted_rows = self._convert_to_row_objects(rows)
             return converted_rows[0] if converted_rows else None
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.next_n_rows(1)
+            if arrow_table.num_rows == 0:
+                return None
+                
+            # Convert Arrow table to Row object
+            column_names = [col[0] for col in self.description]
+            ResultRow = Row(*column_names)
+            
+            # Get the first row as a list of values
+            row_values = [arrow_table.column(i)[0].as_py() for i in range(arrow_table.num_columns)]
+            
+            # Increment the row index
+            self._next_row_index += 1
+            
+            return ResultRow(*row_values)
         else:
             # This should not happen with current implementation
-            # but added for future compatibility
             raise NotImplementedError("Unsupported queue type")
     
     def fetchmany(self, size: Optional[int] = None) -> List[Row]:
@@ -511,9 +527,28 @@ class SeaResultSet(ResultSet):
             
             # Convert to Row objects
             return self._convert_to_row_objects(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.next_n_rows(size)
+            if arrow_table.num_rows == 0:
+                return []
+                
+            # Convert Arrow table to Row objects
+            column_names = [col[0] for col in self.description]
+            ResultRow = Row(*column_names)
+            
+            # Convert each row to a Row object
+            result_rows = []
+            for i in range(arrow_table.num_rows):
+                row_values = [arrow_table.column(j)[i].as_py() for j in range(arrow_table.num_columns)]
+                result_rows.append(ResultRow(*row_values))
+            
+            # Increment the row index
+            self._next_row_index += arrow_table.num_rows
+            
+            return result_rows
         else:
             # This should not happen with current implementation
-            # but added for future compatibility
             raise NotImplementedError("Unsupported queue type")
     
     def fetchall(self) -> List[Row]:
@@ -527,9 +562,28 @@ class SeaResultSet(ResultSet):
             
             # Convert to Row objects
             return self._convert_to_row_objects(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.remaining_rows()
+            if arrow_table.num_rows == 0:
+                return []
+                
+            # Convert Arrow table to Row objects
+            column_names = [col[0] for col in self.description]
+            ResultRow = Row(*column_names)
+            
+            # Convert each row to a Row object
+            result_rows = []
+            for i in range(arrow_table.num_rows):
+                row_values = [arrow_table.column(j)[i].as_py() for j in range(arrow_table.num_columns)]
+                result_rows.append(ResultRow(*row_values))
+            
+            # Increment the row index
+            self._next_row_index += arrow_table.num_rows
+            
+            return result_rows
         else:
             # This should not happen with current implementation
-            # but added for future compatibility
             raise NotImplementedError("Unsupported queue type")
             
     def fetchmany_arrow(self, size: int) -> Any:
@@ -537,26 +591,42 @@ class SeaResultSet(ResultSet):
         if not pyarrow:
             raise ImportError("PyArrow is required for Arrow support")
 
-        rows = self.fetchmany(size)
-        if not rows:
-            # Return empty Arrow table with schema
-            return self._create_empty_arrow_table()
-
-        # Convert rows to Arrow table
-        return self._convert_rows_to_arrow_table(rows)
+        if isinstance(self.results, JsonQueue):
+            rows = self.fetchmany(size)
+            if not rows:
+                # Return empty Arrow table with schema
+                return self._create_empty_arrow_table()
+    
+            # Convert rows to Arrow table
+            return self._convert_rows_to_arrow_table(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.next_n_rows(size)
+            self._next_row_index += arrow_table.num_rows
+            return arrow_table
+        else:
+            raise NotImplementedError("Unsupported queue type")
 
     def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
         if not pyarrow:
             raise ImportError("PyArrow is required for Arrow support")
 
-        rows = self.fetchall()
-        if not rows:
-            # Return empty Arrow table with schema
-            return self._create_empty_arrow_table()
-
-        # Convert rows to Arrow table
-        return self._convert_rows_to_arrow_table(rows)
+        if isinstance(self.results, JsonQueue):
+            rows = self.fetchall()
+            if not rows:
+                # Return empty Arrow table with schema
+                return self._create_empty_arrow_table()
+    
+            # Convert rows to Arrow table
+            return self._convert_rows_to_arrow_table(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.remaining_rows()
+            self._next_row_index += arrow_table.num_rows
+            return arrow_table
+        else:
+            raise NotImplementedError("Unsupported queue type")
 
     def close(self) -> None:
         """Close the result set and release any resources."""
