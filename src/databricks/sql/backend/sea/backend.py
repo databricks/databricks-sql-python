@@ -12,7 +12,7 @@ from databricks.sql.backend.utils.http_client import SeaHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
-from databricks.sql.backend.models import (
+from databricks.sql.backend.sea.models import (
     CreateSessionRequest,
     DeleteSessionRequest,
     CreateSessionResponse,

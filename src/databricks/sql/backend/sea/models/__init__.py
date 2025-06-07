@@ -4,12 +4,12 @@ Models for the SEA (Statement Execution API) backend.
 This package contains data models for SEA API requests and responses.
 """
 
-from databricks.sql.backend.models.requests import (
+from databricks.sql.backend.sea.models.requests import (
     CreateSessionRequest,
     DeleteSessionRequest,
 )
 
-from databricks.sql.backend.models.responses import (
+from databricks.sql.backend.sea.models.responses import (
     CreateSessionResponse,
 )
 

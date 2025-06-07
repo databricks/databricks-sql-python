@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from databricks.sql.backend.sea_backend import SeaDatabricksClient
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
@@ -15,7 +15,7 @@ class TestSeaBackend:
     def mock_http_client(self):
         """Create a mock HTTP client."""
         with patch(
-            "databricks.sql.backend.sea_backend.SeaHttpClient"
+            "databricks.sql.backend.sea.backend.SeaHttpClient"
         ) as mock_client_class:
             mock_client = mock_client_class.return_value
             yield mock_client
