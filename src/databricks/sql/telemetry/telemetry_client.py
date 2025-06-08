@@ -86,18 +86,6 @@ class TelemetryHelper:
 
         return None
 
-    @staticmethod
-    def get_discovery_url(auth_provider):
-        """Get the discovery URL for the auth provider."""
-        if not auth_provider:
-            return None
-
-        if isinstance(auth_provider, DatabricksOAuthProvider):
-            return auth_provider.oauth_manager.idp_endpoint.get_openid_config_url(
-                auth_provider.hostname
-            )
-        return None
-
 
 class BaseTelemetryClient(ABC):
     """

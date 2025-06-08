@@ -316,7 +316,6 @@ class Connection:
             host_info=HostDetails(host_url=server_hostname, port=self.port),
             auth_mech=TelemetryHelper.get_auth_mechanism(auth_provider),
             auth_flow=TelemetryHelper.get_auth_flow(auth_provider),
-            discovery_url=TelemetryHelper.get_discovery_url(auth_provider),
             socket_timeout=kwargs.get("_socket_timeout", None),
         )
 
