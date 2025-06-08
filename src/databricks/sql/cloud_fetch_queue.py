@@ -5,7 +5,8 @@ This module contains the base class and implementations for cloud fetch queues
 that handle EXTERNAL_LINKS disposition with ARROW format.
 """
 
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from abc import ABC
+from typing import Any, List, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.backend.sea_backend import SeaDatabricksClient
@@ -127,7 +128,7 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     return arrow_table, n_rows
 
 
-class CloudFetchQueue(ResultSetQueue):
+class CloudFetchQueue(ResultSetQueue, ABC):
     """Base class for cloud fetch queues that handle EXTERNAL_LINKS disposition with ARROW format."""
 
     def __init__(
