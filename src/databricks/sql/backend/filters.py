@@ -41,11 +41,11 @@ class ResultSetFilter:
     ) -> "SeaResultSet":
         """
         Filter a SEA result set using the provided filter function.
-        
+
         Args:
             result_set: The SEA result set to filter
             filter_func: Function that takes a row and returns True if the row should be included
-            
+
         Returns:
             A filtered SEA result set
         """
@@ -53,28 +53,28 @@ class ResultSetFilter:
         original_index = result_set.results.cur_row_index
         result_set.results.cur_row_index = 0  # Reset to beginning
         all_rows = result_set.results.remaining_rows()
-        
+
         # Filter rows
         filtered_rows = [row for row in all_rows if filter_func(row)]
-        
+
         # Import SeaResultSet here to avoid circular imports
         from databricks.sql.result_set import SeaResultSet
-        
+
         # Reuse the command_id from the original result set
         command_id = result_set.command_id
-        
+
         # Create an ExecuteResponse with the filtered data
         execute_response = ExecuteResponse(
             command_id=command_id,
             status=result_set.status,
             description=result_set.description,
-            has_more_rows=result_set._has_more_rows,  
+            has_more_rows=result_set._has_more_rows,
             results_queue=JsonQueue(filtered_rows),
             has_been_closed_server_side=result_set.has_been_closed_server_side,
             lz4_compressed=False,
             is_staging_operation=False,
         )
-        
+
         return SeaResultSet(
             connection=result_set.connection,
             execute_response=execute_response,
@@ -108,6 +108,7 @@ class ResultSetFilter:
 
         # Determine the type of result set and apply appropriate filtering
         from databricks.sql.result_set import SeaResultSet
+
         if isinstance(result_set, SeaResultSet):
             return ResultSetFilter._filter_sea_result_set(
                 result_set,

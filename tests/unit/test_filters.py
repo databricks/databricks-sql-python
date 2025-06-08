@@ -38,12 +38,13 @@ class TestResultSetFilter(unittest.TestCase):
         self.mock_sea_result_set.buffer_size_bytes = 1000
         self.mock_sea_result_set.arraysize = 100
         self.mock_sea_result_set.statement_id = "test-statement-id"
-        
+
         # Create a mock CommandId
         from databricks.sql.backend.types import CommandId, BackendType
+
         mock_command_id = CommandId(BackendType.SEA, "test-statement-id")
         self.mock_sea_result_set.command_id = mock_command_id
-        
+
         self.mock_sea_result_set.status = MagicMock()
         self.mock_sea_result_set.description = [
             ("catalog_name", "string", None, None, None, None, True),
@@ -61,11 +62,13 @@ class TestResultSetFilter(unittest.TestCase):
 
         # Make the mock_sea_result_set appear to be a SeaResultSet
         with patch("databricks.sql.backend.filters.isinstance", return_value=True):
-            with patch("databricks.sql.result_set.SeaResultSet") as mock_sea_result_set_class:
+            with patch(
+                "databricks.sql.result_set.SeaResultSet"
+            ) as mock_sea_result_set_class:
                 # Set up the mock to return a new mock when instantiated
                 mock_instance = MagicMock()
                 mock_sea_result_set_class.return_value = mock_instance
-                
+
                 result = ResultSetFilter.filter_tables_by_type(
                     self.mock_sea_result_set, table_types
                 )
@@ -80,11 +83,13 @@ class TestResultSetFilter(unittest.TestCase):
 
         # Make the mock_sea_result_set appear to be a SeaResultSet
         with patch("databricks.sql.backend.filters.isinstance", return_value=True):
-            with patch("databricks.sql.result_set.SeaResultSet") as mock_sea_result_set_class:
+            with patch(
+                "databricks.sql.result_set.SeaResultSet"
+            ) as mock_sea_result_set_class:
                 # Set up the mock to return a new mock when instantiated
                 mock_instance = MagicMock()
                 mock_sea_result_set_class.return_value = mock_instance
-                
+
                 result = ResultSetFilter.filter_tables_by_type(
                     self.mock_sea_result_set, table_types
                 )
@@ -96,11 +101,13 @@ class TestResultSetFilter(unittest.TestCase):
         """Test filtering tables by type with default types."""
         # Make the mock_sea_result_set appear to be a SeaResultSet
         with patch("databricks.sql.backend.filters.isinstance", return_value=True):
-            with patch("databricks.sql.result_set.SeaResultSet") as mock_sea_result_set_class:
+            with patch(
+                "databricks.sql.result_set.SeaResultSet"
+            ) as mock_sea_result_set_class:
                 # Set up the mock to return a new mock when instantiated
                 mock_instance = MagicMock()
                 mock_sea_result_set_class.return_value = mock_instance
-                
+
                 result = ResultSetFilter.filter_tables_by_type(
                     self.mock_sea_result_set, None
                 )

@@ -26,7 +26,7 @@ class ResultFileDownloadManager:
         self._pending_links: List[TSparkArrowResultLink] = []
         # Add a cache to store downloaded files by row offset
         self._downloaded_files_cache = {}
-        
+
         for link in links:
             if link.rowCount <= 0:
                 continue
@@ -59,11 +59,15 @@ class ResultFileDownloadManager:
         Args:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
         """
-        logger.info(f"ResultFileDownloadManager: get_next_downloaded_file for row offset {next_row_offset}")
+        logger.info(
+            f"ResultFileDownloadManager: get_next_downloaded_file for row offset {next_row_offset}"
+        )
 
         # Check if we have this file in the cache
         if next_row_offset in self._downloaded_files_cache:
-            logger.info(f"ResultFileDownloadManager: Found file in cache for row offset {next_row_offset}")
+            logger.info(
+                f"ResultFileDownloadManager: Found file in cache for row offset {next_row_offset}"
+            )
             return self._downloaded_files_cache[next_row_offset]
 
         # Make sure the download queue is always full
@@ -76,30 +80,36 @@ class ResultFileDownloadManager:
             return None
 
         # Log all pending download tasks
-        logger.info(f"ResultFileDownloadManager: {len(self._download_tasks)} download tasks pending")
-        
+        logger.info(
+            f"ResultFileDownloadManager: {len(self._download_tasks)} download tasks pending"
+        )
+
         # Find the task that matches the requested row offset
         matching_task_index = None
         for i, task in enumerate(self._download_tasks):
             if task.done():
                 try:
                     file = task.result(timeout=0)  # Don't block
-                    logger.info(f"Task {i}: start_row_offset={file.start_row_offset}, row_count={file.row_count}")
+                    logger.info(
+                        f"Task {i}: start_row_offset={file.start_row_offset}, row_count={file.row_count}"
+                    )
                     if file.start_row_offset == next_row_offset:
                         matching_task_index = i
                         break
                 except Exception as e:
                     logger.error(f"Error getting task result: {e}")
-        
+
         # If we found a matching task, use it
         if matching_task_index is not None:
-            logger.info(f"ResultFileDownloadManager: Found matching task at index {matching_task_index}")
+            logger.info(
+                f"ResultFileDownloadManager: Found matching task at index {matching_task_index}"
+            )
             task = self._download_tasks.pop(matching_task_index)
             file = task.result()
             # Cache the file for future use
             self._downloaded_files_cache[file.start_row_offset] = file
             return file
-        
+
         # Otherwise, just use the first task
         task = self._download_tasks.pop(0)
         # Future's `result()` method will wait for the call to complete, and return
@@ -108,7 +118,7 @@ class ResultFileDownloadManager:
         file = task.result()
         # Cache the file for future use
         self._downloaded_files_cache[file.start_row_offset] = file
-        
+
         if (next_row_offset < file.start_row_offset) or (
             next_row_offset > file.start_row_offset + file.row_count
         ):
@@ -143,7 +153,7 @@ class ResultFileDownloadManager:
     def add_links(self, links: List[TSparkArrowResultLink]):
         """
         Add more links to the download manager.
-        
+
         Args:
             links: List of links to add
         """
@@ -156,7 +166,7 @@ class ResultFileDownloadManager:
                 )
             )
             self._pending_links.append(link)
-        
+
         # Make sure the download queue is always full
         self._schedule_downloads()
 

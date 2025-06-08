@@ -19,6 +19,7 @@ from databricks.sql.result_set import SeaResultSet
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 from databricks.sql.utils import JsonQueue
 
+
 class TestSeaResultSet(unittest.TestCase):
     """Tests for the SeaResultSet class."""
 
@@ -48,7 +49,7 @@ class TestSeaResultSet(unittest.TestCase):
             results_queue=JsonQueue([[1, "Alice"], [2, "Bob"], [3, "Charlie"]]),
             has_been_closed_server_side=False,
             lz4_compressed=False,
-            is_staging_operation=False
+            is_staging_operation=False,
         )
 
         # Create a mock ExecuteResponse for error
@@ -60,7 +61,7 @@ class TestSeaResultSet(unittest.TestCase):
             results_queue=None,
             has_been_closed_server_side=False,
             lz4_compressed=False,
-            is_staging_operation=False
+            is_staging_operation=False,
         )
 
     def test_init_with_inline_data(self):

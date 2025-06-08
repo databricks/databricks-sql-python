@@ -355,10 +355,12 @@ class CommandId:
 @dataclass
 class ExecuteResponse:
     """Response from executing a SQL command."""
-    
+
     command_id: CommandId
     status: CommandState
-    description: Optional[List[Tuple[str, str, None, None, Optional[int], Optional[int], bool]]] = None
+    description: Optional[
+        List[Tuple[str, str, None, None, Optional[int], Optional[int], bool]]
+    ] = None
     has_more_rows: bool = False
     results_queue: Optional[Any] = None
     has_been_closed_server_side: bool = False

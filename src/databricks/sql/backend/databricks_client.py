@@ -17,7 +17,12 @@ if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.backend.types import SessionId, CommandId, CommandState, ExecuteResponse
+from databricks.sql.backend.types import (
+    SessionId,
+    CommandId,
+    CommandState,
+    ExecuteResponse,
+)
 from databricks.sql.types import SSLOptions
 
 # Forward reference for type hints

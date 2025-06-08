@@ -21,7 +21,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
         result_data = MagicMock(spec=ResultData)
         result_data.data = [[1, "Alice"], [2, "Bob"]]
         result_data.external_links = None
-        
+
         # Create a mock manifest
         manifest = MagicMock(spec=ResultManifest)
         manifest.format = "JSON_ARRAY"
@@ -29,9 +29,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
 
         # Build queue
         queue = SeaResultSetQueueFactory.build_queue(
-            result_data,
-            manifest,
-            "test-statement-id"
+            result_data, manifest, "test-statement-id"
         )
 
         # Verify queue type
@@ -45,7 +43,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
         result_data = MagicMock(spec=ResultData)
         result_data.data = []
         result_data.external_links = None
-        
+
         # Create a mock manifest
         manifest = MagicMock(spec=ResultManifest)
         manifest.format = "JSON_ARRAY"
@@ -53,9 +51,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
 
         # Build queue
         queue = SeaResultSetQueueFactory.build_queue(
-            result_data,
-            manifest,
-            "test-statement-id"
+            result_data, manifest, "test-statement-id"
         )
 
         # Verify queue type and properties
@@ -69,7 +65,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
         result_data = MagicMock(spec=ResultData)
         result_data.data = None
         result_data.external_links = [MagicMock()]
-        
+
         # Create a mock manifest
         manifest = MagicMock(spec=ResultManifest)
         manifest.format = "ARROW_STREAM"
@@ -78,9 +74,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
         # Verify ValueError is raised when required arguments are missing
         with self.assertRaises(ValueError):
             SeaResultSetQueueFactory.build_queue(
-                result_data,
-                manifest,
-                "test-statement-id"
+                result_data, manifest, "test-statement-id"
             )
 
     def test_sea_result_set_queue_factory_with_no_data(self):
@@ -89,7 +83,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
         result_data = MagicMock(spec=ResultData)
         result_data.data = None
         result_data.external_links = None
-        
+
         # Create a mock manifest
         manifest = MagicMock(spec=ResultManifest)
         manifest.format = "JSON_ARRAY"
@@ -97,9 +91,7 @@ class TestResultSetQueueFactories(unittest.TestCase):
 
         # Build queue
         queue = SeaResultSetQueueFactory.build_queue(
-            result_data,
-            manifest,
-            "test-statement-id"
+            result_data, manifest, "test-statement-id"
         )
 
         # Verify queue type and properties

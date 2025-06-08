@@ -44,7 +44,7 @@ class ExecuteStatementResponse:
             error=error,
             sql_state=status_data.get("sql_state"),
         )
-        
+
         # Parse manifest
         manifest = None
         if "manifest" in data:
@@ -59,13 +59,13 @@ class ExecuteStatementResponse:
                 chunks=manifest_data.get("chunks"),
                 result_compression=manifest_data.get("result_compression"),
             )
-        
+
         # Parse result data
         result = None
         if "result" in data:
             result_data = data["result"]
             external_links = None
-            
+
             if "external_links" in result_data:
                 external_links = []
                 for link_data in result_data["external_links"]:
@@ -78,11 +78,13 @@ class ExecuteStatementResponse:
                             row_count=link_data.get("row_count", 0),
                             row_offset=link_data.get("row_offset", 0),
                             next_chunk_index=link_data.get("next_chunk_index"),
-                            next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
+                            next_chunk_internal_link=link_data.get(
+                                "next_chunk_internal_link"
+                            ),
                             http_headers=link_data.get("http_headers"),
                         )
                     )
-            
+
             result = ResultData(
                 data=result_data.get("data_array"),
                 external_links=external_links,
@@ -122,7 +124,7 @@ class GetStatementResponse:
             error=error,
             sql_state=status_data.get("sql_state"),
         )
-        
+
         # Parse manifest
         manifest = None
         if "manifest" in data:
@@ -137,13 +139,13 @@ class GetStatementResponse:
                 chunks=manifest_data.get("chunks"),
                 result_compression=manifest_data.get("result_compression"),
             )
-        
+
         # Parse result data
         result = None
         if "result" in data:
             result_data = data["result"]
             external_links = None
-            
+
             if "external_links" in result_data:
                 external_links = []
                 for link_data in result_data["external_links"]:
@@ -156,11 +158,13 @@ class GetStatementResponse:
                             row_count=link_data.get("row_count", 0),
                             row_offset=link_data.get("row_offset", 0),
                             next_chunk_index=link_data.get("next_chunk_index"),
-                            next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
+                            next_chunk_internal_link=link_data.get(
+                                "next_chunk_internal_link"
+                            ),
                             http_headers=link_data.get("http_headers"),
                         )
                     )
-            
+
             result = ResultData(
                 data=result_data.get("data_array"),
                 external_links=external_links,
@@ -208,11 +212,13 @@ class GetChunksResponse:
                         row_count=link_data.get("row_count", 0),
                         row_offset=link_data.get("row_offset", 0),
                         next_chunk_index=link_data.get("next_chunk_index"),
-                        next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
+                        next_chunk_internal_link=link_data.get(
+                            "next_chunk_internal_link"
+                        ),
                         http_headers=link_data.get("http_headers"),
                     )
                 )
-                
+
         return cls(
             statement_id=data.get("statement_id", ""),
             external_links=external_links,

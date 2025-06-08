@@ -916,7 +916,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     ssl_options=SSLOptions(),
                 )
                 mock_result = (Mock(), Mock())
-                thrift_backend._results_message_to_execute_response = Mock(return_value=mock_result)
+                thrift_backend._results_message_to_execute_response = Mock(
+                    return_value=mock_result
+                )
 
                 thrift_backend._handle_execute_response(execute_resp, Mock())
 
@@ -1654,7 +1656,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._check_direct_results_for_error = Mock()
         thrift_backend._wait_until_command_done = Mock()
         mock_result = (Mock(), Mock())
-        thrift_backend._results_message_to_execute_response = Mock(return_value=mock_result)
+        thrift_backend._results_message_to_execute_response = Mock(
+            return_value=mock_result
+        )
 
         # Create a mock response with a real operation handle
         mock_resp = Mock()
@@ -2221,7 +2225,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         mock_result = (Mock(), Mock())
         mock_handle_execute_response.return_value = mock_result
-        
+
         # Iterate through each possible combination of native types (True, False and unset)
         for complex, timestamp, decimals in itertools.product(
             [True, False, None], [True, False, None], [True, False, None]
