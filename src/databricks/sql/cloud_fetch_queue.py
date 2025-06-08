@@ -418,7 +418,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             if self._current_chunk_link is None
             else self._current_chunk_link.next_chunk_index
         )
-        if next_chunk_index is None:  # This can happen if we're at the end of chunks
+        if next_chunk_index is None:
             logger.debug(
                 "SeaCloudFetchQueue: Reached end of chunks (next_chunk_index is None)"
             )
@@ -432,7 +432,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Update current chunk to the next one
         self._current_chunk_index = next_chunk_index
-        self._current_chunk_link = None
         try:
             self._current_chunk_link = self._fetch_chunk_link(next_chunk_index)
         except Exception as e:
