@@ -203,3 +203,81 @@ class TestSeaBackend:
             "USE_CACHED_RESULT",
         }
         assert set(allowed_configs) == expected_keys
+
+    def test_unimplemented_methods(self, sea_client):
+        """Test that unimplemented methods raise NotImplementedError."""
+        # Create dummy parameters for testing
+        session_id = SessionId.from_sea_session_id("test-session")
+        command_id = MagicMock()
+        cursor = MagicMock()
+
+        # Test execute_command
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.execute_command(
+                operation="SELECT 1",
+                session_id=session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+        assert "execute_command is not yet implemented" in str(excinfo.value)
+
+        # Test cancel_command
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.cancel_command(command_id)
+        assert "cancel_command is not yet implemented" in str(excinfo.value)
+
+        # Test close_command
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.close_command(command_id)
+        assert "close_command is not yet implemented" in str(excinfo.value)
+
+        # Test get_query_state
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_query_state(command_id)
+        assert "get_query_state is not yet implemented" in str(excinfo.value)
+
+        # Test get_execution_result
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_execution_result(command_id, cursor)
+        assert "get_execution_result is not yet implemented" in str(excinfo.value)
+
+        # Test metadata operations
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_catalogs(session_id, 100, 1000, cursor)
+        assert "get_catalogs is not yet implemented" in str(excinfo.value)
+
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_schemas(session_id, 100, 1000, cursor)
+        assert "get_schemas is not yet implemented" in str(excinfo.value)
+
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_tables(session_id, 100, 1000, cursor)
+        assert "get_tables is not yet implemented" in str(excinfo.value)
+
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_columns(session_id, 100, 1000, cursor)
+        assert "get_columns is not yet implemented" in str(excinfo.value)
+
+    def test_max_download_threads_property(self, sea_client):
+        """Test the max_download_threads property."""
+        assert sea_client.max_download_threads == 10
+
+        # Create a client with a custom value
+        custom_client = SeaDatabricksClient(
+            server_hostname="test-server.databricks.com",
+            port=443,
+            http_path="/sql/warehouses/abc123",
+            http_headers=[],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            max_download_threads=20,
+        )
+
+        # Verify the custom value is returned
+        assert custom_client.max_download_threads == 20
