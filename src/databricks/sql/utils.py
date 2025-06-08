@@ -107,7 +107,7 @@ class ThriftResultSetQueueFactory(ABC):
             and max_download_threads is not None
             and ssl_options is not None
         ):
-            return CloudFetchQueue(
+            return ThriftCloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
                 result_links=t_row_set.resultLinks,
@@ -299,7 +299,14 @@ class ArrowQueue(ResultSetQueue):
         return slice
 
 
-from databricks.sql.cloud_fetch_queue import CloudFetchQueue, SeaCloudFetchQueue, create_arrow_table_from_arrow_file, convert_arrow_based_file_to_arrow_table, convert_decimals_in_arrow_table, convert_arrow_based_set_to_arrow_table
+from databricks.sql.cloud_fetch_queue import (
+    ThriftCloudFetchQueue,
+    SeaCloudFetchQueue,
+    create_arrow_table_from_arrow_file,
+    convert_arrow_based_file_to_arrow_table,
+    convert_decimals_in_arrow_table,
+    convert_arrow_based_set_to_arrow_table,
+)
 
 
 def _bound(min_x, max_x, x):
