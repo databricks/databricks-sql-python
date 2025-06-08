@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Dict, Tuple, List, Optional, TYPE_CHECKING
+from typing import Dict, Tuple, List, Optional, TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -9,6 +9,9 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.exc import ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
+from databricks.sql.backend.sea.utils.constants import (
+    ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
+)
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
@@ -19,6 +22,34 @@ from databricks.sql.backend.sea.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_session_configuration(
+    session_configuration: Optional[Dict[str, str]]
+) -> Optional[Dict[str, str]]:
+    if not session_configuration:
+        return None
+
+    filtered_session_configuration = {}
+    ignored_configs: Set[str] = set()
+
+    for key, value in session_configuration.items():
+        if key.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP:
+            filtered_session_configuration[key.lower()] = value
+        else:
+            ignored_configs.add(key)
+
+    if ignored_configs:
+        logger.warning(
+            "Some session configurations were ignored because they are not supported: %s",
+            ignored_configs,
+        )
+        logger.warning(
+            "Supported session configurations are: %s",
+            list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys()),
+        )
+
+    return filtered_session_configuration
 
 
 class SeaDatabricksClient(DatabricksClient):
@@ -111,7 +142,8 @@ class SeaDatabricksClient(DatabricksClient):
         error_message = (
             f"Could not extract warehouse ID from http_path: {http_path}. "
             f"Expected format: /path/to/warehouses/{{warehouse_id}} or "
-            f"/path/to/endpoints/{{warehouse_id}}"
+            f"/path/to/endpoints/{{warehouse_id}}."
+            f"Note: SEA only works for warehouses."
         )
         logger.error(error_message)
         raise ValueError(error_message)
@@ -151,6 +183,8 @@ class SeaDatabricksClient(DatabricksClient):
             catalog,
             schema,
         )
+
+        session_configuration = _filter_session_configuration(session_configuration)
 
         request_data = CreateSessionRequest(
             warehouse_id=self.warehouse_id,
@@ -204,6 +238,29 @@ class SeaDatabricksClient(DatabricksClient):
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             data=request_data.to_dict(),
         )
+
+    @staticmethod
+    def get_default_session_configuration_value(name: str) -> Optional[str]:
+        """
+        Get the default value for a session configuration parameter.
+
+        Args:
+            name: The name of the session configuration parameter
+
+        Returns:
+            The default value if the parameter is supported, None otherwise
+        """
+        return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
+
+    @staticmethod
+    def get_allowed_session_configurations() -> List[str]:
+        """
+        Get the list of allowed session configuration parameters.
+
+        Returns:
+            List of allowed session configuration parameter names
+        """
+        return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
     # == Not Implemented Operations ==
     # These methods will be implemented in future iterations

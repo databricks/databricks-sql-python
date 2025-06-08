@@ -101,8 +101,12 @@ class TestSeaBackend:
         # Set up mock response
         mock_http_client._make_request.return_value = {"session_id": "test-session-456"}
 
-        # Call the method with all parameters
-        session_config = {"ANSI_MODE": "FALSE", "STATEMENT_TIMEOUT": "3600"}
+        # Call the method with all parameters, including both supported and unsupported configurations
+        session_config = {
+            "ANSI_MODE": "FALSE",  # Supported parameter
+            "STATEMENT_TIMEOUT": "3600",  # Supported parameter
+            "unsupported_param": "value",  # Unsupported parameter
+        }
         catalog = "test_catalog"
         schema = "test_schema"
 
@@ -113,10 +117,14 @@ class TestSeaBackend:
         assert session_id.backend_type == BackendType.SEA
         assert session_id.guid == "test-session-456"
 
-        # Verify the HTTP request
+        # Verify the HTTP request - only supported parameters should be included
+        # and keys should be in lowercase
         expected_data = {
             "warehouse_id": "abc123",
-            "session_confs": session_config,
+            "session_confs": {
+                "ansi_mode": "FALSE",
+                "statement_timeout": "3600",
+            },
             "catalog": catalog,
             "schema": schema,
         }
@@ -166,3 +174,32 @@ class TestSeaBackend:
             sea_client.close_session(session_id)
 
         assert "Not a valid SEA session ID" in str(excinfo.value)
+
+    def test_session_configuration_helpers(self):
+        """Test the session configuration helper methods."""
+        # Test getting default value for a supported parameter
+        default_value = SeaDatabricksClient.get_default_session_configuration_value(
+            "ANSI_MODE"
+        )
+        assert default_value == "true"
+
+        # Test getting default value for an unsupported parameter
+        default_value = SeaDatabricksClient.get_default_session_configuration_value(
+            "UNSUPPORTED_PARAM"
+        )
+        assert default_value is None
+
+        # Test getting the list of allowed configurations
+        allowed_configs = SeaDatabricksClient.get_allowed_session_configurations()
+
+        expected_keys = {
+            "ANSI_MODE",
+            "ENABLE_PHOTON",
+            "LEGACY_TIME_PARSER_POLICY",
+            "MAX_FILE_PARTITION_BYTES",
+            "READ_ONLY_EXTERNAL_METASTORE",
+            "STATEMENT_TIMEOUT",
+            "TIMEZONE",
+            "USE_CACHED_RESULT",
+        }
+        assert set(allowed_configs) == expected_keys
