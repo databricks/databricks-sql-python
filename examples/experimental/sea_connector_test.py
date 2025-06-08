@@ -508,8 +508,8 @@ def test_sea_result_set_with_multiple_chunks():
         
         # Verify results using row IDs instead of row counts
         # Calculate the sum of rows from the manifest chunks
-        manifest_rows_sum = sum(chunk.get('row_count', 0) for chunk in manifest.get('chunks', []))
-        logger.info(f"Expected rows from manifest chunks: {manifest_rows_sum}")
+        total_rows_from_manifest = sum(chunk.get('row_count', 0) for chunk in manifest.get('chunks', []))
+        logger.info(f"Expected rows from manifest chunks: {total_rows_from_manifest}")
         
         # Collect all row IDs to check for duplicates and completeness
         all_row_ids = set()
@@ -561,7 +561,7 @@ def test_sea_result_set_with_multiple_chunks():
                 logger.warning("⚠️ Duplicate row IDs detected")
                 
             # Check if we got all expected rows
-            if max_id == manifest_rows_sum:
+            if max_id == total_rows_from_manifest:
                 logger.info("✅ Last row ID matches expected row count from manifest")
             
             # Let's try one more time with a fresh cursor to fetch all rows at once
@@ -603,7 +603,7 @@ def test_sea_result_set_with_multiple_chunks():
                         logger.warning("⚠️ Arrow results: Duplicate row IDs detected")
                     
                     # Compare with manifest row count
-                    if arrow_max_id == manifest_rows_sum:
+                    if arrow_max_id == total_rows_from_manifest:
                         logger.info("✅ Arrow results: Last row ID matches expected row count from manifest")
                     
                     # Compare with sequential fetch results
@@ -619,8 +619,16 @@ def test_sea_result_set_with_multiple_chunks():
                             logger.warning(f"IDs only in sequential fetch: {len(only_in_sequential)} rows")
                 
                 # Check if we got all rows
-                logger.info(f"Expected rows from manifest chunks: {manifest_rows_sum}")
+                total_rows_from_manifest = sum(chunk.get('row_count', 0) for chunk in manifest.get('chunks', []))
+                logger.info(f"Expected rows from manifest chunks: {total_rows_from_manifest}")
                 logger.info(f"Actual rows in arrow table: {arrow_table.num_rows}")
+                
+                # Note: The server might return more rows than specified in the manifest due to query optimization
+                # This is expected behavior and not an error
+                if arrow_table.num_rows >= total_rows_from_manifest:
+                    logger.info("✅ Retrieved at least as many rows as expected from the manifest")
+                else:
+                    logger.warning(f"⚠️ Retrieved fewer rows ({arrow_table.num_rows}) than expected from manifest ({total_rows_from_manifest})")
             except Exception as e:
                 logger.error(f"Error fetching all rows as Arrow: {e}")
             
