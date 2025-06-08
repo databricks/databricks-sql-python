@@ -25,7 +25,7 @@ class ResultFileDownloadManager:
     ):
         self._pending_links: List[TSparkArrowResultLink] = []
         # Add a cache to store downloaded files by row offset
-        self._downloaded_files_cache = {}
+        self._downloaded_files_cache: dict[int, DownloadedFile] = {}
 
         for link in links:
             if link.rowCount <= 0:
