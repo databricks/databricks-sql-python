@@ -679,7 +679,7 @@ class ClientTestSuite(unittest.TestCase):
         result_set.backend.CLOSED_OP_STATE = CommandState.CLOSED
         result_set.connection = Mock()
         result_set.connection.open = True
-        result_set.op_state = "RUNNING"
+        result_set.status = CommandState.RUNNING
         result_set.has_been_closed_server_side = False
         result_set.command_id = Mock()
 
@@ -693,7 +693,7 @@ class ClientTestSuite(unittest.TestCase):
         try:
             try:
                 if (
-                    result_set.op_state != result_set.backend.CLOSED_OP_STATE
+                    result_set.status != result_set.backend.CLOSED_OP_STATE
                     and not result_set.has_been_closed_server_side
                     and result_set.connection.open
                 ):
@@ -703,7 +703,7 @@ class ClientTestSuite(unittest.TestCase):
                     pass
             finally:
                 result_set.has_been_closed_server_side = True
-                result_set.op_state = result_set.backend.CLOSED_OP_STATE
+                result_set.status = result_set.backend.CLOSED_OP_STATE
 
             result_set.backend.close_command.assert_called_once_with(
                 result_set.command_id
@@ -711,7 +711,7 @@ class ClientTestSuite(unittest.TestCase):
 
             assert result_set.has_been_closed_server_side is True
 
-            assert result_set.op_state == result_set.backend.CLOSED_OP_STATE
+            assert result_set.status == result_set.backend.CLOSED_OP_STATE
         finally:
             pass
 
