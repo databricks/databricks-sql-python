@@ -929,12 +929,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
                 )
-                thrift_backend._results_message_to_execute_response = Mock(
-                    return_value=(Mock(), Mock())
-                )
+                thrift_backend._results_message_to_execute_response = Mock()
 
                 thrift_backend._handle_execute_response(execute_resp, Mock())
-
                 thrift_backend._results_message_to_execute_response.assert_called_with(
                     execute_resp,
                     ttypes.TOperationState.FINISHED_STATE,
@@ -1738,9 +1735,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend = self._make_fake_thrift_backend()
         thrift_backend._check_direct_results_for_error = Mock()
         thrift_backend._wait_until_command_done = Mock()
-        thrift_backend._results_message_to_execute_response = Mock(
-            return_value=(Mock(), Mock())
-        )
+        thrift_backend._results_message_to_execute_response = Mock()
 
         # Create a mock response with a real operation handle
         mock_resp = Mock()
