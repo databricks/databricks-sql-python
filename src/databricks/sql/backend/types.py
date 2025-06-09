@@ -1,6 +1,5 @@
-from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, Optional, Any
 import logging
 
 from databricks.sql.backend.utils import guid_to_hex_id
@@ -80,28 +79,6 @@ class CommandState(Enum):
             return cls.CANCELLED
         else:
             return None
-
-    @classmethod
-    def from_sea_state(cls, state: str) -> Optional["CommandState"]:
-        """
-        Map SEA state string to CommandState enum.
-
-        Args:
-            state: SEA state string
-
-        Returns:
-            CommandState: The corresponding CommandState enum value
-        """
-        state_mapping = {
-            "PENDING": cls.PENDING,
-            "RUNNING": cls.RUNNING,
-            "SUCCEEDED": cls.SUCCEEDED,
-            "FAILED": cls.FAILED,
-            "CLOSED": cls.CLOSED,
-            "CANCELED": cls.CANCELLED,
-        }
-
-        return state_mapping.get(state, None)
 
 
 class BackendType(Enum):
@@ -285,6 +262,9 @@ class CommandId:
         backend_type: BackendType,
         guid: Any,
         secret: Optional[Any] = None,
+        operation_type: Optional[int] = None,
+        has_result_set: bool = False,
+        modified_row_count: Optional[int] = None,
     ):
         """
         Initialize a CommandId.
@@ -293,11 +273,17 @@ class CommandId:
             backend_type: The type of backend (THRIFT or SEA)
             guid: The primary identifier for the command
             secret: The secret part of the identifier (only used for Thrift)
+            operation_type: The operation type (only used for Thrift)
+            has_result_set: Whether the command has a result set
+            modified_row_count: The number of rows modified by the command
         """
 
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
+        self.operation_type = operation_type
+        self.has_result_set = has_result_set
+        self.modified_row_count = modified_row_count
 
     def __str__(self) -> str:
         """
@@ -332,6 +318,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+
         if operation_handle is None:
             return None
 
@@ -342,6 +329,9 @@ class CommandId:
             BackendType.THRIFT,
             guid_bytes,
             secret_bytes,
+            operation_handle.operationType,
+            operation_handle.hasResultSet,
+            operation_handle.modifiedRowCount,
         )
 
     @classmethod
@@ -374,6 +364,9 @@ class CommandId:
         handle_identifier = ttypes.THandleIdentifier(guid=self.guid, secret=self.secret)
         return ttypes.TOperationHandle(
             operationId=handle_identifier,
+            operationType=self.operation_type,
+            hasResultSet=self.has_result_set,
+            modifiedRowCount=self.modified_row_count,
         )
 
     def to_sea_statement_id(self):
@@ -401,19 +394,3 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
-
-
-@dataclass
-class ExecuteResponse:
-    """Response from executing a SQL command."""
-
-    command_id: CommandId
-    status: CommandState
-    description: Optional[
-        List[Tuple[str, str, None, None, Optional[int], Optional[int], bool]]
-    ] = None
-    has_more_rows: bool = False
-    results_queue: Optional[Any] = None
-    has_been_closed_server_side: bool = False
-    lz4_compressed: bool = True
-    is_staging_operation: bool = False
