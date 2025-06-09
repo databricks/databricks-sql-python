@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from databricks.sql.backend.sea_backend import SeaDatabricksClient
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 from abc import ABC, abstractmethod
 from collections import OrderedDict, namedtuple
@@ -28,7 +28,11 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.models.base import ResultData, ExternalLink, ResultManifest
+from databricks.sql.backend.sea.models.base import (
+    ResultData,
+    ExternalLink,
+    ResultManifest,
+)
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 import logging

@@ -6,7 +6,7 @@ from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
-    from databricks.sql.backend.models.responses import GetChunksResponse
+    from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -17,13 +17,17 @@ from databricks.sql.backend.types import (
     ExecuteResponse,
 )
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
-from databricks.sql.backend.utils.http_client import CustomHttpClient
+from databricks.sql.backend.sea.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.utils import SeaResultSetQueueFactory
-from databricks.sql.backend.models.base import ResultData, ExternalLink, ResultManifest
+from databricks.sql.backend.sea.models.base import (
+    ResultData,
+    ExternalLink,
+    ResultManifest,
+)
 
-from databricks.sql.backend.models import (
+from databricks.sql.backend.sea.models import (
     ExecuteStatementRequest,
     GetStatementRequest,
     CancelStatementRequest,
@@ -254,8 +258,8 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             Error: If there's an error fetching the chunk links
         """
-        from databricks.sql.backend.models.responses import GetChunksResponse
-        from databricks.sql.backend.models.base import ExternalLink
+        from databricks.sql.backend.sea.models.responses import GetChunksResponse
+        from databricks.sql.backend.sea.models.base import ExternalLink
 
         logger.info(f"Fetching chunk {chunk_index} links for statement {statement_id}")
 
@@ -304,7 +308,7 @@ class SeaDatabricksClient(DatabricksClient):
         Returns:
             GetChunksResponse: Response containing external links
         """
-        from databricks.sql.backend.models.responses import GetChunksResponse
+        from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
         params = {"chunk_index": chunk_index}
 

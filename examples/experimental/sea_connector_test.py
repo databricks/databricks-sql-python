@@ -450,7 +450,7 @@ def test_sea_result_set_with_multiple_chunks():
         cursor.execute(query)
         
         # Attempt to access the manifest to check for multiple chunks
-        from databricks.sql.backend.sea_backend import SeaDatabricksClient
+        from databricks.sql.backend.sea.backend import SeaDatabricksClient
         if isinstance(connection.session.backend, SeaDatabricksClient):
             # Get the statement ID from the cursor's active result set
             statement_id = cursor.active_result_set.statement_id

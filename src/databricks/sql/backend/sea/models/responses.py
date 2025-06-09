@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 
 from databricks.sql.backend.types import CommandState
-from databricks.sql.backend.models.base import (
+from databricks.sql.backend.sea.models.base import (
     StatementStatus,
     ResultManifest,
     ResultData,

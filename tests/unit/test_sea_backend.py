@@ -9,7 +9,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock, Mock
 
-from databricks.sql.backend.sea_backend import SeaDatabricksClient
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.result_set import SeaResultSet
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.types import SSLOptions
@@ -24,7 +24,7 @@ class TestSeaBackend:
     def mock_http_client(self):
         """Create a mock HTTP client."""
         with patch(
-            "databricks.sql.backend.sea_backend.CustomHttpClient"
+            "databricks.sql.backend.sea.backend.CustomHttpClient"
         ) as mock_client_class:
             mock_client = mock_client_class.return_value
             yield mock_client

@@ -9,7 +9,7 @@ from abc import ABC
 from typing import Any, List, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from databricks.sql.backend.sea_backend import SeaDatabricksClient
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
     from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
 from abc import ABC, abstractmethod
@@ -25,7 +25,7 @@ except ImportError:
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.models.base import ExternalLink
+from databricks.sql.backend.sea.models.base import ExternalLink
 from databricks.sql.utils import ResultSetQueue
 
 logger = logging.getLogger(__name__)

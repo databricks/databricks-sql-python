@@ -9,7 +9,7 @@ from databricks.sql.utils import (
     SeaResultSetQueueFactory,
     JsonQueue,
 )
-from databricks.sql.backend.models.base import ResultData, ResultManifest
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 
 class TestResultSetQueueFactories(unittest.TestCase):
