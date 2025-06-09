@@ -269,8 +269,8 @@ class TelemetryClientFactory:
     """
 
     _clients: Dict[
-        str, TelemetryClient
-    ] = {}  # Map of connection_uuid -> TelemetryClient
+        str, BaseTelemetryClient
+    ] = {}  # Map of connection_uuid -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.Lock()  # Thread safety for factory operations
