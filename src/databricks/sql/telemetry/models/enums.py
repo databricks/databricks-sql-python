@@ -7,10 +7,10 @@ class AuthFlow(Enum):
 
 
 class AuthMech(Enum):
-    OTHER = "OTHER"
-    PAT = "PAT"
-    DATABRICKS_OAUTH = "DATABRICKS_OAUTH"
-    EXTERNAL_AUTH = "EXTERNAL_AUTH"
+    CLIENT_CERT = "CLIENT_CERT"  # ssl certificate authentication
+    PAT = "PAT"  # Personal Access Token authentication
+    DATABRICKS_OAUTH = "DATABRICKS_OAUTH"  # Databricks-managed OAuth flow
+    EXTERNAL_AUTH = "EXTERNAL_AUTH"  # External identity provider (AWS, Azure, etc.)
 
 
 class DatabricksClientType(Enum):

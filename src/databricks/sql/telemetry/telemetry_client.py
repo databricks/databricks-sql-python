@@ -55,6 +55,9 @@ class TelemetryHelper:
     @staticmethod
     def get_auth_mechanism(auth_provider):
         """Get the auth mechanism for the auth provider."""
+        # AuthMech is an enum with the following values:
+        # PAT, DATABRICKS_OAUTH, EXTERNAL_AUTH, CLIENT_CERT
+
         if not auth_provider:
             return None
         if isinstance(auth_provider, AccessTokenAuthProvider):
@@ -65,11 +68,14 @@ class TelemetryHelper:
             return (
                 AuthMech.EXTERNAL_AUTH
             )  # External identity provider (AWS, Azure, etc.)
-        return AuthMech.OTHER  # Custom or unknown authentication provider
+        return AuthMech.CLIENT_CERT  # Client certificate (ssl)
 
     @staticmethod
     def get_auth_flow(auth_provider):
         """Get the auth flow for the auth provider."""
+        # AuthFlow is an enum with the following values:
+        # TOKEN_PASSTHROUGH, BROWSER_BASED_AUTHENTICATION
+
         if not auth_provider:
             return None
 
@@ -78,7 +84,6 @@ class TelemetryHelper:
                 return (
                     AuthFlow.TOKEN_PASSTHROUGH
                 )  # Has existing tokens, no user interaction needed
-
             if hasattr(auth_provider, "oauth_manager"):
                 return (
                     AuthFlow.BROWSER_BASED_AUTHENTICATION
