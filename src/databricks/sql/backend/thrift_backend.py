@@ -352,6 +352,7 @@ class ThriftDatabricksClient(DatabricksClient):
         Will stop retry attempts if total elapsed time + next retry delay would exceed
         _retry_stop_after_attempts_duration.
         """
+
         # basic strategy: build range iterator rep'ing number of available
         # retries. bounds can be computed from there. iterate over it with
         # retries until success or final failure achieved.
@@ -866,9 +867,13 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
         )
 
+        status = CommandState.from_thrift_state(resp.status)
+        if status is None:
+            raise ValueError(f"Invalid operation state: {resp.status}")
+
         execute_response = ExecuteResponse(
             command_id=command_id,
-            status=resp.status,
+            status=status,
             description=description,
             has_more_rows=has_more_rows,
             results_queue=queue,
