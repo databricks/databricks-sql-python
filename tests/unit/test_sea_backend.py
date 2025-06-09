@@ -24,7 +24,7 @@ class TestSeaBackend:
     def mock_http_client(self):
         """Create a mock HTTP client."""
         with patch(
-            "databricks.sql.backend.sea.backend.CustomHttpClient"
+            "databricks.sql.backend.sea.backend.SeaHttpClient"
         ) as mock_client_class:
             mock_client = mock_client_class.return_value
             yield mock_client
@@ -49,27 +49,6 @@ class TestSeaBackend:
         )
 
         return client
-
-    @pytest.fixture
-    def mock_cursor(self):
-        """Create a mock cursor."""
-        cursor = MagicMock()
-        cursor.connection = MagicMock()
-        cursor.buffer_size_bytes = 1048576
-        cursor.arraysize = 1000
-        return cursor
-
-    @pytest.fixture
-    def sea_session_id(self):
-        """Create a SEA session ID for testing."""
-        return SessionId.from_sea_session_id("test-session-123")
-
-    @pytest.fixture
-    def sea_command_id(self):
-        """Create a SEA command ID for testing."""
-        return CommandId.from_sea_statement_id("test-statement-123")
-
-    # Tests for initialization and session management
 
     def test_init_extracts_warehouse_id(self, mock_http_client):
         """Test that the constructor properly extracts the warehouse ID from the HTTP path."""
@@ -131,8 +110,12 @@ class TestSeaBackend:
         # Set up mock response
         mock_http_client._make_request.return_value = {"session_id": "test-session-456"}
 
-        # Call the method with all parameters
-        session_config = {"spark.sql.shuffle.partitions": "10"}
+        # Call the method with all parameters, including both supported and unsupported configurations
+        session_config = {
+            "ANSI_MODE": "FALSE",  # Supported parameter
+            "STATEMENT_TIMEOUT": "3600",  # Supported parameter
+            "unsupported_param": "value",  # Unsupported parameter
+        }
         catalog = "test_catalog"
         schema = "test_schema"
 
@@ -143,10 +126,14 @@ class TestSeaBackend:
         assert session_id.backend_type == BackendType.SEA
         assert session_id.guid == "test-session-456"
 
-        # Verify the HTTP request
+        # Verify the HTTP request - only supported parameters should be included
+        # and keys should be in lowercase
         expected_data = {
             "warehouse_id": "abc123",
-            "session_confs": session_config,
+            "session_confs": {
+                "ansi_mode": "FALSE",
+                "statement_timeout": "3600",
+            },
             "catalog": catalog,
             "schema": schema,
         }
@@ -180,7 +167,7 @@ class TestSeaBackend:
         mock_http_client._make_request.assert_called_once_with(
             method="DELETE",
             path=sea_client.SESSION_PATH_WITH_ID.format("test-session-789"),
-            params={"session_id": "test-session-789", "warehouse_id": "abc123"},
+            data={"session_id": "test-session-789", "warehouse_id": "abc123"},
         )
 
     def test_close_session_invalid_id_type(self, sea_client):

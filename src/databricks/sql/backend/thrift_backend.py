@@ -5,10 +5,11 @@ import math
 import time
 import uuid
 import threading
-from typing import List, Union, Any, TYPE_CHECKING
+from typing import List, Optional, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
+    from databricks.sql.result_set import ResultSet, ThriftResultSet
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
@@ -16,8 +17,8 @@ from databricks.sql.backend.types import (
     SessionId,
     CommandId,
     BackendType,
-    guid_to_hex_id,
 )
+from databricks.sql.backend.utils import guid_to_hex_id
 
 try:
     import pyarrow
@@ -52,7 +53,6 @@ from databricks.sql.utils import (
 )
 from databricks.sql.types import SSLOptions
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.result_set import ResultSet, ThriftResultSet
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +86,8 @@ _retry_policy = {  # (type, default, min, max)
 
 
 class ThriftDatabricksClient(DatabricksClient):
-    CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
-    ERROR_OP_STATE = ttypes.TOperationState.ERROR_STATE
+    CLOSED_OP_STATE = CommandState.CLOSED
+    ERROR_OP_STATE = CommandState.FAILED
 
     _retry_delay_min: float
     _retry_delay_max: float
@@ -103,7 +103,6 @@ class ThriftDatabricksClient(DatabricksClient):
         http_headers,
         auth_provider: AuthProvider,
         ssl_options: SSLOptions,
-        staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
@@ -162,7 +161,6 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             raise ValueError("No valid connection settings.")
 
-        self._staging_allowed_local_path = staging_allowed_local_path
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
@@ -235,14 +233,6 @@ class ThriftDatabricksClient(DatabricksClient):
             raise
 
         self._request_lock = threading.RLock()
-
-    @property
-    def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
-        return self._staging_allowed_local_path
-
-    @property
-    def ssl_options(self) -> SSLOptions:
-        return self._ssl_options
 
     @property
     def max_download_threads(self) -> int:
@@ -361,6 +351,7 @@ class ThriftDatabricksClient(DatabricksClient):
         Will stop retry attempts if total elapsed time + next retry delay would exceed
         _retry_stop_after_attempts_duration.
         """
+
         # basic strategy: build range iterator rep'ing number of available
         # retries. bounds can be computed from there. iterate over it with
         # retries until success or final failure achieved.
@@ -808,7 +799,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         return ExecuteResponse(
             arrow_queue=arrow_queue_opt,
-            status=operation_state,
+            status=CommandState.from_thrift_state(operation_state),
             has_been_closed_server_side=has_been_closed_server_side,
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
@@ -821,6 +812,8 @@ class ThriftDatabricksClient(DatabricksClient):
     def get_execution_result(
         self, command_id: CommandId, cursor: "Cursor"
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -871,7 +864,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         execute_response = ExecuteResponse(
             arrow_queue=queue,
-            status=resp.status,
+            status=CommandState.from_thrift_state(resp.status),
             has_been_closed_server_side=False,
             has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
@@ -916,7 +909,10 @@ class ThriftDatabricksClient(DatabricksClient):
         poll_resp = self._poll_for_status(thrift_handle)
         operation_state = poll_resp.operationState
         self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
-        return CommandState.from_thrift_state(operation_state)
+        state = CommandState.from_thrift_state(operation_state)
+        if state is None:
+            raise ValueError(f"Unknown command state: {operation_state}")
+        return state
 
     @staticmethod
     def _check_direct_results_for_error(t_spark_direct_results):
@@ -951,6 +947,8 @@ class ThriftDatabricksClient(DatabricksClient):
         async_op=False,
         enforce_embedded_schema_correctness=False,
     ) -> Union["ResultSet", None]:
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1015,6 +1013,8 @@ class ThriftDatabricksClient(DatabricksClient):
         max_bytes: int,
         cursor: "Cursor",
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1047,6 +1047,8 @@ class ThriftDatabricksClient(DatabricksClient):
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1083,6 +1085,8 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         table_types=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1121,6 +1125,8 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         column_name=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1224,7 +1230,7 @@ class ThriftDatabricksClient(DatabricksClient):
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
-        logger.debug("Cancelling command {}".format(command_id.guid))
+        logger.debug("Cancelling command {}".format(guid_to_hex_id(command_id.guid)))
         req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 
@@ -1235,5 +1241,4 @@ class ThriftDatabricksClient(DatabricksClient):
 
         logger.debug("ThriftBackend.close_command(command_id=%s)", command_id)
         req = ttypes.TCloseOperationReq(operationHandle=thrift_handle)
-        resp = self.make_request(self._client.CloseOperation, req)
-        return resp.status
+        self.make_request(self._client.CloseOperation, req)

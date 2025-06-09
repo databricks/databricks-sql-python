@@ -54,7 +54,6 @@ class SeaDatabricksClient(DatabricksClient):
         http_headers: List[Tuple[str, str]],
         auth_provider,
         ssl_options: SSLOptions,
-        staging_allowed_local_path: Union[None, str, List[str]] = None,
         **kwargs,
     ):
         """
@@ -67,25 +66,23 @@ class SeaDatabricksClient(DatabricksClient):
             http_headers: List of HTTP headers to include in requests
             auth_provider: Authentication provider
             ssl_options: SSL configuration options
-            staging_allowed_local_path: Allowed local paths for staging operations
             **kwargs: Additional keyword arguments
         """
+
         logger.debug(
-            "SEADatabricksClient.__init__(server_hostname=%s, port=%s, http_path=%s)",
+            "SeaDatabricksClient.__init__(server_hostname=%s, port=%s, http_path=%s)",
             server_hostname,
             port,
             http_path,
         )
 
-        self._staging_allowed_local_path = staging_allowed_local_path
-        self._ssl_options = ssl_options
         self._max_download_threads = kwargs.get("max_download_threads", 10)
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
         # Initialize HTTP client
-        self.http_client = CustomHttpClient(
+        self.http_client = SeaHttpClient(
             server_hostname=server_hostname,
             port=port,
             http_path=http_path,
@@ -99,9 +96,6 @@ class SeaDatabricksClient(DatabricksClient):
         """
         Extract the warehouse ID from the HTTP path.
 
-        The warehouse ID is expected to be the last segment of the path when the
-        second-to-last segment is either 'warehouses' or 'endpoints'.
-
         Args:
             http_path: The HTTP path from which to extract the warehouse ID
 
@@ -109,37 +103,31 @@ class SeaDatabricksClient(DatabricksClient):
             The extracted warehouse ID
 
         Raises:
-            Error: If the warehouse ID cannot be extracted from the path
+            ValueError: If the warehouse ID cannot be extracted from the path
         """
-        path_parts = http_path.strip("/").split("/")
-        warehouse_id = None
 
-        if len(path_parts) >= 3 and path_parts[-2] in ["warehouses", "endpoints"]:
-            warehouse_id = path_parts[-1]
+        warehouse_pattern = re.compile(r".*/warehouses/(.+)")
+        endpoint_pattern = re.compile(r".*/endpoints/(.+)")
+
+        for pattern in [warehouse_pattern, endpoint_pattern]:
+            match = pattern.match(http_path)
+            if not match:
+                continue
+            warehouse_id = match.group(1)
             logger.debug(
                 f"Extracted warehouse ID: {warehouse_id} from path: {http_path}"
             )
+            return warehouse_id
 
-        if not warehouse_id:
-            error_message = (
-                f"Could not extract warehouse ID from http_path: {http_path}. "
-                f"Expected format: /path/to/warehouses/{{warehouse_id}} or "
-                f"/path/to/endpoints/{{warehouse_id}}"
-            )
-            logger.error(error_message)
-            raise ValueError(error_message)
-
-        return warehouse_id
-
-    @property
-    def staging_allowed_local_path(self) -> Union[None, str, List[str]]:
-        """Get the allowed local paths for staging operations."""
-        return self._staging_allowed_local_path
-
-    @property
-    def ssl_options(self) -> SSLOptions:
-        """Get the SSL options for this client."""
-        return self._ssl_options
+        # If no match found, raise error
+        error_message = (
+            f"Could not extract warehouse ID from http_path: {http_path}. "
+            f"Expected format: /path/to/warehouses/{{warehouse_id}} or "
+            f"/path/to/endpoints/{{warehouse_id}}."
+            f"Note: SEA only works for warehouses."
+        )
+        logger.error(error_message)
+        raise ValueError(error_message)
 
     @property
     def max_download_threads(self) -> int:
@@ -156,7 +144,9 @@ class SeaDatabricksClient(DatabricksClient):
         Opens a new session with the Databricks SQL service using SEA.
 
         Args:
-            session_configuration: Optional dictionary of configuration parameters for the session
+            session_configuration: Optional dictionary of configuration parameters for the session.
+                                   Only specific parameters are supported as documented at:
+                                   https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-parameters
             catalog: Optional catalog name to use as the initial catalog for the session
             schema: Optional schema name to use as the initial schema for the session
 
@@ -167,14 +157,17 @@ class SeaDatabricksClient(DatabricksClient):
             Error: If the session configuration is invalid
             OperationalError: If there's an error establishing the session
         """
+
         logger.debug(
-            "SEADatabricksClient.open_session(session_configuration=%s, catalog=%s, schema=%s)",
+            "SeaDatabricksClient.open_session(session_configuration=%s, catalog=%s, schema=%s)",
             session_configuration,
             catalog,
             schema,
         )
 
-        request = CreateSessionRequest(
+        session_configuration = _filter_session_configuration(session_configuration)
+
+        request_data = CreateSessionRequest(
             warehouse_id=self.warehouse_id,
             session_confs=session_configuration,
             catalog=catalog,
@@ -182,13 +175,11 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         response = self.http_client._make_request(
-            method="POST", path=self.SESSION_PATH, data=request.to_dict()
+            method="POST", path=self.SESSION_PATH, data=request_data.to_dict()
         )
 
-        # Parse the response
         session_response = CreateSessionResponse.from_dict(response)
         session_id = session_response.session_id
-
         if not session_id:
             raise ServerOperationError(
                 "Failed to create session: No session ID returned",
@@ -211,21 +202,49 @@ class SeaDatabricksClient(DatabricksClient):
             ValueError: If the session ID is invalid
             OperationalError: If there's an error closing the session
         """
-        logger.debug("SEADatabricksClient.close_session(session_id=%s)", session_id)
+
+        logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
         if session_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
-        request = DeleteSessionRequest(
-            warehouse_id=self.warehouse_id, session_id=sea_session_id
+        request_data = DeleteSessionRequest(
+            warehouse_id=self.warehouse_id,
+            session_id=sea_session_id,
         )
 
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            params=request.to_dict(),
+            data=request_data.to_dict(),
         )
+
+    @staticmethod
+    def get_default_session_configuration_value(name: str) -> Optional[str]:
+        """
+        Get the default value for a session configuration parameter.
+
+        Args:
+            name: The name of the session configuration parameter
+
+        Returns:
+            The default value if the parameter is supported, None otherwise
+        """
+        return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
+
+    @staticmethod
+    def get_allowed_session_configurations() -> List[str]:
+        """
+        Get the list of allowed session configuration parameters.
+
+        Returns:
+            List of allowed session configuration parameter names
+        """
+        return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
+
+    # == Not Implemented Operations ==
+    # These methods will be implemented in future iterations
 
     def execute_command(
         self,

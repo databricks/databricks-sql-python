@@ -1,14 +1,30 @@
 from enum import Enum
-from typing import Dict, Optional, Any, Union
-import uuid
+from typing import Dict, Optional, Any
 import logging
 
+from databricks.sql.backend.utils import guid_to_hex_id
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
 
 
 class CommandState(Enum):
+    """
+    Enum representing the execution state of a command in Databricks SQL.
+
+    This enum maps Thrift operation states to normalized command states,
+    providing a consistent interface for tracking command execution status
+    across different backend implementations.
+
+    Attributes:
+        PENDING: Command is queued or initialized but not yet running
+        RUNNING: Command is currently executing
+        SUCCEEDED: Command completed successfully
+        FAILED: Command failed due to error, timeout, or unknown state
+        CLOSED: Command has been closed
+        CANCELLED: Command was cancelled before completion
+    """
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     SUCCEEDED = "SUCCEEDED"
@@ -17,7 +33,31 @@ class CommandState(Enum):
     CANCELLED = "CANCELLED"
 
     @classmethod
-    def from_thrift_state(cls, state: ttypes.TOperationState) -> "CommandState":
+    def from_thrift_state(
+        cls, state: ttypes.TOperationState
+    ) -> Optional["CommandState"]:
+        """
+        Convert a Thrift TOperationState to a normalized CommandState.
+
+        Args:
+            state: A TOperationState from the Thrift API representing the current
+                  state of an operation
+
+        Returns:
+            CommandState: The corresponding normalized command state
+
+        Raises:
+            ValueError: If the provided state is not a recognized TOperationState
+
+        State Mappings:
+            - INITIALIZED_STATE, PENDING_STATE -> PENDING
+            - RUNNING_STATE -> RUNNING
+            - FINISHED_STATE -> SUCCEEDED
+            - ERROR_STATE, TIMEDOUT_STATE, UKNOWN_STATE -> FAILED
+            - CLOSED_STATE -> CLOSED
+            - CANCELED_STATE -> CANCELLED
+        """
+
         if state in (
             ttypes.TOperationState.INITIALIZED_STATE,
             ttypes.TOperationState.PENDING_STATE,
@@ -38,50 +78,13 @@ class CommandState(Enum):
         elif state == ttypes.TOperationState.CANCELED_STATE:
             return cls.CANCELLED
         else:
-            raise ValueError(f"Unknown command state: {state}")
-
-    @classmethod
-    def from_sea_state(cls, state: str) -> "CommandState":
-        """
-        Map SEA state string to CommandState enum.
-
-        Args:
-            state: SEA state string
-
-        Returns:
-            CommandState: The corresponding CommandState enum value
-        """
-        state_mapping = {
-            "PENDING": cls.PENDING,
-            "RUNNING": cls.RUNNING,
-            "SUCCEEDED": cls.SUCCEEDED,
-            "FAILED": cls.FAILED,
-            "CLOSED": cls.CLOSED,
-            "CANCELED": cls.CANCELLED,
-        }
-
-        return state_mapping.get(state, cls.PENDING)  # Default to PENDING if unknown
-
-
-def guid_to_hex_id(guid: bytes) -> str:
-    """Return a hexadecimal string instead of bytes
-
-    Example:
-        IN   b'\x01\xee\x1d)\xa4\x19\x1d\xb6\xa9\xc0\x8d\xf1\xfe\xbaB\xdd'
-        OUT  '01ee1d29-a419-1db6-a9c0-8df1feba42dd'
-
-    If conversion to hexadecimal fails, the original bytes are returned
-    """
-    try:
-        this_uuid = uuid.UUID(bytes=guid)
-    except Exception as e:
-        logger.debug(f"Unable to convert bytes to UUID: {guid!r} -- {str(e)}")
-        return str(guid)
-    return str(this_uuid)
+            return None
 
 
 class BackendType(Enum):
-    """Enum representing the type of backend."""
+    """
+    Enum representing the type of backend
+    """
 
     THRIFT = "thrift"
     SEA = "sea"
@@ -109,8 +112,9 @@ class SessionId:
             backend_type: The type of backend (THRIFT or SEA)
             guid: The primary identifier for the session
             secret: The secret part of the identifier (only used for Thrift)
-            info: Additional information about the session
+            properties: Additional information about the session
         """
+
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
@@ -126,10 +130,16 @@ class SessionId:
         Returns:
             A string representation of the session ID
         """
+
         if self.backend_type == BackendType.SEA:
             return str(self.guid)
         elif self.backend_type == BackendType.THRIFT:
-            return f"{self.get_hex_id()}|{guid_to_hex_id(self.secret) if isinstance(self.secret, bytes) else str(self.secret)}"
+            secret_hex = (
+                guid_to_hex_id(self.secret)
+                if isinstance(self.secret, bytes)
+                else str(self.secret)
+            )
+            return f"{self.get_hex_guid()}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
@@ -145,6 +155,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
+
         if session_handle is None:
             return None
 
@@ -171,6 +182,7 @@ class SessionId:
         Returns:
             A SessionId instance
         """
+
         return cls(BackendType.SEA, session_id, properties=properties)
 
     def to_thrift_handle(self):
@@ -180,6 +192,7 @@ class SessionId:
         Returns:
             A TSessionHandle object or None if this is not a Thrift session ID
         """
+
         if self.backend_type != BackendType.THRIFT:
             return None
 
@@ -198,24 +211,27 @@ class SessionId:
         Returns:
             The session ID string or None if this is not a SEA session ID
         """
+
         if self.backend_type != BackendType.SEA:
             return None
 
         return self.guid
 
-    def get_id(self) -> Any:
+    def get_guid(self) -> Any:
         """
         Get the ID of the session.
         """
+
         return self.guid
 
-    def get_hex_id(self) -> str:
+    def get_hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the session ID.
 
         Returns:
             A hexadecimal string representation
         """
+
         if isinstance(self.guid, bytes):
             return guid_to_hex_id(self.guid)
         else:
@@ -229,6 +245,7 @@ class SessionId:
             The server protocol version or None if it does not exist
             It is not expected to exist for SEA sessions.
         """
+
         return self.properties.get("serverProtocolVersion")
 
 
@@ -260,6 +277,7 @@ class CommandId:
             has_result_set: Whether the command has a result set
             modified_row_count: The number of rows modified by the command
         """
+
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
@@ -304,6 +322,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+
         return cls(BackendType.SEA, statement_id)
 
     def to_thrift_handle(self):
@@ -313,6 +332,7 @@ class CommandId:
         Returns:
             A TOperationHandle object or None if this is not a Thrift command ID
         """
+
         if self.backend_type != BackendType.THRIFT:
             return None
 
@@ -333,18 +353,20 @@ class CommandId:
         Returns:
             The statement ID string or None if this is not a SEA statement ID
         """
+
         if self.backend_type != BackendType.SEA:
             return None
 
         return self.guid
 
-    def to_hex_id(self) -> str:
+    def to_hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the command ID.
 
         Returns:
             A hexadecimal string representation
         """
+
         if isinstance(self.guid, bytes):
             return guid_to_hex_id(self.guid)
         else:

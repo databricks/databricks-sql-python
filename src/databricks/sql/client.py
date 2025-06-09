@@ -50,6 +50,7 @@ from databricks.sql.session import Session
 from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TOpenSessionResp,
     TSparkParameter,
     TOperationState,
 )
@@ -247,6 +248,7 @@ class Connection:
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )
+        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -319,8 +321,16 @@ class Connection:
         return self.session.protocol_version
 
     @staticmethod
-    def get_protocol_version(session_id: SessionId):
+    def get_protocol_version(openSessionResp: TOpenSessionResp):
         """Delegate to Session class static method"""
+        properties = (
+            {"serverProtocolVersion": openSessionResp.serverProtocolVersion}
+            if openSessionResp.serverProtocolVersion
+            else {}
+        )
+        session_id = SessionId.from_thrift_handle(
+            openSessionResp.sessionHandle, properties
+        )
         return Session.get_protocol_version(session_id)
 
     @property
@@ -387,6 +397,7 @@ class Cursor:
         Cursors are not isolated, i.e., any changes done to the database by a cursor are immediately
         visible by other cursors or connections.
         """
+
         self.connection = connection
         self.rowcount = -1  # Return -1 as this is not supported
         self.buffer_size_bytes = result_buffer_size_bytes
@@ -745,6 +756,7 @@ class Cursor:
 
         :returns self
         """
+
         logger.debug(
             "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
         )
@@ -785,7 +797,7 @@ class Cursor:
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
-                staging_allowed_local_path=self.backend.staging_allowed_local_path
+                staging_allowed_local_path=self.connection.staging_allowed_local_path
             )
 
         return self
@@ -804,6 +816,7 @@ class Cursor:
         :param parameters:
         :return:
         """
+
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
@@ -876,12 +889,12 @@ class Cursor:
         operation_state = self.get_query_state()
         if operation_state == CommandState.SUCCEEDED:
             self.active_result_set = self.backend.get_execution_result(
-                self.active_op_handle, self
+                self.active_command_id, self
             )
 
             if self.active_result_set and self.active_result_set.is_staging_operation:
                 self._handle_staging_operation(
-                    staging_allowed_local_path=self.backend.staging_allowed_local_path
+                    staging_allowed_local_path=self.connection.staging_allowed_local_path
                 )
 
             return self
@@ -1106,7 +1119,7 @@ class Cursor:
         invoked via the execute method yet, or if cursor was closed.
         """
         if self.active_command_id is not None:
-            return self.active_command_id.to_hex_id()
+            return self.active_command_id.to_hex_guid()
         return None
 
     @property

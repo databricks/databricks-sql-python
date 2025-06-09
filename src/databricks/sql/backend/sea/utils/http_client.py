@@ -10,7 +10,7 @@ from databricks.sql.types import SSLOptions
 logger = logging.getLogger(__name__)
 
 
-class CustomHttpClient:
+class SeaHttpClient:
     """
     HTTP client for Statement Execution API (SEA).
 

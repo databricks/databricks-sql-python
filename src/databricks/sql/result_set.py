@@ -1,14 +1,21 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union, Tuple
+from typing import List, Optional, Any, Union, TYPE_CHECKING
 
 import logging
 import time
 import pandas
 
+from databricks.sql.backend.types import CommandId, CommandState
+
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
+
+if TYPE_CHECKING:
+    from databricks.sql.backend.databricks_client import DatabricksClient
+    from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+    from databricks.sql.client import Connection
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
@@ -25,14 +32,34 @@ class ResultSet(ABC):
     This class defines the interface that all concrete result set implementations must follow.
     """
 
-    def __init__(self, connection, backend, arraysize: int, buffer_size_bytes: int):
-        """Initialize the base ResultSet with common properties."""
+    def __init__(
+        self,
+        connection: "Connection",
+        backend: "DatabricksClient",
+        command_id: CommandId,
+        op_state: Optional[CommandState],
+        has_been_closed_server_side: bool,
+        arraysize: int,
+        buffer_size_bytes: int,
+    ):
+        """
+        A ResultSet manages the results of a single command.
+
+        :param connection: The parent connection that was used to execute this command
+        :param backend: The specialised backend client to be invoked in the fetch phase
+        :param execute_response: A `ExecuteResponse` class returned by a command execution
+        :param result_buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+        amount :param arraysize: The max number of rows to fetch at a time (PEP-249)
+        """
+        self.command_id = command_id
+        self.op_state = op_state
+        self.has_been_closed_server_side = has_been_closed_server_side
         self.connection = connection
-        self.backend = backend  # Store the backend client directly
+        self.backend = backend
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
-        self.description: Optional[Any] = None
+        self.description = None
 
     def __iter__(self):
         while True:
@@ -74,19 +101,35 @@ class ResultSet(ABC):
         pass
 
     @abstractmethod
-    def fetchmany_arrow(self, size: int) -> Any:
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """Fetch the next set of rows as an Arrow table."""
         pass
 
     @abstractmethod
-    def fetchall_arrow(self) -> Any:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all remaining rows as an Arrow table."""
         pass
 
-    @abstractmethod
     def close(self) -> None:
-        """Close the result set and release any resources."""
-        pass
+        """
+        Close the result set.
+
+        If the connection has not been closed, and the result set has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
+        try:
+            if (
+                self.op_state != CommandState.CLOSED
+                and not self.has_been_closed_server_side
+                and self.connection.open
+            ):
+                self.backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
+        finally:
+            self.has_been_closed_server_side = True
+            self.op_state = CommandState.CLOSED
 
 
 class ThriftResultSet(ResultSet):
@@ -94,9 +137,9 @@ class ThriftResultSet(ResultSet):
 
     def __init__(
         self,
-        connection,
+        connection: "Connection",
         execute_response: ExecuteResponse,
-        thrift_client,  # Pass the specific ThriftDatabricksClient instance
+        thrift_client: "ThriftDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
@@ -112,11 +155,17 @@ class ThriftResultSet(ResultSet):
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
         """
-        super().__init__(connection, thrift_client, arraysize, buffer_size_bytes)
+        super().__init__(
+            connection,
+            thrift_client,
+            execute_response.command_id,
+            execute_response.status,
+            execute_response.has_been_closed_server_side,
+            arraysize,
+            buffer_size_bytes,
+        )
 
         # Initialize ThriftResultSet-specific attributes
-        self.command_id = execute_response.command_id
-        self.op_state = execute_response.status
         self.has_been_closed_server_side = execute_response.has_been_closed_server_side
         self.has_more_rows = execute_response.has_more_rows
         self.lz4_compressed = execute_response.lz4_compressed
@@ -127,11 +176,15 @@ class ThriftResultSet(ResultSet):
 
         # Initialize results queue
         if execute_response.arrow_queue:
+            # In this case the server has taken the fast path and returned an initial batch of
+            # results
             self.results = execute_response.arrow_queue
         else:
+            # In this case, there are results waiting on the server so we fetch now for simplicity
             self._fill_results_buffer()
 
     def _fill_results_buffer(self):
+        # At initialization or if the server does not have cloud fetch result links available
         results, has_more_rows = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
@@ -195,7 +248,7 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2):
+    def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
         Function to merge / combining the columnar results into a single result
         :param result1:
@@ -335,27 +388,6 @@ class ThriftResultSet(ResultSet):
             return self._convert_columnar_table(self.fetchmany_columnar(size))
         else:
             return self._convert_arrow_table(self.fetchmany_arrow(size))
-
-    def close(self) -> None:
-        """
-        Close the cursor.
-
-        If the connection has not been closed, and the cursor has not already
-        been closed on the server for some other reason, issue a request to the server to close it.
-        """
-        try:
-            if (
-                self.op_state != ttypes.TOperationState.CLOSED_STATE
-                and not self.has_been_closed_server_side
-                and self.connection.open
-            ):
-                self.backend.close_command(self.command_id)
-        except RequestError as e:
-            if isinstance(e.args[1], CursorAlreadyClosedError):
-                logger.info("Operation was canceled by a prior request")
-        finally:
-            self.has_been_closed_server_side = True
-            self.op_state = ttypes.TOperationState.CLOSED_STATE
 
     @property
     def is_staging_operation(self) -> bool:
