@@ -14,7 +14,7 @@ from databricks.sql.types import Row
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.exc import Error
 
-from databricks.sql.backend.models import (
+from databricks.sql.backend.sea.models import (
     StatementStatus,
     ResultManifest,
     ResultData,

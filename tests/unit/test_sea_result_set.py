@@ -12,7 +12,7 @@ sys.path.append("/home/varun.edachali/conn/databricks-sql-python/src")
 
 from databricks.sql.backend.sea_result_set import SeaResultSet
 from databricks.sql.backend.types import CommandState
-from databricks.sql.backend.models import (
+from databricks.sql.backend.sea.models import (
     StatementStatus,
     ResultManifest,
     ResultData,

@@ -10,11 +10,11 @@ if TYPE_CHECKING:
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
-from databricks.sql.backend.utils.http_client import CustomHttpClient
+from databricks.sql.backend.sea.utils.http_client import CustomHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
-from databricks.sql.backend.models import (
+from databricks.sql.backend.sea.models import (
     ExecuteStatementRequest,
     GetStatementRequest,
     CancelStatementRequest,
