@@ -2,9 +2,11 @@ import logging
 import re
 import uuid
 import time
-from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
+from typing import Dict, Set, Tuple, List, Optional, Any, Union, TYPE_CHECKING
 
-from databricks.sql.backend.sea.utils.constants import ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
+from databricks.sql.backend.sea.utils.constants import (
+    ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
+)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -59,6 +61,7 @@ def _filter_session_configuration(
         )
 
     return filtered_session_configuration
+
 
 class SeaDatabricksClient(DatabricksClient):
     """
@@ -493,7 +496,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         # Create and return a SeaResultSet
-        from databricks.sql.backend.sea_result_set import SeaResultSet
+        from databricks.sql.result_set import SeaResultSet
 
         return SeaResultSet(
             connection=cursor.connection,

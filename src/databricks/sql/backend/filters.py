@@ -17,11 +17,8 @@ from typing import (
     TYPE_CHECKING,
 )
 
-# Import SeaResultSet for type checking
-from databricks.sql.backend.sea_result_set import SeaResultSet
-
 if TYPE_CHECKING:
-    from databricks.sql.result_set import ResultSet
+    from databricks.sql.result_set import ResultSet, SeaResultSet
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +33,8 @@ class ResultSetFilter:
 
     @staticmethod
     def _filter_sea_result_set(
-        result_set: SeaResultSet, filter_func: Callable[[List[Any]], bool]
-    ) -> SeaResultSet:
+        result_set: "SeaResultSet", filter_func: Callable[[List[Any]], bool]
+    ) -> "SeaResultSet":
         """
         Filter a SEA result set using the provided filter function.
 

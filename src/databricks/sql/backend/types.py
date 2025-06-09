@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import logging
 
 from databricks.sql.backend.utils import guid_to_hex_id
@@ -79,6 +80,28 @@ class CommandState(Enum):
             return cls.CANCELLED
         else:
             return None
+
+    @classmethod
+    def from_sea_state(cls, state: str) -> Optional["CommandState"]:
+        """
+        Map SEA state string to CommandState enum.
+
+        Args:
+            state: SEA state string
+
+        Returns:
+            CommandState: The corresponding CommandState enum value
+        """
+        state_mapping = {
+            "PENDING": cls.PENDING,
+            "RUNNING": cls.RUNNING,
+            "SUCCEEDED": cls.SUCCEEDED,
+            "FAILED": cls.FAILED,
+            "CLOSED": cls.CLOSED,
+            "CANCELED": cls.CANCELLED,
+        }
+
+        return state_mapping.get(state, None)
 
 
 class BackendType(Enum):
@@ -371,3 +394,19 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
+
+
+@dataclass
+class ExecuteResponse:
+    """Response from executing a SQL command."""
+
+    command_id: CommandId
+    status: CommandState
+    description: Optional[
+        List[Tuple[str, str, None, None, Optional[int], Optional[int], bool]]
+    ] = None
+    has_more_rows: bool = False
+    results_queue: Optional[Any] = None
+    has_been_closed_server_side: bool = False
+    lz4_compressed: bool = True
+    is_staging_operation: bool = False

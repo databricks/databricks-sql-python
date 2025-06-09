@@ -349,13 +349,6 @@ class CloudFetchQueue(ResultSetQueue):
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
 
-ExecuteResponse = namedtuple(
-    "ExecuteResponse",
-    "status has_been_closed_server_side has_more_rows description lz4_compressed is_staging_operation "
-    "command_id arrow_queue arrow_schema_bytes",
-)
-
-
 def _bound(min_x, max_x, x):
     """Bound x by [min_x, max_x]
 
