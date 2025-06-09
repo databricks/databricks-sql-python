@@ -86,6 +86,34 @@ class DatabricksClient(ABC):
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
     ) -> Union["ResultSet", None]:
+        """
+        Executes a SQL command or query within the specified session.
+
+        This method sends a SQL command to the server for execution and handles
+        the response. It can operate in both synchronous and asynchronous modes.
+
+        Args:
+            operation: The SQL command or query to execute
+            session_id: The session identifier in which to execute the command
+            max_rows: Maximum number of rows to fetch in a single fetch batch
+            max_bytes: Maximum number of bytes to fetch in a single fetch batch
+            lz4_compression: Whether to use LZ4 compression for result data
+            cursor: The cursor object that will handle the results
+            use_cloud_fetch: Whether to use cloud fetch for retrieving large result sets
+            parameters: List of parameters to bind to the query
+            async_op: Whether to execute the command asynchronously
+            enforce_embedded_schema_correctness: Whether to enforce schema correctness
+
+        Returns:
+            If async_op is False, returns a ResultSet object containing the
+            query results and metadata. If async_op is True, returns None and the
+            results must be fetched later using get_execution_result().
+
+        Raises:
+            ValueError: If the session ID is invalid
+            OperationalError: If there's an error executing the command
+            ServerOperationError: If the server encounters an error during execution
+        """
         pass
 
     @abstractmethod
