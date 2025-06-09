@@ -867,9 +867,7 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
         )
 
-        status = CommandState.from_thrift_state(resp.status)
-        if status is None:
-            raise ValueError(f"Invalid operation state: {resp.status}")
+        status = self.get_query_state(command_id)
 
         execute_response = ExecuteResponse(
             command_id=command_id,
