@@ -1,7 +1,10 @@
 import logging
+import re
 import uuid
 import time
 from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
+
+from databricks.sql.backend.sea.utils.constants import ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -10,7 +13,7 @@ if TYPE_CHECKING:
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
-from databricks.sql.backend.sea.utils.http_client import CustomHttpClient
+from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
@@ -29,6 +32,33 @@ from databricks.sql.backend.sea.models import (
 
 logger = logging.getLogger(__name__)
 
+
+def _filter_session_configuration(
+    session_configuration: Optional[Dict[str, str]]
+) -> Optional[Dict[str, str]]:
+    if not session_configuration:
+        return None
+
+    filtered_session_configuration = {}
+    ignored_configs: Set[str] = set()
+
+    for key, value in session_configuration.items():
+        if key.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP:
+            filtered_session_configuration[key.lower()] = value
+        else:
+            ignored_configs.add(key)
+
+    if ignored_configs:
+        logger.warning(
+            "Some session configurations were ignored because they are not supported: %s",
+            ignored_configs,
+        )
+        logger.warning(
+            "Supported session configurations are: %s",
+            list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys()),
+        )
+
+    return filtered_session_configuration
 
 class SeaDatabricksClient(DatabricksClient):
     """
