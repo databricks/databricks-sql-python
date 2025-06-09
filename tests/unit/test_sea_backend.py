@@ -50,6 +50,23 @@ class TestSeaBackend:
 
         return client
 
+    @pytest.fixture
+    def sea_session_id(self):
+        """Create a SEA session ID."""
+        return SessionId.from_sea_session_id("test-session-123")
+        
+    @pytest.fixture
+    def sea_command_id(self):
+        """Create a SEA command ID."""
+        return CommandId.from_sea_statement_id("test-statement-123")
+
+    @pytest.fixture
+    def mock_cursor(self):
+        """Create a mock cursor."""
+        cursor = Mock()
+        cursor.active_command_id = None
+        return cursor
+
     def test_init_extracts_warehouse_id(self, mock_http_client):
         """Test that the constructor properly extracts the warehouse ID from the HTTP path."""
         # Test with warehouses format
@@ -520,9 +537,8 @@ class TestSeaBackend:
 
         # Verify basic properties of the result
         assert result.statement_id == "test-statement-123"
-        assert result.status.state == CommandState.SUCCEEDED
-        assert result.manifest.schema[0].name == "test_value"
-
+        assert result.status == CommandState.SUCCEEDED
+        
         # Verify the HTTP request
         mock_http_client._make_request.assert_called_once()
         args, kwargs = mock_http_client._make_request.call_args

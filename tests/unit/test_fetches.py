@@ -43,14 +43,13 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=True,
                 has_more_rows=False,
                 description=Mock(),
                 lz4_compressed=Mock(),
-                command_id=None,
                 results_queue=arrow_queue,
-                arrow_schema_bytes=schema.serialize().to_pybytes(),
                 is_staging_operation=False,
             ),
             thrift_client=None,
@@ -89,6 +88,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=False,
                 has_more_rows=True,
@@ -97,9 +97,7 @@ class FetchTests(unittest.TestCase):
                     for col_id in range(num_cols)
                 ],
                 lz4_compressed=Mock(),
-                command_id=None,
                 results_queue=None,
-                arrow_schema_bytes=None,
                 is_staging_operation=False,
             ),
             thrift_client=mock_thrift_backend,

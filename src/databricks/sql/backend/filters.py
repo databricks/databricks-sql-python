@@ -18,7 +18,9 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from databricks.sql.result_set import ResultSet, SeaResultSet
+    from databricks.sql.result_set import ResultSet
+
+from databricks.sql.result_set import SeaResultSet
 
 logger = logging.getLogger(__name__)
 
