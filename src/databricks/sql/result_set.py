@@ -64,7 +64,7 @@ class ResultSet(ABC):
         """
 
         self.connection = connection
-        self.backend = backend
+        self.backend = backend  # Store the backend client directly
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
@@ -115,12 +115,12 @@ class ResultSet(ABC):
         pass
 
     @abstractmethod
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+    def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
         pass
 
     @abstractmethod
-    def fetchall_arrow(self) -> "pyarrow.Table":
+    def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
         pass
 
@@ -207,7 +207,7 @@ class ThriftResultSet(ResultSet):
             use_cloud_fetch=self._use_cloud_fetch,
         )
         self.results = results
-        self.has_more_rows = has_more_rows
+        self._has_more_rows = has_more_rows
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -259,7 +259,7 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2) -> "ColumnTable":
+    def merge_columnar(self, result1, result2):
         """
         Function to merge / combining the columnar results into a single result
         :param result1:
@@ -291,7 +291,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self._has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -316,7 +316,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self._has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -331,7 +331,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self._has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -357,7 +357,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self._has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
@@ -403,16 +403,96 @@ class ThriftResultSet(ResultSet):
     @staticmethod
     def _get_schema_description(table_schema_message):
         """
-        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
+        Initialize a SeaResultSet with the response from a SEA query execution.
+
+        Args:
+            connection: The parent connection
+            sea_client: The SeaDatabricksClient instance for direct access
+            buffer_size_bytes: Buffer size for fetching results
+            arraysize: Default number of rows to fetch
+            execute_response: Response from the execute command (new style)
+            sea_response: Direct SEA response (legacy style)
+        """
+        # Handle both initialization styles
+        if execute_response is not None:
+            # New style with ExecuteResponse
+            command_id = execute_response.command_id
+            status = execute_response.status
+            has_been_closed_server_side = execute_response.has_been_closed_server_side
+            has_more_rows = execute_response.has_more_rows
+            results_queue = execute_response.results_queue
+            description = execute_response.description
+            is_staging_operation = execute_response.is_staging_operation
+            self._response = getattr(execute_response, "sea_response", {})
+            self.statement_id = command_id.to_sea_statement_id() if command_id else None
+        elif sea_response is not None:
+            # Legacy style with direct sea_response
+            self._response = sea_response
+            # Extract values from sea_response
+            command_id = CommandId.from_sea_statement_id(
+                sea_response.get("statement_id", "")
+            )
+            self.statement_id = sea_response.get("statement_id", "")
+
+            # Extract status
+            status_data = sea_response.get("status", {})
+            status = CommandState.from_sea_state(status_data.get("state", "PENDING"))
+
+            # Set defaults for other fields
+            has_been_closed_server_side = False
+            has_more_rows = False
+            results_queue = None
+            description = None
+            is_staging_operation = False
+        else:
+            raise ValueError("Either execute_response or sea_response must be provided")
+
+        # Call parent constructor with common attributes
+        super().__init__(
+            connection=connection,
+            backend=sea_client,
+            arraysize=arraysize,
+            buffer_size_bytes=buffer_size_bytes,
+            command_id=command_id,
+            status=status,
+            has_been_closed_server_side=has_been_closed_server_side,
+            has_more_rows=has_more_rows,
+            results_queue=results_queue,
+            description=description,
+            is_staging_operation=is_staging_operation,
+        )
+
+    def _fill_results_buffer(self):
+        """Fill the results buffer from the backend."""
+        raise NotImplementedError("fetchone is not implemented for SEA backend")
+
+    def fetchone(self) -> Optional[Row]:
+        """
+        Fetch the next row of a query result set, returning a single sequence,
+        or None when no more data is available.
         """
 
-        def map_col_type(type_):
-            if type_.startswith("decimal"):
-                return "decimal"
-            else:
-                return type_
+        raise NotImplementedError("fetchone is not implemented for SEA backend")
 
-        return [
-            (column.name, map_col_type(column.datatype), None, None, None, None, None)
-            for column in table_schema_message.columns
-        ]
+    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
+        """
+        Fetch the next set of rows of a query result, returning a list of rows.
+
+        An empty sequence is returned when no more rows are available.
+        """
+
+        raise NotImplementedError("fetchmany is not implemented for SEA backend")
+
+    def fetchall(self) -> List[Row]:
+        """
+        Fetch all (remaining) rows of a query result, returning them as a list of rows.
+        """
+        raise NotImplementedError("fetchall is not implemented for SEA backend")
+
+    def fetchmany_arrow(self, size: int) -> Any:
+        """Fetch the next set of rows as an Arrow table."""
+        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
+
+    def fetchall_arrow(self) -> Any:
+        """Fetch all remaining rows as an Arrow table."""
+        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")
