@@ -10,15 +10,13 @@ from typing import List, Union, Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
-from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
     CommandState,
     SessionId,
     CommandId,
-    BackendType,
-    guid_to_hex_id,
     ExecuteResponse,
 )
+from databricks.sql.backend.utils.guid_utils import guid_to_hex_id
 
 try:
     import pyarrow
