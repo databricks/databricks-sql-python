@@ -102,7 +102,6 @@ class CommandState(Enum):
         return state_mapping.get(state, None)
 
 
-
 class BackendType(Enum):
     """
     Enum representing the type of backend
@@ -416,6 +415,7 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
+
 
 @dataclass
 class ExecuteResponse:
