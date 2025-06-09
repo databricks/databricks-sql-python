@@ -54,10 +54,6 @@ class DriverConnectionParameters:
         host_info (HostDetails): Details about the host connection
         auth_mech (AuthMech): The authentication mechanism used
         auth_flow (AuthFlow): The authentication flow type
-        auth_scope (str): The scope of authentication
-        discovery_url (str): URL for service discovery
-        allowed_volume_ingestion_paths (str): JSON string of allowed paths for volume operations
-        azure_tenant_id (str): Azure tenant ID for Azure authentication
         socket_timeout (int): Connection timeout in milliseconds
     """
 
@@ -66,10 +62,6 @@ class DriverConnectionParameters:
     host_info: HostDetails
     auth_mech: Optional[AuthMech] = None
     auth_flow: Optional[AuthFlow] = None
-    auth_scope: Optional[str] = None
-    discovery_url: Optional[str] = None
-    allowed_volume_ingestion_paths: Optional[str] = None
-    azure_tenant_id: Optional[str] = None
     socket_timeout: Optional[int] = None
 
     def to_json(self):

@@ -182,7 +182,7 @@ class TestTelemetryClientFactory(unittest.TestCase):
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         
-        client = TelemetryClientFactory.initialize_telemetry_client(
+        TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=True,
             connection_uuid=connection_uuid,
             auth_provider=auth_provider,
@@ -197,7 +197,6 @@ class TestTelemetryClientFactory(unittest.TestCase):
             host_url=host_url,
             executor=TelemetryClientFactory._executor,
         )
-        self.assertEqual(client, mock_client)
         self.assertEqual(TelemetryClientFactory._clients[connection_uuid], mock_client)
         
         # Call again with the same connection_uuid
@@ -209,18 +208,18 @@ class TestTelemetryClientFactory(unittest.TestCase):
 
     def test_initialize_telemetry_client_disabled(self):
         """Test initializing a telemetry client when telemetry is disabled."""
-        client = TelemetryClientFactory.initialize_telemetry_client(
+        connection_uuid = "test-uuid"
+        TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=False,
-            connection_uuid="test-uuid",
+            connection_uuid=connection_uuid,
             auth_provider=MagicMock(),
             host_url="test-host",
         )
         
-        # Verify a NoopTelemetryClient was returned
-        self.assertIsInstance(client, NoopTelemetryClient)
-        self.assertEqual(TelemetryClientFactory._clients, {})  # No client was stored
+        # Verify a NoopTelemetryClient was stored
+        self.assertIsInstance(TelemetryClientFactory._clients[connection_uuid], NoopTelemetryClient)
 
-        client2 = TelemetryClientFactory.get_telemetry_client("test-uuid")
+        client2 = TelemetryClientFactory.get_telemetry_client(connection_uuid)
         self.assertIsInstance(client2, NoopTelemetryClient)
 
     def test_get_telemetry_client_existing(self):
@@ -267,7 +266,7 @@ class TestTelemetryClientFactory(unittest.TestCase):
         mock_executor_class.return_value = mock_executor2
         mock_client_class.return_value = mock_client2
         
-        client = TelemetryClientFactory.initialize_telemetry_client(
+        TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=True,
             connection_uuid=connection_uuid2,
             auth_provider=MagicMock(),
@@ -279,7 +278,7 @@ class TestTelemetryClientFactory(unittest.TestCase):
         self.assertIsNotNone(TelemetryClientFactory._executor)
         self.assertEqual(TelemetryClientFactory._executor, mock_executor2)
         self.assertIn(connection_uuid2, TelemetryClientFactory._clients)
-        self.assertEqual(client, mock_client2)
+        self.assertEqual(TelemetryClientFactory._clients[connection_uuid2], mock_client2)
         
         # Verify new ThreadPoolExecutor was created
         self.assertEqual(mock_executor_class.call_count, 1)

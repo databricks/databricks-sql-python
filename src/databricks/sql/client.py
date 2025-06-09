@@ -303,11 +303,15 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
 
-        self.telemetry_client = TelemetryClientFactory.initialize_telemetry_client(
+        TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             connection_uuid=self.get_session_id_hex(),
             auth_provider=auth_provider,
             host_url=self.host,
+        )
+
+        self.telemetry_client = TelemetryClientFactory.get_telemetry_client(
+            connection_uuid=self.get_session_id_hex()
         )
 
         driver_connection_params = DriverConnectionParameters(

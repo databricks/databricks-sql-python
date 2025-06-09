@@ -60,11 +60,11 @@ class TelemetryHelper:
         if isinstance(auth_provider, AccessTokenAuthProvider):
             return AuthMech.PAT  # Personal Access Token authentication
         elif isinstance(auth_provider, DatabricksOAuthProvider):
-            return AuthMech.OAUTH  # Databricks-managed OAuth flow
+            return AuthMech.DATABRICKS_OAUTH  # Databricks-managed OAuth flow
         elif isinstance(auth_provider, ExternalAuthProvider):
             return (
-                AuthMech.EXTERNAL
-            )  # External identity provider (AWS IAM, Azure AD, etc.)
+                AuthMech.EXTERNAL_AUTH
+            )  # External identity provider (AWS, Azure, etc.)
         return AuthMech.OTHER  # Custom or unknown authentication provider
 
     @staticmethod
@@ -269,12 +269,12 @@ class TelemetryClientFactory:
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         TelemetryClientFactory._initialize()
 
-        if telemetry_enabled:
-            with TelemetryClientFactory._lock:
-                if connection_uuid not in TelemetryClientFactory._clients:
-                    logger.info(
-                        f"Creating new TelemetryClient for connection {connection_uuid}"
-                    )
+        with TelemetryClientFactory._lock:
+            if connection_uuid not in TelemetryClientFactory._clients:
+                logger.info(
+                    f"Creating new TelemetryClient for connection {connection_uuid}"
+                )
+                if telemetry_enabled:
                     TelemetryClientFactory._clients[connection_uuid] = TelemetryClient(
                         telemetry_enabled=telemetry_enabled,
                         connection_uuid=connection_uuid,
@@ -282,9 +282,10 @@ class TelemetryClientFactory:
                         host_url=host_url,
                         executor=TelemetryClientFactory._executor,
                     )
-                return TelemetryClientFactory._clients[connection_uuid]
-        else:
-            return NoopTelemetryClient()
+                else:
+                    TelemetryClientFactory._clients[
+                        connection_uuid
+                    ] = NoopTelemetryClient()
 
     @staticmethod
     def get_telemetry_client(connection_uuid):
@@ -292,6 +293,9 @@ class TelemetryClientFactory:
         if connection_uuid in TelemetryClientFactory._clients:
             return TelemetryClientFactory._clients[connection_uuid]
         else:
+            logger.error(
+                f"Telemetry client not initialized for connection {connection_uuid}"
+            )
             return NoopTelemetryClient()
 
     @staticmethod
