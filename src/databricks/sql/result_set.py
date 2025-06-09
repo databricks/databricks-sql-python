@@ -259,7 +259,7 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2):
+    def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
         Function to merge / combining the columnar results into a single result
         :param result1:
