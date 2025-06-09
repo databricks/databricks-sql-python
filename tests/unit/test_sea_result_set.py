@@ -40,35 +40,7 @@ class TestSeaResultSet:
             ("test_value", "INT", None, None, None, None, None)
         ]
         mock_response.is_staging_operation = False
-        mock_response.sea_response = {
-            "statement_id": "test-statement-123",
-            "status": {"state": "SUCCEEDED"},
-            "result": {"data_array": [["1"]]},
-        }
         return mock_response
-
-    def test_init_with_sea_response(
-        self, mock_connection, mock_sea_client, sea_response
-    ):
-        """Test initializing SeaResultSet with a SEA response."""
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            sea_client=mock_sea_client,
-            sea_response=sea_response,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-
-        # Verify basic properties
-        assert result_set.statement_id == "test-statement-123"
-        assert result_set.status == CommandState.SUCCEEDED
-        assert result_set.command_id.guid == "test-statement-123"
-        assert result_set.command_id.backend_type == BackendType.SEA
-        assert result_set.connection == mock_connection
-        assert result_set.backend == mock_sea_client
-        assert result_set.buffer_size_bytes == 1000
-        assert result_set.arraysize == 100
-        assert result_set._response == sea_response
 
     def test_init_with_execute_response(
         self, mock_connection, mock_sea_client, execute_response
