@@ -915,7 +915,7 @@ class ThriftDatabricksClient(DatabricksClient):
         self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
         state = CommandState.from_thrift_state(operation_state)
         if state is None:
-            raise ValueError(f"Invalid operation state: {operation_state}")
+            raise ValueError(f"Unknown command state: {operation_state}")
         return state
 
     @staticmethod
