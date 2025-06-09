@@ -157,7 +157,6 @@ class ThriftResultSet(ResultSet):
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
-        arrow_schema_bytes: Optional[bytes] = None,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -169,10 +168,9 @@ class ThriftResultSet(ResultSet):
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            arrow_schema_bytes: Arrow schema bytes for the result set
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = arrow_schema_bytes
+        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
         self.lz4_compressed = execute_response.lz4_compressed
 
