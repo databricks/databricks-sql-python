@@ -16,7 +16,8 @@ from databricks.sql.backend.types import (
     CommandId,
     ExecuteResponse,
 )
-from databricks.sql.backend.utils.guid_utils import guid_to_hex_id
+from databricks.sql.backend.utils import guid_to_hex_id
+
 
 try:
     import pyarrow
