@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import logging
 
 from databricks.sql.backend.utils import guid_to_hex_id
@@ -79,6 +80,28 @@ class CommandState(Enum):
             return cls.CANCELLED
         else:
             return None
+
+    @classmethod
+    def from_sea_state(cls, state: str) -> Optional["CommandState"]:
+        """
+        Map SEA state string to CommandState enum.
+
+        Args:
+            state: SEA state string
+
+        Returns:
+            CommandState: The corresponding CommandState enum value
+        """
+        state_mapping = {
+            "PENDING": cls.PENDING,
+            "RUNNING": cls.RUNNING,
+            "SUCCEEDED": cls.SUCCEEDED,
+            "FAILED": cls.FAILED,
+            "CLOSED": cls.CLOSED,
+            "CANCELED": cls.CANCELLED,
+        }
+
+        return state_mapping.get(state, None)
 
 
 class BackendType(Enum):
@@ -285,28 +308,6 @@ class CommandId:
         self.has_result_set = has_result_set
         self.modified_row_count = modified_row_count
 
-    def __str__(self) -> str:
-        """
-        Return a string representation of the CommandId.
-
-        For SEA backend, returns the guid.
-        For Thrift backend, returns a format like "guid|secret".
-
-        Returns:
-            A string representation of the command ID
-        """
-
-        if self.backend_type == BackendType.SEA:
-            return str(self.guid)
-        elif self.backend_type == BackendType.THRIFT:
-            secret_hex = (
-                guid_to_hex_id(self.secret)
-                if isinstance(self.secret, bytes)
-                else str(self.secret)
-            )
-            return f"{self.to_hex_guid()}|{secret_hex}"
-        return str(self.guid)
-
     @classmethod
     def from_thrift_handle(cls, operation_handle):
         """
@@ -318,7 +319,6 @@ class CommandId:
         Returns:
             A CommandId instance
         """
-
         if operation_handle is None:
             return None
 
@@ -394,3 +394,19 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
+
+
+@dataclass
+class ExecuteResponse:
+    """Response from executing a SQL command."""
+
+    command_id: CommandId
+    status: CommandState
+    description: Optional[
+        List[Tuple[str, str, None, None, Optional[int], Optional[int], bool]]
+    ] = None
+    has_more_rows: bool = False
+    results_queue: Optional[Any] = None
+    has_been_closed_server_side: bool = False
+    lz4_compressed: bool = True
+    is_staging_operation: bool = False

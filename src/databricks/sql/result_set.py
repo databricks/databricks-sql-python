@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union, TYPE_CHECKING
+from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
 
 import logging
 import time
 import pandas
-
-from databricks.sql.backend.types import CommandId, CommandState
 
 try:
     import pyarrow
@@ -13,14 +11,13 @@ except ImportError:
     pyarrow = None
 
 if TYPE_CHECKING:
-    from databricks.sql.backend.databricks_client import DatabricksClient
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
-
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ExecuteResponse, ColumnTable, ColumnQueue
+from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
 
@@ -34,32 +31,31 @@ class ResultSet(ABC):
 
     def __init__(
         self,
-        connection: "Connection",
-        backend: "DatabricksClient",
-        command_id: CommandId,
-        op_state: Optional[CommandState],
-        has_been_closed_server_side: bool,
+        connection,
+        backend,
         arraysize: int,
         buffer_size_bytes: int,
+        command_id=None,
+        status=None,
+        has_been_closed_server_side: bool = False,
+        has_more_rows: bool = False,
+        results_queue=None,
+        description=None,
+        is_staging_operation: bool = False,
     ):
-        """
-        A ResultSet manages the results of a single command.
-
-        :param connection: The parent connection that was used to execute this command
-        :param backend: The specialised backend client to be invoked in the fetch phase
-        :param execute_response: A `ExecuteResponse` class returned by a command execution
-        :param result_buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
-        amount :param arraysize: The max number of rows to fetch at a time (PEP-249)
-        """
-        self.command_id = command_id
-        self.op_state = op_state
-        self.has_been_closed_server_side = has_been_closed_server_side
+        """Initialize the base ResultSet with common properties."""
         self.connection = connection
-        self.backend = backend
+        self.backend = backend  # Store the backend client directly
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
-        self.description = None
+        self.description = description
+        self.command_id = command_id
+        self.status = status
+        self.has_been_closed_server_side = has_been_closed_server_side
+        self._has_more_rows = has_more_rows
+        self.results = results_queue
+        self._is_staging_operation = is_staging_operation
 
     def __iter__(self):
         while True:
@@ -74,10 +70,9 @@ class ResultSet(ABC):
         return self._next_row_index
 
     @property
-    @abstractmethod
     def is_staging_operation(self) -> bool:
         """Whether this result set represents a staging operation."""
-        pass
+        return self._is_staging_operation
 
     # Define abstract methods that concrete implementations must implement
     @abstractmethod
@@ -101,12 +96,12 @@ class ResultSet(ABC):
         pass
 
     @abstractmethod
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+    def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
         pass
 
     @abstractmethod
-    def fetchall_arrow(self) -> "pyarrow.Table":
+    def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
         pass
 
@@ -119,7 +114,7 @@ class ResultSet(ABC):
         """
         try:
             if (
-                self.op_state != CommandState.CLOSED
+                self.status != CommandState.CLOSED
                 and not self.has_been_closed_server_side
                 and self.connection.open
             ):
@@ -129,7 +124,7 @@ class ResultSet(ABC):
                 logger.info("Operation was canceled by a prior request")
         finally:
             self.has_been_closed_server_side = True
-            self.op_state = CommandState.CLOSED
+            self.status = CommandState.CLOSED
 
 
 class ThriftResultSet(ResultSet):
@@ -138,11 +133,12 @@ class ThriftResultSet(ResultSet):
     def __init__(
         self,
         connection: "Connection",
-        execute_response: ExecuteResponse,
+        execute_response: "ExecuteResponse",
         thrift_client: "ThriftDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
+        arrow_schema_bytes: Optional[bytes] = None,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -154,37 +150,33 @@ class ThriftResultSet(ResultSet):
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
+            arrow_schema_bytes: Arrow schema bytes for the result set
         """
+        # Initialize ThriftResultSet-specific attributes
+        self._arrow_schema_bytes = arrow_schema_bytes
+        self._use_cloud_fetch = use_cloud_fetch
+        self.lz4_compressed = execute_response.lz4_compressed
+
+        # Call parent constructor with common attributes
         super().__init__(
-            connection,
-            thrift_client,
-            execute_response.command_id,
-            execute_response.status,
-            execute_response.has_been_closed_server_side,
-            arraysize,
-            buffer_size_bytes,
+            connection=connection,
+            backend=thrift_client,
+            arraysize=arraysize,
+            buffer_size_bytes=buffer_size_bytes,
+            command_id=execute_response.command_id,
+            status=execute_response.status,
+            has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            has_more_rows=execute_response.has_more_rows,
+            results_queue=execute_response.results_queue,
+            description=execute_response.description,
+            is_staging_operation=execute_response.is_staging_operation,
         )
 
-        # Initialize ThriftResultSet-specific attributes
-        self.has_been_closed_server_side = execute_response.has_been_closed_server_side
-        self.has_more_rows = execute_response.has_more_rows
-        self.lz4_compressed = execute_response.lz4_compressed
-        self.description = execute_response.description
-        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
-        self._use_cloud_fetch = use_cloud_fetch
-        self._is_staging_operation = execute_response.is_staging_operation
-
-        # Initialize results queue
-        if execute_response.arrow_queue:
-            # In this case the server has taken the fast path and returned an initial batch of
-            # results
-            self.results = execute_response.arrow_queue
-        else:
-            # In this case, there are results waiting on the server so we fetch now for simplicity
+        # Initialize results queue if not provided
+        if not self.results:
             self._fill_results_buffer()
 
     def _fill_results_buffer(self):
-        # At initialization or if the server does not have cloud fetch result links available
         results, has_more_rows = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
@@ -196,7 +188,7 @@ class ThriftResultSet(ResultSet):
             use_cloud_fetch=self._use_cloud_fetch,
         )
         self.results = results
-        self.has_more_rows = has_more_rows
+        self._has_more_rows = has_more_rows
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -248,7 +240,7 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2) -> "ColumnTable":
+    def merge_columnar(self, result1, result2):
         """
         Function to merge / combining the columnar results into a single result
         :param result1:
@@ -280,7 +272,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self._has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -305,7 +297,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self._has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -320,7 +312,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self._has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -346,7 +338,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self._has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
@@ -389,24 +381,110 @@ class ThriftResultSet(ResultSet):
         else:
             return self._convert_arrow_table(self.fetchmany_arrow(size))
 
-    @property
-    def is_staging_operation(self) -> bool:
-        """Whether this result set represents a staging operation."""
-        return self._is_staging_operation
 
-    @staticmethod
-    def _get_schema_description(table_schema_message):
+class SeaResultSet(ResultSet):
+    """ResultSet implementation for SEA backend."""
+
+    def __init__(
+        self,
+        connection,
+        sea_client,
+        buffer_size_bytes: int = 104857600,
+        arraysize: int = 10000,
+        execute_response=None,
+        sea_response=None,
+    ):
         """
-        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
+        Initialize a SeaResultSet with the response from a SEA query execution.
+
+        Args:
+            connection: The parent connection
+            sea_client: The SeaDatabricksClient instance for direct access
+            buffer_size_bytes: Buffer size for fetching results
+            arraysize: Default number of rows to fetch
+            execute_response: Response from the execute command (new style)
+            sea_response: Direct SEA response (legacy style)
+        """
+        # Handle both initialization styles
+        if execute_response is not None:
+            # New style with ExecuteResponse
+            command_id = execute_response.command_id
+            status = execute_response.status
+            has_been_closed_server_side = execute_response.has_been_closed_server_side
+            has_more_rows = execute_response.has_more_rows
+            results_queue = execute_response.results_queue
+            description = execute_response.description
+            is_staging_operation = execute_response.is_staging_operation
+            self._response = getattr(execute_response, "sea_response", {})
+            self.statement_id = command_id.to_sea_statement_id() if command_id else None
+        elif sea_response is not None:
+            # Legacy style with direct sea_response
+            self._response = sea_response
+            # Extract values from sea_response
+            command_id = CommandId.from_sea_statement_id(
+                sea_response.get("statement_id", "")
+            )
+            self.statement_id = sea_response.get("statement_id", "")
+
+            # Extract status
+            status_data = sea_response.get("status", {})
+            status = CommandState.from_sea_state(status_data.get("state", "PENDING"))
+
+            # Set defaults for other fields
+            has_been_closed_server_side = False
+            has_more_rows = False
+            results_queue = None
+            description = None
+            is_staging_operation = False
+        else:
+            raise ValueError("Either execute_response or sea_response must be provided")
+
+        # Call parent constructor with common attributes
+        super().__init__(
+            connection=connection,
+            backend=sea_client,
+            arraysize=arraysize,
+            buffer_size_bytes=buffer_size_bytes,
+            command_id=command_id,
+            status=status,
+            has_been_closed_server_side=has_been_closed_server_side,
+            has_more_rows=has_more_rows,
+            results_queue=results_queue,
+            description=description,
+            is_staging_operation=is_staging_operation,
+        )
+
+    def _fill_results_buffer(self):
+        """Fill the results buffer from the backend."""
+        raise NotImplementedError("fetchone is not implemented for SEA backend")
+
+    def fetchone(self) -> Optional[Row]:
+        """
+        Fetch the next row of a query result set, returning a single sequence,
+        or None when no more data is available.
         """
 
-        def map_col_type(type_):
-            if type_.startswith("decimal"):
-                return "decimal"
-            else:
-                return type_
+        raise NotImplementedError("fetchone is not implemented for SEA backend")
 
-        return [
-            (column.name, map_col_type(column.datatype), None, None, None, None, None)
-            for column in table_schema_message.columns
-        ]
+    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
+        """
+        Fetch the next set of rows of a query result, returning a list of rows.
+
+        An empty sequence is returned when no more rows are available.
+        """
+
+        raise NotImplementedError("fetchmany is not implemented for SEA backend")
+
+    def fetchall(self) -> List[Row]:
+        """
+        Fetch all (remaining) rows of a query result, returning them as a list of rows.
+        """
+        raise NotImplementedError("fetchall is not implemented for SEA backend")
+
+    def fetchmany_arrow(self, size: int) -> Any:
+        """Fetch the next set of rows as an Arrow table."""
+        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
+
+    def fetchall_arrow(self) -> Any:
+        """Fetch all remaining rows as an Arrow table."""
+        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")

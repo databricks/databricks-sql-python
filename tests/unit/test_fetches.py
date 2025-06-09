@@ -8,7 +8,8 @@ except ImportError:
     pa = None
 
 import databricks.sql.client as client
-from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.utils import ArrowQueue
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
 
@@ -42,14 +43,13 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=True,
                 has_more_rows=False,
                 description=Mock(),
                 lz4_compressed=Mock(),
-                command_id=None,
-                arrow_queue=arrow_queue,
-                arrow_schema_bytes=schema.serialize().to_pybytes(),
+                results_queue=arrow_queue,
                 is_staging_operation=False,
             ),
             thrift_client=None,
@@ -88,6 +88,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=False,
                 has_more_rows=True,
@@ -96,9 +97,7 @@ class FetchTests(unittest.TestCase):
                     for col_id in range(num_cols)
                 ],
                 lz4_compressed=Mock(),
-                command_id=None,
-                arrow_queue=None,
-                arrow_schema_bytes=None,
+                results_queue=None,
                 is_staging_operation=False,
             ),
             thrift_client=mock_thrift_backend,

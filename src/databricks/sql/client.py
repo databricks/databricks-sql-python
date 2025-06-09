@@ -24,7 +24,6 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.utils import (
-    ExecuteResponse,
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
