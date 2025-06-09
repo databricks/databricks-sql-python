@@ -85,10 +85,8 @@ class CommandState(Enum):
     def from_sea_state(cls, state: str) -> Optional["CommandState"]:
         """
         Map SEA state string to CommandState enum.
-
         Args:
             state: SEA state string
-
         Returns:
             CommandState: The corresponding CommandState enum value
         """
@@ -308,6 +306,28 @@ class CommandId:
         self.has_result_set = has_result_set
         self.modified_row_count = modified_row_count
 
+    def __str__(self) -> str:
+        """
+        Return a string representation of the CommandId.
+
+        For SEA backend, returns the guid.
+        For Thrift backend, returns a format like "guid|secret".
+
+        Returns:
+            A string representation of the command ID
+        """
+
+        if self.backend_type == BackendType.SEA:
+            return str(self.guid)
+        elif self.backend_type == BackendType.THRIFT:
+            secret_hex = (
+                guid_to_hex_id(self.secret)
+                if isinstance(self.secret, bytes)
+                else str(self.secret)
+            )
+            return f"{self.to_hex_guid()}|{secret_hex}"
+        return str(self.guid)
+
     @classmethod
     def from_thrift_handle(cls, operation_handle):
         """
@@ -319,6 +339,7 @@ class CommandId:
         Returns:
             A CommandId instance
         """
+
         if operation_handle is None:
             return None
 
