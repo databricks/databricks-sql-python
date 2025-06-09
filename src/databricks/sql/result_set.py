@@ -64,7 +64,7 @@ class ResultSet(ABC):
         """
 
         self.connection = connection
-        self.backend = backend  # Store the backend client directly
+        self.backend = backend
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
@@ -115,12 +115,12 @@ class ResultSet(ABC):
         pass
 
     @abstractmethod
-    def fetchmany_arrow(self, size: int) -> Any:
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """Fetch the next set of rows as an Arrow table."""
         pass
 
     @abstractmethod
-    def fetchall_arrow(self) -> Any:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all remaining rows as an Arrow table."""
         pass
 
@@ -207,7 +207,7 @@ class ThriftResultSet(ResultSet):
             use_cloud_fetch=self._use_cloud_fetch,
         )
         self.results = results
-        self._has_more_rows = has_more_rows
+        self.has_more_rows = has_more_rows
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -291,7 +291,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self._has_more_rows
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -316,7 +316,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self._has_more_rows
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -331,7 +331,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self._has_more_rows:
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -357,7 +357,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self._has_more_rows:
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
@@ -403,6 +403,33 @@ class ThriftResultSet(ResultSet):
     @staticmethod
     def _get_schema_description(table_schema_message):
         """
+        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
+        """
+
+        def map_col_type(type_):
+            if type_.startswith("decimal"):
+                return "decimal"
+            else:
+                return type_
+
+        return [
+            (column.name, map_col_type(column.datatype), None, None, None, None, None)
+            for column in table_schema_message.columns
+        ]
+
+
+class SeaResultSet(ResultSet):
+    """ResultSet implementation for the SEA backend."""
+
+    def __init__(
+        self,
+        connection: "Connection",
+        execute_response: "ExecuteResponse",
+        sea_client: "SeaDatabricksClient",
+        buffer_size_bytes: int = 104857600,
+        arraysize: int = 10000,
+    ):
+        """
         Initialize a SeaResultSet with the response from a SEA query execution.
 
         Args:
@@ -413,53 +440,19 @@ class ThriftResultSet(ResultSet):
             execute_response: Response from the execute command (new style)
             sea_response: Direct SEA response (legacy style)
         """
-        # Handle both initialization styles
-        if execute_response is not None:
-            # New style with ExecuteResponse
-            command_id = execute_response.command_id
-            status = execute_response.status
-            has_been_closed_server_side = execute_response.has_been_closed_server_side
-            has_more_rows = execute_response.has_more_rows
-            results_queue = execute_response.results_queue
-            description = execute_response.description
-            is_staging_operation = execute_response.is_staging_operation
-            self._response = getattr(execute_response, "sea_response", {})
-            self.statement_id = command_id.to_sea_statement_id() if command_id else None
-        elif sea_response is not None:
-            # Legacy style with direct sea_response
-            self._response = sea_response
-            # Extract values from sea_response
-            command_id = CommandId.from_sea_statement_id(
-                sea_response.get("statement_id", "")
-            )
-            self.statement_id = sea_response.get("statement_id", "")
 
-            # Extract status
-            status_data = sea_response.get("status", {})
-            status = CommandState.from_sea_state(status_data.get("state", "PENDING"))
-
-            # Set defaults for other fields
-            has_been_closed_server_side = False
-            has_more_rows = False
-            results_queue = None
-            description = None
-            is_staging_operation = False
-        else:
-            raise ValueError("Either execute_response or sea_response must be provided")
-
-        # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
             backend=sea_client,
             arraysize=arraysize,
             buffer_size_bytes=buffer_size_bytes,
-            command_id=command_id,
-            status=status,
-            has_been_closed_server_side=has_been_closed_server_side,
-            has_more_rows=has_more_rows,
-            results_queue=results_queue,
-            description=description,
-            is_staging_operation=is_staging_operation,
+            command_id=execute_response.command_id,
+            status=execute_response.status,
+            has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            has_more_rows=execute_response.has_more_rows,
+            results_queue=execute_response.results_queue,
+            description=execute_response.description,
+            is_staging_operation=execute_response.is_staging_operation,
         )
 
     def _fill_results_buffer(self):
