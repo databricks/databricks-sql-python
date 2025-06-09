@@ -800,7 +800,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         status = CommandState.from_thrift_state(operation_state)
         if status is None:
-            raise ValueError(f"Invalid operation state: {operation_state}")
+            raise ValueError(f"Unknown command state: {operation_state}")
 
         return (
             ExecuteResponse(
