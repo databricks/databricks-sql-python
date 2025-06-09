@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import patch, MagicMock, Mock
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea_result_set import SeaResultSet
+from databricks.sql.result_set import SeaResultSet
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
