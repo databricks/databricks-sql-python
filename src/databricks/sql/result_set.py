@@ -403,76 +403,14 @@ class ThriftResultSet(ResultSet):
     @staticmethod
     def _get_schema_description(table_schema_message):
         """
-        Initialize a SeaResultSet with the response from a SEA query execution.
-
-        Args:
-            connection: The parent connection
-            sea_client: The SeaDatabricksClient instance for direct access
-            buffer_size_bytes: Buffer size for fetching results
-            arraysize: Default number of rows to fetch
-            execute_response: Response from the execute command (new style)
-            sea_response: Direct SEA response (legacy style)
-        """
-        # Handle both initialization styles
-        if execute_response is not None:
-            # New style with ExecuteResponse
-            command_id = execute_response.command_id
-            status = execute_response.status
-            has_been_closed_server_side = execute_response.has_been_closed_server_side
-            has_more_rows = execute_response.has_more_rows
-            results_queue = execute_response.results_queue
-            description = execute_response.description
-            is_staging_operation = execute_response.is_staging_operation
-            self._response = getattr(execute_response, "sea_response", {})
-            self.statement_id = command_id.to_sea_statement_id() if command_id else None
-        elif sea_response is not None:
-            # Legacy style with direct sea_response
-            self._response = sea_response
-            # Extract values from sea_response
-            command_id = CommandId.from_sea_statement_id(
-                sea_response.get("statement_id", "")
-            )
-            self.statement_id = sea_response.get("statement_id", "")
-
-            # Extract status
-            status_data = sea_response.get("status", {})
-            status = CommandState.from_sea_state(status_data.get("state", "PENDING"))
-
-            # Set defaults for other fields
-            has_been_closed_server_side = False
-            has_more_rows = False
-            results_queue = None
-            description = None
-            is_staging_operation = False
-        else:
-            raise ValueError("Either execute_response or sea_response must be provided")
-
-        # Call parent constructor with common attributes
-        super().__init__(
-            connection=connection,
-            backend=sea_client,
-            arraysize=arraysize,
-            buffer_size_bytes=buffer_size_bytes,
-            command_id=command_id,
-            status=status,
-            has_been_closed_server_side=has_been_closed_server_side,
-            has_more_rows=has_more_rows,
-            results_queue=results_queue,
-            description=description,
-            is_staging_operation=is_staging_operation,
-        )
-
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
-
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
+        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
         """
 
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
+        def map_col_type(type_):
+            if type_.startswith("decimal"):
+                return "decimal"
+            else:
+                return type_
 
         return [
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
