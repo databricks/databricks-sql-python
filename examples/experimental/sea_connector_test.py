@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-def test_sea_query_execution_with_compression():
+def test_sea_query_exec():
     """
     Test executing a query using the SEA backend with result compression.
 
@@ -159,4 +159,4 @@ if __name__ == "__main__":
     test_sea_session()
 
     # Test query execution with compression
-    test_sea_query_execution_with_compression()
+    test_sea_query_exec()
