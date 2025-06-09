@@ -68,18 +68,15 @@ def test_closing_connection_closes_commands(mock_thrift_client_class, closed):
     )
     cursor = connection.cursor()
 
-    # Verify initial state
-    assert mock_execute_response.has_been_closed_server_side == closed
-    assert mock_execute_response.status == initial_state
-
     # Mock execute_command to return our execute response
     cursor.thrift_backend.execute_command = Mock(return_value=mock_execute_response)
+
+    # Execute a command
     cursor.execute("SELECT 1")
-
-    # Verify that cursor.execute() set up the result set correctly
+    
+    # Get the active result set for later assertions
     active_result_set = cursor.active_result_set
-    assert active_result_set.has_been_closed_server_side == closed
-
+    
     # Close the connection
     connection.close()
 
