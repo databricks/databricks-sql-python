@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, asdict
-from databricks.sql.telemetry.models.event import TelemetryEvent, EnumEncoder
+from databricks.sql.telemetry.models.event import TelemetryEvent
+from databricks.sql.telemetry.utils import EnumEncoder
 from typing import Optional
 
 
