@@ -352,7 +352,6 @@ class ThriftDatabricksClient(DatabricksClient):
         Will stop retry attempts if total elapsed time + next retry delay would exceed
         _retry_stop_after_attempts_duration.
         """
-
         # basic strategy: build range iterator rep'ing number of available
         # retries. bounds can be computed from there. iterate over it with
         # retries until success or final failure achieved.
@@ -1242,7 +1241,7 @@ class ThriftDatabricksClient(DatabricksClient):
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
-        logger.debug("Cancelling command {}".format(guid_to_hex_id(command_id.guid)))
+        logger.debug("Cancelling command {}".format(command_id.guid))
         req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 
