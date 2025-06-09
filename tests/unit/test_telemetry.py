@@ -93,13 +93,13 @@ class TestTelemetryClient(unittest.TestCase):
             self.client.export_event(f"event-{i}")
         
         self.client.flush.assert_not_called()
-        self.assertEqual(len(self.client.events_batch), 5)
+        self.assertEqual(len(self.client._events_batch), 5)
         
         for i in range(5, 10):
             self.client.export_event(f"event-{i}")
         
         self.client.flush.assert_called_once()
-        self.assertEqual(len(self.client.events_batch), 10)
+        self.assertEqual(len(self.client._events_batch), 10)
 
     @patch("requests.post")
     def test_send_telemetry_authenticated(self, mock_post):
@@ -144,13 +144,13 @@ class TestTelemetryClient(unittest.TestCase):
 
     def test_flush(self):
         """Test flushing events."""
-        self.client.events_batch = ["event1", "event2"]
+        self.client._events_batch = ["event1", "event2"]
         self.client._send_telemetry = MagicMock()
         
         self.client.flush()
         
         self.client._send_telemetry.assert_called_once_with(["event1", "event2"])
-        self.assertEqual(self.client.events_batch, [])
+        self.assertEqual(self.client._events_batch, [])
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClientFactory")
     def test_close(self, mock_factory_class):

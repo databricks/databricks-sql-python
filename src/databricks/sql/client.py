@@ -310,7 +310,7 @@ class Connection:
             host_url=self.host,
         )
 
-        self.telemetry_client = TelemetryClientFactory.get_telemetry_client(
+        self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
             connection_uuid=self.get_session_id_hex()
         )
 
@@ -323,7 +323,7 @@ class Connection:
             socket_timeout=kwargs.get("_socket_timeout", None),
         )
 
-        self.telemetry_client.export_initial_telemetry_log(
+        self._telemetry_client.export_initial_telemetry_log(
             driver_connection_params=driver_connection_params,
             user_agent=useragent_header,
         )
@@ -464,7 +464,7 @@ class Connection:
 
         self.open = False
 
-        self.telemetry_client.close()
+        self._telemetry_client.close()
 
     def commit(self):
         """No-op because Databricks does not support transactions"""

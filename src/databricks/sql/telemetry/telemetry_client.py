@@ -133,6 +133,10 @@ class TelemetryClient(BaseTelemetryClient):
     It uses a thread pool to handle asynchronous operations, that it gets from the TelemetryClientFactory.
     """
 
+    # Telemetry endpoint paths
+    TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
+    TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
+
     def __init__(
         self,
         telemetry_enabled,
@@ -141,37 +145,37 @@ class TelemetryClient(BaseTelemetryClient):
         host_url,
         executor,
     ):
-        logger.info(f"Initializing TelemetryClient for connection: {connection_uuid}")
-        self.telemetry_enabled = telemetry_enabled
-        self.batch_size = 10  # TODO: Decide on batch size
-        self.connection_uuid = connection_uuid
-        self.auth_provider = auth_provider
-        self.user_agent = None
-        self.events_batch = []
-        self.lock = threading.Lock()
-        self.driver_connection_params = None
-        self.host_url = host_url
-        self.executor = executor
+        logger.debug("Initializing TelemetryClient for connection: %s", connection_uuid)
+        self._telemetry_enabled = telemetry_enabled
+        self._batch_size = 10  # TODO: Decide on batch size
+        self._connection_uuid = connection_uuid
+        self._auth_provider = auth_provider
+        self._user_agent = None
+        self._events_batch = []
+        self._lock = threading.Lock()
+        self._driver_connection_params = None
+        self._host_url = host_url
+        self._executor = executor
 
     def export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
-        logger.debug(f"Exporting event for connection {self.connection_uuid}")
-        with self.lock:
-            self.events_batch.append(event)
-        if len(self.events_batch) >= self.batch_size:
+        logger.debug("Exporting event for connection %s", self._connection_uuid)
+        with self._lock:
+            self._events_batch.append(event)
+        if len(self._events_batch) >= self._batch_size:
             logger.debug(
-                f"Batch size limit reached ({self.batch_size}), flushing events"
+                "Batch size limit reached (%s), flushing events", self._batch_size
             )
             self.flush()
 
     def flush(self):
         """Flush the current batch of events to the server"""
-        with self.lock:
-            events_to_flush = self.events_batch.copy()
-            self.events_batch = []
+        with self._lock:
+            events_to_flush = self._events_batch.copy()
+            self._events_batch = []
 
         if events_to_flush:
-            logger.info(f"Flushing {len(events_to_flush)} telemetry events to server")
+            logger.debug("Flushing %s telemetry events to server", len(events_to_flush))
             self._send_telemetry(events_to_flush)
 
     def _send_telemetry(self, events):
@@ -183,46 +187,68 @@ class TelemetryClient(BaseTelemetryClient):
             "protoLogs": [event.to_json() for event in events],
         }
 
-        path = "/telemetry-ext" if self.auth_provider else "/telemetry-unauth"
-        url = f"https://{self.host_url}{path}"
+        path = (
+            self.TELEMETRY_AUTHENTICATED_PATH
+            if self._auth_provider
+            else self.TELEMETRY_UNAUTHENTICATED_PATH
+        )
+        url = f"https://{self._host_url}{path}"
 
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
-        if self.auth_provider:
-            self.auth_provider.add_headers(headers)
+        if self._auth_provider:
+            self._auth_provider.add_headers(headers)
 
         try:
             logger.debug("Submitting telemetry request to thread pool")
-            self.executor.submit(
+            future = self._executor.submit(
                 requests.post,
                 url,
                 data=json.dumps(request),
                 headers=headers,
                 timeout=10,
             )
+            future.add_done_callback(self._telemetry_request_callback)
         except Exception as e:
-            logger.error(f"Failed to submit telemetry request: {e}")
+            logger.debug("Failed to submit telemetry request: %s", e)
+
+    def _telemetry_request_callback(self, future):
+        """Callback function to handle telemetry request completion"""
+        try:
+            response = future.result()
+
+            if response.status_code == 200:
+                logger.debug("Telemetry request completed successfully")
+            else:
+                logger.debug(
+                    "Telemetry request failed with status code: %s",
+                    response.status_code,
+                )
+
+        except Exception as e:
+            logger.debug("Telemetry request failed with exception: %s", e)
 
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
-        logger.info(
-            f"Exporting initial telemetry log for connection {self.connection_uuid}"
+        logger.debug(
+            "Exporting initial telemetry log for connection %s", self._connection_uuid
         )
 
-        self.driver_connection_params = driver_connection_params
-        self.user_agent = user_agent
+        self._driver_connection_params = driver_connection_params
+        self._user_agent = user_agent
 
         telemetry_frontend_log = TelemetryFrontendLog(
             frontend_log_event_id=str(uuid.uuid4()),
             context=FrontendLogContext(
                 client_context=TelemetryClientContext(
-                    timestamp_millis=int(time.time() * 1000), user_agent=self.user_agent
+                    timestamp_millis=int(time.time() * 1000),
+                    user_agent=self._user_agent,
                 )
             ),
             entry=FrontendLogEntry(
                 sql_driver_log=TelemetryEvent(
-                    session_id=self.connection_uuid,
+                    session_id=self._connection_uuid,
                     system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
-                    driver_connection_params=self.driver_connection_params,
+                    driver_connection_params=self._driver_connection_params,
                 )
             ),
         )
@@ -231,9 +257,9 @@ class TelemetryClient(BaseTelemetryClient):
 
     def close(self):
         """Flush remaining events before closing"""
-        logger.info(f"Closing TelemetryClient for connection {self.connection_uuid}")
+        logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
         self.flush()
-        TelemetryClientFactory.close(self.connection_uuid)
+        TelemetryClientFactory.close(self._connection_uuid)
 
 
 class TelemetryClientFactory:
@@ -254,7 +280,6 @@ class TelemetryClientFactory:
         """Initialize the factory if not already initialized"""
         with cls._lock:
             if not cls._initialized:
-                logger.info("Initializing TelemetryClientFactory")
                 cls._clients = {}
                 cls._executor = ThreadPoolExecutor(
                     max_workers=10
@@ -276,8 +301,8 @@ class TelemetryClientFactory:
 
         with TelemetryClientFactory._lock:
             if connection_uuid not in TelemetryClientFactory._clients:
-                logger.info(
-                    f"Creating new TelemetryClient for connection {connection_uuid}"
+                logger.debug(
+                    "Creating new TelemetryClient for connection %s", connection_uuid
                 )
                 if telemetry_enabled:
                     TelemetryClientFactory._clients[connection_uuid] = TelemetryClient(
@@ -299,7 +324,7 @@ class TelemetryClientFactory:
             return TelemetryClientFactory._clients[connection_uuid]
         else:
             logger.error(
-                f"Telemetry client not initialized for connection {connection_uuid}"
+                "Telemetry client not initialized for connection %s", connection_uuid
             )
             return NoopTelemetryClient()
 
@@ -310,13 +335,13 @@ class TelemetryClientFactory:
         with TelemetryClientFactory._lock:
             if connection_uuid in TelemetryClientFactory._clients:
                 logger.debug(
-                    f"Removing telemetry client for connection {connection_uuid}"
+                    "Removing telemetry client for connection %s", connection_uuid
                 )
-                del TelemetryClientFactory._clients[connection_uuid]
+                TelemetryClientFactory._clients.pop(connection_uuid, None)
 
             # Shutdown executor if no more clients
             if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
-                logger.info(
+                logger.debug(
                     "No more telemetry clients, shutting down thread pool executor"
                 )
                 TelemetryClientFactory._executor.shutdown(wait=True)
