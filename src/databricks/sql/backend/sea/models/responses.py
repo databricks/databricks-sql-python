@@ -13,6 +13,8 @@ from databricks.sql.backend.sea.models.base import (
     ResultManifest,
     ResultData,
     ServiceError,
+    ExternalLink,
+    ColumnInfo,
 )
 
 
@@ -37,20 +39,62 @@ class ExecuteStatementResponse:
                 error_code=error_data.get("error_code"),
             )
 
-        state = CommandState.from_sea_state(status_data.get("state", ""))
-        if state is None:
-            raise ValueError(f"Invalid state: {status_data.get('state', '')}")
         status = StatementStatus(
-            state=state,
+            state=CommandState.from_sea_state(status_data.get("state", "")),
             error=error,
             sql_state=status_data.get("sql_state"),
         )
 
+        # Parse manifest
+        manifest = None
+        if "manifest" in data:
+            manifest_data = data["manifest"]
+            manifest = ResultManifest(
+                format=manifest_data.get("format", ""),
+                schema=manifest_data.get("schema", {}),
+                total_row_count=manifest_data.get("total_row_count", 0),
+                total_byte_count=manifest_data.get("total_byte_count", 0),
+                total_chunk_count=manifest_data.get("total_chunk_count", 0),
+                truncated=manifest_data.get("truncated", False),
+                chunks=manifest_data.get("chunks"),
+                result_compression=manifest_data.get("result_compression"),
+            )
+
+        # Parse result data
+        result = None
+        if "result" in data:
+            result_data = data["result"]
+            external_links = None
+
+            if "external_links" in result_data:
+                external_links = []
+                for link_data in result_data["external_links"]:
+                    external_links.append(
+                        ExternalLink(
+                            external_link=link_data.get("external_link", ""),
+                            expiration=link_data.get("expiration", ""),
+                            chunk_index=link_data.get("chunk_index", 0),
+                            byte_count=link_data.get("byte_count", 0),
+                            row_count=link_data.get("row_count", 0),
+                            row_offset=link_data.get("row_offset", 0),
+                            next_chunk_index=link_data.get("next_chunk_index"),
+                            next_chunk_internal_link=link_data.get(
+                                "next_chunk_internal_link"
+                            ),
+                            http_headers=link_data.get("http_headers"),
+                        )
+                    )
+
+            result = ResultData(
+                data=result_data.get("data_array"),
+                external_links=external_links,
+            )
+
         return cls(
             statement_id=data.get("statement_id", ""),
             status=status,
-            manifest=data.get("manifest"),  # We'll parse this more fully if needed
-            result=data.get("result"),  # We'll parse this more fully if needed
+            manifest=manifest,
+            result=result,
         )
 
 
@@ -75,21 +119,62 @@ class GetStatementResponse:
                 error_code=error_data.get("error_code"),
             )
 
-        state = CommandState.from_sea_state(status_data.get("state", ""))
-        if state is None:
-            raise ValueError(f"Invalid state: {status_data.get('state', '')}")
-
         status = StatementStatus(
-            state=state,
+            state=CommandState.from_sea_state(status_data.get("state", "")),
             error=error,
             sql_state=status_data.get("sql_state"),
         )
 
+        # Parse manifest
+        manifest = None
+        if "manifest" in data:
+            manifest_data = data["manifest"]
+            manifest = ResultManifest(
+                format=manifest_data.get("format", ""),
+                schema=manifest_data.get("schema", {}),
+                total_row_count=manifest_data.get("total_row_count", 0),
+                total_byte_count=manifest_data.get("total_byte_count", 0),
+                total_chunk_count=manifest_data.get("total_chunk_count", 0),
+                truncated=manifest_data.get("truncated", False),
+                chunks=manifest_data.get("chunks"),
+                result_compression=manifest_data.get("result_compression"),
+            )
+
+        # Parse result data
+        result = None
+        if "result" in data:
+            result_data = data["result"]
+            external_links = None
+
+            if "external_links" in result_data:
+                external_links = []
+                for link_data in result_data["external_links"]:
+                    external_links.append(
+                        ExternalLink(
+                            external_link=link_data.get("external_link", ""),
+                            expiration=link_data.get("expiration", ""),
+                            chunk_index=link_data.get("chunk_index", 0),
+                            byte_count=link_data.get("byte_count", 0),
+                            row_count=link_data.get("row_count", 0),
+                            row_offset=link_data.get("row_offset", 0),
+                            next_chunk_index=link_data.get("next_chunk_index"),
+                            next_chunk_internal_link=link_data.get(
+                                "next_chunk_internal_link"
+                            ),
+                            http_headers=link_data.get("http_headers"),
+                        )
+                    )
+
+            result = ResultData(
+                data=result_data.get("data_array"),
+                external_links=external_links,
+            )
+
         return cls(
             statement_id=data.get("statement_id", ""),
             status=status,
-            manifest=data.get("manifest"),  # We'll parse this more fully if needed
-            result=data.get("result"),  # We'll parse this more fully if needed
+            manifest=manifest,
+            result=result,
         )
 
 
@@ -103,3 +188,38 @@ class CreateSessionResponse:
     def from_dict(cls, data: Dict[str, Any]) -> "CreateSessionResponse":
         """Create a CreateSessionResponse from a dictionary."""
         return cls(session_id=data.get("session_id", ""))
+
+
+@dataclass
+class GetChunksResponse:
+    """Response from getting chunks for a statement."""
+
+    statement_id: str
+    external_links: List[ExternalLink]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GetChunksResponse":
+        """Create a GetChunksResponse from a dictionary."""
+        external_links = []
+        if "external_links" in data:
+            for link_data in data["external_links"]:
+                external_links.append(
+                    ExternalLink(
+                        external_link=link_data.get("external_link", ""),
+                        expiration=link_data.get("expiration", ""),
+                        chunk_index=link_data.get("chunk_index", 0),
+                        byte_count=link_data.get("byte_count", 0),
+                        row_count=link_data.get("row_count", 0),
+                        row_offset=link_data.get("row_offset", 0),
+                        next_chunk_index=link_data.get("next_chunk_index"),
+                        next_chunk_internal_link=link_data.get(
+                            "next_chunk_internal_link"
+                        ),
+                        http_headers=link_data.get("http_headers"),
+                    )
+                )
+
+        return cls(
+            statement_id=data.get("statement_id", ""),
+            external_links=external_links,
+        )

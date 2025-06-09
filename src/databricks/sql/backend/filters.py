@@ -9,14 +9,20 @@ from typing import (
     List,
     Optional,
     Any,
+    Dict,
     Callable,
+    TypeVar,
+    Generic,
+    cast,
     TYPE_CHECKING,
 )
 
-if TYPE_CHECKING:
-    from databricks.sql.result_set import ResultSet
+from databricks.sql.utils import JsonQueue, SeaResultSetQueueFactory
+from databricks.sql.backend.types import ExecuteResponse, CommandId
+from databricks.sql.backend.sea.models.base import ResultData
 
-from databricks.sql.result_set import SeaResultSet
+if TYPE_CHECKING:
+    from databricks.sql.result_set import ResultSet, SeaResultSet
 
 logger = logging.getLogger(__name__)
 
@@ -43,26 +49,35 @@ class ResultSetFilter:
         Returns:
             A filtered SEA result set
         """
-        # Create a filtered version of the result set
-        filtered_response = result_set._response.copy()
+        # Get all remaining rows
+        original_index = result_set.results.cur_row_index
+        result_set.results.cur_row_index = 0  # Reset to beginning
+        all_rows = result_set.results.remaining_rows()
 
-        # If there's a result with rows, filter them
-        if (
-            "result" in filtered_response
-            and "data_array" in filtered_response["result"]
-        ):
-            rows = filtered_response["result"]["data_array"]
-            filtered_rows = [row for row in rows if filter_func(row)]
-            filtered_response["result"]["data_array"] = filtered_rows
+        # Filter rows
+        filtered_rows = [row for row in all_rows if filter_func(row)]
 
-            # Update row count if present
-            if "row_count" in filtered_response["result"]:
-                filtered_response["result"]["row_count"] = len(filtered_rows)
+        # Import SeaResultSet here to avoid circular imports
+        from databricks.sql.result_set import SeaResultSet
 
-        # Create a new result set with the filtered data
+        # Reuse the command_id from the original result set
+        command_id = result_set.command_id
+
+        # Create an ExecuteResponse with the filtered data
+        execute_response = ExecuteResponse(
+            command_id=command_id,
+            status=result_set.status,
+            description=result_set.description,
+            has_more_rows=result_set._has_more_rows,
+            results_queue=JsonQueue(filtered_rows),
+            has_been_closed_server_side=result_set.has_been_closed_server_side,
+            lz4_compressed=False,
+            is_staging_operation=False,
+        )
+
         return SeaResultSet(
             connection=result_set.connection,
-            sea_response=filtered_response,
+            execute_response=execute_response,
             sea_client=result_set.backend,
             buffer_size_bytes=result_set.buffer_size_bytes,
             arraysize=result_set.arraysize,
@@ -92,6 +107,8 @@ class ResultSetFilter:
             allowed_values = [v.upper() for v in allowed_values]
 
         # Determine the type of result set and apply appropriate filtering
+        from databricks.sql.result_set import SeaResultSet
+
         if isinstance(result_set, SeaResultSet):
             return ResultSetFilter._filter_sea_result_set(
                 result_set,
@@ -137,7 +154,7 @@ class ResultSetFilter:
             table_types if table_types and len(table_types) > 0 else DEFAULT_TABLE_TYPES
         )
 
-        # Table type is typically in the 6th column (index 5)
+        # Table type is the 6th column (index 5)
         return ResultSetFilter.filter_by_column_values(
             result_set, 5, valid_types, case_sensitive=False
         )

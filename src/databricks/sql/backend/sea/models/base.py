@@ -34,6 +34,12 @@ class ExternalLink:
     external_link: str
     expiration: str
     chunk_index: int
+    byte_count: int = 0
+    row_count: int = 0
+    row_offset: int = 0
+    next_chunk_index: Optional[int] = None
+    next_chunk_internal_link: Optional[str] = None
+    http_headers: Optional[Dict[str, str]] = None
 
 
 @dataclass
@@ -61,8 +67,11 @@ class ColumnInfo:
 class ResultManifest:
     """Manifest information for a result set."""
 
-    schema: List[ColumnInfo]
+    format: str
+    schema: Dict[str, Any]  # Will contain column information
     total_row_count: int
     total_byte_count: int
+    total_chunk_count: int
     truncated: bool = False
-    chunk_count: Optional[int] = None
+    chunks: Optional[List[Dict[str, Any]]] = None
+    result_compression: Optional[str] = None
