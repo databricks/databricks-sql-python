@@ -31,7 +31,9 @@ def test_sea_sync_query_with_cloud_fetch():
 
     try:
         # Create connection with cloud fetch enabled
-        logger.info("Creating connection for synchronous query execution with cloud fetch enabled")
+        logger.info(
+            "Creating connection for synchronous query execution with cloud fetch enabled"
+        )
         connection = Connection(
             server_hostname=server_hostname,
             http_path=http_path,
@@ -49,20 +51,25 @@ def test_sea_sync_query_with_cloud_fetch():
 
         # Execute a simple query
         cursor = connection.cursor()
-        logger.info("Executing synchronous query with cloud fetch: SELECT 1 as test_value")
+        logger.info(
+            "Executing synchronous query with cloud fetch: SELECT 1 as test_value"
+        )
         cursor.execute("SELECT 1 as test_value")
         logger.info("Query executed successfully with cloud fetch enabled")
-        
+
         # Close resources
         cursor.close()
         connection.close()
         logger.info("Successfully closed SEA session")
-        
+
         return True
 
     except Exception as e:
-        logger.error(f"Error during SEA synchronous query execution test with cloud fetch: {str(e)}")
+        logger.error(
+            f"Error during SEA synchronous query execution test with cloud fetch: {str(e)}"
+        )
         import traceback
+
         logger.error(traceback.format_exc())
         return False
 
@@ -88,7 +95,9 @@ def test_sea_sync_query_without_cloud_fetch():
 
     try:
         # Create connection with cloud fetch disabled
-        logger.info("Creating connection for synchronous query execution with cloud fetch disabled")
+        logger.info(
+            "Creating connection for synchronous query execution with cloud fetch disabled"
+        )
         connection = Connection(
             server_hostname=server_hostname,
             http_path=http_path,
@@ -107,20 +116,25 @@ def test_sea_sync_query_without_cloud_fetch():
 
         # Execute a simple query
         cursor = connection.cursor()
-        logger.info("Executing synchronous query without cloud fetch: SELECT 1 as test_value")
+        logger.info(
+            "Executing synchronous query without cloud fetch: SELECT 1 as test_value"
+        )
         cursor.execute("SELECT 1 as test_value")
         logger.info("Query executed successfully with cloud fetch disabled")
-        
+
         # Close resources
         cursor.close()
         connection.close()
         logger.info("Successfully closed SEA session")
-        
+
         return True
 
     except Exception as e:
-        logger.error(f"Error during SEA synchronous query execution test without cloud fetch: {str(e)}")
+        logger.error(
+            f"Error during SEA synchronous query execution test without cloud fetch: {str(e)}"
+        )
         import traceback
+
         logger.error(traceback.format_exc())
         return False
 
@@ -130,11 +144,15 @@ def test_sea_sync_query_exec():
     Run both synchronous query tests and return overall success.
     """
     with_cloud_fetch_success = test_sea_sync_query_with_cloud_fetch()
-    logger.info(f"Synchronous query with cloud fetch: {'✅ PASSED' if with_cloud_fetch_success else '❌ FAILED'}")
-    
+    logger.info(
+        f"Synchronous query with cloud fetch: {'✅ PASSED' if with_cloud_fetch_success else '❌ FAILED'}"
+    )
+
     without_cloud_fetch_success = test_sea_sync_query_without_cloud_fetch()
-    logger.info(f"Synchronous query without cloud fetch: {'✅ PASSED' if without_cloud_fetch_success else '❌ FAILED'}")
-    
+    logger.info(
+        f"Synchronous query without cloud fetch: {'✅ PASSED' if without_cloud_fetch_success else '❌ FAILED'}"
+    )
+
     return with_cloud_fetch_success and without_cloud_fetch_success
 
 

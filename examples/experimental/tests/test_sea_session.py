@@ -55,12 +55,13 @@ def test_sea_session():
         logger.info("Closing the SEA session...")
         connection.close()
         logger.info("Successfully closed SEA session")
-        
+
         return True
 
     except Exception as e:
         logger.error(f"Error testing SEA session: {str(e)}")
         import traceback
+
         logger.error(traceback.format_exc())
         return False
 

@@ -33,7 +33,9 @@ def test_sea_async_query_with_cloud_fetch():
 
     try:
         # Create connection with cloud fetch enabled
-        logger.info("Creating connection for asynchronous query execution with cloud fetch enabled")
+        logger.info(
+            "Creating connection for asynchronous query execution with cloud fetch enabled"
+        )
         connection = Connection(
             server_hostname=server_hostname,
             http_path=http_path,
@@ -51,30 +53,39 @@ def test_sea_async_query_with_cloud_fetch():
 
         # Execute a simple query asynchronously
         cursor = connection.cursor()
-        logger.info("Executing asynchronous query with cloud fetch: SELECT 1 as test_value")
+        logger.info(
+            "Executing asynchronous query with cloud fetch: SELECT 1 as test_value"
+        )
         cursor.execute_async("SELECT 1 as test_value")
-        logger.info("Asynchronous query submitted successfully with cloud fetch enabled")
-        
+        logger.info(
+            "Asynchronous query submitted successfully with cloud fetch enabled"
+        )
+
         # Check query state
         logger.info("Checking query state...")
         while cursor.is_query_pending():
             logger.info("Query is still pending, waiting...")
             time.sleep(1)
-            
+
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
-        logger.info("Successfully retrieved asynchronous query results with cloud fetch enabled")
-        
+        logger.info(
+            "Successfully retrieved asynchronous query results with cloud fetch enabled"
+        )
+
         # Close resources
         cursor.close()
         connection.close()
         logger.info("Successfully closed SEA session")
-        
+
         return True
 
     except Exception as e:
-        logger.error(f"Error during SEA asynchronous query execution test with cloud fetch: {str(e)}")
+        logger.error(
+            f"Error during SEA asynchronous query execution test with cloud fetch: {str(e)}"
+        )
         import traceback
+
         logger.error(traceback.format_exc())
         return False
 
@@ -100,7 +111,9 @@ def test_sea_async_query_without_cloud_fetch():
 
     try:
         # Create connection with cloud fetch disabled
-        logger.info("Creating connection for asynchronous query execution with cloud fetch disabled")
+        logger.info(
+            "Creating connection for asynchronous query execution with cloud fetch disabled"
+        )
         connection = Connection(
             server_hostname=server_hostname,
             http_path=http_path,
@@ -119,30 +132,39 @@ def test_sea_async_query_without_cloud_fetch():
 
         # Execute a simple query asynchronously
         cursor = connection.cursor()
-        logger.info("Executing asynchronous query without cloud fetch: SELECT 1 as test_value")
+        logger.info(
+            "Executing asynchronous query without cloud fetch: SELECT 1 as test_value"
+        )
         cursor.execute_async("SELECT 1 as test_value")
-        logger.info("Asynchronous query submitted successfully with cloud fetch disabled")
-        
+        logger.info(
+            "Asynchronous query submitted successfully with cloud fetch disabled"
+        )
+
         # Check query state
         logger.info("Checking query state...")
         while cursor.is_query_pending():
             logger.info("Query is still pending, waiting...")
             time.sleep(1)
-            
+
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
-        logger.info("Successfully retrieved asynchronous query results with cloud fetch disabled")
-        
+        logger.info(
+            "Successfully retrieved asynchronous query results with cloud fetch disabled"
+        )
+
         # Close resources
         cursor.close()
         connection.close()
         logger.info("Successfully closed SEA session")
-        
+
         return True
 
     except Exception as e:
-        logger.error(f"Error during SEA asynchronous query execution test without cloud fetch: {str(e)}")
+        logger.error(
+            f"Error during SEA asynchronous query execution test without cloud fetch: {str(e)}"
+        )
         import traceback
+
         logger.error(traceback.format_exc())
         return False
 
@@ -152,11 +174,15 @@ def test_sea_async_query_exec():
     Run both asynchronous query tests and return overall success.
     """
     with_cloud_fetch_success = test_sea_async_query_with_cloud_fetch()
-    logger.info(f"Asynchronous query with cloud fetch: {'✅ PASSED' if with_cloud_fetch_success else '❌ FAILED'}")
-    
+    logger.info(
+        f"Asynchronous query with cloud fetch: {'✅ PASSED' if with_cloud_fetch_success else '❌ FAILED'}"
+    )
+
     without_cloud_fetch_success = test_sea_async_query_without_cloud_fetch()
-    logger.info(f"Asynchronous query without cloud fetch: {'✅ PASSED' if without_cloud_fetch_success else '❌ FAILED'}")
-    
+    logger.info(
+        f"Asynchronous query without cloud fetch: {'✅ PASSED' if without_cloud_fetch_success else '❌ FAILED'}"
+    )
+
     return with_cloud_fetch_success and without_cloud_fetch_success
 
 
