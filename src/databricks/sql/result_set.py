@@ -5,6 +5,8 @@ import logging
 import time
 import pandas
 
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
+
 try:
     import pyarrow
 except ImportError:
@@ -13,6 +15,7 @@ except ImportError:
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
+from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
@@ -31,21 +34,37 @@ class ResultSet(ABC):
 
     def __init__(
         self,
-        connection,
-        backend,
+        connection: "Connection",
+        backend: "DatabricksClient",
         arraysize: int,
         buffer_size_bytes: int,
-        command_id=None,
-        status=None,
+        command_id: CommandId,
+        status: CommandState,
         has_been_closed_server_side: bool = False,
         has_more_rows: bool = False,
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
     ):
-        """Initialize the base ResultSet with common properties."""
+        """
+        A ResultSet manages the results of a single command.
+
+        Args:
+            connection: The parent connection
+            backend: The backend client
+            arraysize: The max number of rows to fetch at a time (PEP-249)
+            buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+            command_id: The command ID
+            status: The command status
+            has_been_closed_server_side: Whether the command has been closed on the server
+            has_more_rows: Whether the command has more rows
+            results_queue: The results queue
+            description: column description of the results 
+            is_staging_operation: Whether the command is a staging operation
+        """
+
         self.connection = connection
-        self.backend = backend  # Store the backend client directly
+        self.backend = backend  
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
@@ -240,7 +259,7 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2):
+    def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
         Function to merge / combining the columnar results into a single result
         :param result1:
@@ -387,12 +406,11 @@ class SeaResultSet(ResultSet):
 
     def __init__(
         self,
-        connection,
-        sea_client,
+        connection: "Connection",
+        execute_response: "ExecuteResponse",
+        sea_client: "SeaDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
-        execute_response=None,
-        sea_response=None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
@@ -402,56 +420,21 @@ class SeaResultSet(ResultSet):
             sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
-            execute_response: Response from the execute command (new style)
-            sea_response: Direct SEA response (legacy style)
+            execute_response: Response from the execute command
         """
-        # Handle both initialization styles
-        if execute_response is not None:
-            # New style with ExecuteResponse
-            command_id = execute_response.command_id
-            status = execute_response.status
-            has_been_closed_server_side = execute_response.has_been_closed_server_side
-            has_more_rows = execute_response.has_more_rows
-            results_queue = execute_response.results_queue
-            description = execute_response.description
-            is_staging_operation = execute_response.is_staging_operation
-            self._response = getattr(execute_response, "sea_response", {})
-            self.statement_id = command_id.to_sea_statement_id() if command_id else None
-        elif sea_response is not None:
-            # Legacy style with direct sea_response
-            self._response = sea_response
-            # Extract values from sea_response
-            command_id = CommandId.from_sea_statement_id(
-                sea_response.get("statement_id", "")
-            )
-            self.statement_id = sea_response.get("statement_id", "")
 
-            # Extract status
-            status_data = sea_response.get("status", {})
-            status = CommandState.from_sea_state(status_data.get("state", "PENDING"))
-
-            # Set defaults for other fields
-            has_been_closed_server_side = False
-            has_more_rows = False
-            results_queue = None
-            description = None
-            is_staging_operation = False
-        else:
-            raise ValueError("Either execute_response or sea_response must be provided")
-
-        # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
             backend=sea_client,
             arraysize=arraysize,
             buffer_size_bytes=buffer_size_bytes,
-            command_id=command_id,
-            status=status,
-            has_been_closed_server_side=has_been_closed_server_side,
-            has_more_rows=has_more_rows,
-            results_queue=results_queue,
-            description=description,
-            is_staging_operation=is_staging_operation,
+            command_id=execute_response.command_id,
+            status=execute_response.status,
+            has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            has_more_rows=execute_response.has_more_rows,
+            results_queue=execute_response.results_queue,
+            description=execute_response.description,
+            is_staging_operation=execute_response.is_staging_operation,
         )
 
     def _fill_results_buffer(self):

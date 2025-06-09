@@ -913,7 +913,10 @@ class ThriftDatabricksClient(DatabricksClient):
         poll_resp = self._poll_for_status(thrift_handle)
         operation_state = poll_resp.operationState
         self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
-        return CommandState.from_thrift_state(operation_state)
+        state = CommandState.from_thrift_state(operation_state)
+        if state is None:
+            raise ValueError(f"Invalid operation state: {operation_state}")
+        return state
 
     @staticmethod
     def _check_direct_results_for_error(t_spark_direct_results):
@@ -1175,7 +1178,6 @@ class ThriftDatabricksClient(DatabricksClient):
             execute_response,
             arrow_schema_bytes,
         ) = self._results_message_to_execute_response(resp, final_operation_state)
-        execute_response.command_id = command_id
         return execute_response, arrow_schema_bytes
 
     def _handle_execute_response_async(self, resp, cursor):
@@ -1237,7 +1239,7 @@ class ThriftDatabricksClient(DatabricksClient):
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
-        logger.debug("Cancelling command {}".format(command_id.guid))
+        logger.debug("Cancelling command {}".format(guid_to_hex_id(command_id.guid)))
         req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 

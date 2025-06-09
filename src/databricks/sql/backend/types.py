@@ -285,9 +285,6 @@ class CommandId:
         backend_type: BackendType,
         guid: Any,
         secret: Optional[Any] = None,
-        operation_type: Optional[int] = None,
-        has_result_set: bool = False,
-        modified_row_count: Optional[int] = None,
     ):
         """
         Initialize a CommandId.
@@ -296,17 +293,34 @@ class CommandId:
             backend_type: The type of backend (THRIFT or SEA)
             guid: The primary identifier for the command
             secret: The secret part of the identifier (only used for Thrift)
-            operation_type: The operation type (only used for Thrift)
-            has_result_set: Whether the command has a result set
-            modified_row_count: The number of rows modified by the command
         """
 
         self.backend_type = backend_type
         self.guid = guid
         self.secret = secret
-        self.operation_type = operation_type
-        self.has_result_set = has_result_set
-        self.modified_row_count = modified_row_count
+
+    
+    def __str__(self) -> str:
+        """
+        Return a string representation of the CommandId.
+
+        For SEA backend, returns the guid.
+        For Thrift backend, returns a format like "guid|secret".
+
+        Returns:
+            A string representation of the command ID
+        """
+
+        if self.backend_type == BackendType.SEA:
+            return str(self.guid)
+        elif self.backend_type == BackendType.THRIFT:
+            secret_hex = (
+                guid_to_hex_id(self.secret)
+                if isinstance(self.secret, bytes)
+                else str(self.secret)
+            )
+            return f"{self.to_hex_guid()}|{secret_hex}"
+        return str(self.guid)
 
     @classmethod
     def from_thrift_handle(cls, operation_handle):
@@ -329,9 +343,6 @@ class CommandId:
             BackendType.THRIFT,
             guid_bytes,
             secret_bytes,
-            operation_handle.operationType,
-            operation_handle.hasResultSet,
-            operation_handle.modifiedRowCount,
         )
 
     @classmethod
@@ -364,9 +375,6 @@ class CommandId:
         handle_identifier = ttypes.THandleIdentifier(guid=self.guid, secret=self.secret)
         return ttypes.TOperationHandle(
             operationId=handle_identifier,
-            operationType=self.operation_type,
-            hasResultSet=self.has_result_set,
-            modifiedRowCount=self.modified_row_count,
         )
 
     def to_sea_statement_id(self):
