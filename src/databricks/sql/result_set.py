@@ -421,13 +421,15 @@ class SeaResultSet(ResultSet):
             # Legacy style with direct sea_response
             self._response = sea_response
             # Extract values from sea_response
-            command_id = CommandId.from_sea_statement_id(sea_response.get("statement_id", ""))
+            command_id = CommandId.from_sea_statement_id(
+                sea_response.get("statement_id", "")
+            )
             self.statement_id = sea_response.get("statement_id", "")
-            
+
             # Extract status
             status_data = sea_response.get("status", {})
             status = CommandState.from_sea_state(status_data.get("state", "PENDING"))
-            
+
             # Set defaults for other fields
             has_been_closed_server_side = False
             has_more_rows = False

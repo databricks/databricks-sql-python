@@ -73,7 +73,7 @@ def test_sea_query_execution_with_compression():
         logger.info(
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
-        
+
         # Execute a simple query with compression disabled
         cursor = connection.cursor(arraysize=0, buffer_size_bytes=0)
         logger.info("Executing query without compression: SELECT 1 as test_value")
