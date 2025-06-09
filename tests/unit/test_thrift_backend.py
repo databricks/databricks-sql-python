@@ -1175,20 +1175,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend._handle_execute_response = Mock(
-            return_value=Mock(
-                spec=ExecuteResponse,
-                command_id=Mock(),
-                status=Mock(),
-                description=Mock(),
-                has_more_rows=Mock(),
-                results_queue=Mock(),
-                has_been_closed_server_side=Mock(),
-                lz4_compressed=Mock(),
-                is_staging_operation=Mock(),
-                arrow_schema_bytes=Mock(),
-            )
-        )
+        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         result = thrift_backend.execute_command(
@@ -1222,20 +1209,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend._handle_execute_response = Mock(
-            return_value=Mock(
-                spec=ExecuteResponse,
-                command_id=Mock(),
-                status=Mock(),
-                description=Mock(),
-                has_more_rows=Mock(),
-                results_queue=Mock(),
-                has_been_closed_server_side=Mock(),
-                lz4_compressed=Mock(),
-                is_staging_operation=Mock(),
-                arrow_schema_bytes=Mock(),
-            )
-        )
+        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         result = thrift_backend.get_catalogs(Mock(), 100, 200, cursor_mock)
@@ -1266,20 +1240,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend._handle_execute_response = Mock(
-            return_value=Mock(
-                spec=ExecuteResponse,
-                command_id=Mock(),
-                status=Mock(),
-                description=Mock(),
-                has_more_rows=Mock(),
-                results_queue=Mock(),
-                has_been_closed_server_side=Mock(),
-                lz4_compressed=Mock(),
-                is_staging_operation=Mock(),
-                arrow_schema_bytes=Mock(),
-            )
-        )
+        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         result = thrift_backend.get_schemas(
@@ -1319,20 +1280,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend._handle_execute_response = Mock(
-            return_value=Mock(
-                spec=ExecuteResponse,
-                command_id=Mock(),
-                status=Mock(),
-                description=Mock(),
-                has_more_rows=Mock(),
-                results_queue=Mock(),
-                has_been_closed_server_side=Mock(),
-                lz4_compressed=Mock(),
-                is_staging_operation=Mock(),
-                arrow_schema_bytes=Mock(),
-            )
-        )
+        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         result = thrift_backend.get_tables(
@@ -1376,20 +1324,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend._handle_execute_response = Mock(
-            return_value=Mock(
-                spec=ExecuteResponse,
-                command_id=Mock(),
-                status=Mock(),
-                description=Mock(),
-                has_more_rows=Mock(),
-                results_queue=Mock(),
-                has_been_closed_server_side=Mock(),
-                lz4_compressed=Mock(),
-                is_staging_operation=Mock(),
-                arrow_schema_bytes=Mock(),
-            )
-        )
+        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         result = thrift_backend.get_columns(
