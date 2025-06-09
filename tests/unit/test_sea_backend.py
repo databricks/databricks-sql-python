@@ -54,7 +54,7 @@ class TestSeaBackend:
     def sea_session_id(self):
         """Create a SEA session ID."""
         return SessionId.from_sea_session_id("test-session-123")
-        
+
     @pytest.fixture
     def sea_command_id(self):
         """Create a SEA command ID."""
@@ -538,7 +538,7 @@ class TestSeaBackend:
         # Verify basic properties of the result
         assert result.statement_id == "test-statement-123"
         assert result.status == CommandState.SUCCEEDED
-        
+
         # Verify the HTTP request
         mock_http_client._make_request.assert_called_once()
         args, kwargs = mock_http_client._make_request.call_args

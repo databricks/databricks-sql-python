@@ -801,16 +801,19 @@ class ThriftDatabricksClient(DatabricksClient):
         if status is None:
             raise ValueError(f"Invalid operation state: {operation_state}")
 
-        return ExecuteResponse(
-            command_id=command_id,
-            status=status,
-            description=description,
-            has_more_rows=has_more_rows,
-            results_queue=arrow_queue_opt,
-            has_been_closed_server_side=has_been_closed_server_side,
-            lz4_compressed=lz4_compressed,
-            is_staging_operation=is_staging_operation,
-        ), schema_bytes
+        return (
+            ExecuteResponse(
+                command_id=command_id,
+                status=status,
+                description=description,
+                has_more_rows=has_more_rows,
+                results_queue=arrow_queue_opt,
+                has_been_closed_server_side=has_been_closed_server_side,
+                lz4_compressed=lz4_compressed,
+                is_staging_operation=is_staging_operation,
+            ),
+            schema_bytes,
+        )
 
     def get_execution_result(
         self, command_id: CommandId, cursor: "Cursor"
@@ -881,7 +884,7 @@ class ThriftDatabricksClient(DatabricksClient):
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
-            arrow_schema_bytes=schema_bytes
+            arrow_schema_bytes=schema_bytes,
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -991,7 +994,9 @@ class ThriftDatabricksClient(DatabricksClient):
             self._handle_execute_response_async(resp, cursor)
             return None
         else:
-            execute_response, arrow_schema_bytes = self._handle_execute_response(resp, cursor)
+            execute_response, arrow_schema_bytes = self._handle_execute_response(
+                resp, cursor
+            )
 
             return ThriftResultSet(
                 connection=cursor.connection,
@@ -1000,7 +1005,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 buffer_size_bytes=max_bytes,
                 arraysize=max_rows,
                 use_cloud_fetch=use_cloud_fetch,
-                arrow_schema_bytes=arrow_schema_bytes
+                arrow_schema_bytes=arrow_schema_bytes,
             )
 
     def get_catalogs(
@@ -1022,7 +1027,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetCatalogs, req)
 
-        execute_response, arrow_schema_bytes = self._handle_execute_response(resp, cursor)
+        execute_response, arrow_schema_bytes = self._handle_execute_response(
+            resp, cursor
+        )
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1031,7 +1038,7 @@ class ThriftDatabricksClient(DatabricksClient):
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
-            arrow_schema_bytes=arrow_schema_bytes
+            arrow_schema_bytes=arrow_schema_bytes,
         )
 
     def get_schemas(
@@ -1057,7 +1064,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetSchemas, req)
 
-        execute_response, arrow_schema_bytes = self._handle_execute_response(resp, cursor)
+        execute_response, arrow_schema_bytes = self._handle_execute_response(
+            resp, cursor
+        )
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1066,7 +1075,7 @@ class ThriftDatabricksClient(DatabricksClient):
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
-            arrow_schema_bytes=arrow_schema_bytes
+            arrow_schema_bytes=arrow_schema_bytes,
         )
 
     def get_tables(
@@ -1096,7 +1105,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetTables, req)
 
-        execute_response, arrow_schema_bytes = self._handle_execute_response(resp, cursor)
+        execute_response, arrow_schema_bytes = self._handle_execute_response(
+            resp, cursor
+        )
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1105,7 +1116,7 @@ class ThriftDatabricksClient(DatabricksClient):
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
-            arrow_schema_bytes=arrow_schema_bytes
+            arrow_schema_bytes=arrow_schema_bytes,
         )
 
     def get_columns(
@@ -1135,7 +1146,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetColumns, req)
 
-        execute_response, arrow_schema_bytes = self._handle_execute_response(resp, cursor)
+        execute_response, arrow_schema_bytes = self._handle_execute_response(
+            resp, cursor
+        )
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1144,7 +1157,7 @@ class ThriftDatabricksClient(DatabricksClient):
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
-            arrow_schema_bytes=arrow_schema_bytes
+            arrow_schema_bytes=arrow_schema_bytes,
         )
 
     def _handle_execute_response(self, resp, cursor):
@@ -1158,9 +1171,10 @@ class ThriftDatabricksClient(DatabricksClient):
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        execute_response, arrow_schema_bytes = self._results_message_to_execute_response(
-            resp, final_operation_state
-        )
+        (
+            execute_response,
+            arrow_schema_bytes,
+        ) = self._results_message_to_execute_response(resp, final_operation_state)
         execute_response.command_id = command_id
         return execute_response, arrow_schema_bytes
 

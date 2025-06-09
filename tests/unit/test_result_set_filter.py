@@ -54,19 +54,30 @@ class TestResultSetFilter:
                 "data_array": [
                     ["schema1", "table1", False, None, "catalog1", "TABLE", None],
                     ["schema1", "table2", False, None, "catalog1", "VIEW", None],
-                    ["schema1", "table3", False, None, "catalog1", "SYSTEM TABLE", None],
+                    [
+                        "schema1",
+                        "table3",
+                        False,
+                        None,
+                        "catalog1",
+                        "SYSTEM TABLE",
+                        None,
+                    ],
                     ["schema1", "table4", False, None, "catalog1", "EXTERNAL", None],
                 ]
             },
         }
 
     @pytest.fixture
-    def sea_result_set_with_tables(self, mock_connection, mock_sea_client, sea_response_with_tables):
+    def sea_result_set_with_tables(
+        self, mock_connection, mock_sea_client, sea_response_with_tables
+    ):
         """Create a SeaResultSet with table data."""
         # Create a deep copy of the response to avoid test interference
         import copy
+
         sea_response_copy = copy.deepcopy(sea_response_with_tables)
-        
+
         return SeaResultSet(
             connection=mock_connection,
             sea_client=mock_sea_client,
@@ -78,11 +89,15 @@ class TestResultSetFilter:
     def test_filter_tables_by_type_default(self, sea_result_set_with_tables):
         """Test filtering tables by type with default types."""
         # Default types are TABLE, VIEW, SYSTEM TABLE
-        filtered_result = ResultSetFilter.filter_tables_by_type(sea_result_set_with_tables)
+        filtered_result = ResultSetFilter.filter_tables_by_type(
+            sea_result_set_with_tables
+        )
 
         # Verify that only the default types are included
         assert len(filtered_result._response["result"]["data_array"]) == 3
-        table_types = [row[5] for row in filtered_result._response["result"]["data_array"]]
+        table_types = [
+            row[5] for row in filtered_result._response["result"]["data_array"]
+        ]
         assert "TABLE" in table_types
         assert "VIEW" in table_types
         assert "SYSTEM TABLE" in table_types
@@ -97,7 +112,9 @@ class TestResultSetFilter:
 
         # Verify that only the specified types are included
         assert len(filtered_result._response["result"]["data_array"]) == 2
-        table_types = [row[5] for row in filtered_result._response["result"]["data_array"]]
+        table_types = [
+            row[5] for row in filtered_result._response["result"]["data_array"]
+        ]
         assert "TABLE" in table_types
         assert "EXTERNAL" in table_types
         assert "VIEW" not in table_types
@@ -112,7 +129,9 @@ class TestResultSetFilter:
 
         # Verify that the matching types are included despite case differences
         assert len(filtered_result._response["result"]["data_array"]) == 2
-        table_types = [row[5] for row in filtered_result._response["result"]["data_array"]]
+        table_types = [
+            row[5] for row in filtered_result._response["result"]["data_array"]
+        ]
         assert "TABLE" in table_types
         assert "VIEW" in table_types
         assert "SYSTEM TABLE" not in table_types
@@ -126,7 +145,9 @@ class TestResultSetFilter:
 
         # Verify that default types are used
         assert len(filtered_result._response["result"]["data_array"]) == 3
-        table_types = [row[5] for row in filtered_result._response["result"]["data_array"]]
+        table_types = [
+            row[5] for row in filtered_result._response["result"]["data_array"]
+        ]
         assert "TABLE" in table_types
         assert "VIEW" in table_types
         assert "SYSTEM TABLE" in table_types
@@ -144,21 +165,27 @@ class TestResultSetFilter:
 
         # Filter by table name in column index 1
         filtered_result = ResultSetFilter.filter_by_column_values(
-            sea_result_set_with_tables, column_index=1, allowed_values=["table1", "table3"]
+            sea_result_set_with_tables,
+            column_index=1,
+            allowed_values=["table1", "table3"],
         )
 
         # Only rows with table1 or table3 should be included
         assert len(filtered_result._response["result"]["data_array"]) == 2
-        table_names = [row[1] for row in filtered_result._response["result"]["data_array"]]
+        table_names = [
+            row[1] for row in filtered_result._response["result"]["data_array"]
+        ]
         assert "table1" in table_names
         assert "table3" in table_names
         assert "table2" not in table_names
         assert "table4" not in table_names
 
-    def test_filter_by_column_values_case_sensitive(self, mock_connection, mock_sea_client, sea_response_with_tables):
+    def test_filter_by_column_values_case_sensitive(
+        self, mock_connection, mock_sea_client, sea_response_with_tables
+    ):
         """Test case-sensitive filtering by column values."""
         import copy
-        
+
         # Create a fresh result set for the first test
         sea_response_copy1 = copy.deepcopy(sea_response_with_tables)
         result_set1 = SeaResultSet(
@@ -168,7 +195,7 @@ class TestResultSetFilter:
             buffer_size_bytes=1000,
             arraysize=100,
         )
-        
+
         # First test: Case-sensitive filtering with lowercase values (should find no matches)
         filtered_result = ResultSetFilter.filter_by_column_values(
             result_set1,
@@ -176,10 +203,10 @@ class TestResultSetFilter:
             allowed_values=["table", "view"],  # lowercase
             case_sensitive=True,
         )
-        
+
         # Verify no matches with lowercase values
         assert len(filtered_result._response["result"]["data_array"]) == 0
-        
+
         # Create a fresh result set for the second test
         sea_response_copy2 = copy.deepcopy(sea_response_with_tables)
         result_set2 = SeaResultSet(
@@ -189,7 +216,7 @@ class TestResultSetFilter:
             buffer_size_bytes=1000,
             arraysize=100,
         )
-        
+
         # Second test: Case-sensitive filtering with correct case (should find matches)
         filtered_result = ResultSetFilter.filter_by_column_values(
             result_set2,
@@ -197,12 +224,14 @@ class TestResultSetFilter:
             allowed_values=["TABLE", "VIEW"],  # correct case
             case_sensitive=True,
         )
-        
+
         # Verify matches with correct case
         assert len(filtered_result._response["result"]["data_array"]) == 2
-        
+
         # Extract the table types from the filtered results
-        table_types = [row[5] for row in filtered_result._response["result"]["data_array"]]
+        table_types = [
+            row[5] for row in filtered_result._response["result"]["data_array"]
+        ]
         assert "TABLE" in table_types
         assert "VIEW" in table_types
 

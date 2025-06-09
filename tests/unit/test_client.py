@@ -121,7 +121,9 @@ class ClientTestSuite(unittest.TestCase):
 
                 # Verify initial state
                 self.assertEqual(real_result_set.has_been_closed_server_side, closed)
-                expected_status = CommandState.CLOSED if closed else CommandState.SUCCEEDED
+                expected_status = (
+                    CommandState.CLOSED if closed else CommandState.SUCCEEDED
+                )
                 self.assertEqual(real_result_set.status, expected_status)
 
                 # Mock execute_command to return our real result set
