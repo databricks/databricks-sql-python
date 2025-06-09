@@ -72,7 +72,7 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self._has_more_rows = has_more_rows
+        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
 

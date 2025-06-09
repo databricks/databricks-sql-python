@@ -88,6 +88,7 @@ class DatabricksClient(ABC):
     ) -> Union["ResultSet", None]:
         """
         Executes a SQL command or query within the specified session.
+
         This method sends a SQL command to the server for execution and handles
         the response. It can operate in both synchronous and asynchronous modes.
 
