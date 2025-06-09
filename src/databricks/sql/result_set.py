@@ -59,12 +59,12 @@ class ResultSet(ABC):
             has_been_closed_server_side: Whether the command has been closed on the server
             has_more_rows: Whether the command has more rows
             results_queue: The results queue
-            description: column description of the results 
+            description: column description of the results
             is_staging_operation: Whether the command is a staging operation
         """
 
         self.connection = connection
-        self.backend = backend  
+        self.backend = backend
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
@@ -399,6 +399,23 @@ class ThriftResultSet(ResultSet):
             return self._convert_columnar_table(self.fetchmany_columnar(size))
         else:
             return self._convert_arrow_table(self.fetchmany_arrow(size))
+
+    @staticmethod
+    def _get_schema_description(table_schema_message):
+        """
+        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
+        """
+
+        def map_col_type(type_):
+            if type_.startswith("decimal"):
+                return "decimal"
+            else:
+                return type_
+
+        return [
+            (column.name, map_col_type(column.datatype), None, None, None, None, None)
+            for column in table_schema_message.columns
+        ]
 
 
 class SeaResultSet(ResultSet):

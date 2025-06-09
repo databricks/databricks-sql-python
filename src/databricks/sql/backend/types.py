@@ -299,7 +299,6 @@ class CommandId:
         self.guid = guid
         self.secret = secret
 
-    
     def __str__(self) -> str:
         """
         Return a string representation of the CommandId.
