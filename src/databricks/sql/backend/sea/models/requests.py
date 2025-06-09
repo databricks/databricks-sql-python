@@ -29,7 +29,6 @@ class ExecuteStatementRequest:
     wait_timeout: str = "10s"
     on_wait_timeout: str = "CONTINUE"
     row_limit: Optional[int] = None
-    byte_limit: Optional[int] = None
     parameters: Optional[List[StatementParameter]] = None
     catalog: Optional[str] = None
     schema: Optional[str] = None
@@ -49,9 +48,6 @@ class ExecuteStatementRequest:
 
         if self.row_limit is not None and self.row_limit > 0:
             result["row_limit"] = self.row_limit
-
-        if self.byte_limit is not None and self.byte_limit > 0:
-            result["byte_limit"] = self.byte_limit
 
         if self.catalog:
             result["catalog"] = self.catalog

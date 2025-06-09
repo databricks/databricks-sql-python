@@ -1,162 +1,111 @@
+"""
+Main script to run all SEA connector tests.
+
+This script imports and runs all the individual test modules and displays
+a summary of test results with visual indicators.
+"""
 import os
 import sys
 import logging
-from databricks.sql.client import Connection
+import importlib.util
+from typing import Dict, Callable, List, Tuple
 
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Define test modules and their main test functions
+TEST_MODULES = [
+    "test_sea_session",
+    "test_sea_sync_query",
+    "test_sea_async_query",
+    "test_sea_metadata",
+]
 
-def test_sea_query_exec():
-    """
-    Test executing a query using the SEA backend with result compression.
+def load_test_function(module_name: str) -> Callable:
+    """Load a test function from a module."""
+    module_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "tests",
+        f"{module_name}.py"
+    )
+    
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    
+    # Get the main test function (assuming it starts with "test_")
+    for name in dir(module):
+        if name.startswith("test_") and callable(getattr(module, name)):
+            # For sync and async query modules, we want the main function that runs both tests
+            if name == f"test_sea_{module_name.replace('test_sea_', '')}_exec":
+                return getattr(module, name)
+    
+    # Fallback to the first test function found
+    for name in dir(module):
+        if name.startswith("test_") and callable(getattr(module, name)):
+            return getattr(module, name)
+    
+    raise ValueError(f"No test function found in module {module_name}")
 
-    This function connects to a Databricks SQL endpoint using the SEA backend,
-    executes a simple query with result compression enabled and disabled,
-    and verifies that execution completes successfully.
-    """
-    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
-    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
-    access_token = os.environ.get("DATABRICKS_TOKEN")
-    catalog = os.environ.get("DATABRICKS_CATALOG")
+def run_tests() -> List[Tuple[str, bool]]:
+    """Run all tests and return results."""
+    results = []
+    
+    for module_name in TEST_MODULES:
+        try:
+            test_func = load_test_function(module_name)
+            logger.info(f"\n{'=' * 50}")
+            logger.info(f"Running test: {module_name}")
+            logger.info(f"{'-' * 50}")
+            
+            success = test_func()
+            results.append((module_name, success))
+            
+            status = "✅ PASSED" if success else "❌ FAILED"
+            logger.info(f"Test {module_name}: {status}")
+            
+        except Exception as e:
+            logger.error(f"Error loading or running test {module_name}: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            results.append((module_name, False))
+    
+    return results
 
-    if not all([server_hostname, http_path, access_token]):
-        logger.error("Missing required environment variables.")
-        logger.error(
-            "Please set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, and DATABRICKS_TOKEN."
-        )
-        sys.exit(1)
-
-    try:
-        # Test with compression enabled
-        logger.info("Creating connection with LZ4 compression enabled")
-        connection = Connection(
-            server_hostname=server_hostname,
-            http_path=http_path,
-            access_token=access_token,
-            catalog=catalog,
-            schema="default",
-            use_sea=True,
-            user_agent_entry="SEA-Test-Client",
-            use_cloud_fetch=True,  # Enable cloud fetch to use compression
-            enable_query_result_lz4_compression=True,  # Enable LZ4 compression
-        )
-
-        logger.info(
-            f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
-        )
-        logger.info(f"backend type: {type(connection.session.backend)}")
-
-        # Execute a simple query with compression enabled
-        cursor = connection.cursor(arraysize=0, buffer_size_bytes=0)
-        logger.info("Executing query with LZ4 compression: SELECT 1 as test_value")
-        cursor.execute("SELECT 1 as test_value")
-        logger.info("Query with compression executed successfully")
-        cursor.close()
-        connection.close()
-        logger.info("Successfully closed SEA session with compression enabled")
-
-        # Test with compression disabled
-        logger.info("Creating connection with LZ4 compression disabled")
-        connection = Connection(
-            server_hostname=server_hostname,
-            http_path=http_path,
-            access_token=access_token,
-            catalog=catalog,
-            schema="default",
-            use_sea=True,
-            user_agent_entry="SEA-Test-Client",
-            use_cloud_fetch=False,  # Enable cloud fetch
-            enable_query_result_lz4_compression=False,  # Disable LZ4 compression
-        )
-
-        logger.info(
-            f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
-        )
-
-        # Execute a simple query with compression disabled
-        cursor = connection.cursor(arraysize=0, buffer_size_bytes=0)
-        logger.info("Executing query without compression: SELECT 1 as test_value")
-        cursor.execute("SELECT 1 as test_value")
-        logger.info("Query without compression executed successfully")
-        cursor.close()
-        connection.close()
-        logger.info("Successfully closed SEA session with compression disabled")
-
-    except Exception as e:
-        logger.error(f"Error during SEA query execution test: {str(e)}")
-        import traceback
-
-        logger.error(traceback.format_exc())
-        sys.exit(1)
-
-    logger.info("SEA query execution test with compression completed successfully")
-
-
-def test_sea_session():
-    """
-    Test opening and closing a SEA session using the connector.
-
-    This function connects to a Databricks SQL endpoint using the SEA backend,
-    opens a session, and then closes it.
-
-    Required environment variables:
-    - DATABRICKS_SERVER_HOSTNAME: Databricks server hostname
-    - DATABRICKS_HTTP_PATH: HTTP path for the SQL endpoint
-    - DATABRICKS_TOKEN: Personal access token for authentication
-    """
-    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
-    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
-    access_token = os.environ.get("DATABRICKS_TOKEN")
-    catalog = os.environ.get("DATABRICKS_CATALOG")
-
-    if not all([server_hostname, http_path, access_token]):
-        logger.error("Missing required environment variables.")
-        logger.error(
-            "Please set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, and DATABRICKS_TOKEN."
-        )
-        sys.exit(1)
-
-    logger.info(f"Connecting to {server_hostname}")
-    logger.info(f"HTTP Path: {http_path}")
-    if catalog:
-        logger.info(f"Using catalog: {catalog}")
-
-    try:
-        logger.info("Creating connection with SEA backend...")
-        connection = Connection(
-            server_hostname=server_hostname,
-            http_path=http_path,
-            access_token=access_token,
-            catalog=catalog,
-            schema="default",
-            use_sea=True,
-            user_agent_entry="SEA-Test-Client",  # add custom user agent
-        )
-
-        logger.info(
-            f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
-        )
-        logger.info(f"backend type: {type(connection.session.backend)}")
-
-        # Close the connection
-        logger.info("Closing the SEA session...")
-        connection.close()
-        logger.info("Successfully closed SEA session")
-
-    except Exception as e:
-        logger.error(f"Error testing SEA session: {str(e)}")
-        import traceback
-
-        logger.error(traceback.format_exc())
-        sys.exit(1)
-
-    logger.info("SEA session test completed successfully")
-
+def print_summary(results: List[Tuple[str, bool]]) -> None:
+    """Print a summary of test results."""
+    logger.info(f"\n{'=' * 50}")
+    logger.info("TEST SUMMARY")
+    logger.info(f"{'-' * 50}")
+    
+    passed = sum(1 for _, success in results if success)
+    total = len(results)
+    
+    for module_name, success in results:
+        status = "✅ PASSED" if success else "❌ FAILED"
+        logger.info(f"{status} - {module_name}")
+    
+    logger.info(f"{'-' * 50}")
+    logger.info(f"Total: {total} | Passed: {passed} | Failed: {total - passed}")
+    logger.info(f"{'=' * 50}")
 
 if __name__ == "__main__":
-    # Test session management
-    test_sea_session()
-
-    # Test query execution with compression
-    test_sea_query_exec()
+    # Check if required environment variables are set
+    required_vars = ["DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN"]
+    missing_vars = [var for var in required_vars if not os.environ.get(var)]
+    
+    if missing_vars:
+        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        logger.error("Please set these variables before running the tests.")
+        sys.exit(1)
+    
+    # Run all tests
+    results = run_tests()
+    
+    # Print summary
+    print_summary(results)
+    
+    # Exit with appropriate status code
+    all_passed = all(success for _, success in results)
+    sys.exit(0 if all_passed else 1)
