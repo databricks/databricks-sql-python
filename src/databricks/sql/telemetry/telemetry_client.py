@@ -8,6 +8,7 @@ from typing import Dict, Optional
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
+    DriverErrorInfo,
 )
 from databricks.sql.telemetry.models.frontend_logs import (
     TelemetryFrontendLog,
@@ -26,7 +27,6 @@ import platform
 import uuid
 import locale
 from abc import ABC, abstractmethod
-from databricks.sql import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +34,26 @@ logger = logging.getLogger(__name__)
 class TelemetryHelper:
     """Helper class for getting telemetry related information."""
 
-    _DRIVER_SYSTEM_CONFIGURATION = DriverSystemConfiguration(
-        driver_name="Databricks SQL Python Connector",
-        driver_version=__version__,
-        runtime_name=f"Python {sys.version.split()[0]}",
-        runtime_vendor=platform.python_implementation(),
-        runtime_version=platform.python_version(),
-        os_name=platform.system(),
-        os_version=platform.release(),
-        os_arch=platform.machine(),
-        client_app_name=None,  # TODO: Add client app name
-        locale_name=locale.getlocale()[0] or locale.getdefaultlocale()[0],
-        char_set_encoding=sys.getdefaultencoding(),
-    )
+    _DRIVER_SYSTEM_CONFIGURATION = None
 
     @classmethod
     def getDriverSystemConfiguration(cls) -> DriverSystemConfiguration:
+        if cls._DRIVER_SYSTEM_CONFIGURATION is None:
+            from databricks.sql import __version__
+
+            cls._DRIVER_SYSTEM_CONFIGURATION = DriverSystemConfiguration(
+                driver_name="Databricks SQL Python Connector",
+                driver_version=__version__,
+                runtime_name=f"Python {sys.version.split()[0]}",
+                runtime_vendor=platform.python_implementation(),
+                runtime_version=platform.python_version(),
+                os_name=platform.system(),
+                os_version=platform.release(),
+                os_arch=platform.machine(),
+                client_app_name=None,  # TODO: Add client app name
+                locale_name=locale.getlocale()[0] or locale.getdefaultlocale()[0],
+                char_set_encoding=sys.getdefaultencoding(),
+            )
         return cls._DRIVER_SYSTEM_CONFIGURATION
 
     @staticmethod
@@ -99,7 +103,11 @@ class BaseTelemetryClient(ABC):
     """
 
     @abstractmethod
-    def export_initial_telemetry_log(self, **kwargs):
+    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
+        pass
+
+    @abstractmethod
+    def export_failure_log(self, error_name, error_message):
         pass
 
     @abstractmethod
@@ -121,6 +129,9 @@ class NoopTelemetryClient(BaseTelemetryClient):
         return cls._instance
 
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
+        pass
+
+    def export_failure_log(self, error_name, error_message):
         pass
 
     def close(self):
@@ -255,10 +266,33 @@ class TelemetryClient(BaseTelemetryClient):
 
         self.export_event(telemetry_frontend_log)
 
+    def export_failure_log(self, error_name, error_message):
+        logger.debug("Exporting failure log for connection %s", self._connection_uuid)
+        error_info = DriverErrorInfo(error_name=error_name, stack_trace=error_message)
+        telemetry_frontend_log = TelemetryFrontendLog(
+            frontend_log_event_id=str(uuid.uuid4()),
+            context=FrontendLogContext(
+                client_context=TelemetryClientContext(
+                    timestamp_millis=int(time.time() * 1000),
+                    user_agent=self._user_agent,
+                )
+            ),
+            entry=FrontendLogEntry(
+                sql_driver_log=TelemetryEvent(
+                    session_id=self._connection_uuid,
+                    system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                    driver_connection_params=self._driver_connection_params,
+                    error_info=error_info,
+                )
+            ),
+        )
+        self.export_event(telemetry_frontend_log)
+
     def close(self):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
         self.flush()
+
         TelemetryClientFactory.close(self._connection_uuid)
 
 

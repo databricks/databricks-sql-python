@@ -1,8 +1,10 @@
 import json
 import logging
+import traceback
+
+from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
 logger = logging.getLogger(__name__)
-
 
 ### PEP-249 Mandated ###
 class Error(Exception):
@@ -11,10 +13,23 @@ class Error(Exception):
     `context`: Optional extra context about the error. MUST be JSON serializable
     """
 
-    def __init__(self, message=None, context=None, *args, **kwargs):
+    def __init__(
+        self, message=None, context=None, connection_uuid=None, *args, **kwargs
+    ):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}
+        self.connection_uuid = connection_uuid
+
+        error_name = self.__class__.__name__
+        if self.connection_uuid:
+            try:
+                telemetry_client = TelemetryClientFactory.get_telemetry_client(
+                    self.connection_uuid
+                )
+                telemetry_client.export_failure_log(error_name, self.message)
+            except Exception as telemetry_error:
+                logger.error(f"Failed to send error to telemetry: {telemetry_error}")
 
     def __str__(self):
         return self.message
