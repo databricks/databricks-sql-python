@@ -2,7 +2,6 @@ import gc
 import re
 import sys
 import unittest
-import pytest
 from unittest.mock import patch, MagicMock, Mock, PropertyMock
 import itertools
 from decimal import Decimal
