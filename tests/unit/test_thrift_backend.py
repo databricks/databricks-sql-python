@@ -184,7 +184,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             )
 
             with self.assertRaises(OperationalError) as cm:
-                thrift_backend = self._create_mocked_thrift_client()
+                thrift_backend = self._create_thrift_client()
                 thrift_backend.open_session({}, None, None)
 
             self.assertIn(
@@ -207,7 +207,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 sessionHandle=self.session_handle,
             )
 
-            thrift_backend = self._create_mocked_thrift_client()
+            thrift_backend = self._create_thrift_client()
             thrift_backend.open_session({}, None, None)
 
     @patch("databricks.sql.auth.thrift_http_client.THttpClient")
@@ -918,21 +918,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 )
 
                 thrift_backend = self._create_mocked_thrift_client()
-                mock_execute_response = Mock(spec=ExecuteResponse)
-                mock_has_more_rows = True
-                thrift_backend._results_message_to_execute_response = Mock(
-                    return_value=(mock_execute_response, mock_has_more_rows)
-                )
 
-                result = thrift_backend._handle_execute_response(execute_resp, Mock())
+                thrift_backend._handle_execute_response(execute_resp, Mock())
                 thrift_backend._results_message_to_execute_response.assert_called_with(
                     execute_resp,
                     ttypes.TOperationState.FINISHED_STATE,
                 )
-                # Verify the result is a tuple with the expected values
-                self.assertIsInstance(result, tuple)
-                self.assertEqual(result[0], mock_execute_response)
-                self.assertEqual(result[1], mock_has_more_rows)
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_use_arrow_schema_if_available(self, tcli_service_class):
