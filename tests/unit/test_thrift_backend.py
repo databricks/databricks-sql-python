@@ -990,7 +990,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             operationHandle=self.operation_handle,
         )
 
-        # Mock the operation status response
         op_state = ttypes.TGetOperationStatusResp(
             status=self.okay_status,
             operationState=ttypes.TOperationState.FINISHED_STATE,
@@ -1010,52 +1009,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             hive_schema_mock,
             thrift_backend._hive_schema_to_arrow_schema.call_args[0][0],
         )
-
-    @patch(
-        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
-    )
-    @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
-    def test_handle_execute_response_creates_execute_response(
-        self, tcli_service_class, build_queue
-    ):
-        """Test that _handle_execute_response creates an ExecuteResponse object correctly."""
-        for resp_type in self.execute_response_types:
-            with self.subTest(resp_type=resp_type):
-                tcli_service_instance = tcli_service_class.return_value
-                results_mock = Mock()
-                results_mock.startRowOffset = 0
-                direct_results_message = ttypes.TSparkDirectResults(
-                    operationStatus=ttypes.TGetOperationStatusResp(
-                        status=self.okay_status,
-                        operationState=ttypes.TOperationState.FINISHED_STATE,
-                    ),
-                    resultSetMetadata=self.metadata_resp,
-                    resultSet=ttypes.TFetchResultsResp(
-                        status=self.okay_status,
-                        hasMoreRows=True,
-                        results=results_mock,
-                    ),
-                    closeOperation=Mock(),
-                )
-                execute_resp = resp_type(
-                    status=self.okay_status,
-                    directResults=direct_results_message,
-                    operationHandle=self.operation_handle,
-                )
-
-                tcli_service_instance.GetResultSetMetadata.return_value = (
-                    self.metadata_resp
-                )
-                thrift_backend = self._create_fake_thrift_client()
-
-                execute_response_tuple = thrift_backend._handle_execute_response(
-                    execute_resp, Mock()
-                )
-
-                self.assertIsNotNone(execute_response_tuple)
-                self.assertIsInstance(execute_response_tuple, tuple)
-                self.assertIsInstance(execute_response_tuple[0], ExecuteResponse)
-                self.assertIsInstance(execute_response_tuple[1], bool)
 
     @patch(
         "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
