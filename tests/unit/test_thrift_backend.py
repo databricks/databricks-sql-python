@@ -1050,6 +1050,64 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 self.assertEqual(has_more_rows, has_more_rows_resp)
 
+    @patch(
+        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
+    )
+    @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
+    def test_handle_execute_response_reads_has_more_rows_in_result_response(
+        self, tcli_service_class, build_queue
+    ):
+        for has_more_rows, resp_type in itertools.product(
+            [True, False], self.execute_response_types
+        ):
+            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
+                tcli_service_instance = tcli_service_class.return_value
+                results_mock = MagicMock()
+                results_mock.startRowOffset = 0
+
+                execute_resp = resp_type(
+                    status=self.okay_status,
+                    directResults=None,
+                    operationHandle=self.operation_handle,
+                )
+
+                fetch_results_resp = ttypes.TFetchResultsResp(
+                    status=self.okay_status,
+                    hasMoreRows=has_more_rows,
+                    results=results_mock,
+                    resultSetMetadata=ttypes.TGetResultSetMetadataResp(
+                        resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET
+                    ),
+                )
+
+                operation_status_resp = ttypes.TGetOperationStatusResp(
+                    status=self.okay_status,
+                    operationState=ttypes.TOperationState.FINISHED_STATE,
+                    errorMessage="some information about the error",
+                )
+
+                tcli_service_instance.FetchResults.return_value = fetch_results_resp
+                tcli_service_instance.GetOperationStatus.return_value = (
+                    operation_status_resp
+                )
+                tcli_service_instance.GetResultSetMetadata.return_value = (
+                    self.metadata_resp
+                )
+                thrift_backend = self._create_thrift_client()
+
+                thrift_backend._handle_execute_response(execute_resp, Mock())
+                _, has_more_rows_resp = thrift_backend.fetch_results(
+                    command_id=Mock(),
+                    max_rows=1,
+                    max_bytes=1,
+                    expected_row_start_offset=0,
+                    lz4_compressed=False,
+                    arrow_schema_bytes=Mock(),
+                    description=Mock(),
+                )
+
+                self.assertEqual(has_more_rows, has_more_rows_resp)
+
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_arrow_batches_row_count_are_respected(self, tcli_service_class):
         # make some semi-real arrow batches and check the number of rows is correct in the queue
