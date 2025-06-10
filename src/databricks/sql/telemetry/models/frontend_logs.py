@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, asdict
 from databricks.sql.telemetry.models.event import TelemetryEvent
+from databricks.sql.telemetry.utils import EnumEncoder
 from typing import Optional
 
 
@@ -19,7 +20,7 @@ class TelemetryClientContext:
     user_agent: str
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -35,7 +36,7 @@ class FrontendLogContext:
     client_context: TelemetryClientContext
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -51,7 +52,7 @@ class FrontendLogEntry:
     sql_driver_log: TelemetryEvent
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -74,4 +75,4 @@ class TelemetryFrontendLog:
     workspace_id: Optional[int] = None
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)

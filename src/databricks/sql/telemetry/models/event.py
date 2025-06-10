@@ -9,6 +9,7 @@ from databricks.sql.telemetry.models.enums import (
     ExecutionResultFormat,
 )
 from typing import Optional
+from databricks.sql.telemetry.utils import EnumEncoder
 
 
 @dataclass
@@ -40,26 +41,18 @@ class DriverConnectionParameters:
         host_info (HostDetails): Details about the host connection
         auth_mech (AuthMech): The authentication mechanism used
         auth_flow (AuthFlow): The authentication flow type
-        auth_scope (str): The scope of authentication
-        discovery_url (str): URL for service discovery
-        allowed_volume_ingestion_paths (str): JSON string of allowed paths for volume operations
-        azure_tenant_id (str): Azure tenant ID for Azure authentication
         socket_timeout (int): Connection timeout in milliseconds
     """
 
     http_path: str
     mode: DatabricksClientType
     host_info: HostDetails
-    auth_mech: AuthMech
-    auth_flow: AuthFlow
-    auth_scope: str
-    discovery_url: str
-    allowed_volume_ingestion_paths: str
-    azure_tenant_id: str
-    socket_timeout: int
+    auth_mech: Optional[AuthMech] = None
+    auth_flow: Optional[AuthFlow] = None
+    socket_timeout: Optional[int] = None
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -89,13 +82,13 @@ class DriverSystemConfiguration:
     runtime_name: str
     runtime_version: str
     runtime_vendor: str
-    client_app_name: str
-    locale_name: str
     driver_name: str
     char_set_encoding: str
+    client_app_name: Optional[str] = None
+    locale_name: Optional[str] = None
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -113,7 +106,7 @@ class DriverVolumeOperation:
     volume_path: str
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -131,7 +124,7 @@ class DriverErrorInfo:
     stack_trace: str
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -153,7 +146,7 @@ class SqlExecutionEvent:
     retry_count: int
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
 
 
 @dataclass
@@ -186,4 +179,4 @@ class TelemetryEvent:
     operation_latency_ms: Optional[int] = None
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return json.dumps(asdict(self), cls=EnumEncoder)
