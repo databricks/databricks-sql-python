@@ -64,9 +64,6 @@ class FetchTests(unittest.TestCase):
             thrift_client=mock_thrift_backend,
             t_row_set=None,
         )
-
-        # Replace the results queue with our arrow_queue
-        rs.results = arrow_queue
         return rs
 
     @staticmethod
