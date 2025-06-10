@@ -1294,7 +1294,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             catalog_name="catalog_pattern",
             schema_name="schema_pattern",
             table_name="table_pattern",
-            table_types=["VIEW", "TABLE"],
+            table_types=["type1", "type2"],
         )
         # Verify the result is a ResultSet
         self.assertEqual(result, mock_result_set.return_value)
@@ -1306,7 +1306,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(req.catalogName, "catalog_pattern")
         self.assertEqual(req.schemaName, "schema_pattern")
         self.assertEqual(req.tableName, "table_pattern")
-        self.assertEqual(req.tableTypes, ["VIEW", "TABLE"])
+        self.assertEqual(req.tableTypes, ["type1", "type2"])
         # Check response handling
         thrift_backend._handle_execute_response.assert_called_with(
             response, cursor_mock
