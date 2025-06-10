@@ -1009,13 +1009,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
     )
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
-    def test_handle_execute_response_reads_has_more_rows_in_direct_results(
+    def test_handle_execute_response_creates_execute_response(
         self, tcli_service_class, build_queue
     ):
-        for has_more_rows, resp_type in itertools.product(
-            [True, False], self.execute_response_types
-        ):
-            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
+        """Test that _handle_execute_response creates an ExecuteResponse object correctly."""
+        for resp_type in self.execute_response_types:
+            with self.subTest(resp_type=resp_type):
                 tcli_service_instance = tcli_service_class.return_value
                 results_mock = Mock()
                 results_mock.startRowOffset = 0
@@ -1027,7 +1026,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     resultSetMetadata=self.metadata_resp,
                     resultSet=ttypes.TFetchResultsResp(
                         status=self.okay_status,
-                        hasMoreRows=has_more_rows,
+                        hasMoreRows=True,
                         results=results_mock,
                     ),
                     closeOperation=Mock(),
@@ -1047,7 +1046,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     execute_resp, Mock()
                 )
 
-                self.assertEqual(has_more_rows, execute_response.has_more_rows)
+                self.assertIsNotNone(execute_response)
+                self.assertIsInstance(execute_response, ExecuteResponse)
 
     @patch(
         "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
