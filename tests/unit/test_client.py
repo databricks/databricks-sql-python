@@ -176,13 +176,12 @@ class ClientTestSuite(unittest.TestCase):
         """Test that closing a connection properly closes commands.
 
         This test verifies that when a connection is closed:
-        1. All result sets are marked as closed server-side
+        1. the active result set is marked as closed server-side
         2. The operation state is set to CLOSED
-        3. Backend.close_command is called only for commands that weren't already closed
+        3. backend.close_command is called only for commands that weren't already closed
 
         Args:
             mock_thrift_client_class: Mock for ThriftBackend class
-            closed: Parameter indicating if the command is already closed
         """
         for closed in (True, False):
             with self.subTest(closed=closed):
