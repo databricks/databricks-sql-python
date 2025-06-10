@@ -272,7 +272,7 @@ class TestSeaResultSet(unittest.TestCase):
 
         # After filling buffer, has more rows is False for INLINE disposition
         result_set._fill_results_buffer()
-        self.assertFalse(result_set._has_more_rows)
+        self.assertFalse(result_set.has_more_rows)
 
 
 if __name__ == "__main__":

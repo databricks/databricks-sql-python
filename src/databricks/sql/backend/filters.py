@@ -69,7 +69,7 @@ class ResultSetFilter:
             command_id=command_id,
             status=result_set.status,
             description=result_set.description,
-            has_more_rows=result_set._has_more_rows,
+            has_more_rows=result_set.has_more_rows,
             has_been_closed_server_side=result_set.has_been_closed_server_side,
             lz4_compressed=False,
             is_staging_operation=False,

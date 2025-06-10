@@ -577,7 +577,7 @@ class SeaResultSet(ResultSet):
         """Fill the results buffer from the backend."""
         # For INLINE disposition, we already have all the data
         # No need to fetch more data from the backend
-        self._has_more_rows = False
+        self.has_more_rows = False
 
     def _convert_rows_to_arrow_table(self, rows):
         """Convert rows to Arrow table."""
