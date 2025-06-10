@@ -966,8 +966,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend = self._create_thrift_client()
 
         # Call the real _results_message_to_execute_response method
-        execute_response, _ = thrift_backend._results_message_to_execute_response(
-            t_execute_resp, ttypes.TOperationState.FINISHED_STATE
+        execute_response, _ = thrift_backend._handle_execute_response(
+            t_execute_resp, Mock()
         )
 
         self.assertEqual(execute_response.arrow_schema_bytes, arrow_schema_mock)
