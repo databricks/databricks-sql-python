@@ -1168,7 +1168,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     @patch(
-        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue", return_value=Mock()
     )
     def test_execute_statement_calls_client_and_handle_execute_response(
         self, mock_build_queue, tcli_service_class
@@ -1208,7 +1208,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     @patch(
-        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue", return_value=Mock()
     )
     def test_get_catalogs_calls_client_and_handle_execute_response(
         self, mock_build_queue, tcli_service_class
@@ -1245,7 +1245,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     @patch(
-        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue", return_value=Mock()
     )
     def test_get_schemas_calls_client_and_handle_execute_response(
         self, mock_build_queue, tcli_service_class
@@ -1291,7 +1291,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     @patch(
-        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue", return_value=Mock()
     )
     def test_get_tables_calls_client_and_handle_execute_response(
         self, mock_build_queue, tcli_service_class
@@ -1341,7 +1341,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     @patch(
-        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue", return_value=Mock()
     )
     def test_get_columns_calls_client_and_handle_execute_response(
         self, mock_build_queue, tcli_service_class
@@ -2265,7 +2265,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     @patch(
-        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
+        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue", return_value=Mock()
     )
     @patch(
         "databricks.sql.backend.thrift_backend.ThriftDatabricksClient._handle_execute_response",

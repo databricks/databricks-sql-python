@@ -1,5 +1,5 @@
 """
-Tests for the ResultSetQueueFactory classes.
+Tests for the ThriftResultSetQueueFactory classes.
 """
 
 import unittest

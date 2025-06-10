@@ -6,6 +6,7 @@ import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.cloud_fetch_queue import SeaCloudFetchQueue
 
 try:
     import pyarrow
@@ -19,7 +20,7 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -183,10 +184,10 @@ class ThriftResultSet(ResultSet):
         # Build the results queue if t_row_set is provided
         results_queue = None
         if t_row_set and execute_response.result_format is not None:
-            from databricks.sql.utils import ResultSetQueueFactory
+            from databricks.sql.utils import ThriftResultSetQueueFactory
 
             # Create the results queue using the provided format
-            results_queue = ResultSetQueueFactory.build_queue(
+            results_queue = ThriftResultSetQueueFactory.build_queue(
                 row_set_type=execute_response.result_format,
                 t_row_set=t_row_set,
                 arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
@@ -436,3 +437,259 @@ class ThriftResultSet(ResultSet):
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
+
+class SeaResultSet(ResultSet):
+    """ResultSet implementation for SEA backend."""
+
+    def __init__(
+        self,
+        connection: "Connection",
+        execute_response: "ExecuteResponse",
+        sea_client: "SeaDatabricksClient",
+        buffer_size_bytes: int = 104857600,
+        arraysize: int = 10000,
+    ):
+        """
+        Initialize a SeaResultSet with the response from a SEA query execution.
+
+        Args:
+            connection: The parent connection
+            execute_response: Response from the execute command
+            sea_client: The SeaDatabricksClient instance for direct access
+            buffer_size_bytes: Buffer size for fetching results
+            arraysize: Default number of rows to fetch
+        """
+        # Extract and store SEA-specific properties
+        self.statement_id = (
+            execute_response.command_id.to_sea_statement_id()
+            if execute_response.command_id
+            else None
+        )
+
+        # Call parent constructor with common attributes
+        super().__init__(
+            connection=connection,
+            backend=sea_client,
+            arraysize=arraysize,
+            buffer_size_bytes=buffer_size_bytes,
+            command_id=execute_response.command_id,
+            status=execute_response.status,
+            has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            has_more_rows=execute_response.has_more_rows,
+            results_queue=execute_response.results_queue,
+            description=execute_response.description,
+            is_staging_operation=execute_response.is_staging_operation,
+        )
+
+        # Initialize queue for result data if not provided
+        if not self.results:
+            self.results = JsonQueue([])
+
+    def _convert_to_row_objects(self, rows):
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+
+        Args:
+            rows: List of raw data rows
+
+        Returns:
+            List of Row objects with named columns
+        """
+        if not self.description or not rows:
+            return rows
+
+        column_names = [col[0] for col in self.description]
+        ResultRow = Row(*column_names)
+        return [ResultRow(*row) for row in rows]
+
+    def _fill_results_buffer(self):
+        """Fill the results buffer from the backend."""
+        # For INLINE disposition, we already have all the data
+        # No need to fetch more data from the backend
+        self._has_more_rows = False
+
+    def _convert_rows_to_arrow_table(self, rows):
+        """Convert rows to Arrow table."""
+        if not self.description:
+            return pyarrow.Table.from_pylist([])
+
+        # Create dict of column data
+        column_data = {}
+        column_names = [col[0] for col in self.description]
+
+        for i, name in enumerate(column_names):
+            column_data[name] = [row[i] for row in rows]
+
+        return pyarrow.Table.from_pydict(column_data)
+
+    def _create_empty_arrow_table(self):
+        """Create an empty Arrow table with the correct schema."""
+        if not self.description:
+            return pyarrow.Table.from_pylist([])
+
+        column_names = [col[0] for col in self.description]
+        return pyarrow.Table.from_pydict({name: [] for name in column_names})
+
+    def fetchone(self) -> Optional[Row]:
+        """
+        Fetch the next row of a query result set, returning a single sequence,
+        or None when no more data is available.
+        """
+        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
+        # This pattern is maintained from the existing code
+        if isinstance(self.results, JsonQueue):
+            rows = self.results.next_n_rows(1)
+            if not rows:
+                return None
+
+            # Convert to Row object
+            converted_rows = self._convert_to_row_objects(rows)
+            return converted_rows[0] if converted_rows else None
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.next_n_rows(1)
+            if arrow_table.num_rows == 0:
+                return None
+
+            # Convert Arrow table to Row object
+            column_names = [col[0] for col in self.description]
+            ResultRow = Row(*column_names)
+
+            # Get the first row as a list of values
+            row_values = [
+                arrow_table.column(i)[0].as_py() for i in range(arrow_table.num_columns)
+            ]
+
+            # Increment the row index
+            self._next_row_index += 1
+
+            return ResultRow(*row_values)
+        else:
+            # This should not happen with current implementation
+            raise NotImplementedError("Unsupported queue type")
+
+    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
+        """
+        Fetch the next set of rows of a query result, returning a list of rows.
+
+        An empty sequence is returned when no more rows are available.
+        """
+        if size is None:
+            size = self.arraysize
+
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
+        if isinstance(self.results, JsonQueue):
+            rows = self.results.next_n_rows(size)
+            self._next_row_index += len(rows)
+
+            # Convert to Row objects
+            return self._convert_to_row_objects(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.next_n_rows(size)
+            if arrow_table.num_rows == 0:
+                return []
+
+            # Convert Arrow table to Row objects
+            column_names = [col[0] for col in self.description]
+            ResultRow = Row(*column_names)
+
+            # Convert each row to a Row object
+            result_rows = []
+            for i in range(arrow_table.num_rows):
+                row_values = [
+                    arrow_table.column(j)[i].as_py()
+                    for j in range(arrow_table.num_columns)
+                ]
+                result_rows.append(ResultRow(*row_values))
+
+            # Increment the row index
+            self._next_row_index += arrow_table.num_rows
+
+            return result_rows
+        else:
+            # This should not happen with current implementation
+            raise NotImplementedError("Unsupported queue type")
+
+    def fetchall(self) -> List[Row]:
+        """
+        Fetch all (remaining) rows of a query result, returning them as a list of rows.
+        """
+        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
+        if isinstance(self.results, JsonQueue):
+            rows = self.results.remaining_rows()
+            self._next_row_index += len(rows)
+
+            # Convert to Row objects
+            return self._convert_to_row_objects(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.remaining_rows()
+            if arrow_table.num_rows == 0:
+                return []
+
+            # Convert Arrow table to Row objects
+            column_names = [col[0] for col in self.description]
+            ResultRow = Row(*column_names)
+
+            # Convert each row to a Row object
+            result_rows = []
+            for i in range(arrow_table.num_rows):
+                row_values = [
+                    arrow_table.column(j)[i].as_py()
+                    for j in range(arrow_table.num_columns)
+                ]
+                result_rows.append(ResultRow(*row_values))
+
+            # Increment the row index
+            self._next_row_index += arrow_table.num_rows
+
+            return result_rows
+        else:
+            # This should not happen with current implementation
+            raise NotImplementedError("Unsupported queue type")
+
+    def fetchmany_arrow(self, size: int) -> Any:
+        """Fetch the next set of rows as an Arrow table."""
+        if not pyarrow:
+            raise ImportError("PyArrow is required for Arrow support")
+
+        if isinstance(self.results, JsonQueue):
+            rows = self.fetchmany(size)
+            if not rows:
+                # Return empty Arrow table with schema
+                return self._create_empty_arrow_table()
+
+            # Convert rows to Arrow table
+            return self._convert_rows_to_arrow_table(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.next_n_rows(size)
+            self._next_row_index += arrow_table.num_rows
+            return arrow_table
+        else:
+            raise NotImplementedError("Unsupported queue type")
+
+    def fetchall_arrow(self) -> Any:
+        """Fetch all remaining rows as an Arrow table."""
+        if not pyarrow:
+            raise ImportError("PyArrow is required for Arrow support")
+
+        if isinstance(self.results, JsonQueue):
+            rows = self.fetchall()
+            if not rows:
+                # Return empty Arrow table with schema
+                return self._create_empty_arrow_table()
+
+            # Convert rows to Arrow table
+            return self._convert_rows_to_arrow_table(rows)
+        elif isinstance(self.results, SeaCloudFetchQueue):
+            # For ARROW format with EXTERNAL_LINKS disposition
+            arrow_table = self.results.remaining_rows()
+            self._next_row_index += arrow_table.num_rows
+            return arrow_table
+        else:
+            raise NotImplementedError("Unsupported queue type")
