@@ -10,8 +10,8 @@ import time
 import pytest
 
 import databricks.sql.client as client
-from databricks.sql.utils import ArrowQueue
 from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.utils import ArrowQueue
 
 
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")

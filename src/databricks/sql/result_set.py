@@ -1,26 +1,26 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union, Tuple
+from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
 
 import logging
 import time
 import pandas
+
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
+if TYPE_CHECKING:
+    from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+    from databricks.sql.client import Connection
+from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import (
-    ColumnTable,
-    ColumnQueue,
-    ResultSetQueue,
-    JsonQueue,
-    SeaCloudFetchQueue,
-)
-from databricks.sql.backend.types import CommandId
+from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
 
@@ -34,21 +34,37 @@ class ResultSet(ABC):
 
     def __init__(
         self,
-        connection,
-        backend,
+        connection: "Connection",
+        backend: "DatabricksClient",
         arraysize: int,
         buffer_size_bytes: int,
-        command_id=None,
-        status=None,
+        command_id: CommandId,
+        status: CommandState,
         has_been_closed_server_side: bool = False,
         has_more_rows: bool = False,
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
     ):
-        """Initialize the base ResultSet with common properties."""
+        """
+        A ResultSet manages the results of a single command.
+
+        Args:
+            connection: The parent connection
+            backend: The backend client
+            arraysize: The max number of rows to fetch at a time (PEP-249)
+            buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+            command_id: The command ID
+            status: The command status
+            has_been_closed_server_side: Whether the command has been closed on the server
+            has_more_rows: Whether the command has more rows
+            results_queue: The results queue
+            description: column description of the results
+            is_staging_operation: Whether the command is a staging operation
+        """
+
         self.connection = connection
-        self.backend = backend  # Store the backend client directly
+        self.backend = backend
         self.arraysize = arraysize
         self.buffer_size_bytes = buffer_size_bytes
         self._next_row_index = 0
@@ -56,7 +72,7 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self._has_more_rows = has_more_rows
+        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
 
@@ -99,19 +115,35 @@ class ResultSet(ABC):
         pass
 
     @abstractmethod
-    def fetchmany_arrow(self, size: int) -> Any:
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """Fetch the next set of rows as an Arrow table."""
         pass
 
     @abstractmethod
-    def fetchall_arrow(self) -> Any:
+    def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all remaining rows as an Arrow table."""
         pass
 
-    @abstractmethod
     def close(self) -> None:
-        """Close the result set and release any resources."""
-        pass
+        """
+        Close the result set.
+
+        If the connection has not been closed, and the result set has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
+        try:
+            if (
+                self.status != CommandState.CLOSED
+                and not self.has_been_closed_server_side
+                and self.connection.open
+            ):
+                self.backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
+        finally:
+            self.has_been_closed_server_side = True
+            self.status = CommandState.CLOSED
 
 
 class ThriftResultSet(ResultSet):
@@ -119,13 +151,15 @@ class ThriftResultSet(ResultSet):
 
     def __init__(
         self,
-        connection,
-        execute_response,
-        thrift_client,  # Pass the specific ThriftDatabricksClient instance
+        connection: "Connection",
+        execute_response: "ExecuteResponse",
+        thrift_client: "ThriftDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
-        arrow_schema_bytes: Optional[bytes] = None,
+        t_row_set=None,
+        max_download_threads: int = 10,
+        ssl_options=None,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -137,12 +171,30 @@ class ThriftResultSet(ResultSet):
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            arrow_schema_bytes: Arrow schema bytes for the result set
+            t_row_set: The TRowSet containing result data (if available)
+            max_download_threads: Maximum number of download threads for cloud fetch
+            ssl_options: SSL options for cloud fetch
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = arrow_schema_bytes
+        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
         self.lz4_compressed = execute_response.lz4_compressed
+
+        # Build the results queue if t_row_set is provided
+        results_queue = None
+        if t_row_set and execute_response.result_format is not None:
+            from databricks.sql.utils import ResultSetQueueFactory
+
+            # Create the results queue using the provided format
+            results_queue = ResultSetQueueFactory.build_queue(
+                row_set_type=execute_response.result_format,
+                t_row_set=t_row_set,
+                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                max_download_threads=max_download_threads,
+                lz4_compressed=execute_response.lz4_compressed,
+                description=execute_response.description,
+                ssl_options=ssl_options,
+            )
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -154,7 +206,7 @@ class ThriftResultSet(ResultSet):
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
             has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
+            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
         )
@@ -175,7 +227,7 @@ class ThriftResultSet(ResultSet):
             use_cloud_fetch=self._use_cloud_fetch,
         )
         self.results = results
-        self._has_more_rows = has_more_rows
+        self.has_more_rows = has_more_rows
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -227,7 +279,7 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2):
+    def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
         Function to merge / combining the columnar results into a single result
         :param result1:
@@ -259,7 +311,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self._has_more_rows
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -284,7 +336,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self._has_more_rows
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -299,7 +351,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self._has_more_rows:
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -325,7 +377,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self._has_more_rows:
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
@@ -368,295 +420,19 @@ class ThriftResultSet(ResultSet):
         else:
             return self._convert_arrow_table(self.fetchmany_arrow(size))
 
-    def close(self) -> None:
+    @staticmethod
+    def _get_schema_description(table_schema_message):
         """
-        Close the cursor.
-
-        If the connection has not been closed, and the cursor has not already
-        been closed on the server for some other reason, issue a request to the server to close it.
+        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
         """
-        try:
-            if (
-                self.status != ttypes.TOperationState.CLOSED_STATE
-                and not self.has_been_closed_server_side
-                and self.connection.open
-            ):
-                self.backend.close_command(self.command_id)
-        except RequestError as e:
-            if isinstance(e.args[1], CursorAlreadyClosedError):
-                logger.info("Operation was canceled by a prior request")
-        finally:
-            self.has_been_closed_server_side = True
-            self.status = ttypes.TOperationState.CLOSED_STATE
 
+        def map_col_type(type_):
+            if type_.startswith("decimal"):
+                return "decimal"
+            else:
+                return type_
 
-class SeaResultSet(ResultSet):
-    """ResultSet implementation for SEA backend."""
-
-    def __init__(
-        self,
-        connection,
-        execute_response,
-        sea_client,
-        buffer_size_bytes: int = 104857600,
-        arraysize: int = 10000,
-    ):
-        """
-        Initialize a SeaResultSet with the response from a SEA query execution.
-
-        Args:
-            connection: The parent connection
-            execute_response: Response from the execute command
-            sea_client: The SeaDatabricksClient instance for direct access
-            buffer_size_bytes: Buffer size for fetching results
-            arraysize: Default number of rows to fetch
-        """
-        # Extract and store SEA-specific properties
-        self.statement_id = (
-            execute_response.command_id.to_sea_statement_id()
-            if execute_response.command_id
-            else None
-        )
-
-        # Call parent constructor with common attributes
-        super().__init__(
-            connection=connection,
-            backend=sea_client,
-            arraysize=arraysize,
-            buffer_size_bytes=buffer_size_bytes,
-            command_id=execute_response.command_id,
-            status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
-            description=execute_response.description,
-            is_staging_operation=execute_response.is_staging_operation,
-        )
-
-        # Initialize queue for result data if not provided
-        if not self.results:
-            self.results = JsonQueue([])
-
-    def _convert_to_row_objects(self, rows):
-        """
-        Convert raw data rows to Row objects with named columns based on description.
-
-        Args:
-            rows: List of raw data rows
-
-        Returns:
-            List of Row objects with named columns
-        """
-        if not self.description or not rows:
-            return rows
-
-        column_names = [col[0] for col in self.description]
-        ResultRow = Row(*column_names)
-        return [ResultRow(*row) for row in rows]
-
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        # For INLINE disposition, we already have all the data
-        # No need to fetch more data from the backend
-        self._has_more_rows = False
-
-    def _convert_rows_to_arrow_table(self, rows):
-        """Convert rows to Arrow table."""
-        if not self.description:
-            return pyarrow.Table.from_pylist([])
-
-        # Create dict of column data
-        column_data = {}
-        column_names = [col[0] for col in self.description]
-
-        for i, name in enumerate(column_names):
-            column_data[name] = [row[i] for row in rows]
-
-        return pyarrow.Table.from_pydict(column_data)
-
-    def _create_empty_arrow_table(self):
-        """Create an empty Arrow table with the correct schema."""
-        if not self.description:
-            return pyarrow.Table.from_pylist([])
-
-        column_names = [col[0] for col in self.description]
-        return pyarrow.Table.from_pydict({name: [] for name in column_names})
-
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
-        """
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
-        # This pattern is maintained from the existing code
-        if isinstance(self.results, JsonQueue):
-            rows = self.results.next_n_rows(1)
-            if not rows:
-                return None
-
-            # Convert to Row object
-            converted_rows = self._convert_to_row_objects(rows)
-            return converted_rows[0] if converted_rows else None
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.next_n_rows(1)
-            if arrow_table.num_rows == 0:
-                return None
-
-            # Convert Arrow table to Row object
-            column_names = [col[0] for col in self.description]
-            ResultRow = Row(*column_names)
-
-            # Get the first row as a list of values
-            row_values = [
-                arrow_table.column(i)[0].as_py() for i in range(arrow_table.num_columns)
-            ]
-
-            # Increment the row index
-            self._next_row_index += 1
-
-            return ResultRow(*row_values)
-        else:
-            # This should not happen with current implementation
-            raise NotImplementedError("Unsupported queue type")
-
-    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
-        """
-        Fetch the next set of rows of a query result, returning a list of rows.
-
-        An empty sequence is returned when no more rows are available.
-        """
-        if size is None:
-            size = self.arraysize
-
-        if size < 0:
-            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
-        if isinstance(self.results, JsonQueue):
-            rows = self.results.next_n_rows(size)
-            self._next_row_index += len(rows)
-
-            # Convert to Row objects
-            return self._convert_to_row_objects(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.next_n_rows(size)
-            if arrow_table.num_rows == 0:
-                return []
-
-            # Convert Arrow table to Row objects
-            column_names = [col[0] for col in self.description]
-            ResultRow = Row(*column_names)
-
-            # Convert each row to a Row object
-            result_rows = []
-            for i in range(arrow_table.num_rows):
-                row_values = [
-                    arrow_table.column(j)[i].as_py()
-                    for j in range(arrow_table.num_columns)
-                ]
-                result_rows.append(ResultRow(*row_values))
-
-            # Increment the row index
-            self._next_row_index += arrow_table.num_rows
-
-            return result_rows
-        else:
-            # This should not happen with current implementation
-            raise NotImplementedError("Unsupported queue type")
-
-    def fetchall(self) -> List[Row]:
-        """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
-        """
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
-        if isinstance(self.results, JsonQueue):
-            rows = self.results.remaining_rows()
-            self._next_row_index += len(rows)
-
-            # Convert to Row objects
-            return self._convert_to_row_objects(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.remaining_rows()
-            if arrow_table.num_rows == 0:
-                return []
-
-            # Convert Arrow table to Row objects
-            column_names = [col[0] for col in self.description]
-            ResultRow = Row(*column_names)
-
-            # Convert each row to a Row object
-            result_rows = []
-            for i in range(arrow_table.num_rows):
-                row_values = [
-                    arrow_table.column(j)[i].as_py()
-                    for j in range(arrow_table.num_columns)
-                ]
-                result_rows.append(ResultRow(*row_values))
-
-            # Increment the row index
-            self._next_row_index += arrow_table.num_rows
-
-            return result_rows
-        else:
-            # This should not happen with current implementation
-            raise NotImplementedError("Unsupported queue type")
-
-    def fetchmany_arrow(self, size: int) -> Any:
-        """Fetch the next set of rows as an Arrow table."""
-        if not pyarrow:
-            raise ImportError("PyArrow is required for Arrow support")
-
-        if isinstance(self.results, JsonQueue):
-            rows = self.fetchmany(size)
-            if not rows:
-                # Return empty Arrow table with schema
-                return self._create_empty_arrow_table()
-
-            # Convert rows to Arrow table
-            return self._convert_rows_to_arrow_table(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.next_n_rows(size)
-            self._next_row_index += arrow_table.num_rows
-            return arrow_table
-        else:
-            raise NotImplementedError("Unsupported queue type")
-
-    def fetchall_arrow(self) -> Any:
-        """Fetch all remaining rows as an Arrow table."""
-        if not pyarrow:
-            raise ImportError("PyArrow is required for Arrow support")
-
-        if isinstance(self.results, JsonQueue):
-            rows = self.fetchall()
-            if not rows:
-                # Return empty Arrow table with schema
-                return self._create_empty_arrow_table()
-
-            # Convert rows to Arrow table
-            return self._convert_rows_to_arrow_table(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.remaining_rows()
-            self._next_row_index += arrow_table.num_rows
-            return arrow_table
-        else:
-            raise NotImplementedError("Unsupported queue type")
-
-    def close(self) -> None:
-        """Close the result set and release any resources."""
-        if (
-            self.connection.open
-            and self.statement_id
-            and not self.has_been_closed_server_side
-        ):
-            try:
-                self.backend.close_command(
-                    CommandId.from_sea_statement_id(self.statement_id)
-                )
-                self.has_been_closed_server_side = True
-            except Exception as e:
-                logger.warning(f"Error closing SEA statement: {e}")
+        return [
+            (column.name, map_col_type(column.datatype), None, None, None, None, None)
+            for column in table_schema_message.columns
+        ]

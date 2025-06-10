@@ -8,6 +8,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Union
 import re
 import datetime
 import decimal
@@ -62,7 +63,7 @@ class ThriftResultSetQueueFactory(ABC):
         max_download_threads: Optional[int] = None,
         ssl_options: Optional[SSLOptions] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple]] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue for Thrift backend.
@@ -282,12 +283,14 @@ class ArrowQueue(ResultSetQueue):
         :param n_valid_rows: The index of the last valid row in the table
         :param start_row_index: The first row in the table we should start fetching from
         """
+
         self.cur_row_index = start_row_index
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """Get upto the next n rows of the Arrow dataframe"""
+
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
         # Note that the table.slice API is not the same as Python's slice
         # The second argument should be length, not end index
@@ -529,6 +532,7 @@ def transform_paramstyle(
     Returns:
         str
     """
+
     output = operation
     if (
         param_structure == ParameterStructure.POSITIONAL

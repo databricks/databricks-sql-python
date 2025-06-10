@@ -10,7 +10,7 @@ from databricks.sql.types import SSLOptions
 logger = logging.getLogger(__name__)
 
 
-class CustomHttpClient:
+class SeaHttpClient:
     """
     HTTP client for Statement Execution API (SEA).
 
@@ -145,7 +145,7 @@ class CustomHttpClient:
             if response.content:
                 result = response.json()
                 # Log response content (but limit it for large responses)
-                content_str = json.dumps(result, indent=2, sort_keys=True)
+                content_str = json.dumps(result)
                 if len(content_str) > 1000:
                     logger.debug(
                         f"Response content (truncated): {content_str[:1000]}..."
