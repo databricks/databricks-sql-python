@@ -884,7 +884,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 )
                 (
                     execute_response,
-                    arrow_schema_bytes,
+                    _,
                 ) = thrift_backend._handle_execute_response(execute_resp, Mock())
                 self.assertEqual(
                     execute_response.status,
@@ -990,9 +990,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             )
         )
         thrift_backend = self._make_fake_thrift_backend()
-        execute_response, arrow_schema_bytes = thrift_backend._handle_execute_response(
-            t_execute_resp, Mock()
-        )
+        _, _ = thrift_backend._handle_execute_response(t_execute_resp, Mock())
 
         self.assertEqual(
             hive_schema_mock,
