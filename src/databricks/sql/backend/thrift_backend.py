@@ -757,11 +757,7 @@ class ThriftDatabricksClient(DatabricksClient):
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
-        has_more_rows = (
-            (not direct_results)
-            or (not direct_results.resultSet)
-            or direct_results.resultSet.hasMoreRows
-        )
+
         description = self._hive_schema_to_description(
             t_result_set_metadata_resp.schema
         )
