@@ -727,7 +727,7 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             precision, scale = None, None
 
-        return (col.columnName, cleaned_type, None, None, precision, scale, None)
+        return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
     def _hive_schema_to_description(t_table_schema):
