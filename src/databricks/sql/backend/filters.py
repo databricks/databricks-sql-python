@@ -49,31 +49,25 @@ class ResultSetFilter:
         Returns:
             A filtered SEA result set
         """
-        # Get all remaining rows
-        original_index = result_set.results.cur_row_index
-        result_set.results.cur_row_index = 0  # Reset to beginning
+        # Get all remaining rows from the current position (JDBC-aligned behavior)
+        # Note: This will only filter rows that haven't been read yet
         all_rows = result_set.results.remaining_rows()
 
         # Filter rows
         filtered_rows = [row for row in all_rows if filter_func(row)]
 
-        # Import SeaResultSet here to avoid circular imports
-        from databricks.sql.result_set import SeaResultSet
-
-        # Reuse the command_id from the original result set
-        command_id = result_set.command_id
-
-        # Create an ExecuteResponse with the filtered data
         execute_response = ExecuteResponse(
-            command_id=command_id,
+            command_id=result_set.command_id,
             status=result_set.status,
             description=result_set.description,
-            has_more_rows=result_set._has_more_rows,
+            has_more_rows=result_set.has_more_rows,
             results_queue=JsonQueue(filtered_rows),
             has_been_closed_server_side=result_set.has_been_closed_server_side,
             lz4_compressed=False,
             is_staging_operation=False,
         )
+
+        from databricks.sql.result_set import SeaResultSet
 
         return SeaResultSet(
             connection=result_set.connection,

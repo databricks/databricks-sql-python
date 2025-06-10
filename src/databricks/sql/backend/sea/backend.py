@@ -66,9 +66,6 @@ def _filter_session_configuration(
 class SeaDatabricksClient(DatabricksClient):
     """
     Statement Execution API (SEA) implementation of the DatabricksClient interface.
-
-    This implementation provides session management functionality for SEA,
-    while other operations raise NotImplementedError.
     """
 
     # SEA API paths
