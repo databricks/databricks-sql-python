@@ -511,10 +511,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(
             description,
             [
-                ["column 1", "int", None, None, None, None, None],
-                ["column 2", "boolean", None, None, None, None, None],
-                ["column 2", "map", None, None, None, None, None],
-                ["", "struct", None, None, None, None, None],
+                ("column 1", "int", None, None, None, None, None),
+                ("column 2", "boolean", None, None, None, None, None),
+                ("column 2", "map", None, None, None, None, None),
+                ("", "struct", None, None, None, None, None),
             ],
         )
 
@@ -549,7 +549,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         self.assertEqual(
             description,
             [
-                ["column 1", "decimal", None, None, 10, 100, None],
+                ("column 1", "decimal", None, None, 10, 100, None),
             ],
         )
 
