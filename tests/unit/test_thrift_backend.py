@@ -82,14 +82,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_method = Mock()
         mock_method.__name__ = "method name"
         mock_method.return_value = mock_response
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-        )
+        thrift_backend = self._create_fake_thrift_client()
         with self.assertRaises(DatabaseError):
             thrift_backend.make_request(mock_method, Mock())
 
@@ -100,8 +93,22 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ]
         )
 
-    def _make_fake_thrift_backend(self):
-        thrift_backend = ThriftDatabricksClient(
+    def _create_mock_execute_response(self):
+        """Create a properly mocked ExecuteResponse object with all required attributes."""
+        mock_execute_response = Mock()
+        mock_execute_response.command_id = Mock()
+        mock_execute_response.status = Mock()
+        mock_execute_response.description = Mock()
+        mock_execute_response.has_been_closed_server_side = Mock()
+        mock_execute_response.lz4_compressed = Mock()
+        mock_execute_response.is_staging_operation = Mock()
+        mock_execute_response.arrow_schema_bytes = Mock()
+        mock_execute_response.result_format = Mock()
+        return mock_execute_response
+
+    def _create_fake_thrift_client(self):
+        """Create a fake ThriftDatabricksClient without mocking any methods."""
+        return ThriftDatabricksClient(
             "foobar",
             443,
             "path",
@@ -109,10 +116,20 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
+
+    def _make_fake_thrift_backend(self):
+        """Create a fake ThriftDatabricksClient with mocked methods."""
+        thrift_backend = self._create_fake_thrift_client()
         thrift_backend._hive_schema_to_arrow_schema = Mock()
         thrift_backend._hive_schema_to_description = Mock()
         thrift_backend._create_arrow_table = MagicMock()
         thrift_backend._create_arrow_table.return_value = (MagicMock(), Mock())
+        # Mock _results_message_to_execute_response to return a tuple
+        mock_execute_response = self._create_mock_execute_response()
+        mock_has_more_rows = True
+        thrift_backend._results_message_to_execute_response = Mock(
+            return_value=(mock_execute_response, mock_has_more_rows)
+        )
         return thrift_backend
 
     def test_hive_schema_to_arrow_schema_preserves_column_names(self):
@@ -558,14 +575,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
         ]
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-        )
+        thrift_backend = self._create_fake_thrift_client()
 
         for code in error_codes:
             mock_error_response = Mock()
@@ -602,14 +612,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                         closeOperation=None,
                     ),
                 )
-                thrift_backend = ThriftDatabricksClient(
-                    "foobar",
-                    443,
-                    "path",
-                    [],
-                    auth_provider=AuthProvider(),
-                    ssl_options=SSLOptions(),
-                )
+                thrift_backend = self._create_fake_thrift_client()
 
                 with self.assertRaises(DatabaseError) as cm:
                     thrift_backend._handle_execute_response(t_execute_resp, Mock())
@@ -657,7 +660,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 ssl_options=SSLOptions(),
             )
 
-            execute_response = thrift_backend._handle_execute_response(
+            execute_response, _ = thrift_backend._handle_execute_response(
                 t_execute_resp, Mock()
             )
             self.assertEqual(execute_response.lz4_compressed, lz4Compressed)
@@ -832,14 +835,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
             for error_resp in [resp_1, resp_2, resp_3, resp_4]:
                 with self.subTest(error_resp=error_resp):
-                    thrift_backend = ThriftDatabricksClient(
-                        "foobar",
-                        443,
-                        "path",
-                        [],
-                        auth_provider=AuthProvider(),
-                        ssl_options=SSLOptions(),
-                    )
+                    thrift_backend = self._create_fake_thrift_client()
 
                     with self.assertRaises(DatabaseError) as cm:
                         thrift_backend._handle_execute_response(error_resp, Mock())
@@ -891,7 +887,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
                 )
-                execute_response = thrift_backend._handle_execute_response(
+                execute_response, _ = thrift_backend._handle_execute_response(
                     execute_resp, Mock()
                 )
 
@@ -921,21 +917,22 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     operationHandle=self.operation_handle,
                 )
 
-                thrift_backend = ThriftDatabricksClient(
-                    "foobar",
-                    443,
-                    "path",
-                    [],
-                    auth_provider=AuthProvider(),
-                    ssl_options=SSLOptions(),
+                thrift_backend = self._make_fake_thrift_backend()
+                mock_execute_response = Mock(spec=ExecuteResponse)
+                mock_has_more_rows = True
+                thrift_backend._results_message_to_execute_response = Mock(
+                    return_value=(mock_execute_response, mock_has_more_rows)
                 )
-                thrift_backend._results_message_to_execute_response = Mock()
 
-                thrift_backend._handle_execute_response(execute_resp, Mock())
+                result = thrift_backend._handle_execute_response(execute_resp, Mock())
                 thrift_backend._results_message_to_execute_response.assert_called_with(
                     execute_resp,
                     ttypes.TOperationState.FINISHED_STATE,
                 )
+                # Verify the result is a tuple with the expected values
+                self.assertIsInstance(result, tuple)
+                self.assertEqual(result[0], mock_execute_response)
+                self.assertEqual(result[1], mock_has_more_rows)
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_use_arrow_schema_if_available(self, tcli_service_class):
@@ -965,9 +962,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance.GetResultSetMetadata.return_value = (
             t_get_result_set_metadata_resp
         )
-        thrift_backend = self._make_fake_thrift_backend()
-        execute_response = thrift_backend._handle_execute_response(
-            t_execute_resp, Mock()
+
+        thrift_backend = self._create_fake_thrift_client()
+
+        # Call the real _results_message_to_execute_response method
+        execute_response, _ = thrift_backend._results_message_to_execute_response(
+            t_execute_resp, ttypes.TOperationState.FINISHED_STATE
         )
 
         self.assertEqual(execute_response.arrow_schema_bytes, arrow_schema_mock)
@@ -997,8 +997,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
         tcli_service_instance.GetOperationStatus.return_value = op_state
         tcli_service_instance.GetResultSetMetadata.return_value = hive_schema_req
-        thrift_backend = self._make_fake_thrift_backend()
-        thrift_backend._handle_execute_response(t_execute_resp, Mock())
+
+        thrift_backend = self._create_fake_thrift_client()
+        thrift_backend._hive_schema_to_arrow_schema = Mock()
+
+        # Call the real _results_message_to_execute_response method
+        thrift_backend._results_message_to_execute_response(
+            t_execute_resp, ttypes.TOperationState.FINISHED_STATE
+        )
 
         self.assertEqual(
             hive_schema_mock,
@@ -1040,14 +1046,16 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 tcli_service_instance.GetResultSetMetadata.return_value = (
                     self.metadata_resp
                 )
-                thrift_backend = self._make_fake_thrift_backend()
+                thrift_backend = self._create_fake_thrift_client()
 
-                execute_response = thrift_backend._handle_execute_response(
+                execute_response_tuple = thrift_backend._handle_execute_response(
                     execute_resp, Mock()
                 )
 
-                self.assertIsNotNone(execute_response)
-                self.assertIsInstance(execute_response, ExecuteResponse)
+                self.assertIsNotNone(execute_response_tuple)
+                self.assertIsInstance(execute_response_tuple, tuple)
+                self.assertIsInstance(execute_response_tuple[0], ExecuteResponse)
+                self.assertIsInstance(execute_response_tuple[1], bool)
 
     @patch(
         "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
@@ -1178,7 +1186,11 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        thrift_backend._handle_execute_response = Mock()
+        mock_execute_response = self._create_mock_execute_response()
+        mock_has_more_rows = True
+        thrift_backend._handle_execute_response = Mock(
+            return_value=(mock_execute_response, mock_has_more_rows)
+        )
         cursor_mock = Mock()
 
         thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
@@ -1209,15 +1221,13 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetCatalogs.return_value = response
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
+        thrift_backend = self._make_fake_thrift_backend()
+
+        mock_execute_response = self._create_mock_execute_response()
+        mock_has_more_rows = True
+        thrift_backend._handle_execute_response = Mock(
+            return_value=(mock_execute_response, mock_has_more_rows)
         )
-        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
@@ -1245,15 +1255,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetSchemas.return_value = response
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
+        thrift_backend = self._make_fake_thrift_backend()
+        mock_execute_response = self._create_mock_execute_response()
+        mock_has_more_rows = True
+        thrift_backend._handle_execute_response = Mock(
+            return_value=(mock_execute_response, mock_has_more_rows)
         )
-        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
@@ -1290,15 +1297,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetTables.return_value = response
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
+        thrift_backend = self._make_fake_thrift_backend()
+        mock_execute_response = self._create_mock_execute_response()
+        mock_has_more_rows = True
+        thrift_backend._handle_execute_response = Mock(
+            return_value=(mock_execute_response, mock_has_more_rows)
         )
-        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
@@ -1339,15 +1343,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
         response = Mock()
         tcli_service_instance.GetColumns.return_value = response
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
+        thrift_backend = self._make_fake_thrift_backend()
+        mock_execute_response = self._create_mock_execute_response()
+        mock_has_more_rows = True
+        thrift_backend._handle_execute_response = Mock(
+            return_value=(mock_execute_response, mock_has_more_rows)
         )
-        thrift_backend._handle_execute_response = Mock()
         cursor_mock = Mock()
 
         thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
@@ -1397,14 +1398,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_op_handle_respected_in_close_command(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-        )
+        thrift_backend = self._create_fake_thrift_client()
         command_id = CommandId.from_thrift_handle(self.operation_handle)
         thrift_backend.close_command(command_id)
         self.assertEqual(
@@ -1415,14 +1409,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_session_handle_respected_in_close_session(self, tcli_service_class):
         tcli_service_instance = tcli_service_class.return_value
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-        )
+        thrift_backend = self._create_fake_thrift_client()
         session_id = SessionId.from_thrift_handle(self.session_handle)
         thrift_backend.close_session(session_id)
         self.assertEqual(
@@ -1458,7 +1445,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance.ExecuteStatement.return_value = execute_statement_resp
         tcli_service_instance.GetResultSetMetadata.return_value = metadata_resp
         tcli_service_instance.GetOperationStatus.return_value = operation_status_resp
-        thrift_backend = self._make_fake_thrift_backend()
+
+        thrift_backend = self._create_fake_thrift_client()
 
         with self.assertRaises(OperationalError) as cm:
             thrift_backend.execute_command("foo", Mock(), 100, 100, Mock(), Mock())
@@ -1468,14 +1456,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     def test_create_arrow_table_raises_error_for_unsupported_type(self):
         t_row_set = ttypes.TRowSet()
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-        )
+        thrift_backend = self._create_fake_thrift_client()
         with self.assertRaises(OperationalError):
             thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
 
@@ -1488,14 +1469,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_create_arrow_table_calls_correct_conversion_method(
         self, convert_col_mock, convert_arrow_mock
     ):
-        thrift_backend = ThriftDatabricksClient(
-            "foobar",
-            443,
-            "path",
-            [],
-            auth_provider=AuthProvider(),
-            ssl_options=SSLOptions(),
-        )
+        thrift_backend = self._create_fake_thrift_client()
         convert_arrow_mock.return_value = (MagicMock(), Mock())
         convert_col_mock.return_value = (MagicMock(), Mock())
 
@@ -1695,7 +1669,11 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend = self._make_fake_thrift_backend()
         thrift_backend._check_direct_results_for_error = Mock()
         thrift_backend._wait_until_command_done = Mock()
-        thrift_backend._results_message_to_execute_response = Mock()
+        mock_execute_response = Mock(spec=ExecuteResponse)
+        mock_has_more_rows = True
+        thrift_backend._results_message_to_execute_response = Mock(
+            return_value=(mock_execute_response, mock_has_more_rows)
+        )
 
         # Create a mock response with a real operation handle
         mock_resp = Mock()
@@ -2258,17 +2236,19 @@ class ThriftBackendTestSuite(unittest.TestCase):
     )
     @patch(
         "databricks.sql.backend.thrift_backend.ThriftDatabricksClient._handle_execute_response",
-        return_value=Mock(
-            spec=ExecuteResponse,
-            command_id=Mock(),
-            status=Mock(),
-            description=Mock(),
-            has_more_rows=Mock(),
-            has_been_closed_server_side=Mock(),
-            lz4_compressed=Mock(),
-            is_staging_operation=Mock(),
-            arrow_schema_bytes=Mock(),
-            result_format=Mock(),
+        return_value=(
+            Mock(
+                spec=ExecuteResponse,
+                command_id=Mock(),
+                status=Mock(),
+                description=Mock(),
+                has_been_closed_server_side=Mock(),
+                lz4_compressed=Mock(),
+                is_staging_operation=Mock(),
+                arrow_schema_bytes=Mock(),
+                result_format=Mock(),
+            ),
+            True,  # has_more_rows
         ),
     )
     def test_execute_command_sets_complex_type_fields_correctly(
