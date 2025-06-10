@@ -1177,8 +1177,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
         cursor_mock = Mock()
 
-        thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
-
         result = thrift_backend.execute_command(
             "foo", Mock(), 100, 200, Mock(), cursor_mock
         )
@@ -1214,8 +1212,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
         cursor_mock = Mock()
 
-        thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
-
         result = thrift_backend.get_catalogs(Mock(), 100, 200, cursor_mock)
         # Verify the result is a ResultSet
         self.assertIsInstance(result, ResultSet)
@@ -1246,8 +1242,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             return_value=(mock_execute_response, mock_has_more_rows)
         )
         cursor_mock = Mock()
-
-        thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
 
         result = thrift_backend.get_schemas(
             Mock(),
@@ -1288,8 +1282,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             return_value=(mock_execute_response, mock_has_more_rows)
         )
         cursor_mock = Mock()
-
-        thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
 
         result = thrift_backend.get_tables(
             Mock(),
@@ -1334,8 +1326,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             return_value=(mock_execute_response, mock_has_more_rows)
         )
         cursor_mock = Mock()
-
-        thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
 
         result = thrift_backend.get_columns(
             Mock(),
@@ -2260,8 +2250,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 ssl_options=SSLOptions(),
                 **complex_arg_types,
             )
-
-            thrift_backend.fetch_results = Mock(return_value=(Mock(), False))
 
             thrift_backend.execute_command(Mock(), Mock(), 100, 100, Mock(), Mock())
             t_execute_statement_req = tcli_service_instance.ExecuteStatement.call_args[
