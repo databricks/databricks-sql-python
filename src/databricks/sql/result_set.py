@@ -6,7 +6,9 @@ import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.models.base import ExternalLink, ResultData, ResultManifest
 from databricks.sql.cloud_fetch_queue import SeaCloudFetchQueue
+from databricks.sql.utils import SeaResultSetQueueFactory
 
 try:
     import pyarrow
@@ -465,6 +467,77 @@ class SeaResultSet(ResultSet):
             if execute_response.command_id
             else None
         )
+        
+        # Get the response data from the SEA backend
+        response_data = sea_client.http_client._make_request(
+            method="GET",
+            path=sea_client.STATEMENT_PATH_WITH_ID.format(self.statement_id),
+            data={"statement_id": self.statement_id},
+        )
+        
+        # Build the results queue
+        results_queue = None
+        
+        # Extract data from the response
+        result_data = response_data.get("result", {})
+        manifest_data = response_data.get("manifest", {})
+        
+        if result_data:
+            # Convert external links
+            external_links = None
+            if "external_links" in result_data:
+                external_links = []
+                for link_data in result_data["external_links"]:
+                    external_links.append(
+                        ExternalLink(
+                            external_link=link_data.get("external_link", ""),
+                            expiration=link_data.get("expiration", ""),
+                            chunk_index=link_data.get("chunk_index", 0),
+                            byte_count=link_data.get("byte_count", 0),
+                            row_count=link_data.get("row_count", 0),
+                            row_offset=link_data.get("row_offset", 0),
+                            next_chunk_index=link_data.get("next_chunk_index"),
+                            next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
+                            http_headers=link_data.get("http_headers", {}),
+                        )
+                    )
+
+            # Create the result data object
+            result_data_obj = ResultData(
+                data=result_data.get("data_array"), external_links=external_links
+            )
+
+            # Create the manifest object
+            manifest_obj = ResultManifest(
+                format=manifest_data.get("format", ""),
+                schema=manifest_data.get("schema", {}),
+                total_row_count=manifest_data.get("total_row_count", 0),
+                total_byte_count=manifest_data.get("total_byte_count", 0),
+                total_chunk_count=manifest_data.get("total_chunk_count", 0),
+                truncated=manifest_data.get("truncated", False),
+                chunks=manifest_data.get("chunks"),
+                result_compression=manifest_data.get("result_compression"),
+            )
+
+            # Build the queue based on the response data
+            from typing import cast, List
+            
+            # Convert description to the expected format
+            desc = None
+            if execute_response.description:
+                desc = cast(List[Tuple[Any, ...]], execute_response.description)
+            
+            results_queue = SeaResultSetQueueFactory.build_queue(
+                result_data_obj,
+                manifest_obj,
+                str(self.statement_id),
+                description=desc,
+                schema_bytes=execute_response.arrow_schema_bytes if execute_response.arrow_schema_bytes else None,
+                max_download_threads=sea_client.max_download_threads,
+                ssl_options=sea_client.ssl_options,
+                sea_client=sea_client,
+                lz4_compressed=execute_response.lz4_compressed,
+            )
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -476,14 +549,12 @@ class SeaResultSet(ResultSet):
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
             has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
         )
 
         # Initialize queue for result data if not provided
-        if not self.results:
-            self.results = JsonQueue([])
+        self.results = results_queue or JsonQueue([])
 
     def _convert_to_row_objects(self, rows):
         """

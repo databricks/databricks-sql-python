@@ -20,6 +20,7 @@ from typing import (
 from databricks.sql.utils import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse, CommandId
 from databricks.sql.backend.sea.models.base import ResultData
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 if TYPE_CHECKING:
     from databricks.sql.result_set import ResultSet, SeaResultSet
@@ -69,19 +70,21 @@ class ResultSetFilter:
             status=result_set.status,
             description=result_set.description,
             has_more_rows=result_set._has_more_rows,
-            results_queue=JsonQueue(filtered_rows),
             has_been_closed_server_side=result_set.has_been_closed_server_side,
             lz4_compressed=False,
             is_staging_operation=False,
         )
 
-        return SeaResultSet(
+        # Create a new SeaResultSet with the filtered data
+        filtered_result_set = SeaResultSet(
             connection=result_set.connection,
             execute_response=execute_response,
-            sea_client=result_set.backend,
+            sea_client=cast(SeaDatabricksClient, result_set.backend),
             buffer_size_bytes=result_set.buffer_size_bytes,
             arraysize=result_set.arraysize,
         )
+        
+        return filtered_result_set
 
     @staticmethod
     def filter_by_column_values(

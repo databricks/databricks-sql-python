@@ -6,7 +6,7 @@ that handle EXTERNAL_LINKS disposition with ARROW format.
 """
 
 from abc import ABC
-from typing import Any, List, Optional, Union, TYPE_CHECKING
+from typing import Any, List, Optional, Tuple, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.backend.sea.backend import SeaDatabricksClient
@@ -137,7 +137,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple[Any, ...]]] = None,
     ):
         """
         Initialize the base CloudFetchQueue.
@@ -227,7 +227,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         statement_id: str,
         total_chunk_count: int,
         lz4_compressed: bool = False,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple[Any, ...]]] = None,
     ):
         """
         Initialize the SEA CloudFetchQueue.
@@ -496,7 +496,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple[Any, ...]]] = None,
     ):
         """
         Initialize the Thrift CloudFetchQueue.

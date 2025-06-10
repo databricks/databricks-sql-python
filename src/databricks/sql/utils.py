@@ -63,7 +63,7 @@ class ThriftResultSetQueueFactory(ABC):
         max_download_threads: Optional[int] = None,
         ssl_options: Optional[SSLOptions] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: Optional[List[Tuple[Any, ...]]] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue for Thrift backend.
@@ -131,7 +131,7 @@ class SeaResultSetQueueFactory(ABC):
         sea_result_data: ResultData,
         manifest: ResultManifest,
         statement_id: str,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple[Any, ...]]] = None,
         schema_bytes: Optional[bytes] = None,
         max_download_threads: Optional[int] = None,
         ssl_options: Optional[SSLOptions] = None,

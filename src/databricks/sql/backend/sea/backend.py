@@ -1,7 +1,10 @@
 import logging
 import uuid
 import time
-from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
+import re
+from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
+
+from databricks.sql.backend.sea.utils.constants import ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -43,6 +46,32 @@ from databricks.sql.backend.sea.models import (
 logger = logging.getLogger(__name__)
 
 
+def _filter_session_configuration(
+    session_configuration: Optional[Dict[str, str]]
+) -> Optional[Dict[str, str]]:
+    if not session_configuration:
+        return None
+
+    filtered_session_configuration = {}
+    ignored_configs: Set[str] = set()
+
+    for key, value in session_configuration.items():
+        if key.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP:
+            filtered_session_configuration[key.lower()] = value
+        else:
+            ignored_configs.add(key)
+
+    if ignored_configs:
+        logger.warning(
+            "Some session configurations were ignored because they are not supported: %s",
+            ignored_configs,
+        )
+        logger.warning(
+            "Supported session configurations are: %s",
+            list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys()),
+        )
+
+    return filtered_session_configuration
 class SeaDatabricksClient(DatabricksClient):
     """
     Statement Execution API (SEA) implementation of the DatabricksClient interface.
@@ -60,7 +89,7 @@ class SeaDatabricksClient(DatabricksClient):
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
     CHUNKS_PATH_WITH_ID = STATEMENT_PATH + "/{}/result/chunks"
     CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
-
+    
     def __init__(
         self,
         server_hostname: str,
@@ -92,6 +121,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         self._max_download_threads = kwargs.get("max_download_threads", 10)
+        self.ssl_options = ssl_options
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -232,8 +262,44 @@ class SeaDatabricksClient(DatabricksClient):
         self.http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            params=request.to_dict(),
+            data=request_data.to_dict(),
         )
+
+    @staticmethod
+    def get_default_session_configuration_value(name: str) -> Optional[str]:
+        """
+        Get the default value for a session configuration parameter.
+
+        Args:
+            name: The name of the session configuration parameter
+
+        Returns:
+            The default value if the parameter is supported, None otherwise
+        """
+        return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
+
+    @staticmethod
+    def is_session_configuration_parameter_supported(name: str) -> bool:
+        """
+        Check if a session configuration parameter is supported.
+
+        Args:
+            name: The name of the session configuration parameter
+
+        Returns:
+            True if the parameter is supported, False otherwise
+        """
+        return name.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
+
+    @staticmethod
+    def get_allowed_session_configurations() -> List[str]:
+        """
+        Get the list of allowed session configuration parameters.
+
+        Returns:
+            List of allowed session configuration parameter names
+        """
+        return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
     def fetch_chunk_links(
         self, statement_id: str, chunk_index: int
@@ -491,10 +557,11 @@ class SeaDatabricksClient(DatabricksClient):
             status=state,
             description=description,
             has_more_rows=False,
-            results_queue=results_queue,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=False,
+            arrow_schema_bytes=schema_bytes,
+            result_format=manifest_data.get("format"),
         )
 
     def execute_command(

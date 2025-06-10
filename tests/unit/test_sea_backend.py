@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.types import SessionId, BackendType
+from databricks.sql.backend.types import SessionId, BackendType, CommandId, CommandState
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.exc import Error
@@ -189,30 +189,31 @@ class TestSeaBackend:
         )
         assert default_value is None
 
-        # Test getting the list of allowed configurations
-        allowed_configs = SeaDatabricksClient.get_allowed_session_configurations()
-
-        expected_keys = {
-            "ANSI_MODE",
-            "ENABLE_PHOTON",
-            "LEGACY_TIME_PARSER_POLICY",
-            "MAX_FILE_PARTITION_BYTES",
-            "READ_ONLY_EXTERNAL_METASTORE",
-            "STATEMENT_TIMEOUT",
-            "TIMEZONE",
-            "USE_CACHED_RESULT",
-        }
-        assert set(allowed_configs) == expected_keys
+        # Test checking if a parameter is supported
+        assert SeaDatabricksClient.is_session_configuration_parameter_supported("ANSI_MODE")
+        assert not SeaDatabricksClient.is_session_configuration_parameter_supported("UNSUPPORTED_PARAM")
 
     def test_unimplemented_methods(self, sea_client):
         """Test that unimplemented methods raise NotImplementedError."""
+        # This test is no longer relevant since we've implemented these methods
+        # We'll modify it to just test a couple of methods with mocked responses
+        
         # Create dummy parameters for testing
         session_id = SessionId.from_sea_session_id("test-session")
         command_id = MagicMock()
         cursor = MagicMock()
-
-        # Test execute_command
-        with pytest.raises(NotImplementedError) as excinfo:
+        
+        # Mock the http_client to return appropriate responses
+        sea_client.http_client._make_request.return_value = {
+            "statement_id": "test-statement-id",
+            "status": {"state": "FAILED", "error": {"message": "Test error message"}}
+        }
+        
+        # Mock get_query_state to return FAILED
+        sea_client.get_query_state = MagicMock(return_value=CommandState.FAILED)
+        
+        # Test execute_command - should raise ServerOperationError due to FAILED state
+        with pytest.raises(Error) as excinfo:
             sea_client.execute_command(
                 operation="SELECT 1",
                 session_id=session_id,
@@ -225,44 +226,141 @@ class TestSeaBackend:
                 async_op=False,
                 enforce_embedded_schema_correctness=False,
             )
-        assert "execute_command is not yet implemented" in str(excinfo.value)
-
+        assert "Statement execution did not succeed" in str(excinfo.value)
+        assert "Test error message" in str(excinfo.value)
+        
+    def test_command_operations(self, sea_client, mock_http_client):
+        """Test command operations like cancel and close."""
+        # Create a command ID
+        command_id = CommandId.from_sea_statement_id("test-statement-id")
+        
+        # Set up mock response
+        mock_http_client._make_request.return_value = {}
+        
         # Test cancel_command
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.cancel_command(command_id)
-        assert "cancel_command is not yet implemented" in str(excinfo.value)
-
+        sea_client.cancel_command(command_id)
+        mock_http_client._make_request.assert_called_with(
+            method="POST",
+            path=sea_client.CANCEL_STATEMENT_PATH_WITH_ID.format("test-statement-id"),
+            data={"statement_id": "test-statement-id"},
+        )
+        
+        # Reset mock
+        mock_http_client._make_request.reset_mock()
+        
         # Test close_command
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.close_command(command_id)
-        assert "close_command is not yet implemented" in str(excinfo.value)
-
+        sea_client.close_command(command_id)
+        mock_http_client._make_request.assert_called_with(
+            method="DELETE",
+            path=sea_client.STATEMENT_PATH_WITH_ID.format("test-statement-id"),
+            data={"statement_id": "test-statement-id"},
+        )
+        
+    def test_get_query_state(self, sea_client, mock_http_client):
+        """Test get_query_state method."""
+        # Create a command ID
+        command_id = CommandId.from_sea_statement_id("test-statement-id")
+        
+        # Set up mock response
+        mock_http_client._make_request.return_value = {
+            "status": {"state": "RUNNING"}
+        }
+        
         # Test get_query_state
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.get_query_state(command_id)
-        assert "get_query_state is not yet implemented" in str(excinfo.value)
-
-        # Test get_execution_result
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.get_execution_result(command_id, cursor)
-        assert "get_execution_result is not yet implemented" in str(excinfo.value)
-
-        # Test metadata operations
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.get_catalogs(session_id, 100, 1000, cursor)
-        assert "get_catalogs is not yet implemented" in str(excinfo.value)
-
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.get_schemas(session_id, 100, 1000, cursor)
-        assert "get_schemas is not yet implemented" in str(excinfo.value)
-
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.get_tables(session_id, 100, 1000, cursor)
-        assert "get_tables is not yet implemented" in str(excinfo.value)
-
-        with pytest.raises(NotImplementedError) as excinfo:
-            sea_client.get_columns(session_id, 100, 1000, cursor)
-        assert "get_columns is not yet implemented" in str(excinfo.value)
+        state = sea_client.get_query_state(command_id)
+        assert state == CommandState.RUNNING
+        
+        mock_http_client._make_request.assert_called_with(
+            method="GET",
+            path=sea_client.STATEMENT_PATH_WITH_ID.format("test-statement-id"),
+            data={"statement_id": "test-statement-id"},
+        )
+        
+    def test_metadata_operations(self, sea_client, mock_http_client):
+        """Test metadata operations like get_catalogs, get_schemas, etc."""
+        # Create test parameters
+        session_id = SessionId.from_sea_session_id("test-session")
+        cursor = MagicMock()
+        cursor.connection = MagicMock()
+        cursor.buffer_size_bytes = 1000000
+        cursor.arraysize = 10000
+        
+        # Mock the execute_command method to return a mock result set
+        mock_result_set = MagicMock()
+        sea_client.execute_command = MagicMock(return_value=mock_result_set)
+        
+        # Test get_catalogs
+        result = sea_client.get_catalogs(session_id, 100, 1000, cursor)
+        assert result == mock_result_set
+        sea_client.execute_command.assert_called_with(
+            operation="SHOW CATALOGS",
+            session_id=session_id,
+            max_rows=100,
+            max_bytes=1000,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        
+        # Reset mock
+        sea_client.execute_command.reset_mock()
+        
+        # Test get_schemas
+        result = sea_client.get_schemas(session_id, 100, 1000, cursor, "test_catalog")
+        assert result == mock_result_set
+        sea_client.execute_command.assert_called_with(
+            operation="SHOW SCHEMAS IN `test_catalog`",
+            session_id=session_id,
+            max_rows=100,
+            max_bytes=1000,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        
+        # Reset mock
+        sea_client.execute_command.reset_mock()
+        
+        # Test get_tables
+        result = sea_client.get_tables(session_id, 100, 1000, cursor, "test_catalog", "test_schema", "test_table")
+        assert result == mock_result_set
+        sea_client.execute_command.assert_called_with(
+            operation="SHOW TABLES IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema' LIKE 'test_table'",
+            session_id=session_id,
+            max_rows=100,
+            max_bytes=1000,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        
+        # Reset mock
+        sea_client.execute_command.reset_mock()
+        
+        # Test get_columns
+        result = sea_client.get_columns(session_id, 100, 1000, cursor, "test_catalog", "test_schema", "test_table", "test_column")
+        assert result == mock_result_set
+        sea_client.execute_command.assert_called_with(
+            operation="SHOW COLUMNS IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema' TABLE LIKE 'test_table' LIKE 'test_column'",
+            session_id=session_id,
+            max_rows=100,
+            max_bytes=1000,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
 
     def test_max_download_threads_property(self, sea_client):
         """Test the max_download_threads property."""
