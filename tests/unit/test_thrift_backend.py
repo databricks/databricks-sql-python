@@ -965,7 +965,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         thrift_backend = self._create_thrift_client()
 
-        # Call the real _results_message_to_execute_response method
         execute_response, _ = thrift_backend._handle_execute_response(
             t_execute_resp, Mock()
         )
@@ -1000,10 +999,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend = self._create_thrift_client()
         thrift_backend._hive_schema_to_arrow_schema = Mock()
 
-        # Call the real _results_message_to_execute_response method
-        thrift_backend._results_message_to_execute_response(
-            t_execute_resp, ttypes.TOperationState.FINISHED_STATE
-        )
+        thrift_backend._handle_execute_response(t_execute_resp, Mock())
 
         self.assertEqual(
             hive_schema_mock,
