@@ -184,7 +184,7 @@ class ThriftResultSet(ResultSet):
         results_queue = None
         if t_row_set and execute_response.result_format is not None:
             from databricks.sql.utils import ResultSetQueueFactory
-            
+
             # Create the results queue using the provided format
             results_queue = ResultSetQueueFactory.build_queue(
                 row_set_type=execute_response.result_format,
