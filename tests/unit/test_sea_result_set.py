@@ -46,7 +46,6 @@ class TestSeaResultSet(unittest.TestCase):
             status=CommandState.SUCCEEDED,
             description=self.sample_description,
             has_more_rows=True,
-            results_queue=JsonQueue([[1, "Alice"], [2, "Bob"], [3, "Charlie"]]),
             has_been_closed_server_side=False,
             lz4_compressed=False,
             is_staging_operation=False,
@@ -58,7 +57,6 @@ class TestSeaResultSet(unittest.TestCase):
             status=CommandState.FAILED,
             description=None,
             has_more_rows=False,
-            results_queue=None,
             has_been_closed_server_side=False,
             lz4_compressed=False,
             is_staging_operation=False,
@@ -66,12 +64,29 @@ class TestSeaResultSet(unittest.TestCase):
 
     def test_init_with_inline_data(self):
         """Test initialization with inline data."""
+        # Create mock result data and manifest
+        from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+        
+        result_data = ResultData(data=[[1, "Alice"], [2, "Bob"], [3, "Charlie"]], external_links=None)
+        manifest = ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=3,
+            total_byte_count=0,
+            total_chunk_count=1,
+            truncated=False,
+            chunks=None,
+            result_compression=None,
+        )
+        
         result_set = SeaResultSet(
             connection=self.mock_connection,
             execute_response=self.mock_execute_response_inline,
             sea_client=self.mock_backend,
             buffer_size_bytes=1000,
             arraysize=100,
+            result_data=result_data,
+            manifest=manifest,
         )
 
         # Check properties
@@ -91,6 +106,27 @@ class TestSeaResultSet(unittest.TestCase):
         # Check results queue
         self.assertTrue(isinstance(result_set.results, JsonQueue))
 
+    def test_init_without_result_data(self):
+        """Test initialization without result data."""
+        # Create a result set without providing result_data
+        result_set = SeaResultSet(
+            connection=self.mock_connection,
+            execute_response=self.mock_execute_response_inline,
+            sea_client=self.mock_backend,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        
+        # Check properties
+        self.assertEqual(result_set.backend, self.mock_backend)
+        self.assertEqual(result_set.statement_id, "test-statement-id")
+        self.assertEqual(result_set.status, CommandState.SUCCEEDED)
+        self.assertEqual(result_set.description, self.sample_description)
+        self.assertTrue(isinstance(result_set.results, JsonQueue))
+        
+        # Verify that the results queue is empty
+        self.assertEqual(result_set.results.data_array, [])
+
     def test_init_with_error(self):
         """Test initialization with error response."""
         result_set = SeaResultSet(
@@ -108,25 +144,36 @@ class TestSeaResultSet(unittest.TestCase):
     def test_close(self):
         """Test closing the result set."""
         # Setup
+        from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+        
+        result_data = ResultData(data=[[1, "Alice"]], external_links=None)
+        manifest = ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=1,
+            total_byte_count=0,
+            total_chunk_count=1,
+            truncated=False,
+            chunks=None,
+            result_compression=None,
+        )
+        
         result_set = SeaResultSet(
             connection=self.mock_connection,
             execute_response=self.mock_execute_response_inline,
             sea_client=self.mock_backend,
+            result_data=result_data,
+            manifest=manifest,
         )
 
-        # Create a patch for CommandId.from_sea_statement_id
-        with patch(
-            "databricks.sql.backend.types.CommandId.from_sea_statement_id"
-        ) as mock_from_sea_statement_id:
-            mock_command_id = MagicMock()
-            mock_from_sea_statement_id.return_value = mock_command_id
+        # Mock the backend's close_command method
+        self.mock_backend.close_command = MagicMock()
 
-            # Execute
-            result_set.close()
+        # Execute
+        result_set.close()
 
-            # Verify
-            mock_from_sea_statement_id.assert_called_once_with("test-statement-id")
-            self.mock_backend.close_command.assert_called_once_with(mock_command_id)
+        # Verify
+        self.mock_backend.close_command.assert_called_once_with(self.mock_command_id)
 
     def test_is_staging_operation(self):
         """Test is_staging_operation property."""
@@ -140,10 +187,27 @@ class TestSeaResultSet(unittest.TestCase):
 
     def test_fetchone(self):
         """Test fetchone method."""
+        # Create mock result data and manifest
+        from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+        
+        result_data = ResultData(data=[[1, "Alice"], [2, "Bob"], [3, "Charlie"]], external_links=None)
+        manifest = ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=3,
+            total_byte_count=0,
+            total_chunk_count=1,
+            truncated=False,
+            chunks=None,
+            result_compression=None,
+        )
+        
         result_set = SeaResultSet(
             connection=self.mock_connection,
             execute_response=self.mock_execute_response_inline,
             sea_client=self.mock_backend,
+            result_data=result_data,
+            manifest=manifest,
         )
 
         # First row
@@ -170,10 +234,27 @@ class TestSeaResultSet(unittest.TestCase):
 
     def test_fetchmany(self):
         """Test fetchmany method."""
+        # Create mock result data and manifest
+        from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+        
+        result_data = ResultData(data=[[1, "Alice"], [2, "Bob"], [3, "Charlie"]], external_links=None)
+        manifest = ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=3,
+            total_byte_count=0,
+            total_chunk_count=1,
+            truncated=False,
+            chunks=None,
+            result_compression=None,
+        )
+        
         result_set = SeaResultSet(
             connection=self.mock_connection,
             execute_response=self.mock_execute_response_inline,
             sea_client=self.mock_backend,
+            result_data=result_data,
+            manifest=manifest,
         )
 
         # Fetch 2 rows
@@ -196,10 +277,27 @@ class TestSeaResultSet(unittest.TestCase):
 
     def test_fetchall(self):
         """Test fetchall method."""
+        # Create mock result data and manifest
+        from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+        
+        result_data = ResultData(data=[[1, "Alice"], [2, "Bob"], [3, "Charlie"]], external_links=None)
+        manifest = ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=3,
+            total_byte_count=0,
+            total_chunk_count=1,
+            truncated=False,
+            chunks=None,
+            result_compression=None,
+        )
+        
         result_set = SeaResultSet(
             connection=self.mock_connection,
             execute_response=self.mock_execute_response_inline,
             sea_client=self.mock_backend,
+            result_data=result_data,
+            manifest=manifest,
         )
 
         # Fetch all rows
@@ -219,10 +317,27 @@ class TestSeaResultSet(unittest.TestCase):
     @unittest.skipIf(pyarrow is None, "PyArrow not installed")
     def test_fetchmany_arrow(self):
         """Test fetchmany_arrow method."""
+        # Create mock result data and manifest
+        from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+        
+        result_data = ResultData(data=[[1, "Alice"], [2, "Bob"], [3, "Charlie"]], external_links=None)
+        manifest = ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=3,
+            total_byte_count=0,
+            total_chunk_count=1,
+            truncated=False,
+            chunks=None,
+            result_compression=None,
+        )
+        
         result_set = SeaResultSet(
             connection=self.mock_connection,
             execute_response=self.mock_execute_response_inline,
             sea_client=self.mock_backend,
+            result_data=result_data,
+            manifest=manifest,
         )
 
         # Fetch 2 rows as Arrow table
@@ -245,10 +360,27 @@ class TestSeaResultSet(unittest.TestCase):
     @unittest.skipIf(pyarrow is None, "PyArrow not installed")
     def test_fetchall_arrow(self):
         """Test fetchall_arrow method."""
+        # Create mock result data and manifest
+        from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+        
+        result_data = ResultData(data=[[1, "Alice"], [2, "Bob"], [3, "Charlie"]], external_links=None)
+        manifest = ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=3,
+            total_byte_count=0,
+            total_chunk_count=1,
+            truncated=False,
+            chunks=None,
+            result_compression=None,
+        )
+        
         result_set = SeaResultSet(
             connection=self.mock_connection,
             execute_response=self.mock_execute_response_inline,
             sea_client=self.mock_backend,
+            result_data=result_data,
+            manifest=manifest,
         )
 
         # Fetch all rows as Arrow table

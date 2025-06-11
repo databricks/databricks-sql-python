@@ -129,7 +129,7 @@ class SeaResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
         sea_result_data: ResultData,
-        manifest: ResultManifest,
+        manifest: Optional[ResultManifest],
         statement_id: str,
         description: Optional[List[Tuple[Any, ...]]] = None,
         schema_bytes: Optional[bytes] = None,
@@ -175,6 +175,10 @@ class SeaResultSetQueueFactory(ABC):
             if not sea_client:
                 raise ValueError(
                     "SEA client is required for EXTERNAL_LINKS disposition"
+                )
+            if not manifest:
+                raise ValueError(
+                    "Manifest is required for EXTERNAL_LINKS disposition"
                 )
 
             return SeaCloudFetchQueue(

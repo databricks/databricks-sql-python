@@ -449,14 +449,15 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _results_message_to_execute_response(self, sea_response, command_id):
         """
-        Convert a SEA response to an ExecuteResponse.
+        Convert a SEA response to an ExecuteResponse and extract result data.
 
         Args:
             sea_response: The response from the SEA API
             command_id: The command ID
 
         Returns:
-            ExecuteResponse: The normalized execute response
+            tuple: (ExecuteResponse, ResultData, ResultManifest) - The normalized execute response,
+                  result data object, and manifest object
         """
         # Extract status
         status_data = sea_response.get("status", {})
@@ -498,8 +499,10 @@ class SeaDatabricksClient(DatabricksClient):
         # Check for compression
         lz4_compressed = manifest_data.get("result_compression") == "LZ4_FRAME"
 
-        # Create results queue
-        results_queue = None
+        # Initialize result_data_obj and manifest_obj
+        result_data_obj = None
+        manifest_obj = None
+        
         result_data = sea_response.get("result", {})
         if result_data:
             # Convert external links
@@ -528,31 +531,19 @@ class SeaDatabricksClient(DatabricksClient):
                 data=result_data.get("data_array"), external_links=external_links
             )
 
-            # Create the manifest object
-            manifest_obj = ResultManifest(
-                format=manifest_data.get("format", ""),
-                schema=manifest_data.get("schema", {}),
-                total_row_count=manifest_data.get("total_row_count", 0),
-                total_byte_count=manifest_data.get("total_byte_count", 0),
-                total_chunk_count=manifest_data.get("total_chunk_count", 0),
-                truncated=manifest_data.get("truncated", False),
-                chunks=manifest_data.get("chunks"),
-                result_compression=manifest_data.get("result_compression"),
-            )
+        # Create the manifest object
+        manifest_obj = ResultManifest(
+            format=manifest_data.get("format", ""),
+            schema=manifest_data.get("schema", {}),
+            total_row_count=manifest_data.get("total_row_count", 0),
+            total_byte_count=manifest_data.get("total_byte_count", 0),
+            total_chunk_count=manifest_data.get("total_chunk_count", 0),
+            truncated=manifest_data.get("truncated", False),
+            chunks=manifest_data.get("chunks"),
+            result_compression=manifest_data.get("result_compression"),
+        )
 
-            results_queue = SeaResultSetQueueFactory.build_queue(
-                result_data_obj,
-                manifest_obj,
-                command_id.to_sea_statement_id(),
-                description=description,
-                schema_bytes=schema_bytes,
-                max_download_threads=self.max_download_threads,
-                ssl_options=self.ssl_options,
-                sea_client=self,
-                lz4_compressed=lz4_compressed,
-            )
-
-        return ExecuteResponse(
+        execute_response = ExecuteResponse(
             command_id=command_id,
             status=state,
             description=description,
@@ -563,6 +554,8 @@ class SeaDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
             result_format=manifest_data.get("format"),
         )
+        
+        return execute_response, result_data_obj, manifest_obj
 
     def execute_command(
         self,
@@ -782,8 +775,8 @@ class SeaDatabricksClient(DatabricksClient):
         # Create and return a SeaResultSet
         from databricks.sql.result_set import SeaResultSet
 
-        # Convert the response to an ExecuteResponse
-        execute_response = self._results_message_to_execute_response(
+        # Convert the response to an ExecuteResponse and extract result data
+        execute_response, result_data, manifest = self._results_message_to_execute_response(
             response_data, command_id
         )
 
@@ -793,6 +786,8 @@ class SeaDatabricksClient(DatabricksClient):
             sea_client=self,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
+            result_data=result_data,
+            manifest=manifest,
         )
 
     # == Metadata Operations ==

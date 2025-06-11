@@ -75,6 +75,11 @@ class ResultSetFilter:
             is_staging_operation=False,
         )
 
+        # Create a new ResultData object with filtered data
+        from databricks.sql.backend.sea.models.base import ResultData
+        
+        result_data = ResultData(data=filtered_rows, external_links=None)
+
         # Create a new SeaResultSet with the filtered data
         filtered_result_set = SeaResultSet(
             connection=result_set.connection,
@@ -82,6 +87,7 @@ class ResultSetFilter:
             sea_client=cast(SeaDatabricksClient, result_set.backend),
             buffer_size_bytes=result_set.buffer_size_bytes,
             arraysize=result_set.arraysize,
+            result_data=result_data,
         )
         
         return filtered_result_set
