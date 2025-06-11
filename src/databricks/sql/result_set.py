@@ -42,10 +42,11 @@ class ResultSet(ABC):
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
-        has_more_rows: bool = False,
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
+        lz4_compressed: bool = False,
+        arrow_schema_bytes: bytes = b"",
     ):
         """
         A ResultSet manages the results of a single command.
@@ -73,9 +74,10 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
+        self.lz4_compressed = lz4_compressed
+        self._arrow_schema_bytes = arrow_schema_bytes
 
     def __iter__(self):
         while True:
@@ -179,9 +181,24 @@ class ThriftResultSet(ResultSet):
             has_more_rows: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
-        self.lz4_compressed = execute_response.lz4_compressed
+        self.has_more_rows = has_more_rows
+
+        # Build the results queue if t_row_set is provided
+        results_queue = None
+        if t_row_set and execute_response.result_format is not None:
+            from databricks.sql.utils import ThriftResultSetQueueFactory
+
+            # Create the results queue using the provided format
+            results_queue = ThriftResultSetQueueFactory.build_queue(
+                row_set_type=execute_response.result_format,
+                t_row_set=t_row_set,
+                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                max_download_threads=max_download_threads,
+                lz4_compressed=execute_response.lz4_compressed,
+                description=execute_response.description,
+                ssl_options=ssl_options,
+            )
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -208,10 +225,11 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=has_more_rows,
             results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Initialize results queue if not provided
@@ -442,7 +460,7 @@ class ThriftResultSet(ResultSet):
 
 
 class SeaResultSet(ResultSet):
-    """ResultSet implementation for the SEA backend."""
+    """ResultSet implementation for SEA backend."""
 
     def __init__(
         self,
@@ -451,17 +469,20 @@ class SeaResultSet(ResultSet):
         sea_client: "SeaDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
+        result_data=None,
+        manifest=None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
 
         Args:
             connection: The parent connection
+            execute_response: Response from the execute command
             sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
-            execute_response: Response from the execute command (new style)
-            sea_response: Direct SEA response (legacy style)
+            result_data: Result data from SEA response (optional)
+            manifest: Manifest from SEA response (optional)
         """
 
         queue = SeaResultSetQueueFactory.build_queue(
@@ -480,10 +501,10 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
-            results_queue=queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
     
     def _convert_to_row_objects(self, rows):
@@ -505,29 +526,9 @@ class SeaResultSet(ResultSet):
 
     def _fill_results_buffer(self):
         """Fill the results buffer from the backend."""
-        return None 
-
-    def _convert_rows_to_arrow_table(self, rows):
-        """Convert rows to Arrow table."""
-        if not self.description:
-            return pyarrow.Table.from_pylist([])
-
-        # Create dict of column data
-        column_data = {}
-        column_names = [col[0] for col in self.description]
-
-        for i, name in enumerate(column_names):
-            column_data[name] = [row[i] for row in rows]
-
-        return pyarrow.Table.from_pydict(column_data)
-
-    def _create_empty_arrow_table(self):
-        """Create an empty Arrow table with the correct schema."""
-        if not self.description:
-            return pyarrow.Table.from_pylist([])
-
-        column_names = [col[0] for col in self.description]
-        return pyarrow.Table.from_pydict({name: [] for name in column_names})
+        raise NotImplementedError(
+            "_fill_results_buffer is not implemented for SEA backend"
+        )
 
     def fetchone(self) -> Optional[Row]:
         """
@@ -571,15 +572,8 @@ class SeaResultSet(ResultSet):
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
-        if isinstance(self.results, JsonQueue):
-            rows = self.results.remaining_rows()
-            self._next_row_index += len(rows)
 
-            # Convert to Row objects
-            return self._convert_to_row_objects(rows)
-        else:
-            raise NotImplementedError("Unsupported queue type")
+        raise NotImplementedError("fetchall is not implemented for SEA backend")
 
     def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
