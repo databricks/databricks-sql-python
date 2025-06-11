@@ -46,7 +46,7 @@ class ResultSet(ABC):
         description=None,
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
-        arrow_schema_bytes: bytes = b"",
+        arrow_schema_bytes: Optional[bytes] = b"",
     ):
         """
         A ResultSet manages the results of a single command.
@@ -182,17 +182,16 @@ class ThriftResultSet(ResultSet):
             :param is_direct_results: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
         self.is_direct_results = is_direct_results
 
         # Build the results queue if t_row_set is provided
         results_queue = None
         if t_row_set and execute_response.result_format is not None:
-            from databricks.sql.utils import ThriftResultSetQueueFactory
+            from databricks.sql.utils import ResultSetQueueFactory
 
             # Create the results queue using the provided format
-            results_queue = ThriftResultSetQueueFactory.build_queue(
+            results_queue = ResultSetQueueFactory.build_queue(
                 row_set_type=execute_response.result_format,
                 t_row_set=t_row_set,
                 arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
