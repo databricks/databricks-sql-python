@@ -49,18 +49,18 @@ class ResultSet(ABC):
         """
         A ResultSet manages the results of a single command.
 
-        Args:
-            connection: The parent connection
-            backend: The backend client
-            arraysize: The max number of rows to fetch at a time (PEP-249)
-            buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
-            command_id: The command ID
-            status: The command status
-            has_been_closed_server_side: Whether the command has been closed on the server
-            is_direct_results: Whether the command has more rows
-            results_queue: The results queue
-            description: column description of the results
-            is_staging_operation: Whether the command is a staging operation
+        Parameters:
+            :param connection: The parent connection
+            :param backend: The backend client
+            :param arraysize: The max number of rows to fetch at a time (PEP-249)
+            :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+            :param command_id: The command ID
+            :param status: The command status
+            :param has_been_closed_server_side: Whether the command has been closed on the server
+            :param is_direct_results: Whether the command has more rows
+            :param results_queue: The results queue
+            :param description: column description of the results
+            :param is_staging_operation: Whether the command is a staging operation
         """
 
         self.connection = connection
@@ -165,17 +165,17 @@ class ThriftResultSet(ResultSet):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
 
-        Args:
-            connection: The parent connection
-            execute_response: Response from the execute command
-            thrift_client: The ThriftDatabricksClient instance for direct access
-            buffer_size_bytes: Buffer size for fetching results
-            arraysize: Default number of rows to fetch
-            use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            t_row_set: The TRowSet containing result data (if available)
-            max_download_threads: Maximum number of download threads for cloud fetch
-            ssl_options: SSL options for cloud fetch
-            is_direct_results: Whether there are more rows to fetch
+        Parameters:
+            :param connection: The parent connection
+            :param execute_response: Response from the execute command
+            :param thrift_client: The ThriftDatabricksClient instance for direct access
+            :param buffer_size_bytes: Buffer size for fetching results
+            :param arraysize: Default number of rows to fetch
+            :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
+            :param t_row_set: The TRowSet containing result data (if available)
+            :param max_download_threads: Maximum number of download threads for cloud fetch
+            :param ssl_options: SSL options for cloud fetch
+            :param is_direct_results: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
