@@ -74,7 +74,7 @@ def test_sea_metadata():
             f"Fetching columns for catalog '{catalog}', schema 'default', table 'information_schema'..."
         )
         cursor.columns(
-            catalog_name=catalog, schema_name="default", table_name="information_schema"
+            catalog_name=catalog, schema_name="default", table_name="customer"
         )
         logger.info("Successfully fetched columns")
 
