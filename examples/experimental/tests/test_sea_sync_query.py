@@ -49,13 +49,14 @@ def test_sea_sync_query_with_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query
+        # Execute a query that returns 100 rows
         cursor = connection.cursor()
-        logger.info(
-            "Executing synchronous query with cloud fetch: SELECT 1 as test_value"
+        logger.info("Executing synchronous query with cloud fetch: SELECT 100 rows")
+        cursor.execute(
+            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
         )
-        cursor.execute("SELECT 1 as test_value")
-        logger.info("Query executed successfully with cloud fetch enabled")
+        rows = cursor.fetchall()
+        logger.info(f"Retrieved rows: {rows}")
 
         # Close resources
         cursor.close()
@@ -114,16 +115,16 @@ def test_sea_sync_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query
+        # Execute a query that returns 100 rows
         cursor = connection.cursor()
-        logger.info(
-            "Executing synchronous query without cloud fetch: SELECT 1 as test_value"
+        logger.info("Executing synchronous query without cloud fetch: SELECT 100 rows")
+        cursor.execute(
+            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
         )
-        cursor.execute("SELECT 1 as test_value")
         logger.info("Query executed successfully with cloud fetch disabled")
 
         rows = cursor.fetchall()
-        logger.info(f"Rows: {rows}")
+        logger.info(f"Retrieved rows: {rows}")
 
         # Close resources
         cursor.close()
