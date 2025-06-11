@@ -163,6 +163,7 @@ class ThriftResultSet(ResultSet):
         t_row_set=None,
         max_download_threads: int = 10,
         ssl_options=None,
+        has_more_rows: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -177,6 +178,7 @@ class ThriftResultSet(ResultSet):
             t_row_set: The TRowSet containing result data (if available)
             max_download_threads: Maximum number of download threads for cloud fetch
             ssl_options: SSL options for cloud fetch
+            has_more_rows: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
@@ -208,7 +210,7 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
+            has_more_rows=has_more_rows,
             results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,

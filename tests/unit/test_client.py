@@ -213,7 +213,6 @@ class ClientTestSuite(unittest.TestCase):
         type(mock_connection).session = PropertyMock(return_value=mock_session)
 
         mock_thrift_backend.fetch_results.return_value = (Mock(), False)
-
         result_set = ThriftResultSet(
             mock_connection, mock_results_response, mock_thrift_backend
         )
@@ -479,7 +478,6 @@ class ClientTestSuite(unittest.TestCase):
         mock_aq = Mock()
         mock_aq.next_n_rows.side_effect = make_fake_row_slice
         mock_thrift_backend.execute_command.return_value.arrow_queue = mock_aq
-        mock_thrift_backend.fetch_results.return_value = (mock_aq, True)
 
         cursor = client.Cursor(Mock(), mock_thrift_backend)
         cursor.execute("foo")

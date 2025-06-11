@@ -756,11 +756,13 @@ class ThriftDatabricksClient(DatabricksClient):
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
+
         has_more_rows = (
             (not direct_results)
             or (not direct_results.resultSet)
             or direct_results.resultSet.hasMoreRows
         )
+
         description = self._hive_schema_to_description(
             t_result_set_metadata_resp.schema
         )
@@ -782,17 +784,18 @@ class ThriftDatabricksClient(DatabricksClient):
         if status is None:
             raise ValueError(f"Unknown command state: {operation_state}")
 
-        return ExecuteResponse(
+        execute_response = ExecuteResponse(
             command_id=command_id,
             status=status,
             description=description,
-            has_more_rows=has_more_rows,
             has_been_closed_server_side=has_been_closed_server_side,
             lz4_compressed=lz4_compressed,
             is_staging_operation=t_result_set_metadata_resp.isStagingOperation,
             arrow_schema_bytes=schema_bytes,
             result_format=t_result_set_metadata_resp.resultFormat,
         )
+
+        return execute_response, has_more_rows
 
     def get_execution_result(
         self, command_id: CommandId, cursor: "Cursor"
@@ -842,7 +845,6 @@ class ThriftDatabricksClient(DatabricksClient):
             command_id=command_id,
             status=status,
             description=description,
-            has_more_rows=has_more_rows,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=is_staging_operation,
@@ -860,6 +862,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=resp.results,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -972,7 +975,9 @@ class ThriftDatabricksClient(DatabricksClient):
             self._handle_execute_response_async(resp, cursor)
             return None
         else:
-            execute_response = self._handle_execute_response(resp, cursor)
+            execute_response, has_more_rows = self._handle_execute_response(
+                resp, cursor
+            )
 
             t_row_set = None
             if resp.directResults and resp.directResults.resultSet:
@@ -988,6 +993,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 t_row_set=t_row_set,
                 max_download_threads=self.max_download_threads,
                 ssl_options=self._ssl_options,
+                has_more_rows=has_more_rows,
             )
 
     def get_catalogs(
@@ -1009,7 +1015,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetCatalogs, req)
 
-        execute_response = self._handle_execute_response(resp, cursor)
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1025,6 +1031,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
         )
 
     def get_schemas(
@@ -1050,7 +1057,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetSchemas, req)
 
-        execute_response = self._handle_execute_response(resp, cursor)
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1066,6 +1073,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
         )
 
     def get_tables(
@@ -1095,7 +1103,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetTables, req)
 
-        execute_response = self._handle_execute_response(resp, cursor)
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1111,6 +1119,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
         )
 
     def get_columns(
@@ -1140,7 +1149,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetColumns, req)
 
-        execute_response = self._handle_execute_response(resp, cursor)
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1156,6 +1165,7 @@ class ThriftDatabricksClient(DatabricksClient):
             t_row_set=t_row_set,
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
         )
 
     def _handle_execute_response(self, resp, cursor):

@@ -57,7 +57,6 @@ class FetchTests(unittest.TestCase):
                 command_id=None,
                 status=None,
                 has_been_closed_server_side=True,
-                has_more_rows=False,
                 description=description,
                 lz4_compressed=True,
                 is_staging_operation=False,
@@ -65,9 +64,6 @@ class FetchTests(unittest.TestCase):
             thrift_client=mock_thrift_backend,
             t_row_set=None,
         )
-
-        # Replace the results queue with our arrow_queue
-        rs.results = arrow_queue
         return rs
 
     @staticmethod
@@ -105,7 +101,6 @@ class FetchTests(unittest.TestCase):
                 command_id=None,
                 status=None,
                 has_been_closed_server_side=False,
-                has_more_rows=True,
                 description=description,
                 lz4_compressed=True,
                 is_staging_operation=False,
