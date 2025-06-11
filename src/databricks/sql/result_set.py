@@ -45,8 +45,6 @@ class ResultSet(ABC):
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
-        lz4_compressed: bool = False,
-        arrow_schema_bytes: Optional[bytes] = b"",
     ):
         """
         A ResultSet manages the results of a single command.
@@ -77,8 +75,6 @@ class ResultSet(ABC):
         self.is_direct_results = is_direct_results
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
-        self.lz4_compressed = lz4_compressed
-        self._arrow_schema_bytes = arrow_schema_bytes
 
     def __iter__(self):
         while True:
@@ -181,10 +177,10 @@ class ThriftResultSet(ResultSet):
             :param ssl_options: SSL options for cloud fetch
             :param is_direct_results: Whether there are more rows to fetch
         """
-
         # Initialize ThriftResultSet-specific attributes
+        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
-        self.is_direct_results = is_direct_results
+        self.lz4_compressed = execute_response.lz4_compressed
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -215,8 +211,6 @@ class ThriftResultSet(ResultSet):
             results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
-            lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Initialize results queue if not provided
@@ -444,82 +438,3 @@ class ThriftResultSet(ResultSet):
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
-
-
-class SeaResultSet(ResultSet):
-    """ResultSet implementation for SEA backend."""
-
-    def __init__(
-        self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        sea_client: "SeaDatabricksClient",
-        buffer_size_bytes: int = 104857600,
-        arraysize: int = 10000,
-        result_data=None,
-        manifest=None,
-    ):
-        """
-        Initialize a SeaResultSet with the response from a SEA query execution.
-
-        Args:
-            connection: The parent connection
-            execute_response: Response from the execute command
-            sea_client: The SeaDatabricksClient instance for direct access
-            buffer_size_bytes: Buffer size for fetching results
-            arraysize: Default number of rows to fetch
-            result_data: Result data from SEA response (optional)
-            manifest: Manifest from SEA response (optional)
-        """
-
-        super().__init__(
-            connection=connection,
-            backend=sea_client,
-            arraysize=arraysize,
-            buffer_size_bytes=buffer_size_bytes,
-            command_id=execute_response.command_id,
-            status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            description=execute_response.description,
-            is_staging_operation=execute_response.is_staging_operation,
-            lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
-        )
-
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        raise NotImplementedError(
-            "_fill_results_buffer is not implemented for SEA backend"
-        )
-
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
-        """
-
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
-
-    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
-        """
-        Fetch the next set of rows of a query result, returning a list of rows.
-
-        An empty sequence is returned when no more rows are available.
-        """
-
-        raise NotImplementedError("fetchmany is not implemented for SEA backend")
-
-    def fetchall(self) -> List[Row]:
-        """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
-        """
-
-        raise NotImplementedError("fetchall is not implemented for SEA backend")
-
-    def fetchmany_arrow(self, size: int) -> Any:
-        """Fetch the next set of rows as an Arrow table."""
-        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
-
-    def fetchall_arrow(self) -> Any:
-        """Fetch all remaining rows as an Arrow table."""
-        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")
