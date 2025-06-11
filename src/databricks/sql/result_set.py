@@ -6,6 +6,7 @@ import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:
     import pyarrow
@@ -19,7 +20,7 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -441,6 +442,14 @@ class SeaResultSet(ResultSet):
             sea_response: Direct SEA response (legacy style)
         """
 
+        queue = SeaResultSetQueueFactory.build_queue(
+            sea_result_data=execute_response.results_data,
+            manifest=execute_response.results_manifest,
+            statement_id=execute_response.command_id.to_sea_statement_id(),
+            description=execute_response.description,
+            schema_bytes=execute_response.arrow_schema_bytes,
+        )
+
         super().__init__(
             connection=connection,
             backend=sea_client,
@@ -450,22 +459,69 @@ class SeaResultSet(ResultSet):
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
             has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
+            results_queue=queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
         )
+    
+    def _convert_to_row_objects(self, rows):
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+
+        Args:
+            rows: List of raw data rows
+
+        Returns:
+            List of Row objects with named columns
+        """
+        if not self.description or not rows:
+            return rows
+
+        column_names = [col[0] for col in self.description]
+        ResultRow = Row(*column_names)
+        return [ResultRow(*row) for row in rows]
 
     def _fill_results_buffer(self):
         """Fill the results buffer from the backend."""
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
+        return None 
+
+    def _convert_rows_to_arrow_table(self, rows):
+        """Convert rows to Arrow table."""
+        if not self.description:
+            return pyarrow.Table.from_pylist([])
+
+        # Create dict of column data
+        column_data = {}
+        column_names = [col[0] for col in self.description]
+
+        for i, name in enumerate(column_names):
+            column_data[name] = [row[i] for row in rows]
+
+        return pyarrow.Table.from_pydict(column_data)
+
+    def _create_empty_arrow_table(self):
+        """Create an empty Arrow table with the correct schema."""
+        if not self.description:
+            return pyarrow.Table.from_pylist([])
+
+        column_names = [col[0] for col in self.description]
+        return pyarrow.Table.from_pydict({name: [] for name in column_names})
 
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
+        if isinstance(self.results, JsonQueue):
+            rows = self.results.next_n_rows(1)
+            if not rows:
+                return None
 
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
+            # Convert to Row object
+            converted_rows = self._convert_to_row_objects(rows)
+            return converted_rows[0] if converted_rows else None
+        else:
+            raise NotImplementedError("Unsupported queue type")
 
     def fetchmany(self, size: Optional[int] = None) -> List[Row]:
         """
@@ -473,19 +529,65 @@ class SeaResultSet(ResultSet):
 
         An empty sequence is returned when no more rows are available.
         """
+        if size is None:
+            size = self.arraysize
 
-        raise NotImplementedError("fetchmany is not implemented for SEA backend")
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
+        if isinstance(self.results, JsonQueue):
+            rows = self.results.next_n_rows(size)
+            self._next_row_index += len(rows)
+
+            # Convert to Row objects
+            return self._convert_to_row_objects(rows)
+        else:
+            raise NotImplementedError("Unsupported queue type")
 
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
-        raise NotImplementedError("fetchall is not implemented for SEA backend")
+        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
+        if isinstance(self.results, JsonQueue):
+            rows = self.results.remaining_rows()
+            self._next_row_index += len(rows)
+
+            # Convert to Row objects
+            return self._convert_to_row_objects(rows)
+        else:
+            raise NotImplementedError("Unsupported queue type")
 
     def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
-        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
+        if not pyarrow:
+            raise ImportError("PyArrow is required for Arrow support")
+
+        if isinstance(self.results, JsonQueue):
+            rows = self.fetchmany(size)
+            if not rows:
+                # Return empty Arrow table with schema
+                return self._create_empty_arrow_table()
+
+            # Convert rows to Arrow table
+            return self._convert_rows_to_arrow_table(rows)
+        else:
+            raise NotImplementedError("Unsupported queue type")
 
     def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
-        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")
+        if not pyarrow:
+            raise ImportError("PyArrow is required for Arrow support")
+
+        if isinstance(self.results, JsonQueue):
+            rows = self.fetchall()
+            if not rows:
+                # Return empty Arrow table with schema
+                return self._create_empty_arrow_table()
+
+            # Convert rows to Arrow table
+            return self._convert_rows_to_arrow_table(rows)
+        else:
+            raise NotImplementedError("Unsupported queue type")
+

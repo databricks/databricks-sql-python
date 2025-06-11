@@ -42,11 +42,11 @@ from databricks.sql.thrift_api.TCLIService.TCLIService import (
 )
 
 from databricks.sql.utils import (
-    ResultSetQueueFactory,
+    ThriftResultSetQueueFactory,
     _bound,
     RequestErrorInfo,
     NoRetryReason,
-    ResultSetQueueFactory,
+    ThriftResultSetQueueFactory,
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
@@ -784,7 +784,7 @@ class ThriftDatabricksClient(DatabricksClient):
             assert direct_results.resultSet.results.startRowOffset == 0
             assert direct_results.resultSetMetadata
 
-            arrow_queue_opt = ResultSetQueueFactory.build_queue(
+            arrow_queue_opt = ThriftResultSetQueueFactory.build_queue(
                 row_set_type=t_result_set_metadata_resp.resultFormat,
                 t_row_set=direct_results.resultSet.results,
                 arrow_schema_bytes=schema_bytes,
@@ -857,7 +857,7 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             schema_bytes = None
 
-        queue = ResultSetQueueFactory.build_queue(
+        queue = ThriftResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
             t_row_set=resp.results,
             arrow_schema_bytes=schema_bytes,
@@ -1225,7 +1225,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 )
             )
 
-        queue = ResultSetQueueFactory.build_queue(
+        queue = ThriftResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
             t_row_set=resp.results,
             arrow_schema_bytes=arrow_schema_bytes,

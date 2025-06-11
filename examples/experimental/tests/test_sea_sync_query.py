@@ -122,6 +122,9 @@ def test_sea_sync_query_without_cloud_fetch():
         cursor.execute("SELECT 1 as test_value")
         logger.info("Query executed successfully with cloud fetch disabled")
 
+        rows = cursor.fetchall()
+        logger.info(f"Rows: {rows}")
+
         # Close resources
         cursor.close()
         connection.close()
