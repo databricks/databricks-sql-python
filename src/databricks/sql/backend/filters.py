@@ -51,8 +51,6 @@ class ResultSetFilter:
             A filtered SEA result set
         """
         # Get all remaining rows
-        original_index = result_set.results.cur_row_index
-        result_set.results.cur_row_index = 0  # Reset to beginning
         all_rows = result_set.results.remaining_rows()
 
         # Filter rows
@@ -165,5 +163,5 @@ class ResultSetFilter:
 
         # Table type is the 6th column (index 5)
         return ResultSetFilter.filter_by_column_values(
-            result_set, 5, valid_types, case_sensitive=False
+            result_set, 5, valid_types, case_sensitive=True
         )
