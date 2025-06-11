@@ -39,8 +39,12 @@ class ExecuteStatementResponse:
                 error_code=error_data.get("error_code"),
             )
 
+        state = CommandState.from_sea_state(status_data.get("state", ""))
+        if state is None:
+            raise ValueError(f"Invalid state: {status_data.get('state', '')}")
+
         status = StatementStatus(
-            state=CommandState.from_sea_state(status_data.get("state", "")),
+            state=state,
             error=error,
             sql_state=status_data.get("sql_state"),
         )
@@ -119,8 +123,12 @@ class GetStatementResponse:
                 error_code=error_data.get("error_code"),
             )
 
+        state = CommandState.from_sea_state(status_data.get("state", ""))
+        if state is None:
+            raise ValueError(f"Invalid state: {status_data.get('state', '')}")
+
         status = StatementStatus(
-            state=CommandState.from_sea_state(status_data.get("state", "")),
+            state=state,
             error=error,
             sql_state=status_data.get("sql_state"),
         )
