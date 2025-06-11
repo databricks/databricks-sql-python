@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 @dataclass
 class CreateSessionRequest:
-    """Request to create a new session."""
+    """Representation of a request to create a new session."""
 
     warehouse_id: str
     session_confs: Optional[Dict[str, str]] = None
@@ -29,7 +29,7 @@ class CreateSessionRequest:
 
 @dataclass
 class DeleteSessionRequest:
-    """Request to delete a session."""
+    """Representation of a request to delete a session."""
 
     warehouse_id: str
     session_id: str
