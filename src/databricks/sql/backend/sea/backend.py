@@ -716,4 +716,3 @@ class SeaDatabricksClient(DatabricksClient):
             result_data=result_data,
             manifest=manifest,
         )
-
