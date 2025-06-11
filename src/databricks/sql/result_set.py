@@ -19,7 +19,7 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -41,10 +41,11 @@ class ResultSet(ABC):
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
-        has_more_rows: bool = False,
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
+        lz4_compressed: bool = False,
+        arrow_schema_bytes: bytes = b"",
     ):
         """
         A ResultSet manages the results of a single command.
@@ -72,9 +73,10 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
+        self.lz4_compressed = lz4_compressed
+        self._arrow_schema_bytes = arrow_schema_bytes
 
     def __iter__(self):
         while True:
@@ -157,7 +159,10 @@ class ThriftResultSet(ResultSet):
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
-        arrow_schema_bytes: Optional[bytes] = None,
+        t_row_set=None,
+        max_download_threads: int = 10,
+        ssl_options=None,
+        has_more_rows: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -169,12 +174,30 @@ class ThriftResultSet(ResultSet):
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            arrow_schema_bytes: Arrow schema bytes for the result set
+            t_row_set: The TRowSet containing result data (if available)
+            max_download_threads: Maximum number of download threads for cloud fetch
+            ssl_options: SSL options for cloud fetch
+            has_more_rows: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
-        self.lz4_compressed = execute_response.lz4_compressed
+        self.has_more_rows = has_more_rows
+
+        # Build the results queue if t_row_set is provided
+        results_queue = None
+        if t_row_set and execute_response.result_format is not None:
+            from databricks.sql.utils import ThriftResultSetQueueFactory
+
+            # Create the results queue using the provided format
+            results_queue = ThriftResultSetQueueFactory.build_queue(
+                row_set_type=execute_response.result_format,
+                t_row_set=t_row_set,
+                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                max_download_threads=max_download_threads,
+                lz4_compressed=execute_response.lz4_compressed,
+                description=execute_response.description,
+                ssl_options=ssl_options,
+            )
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -185,10 +208,11 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
+            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Initialize results queue if not provided
@@ -419,7 +443,7 @@ class ThriftResultSet(ResultSet):
 
 
 class SeaResultSet(ResultSet):
-    """ResultSet implementation for the SEA backend."""
+    """ResultSet implementation for SEA backend."""
 
     def __init__(
         self,
@@ -428,17 +452,20 @@ class SeaResultSet(ResultSet):
         sea_client: "SeaDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
+        result_data=None,
+        manifest=None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
 
         Args:
             connection: The parent connection
+            execute_response: Response from the execute command
             sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
-            execute_response: Response from the execute command (new style)
-            sea_response: Direct SEA response (legacy style)
+            result_data: Result data from SEA response (optional)
+            manifest: Manifest from SEA response (optional)
         """
 
         super().__init__(
@@ -449,15 +476,15 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
     def _fill_results_buffer(self):
         """Fill the results buffer from the backend."""
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
+        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")
 
     def fetchone(self) -> Optional[Row]:
         """
@@ -480,6 +507,7 @@ class SeaResultSet(ResultSet):
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
+
         raise NotImplementedError("fetchall is not implemented for SEA backend")
 
     def fetchmany_arrow(self, size: int) -> Any:
