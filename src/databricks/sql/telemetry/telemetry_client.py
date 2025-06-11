@@ -308,6 +308,8 @@ class TelemetryClientFactory:
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.Lock()  # Thread safety for factory operations
+    _original_excepthook = None
+    _excepthook_installed = False
 
     @classmethod
     def _initialize(cls):
@@ -318,10 +320,57 @@ class TelemetryClientFactory:
                 cls._executor = ThreadPoolExecutor(
                     max_workers=10
                 )  # Thread pool for async operations TODO: Decide on max workers
+                cls._install_exception_hook()
                 cls._initialized = True
                 logger.debug(
                     "TelemetryClientFactory initialized with thread pool (max_workers=10)"
                 )
+
+    @classmethod
+    def _install_exception_hook(cls):
+        """Install global exception handler for unhandled exceptions"""
+        if not cls._excepthook_installed:
+            import sys
+
+            cls._original_excepthook = sys.excepthook
+            sys.excepthook = cls._handle_unhandled_exception
+            cls._excepthook_installed = True
+            logger.debug("Global exception handler installed for telemetry")
+
+    @classmethod
+    def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
+        """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
+        logger.debug("Handling unhandled exception: %s", exc_type.__name__)
+
+        try:
+            # Flush existing thread pool work and wait for completion
+            logger.debug(
+                "Flushing pending telemetry and waiting for thread pool completion..."
+            )
+            for uuid, client in cls._clients.items():
+                if hasattr(client, "flush"):
+                    try:
+                        client.flush()  # Submit any pending events
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to flush telemetry for connection %s: %s", uuid, e
+                        )
+
+            if cls._executor:
+                try:
+                    cls._executor.shutdown(
+                        wait=True
+                    )  # This waits for all submitted work to complete
+                    logger.debug("Thread pool shutdown completed successfully")
+                except Exception as e:
+                    logger.debug("Thread pool shutdown failed: %s", e)
+
+        except Exception as e:
+            logger.debug("Exception in excepthook telemetry handler: %s", e)
+
+        # Call the original exception handler to maintain normal behavior
+        if cls._original_excepthook:
+            cls._original_excepthook(exc_type, exc_value, exc_traceback)
 
     @staticmethod
     def initialize_telemetry_client(
