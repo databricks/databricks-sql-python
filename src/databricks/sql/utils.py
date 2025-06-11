@@ -8,7 +8,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import re
 
 import lz4.frame
@@ -57,7 +57,7 @@ class ResultSetQueueFactory(ABC):
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple]] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -206,7 +206,7 @@ class CloudFetchQueue(ResultSetQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple]] = None,
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.
