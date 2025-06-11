@@ -195,6 +195,7 @@ class TestSeaResultSet:
         )
 
         with pytest.raises(
-            NotImplementedError, match="fetchone is not implemented for SEA backend"
+            NotImplementedError,
+            match="_fill_results_buffer is not implemented for SEA backend",
         ):
             result_set._fill_results_buffer()

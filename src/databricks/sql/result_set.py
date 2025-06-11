@@ -19,7 +19,7 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue
+from databricks.sql.utils import ColumnTable, ColumnQueue
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -484,7 +484,9 @@ class SeaResultSet(ResultSet):
 
     def _fill_results_buffer(self):
         """Fill the results buffer from the backend."""
-        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")
+        raise NotImplementedError(
+            "_fill_results_buffer is not implemented for SEA backend"
+        )
 
     def fetchone(self) -> Optional[Row]:
         """
