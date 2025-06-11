@@ -1,44 +1,23 @@
 import logging
-import time
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
-
-from databricks.sql.backend.sea.utils.constants import (
-    ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
-)
+from typing import Dict, Tuple, List, Optional, TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
-    from databricks.sql.result_set import ResultSet
-    from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.backend.types import (
-    SessionId,
-    CommandId,
-    CommandState,
-    BackendType,
-    ExecuteResponse,
-)
-from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
+from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
+from databricks.sql.exc import ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
-from databricks.sql.types import SSLOptions
-from databricks.sql.backend.sea.models.base import (
-    ResultData,
-    ExternalLink,
-    ResultManifest,
+from databricks.sql.backend.sea.utils.constants import (
+    ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
 )
+from databricks.sql.thrift_api.TCLIService import ttypes
+from databricks.sql.types import SSLOptions
 
 from databricks.sql.backend.sea.models import (
-    ExecuteStatementRequest,
-    GetStatementRequest,
-    CancelStatementRequest,
-    CloseStatementRequest,
     CreateSessionRequest,
     DeleteSessionRequest,
-    StatementParameter,
-    ExecuteStatementResponse,
-    GetStatementResponse,
     CreateSessionResponse,
 )
 
@@ -76,9 +55,6 @@ def _filter_session_configuration(
 class SeaDatabricksClient(DatabricksClient):
     """
     Statement Execution API (SEA) implementation of the DatabricksClient interface.
-
-    This implementation provides session management functionality for SEA,
-    while other operations raise NotImplementedError.
     """
 
     # SEA API paths
@@ -88,8 +64,6 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
-    CHUNKS_PATH_WITH_ID = STATEMENT_PATH + "/{}/result/chunks"
-    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     def __init__(
         self,
@@ -122,7 +96,6 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         self._max_download_threads = kwargs.get("max_download_threads", 10)
-        self.ssl_options = ssl_options
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -280,19 +253,6 @@ class SeaDatabricksClient(DatabricksClient):
         return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
 
     @staticmethod
-    def is_session_configuration_parameter_supported(name: str) -> bool:
-        """
-        Check if a session configuration parameter is supported.
-
-        Args:
-            name: The name of the session configuration parameter
-
-        Returns:
-            True if the parameter is supported, False otherwise
-        """
-        return name.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
-
-    @staticmethod
     def get_allowed_session_configurations() -> List[str]:
         """
         Get the list of allowed session configuration parameters.
@@ -302,182 +262,8 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
-    def _get_schema_bytes(self, sea_response) -> Optional[bytes]:
-        """
-        Extract schema bytes from the SEA response.
-
-        For ARROW format, we need to get the schema bytes from the first chunk.
-        If the first chunk is not available, we need to get it from the server.
-
-        Args:
-            sea_response: The response from the SEA API
-
-        Returns:
-            bytes: The schema bytes or None if not available
-        """
-        import requests
-        import lz4.frame
-
-        # Check if we have the first chunk in the response
-        result_data = sea_response.get("result", {})
-        external_links = result_data.get("external_links", [])
-
-        if not external_links:
-            return None
-
-        # Find the first chunk (chunk_index = 0)
-        first_chunk = None
-        for link in external_links:
-            if link.get("chunk_index") == 0:
-                first_chunk = link
-                break
-
-        if not first_chunk:
-            # Try to fetch the first chunk from the server
-            statement_id = sea_response.get("statement_id")
-            if not statement_id:
-                return None
-
-            chunks_response = self.get_chunk_links(statement_id, 0)
-            if not chunks_response.external_links:
-                return None
-
-            first_chunk = chunks_response.external_links[0].__dict__
-
-        # Download the first chunk to get the schema bytes
-        external_link = first_chunk.get("external_link")
-        http_headers = first_chunk.get("http_headers", {})
-
-        if not external_link:
-            return None
-
-        # Use requests to download the first chunk
-        http_response = requests.get(
-            external_link,
-            headers=http_headers,
-            verify=self.ssl_options.tls_verify,
-        )
-
-        if http_response.status_code != 200:
-            raise Error(f"Failed to download schema bytes: {http_response.text}")
-
-        # Extract schema bytes from the Arrow file
-        # The schema is at the beginning of the file
-        data = http_response.content
-        if sea_response.get("manifest", {}).get("result_compression") == "LZ4_FRAME":
-            data = lz4.frame.decompress(data)
-
-        # Return the schema bytes
-        return data
-
-    def _results_message_to_execute_response(self, sea_response, command_id):
-        """
-        Convert a SEA response to an ExecuteResponse and extract result data.
-
-        Args:
-            sea_response: The response from the SEA API
-            command_id: The command ID
-
-        Returns:
-            tuple: (ExecuteResponse, ResultData, ResultManifest) - The normalized execute response,
-                  result data object, and manifest object
-        """
-        # Extract status
-        status_data = sea_response.get("status", {})
-        state = CommandState.from_sea_state(status_data.get("state", ""))
-
-        # Extract description from manifest
-        description = None
-        manifest_data = sea_response.get("manifest", {})
-        schema_data = manifest_data.get("schema", {})
-        columns_data = schema_data.get("columns", [])
-
-        if columns_data:
-            columns = []
-            for col_data in columns_data:
-                if not isinstance(col_data, dict):
-                    continue
-
-                # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
-                columns.append(
-                    (
-                        col_data.get("name", ""),  # name
-                        col_data.get("type_name", ""),  # type_code
-                        None,  # display_size (not provided by SEA)
-                        None,  # internal_size (not provided by SEA)
-                        col_data.get("precision"),  # precision
-                        col_data.get("scale"),  # scale
-                        col_data.get("nullable", True),  # null_ok
-                    )
-                )
-            description = columns if columns else None
-
-        # Extract schema bytes for Arrow format
-        schema_bytes = None
-        format = manifest_data.get("format")
-        if format == "ARROW_STREAM":
-            # For ARROW format, we need to get the schema bytes
-            schema_bytes = self._get_schema_bytes(sea_response)
-
-        # Check for compression
-        lz4_compressed = manifest_data.get("result_compression") == "LZ4_FRAME"
-
-        # Initialize result_data_obj and manifest_obj
-        result_data_obj = None
-        manifest_obj = None
-
-        result_data = sea_response.get("result", {})
-        if result_data:
-            # Convert external links
-            external_links = None
-            if "external_links" in result_data:
-                external_links = []
-                for link_data in result_data["external_links"]:
-                    external_links.append(
-                        ExternalLink(
-                            external_link=link_data.get("external_link", ""),
-                            expiration=link_data.get("expiration", ""),
-                            chunk_index=link_data.get("chunk_index", 0),
-                            byte_count=link_data.get("byte_count", 0),
-                            row_count=link_data.get("row_count", 0),
-                            row_offset=link_data.get("row_offset", 0),
-                            next_chunk_index=link_data.get("next_chunk_index"),
-                            next_chunk_internal_link=link_data.get(
-                                "next_chunk_internal_link"
-                            ),
-                            http_headers=link_data.get("http_headers", {}),
-                        )
-                    )
-
-            # Create the result data object
-            result_data_obj = ResultData(
-                data=result_data.get("data_array"), external_links=external_links
-            )
-
-        # Create the manifest object
-        manifest_obj = ResultManifest(
-            format=manifest_data.get("format", ""),
-            schema=manifest_data.get("schema", {}),
-            total_row_count=manifest_data.get("total_row_count", 0),
-            total_byte_count=manifest_data.get("total_byte_count", 0),
-            total_chunk_count=manifest_data.get("total_chunk_count", 0),
-            truncated=manifest_data.get("truncated", False),
-            chunks=manifest_data.get("chunks"),
-            result_compression=manifest_data.get("result_compression"),
-        )
-
-        execute_response = ExecuteResponse(
-            command_id=command_id,
-            status=state,
-            description=description,
-            has_been_closed_server_side=False,
-            lz4_compressed=lz4_compressed,
-            is_staging_operation=False,
-            arrow_schema_bytes=schema_bytes,
-            result_format=manifest_data.get("format"),
-        )
-
-        return execute_response, result_data_obj, manifest_obj
+    # == Not Implemented Operations ==
+    # These methods will be implemented in future iterations
 
     def execute_command(
         self,
@@ -488,230 +274,41 @@ class SeaDatabricksClient(DatabricksClient):
         lz4_compression: bool,
         cursor: "Cursor",
         use_cloud_fetch: bool,
-        parameters: List,
+        parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> Union["ResultSet", None]:
-        """
-        Execute a SQL command using the SEA backend.
-
-        Args:
-            operation: SQL command to execute
-            session_id: Session identifier
-            max_rows: Maximum number of rows to fetch
-            max_bytes: Maximum number of bytes to fetch
-            lz4_compression: Whether to use LZ4 compression
-            cursor: Cursor executing the command
-            use_cloud_fetch: Whether to use cloud fetch
-            parameters: SQL parameters
-            async_op: Whether to execute asynchronously
-            enforce_embedded_schema_correctness: Whether to enforce schema correctness
-
-        Returns:
-            ResultSet: A SeaResultSet instance for the executed command
-        """
-        if session_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA session ID")
-
-        sea_session_id = session_id.to_sea_session_id()
-
-        # Convert parameters to StatementParameter objects
-        sea_parameters = []
-        if parameters:
-            for param in parameters:
-                sea_parameters.append(
-                    StatementParameter(
-                        name=param.name,
-                        value=param.value,
-                        type=param.type if hasattr(param, "type") else None,
-                    )
-                )
-
-        format = "ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY"
-        disposition = "EXTERNAL_LINKS" if use_cloud_fetch else "INLINE"
-        result_compression = "LZ4_FRAME" if lz4_compression else None
-
-        request = ExecuteStatementRequest(
-            warehouse_id=self.warehouse_id,
-            session_id=sea_session_id,
-            statement=operation,
-            disposition=disposition,
-            format=format,
-            wait_timeout="0s" if async_op else "10s",
-            on_wait_timeout="CONTINUE",
-            row_limit=max_rows,
-            parameters=sea_parameters if sea_parameters else None,
-            result_compression=result_compression,
+    ):
+        """Not implemented yet."""
+        raise NotImplementedError(
+            "execute_command is not yet implemented for SEA backend"
         )
-
-        response_data = self.http_client._make_request(
-            method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
-        )
-        response = ExecuteStatementResponse.from_dict(response_data)
-        statement_id = response.statement_id
-        if not statement_id:
-            raise ServerOperationError(
-                "Failed to execute command: No statement ID returned",
-                {
-                    "operation-id": None,
-                    "diagnostic-info": None,
-                },
-            )
-
-        command_id = CommandId.from_sea_statement_id(statement_id)
-
-        # Store the command ID in the cursor
-        cursor.active_command_id = command_id
-
-        # If async operation, return None and let the client poll for results
-        if async_op:
-            return None
-
-        # For synchronous operation, wait for the statement to complete
-        # Poll until the statement is done
-        status = response.status
-        state = status.state
-
-        # Keep polling until we reach a terminal state
-        while state in [CommandState.PENDING, CommandState.RUNNING]:
-            time.sleep(0.5)  # add a small delay to avoid excessive API calls
-            state = self.get_query_state(command_id)
-
-        if state != CommandState.SUCCEEDED:
-            raise ServerOperationError(
-                f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
-                {
-                    "operation-id": command_id.to_sea_statement_id(),
-                    "diagnostic-info": None,
-                },
-            )
-
-        return self.get_execution_result(command_id, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
-        """
-        Cancel a running command.
-
-        Args:
-            command_id: Command identifier to cancel
-
-        Raises:
-            ValueError: If the command ID is invalid
-        """
-        if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
-
-        sea_statement_id = command_id.to_sea_statement_id()
-
-        request = CancelStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
-            method="POST",
-            path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
+        """Not implemented yet."""
+        raise NotImplementedError(
+            "cancel_command is not yet implemented for SEA backend"
         )
 
     def close_command(self, command_id: CommandId) -> None:
-        """
-        Close a command and release resources.
-
-        Args:
-            command_id: Command identifier to close
-
-        Raises:
-            ValueError: If the command ID is invalid
-        """
-        if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
-
-        sea_statement_id = command_id.to_sea_statement_id()
-
-        request = CloseStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
-            method="DELETE",
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
+        """Not implemented yet."""
+        raise NotImplementedError(
+            "close_command is not yet implemented for SEA backend"
         )
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
-        """
-        Get the state of a running query.
-
-        Args:
-            command_id: Command identifier
-
-        Returns:
-            CommandState: The current state of the command
-
-        Raises:
-            ValueError: If the command ID is invalid
-        """
-        if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
-
-        sea_statement_id = command_id.to_sea_statement_id()
-
-        request = GetStatementRequest(statement_id=sea_statement_id)
-        response_data = self.http_client._make_request(
-            method="GET",
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
+        """Not implemented yet."""
+        raise NotImplementedError(
+            "get_query_state is not yet implemented for SEA backend"
         )
-
-        # Parse the response
-        response = GetStatementResponse.from_dict(response_data)
-        return response.status.state
 
     def get_execution_result(
         self,
         command_id: CommandId,
         cursor: "Cursor",
-    ) -> "ResultSet":
-        """
-        Get the result of a command execution.
-
-        Args:
-            command_id: Command identifier
-            cursor: Cursor executing the command
-
-        Returns:
-            ResultSet: A SeaResultSet instance with the execution results
-
-        Raises:
-            ValueError: If the command ID is invalid
-        """
-        if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
-
-        sea_statement_id = command_id.to_sea_statement_id()
-
-        # Create the request model
-        request = GetStatementRequest(statement_id=sea_statement_id)
-
-        # Get the statement result
-        response_data = self.http_client._make_request(
-            method="GET",
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
-        )
-
-        # Create and return a SeaResultSet
-        from databricks.sql.result_set import SeaResultSet
-
-        # Convert the response to an ExecuteResponse and extract result data
-        (
-            execute_response,
-            result_data,
-            manifest,
-        ) = self._results_message_to_execute_response(response_data, command_id)
-
-        return SeaResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            sea_client=self,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-            arraysize=cursor.arraysize,
-            result_data=result_data,
-            manifest=manifest,
+    ):
+        """Not implemented yet."""
+        raise NotImplementedError(
+            "get_execution_result is not yet implemented for SEA backend"
         )
 
     # == Metadata Operations ==
@@ -722,9 +319,9 @@ class SeaDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: "Cursor",
-    ) -> "ResultSet":
-        """Get available catalogs by executing 'SHOW CATALOGS'."""
-        raise NotImplementedError("get_catalogs is not implemented for SEA backend")
+    ):
+        """Not implemented yet."""
+        raise NotImplementedError("get_catalogs is not yet implemented for SEA backend")
 
     def get_schemas(
         self,
@@ -734,9 +331,9 @@ class SeaDatabricksClient(DatabricksClient):
         cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> "ResultSet":
-        """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
-        raise NotImplementedError("get_schemas is not implemented for SEA backend")
+    ):
+        """Not implemented yet."""
+        raise NotImplementedError("get_schemas is not yet implemented for SEA backend")
 
     def get_tables(
         self,
@@ -748,9 +345,9 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> "ResultSet":
-        """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
-        raise NotImplementedError("get_tables is not implemented for SEA backend")
+    ):
+        """Not implemented yet."""
+        raise NotImplementedError("get_tables is not yet implemented for SEA backend")
 
     def get_columns(
         self,
@@ -762,6 +359,6 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> "ResultSet":
-        """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
-        raise NotImplementedError("get_columns is not implemented for SEA backend")
+    ):
+        """Not implemented yet."""
+        raise NotImplementedError("get_columns is not yet implemented for SEA backend")

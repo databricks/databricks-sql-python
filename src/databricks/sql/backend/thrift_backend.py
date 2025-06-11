@@ -15,6 +15,7 @@ from databricks.sql.backend.types import (
     CommandId,
     ExecuteResponse,
 )
+from databricks.sql.backend.utils import guid_to_hex_id
 
 
 try:
@@ -841,8 +842,6 @@ class ThriftDatabricksClient(DatabricksClient):
 
         status = self.get_query_state(command_id)
 
-        status = self.get_query_state(command_id)
-
         execute_response = ExecuteResponse(
             command_id=command_id,
             status=status,
@@ -895,7 +894,7 @@ class ThriftDatabricksClient(DatabricksClient):
         self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
         state = CommandState.from_thrift_state(operation_state)
         if state is None:
-            raise ValueError(f"Invalid operation state: {operation_state}")
+            raise ValueError(f"Unknown command state: {operation_state}")
         return state
 
     @staticmethod
@@ -1189,11 +1188,7 @@ class ThriftDatabricksClient(DatabricksClient):
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        (
-            execute_response,
-            arrow_schema_bytes,
-        ) = self._results_message_to_execute_response(resp, final_operation_state)
-        return execute_response, arrow_schema_bytes
+        return self._results_message_to_execute_response(resp, final_operation_state)
 
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
