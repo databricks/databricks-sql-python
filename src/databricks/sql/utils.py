@@ -8,10 +8,13 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import re
 
 import lz4.frame
+
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:
     import pyarrow
@@ -48,7 +51,7 @@ class ResultSetQueue(ABC):
         pass
 
 
-class ResultSetQueueFactory(ABC):
+class ThriftResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
         row_set_type: TSparkRowSetType,
@@ -57,7 +60,7 @@ class ResultSetQueueFactory(ABC):
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple]] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -105,6 +108,73 @@ class ResultSetQueueFactory(ABC):
             )
         else:
             raise AssertionError("Row set type is not valid")
+
+
+class SeaResultSetQueueFactory(ABC):
+    @staticmethod
+    def build_queue(
+        sea_result_data: ResultData,
+        manifest: Optional[ResultManifest],
+        statement_id: str,
+        description: Optional[List[Tuple[Any, ...]]] = None,
+        schema_bytes: Optional[bytes] = None,
+        max_download_threads: Optional[int] = None,
+        ssl_options: Optional[SSLOptions] = None,
+        sea_client: Optional["SeaDatabricksClient"] = None,
+        lz4_compressed: bool = False,
+    ) -> ResultSetQueue:
+        """
+        Factory method to build a result set queue for SEA backend.
+
+        Args:
+            sea_result_data (ResultData): Result data from SEA response
+            manifest (ResultManifest): Manifest from SEA response
+            statement_id (str): Statement ID for the query
+            description (List[List[Any]]): Column descriptions
+            schema_bytes (bytes): Arrow schema bytes
+            max_download_threads (int): Maximum number of download threads
+            ssl_options (SSLOptions): SSL options for downloads
+            sea_client (SeaDatabricksClient): SEA client for fetching additional links
+            lz4_compressed (bool): Whether the data is LZ4 compressed
+
+        Returns:
+            ResultSetQueue: The appropriate queue for the result data
+        """
+
+        if sea_result_data.data is not None:
+            # INLINE disposition with JSON_ARRAY format
+            return JsonQueue(sea_result_data.data)
+        elif sea_result_data.external_links is not None:
+            # EXTERNAL_LINKS disposition
+            raise NotImplementedError(
+                "EXTERNAL_LINKS disposition is not implemented for SEA backend"
+            )
+        else:
+            # Empty result set
+            return JsonQueue([])
+
+
+class JsonQueue(ResultSetQueue):
+    """Queue implementation for JSON_ARRAY format data."""
+
+    def __init__(self, data_array):
+        """Initialize with JSON array data."""
+        self.data_array = data_array
+        self.cur_row_index = 0
+        self.n_valid_rows = len(data_array)
+
+    def next_n_rows(self, num_rows):
+        """Get the next n rows from the data array."""
+        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
+        slice = self.data_array[self.cur_row_index : self.cur_row_index + length]
+        self.cur_row_index += length
+        return slice
+
+    def remaining_rows(self):
+        """Get all remaining rows from the data array."""
+        slice = self.data_array[self.cur_row_index :]
+        self.cur_row_index += len(slice)
+        return slice
 
 
 class ColumnTable:
@@ -206,7 +276,7 @@ class CloudFetchQueue(ResultSetQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: Optional[List[Tuple]] = None,
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.

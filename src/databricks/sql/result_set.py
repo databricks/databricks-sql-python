@@ -6,6 +6,7 @@ import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:
     import pyarrow
@@ -19,7 +20,12 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+    JsonQueue,
+    SeaResultSetQueueFactory,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -41,10 +47,11 @@ class ResultSet(ABC):
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
-        has_more_rows: bool = False,
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
+        lz4_compressed: bool = False,
+        arrow_schema_bytes: Optional[bytes] = b"",
     ):
         """
         A ResultSet manages the results of a single command.
@@ -72,9 +79,10 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
+        self.lz4_compressed = lz4_compressed
+        self._arrow_schema_bytes = arrow_schema_bytes
 
     def __iter__(self):
         while True:
@@ -157,7 +165,10 @@ class ThriftResultSet(ResultSet):
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
-        arrow_schema_bytes: Optional[bytes] = None,
+        t_row_set=None,
+        max_download_threads: int = 10,
+        ssl_options=None,
+        has_more_rows: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -169,12 +180,30 @@ class ThriftResultSet(ResultSet):
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            arrow_schema_bytes: Arrow schema bytes for the result set
+            t_row_set: The TRowSet containing result data (if available)
+            max_download_threads: Maximum number of download threads for cloud fetch
+            ssl_options: SSL options for cloud fetch
+            has_more_rows: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
-        self.lz4_compressed = execute_response.lz4_compressed
+        self.has_more_rows = has_more_rows
+
+        # Build the results queue if t_row_set is provided
+        results_queue = None
+        if t_row_set and execute_response.result_format is not None:
+            from databricks.sql.utils import ThriftResultSetQueueFactory
+
+            # Create the results queue using the provided format
+            results_queue = ThriftResultSetQueueFactory.build_queue(
+                row_set_type=execute_response.result_format,
+                t_row_set=t_row_set,
+                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                max_download_threads=max_download_threads,
+                lz4_compressed=execute_response.lz4_compressed,
+                description=execute_response.description,
+                ssl_options=ssl_options,
+            )
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -185,10 +214,11 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
+            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Initialize results queue if not provided
@@ -419,7 +449,7 @@ class ThriftResultSet(ResultSet):
 
 
 class SeaResultSet(ResultSet):
-    """ResultSet implementation for the SEA backend."""
+    """ResultSet implementation for SEA backend."""
 
     def __init__(
         self,
@@ -428,18 +458,33 @@ class SeaResultSet(ResultSet):
         sea_client: "SeaDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
+        result_data: Optional[ResultData] = None,
+        manifest: Optional[ResultManifest] = None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
 
         Args:
             connection: The parent connection
+            execute_response: Response from the execute command
             sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
-            execute_response: Response from the execute command (new style)
-            sea_response: Direct SEA response (legacy style)
+            result_data: Result data from SEA response (optional)
+            manifest: Manifest from SEA response (optional)
         """
+
+        if result_data:
+            queue = SeaResultSetQueueFactory.build_queue(
+                sea_result_data=result_data,
+                manifest=manifest,
+                statement_id=execute_response.command_id.to_sea_statement_id(),
+                description=execute_response.description,
+                schema_bytes=execute_response.arrow_schema_bytes,
+            )
+        else:
+            logger.warning("No result data provided for SEA result set")
+            queue = JsonQueue([])
 
         super().__init__(
             connection=connection,
@@ -449,23 +494,46 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
+            results_queue=queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
+
+    def _convert_to_row_objects(self, rows):
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+
+        Args:
+            rows: List of raw data rows
+
+        Returns:
+            List of Row objects with named columns
+        """
+        if not self.description or not rows:
+            return rows
+
+        column_names = [col[0] for col in self.description]
+        ResultRow = Row(*column_names)
+        return [ResultRow(*row) for row in rows]
 
     def _fill_results_buffer(self):
         """Fill the results buffer from the backend."""
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
+        return None
 
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
+        rows = self.results.next_n_rows(1)
+        if not rows:
+            return None
 
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
+        # Convert to Row object
+        converted_rows = self._convert_to_row_objects(rows)
+        return converted_rows[0] if converted_rows else None
 
     def fetchmany(self, size: Optional[int] = None) -> List[Row]:
         """
@@ -473,19 +541,147 @@ class SeaResultSet(ResultSet):
 
         An empty sequence is returned when no more rows are available.
         """
+        if size is None:
+            size = self.arraysize
 
-        raise NotImplementedError("fetchmany is not implemented for SEA backend")
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        rows = self.results.next_n_rows(size)
+        self._next_row_index += len(rows)
+
+        # Convert to Row objects
+        return self._convert_to_row_objects(rows)
 
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
-        raise NotImplementedError("fetchall is not implemented for SEA backend")
+
+        rows = self.results.remaining_rows()
+        self._next_row_index += len(rows)
+
+        # Convert to Row objects
+        return self._convert_to_row_objects(rows)
+
+    def _create_empty_arrow_table(self) -> Any:
+        """
+        Create an empty PyArrow table with the schema from the result set.
+
+        Returns:
+            An empty PyArrow table with the correct schema.
+        """
+        import pyarrow
+
+        # Try to use schema bytes if available
+        if self._arrow_schema_bytes:
+            schema = pyarrow.ipc.read_schema(
+                pyarrow.BufferReader(self._arrow_schema_bytes)
+            )
+            return pyarrow.Table.from_pydict(
+                {name: [] for name in schema.names}, schema=schema
+            )
+
+        # Fall back to creating schema from description
+        if self.description:
+            # Map SQL types to PyArrow types
+            type_map = {
+                "boolean": pyarrow.bool_(),
+                "tinyint": pyarrow.int8(),
+                "smallint": pyarrow.int16(),
+                "int": pyarrow.int32(),
+                "bigint": pyarrow.int64(),
+                "float": pyarrow.float32(),
+                "double": pyarrow.float64(),
+                "string": pyarrow.string(),
+                "binary": pyarrow.binary(),
+                "timestamp": pyarrow.timestamp("us"),
+                "date": pyarrow.date32(),
+                "decimal": pyarrow.decimal128(38, 18),  # Default precision and scale
+            }
+
+            fields = []
+            for col_desc in self.description:
+                col_name = col_desc[0]
+                col_type = col_desc[1].lower() if col_desc[1] else "string"
+
+                # Handle decimal with precision and scale
+                if (
+                    col_type == "decimal"
+                    and col_desc[4] is not None
+                    and col_desc[5] is not None
+                ):
+                    arrow_type = pyarrow.decimal128(col_desc[4], col_desc[5])
+                else:
+                    arrow_type = type_map.get(col_type, pyarrow.string())
+
+                fields.append(pyarrow.field(col_name, arrow_type))
+
+            schema = pyarrow.schema(fields)
+            return pyarrow.Table.from_pydict(
+                {name: [] for name in schema.names}, schema=schema
+            )
+
+        # If no schema information is available, return an empty table
+        return pyarrow.Table.from_pydict({})
+
+    def _convert_rows_to_arrow_table(self, rows: List[Row]) -> Any:
+        """
+        Convert a list of Row objects to a PyArrow table.
+
+        Args:
+            rows: List of Row objects to convert.
+
+        Returns:
+            PyArrow table containing the data from the rows.
+        """
+        import pyarrow
+
+        if not rows:
+            return self._create_empty_arrow_table()
+
+        # Extract column names from description
+        if self.description:
+            column_names = [col[0] for col in self.description]
+        else:
+            # If no description, use the attribute names from the first row
+            column_names = rows[0]._fields
+
+        # Convert rows to columns
+        columns: dict[str, list] = {name: [] for name in column_names}
+
+        for row in rows:
+            for i, name in enumerate(column_names):
+                if hasattr(row, "_asdict"):  # If it's a Row object
+                    columns[name].append(row[i])
+                else:  # If it's a raw list
+                    columns[name].append(row[i])
+
+        # Create PyArrow table
+        return pyarrow.Table.from_pydict(columns)
 
     def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
-        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
+        if not pyarrow:
+            raise ImportError("PyArrow is required for Arrow support")
+
+        rows = self.fetchmany(size)
+        if not rows:
+            # Return empty Arrow table with schema
+            return self._create_empty_arrow_table()
+
+        # Convert rows to Arrow table
+        return self._convert_rows_to_arrow_table(rows)
 
     def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
-        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")
+        if not pyarrow:
+            raise ImportError("PyArrow is required for Arrow support")
+
+        rows = self.fetchall()
+        if not rows:
+            # Return empty Arrow table with schema
+            return self._create_empty_arrow_table()
+
+        # Convert rows to Arrow table
+        return self._convert_rows_to_arrow_table(rows)

@@ -51,12 +51,12 @@ def test_sea_async_query_with_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query asynchronously
+        # Execute a query that returns 100 rows asynchronously
         cursor = connection.cursor()
-        logger.info(
-            "Executing asynchronous query with cloud fetch: SELECT 1 as test_value"
+        logger.info("Executing asynchronous query with cloud fetch: SELECT 100 rows")
+        cursor.execute_async(
+            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
         )
-        cursor.execute_async("SELECT 1 as test_value")
         logger.info(
             "Asynchronous query submitted successfully with cloud fetch enabled"
         )
@@ -69,6 +69,8 @@ def test_sea_async_query_with_cloud_fetch():
 
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
+        rows = cursor.fetchall()
+        logger.info(f"Retrieved rows: {rows}")
         logger.info(
             "Successfully retrieved asynchronous query results with cloud fetch enabled"
         )
@@ -130,12 +132,12 @@ def test_sea_async_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query asynchronously
+        # Execute a query that returns 100 rows asynchronously
         cursor = connection.cursor()
-        logger.info(
-            "Executing asynchronous query without cloud fetch: SELECT 1 as test_value"
+        logger.info("Executing asynchronous query without cloud fetch: SELECT 100 rows")
+        cursor.execute_async(
+            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
         )
-        cursor.execute_async("SELECT 1 as test_value")
         logger.info(
             "Asynchronous query submitted successfully with cloud fetch disabled"
         )
@@ -148,6 +150,8 @@ def test_sea_async_query_without_cloud_fetch():
 
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
+        rows = cursor.fetchall()
+        logger.info(f"Retrieved rows: {rows}")
         logger.info(
             "Successfully retrieved asynchronous query results with cloud fetch disabled"
         )

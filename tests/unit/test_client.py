@@ -104,6 +104,7 @@ class ClientTestSuite(unittest.TestCase):
                 # Mock the backend that will be used by the real ThriftResultSet
                 mock_backend = Mock(spec=ThriftDatabricksClient)
                 mock_backend.staging_allowed_local_path = None
+                mock_backend.fetch_results.return_value = (Mock(), False)
 
                 # Configure the decorator's mock to return our specific mock_backend
                 mock_thrift_client_class.return_value = mock_backend
@@ -184,6 +185,7 @@ class ClientTestSuite(unittest.TestCase):
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
         mock_backend = Mock()
+        mock_backend.fetch_results.return_value = (Mock(), False)
 
         result_set = ThriftResultSet(
             connection=mock_connection,
@@ -210,6 +212,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_session.open = True
         type(mock_connection).session = PropertyMock(return_value=mock_session)
 
+        mock_thrift_backend.fetch_results.return_value = (Mock(), False)
         result_set = ThriftResultSet(
             mock_connection, mock_results_response, mock_thrift_backend
         )
@@ -254,7 +257,10 @@ class ClientTestSuite(unittest.TestCase):
             self.assertIn("closed", e.msg)
 
     def test_negative_fetch_throws_exception(self):
-        result_set = ThriftResultSet(Mock(), Mock(), Mock())
+        mock_backend = Mock()
+        mock_backend.fetch_results.return_value = (Mock(), False)
+
+        result_set = ThriftResultSet(Mock(), Mock(), mock_backend)
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
@@ -472,7 +478,6 @@ class ClientTestSuite(unittest.TestCase):
         mock_aq = Mock()
         mock_aq.next_n_rows.side_effect = make_fake_row_slice
         mock_thrift_backend.execute_command.return_value.arrow_queue = mock_aq
-        mock_thrift_backend.fetch_results.return_value = (mock_aq, True)
 
         cursor = client.Cursor(Mock(), mock_thrift_backend)
         cursor.execute("foo")
