@@ -29,7 +29,7 @@ class Error(Exception):
                 )
                 telemetry_client.export_failure_log(error_name, self.message)
             except Exception as telemetry_error:
-                logger.error(f"Failed to send error to telemetry: {telemetry_error}")
+                logger.debug(f"Failed to send error to telemetry: {telemetry_error}")
 
     def __str__(self):
         return self.message
