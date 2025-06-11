@@ -566,7 +566,7 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_staging_operation_response_is_handled(
         self,
-        mock_thrift_client_class,
+        mock_client_class,
         mock_handle_staging_operation,
         mock_execute_response,
     ):

@@ -177,9 +177,7 @@ class SeaResultSetQueueFactory(ABC):
                     "SEA client is required for EXTERNAL_LINKS disposition"
                 )
             if not manifest:
-                raise ValueError(
-                    "Manifest is required for EXTERNAL_LINKS disposition"
-                )
+                raise ValueError("Manifest is required for EXTERNAL_LINKS disposition")
 
             return SeaCloudFetchQueue(
                 initial_links=sea_result_data.external_links,

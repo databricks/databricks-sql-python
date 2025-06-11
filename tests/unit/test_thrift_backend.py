@@ -966,7 +966,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             t_execute_resp, Mock()
         )
 
-        self.assertEqual(arrow_schema_bytes, arrow_schema_mock)
+        self.assertEqual(execute_response.arrow_schema_bytes, arrow_schema_mock)
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_fall_back_to_hive_schema_if_no_arrow_schema(self, tcli_service_class):

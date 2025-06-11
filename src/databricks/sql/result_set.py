@@ -6,7 +6,11 @@ import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import ExternalLink, ResultData, ResultManifest
+from databricks.sql.backend.sea.models.base import (
+    ExternalLink,
+    ResultData,
+    ResultManifest,
+)
 from databricks.sql.cloud_fetch_queue import SeaCloudFetchQueue
 from databricks.sql.utils import SeaResultSetQueueFactory
 
@@ -44,10 +48,11 @@ class ResultSet(ABC):
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
-        has_more_rows: bool = False,
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
+        lz4_compressed: bool = False,
+        arrow_schema_bytes: bytes = b"",
     ):
         """
         A ResultSet manages the results of a single command.
@@ -75,9 +80,10 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
+        self.lz4_compressed = lz4_compressed
+        self._arrow_schema_bytes = arrow_schema_bytes
 
     def __iter__(self):
         while True:
@@ -181,9 +187,8 @@ class ThriftResultSet(ResultSet):
             has_more_rows: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
-        self.lz4_compressed = execute_response.lz4_compressed
+        self.has_more_rows = has_more_rows
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -210,10 +215,11 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=has_more_rows,
             results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Initialize results queue if not provided
@@ -442,6 +448,7 @@ class ThriftResultSet(ResultSet):
             for column in table_schema_message.columns
         ]
 
+
 class SeaResultSet(ResultSet):
     """ResultSet implementation for SEA backend."""
 
@@ -473,24 +480,26 @@ class SeaResultSet(ResultSet):
             if execute_response.command_id
             else None
         )
-        
+
         # Build the results queue
         results_queue = None
-        
+
         if result_data:
             from typing import cast, List
-            
+
             # Convert description to the expected format
             desc = None
             if execute_response.description:
                 desc = cast(List[Tuple[Any, ...]], execute_response.description)
-            
+
             results_queue = SeaResultSetQueueFactory.build_queue(
                 result_data,
                 manifest,
                 str(self.statement_id),
                 description=desc,
-                schema_bytes=execute_response.arrow_schema_bytes if execute_response.arrow_schema_bytes else None,
+                schema_bytes=execute_response.arrow_schema_bytes
+                if execute_response.arrow_schema_bytes
+                else None,
                 max_download_threads=sea_client.max_download_threads,
                 ssl_options=sea_client.ssl_options,
                 sea_client=sea_client,
@@ -506,9 +515,10 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Initialize queue for result data if not provided

@@ -69,15 +69,15 @@ class ResultSetFilter:
             command_id=command_id,
             status=result_set.status,
             description=result_set.description,
-            has_more_rows=result_set.has_more_rows,
             has_been_closed_server_side=result_set.has_been_closed_server_side,
-            lz4_compressed=False,
+            lz4_compressed=result_set.lz4_compressed,
+            arrow_schema_bytes=result_set.arrow_schema_bytes,
             is_staging_operation=False,
         )
 
         # Create a new ResultData object with filtered data
         from databricks.sql.backend.sea.models.base import ResultData
-        
+
         result_data = ResultData(data=filtered_rows, external_links=None)
 
         # Create a new SeaResultSet with the filtered data
@@ -89,7 +89,7 @@ class ResultSetFilter:
             arraysize=result_set.arraysize,
             result_data=result_data,
         )
-        
+
         return filtered_result_set
 
     @staticmethod

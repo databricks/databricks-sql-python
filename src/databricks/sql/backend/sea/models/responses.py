@@ -40,7 +40,7 @@ class ExecuteStatementResponse:
             )
 
         state = CommandState.from_sea_state(status_data.get("state", ""))
-        if state is None: 
+        if state is None:
             raise ValueError(f"Invalid state: {status_data.get('state', '')}")
 
         status = StatementStatus(
@@ -124,7 +124,7 @@ class GetStatementResponse:
             )
 
         state = CommandState.from_sea_state(status_data.get("state", ""))
-        if state is None: 
+        if state is None:
             raise ValueError(f"Invalid state: {status_data.get('state', '')}")
 
         status = StatementStatus(

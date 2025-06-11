@@ -4,7 +4,9 @@ import time
 import re
 from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.utils.constants import ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
+from databricks.sql.backend.sea.utils.constants import (
+    ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
+)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -72,6 +74,8 @@ def _filter_session_configuration(
         )
 
     return filtered_session_configuration
+
+
 class SeaDatabricksClient(DatabricksClient):
     """
     Statement Execution API (SEA) implementation of the DatabricksClient interface.
@@ -89,7 +93,7 @@ class SeaDatabricksClient(DatabricksClient):
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
     CHUNKS_PATH_WITH_ID = STATEMENT_PATH + "/{}/result/chunks"
     CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
-    
+
     def __init__(
         self,
         server_hostname: str,
@@ -502,7 +506,7 @@ class SeaDatabricksClient(DatabricksClient):
         # Initialize result_data_obj and manifest_obj
         result_data_obj = None
         manifest_obj = None
-        
+
         result_data = sea_response.get("result", {})
         if result_data:
             # Convert external links
@@ -554,7 +558,7 @@ class SeaDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
             result_format=manifest_data.get("format"),
         )
-        
+
         return execute_response, result_data_obj, manifest_obj
 
     def execute_command(
@@ -776,9 +780,11 @@ class SeaDatabricksClient(DatabricksClient):
         from databricks.sql.result_set import SeaResultSet
 
         # Convert the response to an ExecuteResponse and extract result data
-        execute_response, result_data, manifest = self._results_message_to_execute_response(
-            response_data, command_id
-        )
+        (
+            execute_response,
+            result_data,
+            manifest,
+        ) = self._results_message_to_execute_response(response_data, command_id)
 
         return SeaResultSet(
             connection=cursor.connection,
