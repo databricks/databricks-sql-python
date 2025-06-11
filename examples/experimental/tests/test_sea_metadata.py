@@ -71,7 +71,7 @@ def test_sea_metadata():
         # Test columns for a specific table
         # Using a common table that should exist in most environments
         logger.info(
-            f"Fetching columns for catalog '{catalog}', schema 'default', table 'information_schema'..."
+            f"Fetching columns for catalog '{catalog}', schema 'default', table 'customer'..."
         )
         cursor.columns(
             catalog_name=catalog, schema_name="default", table_name="customer"
