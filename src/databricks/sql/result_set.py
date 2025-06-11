@@ -184,7 +184,7 @@ class ThriftResultSet(ResultSet):
         # Initialize ThriftResultSet-specific attributes
         self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
-        self.has_more_rows = has_more_rows
+        self.is_direct_results = is_direct_results
 
         # Build the results queue if t_row_set is provided
         results_queue = None
