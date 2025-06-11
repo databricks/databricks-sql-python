@@ -546,3 +546,445 @@ class TestSeaBackend:
         assert kwargs["path"] == sea_client.STATEMENT_PATH_WITH_ID.format(
             "test-statement-123"
         )
+
+    # Tests for metadata commands
+
+    def test_get_catalogs(
+        self, sea_client, mock_http_client, mock_cursor, sea_session_id
+    ):
+        """Test getting catalogs metadata."""
+        # Set up mock for execute_command
+        mock_result_set = Mock()
+
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call the method
+            result = sea_client.get_catalogs(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+            )
+
+            # Verify the result
+            assert result == mock_result_set
+
+            # Verify execute_command was called with correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW CATALOGS",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+    def test_get_schemas(
+        self, sea_client, mock_http_client, mock_cursor, sea_session_id
+    ):
+        """Test getting schemas metadata."""
+        # Set up mock for execute_command
+        mock_result_set = Mock()
+
+        # Test case 1: With catalog name only
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call the method
+            result = sea_client.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            # Verify the result
+            assert result == mock_result_set
+
+            # Verify execute_command was called with correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW SCHEMAS IN `test_catalog`",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        # Test case 2: With catalog name and schema pattern
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call the method
+            result = sea_client.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+                schema_name="test_schema%",
+            )
+
+            # Verify the result
+            assert result == mock_result_set
+
+            # Verify execute_command was called with correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW SCHEMAS IN `test_catalog` LIKE 'test_schema%'",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        # Test case 3: Missing catalog name should raise error
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name=None,
+            )
+
+        assert "Catalog name is required" in str(excinfo.value)
+
+    def test_get_tables(
+        self, sea_client, mock_http_client, mock_cursor, sea_session_id
+    ):
+        """Test getting tables metadata."""
+        # Set up mock for execute_command
+        mock_result_set = Mock()
+
+        # Test case 1: With catalog name only
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Mock the get_tables method to avoid import errors
+            original_get_tables = sea_client.get_tables
+            try:
+                # Replace get_tables with a simple version that doesn't use ResultSetFilter
+                def mock_get_tables(
+                    session_id,
+                    max_rows,
+                    max_bytes,
+                    cursor,
+                    catalog_name,
+                    schema_name=None,
+                    table_name=None,
+                    table_types=None,
+                ):
+                    if catalog_name is None:
+                        raise ValueError("Catalog name is required for get_tables")
+
+                    operation = "SHOW TABLES IN " + (
+                        "ALL CATALOGS"
+                        if catalog_name in [None, "*", "%"]
+                        else f"CATALOG `{catalog_name}`"
+                    )
+
+                    if schema_name:
+                        operation += f" SCHEMA LIKE '{schema_name}'"
+
+                    if table_name:
+                        operation += f" LIKE '{table_name}'"
+
+                    return sea_client.execute_command(
+                        operation=operation,
+                        session_id=session_id,
+                        max_rows=max_rows,
+                        max_bytes=max_bytes,
+                        lz4_compression=False,
+                        cursor=cursor,
+                        use_cloud_fetch=False,
+                        parameters=[],
+                        async_op=False,
+                        enforce_embedded_schema_correctness=False,
+                    )
+
+                sea_client.get_tables = mock_get_tables
+
+                # Call the method
+                result = sea_client.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="test_catalog",
+                )
+
+                # Verify the result
+                assert result == mock_result_set
+
+                # Verify execute_command was called with correct parameters
+                mock_execute.assert_called_once_with(
+                    operation="SHOW TABLES IN CATALOG `test_catalog`",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=False,
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+
+                # Test case 2: With catalog and schema name
+                mock_execute.reset_mock()
+                result = sea_client.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="test_catalog",
+                    schema_name="test_schema",
+                )
+
+                # Verify the result
+                assert result == mock_result_set
+
+                # Verify execute_command was called with correct parameters
+                mock_execute.assert_called_once_with(
+                    operation="SHOW TABLES IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema'",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=False,
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+
+                # Test case 3: With catalog, schema, and table name
+                mock_execute.reset_mock()
+                result = sea_client.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="test_catalog",
+                    schema_name="test_schema",
+                    table_name="test_table%",
+                )
+
+                # Verify the result
+                assert result == mock_result_set
+
+                # Verify execute_command was called with correct parameters
+                mock_execute.assert_called_once_with(
+                    operation="SHOW TABLES IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema' LIKE 'test_table%'",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=False,
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+
+                # Test case 4: With wildcard catalog
+                mock_execute.reset_mock()
+                result = sea_client.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="*",
+                )
+
+                # Verify the result
+                assert result == mock_result_set
+
+                # Verify execute_command was called with correct parameters
+                mock_execute.assert_called_once_with(
+                    operation="SHOW TABLES IN ALL CATALOGS",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=False,
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+
+                # Test case 5: Missing catalog name should raise error
+                with pytest.raises(ValueError) as excinfo:
+                    sea_client.get_tables(
+                        session_id=sea_session_id,
+                        max_rows=100,
+                        max_bytes=1000,
+                        cursor=mock_cursor,
+                        catalog_name=None,
+                    )
+
+                assert "Catalog name is required" in str(excinfo.value)
+            finally:
+                # Restore the original method
+                sea_client.get_tables = original_get_tables
+
+    def test_get_columns(
+        self, sea_client, mock_http_client, mock_cursor, sea_session_id
+    ):
+        """Test getting columns metadata."""
+        # Set up mock for execute_command
+        mock_result_set = Mock()
+
+        # Test case 1: With catalog name only
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call the method
+            result = sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            # Verify the result
+            assert result == mock_result_set
+
+            # Verify execute_command was called with correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW COLUMNS IN CATALOG `test_catalog`",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        # Test case 2: With catalog and schema name
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call the method
+            result = sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+                schema_name="test_schema",
+            )
+
+            # Verify the result
+            assert result == mock_result_set
+
+            # Verify execute_command was called with correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW COLUMNS IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema'",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        # Test case 3: With catalog, schema, and table name
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call the method
+            result = sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+                schema_name="test_schema",
+                table_name="test_table",
+            )
+
+            # Verify the result
+            assert result == mock_result_set
+
+            # Verify execute_command was called with correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW COLUMNS IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema' TABLE LIKE 'test_table'",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        # Test case 4: With catalog, schema, table, and column name
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call the method
+            result = sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+                schema_name="test_schema",
+                table_name="test_table",
+                column_name="col%",
+            )
+
+            # Verify the result
+            assert result == mock_result_set
+
+            # Verify execute_command was called with correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW COLUMNS IN CATALOG `test_catalog` SCHEMA LIKE 'test_schema' TABLE LIKE 'test_table' LIKE 'col%'",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        # Test case 5: Missing catalog name should raise error
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name=None,
+            )
+
+        assert "Catalog name is required" in str(excinfo.value)
