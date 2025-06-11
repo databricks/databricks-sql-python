@@ -551,7 +551,6 @@ class SeaDatabricksClient(DatabricksClient):
             command_id=command_id,
             status=state,
             description=description,
-            has_more_rows=False,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=False,
