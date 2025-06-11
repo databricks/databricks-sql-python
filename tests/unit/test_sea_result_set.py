@@ -123,10 +123,22 @@ class TestSeaResultSet:
         assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
-    def test_unimplemented_methods(
+    @pytest.fixture
+    def mock_results_queue(self):
+        """Create a mock results queue."""
+        mock_queue = Mock()
+        mock_queue.next_n_rows.return_value = [["value1", 123], ["value2", 456]]
+        mock_queue.remaining_rows.return_value = [
+            ["value1", 123],
+            ["value2", 456],
+            ["value3", 789],
+        ]
+        return mock_queue
+
+    def test_fill_results_buffer(
         self, mock_connection, mock_sea_client, execute_response
     ):
-        """Test that unimplemented methods raise NotImplementedError."""
+        """Test that _fill_results_buffer returns None."""
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
@@ -135,57 +147,12 @@ class TestSeaResultSet:
             arraysize=100,
         )
 
-        # Test each unimplemented method individually with specific error messages
-        with pytest.raises(
-            NotImplementedError, match="fetchone is not implemented for SEA backend"
-        ):
-            result_set.fetchone()
+        assert result_set._fill_results_buffer() is None
 
-        with pytest.raises(
-            NotImplementedError, match="fetchmany is not implemented for SEA backend"
-        ):
-            result_set.fetchmany(10)
-
-        with pytest.raises(
-            NotImplementedError, match="fetchmany is not implemented for SEA backend"
-        ):
-            # Test with default parameter value
-            result_set.fetchmany()
-
-        with pytest.raises(
-            NotImplementedError, match="fetchall is not implemented for SEA backend"
-        ):
-            result_set.fetchall()
-
-        with pytest.raises(
-            NotImplementedError,
-            match="fetchmany_arrow is not implemented for SEA backend",
-        ):
-            result_set.fetchmany_arrow(10)
-
-        with pytest.raises(
-            NotImplementedError,
-            match="fetchall_arrow is not implemented for SEA backend",
-        ):
-            result_set.fetchall_arrow()
-
-        with pytest.raises(
-            NotImplementedError, match="fetchone is not implemented for SEA backend"
-        ):
-            # Test iteration protocol (calls fetchone internally)
-            next(iter(result_set))
-
-        with pytest.raises(
-            NotImplementedError, match="fetchone is not implemented for SEA backend"
-        ):
-            # Test using the result set in a for loop
-            for row in result_set:
-                pass
-
-    def test_fill_results_buffer_not_implemented(
+    def test_convert_to_row_objects(
         self, mock_connection, mock_sea_client, execute_response
     ):
-        """Test that _fill_results_buffer raises NotImplementedError."""
+        """Test converting raw data rows to Row objects."""
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
@@ -194,8 +161,320 @@ class TestSeaResultSet:
             arraysize=100,
         )
 
+        # Test with empty description
+        result_set.description = None
+        rows = [["value1", 123], ["value2", 456]]
+        converted_rows = result_set._convert_to_row_objects(rows)
+        assert converted_rows == rows
+
+        # Test with empty rows
+        result_set.description = [
+            ("col1", "STRING", None, None, None, None, None),
+            ("col2", "INT", None, None, None, None, None),
+        ]
+        assert result_set._convert_to_row_objects([]) == []
+
+        # Test with description and rows
+        rows = [["value1", 123], ["value2", 456]]
+        converted_rows = result_set._convert_to_row_objects(rows)
+        assert len(converted_rows) == 2
+        assert converted_rows[0].col1 == "value1"
+        assert converted_rows[0].col2 == 123
+        assert converted_rows[1].col1 == "value2"
+        assert converted_rows[1].col2 == 456
+
+    def test_fetchone(
+        self, mock_connection, mock_sea_client, execute_response, mock_results_queue
+    ):
+        """Test fetchone method."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_results_queue
+        result_set.description = [
+            ("col1", "STRING", None, None, None, None, None),
+            ("col2", "INT", None, None, None, None, None),
+        ]
+
+        # Mock the next_n_rows to return a single row
+        mock_results_queue.next_n_rows.return_value = [["value1", 123]]
+
+        row = result_set.fetchone()
+        assert row is not None
+        assert row.col1 == "value1"
+        assert row.col2 == 123
+
+        # Test when no rows are available
+        mock_results_queue.next_n_rows.return_value = []
+        assert result_set.fetchone() is None
+
+    def test_fetchmany(
+        self, mock_connection, mock_sea_client, execute_response, mock_results_queue
+    ):
+        """Test fetchmany method."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_results_queue
+        result_set.description = [
+            ("col1", "STRING", None, None, None, None, None),
+            ("col2", "INT", None, None, None, None, None),
+        ]
+
+        # Test with specific size
+        rows = result_set.fetchmany(2)
+        assert len(rows) == 2
+        assert rows[0].col1 == "value1"
+        assert rows[0].col2 == 123
+        assert rows[1].col1 == "value2"
+        assert rows[1].col2 == 456
+
+        # Test with default size (arraysize)
+        result_set.arraysize = 2
+        mock_results_queue.next_n_rows.reset_mock()
+        rows = result_set.fetchmany()
+        mock_results_queue.next_n_rows.assert_called_with(2)
+
+        # Test with negative size
         with pytest.raises(
-            NotImplementedError,
-            match="_fill_results_buffer is not implemented for SEA backend",
+            ValueError, match="size argument for fetchmany is -1 but must be >= 0"
         ):
-            result_set._fill_results_buffer()
+            result_set.fetchmany(-1)
+
+    def test_fetchall(
+        self, mock_connection, mock_sea_client, execute_response, mock_results_queue
+    ):
+        """Test fetchall method."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_results_queue
+        result_set.description = [
+            ("col1", "STRING", None, None, None, None, None),
+            ("col2", "INT", None, None, None, None, None),
+        ]
+
+        rows = result_set.fetchall()
+        assert len(rows) == 3
+        assert rows[0].col1 == "value1"
+        assert rows[0].col2 == 123
+        assert rows[1].col1 == "value2"
+        assert rows[1].col2 == 456
+        assert rows[2].col1 == "value3"
+        assert rows[2].col2 == 789
+
+        # Verify _next_row_index is updated
+        assert result_set._next_row_index == 3
+
+    @pytest.mark.skipif(
+        pytest.importorskip("pyarrow", reason="PyArrow is not installed") is None,
+        reason="PyArrow is not installed",
+    )
+    def test_create_empty_arrow_table(
+        self, mock_connection, mock_sea_client, execute_response, monkeypatch
+    ):
+        """Test creating an empty Arrow table with schema."""
+        import pyarrow
+
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+
+        # Mock _arrow_schema_bytes to return a valid schema
+        schema = pyarrow.schema(
+            [
+                pyarrow.field("col1", pyarrow.string()),
+                pyarrow.field("col2", pyarrow.int32()),
+            ]
+        )
+        schema_bytes = schema.serialize().to_pybytes()
+        monkeypatch.setattr(result_set, "_arrow_schema_bytes", schema_bytes)
+
+        # Test with schema bytes
+        empty_table = result_set._create_empty_arrow_table()
+        assert isinstance(empty_table, pyarrow.Table)
+        assert empty_table.num_rows == 0
+        assert empty_table.num_columns == 2
+        assert empty_table.schema.names == ["col1", "col2"]
+
+        # Test without schema bytes but with description
+        monkeypatch.setattr(result_set, "_arrow_schema_bytes", b"")
+        result_set.description = [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+        ]
+
+        empty_table = result_set._create_empty_arrow_table()
+        assert isinstance(empty_table, pyarrow.Table)
+        assert empty_table.num_rows == 0
+        assert empty_table.num_columns == 2
+        assert empty_table.schema.names == ["col1", "col2"]
+
+    @pytest.mark.skipif(
+        pytest.importorskip("pyarrow", reason="PyArrow is not installed") is None,
+        reason="PyArrow is not installed",
+    )
+    def test_convert_rows_to_arrow_table(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test converting rows to Arrow table."""
+        import pyarrow
+
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+
+        result_set.description = [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+        ]
+
+        rows = [["value1", 123], ["value2", 456], ["value3", 789]]
+
+        arrow_table = result_set._convert_rows_to_arrow_table(rows)
+        assert isinstance(arrow_table, pyarrow.Table)
+        assert arrow_table.num_rows == 3
+        assert arrow_table.num_columns == 2
+        assert arrow_table.schema.names == ["col1", "col2"]
+
+        # Check data
+        assert arrow_table.column(0).to_pylist() == ["value1", "value2", "value3"]
+        assert arrow_table.column(1).to_pylist() == [123, 456, 789]
+
+    @pytest.mark.skipif(
+        pytest.importorskip("pyarrow", reason="PyArrow is not installed") is None,
+        reason="PyArrow is not installed",
+    )
+    def test_fetchmany_arrow(
+        self, mock_connection, mock_sea_client, execute_response, mock_results_queue
+    ):
+        """Test fetchmany_arrow method."""
+        import pyarrow
+
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_results_queue
+        result_set.description = [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+        ]
+
+        # Test with data
+        arrow_table = result_set.fetchmany_arrow(2)
+        assert isinstance(arrow_table, pyarrow.Table)
+        assert arrow_table.num_rows == 2
+        assert arrow_table.column(0).to_pylist() == ["value1", "value2"]
+        assert arrow_table.column(1).to_pylist() == [123, 456]
+
+        # Test with no data
+        mock_results_queue.next_n_rows.return_value = []
+
+        # Mock _create_empty_arrow_table to return an empty table
+        result_set._create_empty_arrow_table = Mock()
+        empty_table = pyarrow.Table.from_pydict({"col1": [], "col2": []})
+        result_set._create_empty_arrow_table.return_value = empty_table
+
+        arrow_table = result_set.fetchmany_arrow(2)
+        assert isinstance(arrow_table, pyarrow.Table)
+        assert arrow_table.num_rows == 0
+        result_set._create_empty_arrow_table.assert_called_once()
+
+    @pytest.mark.skipif(
+        pytest.importorskip("pyarrow", reason="PyArrow is not installed") is None,
+        reason="PyArrow is not installed",
+    )
+    def test_fetchall_arrow(
+        self, mock_connection, mock_sea_client, execute_response, mock_results_queue
+    ):
+        """Test fetchall_arrow method."""
+        import pyarrow
+
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_results_queue
+        result_set.description = [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+        ]
+
+        # Test with data
+        arrow_table = result_set.fetchall_arrow()
+        assert isinstance(arrow_table, pyarrow.Table)
+        assert arrow_table.num_rows == 3
+        assert arrow_table.column(0).to_pylist() == ["value1", "value2", "value3"]
+        assert arrow_table.column(1).to_pylist() == [123, 456, 789]
+
+        # Test with no data
+        mock_results_queue.remaining_rows.return_value = []
+
+        # Mock _create_empty_arrow_table to return an empty table
+        result_set._create_empty_arrow_table = Mock()
+        empty_table = pyarrow.Table.from_pydict({"col1": [], "col2": []})
+        result_set._create_empty_arrow_table.return_value = empty_table
+
+        arrow_table = result_set.fetchall_arrow()
+        assert isinstance(arrow_table, pyarrow.Table)
+        assert arrow_table.num_rows == 0
+        result_set._create_empty_arrow_table.assert_called_once()
+
+    def test_iteration_protocol(
+        self, mock_connection, mock_sea_client, execute_response, mock_results_queue
+    ):
+        """Test iteration protocol using fetchone."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_results_queue
+        result_set.description = [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+        ]
+
+        # Set up mock to return different values on each call
+        mock_results_queue.next_n_rows.side_effect = [
+            [["value1", 123]],
+            [["value2", 456]],
+            [],  # End of data
+        ]
+
+        # Test iteration
+        rows = list(result_set)
+        assert len(rows) == 2
+        assert rows[0].col1 == "value1"
+        assert rows[0].col2 == 123
+        assert rows[1].col1 == "value2"
+        assert rows[1].col2 == 456

@@ -51,7 +51,7 @@ class ResultSet(ABC):
         description=None,
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
-        arrow_schema_bytes: bytes = b"",
+        arrow_schema_bytes: Optional[bytes] = b"",
     ):
         """
         A ResultSet manages the results of a single command.
@@ -196,22 +196,6 @@ class ThriftResultSet(ResultSet):
 
             # Create the results queue using the provided format
             results_queue = ThriftResultSetQueueFactory.build_queue(
-                row_set_type=execute_response.result_format,
-                t_row_set=t_row_set,
-                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
-                max_download_threads=max_download_threads,
-                lz4_compressed=execute_response.lz4_compressed,
-                description=execute_response.description,
-                ssl_options=ssl_options,
-            )
-
-        # Build the results queue if t_row_set is provided
-        results_queue = None
-        if t_row_set and execute_response.result_format is not None:
-            from databricks.sql.utils import ResultSetQueueFactory
-
-            # Create the results queue using the provided format
-            results_queue = ResultSetQueueFactory.build_queue(
                 row_set_type=execute_response.result_format,
                 t_row_set=t_row_set,
                 arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
@@ -543,16 +527,13 @@ class SeaResultSet(ResultSet):
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
-        if isinstance(self.results, JsonQueue):
-            rows = self.results.next_n_rows(1)
-            if not rows:
-                return None
+        rows = self.results.next_n_rows(1)
+        if not rows:
+            return None
 
-            # Convert to Row object
-            converted_rows = self._convert_to_row_objects(rows)
-            return converted_rows[0] if converted_rows else None
-        else:
-            raise NotImplementedError("Unsupported queue type")
+        # Convert to Row object
+        converted_rows = self._convert_to_row_objects(rows)
+        return converted_rows[0] if converted_rows else None
 
     def fetchmany(self, size: Optional[int] = None) -> List[Row]:
         """
@@ -566,58 +547,141 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
-        if isinstance(self.results, JsonQueue):
-            rows = self.results.next_n_rows(size)
-            self._next_row_index += len(rows)
+        rows = self.results.next_n_rows(size)
+        self._next_row_index += len(rows)
 
-            # Convert to Row objects
-            return self._convert_to_row_objects(rows)
-        else:
-            raise NotImplementedError("Unsupported queue type")
+        # Convert to Row objects
+        return self._convert_to_row_objects(rows)
 
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
-        if isinstance(self.results, JsonQueue):
-            rows = self.results.remaining_rows()
-            self._next_row_index += len(rows)
 
-            # Convert to Row objects
-            return self._convert_to_row_objects(rows)
+        rows = self.results.remaining_rows()
+        self._next_row_index += len(rows)
+
+        # Convert to Row objects
+        return self._convert_to_row_objects(rows)
+
+    def _create_empty_arrow_table(self) -> Any:
+        """
+        Create an empty PyArrow table with the schema from the result set.
+
+        Returns:
+            An empty PyArrow table with the correct schema.
+        """
+        import pyarrow
+
+        # Try to use schema bytes if available
+        if self._arrow_schema_bytes:
+            schema = pyarrow.ipc.read_schema(
+                pyarrow.BufferReader(self._arrow_schema_bytes)
+            )
+            return pyarrow.Table.from_pydict(
+                {name: [] for name in schema.names}, schema=schema
+            )
+
+        # Fall back to creating schema from description
+        if self.description:
+            # Map SQL types to PyArrow types
+            type_map = {
+                "boolean": pyarrow.bool_(),
+                "tinyint": pyarrow.int8(),
+                "smallint": pyarrow.int16(),
+                "int": pyarrow.int32(),
+                "bigint": pyarrow.int64(),
+                "float": pyarrow.float32(),
+                "double": pyarrow.float64(),
+                "string": pyarrow.string(),
+                "binary": pyarrow.binary(),
+                "timestamp": pyarrow.timestamp("us"),
+                "date": pyarrow.date32(),
+                "decimal": pyarrow.decimal128(38, 18),  # Default precision and scale
+            }
+
+            fields = []
+            for col_desc in self.description:
+                col_name = col_desc[0]
+                col_type = col_desc[1].lower() if col_desc[1] else "string"
+
+                # Handle decimal with precision and scale
+                if (
+                    col_type == "decimal"
+                    and col_desc[4] is not None
+                    and col_desc[5] is not None
+                ):
+                    arrow_type = pyarrow.decimal128(col_desc[4], col_desc[5])
+                else:
+                    arrow_type = type_map.get(col_type, pyarrow.string())
+
+                fields.append(pyarrow.field(col_name, arrow_type))
+
+            schema = pyarrow.schema(fields)
+            return pyarrow.Table.from_pydict(
+                {name: [] for name in schema.names}, schema=schema
+            )
+
+        # If no schema information is available, return an empty table
+        return pyarrow.Table.from_pydict({})
+
+    def _convert_rows_to_arrow_table(self, rows: List[Row]) -> Any:
+        """
+        Convert a list of Row objects to a PyArrow table.
+
+        Args:
+            rows: List of Row objects to convert.
+
+        Returns:
+            PyArrow table containing the data from the rows.
+        """
+        import pyarrow
+
+        if not rows:
+            return self._create_empty_arrow_table()
+
+        # Extract column names from description
+        if self.description:
+            column_names = [col[0] for col in self.description]
         else:
-            raise NotImplementedError("Unsupported queue type")
+            # If no description, use the attribute names from the first row
+            column_names = rows[0]._fields
+
+        # Convert rows to columns
+        columns: dict[str, list] = {name: [] for name in column_names}
+
+        for row in rows:
+            for i, name in enumerate(column_names):
+                if hasattr(row, "_asdict"):  # If it's a Row object
+                    columns[name].append(row[i])
+                else:  # If it's a raw list
+                    columns[name].append(row[i])
+
+        # Create PyArrow table
+        return pyarrow.Table.from_pydict(columns)
 
     def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
         if not pyarrow:
             raise ImportError("PyArrow is required for Arrow support")
 
-        if isinstance(self.results, JsonQueue):
-            rows = self.fetchmany(size)
-            if not rows:
-                # Return empty Arrow table with schema
-                return self._create_empty_arrow_table()
+        rows = self.fetchmany(size)
+        if not rows:
+            # Return empty Arrow table with schema
+            return self._create_empty_arrow_table()
 
-            # Convert rows to Arrow table
-            return self._convert_rows_to_arrow_table(rows)
-        else:
-            raise NotImplementedError("Unsupported queue type")
+        # Convert rows to Arrow table
+        return self._convert_rows_to_arrow_table(rows)
 
     def fetchall_arrow(self) -> Any:
         """Fetch all remaining rows as an Arrow table."""
         if not pyarrow:
             raise ImportError("PyArrow is required for Arrow support")
 
-        if isinstance(self.results, JsonQueue):
-            rows = self.fetchall()
-            if not rows:
-                # Return empty Arrow table with schema
-                return self._create_empty_arrow_table()
+        rows = self.fetchall()
+        if not rows:
+            # Return empty Arrow table with schema
+            return self._create_empty_arrow_table()
 
-            # Convert rows to Arrow table
-            return self._convert_rows_to_arrow_table(rows)
-        else:
-            raise NotImplementedError("Unsupported queue type")
+        # Convert rows to Arrow table
+        return self._convert_rows_to_arrow_table(rows)
