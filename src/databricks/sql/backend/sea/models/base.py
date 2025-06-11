@@ -43,6 +43,16 @@ class ExternalLink:
 
 
 @dataclass
+class ChunkInfo:
+    """Information about a chunk in the result set."""
+
+    chunk_index: int
+    byte_count: int
+    row_offset: int
+    row_count: int
+
+
+@dataclass
 class ResultData:
     """Result data from a statement execution."""
 
@@ -73,5 +83,5 @@ class ResultManifest:
     total_byte_count: int
     total_chunk_count: int
     truncated: bool = False
-    chunks: Optional[List[Dict[str, Any]]] = None
+    chunks: Optional[List[ChunkInfo]] = None
     result_compression: Optional[str] = None
