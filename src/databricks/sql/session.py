@@ -10,7 +10,7 @@ from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.backend.types import SessionId
+from databricks.sql.backend.types import SessionId, BackendType
 
 logger = logging.getLogger(__name__)
 

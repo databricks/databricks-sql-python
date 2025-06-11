@@ -933,12 +933,12 @@ class TestPySQLCoreSuite(
                 result_set = cursor.active_result_set
                 assert result_set is not None
 
-                initial_op_state = result_set.op_state
+                initial_op_state = result_set.status
 
                 result_set.close()
 
-                assert result_set.op_state == CommandState.CLOSED
-                assert result_set.op_state != initial_op_state
+                assert result_set.status == CommandState.CLOSED
+                assert result_set.status != initial_op_state
 
                 # Closing the result set again should be a no-op and not raise exceptions
                 result_set.close()

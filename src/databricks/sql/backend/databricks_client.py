@@ -16,8 +16,6 @@ if TYPE_CHECKING:
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.types import SessionId, CommandId, CommandState
-from databricks.sql.utils import ExecuteResponse
-from databricks.sql.types import SSLOptions
 
 # Forward reference for type hints
 from typing import TYPE_CHECKING

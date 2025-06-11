@@ -8,7 +8,8 @@ except ImportError:
     pa = None
 
 import databricks.sql.client as client
-from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.utils import ArrowQueue
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
 
@@ -39,26 +40,30 @@ class FetchTests(unittest.TestCase):
         # If the initial results have been set, then we should never try and fetch more
         schema, arrow_table = FetchTests.make_arrow_table(initial_results)
         arrow_queue = ArrowQueue(arrow_table, len(initial_results), 0)
-        rs = ThriftResultSet(
-            connection=Mock(),
-            execute_response=ExecuteResponse(
-                status=None,
-                has_been_closed_server_side=True,
-                has_more_rows=False,
-                description=Mock(),
-                lz4_compressed=Mock(),
-                command_id=None,
-                arrow_queue=arrow_queue,
-                arrow_schema_bytes=schema.serialize().to_pybytes(),
-                is_staging_operation=False,
-            ),
-            thrift_client=None,
-        )
+
+        # Create a mock backend that will return the queue when _fill_results_buffer is called
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
+        mock_thrift_backend.fetch_results.return_value = (arrow_queue, False)
+
         num_cols = len(initial_results[0]) if initial_results else 0
-        rs.description = [
+        description = [
             (f"col{col_id}", "integer", None, None, None, None, None)
             for col_id in range(num_cols)
         ]
+
+        rs = ThriftResultSet(
+            connection=Mock(),
+            execute_response=ExecuteResponse(
+                command_id=None,
+                status=None,
+                has_been_closed_server_side=True,
+                description=description,
+                lz4_compressed=True,
+                is_staging_operation=False,
+            ),
+            thrift_client=mock_thrift_backend,
+            t_row_set=None,
+        )
         return rs
 
     @staticmethod
@@ -85,20 +90,19 @@ class FetchTests(unittest.TestCase):
         mock_thrift_backend.fetch_results = fetch_results
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
 
+        description = [
+            (f"col{col_id}", "integer", None, None, None, None, None)
+            for col_id in range(num_cols)
+        ]
+
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=False,
-                has_more_rows=True,
-                description=[
-                    (f"col{col_id}", "integer", None, None, None, None, None)
-                    for col_id in range(num_cols)
-                ],
-                lz4_compressed=Mock(),
-                command_id=None,
-                arrow_queue=None,
-                arrow_schema_bytes=None,
+                description=description,
+                lz4_compressed=True,
                 is_staging_operation=False,
             ),
             thrift_client=mock_thrift_backend,
