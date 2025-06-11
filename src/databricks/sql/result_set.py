@@ -41,6 +41,7 @@ class ResultSet(ABC):
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
+        is_direct_results: bool = False,
         results_queue=None,
         description=None,
         is_staging_operation: bool = False,
@@ -50,18 +51,18 @@ class ResultSet(ABC):
         """
         A ResultSet manages the results of a single command.
 
-        Args:
-            connection: The parent connection
-            backend: The backend client
-            arraysize: The max number of rows to fetch at a time (PEP-249)
-            buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
-            command_id: The command ID
-            status: The command status
-            has_been_closed_server_side: Whether the command has been closed on the server
-            has_more_rows: Whether the command has more rows
-            results_queue: The results queue
-            description: column description of the results
-            is_staging_operation: Whether the command is a staging operation
+        Parameters:
+            :param connection: The parent connection
+            :param backend: The backend client
+            :param arraysize: The max number of rows to fetch at a time (PEP-249)
+            :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
+            :param command_id: The command ID
+            :param status: The command status
+            :param has_been_closed_server_side: Whether the command has been closed on the server
+            :param is_direct_results: Whether the command has more rows
+            :param results_queue: The results queue
+            :param description: column description of the results
+            :param is_staging_operation: Whether the command is a staging operation
         """
 
         self.connection = connection
@@ -73,6 +74,7 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
+        self.is_direct_results = is_direct_results
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
         self.lz4_compressed = lz4_compressed
@@ -162,24 +164,25 @@ class ThriftResultSet(ResultSet):
         t_row_set=None,
         max_download_threads: int = 10,
         ssl_options=None,
-        has_more_rows: bool = True,
+        is_direct_results: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
 
-        Args:
-            connection: The parent connection
-            execute_response: Response from the execute command
-            thrift_client: The ThriftDatabricksClient instance for direct access
-            buffer_size_bytes: Buffer size for fetching results
-            arraysize: Default number of rows to fetch
-            use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            t_row_set: The TRowSet containing result data (if available)
-            max_download_threads: Maximum number of download threads for cloud fetch
-            ssl_options: SSL options for cloud fetch
-            has_more_rows: Whether there are more rows to fetch
+        Parameters:
+            :param connection: The parent connection
+            :param execute_response: Response from the execute command
+            :param thrift_client: The ThriftDatabricksClient instance for direct access
+            :param buffer_size_bytes: Buffer size for fetching results
+            :param arraysize: Default number of rows to fetch
+            :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
+            :param t_row_set: The TRowSet containing result data (if available)
+            :param max_download_threads: Maximum number of download threads for cloud fetch
+            :param ssl_options: SSL options for cloud fetch
+            :param is_direct_results: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
+        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
         self.has_more_rows = has_more_rows
 
@@ -199,6 +202,22 @@ class ThriftResultSet(ResultSet):
                 ssl_options=ssl_options,
             )
 
+        # Build the results queue if t_row_set is provided
+        results_queue = None
+        if t_row_set and execute_response.result_format is not None:
+            from databricks.sql.utils import ResultSetQueueFactory
+
+            # Create the results queue using the provided format
+            results_queue = ResultSetQueueFactory.build_queue(
+                row_set_type=execute_response.result_format,
+                t_row_set=t_row_set,
+                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                max_download_threads=max_download_threads,
+                lz4_compressed=execute_response.lz4_compressed,
+                description=execute_response.description,
+                ssl_options=ssl_options,
+            )
+
         # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
@@ -208,6 +227,7 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            is_direct_results=is_direct_results,
             results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
@@ -220,7 +240,7 @@ class ThriftResultSet(ResultSet):
             self._fill_results_buffer()
 
     def _fill_results_buffer(self):
-        results, has_more_rows = self.backend.fetch_results(
+        results, is_direct_results = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -231,7 +251,7 @@ class ThriftResultSet(ResultSet):
             use_cloud_fetch=self._use_cloud_fetch,
         )
         self.results = results
-        self.has_more_rows = has_more_rows
+        self.is_direct_results = is_direct_results
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -315,7 +335,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self.is_direct_results
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -340,7 +360,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self.is_direct_results
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -355,7 +375,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self.is_direct_results:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -381,7 +401,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self.is_direct_results:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
