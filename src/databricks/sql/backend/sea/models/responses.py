@@ -85,7 +85,7 @@ def _parse_result(data: Dict[str, Any]) -> ResultData:
 
 @dataclass
 class ExecuteStatementResponse:
-    """Response from executing a SQL statement."""
+    """Representation of the response from executing a SQL statement."""
 
     statement_id: str
     status: StatementStatus
@@ -105,7 +105,7 @@ class ExecuteStatementResponse:
 
 @dataclass
 class GetStatementResponse:
-    """Response from getting information about a statement."""
+    """Representation of the response from getting information about a statement."""
 
     statement_id: str
     status: StatementStatus
@@ -125,7 +125,7 @@ class GetStatementResponse:
 
 @dataclass
 class CreateSessionResponse:
-    """Response from creating a new session."""
+    """Representation of the response from creating a new session."""
 
     session_id: str
 
