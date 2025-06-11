@@ -1,8 +1,7 @@
 import logging
-import uuid
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
@@ -23,9 +22,7 @@ from databricks.sql.backend.types import (
 )
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
-from databricks.sql.utils import SeaResultSetQueueFactory
 from databricks.sql.backend.sea.models.base import (
     ResultData,
     ExternalLink,
@@ -716,3 +713,55 @@ class SeaDatabricksClient(DatabricksClient):
             result_data=result_data,
             manifest=manifest,
         )
+
+    # == Metadata Operations ==
+
+    def get_catalogs(
+        self,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: "Cursor",
+    ) -> "ResultSet":
+        """Get available catalogs by executing 'SHOW CATALOGS'."""
+        raise NotImplementedError("get_catalogs is not implemented for SEA backend")
+
+    def get_schemas(
+        self,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: "Cursor",
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+    ) -> "ResultSet":
+        """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
+        raise NotImplementedError("get_schemas is not implemented for SEA backend")
+
+    def get_tables(
+        self,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: "Cursor",
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        table_types: Optional[List[str]] = None,
+    ) -> "ResultSet":
+        """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
+        raise NotImplementedError("get_tables is not implemented for SEA backend")
+
+    def get_columns(
+        self,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: "Cursor",
+        catalog_name: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        column_name: Optional[str] = None,
+    ) -> "ResultSet":
+        """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
+        raise NotImplementedError("get_columns is not implemented for SEA backend")
