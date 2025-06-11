@@ -310,7 +310,6 @@ class ThriftResultSet(ResultSet):
 
         An empty sequence is returned when no more rows are available.
         """
-
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
         results = self.results.next_n_rows(size)
@@ -335,7 +334,6 @@ class ThriftResultSet(ResultSet):
         Fetch the next set of rows of a query result, returning a Columnar Table.
         An empty sequence is returned when no more rows are available.
         """
-
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
 
@@ -400,7 +398,6 @@ class ThriftResultSet(ResultSet):
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
-
         if isinstance(self.results, ColumnQueue):
             res = self._convert_columnar_table(self.fetchmany_columnar(1))
         else:
@@ -415,7 +412,6 @@ class ThriftResultSet(ResultSet):
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
-
         if isinstance(self.results, ColumnQueue):
             return self._convert_columnar_table(self.fetchall_columnar())
         else:
@@ -427,7 +423,6 @@ class ThriftResultSet(ResultSet):
 
         An empty sequence is returned when no more rows are available.
         """
-
         if isinstance(self.results, ColumnQueue):
             return self._convert_columnar_table(self.fetchmany_columnar(size))
         else:
