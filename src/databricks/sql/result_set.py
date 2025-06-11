@@ -202,22 +202,6 @@ class ThriftResultSet(ResultSet):
                 ssl_options=ssl_options,
             )
 
-        # Build the results queue if t_row_set is provided
-        results_queue = None
-        if t_row_set and execute_response.result_format is not None:
-            from databricks.sql.utils import ResultSetQueueFactory
-
-            # Create the results queue using the provided format
-            results_queue = ResultSetQueueFactory.build_queue(
-                row_set_type=execute_response.result_format,
-                t_row_set=t_row_set,
-                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
-                max_download_threads=max_download_threads,
-                lz4_compressed=execute_response.lz4_compressed,
-                description=execute_response.description,
-                ssl_options=ssl_options,
-            )
-
         # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
