@@ -10,7 +10,6 @@ from databricks.sql.backend.sea.utils.constants import (
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
-    from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
