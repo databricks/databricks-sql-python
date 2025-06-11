@@ -158,7 +158,10 @@ class ThriftResultSet(ResultSet):
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
-        arrow_schema_bytes: Optional[bytes] = None,
+        t_row_set=None,
+        max_download_threads: int = 10,
+        ssl_options=None,
+        has_more_rows: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -170,12 +173,31 @@ class ThriftResultSet(ResultSet):
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            arrow_schema_bytes: Arrow schema bytes for the result set
+            t_row_set: The TRowSet containing result data (if available)
+            max_download_threads: Maximum number of download threads for cloud fetch
+            ssl_options: SSL options for cloud fetch
+            has_more_rows: Whether there are more rows to fetch
         """
         # Initialize ThriftResultSet-specific attributes
-        self._arrow_schema_bytes = arrow_schema_bytes
+        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
         self._use_cloud_fetch = use_cloud_fetch
         self.lz4_compressed = execute_response.lz4_compressed
+
+        # Build the results queue if t_row_set is provided
+        results_queue = None
+        if t_row_set and execute_response.result_format is not None:
+            from databricks.sql.utils import ResultSetQueueFactory
+
+            # Create the results queue using the provided format
+            results_queue = ResultSetQueueFactory.build_queue(
+                row_set_type=execute_response.result_format,
+                t_row_set=t_row_set,
+                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                max_download_threads=max_download_threads,
+                lz4_compressed=execute_response.lz4_compressed,
+                description=execute_response.description,
+                ssl_options=ssl_options,
+            )
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -186,8 +208,8 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=execute_response.has_more_rows,
-            results_queue=execute_response.results_queue,
+            has_more_rows=has_more_rows,
+            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
         )
