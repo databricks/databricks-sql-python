@@ -109,6 +109,7 @@ class ThriftResultSetQueueFactory(ABC):
         else:
             raise AssertionError("Row set type is not valid")
 
+
 class SeaResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
@@ -145,7 +146,9 @@ class SeaResultSetQueueFactory(ABC):
             return JsonQueue(sea_result_data.data)
         elif sea_result_data.external_links is not None:
             # EXTERNAL_LINKS disposition
-            raise NotImplementedError("EXTERNAL_LINKS disposition is not implemented for SEA backend")
+            raise NotImplementedError(
+                "EXTERNAL_LINKS disposition is not implemented for SEA backend"
+            )
         else:
             # Empty result set
             return JsonQueue([])
@@ -172,6 +175,7 @@ class JsonQueue(ResultSetQueue):
         slice = self.data_array[self.cur_row_index :]
         self.cur_row_index += len(slice)
         return slice
+
 
 class ColumnTable:
     def __init__(self, column_table, column_names):

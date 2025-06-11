@@ -20,7 +20,12 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue, SeaResultSetQueueFactory
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+    JsonQueue,
+    SeaResultSetQueueFactory,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -469,8 +474,8 @@ class SeaResultSet(ResultSet):
         sea_client: "SeaDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
-        result_data=None,
-        manifest=None,
+        result_data: Optional[ResultData] = None,
+        manifest: Optional[ResultManifest] = None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
@@ -485,13 +490,17 @@ class SeaResultSet(ResultSet):
             manifest: Manifest from SEA response (optional)
         """
 
-        queue = SeaResultSetQueueFactory.build_queue(
-            sea_result_data=execute_response.results_data,
-            manifest=execute_response.results_manifest,
-            statement_id=execute_response.command_id.to_sea_statement_id(),
-            description=execute_response.description,
-            schema_bytes=execute_response.arrow_schema_bytes,
-        )
+        if result_data:
+            queue = SeaResultSetQueueFactory.build_queue(
+                sea_result_data=result_data,
+                manifest=manifest,
+                statement_id=execute_response.command_id.to_sea_statement_id(),
+                description=execute_response.description,
+                schema_bytes=execute_response.arrow_schema_bytes,
+            )
+        else:
+            logger.warning("No result data provided for SEA result set")
+            queue = JsonQueue([])
 
         super().__init__(
             connection=connection,
@@ -501,12 +510,13 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            results_queue=queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
-    
+
     def _convert_to_row_objects(self, rows):
         """
         Convert raw data rows to Row objects with named columns based on description.
@@ -526,9 +536,7 @@ class SeaResultSet(ResultSet):
 
     def _fill_results_buffer(self):
         """Fill the results buffer from the backend."""
-        raise NotImplementedError(
-            "_fill_results_buffer is not implemented for SEA backend"
-        )
+        return None
 
     def fetchone(self) -> Optional[Row]:
         """
@@ -572,8 +580,15 @@ class SeaResultSet(ResultSet):
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
         """
+        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
+        if isinstance(self.results, JsonQueue):
+            rows = self.results.remaining_rows()
+            self._next_row_index += len(rows)
 
-        raise NotImplementedError("fetchall is not implemented for SEA backend")
+            # Convert to Row objects
+            return self._convert_to_row_objects(rows)
+        else:
+            raise NotImplementedError("Unsupported queue type")
 
     def fetchmany_arrow(self, size: int) -> Any:
         """Fetch the next set of rows as an Arrow table."""
@@ -606,4 +621,3 @@ class SeaResultSet(ResultSet):
             return self._convert_rows_to_arrow_table(rows)
         else:
             raise NotImplementedError("Unsupported queue type")
-

@@ -56,26 +56,34 @@ def test_sea_metadata():
         cursor = connection.cursor()
         logger.info("Fetching catalogs...")
         cursor.catalogs()
+        rows = cursor.fetchall()
+        logger.info(f"Rows: {rows}")
         logger.info("Successfully fetched catalogs")
 
         # Test schemas
         logger.info(f"Fetching schemas for catalog '{catalog}'...")
         cursor.schemas(catalog_name=catalog)
+        rows = cursor.fetchall()
+        logger.info(f"Rows: {rows}")
         logger.info("Successfully fetched schemas")
 
         # Test tables
         logger.info(f"Fetching tables for catalog '{catalog}', schema 'default'...")
         cursor.tables(catalog_name=catalog, schema_name="default")
+        rows = cursor.fetchall()
+        logger.info(f"Rows: {rows}")
         logger.info("Successfully fetched tables")
 
         # Test columns for a specific table
         # Using a common table that should exist in most environments
         logger.info(
-            f"Fetching columns for catalog '{catalog}', schema 'default', table 'information_schema'..."
+            f"Fetching columns for catalog '{catalog}', schema 'default', table 'customer'..."
         )
         cursor.columns(
-            catalog_name=catalog, schema_name="default", table_name="information_schema"
+            catalog_name=catalog, schema_name="default", table_name="customer"
         )
+        rows = cursor.fetchall()
+        logger.info(f"Rows: {rows}")
         logger.info("Successfully fetched columns")
 
         # Close resources
