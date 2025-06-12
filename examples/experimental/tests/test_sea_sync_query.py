@@ -1,0 +1,195 @@
+"""
+Test for SEA synchronous query execution functionality.
+"""
+import os
+import sys
+import logging
+from databricks.sql.client import Connection
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def test_sea_sync_query_with_cloud_fetch():
+    """
+    Test executing a query synchronously using the SEA backend with cloud fetch enabled.
+
+    This function connects to a Databricks SQL endpoint using the SEA backend,
+    executes a simple query with cloud fetch enabled, and verifies that execution completes successfully.
+    """
+    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
+    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
+    access_token = os.environ.get("DATABRICKS_TOKEN")
+    catalog = os.environ.get("DATABRICKS_CATALOG")
+
+    if not all([server_hostname, http_path, access_token]):
+        logger.error("Missing required environment variables.")
+        logger.error(
+            "Please set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, and DATABRICKS_TOKEN."
+        )
+        return False
+
+    try:
+        # Create connection with cloud fetch enabled
+        logger.info(
+            "Creating connection for synchronous query execution with cloud fetch enabled"
+        )
+        connection = Connection(
+            server_hostname=server_hostname,
+            http_path=http_path,
+            access_token=access_token,
+            catalog=catalog,
+            schema="default",
+            use_sea=True,
+            user_agent_entry="SEA-Test-Client",
+            use_cloud_fetch=True,
+            arraysize=10000,
+        )
+
+        logger.info(
+            f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
+        )
+
+        # Execute a query that returns 100 rows
+        cursor = connection.cursor()
+
+        requested_row_count = 10000
+        query = f""" 
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 10000)) as test_value
+            FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+        logger.info(f"Executing synchronous query with cloud fetch: SELECT {requested_row_count} rows")
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        logger.info(f"Retrieved {len(rows)} rows")
+        
+        # Check for duplicate rows
+        row_ids = [row[0] for row in rows]
+        unique_ids = set(row_ids)
+        logger.info(f"Number of unique IDs: {len(unique_ids)}")
+        
+        if len(rows) != len(unique_ids):
+            logger.info("DUPLICATE ROWS DETECTED!")
+            # Count occurrences of each ID
+            id_counts = {}
+            for id_val in row_ids:
+                if id_val in id_counts:
+                    id_counts[id_val] += 1
+                else:
+                    id_counts[id_val] = 1
+            
+            # Find duplicates
+            duplicates = {id_val: count for id_val, count in id_counts.items() if count > 1}
+            logger.info(f"Duplicate IDs (showing up to 10): {list(duplicates.items())[:10]}")
+        
+        # Check if we got more rows than requested
+        if len(rows) > requested_row_count:
+            logger.info(f"WARNING: Received {len(rows) - requested_row_count} more rows than requested!")
+
+        # Close resources
+        cursor.close()
+        connection.close()
+        logger.info("Successfully closed SEA session")
+
+        return True
+
+    except Exception as e:
+        logger.error(
+            f"Error during SEA synchronous query execution test with cloud fetch: {str(e)}"
+        )
+        import traceback
+
+        logger.error(traceback.format_exc())
+        return False
+
+
+def test_sea_sync_query_without_cloud_fetch():
+    """
+    Test executing a query synchronously using the SEA backend with cloud fetch disabled.
+
+    This function connects to a Databricks SQL endpoint using the SEA backend,
+    executes a simple query with cloud fetch disabled, and verifies that execution completes successfully.
+    """
+    server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
+    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
+    access_token = os.environ.get("DATABRICKS_TOKEN")
+    catalog = os.environ.get("DATABRICKS_CATALOG")
+
+    if not all([server_hostname, http_path, access_token]):
+        logger.error("Missing required environment variables.")
+        logger.error(
+            "Please set DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, and DATABRICKS_TOKEN."
+        )
+        return False
+
+    try:
+        # Create connection with cloud fetch disabled
+        logger.info(
+            "Creating connection for synchronous query execution with cloud fetch disabled"
+        )
+        connection = Connection(
+            server_hostname=server_hostname,
+            http_path=http_path,
+            access_token=access_token,
+            catalog=catalog,
+            schema="default",
+            use_sea=True,
+            user_agent_entry="SEA-Test-Client",
+            use_cloud_fetch=False,
+            enable_query_result_lz4_compression=False,
+        )
+
+        logger.info(
+            f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
+        )
+
+        # Execute a query that returns 100 rows
+        cursor = connection.cursor()
+        logger.info("Executing synchronous query without cloud fetch: SELECT 100 rows")
+        cursor.execute(
+            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
+        )
+        logger.info("Query executed successfully with cloud fetch disabled")
+
+        rows = cursor.fetchall()
+        logger.info(f"Retrieved rows: {rows}")
+
+        # Close resources
+        cursor.close()
+        connection.close()
+        logger.info("Successfully closed SEA session")
+
+        return True
+
+    except Exception as e:
+        logger.error(
+            f"Error during SEA synchronous query execution test without cloud fetch: {str(e)}"
+        )
+        import traceback
+
+        logger.error(traceback.format_exc())
+        return False
+
+
+def test_sea_sync_query_exec():
+    """
+    Run both synchronous query tests and return overall success.
+    """
+    with_cloud_fetch_success = test_sea_sync_query_with_cloud_fetch()
+    logger.info(
+        f"Synchronous query with cloud fetch: {'✅ PASSED' if with_cloud_fetch_success else '❌ FAILED'}"
+    )
+
+    without_cloud_fetch_success = test_sea_sync_query_without_cloud_fetch()
+    logger.info(
+        f"Synchronous query without cloud fetch: {'✅ PASSED' if without_cloud_fetch_success else '❌ FAILED'}"
+    )
+
+    return with_cloud_fetch_success and without_cloud_fetch_success
+
+
+if __name__ == "__main__":
+    success = test_sea_sync_query_exec()
+    sys.exit(0 if success else 1)
