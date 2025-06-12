@@ -356,12 +356,7 @@ class TelemetryClientFactory:
         )
         for uuid, client in cls._clients.items():
             if hasattr(client, "flush"):
-                try:
-                    client.flush()  # Submit any pending events
-                except Exception as e:
-                    logger.debug(
-                        "Failed to flush telemetry for connection %s: %s", uuid, e
-                    )
+                client.flush()  # Submit any pending events
 
         if cls._executor:
             try:
