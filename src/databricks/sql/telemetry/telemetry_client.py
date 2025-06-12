@@ -244,56 +244,72 @@ class TelemetryClient(BaseTelemetryClient):
             "Exporting initial telemetry log for connection %s", self._connection_uuid
         )
 
-        self._driver_connection_params = driver_connection_params
-        self._user_agent = user_agent
+        try:
+            self._driver_connection_params = driver_connection_params
+            self._user_agent = user_agent
 
-        telemetry_frontend_log = TelemetryFrontendLog(
-            frontend_log_event_id=str(uuid.uuid4()),
-            context=FrontendLogContext(
-                client_context=TelemetryClientContext(
-                    timestamp_millis=int(time.time() * 1000),
-                    user_agent=self._user_agent,
-                )
-            ),
-            entry=FrontendLogEntry(
-                sql_driver_log=TelemetryEvent(
-                    session_id=self._connection_uuid,
-                    system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
-                    driver_connection_params=self._driver_connection_params,
-                )
-            ),
-        )
+            telemetry_frontend_log = TelemetryFrontendLog(
+                frontend_log_event_id=str(uuid.uuid4()),
+                context=FrontendLogContext(
+                    client_context=TelemetryClientContext(
+                        timestamp_millis=int(time.time() * 1000),
+                        user_agent=self._user_agent,
+                    )
+                ),
+                entry=FrontendLogEntry(
+                    sql_driver_log=TelemetryEvent(
+                        session_id=self._connection_uuid,
+                        system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                        driver_connection_params=self._driver_connection_params,
+                    )
+                ),
+            )
 
-        self.export_event(telemetry_frontend_log)
+            self.export_event(telemetry_frontend_log)
+        except Exception as e:
+            logger.debug("Failed to export initial telemetry log: %s", e)
 
     def export_failure_log(self, error_name, error_message):
         logger.debug("Exporting failure log for connection %s", self._connection_uuid)
-        error_info = DriverErrorInfo(error_name=error_name, stack_trace=error_message)
-        telemetry_frontend_log = TelemetryFrontendLog(
-            frontend_log_event_id=str(uuid.uuid4()),
-            context=FrontendLogContext(
-                client_context=TelemetryClientContext(
-                    timestamp_millis=int(time.time() * 1000),
-                    user_agent=self._user_agent,
-                )
-            ),
-            entry=FrontendLogEntry(
-                sql_driver_log=TelemetryEvent(
-                    session_id=self._connection_uuid,
-                    system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
-                    driver_connection_params=self._driver_connection_params,
-                    error_info=error_info,
-                )
-            ),
-        )
-        self.export_event(telemetry_frontend_log)
+        try:
+            error_info = DriverErrorInfo(
+                error_name=error_name, stack_trace=error_message
+            )
+            telemetry_frontend_log = TelemetryFrontendLog(
+                frontend_log_event_id=str(uuid.uuid4()),
+                context=FrontendLogContext(
+                    client_context=TelemetryClientContext(
+                        timestamp_millis=int(time.time() * 1000),
+                        user_agent=self._user_agent,
+                    )
+                ),
+                entry=FrontendLogEntry(
+                    sql_driver_log=TelemetryEvent(
+                        session_id=self._connection_uuid,
+                        system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                        driver_connection_params=self._driver_connection_params,
+                        error_info=error_info,
+                    )
+                ),
+            )
+            self.export_event(telemetry_frontend_log)
+        except Exception as e:
+            logger.debug("Failed to export failure log: %s", e)
 
     def close(self):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
-        self.flush()
+        try:
+            self.flush()
+        except Exception as e:
+            logger.debug("Failed to flush telemetry during close: %s", e)
 
-        TelemetryClientFactory.close(self._connection_uuid)
+        try:
+            TelemetryClientFactory.close(self._connection_uuid)
+        except Exception as e:
+            logger.debug(
+                "Failed to remove telemetry client from telemetry clientfactory: %s", e
+            )
 
 
 class TelemetryClientFactory:
