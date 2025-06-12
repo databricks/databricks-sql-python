@@ -19,14 +19,9 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
+from databricks.sql.exc import ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.sea.models.base import (
-    ResultData,
-    ExternalLink,
-    ResultManifest,
-)
 
 from databricks.sql.backend.sea.models import (
     ExecuteStatementRequest,
