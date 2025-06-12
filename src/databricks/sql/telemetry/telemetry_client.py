@@ -37,7 +37,7 @@ class TelemetryHelper:
     _DRIVER_SYSTEM_CONFIGURATION = None
 
     @classmethod
-    def getDriverSystemConfiguration(cls) -> DriverSystemConfiguration:
+    def get_driver_system_configuration(cls) -> DriverSystemConfiguration:
         if cls._DRIVER_SYSTEM_CONFIGURATION is None:
             from databricks.sql import __version__
 
@@ -259,7 +259,7 @@ class TelemetryClient(BaseTelemetryClient):
                 entry=FrontendLogEntry(
                     sql_driver_log=TelemetryEvent(
                         session_id=self._connection_uuid,
-                        system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                        system_configuration=TelemetryHelper.get_driver_system_configuration(),
                         driver_connection_params=self._driver_connection_params,
                     )
                 ),
@@ -286,7 +286,7 @@ class TelemetryClient(BaseTelemetryClient):
                 entry=FrontendLogEntry(
                     sql_driver_log=TelemetryEvent(
                         session_id=self._connection_uuid,
-                        system_configuration=TelemetryHelper.getDriverSystemConfiguration(),
+                        system_configuration=TelemetryHelper.get_driver_system_configuration(),
                         driver_connection_params=self._driver_connection_params,
                         error_info=error_info,
                     )
@@ -340,8 +340,6 @@ class TelemetryClientFactory:
     def _install_exception_hook(cls):
         """Install global exception handler for unhandled exceptions"""
         if not cls._excepthook_installed:
-            import sys
-
             cls._original_excepthook = sys.excepthook
             sys.excepthook = cls._handle_unhandled_exception
             cls._excepthook_installed = True
