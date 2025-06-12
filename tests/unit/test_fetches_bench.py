@@ -36,7 +36,7 @@ class FetchBenchmarkTests(unittest.TestCase):
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=True,
-                is_direct_results=False,
+                has_more_rows=False,
                 description=Mock(),
                 command_id=None,
                 arrow_queue=arrow_queue,

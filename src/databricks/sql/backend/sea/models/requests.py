@@ -98,7 +98,7 @@ class CloseStatementRequest:
 
 @dataclass
 class CreateSessionRequest:
-    """Representation of a request to create a new session."""
+    """Request to create a new session."""
 
     warehouse_id: str
     session_confs: Optional[Dict[str, str]] = None
@@ -123,7 +123,7 @@ class CreateSessionRequest:
 
 @dataclass
 class DeleteSessionRequest:
-    """Representation of a request to delete a session."""
+    """Request to delete a session."""
 
     warehouse_id: str
     session_id: str
