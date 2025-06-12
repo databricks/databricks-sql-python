@@ -19,12 +19,11 @@ class Error(Exception):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}
-        self.connection_uuid = connection_uuid
 
         error_name = self.__class__.__name__
-        if self.connection_uuid:
+        if connection_uuid:
             telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                self.connection_uuid
+                connection_uuid
             )
             telemetry_client.export_failure_log(error_name, self.message)
 
