@@ -83,6 +83,12 @@ class TestNoopTelemetryClient:
             driver_connection_params=MagicMock(), user_agent="test"
         )
 
+    def test_export_failure_log(self, noop_telemetry_client):
+        """Test that export_failure_log does nothing."""
+        noop_telemetry_client.export_failure_log(
+            error_name="TestError", error_message="Test error message"
+        )
+
     def test_close(self, noop_telemetry_client):
         """Test that close does nothing."""
         noop_telemetry_client.close()
@@ -125,6 +131,47 @@ class TestTelemetryClient:
         client.export_initial_telemetry_log(driver_connection_params, user_agent)
         
         mock_frontend_log.assert_called_once()
+        client.export_event.assert_called_once_with(mock_frontend_log.return_value)
+
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.getDriverSystemConfiguration")
+    @patch("databricks.sql.telemetry.telemetry_client.DriverErrorInfo")
+    @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
+    @patch("databricks.sql.telemetry.telemetry_client.time.time")
+    def test_export_failure_log(
+        self, 
+        mock_time, 
+        mock_uuid4, 
+        mock_driver_error_info,
+        mock_get_driver_config, 
+        mock_frontend_log,
+        telemetry_client_setup
+    ):
+        """Test exporting failure telemetry log."""
+        mock_time.return_value = 2000
+        mock_uuid4.return_value = "test-error-uuid"
+        mock_get_driver_config.return_value = "test-driver-config"
+        mock_driver_error_info.return_value = MagicMock()
+        mock_frontend_log.return_value = MagicMock()
+
+        client = telemetry_client_setup["client"]
+        client.export_event = MagicMock()
+        
+        client._driver_connection_params = "test-connection-params"
+        client._user_agent = "test-user-agent"
+        
+        error_name = "TestError"
+        error_message = "This is a test error message"
+        
+        client.export_failure_log(error_name, error_message)
+        
+        mock_driver_error_info.assert_called_once_with(
+            error_name=error_name, 
+            stack_trace=error_message
+        )
+        
+        mock_frontend_log.assert_called_once()
+        
         client.export_event.assert_called_once_with(mock_frontend_log.return_value)
 
     def test_export_event(self, telemetry_client_setup):
