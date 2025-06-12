@@ -9,7 +9,7 @@ from databricks.sql.telemetry.models.enums import (
     ExecutionResultFormat,
 )
 from typing import Optional
-from databricks.sql.telemetry.utils import EnumEncoder
+from databricks.sql.telemetry.utils import to_json_compact
 
 
 @dataclass
@@ -26,7 +26,7 @@ class HostDetails:
     port: int
 
     def to_json(self):
-        return json.dumps(asdict(self))
+        return to_json_compact(self)
 
 
 @dataclass
@@ -52,7 +52,7 @@ class DriverConnectionParameters:
     socket_timeout: Optional[int] = None
 
     def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
+        return to_json_compact(self)
 
 
 @dataclass
@@ -88,7 +88,7 @@ class DriverSystemConfiguration:
     locale_name: Optional[str] = None
 
     def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
+        return to_json_compact(self)
 
 
 @dataclass
@@ -106,7 +106,7 @@ class DriverVolumeOperation:
     volume_path: str
 
     def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
+        return to_json_compact(self)
 
 
 @dataclass
@@ -124,7 +124,7 @@ class DriverErrorInfo:
     stack_trace: str
 
     def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
+        return to_json_compact(self)
 
 
 @dataclass
@@ -146,7 +146,7 @@ class SqlExecutionEvent:
     retry_count: int
 
     def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
+        return to_json_compact(self)
 
 
 @dataclass
@@ -179,4 +179,4 @@ class TelemetryEvent:
     operation_latency_ms: Optional[int] = None
 
     def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
+        return to_json_compact(self)
