@@ -487,12 +487,11 @@ class SeaDatabricksClient(DatabricksClient):
         # Store the command ID in the cursor
         cursor.active_command_id = command_id
 
-        # If async operation, return None and let the client poll for results
+        # If async operation, return and let the client poll for results
         if async_op:
             return None
 
         # For synchronous operation, wait for the statement to complete
-        # Poll until the statement is done
         status = response.status
         state = status.state
 
