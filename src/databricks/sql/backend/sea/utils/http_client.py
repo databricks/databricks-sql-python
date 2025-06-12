@@ -1,7 +1,7 @@
 import json
 import logging
 import requests
-from typing import Callable, Dict, Any, Optional, List, Tuple
+from typing import Callable, Dict, Any, Optional, Union, List, Tuple
 from urllib.parse import urljoin
 
 from databricks.sql.auth.authenticators import AuthProvider

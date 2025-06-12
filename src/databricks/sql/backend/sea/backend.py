@@ -319,9 +319,22 @@ class SeaDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: "Cursor",
-    ):
-        """Not implemented yet."""
-        raise NotImplementedError("get_catalogs is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get available catalogs by executing 'SHOW CATALOGS'."""
+        result = self.execute_command(
+            operation="SHOW CATALOGS",
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+        return result
 
     def get_schemas(
         self,
@@ -331,9 +344,30 @@ class SeaDatabricksClient(DatabricksClient):
         cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ):
-        """Not implemented yet."""
-        raise NotImplementedError("get_schemas is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
+        if not catalog_name:
+            raise ValueError("Catalog name is required for get_schemas")
+
+        operation = f"SHOW SCHEMAS IN `{catalog_name}`"
+
+        if schema_name:
+            operation += f" LIKE '{schema_name}'"
+
+        result = self.execute_command(
+            operation=operation,
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+        return result
 
     def get_tables(
         self,
@@ -345,9 +379,43 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ):
-        """Not implemented yet."""
-        raise NotImplementedError("get_tables is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
+        if not catalog_name:
+            raise ValueError("Catalog name is required for get_tables")
+
+        operation = "SHOW TABLES IN " + (
+            "ALL CATALOGS"
+            if catalog_name in [None, "*", "%"]
+            else f"CATALOG `{catalog_name}`"
+        )
+
+        if schema_name:
+            operation += f" SCHEMA LIKE '{schema_name}'"
+
+        if table_name:
+            operation += f" LIKE '{table_name}'"
+
+        result = self.execute_command(
+            operation=operation,
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+
+        # Apply client-side filtering by table_types if specified
+        from databricks.sql.backend.filters import ResultSetFilter
+
+        result = ResultSetFilter.filter_tables_by_type(result, table_types)
+
+        return result
 
     def get_columns(
         self,
@@ -359,6 +427,33 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ):
-        """Not implemented yet."""
-        raise NotImplementedError("get_columns is not yet implemented for SEA backend")
+    ) -> "ResultSet":
+        """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
+        if not catalog_name:
+            raise ValueError("Catalog name is required for get_columns")
+
+        operation = f"SHOW COLUMNS IN CATALOG `{catalog_name}`"
+
+        if schema_name:
+            operation += f" SCHEMA LIKE '{schema_name}'"
+
+        if table_name:
+            operation += f" TABLE LIKE '{table_name}'"
+
+        if column_name:
+            operation += f" LIKE '{column_name}'"
+
+        result = self.execute_command(
+            operation=operation,
+            session_id=session_id,
+            max_rows=max_rows,
+            max_bytes=max_bytes,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+        assert result is not None, "execute_command returned None in synchronous mode"
+        return result
