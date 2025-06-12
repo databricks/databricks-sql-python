@@ -1,5 +1,99 @@
-from typing import Dict, Any, Optional
-from dataclasses import dataclass
+"""
+Request models for the SEA (Statement Execution API) backend.
+
+These models define the structures used in SEA API requests.
+"""
+
+from typing import Dict, List, Any, Optional, Union
+from dataclasses import dataclass, field
+
+
+@dataclass
+class StatementParameter:
+    """Representation of a parameter for a SQL statement."""
+
+    name: str
+    value: Optional[str] = None
+    type: Optional[str] = None
+
+
+@dataclass
+class ExecuteStatementRequest:
+    """Representation of a request to execute a SQL statement."""
+
+    session_id: str
+    statement: str
+    warehouse_id: str
+    disposition: str = "EXTERNAL_LINKS"
+    format: str = "JSON_ARRAY"
+    result_compression: Optional[str] = None
+    parameters: Optional[List[StatementParameter]] = None
+    wait_timeout: str = "10s"
+    on_wait_timeout: str = "CONTINUE"
+    row_limit: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the request to a dictionary for JSON serialization."""
+        result: Dict[str, Any] = {
+            "warehouse_id": self.warehouse_id,
+            "session_id": self.session_id,
+            "statement": self.statement,
+            "disposition": self.disposition,
+            "format": self.format,
+            "wait_timeout": self.wait_timeout,
+            "on_wait_timeout": self.on_wait_timeout,
+        }
+
+        if self.row_limit is not None and self.row_limit > 0:
+            result["row_limit"] = self.row_limit
+
+        if self.result_compression:
+            result["result_compression"] = self.result_compression
+
+        if self.parameters:
+            result["parameters"] = [
+                {
+                    "name": param.name,
+                    **({"value": param.value} if param.value is not None else {}),
+                    **({"type": param.type} if param.type is not None else {}),
+                }
+                for param in self.parameters
+            ]
+
+        return result
+
+
+@dataclass
+class GetStatementRequest:
+    """Representation of a request to get information about a statement."""
+
+    statement_id: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the request to a dictionary for JSON serialization."""
+        return {"statement_id": self.statement_id}
+
+
+@dataclass
+class CancelStatementRequest:
+    """Representation of a request to cancel a statement."""
+
+    statement_id: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the request to a dictionary for JSON serialization."""
+        return {"statement_id": self.statement_id}
+
+
+@dataclass
+class CloseStatementRequest:
+    """Representation of a request to close a statement."""
+
+    statement_id: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the request to a dictionary for JSON serialization."""
+        return {"statement_id": self.statement_id}
 
 
 @dataclass
