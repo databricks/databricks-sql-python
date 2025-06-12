@@ -103,6 +103,14 @@ class BaseTelemetryClient(ABC):
     """
 
     @abstractmethod
+    def export_event(self, event):
+        pass
+
+    @abstractmethod
+    def flush(self):
+        pass
+
+    @abstractmethod
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
         pass
 
@@ -127,6 +135,12 @@ class NoopTelemetryClient(BaseTelemetryClient):
         if cls._instance is None:
             cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
         return cls._instance
+
+    def export_event(self, event):
+        pass
+
+    def flush(self):
+        pass
 
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
         pass
@@ -354,9 +368,8 @@ class TelemetryClientFactory:
         logger.debug(
             "Flushing pending telemetry and waiting for thread pool completion..."
         )
-        for uuid, client in cls._clients.items():
-            if hasattr(client, "flush"):
-                client.flush()  # Submit any pending events
+        for client in cls._clients.items():
+            client.flush()  # Submit any pending events
 
         if cls._executor:
             try:
