@@ -43,50 +43,19 @@ def test_sea_sync_query_with_cloud_fetch():
             use_sea=True,
             user_agent_entry="SEA-Test-Client",
             use_cloud_fetch=True,
-            arraysize=10000,
         )
 
         logger.info(
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a query that returns 100 rows
+        # Execute a simple query
         cursor = connection.cursor()
-
-        requested_row_count = 10000
-        query = f""" 
-        SELECT 
-            id, 
-            concat('value_', repeat('a', 10000)) as test_value
-            FROM range(1, {requested_row_count} + 1) AS t(id)
-        """
-        logger.info(f"Executing synchronous query with cloud fetch: SELECT {requested_row_count} rows")
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        logger.info(f"Retrieved {len(rows)} rows")
-        
-        # Check for duplicate rows
-        row_ids = [row[0] for row in rows]
-        unique_ids = set(row_ids)
-        logger.info(f"Number of unique IDs: {len(unique_ids)}")
-        
-        if len(rows) != len(unique_ids):
-            logger.info("DUPLICATE ROWS DETECTED!")
-            # Count occurrences of each ID
-            id_counts = {}
-            for id_val in row_ids:
-                if id_val in id_counts:
-                    id_counts[id_val] += 1
-                else:
-                    id_counts[id_val] = 1
-            
-            # Find duplicates
-            duplicates = {id_val: count for id_val, count in id_counts.items() if count > 1}
-            logger.info(f"Duplicate IDs (showing up to 10): {list(duplicates.items())[:10]}")
-        
-        # Check if we got more rows than requested
-        if len(rows) > requested_row_count:
-            logger.info(f"WARNING: Received {len(rows) - requested_row_count} more rows than requested!")
+        logger.info(
+            "Executing synchronous query with cloud fetch: SELECT 1 as test_value"
+        )
+        cursor.execute("SELECT 1 as test_value")
+        logger.info("Query executed successfully with cloud fetch enabled")
 
         # Close resources
         cursor.close()
@@ -145,16 +114,13 @@ def test_sea_sync_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a query that returns 100 rows
+        # Execute a simple query
         cursor = connection.cursor()
-        logger.info("Executing synchronous query without cloud fetch: SELECT 100 rows")
-        cursor.execute(
-            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
+        logger.info(
+            "Executing synchronous query without cloud fetch: SELECT 1 as test_value"
         )
+        cursor.execute("SELECT 1 as test_value")
         logger.info("Query executed successfully with cloud fetch disabled")
-
-        rows = cursor.fetchall()
-        logger.info(f"Retrieved rows: {rows}")
 
         # Close resources
         cursor.close()

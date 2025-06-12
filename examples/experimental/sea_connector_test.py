@@ -1,20 +1,18 @@
 """
 Main script to run all SEA connector tests.
 
-This script imports and runs all the individual test modules and displays
+This script runs all the individual test modules and displays
 a summary of test results with visual indicators.
 """
 import os
 import sys
 import logging
-import importlib.util
-from typing import Dict, Callable, List, Tuple
+import subprocess
+from typing import List, Tuple
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Define test modules and their main test functions
 TEST_MODULES = [
     "test_sea_session",
     "test_sea_sync_query",
@@ -23,29 +21,27 @@ TEST_MODULES = [
 ]
 
 
-def load_test_function(module_name: str) -> Callable:
-    """Load a test function from a module."""
+def run_test_module(module_name: str) -> bool:
+    """Run a test module and return success status."""
     module_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "tests", f"{module_name}.py"
     )
 
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Simply run the module as a script - each module handles its own test execution
+    result = subprocess.run(
+        [sys.executable, module_path], capture_output=True, text=True
+    )
 
-    # Get the main test function (assuming it starts with "test_")
-    for name in dir(module):
-        if name.startswith("test_") and callable(getattr(module, name)):
-            # For sync and async query modules, we want the main function that runs both tests
-            if name == f"test_sea_{module_name.replace('test_sea_', '')}_exec":
-                return getattr(module, name)
+    # Log the output from the test module
+    if result.stdout:
+        for line in result.stdout.strip().split("\n"):
+            logger.info(line)
 
-    # Fallback to the first test function found
-    for name in dir(module):
-        if name.startswith("test_") and callable(getattr(module, name)):
-            return getattr(module, name)
+    if result.stderr:
+        for line in result.stderr.strip().split("\n"):
+            logger.error(line)
 
-    raise ValueError(f"No test function found in module {module_name}")
+    return result.returncode == 0
 
 
 def run_tests() -> List[Tuple[str, bool]]:
@@ -54,12 +50,11 @@ def run_tests() -> List[Tuple[str, bool]]:
 
     for module_name in TEST_MODULES:
         try:
-            test_func = load_test_function(module_name)
             logger.info(f"\n{'=' * 50}")
             logger.info(f"Running test: {module_name}")
             logger.info(f"{'-' * 50}")
 
-            success = test_func()
+            success = run_test_module(module_name)
             results.append((module_name, success))
 
             status = "✅ PASSED" if success else "❌ FAILED"
