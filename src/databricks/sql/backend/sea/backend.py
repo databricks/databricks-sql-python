@@ -295,10 +295,10 @@ class SeaDatabricksClient(DatabricksClient):
 
         schema_data = manifest_obj.schema
         columns_data = schema_data.get("columns", [])
-        
+
         if not columns_data:
             return None
-            
+
         columns = []
         for col_data in columns_data:
             if not isinstance(col_data, dict):
@@ -316,7 +316,7 @@ class SeaDatabricksClient(DatabricksClient):
                     col_data.get("nullable", True),  # null_ok
                 )
             )
-        
+
         return columns if columns else None
 
     def _results_message_to_execute_response(self, sea_response, command_id):
