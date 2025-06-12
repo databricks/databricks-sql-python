@@ -87,8 +87,6 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
-    CHUNKS_PATH_WITH_ID = STATEMENT_PATH + "/{}/result/chunks"
-    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     def __init__(
         self,
@@ -277,19 +275,6 @@ class SeaDatabricksClient(DatabricksClient):
             The default value if the parameter is supported, None otherwise
         """
         return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
-
-    @staticmethod
-    def is_session_configuration_parameter_supported(name: str) -> bool:
-        """
-        Check if a session configuration parameter is supported.
-
-        Args:
-            name: The name of the session configuration parameter
-
-        Returns:
-            True if the parameter is supported, False otherwise
-        """
-        return name.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
 
     @staticmethod
     def get_allowed_session_configurations() -> List[str]:
