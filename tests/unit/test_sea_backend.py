@@ -9,12 +9,15 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock, Mock
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.backend import (
+    SeaDatabricksClient,
+    _filter_session_configuration,
+)
 from databricks.sql.result_set import SeaResultSet
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
-from databricks.sql.exc import Error, NotSupportedError
+from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 
 
 class TestSeaBackend:
@@ -305,6 +308,32 @@ class TestSeaBackend:
         assert isinstance(mock_cursor.active_command_id, CommandId)
         assert mock_cursor.active_command_id.guid == "test-statement-456"
 
+    def test_execute_command_async_missing_statement_id(
+        self, sea_client, mock_http_client, mock_cursor, sea_session_id
+    ):
+        """Test executing an async command that returns no statement ID."""
+        # Set up mock response with status but no statement_id
+        mock_http_client._make_request.return_value = {"status": {"state": "PENDING"}}
+
+        # Call the method and expect an error
+        with pytest.raises(ServerOperationError) as excinfo:
+            sea_client.execute_command(
+                operation="SELECT 1",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=True,  # Async mode
+                enforce_embedded_schema_correctness=False,
+            )
+
+        assert "Failed to execute command: No statement ID returned" in str(
+            excinfo.value
+        )
+
     def test_execute_command_with_polling(
         self, sea_client, mock_http_client, mock_cursor, sea_session_id
     ):
@@ -442,6 +471,32 @@ class TestSeaBackend:
 
             assert "Statement execution did not succeed" in str(excinfo.value)
 
+    def test_execute_command_missing_statement_id(
+        self, sea_client, mock_http_client, mock_cursor, sea_session_id
+    ):
+        """Test executing a command that returns no statement ID."""
+        # Set up mock response with status but no statement_id
+        mock_http_client._make_request.return_value = {"status": {"state": "SUCCEEDED"}}
+
+        # Call the method and expect an error
+        with pytest.raises(ServerOperationError) as excinfo:
+            sea_client.execute_command(
+                operation="SELECT 1",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        assert "Failed to execute command: No statement ID returned" in str(
+            excinfo.value
+        )
+
     def test_cancel_command(self, sea_client, mock_http_client, sea_command_id):
         """Test canceling a command."""
         # Set up mock response
@@ -533,7 +588,6 @@ class TestSeaBackend:
 
         # Create a real result set to verify the implementation
         result = sea_client.get_execution_result(sea_command_id, mock_cursor)
-        print(result)
 
         # Verify basic properties of the result
         assert result.command_id.to_sea_statement_id() == "test-statement-123"
@@ -546,3 +600,242 @@ class TestSeaBackend:
         assert kwargs["path"] == sea_client.STATEMENT_PATH_WITH_ID.format(
             "test-statement-123"
         )
+
+    def test_get_execution_result_with_invalid_command_id(
+        self, sea_client, mock_cursor
+    ):
+        """Test getting execution result with an invalid command ID."""
+        # Create a Thrift command ID (not SEA)
+        mock_thrift_operation_handle = MagicMock()
+        mock_thrift_operation_handle.operationId.guid = b"guid"
+        mock_thrift_operation_handle.operationId.secret = b"secret"
+        command_id = CommandId.from_thrift_handle(mock_thrift_operation_handle)
+
+        # Call the method and expect an error
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.get_execution_result(command_id, mock_cursor)
+
+        assert "Not a valid SEA command ID" in str(excinfo.value)
+
+    def test_max_download_threads_property(self, mock_http_client):
+        """Test the max_download_threads property."""
+        # Test with default value
+        client = SeaDatabricksClient(
+            server_hostname="test-server.databricks.com",
+            port=443,
+            http_path="/sql/warehouses/abc123",
+            http_headers=[],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+        )
+        assert client.max_download_threads == 10
+
+        # Test with custom value
+        client = SeaDatabricksClient(
+            server_hostname="test-server.databricks.com",
+            port=443,
+            http_path="/sql/warehouses/abc123",
+            http_headers=[],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            max_download_threads=5,
+        )
+        assert client.max_download_threads == 5
+
+    def test_get_default_session_configuration_value(self):
+        """Test the get_default_session_configuration_value static method."""
+        # Test with supported configuration parameter
+        value = SeaDatabricksClient.get_default_session_configuration_value("ANSI_MODE")
+        assert value == "true"
+
+        # Test with unsupported configuration parameter
+        value = SeaDatabricksClient.get_default_session_configuration_value(
+            "UNSUPPORTED_PARAM"
+        )
+        assert value is None
+
+        # Test with case-insensitive parameter name
+        value = SeaDatabricksClient.get_default_session_configuration_value("ansi_mode")
+        assert value == "true"
+
+    def test_get_allowed_session_configurations(self):
+        """Test the get_allowed_session_configurations static method."""
+        configs = SeaDatabricksClient.get_allowed_session_configurations()
+        assert isinstance(configs, list)
+        assert len(configs) > 0
+        assert "ANSI_MODE" in configs
+
+    def test_extract_description_from_manifest(self, sea_client):
+        """Test the _extract_description_from_manifest method."""
+        # Test with valid manifest containing columns
+        manifest_obj = MagicMock()
+        manifest_obj.schema = {
+            "columns": [
+                {
+                    "name": "col1",
+                    "type_name": "STRING",
+                    "precision": 10,
+                    "scale": 2,
+                    "nullable": True,
+                },
+                {
+                    "name": "col2",
+                    "type_name": "INT",
+                    "nullable": False,
+                },
+            ]
+        }
+
+        description = sea_client._extract_description_from_manifest(manifest_obj)
+        assert description is not None
+        assert len(description) == 2
+
+        # Check first column
+        assert description[0][0] == "col1"  # name
+        assert description[0][1] == "STRING"  # type_code
+        assert description[0][4] == 10  # precision
+        assert description[0][5] == 2  # scale
+        assert description[0][6] is True  # null_ok
+
+        # Check second column
+        assert description[1][0] == "col2"  # name
+        assert description[1][1] == "INT"  # type_code
+        assert description[1][6] is False  # null_ok
+
+        # Test with manifest containing non-dict column
+        manifest_obj.schema = {"columns": ["not_a_dict"]}
+        description = sea_client._extract_description_from_manifest(manifest_obj)
+        assert (
+            description is None
+        )  # Method returns None when no valid columns are found
+
+        # Test with manifest without columns
+        manifest_obj.schema = {}
+        description = sea_client._extract_description_from_manifest(manifest_obj)
+        assert description is None
+
+    def test_cancel_command_with_invalid_command_id(self, sea_client):
+        """Test canceling a command with an invalid command ID."""
+        # Create a Thrift command ID (not SEA)
+        mock_thrift_operation_handle = MagicMock()
+        mock_thrift_operation_handle.operationId.guid = b"guid"
+        mock_thrift_operation_handle.operationId.secret = b"secret"
+        command_id = CommandId.from_thrift_handle(mock_thrift_operation_handle)
+
+        # Call the method and expect an error
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.cancel_command(command_id)
+
+        assert "Not a valid SEA command ID" in str(excinfo.value)
+
+    def test_close_command_with_invalid_command_id(self, sea_client):
+        """Test closing a command with an invalid command ID."""
+        # Create a Thrift command ID (not SEA)
+        mock_thrift_operation_handle = MagicMock()
+        mock_thrift_operation_handle.operationId.guid = b"guid"
+        mock_thrift_operation_handle.operationId.secret = b"secret"
+        command_id = CommandId.from_thrift_handle(mock_thrift_operation_handle)
+
+        # Call the method and expect an error
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.close_command(command_id)
+
+        assert "Not a valid SEA command ID" in str(excinfo.value)
+
+    def test_get_query_state_with_invalid_command_id(self, sea_client):
+        """Test getting query state with an invalid command ID."""
+        # Create a Thrift command ID (not SEA)
+        mock_thrift_operation_handle = MagicMock()
+        mock_thrift_operation_handle.operationId.guid = b"guid"
+        mock_thrift_operation_handle.operationId.secret = b"secret"
+        command_id = CommandId.from_thrift_handle(mock_thrift_operation_handle)
+
+        # Call the method and expect an error
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.get_query_state(command_id)
+
+        assert "Not a valid SEA command ID" in str(excinfo.value)
+
+    def test_unimplemented_metadata_methods(
+        self, sea_client, sea_session_id, mock_cursor
+    ):
+        """Test that metadata methods raise NotImplementedError."""
+        # Test get_catalogs
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_catalogs(sea_session_id, 100, 1000, mock_cursor)
+        assert "get_catalogs is not implemented for SEA backend" in str(excinfo.value)
+
+        # Test get_schemas
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_schemas(sea_session_id, 100, 1000, mock_cursor)
+        assert "get_schemas is not implemented for SEA backend" in str(excinfo.value)
+
+        # Test get_schemas with optional parameters
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_schemas(
+                sea_session_id, 100, 1000, mock_cursor, "catalog", "schema"
+            )
+        assert "get_schemas is not implemented for SEA backend" in str(excinfo.value)
+
+        # Test get_tables
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_tables(sea_session_id, 100, 1000, mock_cursor)
+        assert "get_tables is not implemented for SEA backend" in str(excinfo.value)
+
+        # Test get_tables with optional parameters
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_tables(
+                sea_session_id,
+                100,
+                1000,
+                mock_cursor,
+                catalog_name="catalog",
+                schema_name="schema",
+                table_name="table",
+                table_types=["TABLE", "VIEW"],
+            )
+        assert "get_tables is not implemented for SEA backend" in str(excinfo.value)
+
+        # Test get_columns
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_columns(sea_session_id, 100, 1000, mock_cursor)
+        assert "get_columns is not implemented for SEA backend" in str(excinfo.value)
+
+        # Test get_columns with optional parameters
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_columns(
+                sea_session_id,
+                100,
+                1000,
+                mock_cursor,
+                catalog_name="catalog",
+                schema_name="schema",
+                table_name="table",
+                column_name="column",
+            )
+        assert "get_columns is not implemented for SEA backend" in str(excinfo.value)
+
+    def test_execute_command_with_invalid_session_id(self, sea_client, mock_cursor):
+        """Test executing a command with an invalid session ID type."""
+        # Create a Thrift session ID (not SEA)
+        mock_thrift_handle = MagicMock()
+        mock_thrift_handle.sessionId.guid = b"guid"
+        mock_thrift_handle.sessionId.secret = b"secret"
+        session_id = SessionId.from_thrift_handle(mock_thrift_handle)
+
+        # Call the method and expect an error
+        with pytest.raises(ValueError) as excinfo:
+            sea_client.execute_command(
+                operation="SELECT 1",
+                session_id=session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+        assert "Not a valid SEA session ID" in str(excinfo.value)
