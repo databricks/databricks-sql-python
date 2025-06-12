@@ -23,13 +23,10 @@ class Error(Exception):
 
         error_name = self.__class__.__name__
         if self.connection_uuid:
-            try:
-                telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                    self.connection_uuid
-                )
-                telemetry_client.export_failure_log(error_name, self.message)
-            except Exception as telemetry_error:
-                logger.debug(f"Failed to send error to telemetry: {telemetry_error}")
+            telemetry_client = TelemetryClientFactory.get_telemetry_client(
+                self.connection_uuid
+            )
+            telemetry_client.export_failure_log(error_name, self.message)
 
     def __str__(self):
         return self.message
