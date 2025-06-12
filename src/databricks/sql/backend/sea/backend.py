@@ -40,6 +40,11 @@ from databricks.sql.backend.sea.models import (
     GetStatementResponse,
     CreateSessionResponse,
 )
+from databricks.sql.backend.sea.models.responses import (
+    parse_status,
+    parse_manifest,
+    parse_result,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +80,6 @@ def _filter_session_configuration(
 class SeaDatabricksClient(DatabricksClient):
     """
     Statement Execution API (SEA) implementation of the DatabricksClient interface.
-
-    This implementation provides session management functionality for SEA,
-    while other operations raise NotImplementedError.
     """
 
     # SEA API paths
@@ -119,7 +121,6 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         self._max_download_threads = kwargs.get("max_download_threads", 10)
-        self.ssl_options = ssl_options
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -298,16 +299,16 @@ class SeaDatabricksClient(DatabricksClient):
             tuple: (ExecuteResponse, ResultData, ResultManifest) - The normalized execute response,
                   result data object, and manifest object
         """
-        # Extract status
-        status_data = sea_response.get("status", {})
-        state = CommandState.from_sea_state(status_data.get("state", ""))
 
-        # Extract description from manifest
+        # Parse the response
+        status = parse_status(sea_response)
+        manifest_obj = parse_manifest(sea_response)
+        result_data_obj = parse_result(sea_response)
+
+        # Extract description from manifest schema
         description = None
-        manifest_data = sea_response.get("manifest", {})
-        schema_data = manifest_data.get("schema", {})
+        schema_data = manifest_obj.schema
         columns_data = schema_data.get("columns", [])
-
         if columns_data:
             columns = []
             for col_data in columns_data:
@@ -329,61 +330,17 @@ class SeaDatabricksClient(DatabricksClient):
             description = columns if columns else None
 
         # Check for compression
-        lz4_compressed = manifest_data.get("result_compression") == "LZ4_FRAME"
-
-        # Initialize result_data_obj and manifest_obj
-        result_data_obj = None
-        manifest_obj = None
-
-        result_data = sea_response.get("result", {})
-        if result_data:
-            # Convert external links
-            external_links = None
-            if "external_links" in result_data:
-                external_links = []
-                for link_data in result_data["external_links"]:
-                    external_links.append(
-                        ExternalLink(
-                            external_link=link_data.get("external_link", ""),
-                            expiration=link_data.get("expiration", ""),
-                            chunk_index=link_data.get("chunk_index", 0),
-                            byte_count=link_data.get("byte_count", 0),
-                            row_count=link_data.get("row_count", 0),
-                            row_offset=link_data.get("row_offset", 0),
-                            next_chunk_index=link_data.get("next_chunk_index"),
-                            next_chunk_internal_link=link_data.get(
-                                "next_chunk_internal_link"
-                            ),
-                            http_headers=link_data.get("http_headers", {}),
-                        )
-                    )
-
-            # Create the result data object
-            result_data_obj = ResultData(
-                data=result_data.get("data_array"), external_links=external_links
-            )
-
-        # Create the manifest object
-        manifest_obj = ResultManifest(
-            format=manifest_data.get("format", ""),
-            schema=manifest_data.get("schema", {}),
-            total_row_count=manifest_data.get("total_row_count", 0),
-            total_byte_count=manifest_data.get("total_byte_count", 0),
-            total_chunk_count=manifest_data.get("total_chunk_count", 0),
-            truncated=manifest_data.get("truncated", False),
-            chunks=manifest_data.get("chunks"),
-            result_compression=manifest_data.get("result_compression"),
-        )
+        lz4_compressed = manifest_obj.result_compression == "LZ4_FRAME"
 
         execute_response = ExecuteResponse(
             command_id=command_id,
-            status=state,
+            status=status.state,
             description=description,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=False,
             arrow_schema_bytes=None,  # to be extracted during fetch phase for ARROW
-            result_format=manifest_data.get("format"),
+            result_format=manifest_obj.format,
         )
 
         return execute_response, result_data_obj, manifest_obj
@@ -419,6 +376,7 @@ class SeaDatabricksClient(DatabricksClient):
         Returns:
             ResultSet: A SeaResultSet instance for the executed command
         """
+
         if session_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA session ID")
 
@@ -506,6 +464,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 
@@ -528,6 +487,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 
@@ -553,6 +513,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 
@@ -587,6 +548,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 

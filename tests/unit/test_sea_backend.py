@@ -536,7 +536,7 @@ class TestSeaBackend:
         print(result)
 
         # Verify basic properties of the result
-        assert result.statement_id == "test-statement-123"
+        assert result.command_id.to_sea_statement_id() == "test-statement-123"
         assert result.status == CommandState.SUCCEEDED
 
         # Verify the HTTP request
