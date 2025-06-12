@@ -604,8 +604,8 @@ class SeaDatabricksClient(DatabricksClient):
         max_bytes: int,
         cursor: "Cursor",
     ) -> "ResultSet":
-        """Get available catalogs by executing 'SHOW CATALOGS'."""
-        raise NotImplementedError("get_catalogs is not implemented for SEA backend")
+        """Not implemented yet."""
+        raise NotImplementedError("get_catalogs is not yet implemented for SEA backend")
 
     def get_schemas(
         self,
@@ -616,8 +616,8 @@ class SeaDatabricksClient(DatabricksClient):
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
     ) -> "ResultSet":
-        """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
-        raise NotImplementedError("get_schemas is not implemented for SEA backend")
+        """Not implemented yet."""
+        raise NotImplementedError("get_schemas is not yet implemented for SEA backend")
 
     def get_tables(
         self,
@@ -630,8 +630,8 @@ class SeaDatabricksClient(DatabricksClient):
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
     ) -> "ResultSet":
-        """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
-        raise NotImplementedError("get_tables is not implemented for SEA backend")
+        """Not implemented yet."""
+        raise NotImplementedError("get_tables is not yet implemented for SEA backend")
 
     def get_columns(
         self,
@@ -644,5 +644,5 @@ class SeaDatabricksClient(DatabricksClient):
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
     ) -> "ResultSet":
-        """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
-        raise NotImplementedError("get_columns is not implemented for SEA backend")
+        """Not implemented yet."""
+        raise NotImplementedError("get_columns is not yet implemented for SEA backend")
