@@ -282,6 +282,43 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
+    def _extract_description_from_manifest(self, manifest_obj) -> Optional[List]:
+        """
+        Extract column description from a manifest object.
+
+        Args:
+            manifest_obj: The ResultManifest object containing schema information
+
+        Returns:
+            Optional[List]: A list of column tuples or None if no columns are found
+        """
+
+        schema_data = manifest_obj.schema
+        columns_data = schema_data.get("columns", [])
+        
+        if not columns_data:
+            return None
+            
+        columns = []
+        for col_data in columns_data:
+            if not isinstance(col_data, dict):
+                continue
+
+            # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
+            columns.append(
+                (
+                    col_data.get("name", ""),  # name
+                    col_data.get("type_name", ""),  # type_code
+                    None,  # display_size (not provided by SEA)
+                    None,  # internal_size (not provided by SEA)
+                    col_data.get("precision"),  # precision
+                    col_data.get("scale"),  # scale
+                    col_data.get("nullable", True),  # null_ok
+                )
+            )
+        
+        return columns if columns else None
+
     def _results_message_to_execute_response(self, sea_response, command_id):
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
@@ -301,28 +338,7 @@ class SeaDatabricksClient(DatabricksClient):
         result_data_obj = parse_result(sea_response)
 
         # Extract description from manifest schema
-        description = None
-        schema_data = manifest_obj.schema
-        columns_data = schema_data.get("columns", [])
-        if columns_data:
-            columns = []
-            for col_data in columns_data:
-                if not isinstance(col_data, dict):
-                    continue
-
-                # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
-                columns.append(
-                    (
-                        col_data.get("name", ""),  # name
-                        col_data.get("type_name", ""),  # type_code
-                        None,  # display_size (not provided by SEA)
-                        None,  # internal_size (not provided by SEA)
-                        col_data.get("precision"),  # precision
-                        col_data.get("scale"),  # scale
-                        col_data.get("nullable", True),  # null_ok
-                    )
-                )
-            description = columns if columns else None
+        description = self._extract_description_from_manifest(manifest_obj)
 
         # Check for compression
         lz4_compressed = manifest_obj.result_compression == "LZ4_FRAME"
