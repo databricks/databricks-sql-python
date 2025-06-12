@@ -545,6 +545,20 @@ class TestSeaBackend:
         assert len(configs) > 0
         assert "ANSI_MODE" in configs
 
+        # Test getting the list of allowed configurations with specific keys
+        allowed_configs = SeaDatabricksClient.get_allowed_session_configurations()
+        expected_keys = {
+            "ANSI_MODE",
+            "ENABLE_PHOTON",
+            "LEGACY_TIME_PARSER_POLICY",
+            "MAX_FILE_PARTITION_BYTES",
+            "READ_ONLY_EXTERNAL_METASTORE",
+            "STATEMENT_TIMEOUT",
+            "TIMEZONE",
+            "USE_CACHED_RESULT",
+        }
+        assert set(allowed_configs) == expected_keys
+
         # Test _extract_description_from_manifest
         manifest_obj = MagicMock()
         manifest_obj.schema = {
