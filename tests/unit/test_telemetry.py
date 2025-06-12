@@ -98,7 +98,7 @@ class TestTelemetryClient:
     """Tests for the TelemetryClient class."""
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.getDriverSystemConfiguration")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
     @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
     @patch("databricks.sql.telemetry.telemetry_client.time.time")
     def test_export_initial_telemetry_log(
@@ -134,7 +134,7 @@ class TestTelemetryClient:
         client.export_event.assert_called_once_with(mock_frontend_log.return_value)
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.getDriverSystemConfiguration")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
     @patch("databricks.sql.telemetry.telemetry_client.DriverErrorInfo")
     @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
     @patch("databricks.sql.telemetry.telemetry_client.time.time")

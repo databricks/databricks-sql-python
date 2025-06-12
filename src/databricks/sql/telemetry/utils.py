@@ -16,21 +16,14 @@ class EnumEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def filter_none_values(data):
-    """
-    Recursively remove None values from dictionaries.
-    This reduces telemetry payload size by excluding null fields.
-    """
-    if isinstance(data, dict):
-        return {k: filter_none_values(v) for k, v in data.items() if v is not None}
-    else:
-        return data
-
-
 def to_json_compact(dataclass_obj):
     """
     Convert a dataclass to JSON string, excluding None values.
     """
-    data_dict = asdict(dataclass_obj)
-    filtered_dict = filter_none_values(data_dict)
-    return json.dumps(filtered_dict, cls=EnumEncoder)
+    return json.dumps(
+        asdict(
+            dataclass_obj,
+            dict_factory=lambda data: {k: v for k, v in data if v is not None},
+        ),
+        cls=EnumEncoder,
+    )
