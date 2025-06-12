@@ -301,74 +301,6 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
-    def _get_schema_bytes(self, sea_response) -> Optional[bytes]:
-        """
-        Extract schema bytes from the SEA response.
-
-        For ARROW format, we need to get the schema bytes from the first chunk.
-        If the first chunk is not available, we need to get it from the server.
-
-        Args:
-            sea_response: The response from the SEA API
-
-        Returns:
-            bytes: The schema bytes or None if not available
-        """
-        import requests
-        import lz4.frame
-
-        # Check if we have the first chunk in the response
-        result_data = sea_response.get("result", {})
-        external_links = result_data.get("external_links", [])
-
-        if not external_links:
-            return None
-
-        # Find the first chunk (chunk_index = 0)
-        first_chunk = None
-        for link in external_links:
-            if link.get("chunk_index") == 0:
-                first_chunk = link
-                break
-
-        if not first_chunk:
-            # Try to fetch the first chunk from the server
-            statement_id = sea_response.get("statement_id")
-            if not statement_id:
-                return None
-
-            chunks_response = self.get_chunk_links(statement_id, 0)
-            if not chunks_response.external_links:
-                return None
-
-            first_chunk = chunks_response.external_links[0].__dict__
-
-        # Download the first chunk to get the schema bytes
-        external_link = first_chunk.get("external_link")
-        http_headers = first_chunk.get("http_headers", {})
-
-        if not external_link:
-            return None
-
-        # Use requests to download the first chunk
-        http_response = requests.get(
-            external_link,
-            headers=http_headers,
-            verify=self.ssl_options.tls_verify,
-        )
-
-        if http_response.status_code != 200:
-            raise Error(f"Failed to download schema bytes: {http_response.text}")
-
-        # Extract schema bytes from the Arrow file
-        # The schema is at the beginning of the file
-        data = http_response.content
-        if sea_response.get("manifest", {}).get("result_compression") == "LZ4_FRAME":
-            data = lz4.frame.decompress(data)
-
-        # Return the schema bytes
-        return data
-
     def _results_message_to_execute_response(self, sea_response, command_id):
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
@@ -410,13 +342,6 @@ class SeaDatabricksClient(DatabricksClient):
                     )
                 )
             description = columns if columns else None
-
-        # Extract schema bytes for Arrow format
-        schema_bytes = None
-        format = manifest_data.get("format")
-        if format == "ARROW_STREAM":
-            # For ARROW format, we need to get the schema bytes
-            schema_bytes = self._get_schema_bytes(sea_response)
 
         # Check for compression
         lz4_compressed = manifest_data.get("result_compression") == "LZ4_FRAME"
@@ -472,7 +397,7 @@ class SeaDatabricksClient(DatabricksClient):
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=False,
-            arrow_schema_bytes=schema_bytes,
+            arrow_schema_bytes=None,  # to be extracted during fetch phase for ARROW
             result_format=manifest_data.get("format"),
         )
 
