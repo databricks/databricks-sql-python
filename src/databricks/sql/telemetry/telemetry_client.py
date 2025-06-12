@@ -301,15 +301,9 @@ class TelemetryClient(BaseTelemetryClient):
         logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
         try:
             self.flush()
-        except Exception as e:
-            logger.debug("Failed to flush telemetry during close: %s", e)
-
-        try:
             TelemetryClientFactory.close(self._connection_uuid)
         except Exception as e:
-            logger.debug(
-                "Failed to remove telemetry client from telemetry clientfactory: %s", e
-            )
+            logger.debug("Failed to close telemetry client: %s", e)
 
 
 class TelemetryClientFactory:
@@ -358,31 +352,27 @@ class TelemetryClientFactory:
         """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
 
-        try:
-            # Flush existing thread pool work and wait for completion
-            logger.debug(
-                "Flushing pending telemetry and waiting for thread pool completion..."
-            )
-            for uuid, client in cls._clients.items():
-                if hasattr(client, "flush"):
-                    try:
-                        client.flush()  # Submit any pending events
-                    except Exception as e:
-                        logger.debug(
-                            "Failed to flush telemetry for connection %s: %s", uuid, e
-                        )
-
-            if cls._executor:
+        # Flush existing thread pool work and wait for completion
+        logger.debug(
+            "Flushing pending telemetry and waiting for thread pool completion..."
+        )
+        for uuid, client in cls._clients.items():
+            if hasattr(client, "flush"):
                 try:
-                    cls._executor.shutdown(
-                        wait=True
-                    )  # This waits for all submitted work to complete
-                    logger.debug("Thread pool shutdown completed successfully")
+                    client.flush()  # Submit any pending events
                 except Exception as e:
-                    logger.debug("Thread pool shutdown failed: %s", e)
+                    logger.debug(
+                        "Failed to flush telemetry for connection %s: %s", uuid, e
+                    )
 
-        except Exception as e:
-            logger.debug("Exception in excepthook telemetry handler: %s", e)
+        if cls._executor:
+            try:
+                cls._executor.shutdown(
+                    wait=True
+                )  # This waits for all submitted work to complete
+                logger.debug("Thread pool shutdown completed successfully")
+            except Exception as e:
+                logger.debug("Thread pool shutdown failed: %s", e)
 
         # Call the original exception handler to maintain normal behavior
         if cls._original_excepthook:
@@ -396,35 +386,48 @@ class TelemetryClientFactory:
         host_url,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
-        TelemetryClientFactory._initialize()
+        try:
+            TelemetryClientFactory._initialize()
 
-        with TelemetryClientFactory._lock:
-            if connection_uuid not in TelemetryClientFactory._clients:
-                logger.debug(
-                    "Creating new TelemetryClient for connection %s", connection_uuid
-                )
-                if telemetry_enabled:
-                    TelemetryClientFactory._clients[connection_uuid] = TelemetryClient(
-                        telemetry_enabled=telemetry_enabled,
-                        connection_uuid=connection_uuid,
-                        auth_provider=auth_provider,
-                        host_url=host_url,
-                        executor=TelemetryClientFactory._executor,
+            with TelemetryClientFactory._lock:
+                if connection_uuid not in TelemetryClientFactory._clients:
+                    logger.debug(
+                        "Creating new TelemetryClient for connection %s",
+                        connection_uuid,
                     )
-                else:
-                    TelemetryClientFactory._clients[
-                        connection_uuid
-                    ] = NoopTelemetryClient()
+                    if telemetry_enabled:
+                        TelemetryClientFactory._clients[
+                            connection_uuid
+                        ] = TelemetryClient(
+                            telemetry_enabled=telemetry_enabled,
+                            connection_uuid=connection_uuid,
+                            auth_provider=auth_provider,
+                            host_url=host_url,
+                            executor=TelemetryClientFactory._executor,
+                        )
+                    else:
+                        TelemetryClientFactory._clients[
+                            connection_uuid
+                        ] = NoopTelemetryClient()
+        except Exception as e:
+            logger.debug("Failed to initialize telemetry client: %s", e)
+            # Fallback to NoopTelemetryClient to ensure connection doesn't fail
+            TelemetryClientFactory._clients[connection_uuid] = NoopTelemetryClient()
 
     @staticmethod
     def get_telemetry_client(connection_uuid):
         """Get the telemetry client for a specific connection"""
-        if connection_uuid in TelemetryClientFactory._clients:
-            return TelemetryClientFactory._clients[connection_uuid]
-        else:
-            logger.error(
-                "Telemetry client not initialized for connection %s", connection_uuid
-            )
+        try:
+            if connection_uuid in TelemetryClientFactory._clients:
+                return TelemetryClientFactory._clients[connection_uuid]
+            else:
+                logger.error(
+                    "Telemetry client not initialized for connection %s",
+                    connection_uuid,
+                )
+                return NoopTelemetryClient()
+        except Exception as e:
+            logger.debug("Failed to get telemetry client: %s", e)
             return NoopTelemetryClient()
 
     @staticmethod
