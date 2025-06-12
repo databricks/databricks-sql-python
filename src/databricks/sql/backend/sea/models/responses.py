@@ -65,6 +65,7 @@ def _parse_manifest(data: Dict[str, Any]) -> ResultManifest:
         truncated=manifest_data.get("truncated", False),
         chunks=chunks,
         result_compression=manifest_data.get("result_compression"),
+        is_volume_operation=manifest_data.get("is_volume_operation"),
     )
 
 
@@ -93,6 +94,13 @@ def _parse_result(data: Dict[str, Any]) -> ResultData:
     return ResultData(
         data=result_data.get("data_array"),
         external_links=external_links,
+        byte_count=result_data.get("byte_count"),
+        chunk_index=result_data.get("chunk_index"),
+        next_chunk_index=result_data.get("next_chunk_index"),
+        next_chunk_internal_link=result_data.get("next_chunk_internal_link"),
+        row_count=result_data.get("row_count"),
+        row_offset=result_data.get("row_offset"),
+        attachment=result_data.get("attachment"),
     )
 
 
