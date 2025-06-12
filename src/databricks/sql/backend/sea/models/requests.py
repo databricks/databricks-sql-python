@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class StatementParameter:
-    """Representation of a parameter for a SQL statement."""
+    """Parameter for a SQL statement."""
 
     name: str
     value: Optional[str] = None
@@ -19,7 +19,7 @@ class StatementParameter:
 
 @dataclass
 class ExecuteStatementRequest:
-    """Representation of a request to execute a SQL statement."""
+    """Request to execute a SQL statement."""
 
     session_id: str
     statement: str
@@ -65,7 +65,7 @@ class ExecuteStatementRequest:
 
 @dataclass
 class GetStatementRequest:
-    """Representation of a request to get information about a statement."""
+    """Request to get information about a statement."""
 
     statement_id: str
 
@@ -76,7 +76,7 @@ class GetStatementRequest:
 
 @dataclass
 class CancelStatementRequest:
-    """Representation of a request to cancel a statement."""
+    """Request to cancel a statement."""
 
     statement_id: str
 
@@ -87,7 +87,7 @@ class CancelStatementRequest:
 
 @dataclass
 class CloseStatementRequest:
-    """Representation of a request to close a statement."""
+    """Request to close a statement."""
 
     statement_id: str
 
@@ -98,7 +98,7 @@ class CloseStatementRequest:
 
 @dataclass
 class CreateSessionRequest:
-    """Representation of a request to create a new session."""
+    """Request to create a new session."""
 
     warehouse_id: str
     session_confs: Optional[Dict[str, str]] = None
@@ -123,7 +123,7 @@ class CreateSessionRequest:
 
 @dataclass
 class DeleteSessionRequest:
-    """Representation of a request to delete a session."""
+    """Request to delete a session."""
 
     warehouse_id: str
     session_id: str

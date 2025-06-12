@@ -14,7 +14,6 @@ from databricks.sql.backend.sea.models.base import (
     ResultData,
     ServiceError,
     ExternalLink,
-    ChunkInfo,
 )
 
 
@@ -44,18 +43,6 @@ def _parse_manifest(data: Dict[str, Any]) -> ResultManifest:
     """Parse manifest from response data."""
 
     manifest_data = data.get("manifest", {})
-    chunks = None
-    if "chunks" in manifest_data:
-        chunks = [
-            ChunkInfo(
-                chunk_index=chunk.get("chunk_index", 0),
-                byte_count=chunk.get("byte_count", 0),
-                row_offset=chunk.get("row_offset", 0),
-                row_count=chunk.get("row_count", 0),
-            )
-            for chunk in manifest_data.get("chunks", [])
-        ]
-
     return ResultManifest(
         format=manifest_data.get("format", ""),
         schema=manifest_data.get("schema", {}),
@@ -63,9 +50,8 @@ def _parse_manifest(data: Dict[str, Any]) -> ResultManifest:
         total_byte_count=manifest_data.get("total_byte_count", 0),
         total_chunk_count=manifest_data.get("total_chunk_count", 0),
         truncated=manifest_data.get("truncated", False),
-        chunks=chunks,
+        chunks=manifest_data.get("chunks"),
         result_compression=manifest_data.get("result_compression"),
-        is_volume_operation=manifest_data.get("is_volume_operation"),
     )
 
 
@@ -94,19 +80,12 @@ def _parse_result(data: Dict[str, Any]) -> ResultData:
     return ResultData(
         data=result_data.get("data_array"),
         external_links=external_links,
-        byte_count=result_data.get("byte_count"),
-        chunk_index=result_data.get("chunk_index"),
-        next_chunk_index=result_data.get("next_chunk_index"),
-        next_chunk_internal_link=result_data.get("next_chunk_internal_link"),
-        row_count=result_data.get("row_count"),
-        row_offset=result_data.get("row_offset"),
-        attachment=result_data.get("attachment"),
     )
 
 
 @dataclass
 class ExecuteStatementResponse:
-    """Representation of the response from executing a SQL statement."""
+    """Response from executing a SQL statement."""
 
     statement_id: str
     status: StatementStatus
@@ -126,7 +105,7 @@ class ExecuteStatementResponse:
 
 @dataclass
 class GetStatementResponse:
-    """Representation of the response from getting information about a statement."""
+    """Response from getting information about a statement."""
 
     statement_id: str
     status: StatementStatus
@@ -146,7 +125,7 @@ class GetStatementResponse:
 
 @dataclass
 class CreateSessionResponse:
-    """Representation of the response from creating a new session."""
+    """Response from creating a new session."""
 
     session_id: str
 
