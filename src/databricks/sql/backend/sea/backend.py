@@ -603,7 +603,7 @@ class SeaDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: "Cursor",
-    ) -> "ResultSet":
+    ):
         """Not implemented yet."""
         raise NotImplementedError("get_catalogs is not yet implemented for SEA backend")
 
@@ -615,7 +615,7 @@ class SeaDatabricksClient(DatabricksClient):
         cursor: "Cursor",
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ):
         """Not implemented yet."""
         raise NotImplementedError("get_schemas is not yet implemented for SEA backend")
 
@@ -629,7 +629,7 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> "ResultSet":
+    ):
         """Not implemented yet."""
         raise NotImplementedError("get_tables is not yet implemented for SEA backend")
 
@@ -643,6 +643,6 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ):
         """Not implemented yet."""
         raise NotImplementedError("get_columns is not yet implemented for SEA backend")
