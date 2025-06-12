@@ -46,7 +46,7 @@ class ResultSet(ABC):
         description=None,
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
-        arrow_schema_bytes: Optional[bytes] = b"",
+        arrow_schema_bytes: Optional[bytes] = None,
     ):
         """
         A ResultSet manages the results of a single command.
