@@ -59,7 +59,7 @@ class TestComplexTypes(PySQLPytestTestCase):
 
         with self.cursor() as cursor:
             result = cursor.execute(
-                "SELECT * FROM pysql_e2e_test_complex_types_table LIMIT 1"
+                "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
             ).fetchone()
 
         assert isinstance(result[field], expected_type)
@@ -81,7 +81,7 @@ class TestComplexTypes(PySQLPytestTestCase):
             extra_params={"_use_arrow_native_complex_types": False}
         ) as cursor:
             result = cursor.execute(
-                "SELECT * FROM pysql_e2e_test_complex_types_table LIMIT 1"
+                "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
             ).fetchone()
 
         assert isinstance(result[field], str)
