@@ -117,7 +117,7 @@ class TestTelemetryClient:
 
         client = telemetry_client_setup["client"]
         host_url = telemetry_client_setup["host_url"]
-        client.export_event = MagicMock()
+        client._export_event = MagicMock()
                
         driver_connection_params = DriverConnectionParameters(
             http_path="test-path",
@@ -131,7 +131,7 @@ class TestTelemetryClient:
         client.export_initial_telemetry_log(driver_connection_params, user_agent)
         
         mock_frontend_log.assert_called_once()
-        client.export_event.assert_called_once_with(mock_frontend_log.return_value)
+        client._export_event.assert_called_once_with(mock_frontend_log.return_value)
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
@@ -155,7 +155,7 @@ class TestTelemetryClient:
         mock_frontend_log.return_value = MagicMock()
 
         client = telemetry_client_setup["client"]
-        client.export_event = MagicMock()
+        client._export_event = MagicMock()
         
         client._driver_connection_params = "test-connection-params"
         client._user_agent = "test-user-agent"
@@ -172,7 +172,7 @@ class TestTelemetryClient:
         
         mock_frontend_log.assert_called_once()
         
-        client.export_event.assert_called_once_with(mock_frontend_log.return_value)
+        client._export_event.assert_called_once_with(mock_frontend_log.return_value)
 
     def test_export_event(self, telemetry_client_setup):
         """Test exporting an event."""

@@ -265,7 +265,8 @@ class TelemetryClient(BaseTelemetryClient):
                 ),
             )
 
-            self.export_event(telemetry_frontend_log)
+            self._export_event(telemetry_frontend_log)
+
         except Exception as e:
             logger.debug("Failed to export initial telemetry log: %s", e)
 
@@ -292,7 +293,7 @@ class TelemetryClient(BaseTelemetryClient):
                     )
                 ),
             )
-            self.export_event(telemetry_frontend_log)
+            self._export_event(telemetry_frontend_log)
         except Exception as e:
             logger.debug("Failed to export failure log: %s", e)
 
@@ -347,9 +348,9 @@ class TelemetryClientFactory:
         """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
 
-        # Flush existing thread pool work and wait for completion
-        for uuid, _ in cls._clients.items():
-            cls.close(uuid)
+        clients_to_close = list(cls._clients.values())
+        for client in clients_to_close:
+            client.close()
 
         # Call the original exception handler to maintain normal behavior
         if cls._original_excepthook:

@@ -1,5 +1,4 @@
-import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from databricks.sql.telemetry.models.enums import (
     AuthMech,
     AuthFlow,
@@ -9,11 +8,11 @@ from databricks.sql.telemetry.models.enums import (
     ExecutionResultFormat,
 )
 from typing import Optional
-from databricks.sql.telemetry.utils import to_json_compact
+from databricks.sql.telemetry.utils import JsonSerializableMixin
 
 
 @dataclass
-class HostDetails:
+class HostDetails(JsonSerializableMixin):
     """
     Represents the host connection details for a Databricks workspace.
 
@@ -25,12 +24,9 @@ class HostDetails:
     host_url: str
     port: int
 
-    def to_json(self):
-        return to_json_compact(self)
-
 
 @dataclass
-class DriverConnectionParameters:
+class DriverConnectionParameters(JsonSerializableMixin):
     """
     Contains all connection parameters used to establish a connection to Databricks SQL.
     This includes authentication details, host information, and connection settings.
@@ -51,12 +47,9 @@ class DriverConnectionParameters:
     auth_flow: Optional[AuthFlow] = None
     socket_timeout: Optional[int] = None
 
-    def to_json(self):
-        return to_json_compact(self)
-
 
 @dataclass
-class DriverSystemConfiguration:
+class DriverSystemConfiguration(JsonSerializableMixin):
     """
     Contains system-level configuration information about the client environment.
     This includes details about the operating system, runtime, and driver version.
@@ -87,12 +80,9 @@ class DriverSystemConfiguration:
     client_app_name: Optional[str] = None
     locale_name: Optional[str] = None
 
-    def to_json(self):
-        return to_json_compact(self)
-
 
 @dataclass
-class DriverVolumeOperation:
+class DriverVolumeOperation(JsonSerializableMixin):
     """
     Represents a volume operation performed by the driver.
     Used for tracking volume-related operations in telemetry.
@@ -105,12 +95,9 @@ class DriverVolumeOperation:
     volume_operation_type: DriverVolumeOperationType
     volume_path: str
 
-    def to_json(self):
-        return to_json_compact(self)
-
 
 @dataclass
-class DriverErrorInfo:
+class DriverErrorInfo(JsonSerializableMixin):
     """
     Contains detailed information about errors that occur during driver operations.
     Used for error tracking and debugging in telemetry.
@@ -123,12 +110,9 @@ class DriverErrorInfo:
     error_name: str
     stack_trace: str
 
-    def to_json(self):
-        return to_json_compact(self)
-
 
 @dataclass
-class SqlExecutionEvent:
+class SqlExecutionEvent(JsonSerializableMixin):
     """
     Represents a SQL query execution event.
     Contains details about the query execution, including type, compression, and result format.
@@ -145,12 +129,9 @@ class SqlExecutionEvent:
     execution_result: ExecutionResultFormat
     retry_count: int
 
-    def to_json(self):
-        return to_json_compact(self)
-
 
 @dataclass
-class TelemetryEvent:
+class TelemetryEvent(JsonSerializableMixin):
     """
     Main telemetry event class that aggregates all telemetry data.
     Contains information about the session, system configuration, connection parameters,
@@ -177,6 +158,3 @@ class TelemetryEvent:
     sql_operation: Optional[SqlExecutionEvent] = None
     error_info: Optional[DriverErrorInfo] = None
     operation_latency_ms: Optional[int] = None
-
-    def to_json(self):
-        return to_json_compact(self)
