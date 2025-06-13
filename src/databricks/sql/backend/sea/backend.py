@@ -1,8 +1,7 @@
 import logging
-import uuid
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
@@ -23,9 +22,7 @@ from databricks.sql.backend.types import (
 )
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
-from databricks.sql.utils import SeaResultSetQueueFactory
 from databricks.sql.backend.sea.models.base import (
     ResultData,
     ExternalLink,
