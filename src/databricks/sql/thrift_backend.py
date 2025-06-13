@@ -72,6 +72,9 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_default": (float, 5, 1, 60),
 }
 
+# Add thread local storage
+_connection_uuid = threading.local()
+
 
 class ThriftBackend:
     CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
@@ -223,7 +226,7 @@ class ThriftBackend:
             raise
 
         self._request_lock = threading.RLock()
-        self._connection_uuid = None
+        _connection_uuid.value = None
 
     # TODO: Move this bounding logic into DatabricksRetryPolicy for v3 (PECO-918)
     def _initialize_retry_args(self, kwargs):
@@ -256,13 +259,14 @@ class ThriftBackend:
             )
 
     @staticmethod
-    def _check_response_for_error(response, connection_uuid=None):
+    def _check_response_for_error(response):
         if response.status and response.status.statusCode in [
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
         ]:
             raise DatabaseError(
-                response.status.errorMessage, connection_uuid=connection_uuid
+                response.status.errorMessage,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
 
     @staticmethod
@@ -316,7 +320,7 @@ class ThriftBackend:
             network_request_error = RequestError(
                 user_friendly_error_message,
                 full_error_info_context,
-                self._connection_uuid,
+                getattr(_connection_uuid, "value", None),
                 error_info.error,
             )
             logger.info(network_request_error.message_with_context())
@@ -489,7 +493,7 @@ class ThriftBackend:
             if not isinstance(response_or_error_info, RequestErrorInfo):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
-                ThriftBackend._check_response_for_error(response, self._connection_uuid)
+                ThriftBackend._check_response_for_error(response)
                 return response
 
             error_info = response_or_error_info
@@ -504,7 +508,7 @@ class ThriftBackend:
                 "Error: expected server to use a protocol version >= "
                 "SPARK_CLI_SERVICE_PROTOCOL_V2, "
                 "instead got: {}".format(protocol_version),
-                connection_uuid=self._connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
 
     def _check_initial_namespace(self, catalog, schema, response):
@@ -518,7 +522,7 @@ class ThriftBackend:
             raise InvalidServerResponseError(
                 "Setting initial namespace not supported by the DBR version, "
                 "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0.",
-                connection_uuid=self._connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
 
         if catalog:
@@ -526,7 +530,7 @@ class ThriftBackend:
                 raise InvalidServerResponseError(
                     "Unexpected response from server: Trying to set initial catalog to {}, "
                     + "but server does not support multiple catalogs.".format(catalog),  # type: ignore
-                    connection_uuid=self._connection_uuid,
+                    connection_uuid=getattr(_connection_uuid, "value", None),
                 )
 
     def _check_session_configuration(self, session_configuration):
@@ -541,7 +545,7 @@ class ThriftBackend:
                     TIMESTAMP_AS_STRING_CONFIG,
                     session_configuration[TIMESTAMP_AS_STRING_CONFIG],
                 ),
-                connection_uuid=self._connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
 
     def open_session(self, session_configuration, catalog, schema):
@@ -572,7 +576,7 @@ class ThriftBackend:
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            self._connection_uuid = (
+            _connection_uuid.value = (
                 self.handle_to_hex_id(response.sessionHandle)
                 if response.sessionHandle
                 else None
@@ -601,7 +605,7 @@ class ThriftBackend:
                         and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
-                    connection_uuid=self._connection_uuid,
+                    connection_uuid=getattr(_connection_uuid, "value", None),
                 )
             else:
                 raise ServerOperationError(
@@ -611,7 +615,7 @@ class ThriftBackend:
                         and self.guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
-                    connection_uuid=self._connection_uuid,
+                    connection_uuid=getattr(_connection_uuid, "value", None),
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
@@ -622,7 +626,7 @@ class ThriftBackend:
                     "operation-id": op_handle
                     and self.guid_to_hex_id(op_handle.operationId.guid)
                 },
-                connection_uuid=self._connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
 
     def _poll_for_status(self, op_handle):
@@ -645,7 +649,7 @@ class ThriftBackend:
         else:
             raise OperationalError(
                 "Unsupported TRowSet instance {}".format(t_row_set),
-                connection_uuid=self._connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
         return convert_decimals_in_arrow_table(arrow_table, description), num_rows
 
@@ -654,7 +658,7 @@ class ThriftBackend:
         return self.make_request(self._client.GetResultSetMetadata, req)
 
     @staticmethod
-    def _hive_schema_to_arrow_schema(t_table_schema, connection_uuid=None):
+    def _hive_schema_to_arrow_schema(t_table_schema):
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -686,7 +690,7 @@ class ThriftBackend:
                 # even for complex types
                 raise OperationalError(
                     "Thrift protocol error: t_type_entry not a primitiveEntry",
-                    connection_uuid=connection_uuid,
+                    connection_uuid=getattr(_connection_uuid, "value", None),
                 )
 
         def convert_col(t_column_desc):
@@ -697,7 +701,7 @@ class ThriftBackend:
         return pyarrow.schema([convert_col(col) for col in t_table_schema.columns])
 
     @staticmethod
-    def _col_to_description(col, connection_uuid=None):
+    def _col_to_description(col):
         type_entry = col.typeDesc.types[0]
 
         if type_entry.primitiveEntry:
@@ -707,7 +711,7 @@ class ThriftBackend:
         else:
             raise OperationalError(
                 "Thrift protocol error: t_type_entry not a primitiveEntry",
-                connection_uuid=connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
 
         if type_entry.primitiveEntry.type == ttypes.TTypeId.DECIMAL_TYPE:
@@ -721,7 +725,7 @@ class ThriftBackend:
                 raise OperationalError(
                     "Decimal type did not provide typeQualifier precision, scale in "
                     "primitiveEntry {}".format(type_entry.primitiveEntry),
-                    connection_uuid=connection_uuid,
+                    connection_uuid=getattr(_connection_uuid, "value", None),
                 )
         else:
             precision, scale = None, None
@@ -729,10 +733,9 @@ class ThriftBackend:
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
-    def _hive_schema_to_description(t_table_schema, connection_uuid=None):
+    def _hive_schema_to_description(t_table_schema):
         return [
-            ThriftBackend._col_to_description(col, connection_uuid)
-            for col in t_table_schema.columns
+            ThriftBackend._col_to_description(col) for col in t_table_schema.columns
         ]
 
     def _results_message_to_execute_response(self, resp, operation_state):
@@ -753,7 +756,7 @@ class ThriftBackend:
                         t_result_set_metadata_resp.resultFormat
                     ]
                 ),
-                connection_uuid=self._connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
@@ -763,15 +766,13 @@ class ThriftBackend:
             or direct_results.resultSet.hasMoreRows
         )
         description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema, self._connection_uuid
+            t_result_set_metadata_resp.schema
         )
 
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(
-                    t_result_set_metadata_resp.schema, self._connection_uuid
-                )
+                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
                 .serialize()
                 .to_pybytes()
             )
@@ -832,15 +833,13 @@ class ThriftBackend:
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         has_more_rows = resp.hasMoreRows
         description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema, self._connection_uuid
+            t_result_set_metadata_resp.schema
         )
 
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(
-                    t_result_set_metadata_resp.schema, self._connection_uuid
-                )
+                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
                 .serialize()
                 .to_pybytes()
             )
@@ -894,23 +893,23 @@ class ThriftBackend:
         return operation_state
 
     @staticmethod
-    def _check_direct_results_for_error(t_spark_direct_results, connection_uuid=None):
+    def _check_direct_results_for_error(t_spark_direct_results):
         if t_spark_direct_results:
             if t_spark_direct_results.operationStatus:
                 ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.operationStatus, connection_uuid
+                    t_spark_direct_results.operationStatus
                 )
             if t_spark_direct_results.resultSetMetadata:
                 ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.resultSetMetadata, connection_uuid
+                    t_spark_direct_results.resultSetMetadata
                 )
             if t_spark_direct_results.resultSet:
                 ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.resultSet, connection_uuid
+                    t_spark_direct_results.resultSet
                 )
             if t_spark_direct_results.closeOperation:
                 ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.closeOperation, connection_uuid
+                    t_spark_direct_results.closeOperation
                 )
 
     def execute_command(
@@ -1059,7 +1058,7 @@ class ThriftBackend:
 
     def _handle_execute_response(self, resp, cursor):
         cursor.active_op_handle = resp.operationHandle
-        self._check_direct_results_for_error(resp.directResults, self._connection_uuid)
+        self._check_direct_results_for_error(resp.directResults)
 
         final_operation_state = self._wait_until_command_done(
             resp.operationHandle,
@@ -1070,7 +1069,7 @@ class ThriftBackend:
 
     def _handle_execute_response_async(self, resp, cursor):
         cursor.active_op_handle = resp.operationHandle
-        self._check_direct_results_for_error(resp.directResults, self._connection_uuid)
+        self._check_direct_results_for_error(resp.directResults)
 
     def fetch_results(
         self,
@@ -1105,7 +1104,7 @@ class ThriftBackend:
                 "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
                     expected_row_start_offset, resp.results.startRowOffset
                 ),
-                connection_uuid=self._connection_uuid,
+                connection_uuid=getattr(_connection_uuid, "value", None),
             )
 
         queue = ResultSetQueueFactory.build_queue(
