@@ -1,8 +1,8 @@
-from __future__ import annotations
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
-from dateutil import parser
-import datetime
-import decimal
+if TYPE_CHECKING:
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
+
 from abc import ABC, abstractmethod
 from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
@@ -10,11 +10,11 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 import re
+import datetime
+import decimal
+from dateutil import parser
 
 import lz4.frame
-
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:
     import pyarrow
@@ -29,8 +29,11 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.types import CommandId
-
+from databricks.sql.backend.sea.models.base import (
+    ResultData,
+    ExternalLink,
+    ResultManifest,
+)
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 import logging
@@ -54,16 +57,16 @@ class ResultSetQueue(ABC):
 class ThriftResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
-        row_set_type: TSparkRowSetType,
-        t_row_set: TRowSet,
-        arrow_schema_bytes: bytes,
-        max_download_threads: int,
-        ssl_options: SSLOptions,
+        row_set_type: Optional[TSparkRowSetType] = None,
+        t_row_set: Optional[TRowSet] = None,
+        arrow_schema_bytes: Optional[bytes] = None,
+        max_download_threads: Optional[int] = None,
+        ssl_options: Optional[SSLOptions] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: Optional[List[Tuple[Any, ...]]] = None,
     ) -> ResultSetQueue:
         """
-        Factory method to build a result set queue.
+        Factory method to build a result set queue for Thrift backend.
 
         Args:
             row_set_type (enum): Row set type (Arrow, Column, or URL).
@@ -78,7 +81,11 @@ class ThriftResultSetQueueFactory(ABC):
             ResultSetQueue
         """
 
-        if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
+        if (
+            row_set_type == TSparkRowSetType.ARROW_BASED_SET
+            and t_row_set is not None
+            and arrow_schema_bytes is not None
+        ):
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
             )
@@ -86,7 +93,9 @@ class ThriftResultSetQueueFactory(ABC):
                 arrow_table, description
             )
             return ArrowQueue(converted_arrow_table, n_valid_rows)
-        elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
+        elif (
+            row_set_type == TSparkRowSetType.COLUMN_BASED_SET and t_row_set is not None
+        ):
             column_table, column_names = convert_column_based_set_to_column_table(
                 t_row_set.columns, description
             )
@@ -96,8 +105,14 @@ class ThriftResultSetQueueFactory(ABC):
             )
 
             return ColumnQueue(ColumnTable(converted_column_table, column_names))
-        elif row_set_type == TSparkRowSetType.URL_BASED_SET:
-            return CloudFetchQueue(
+        elif (
+            row_set_type == TSparkRowSetType.URL_BASED_SET
+            and t_row_set is not None
+            and arrow_schema_bytes is not None
+            and max_download_threads is not None
+            and ssl_options is not None
+        ):
+            return ThriftCloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
                 result_links=t_row_set.resultLinks,
@@ -140,14 +155,40 @@ class SeaResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue: The appropriate queue for the result data
         """
-
         if sea_result_data.data is not None:
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(sea_result_data.data)
         elif sea_result_data.external_links is not None:
             # EXTERNAL_LINKS disposition
-            raise NotImplementedError(
-                "EXTERNAL_LINKS disposition is not implemented for SEA backend"
+            if not schema_bytes:
+                raise ValueError(
+                    "Schema bytes are required for EXTERNAL_LINKS disposition"
+                )
+            if not max_download_threads:
+                raise ValueError(
+                    "Max download threads is required for EXTERNAL_LINKS disposition"
+                )
+            if not ssl_options:
+                raise ValueError(
+                    "SSL options are required for EXTERNAL_LINKS disposition"
+                )
+            if not sea_client:
+                raise ValueError(
+                    "SEA client is required for EXTERNAL_LINKS disposition"
+                )
+            if not manifest:
+                raise ValueError("Manifest is required for EXTERNAL_LINKS disposition")
+
+            return SeaCloudFetchQueue(
+                initial_links=sea_result_data.external_links,
+                schema_bytes=schema_bytes,
+                max_download_threads=max_download_threads,
+                ssl_options=ssl_options,
+                sea_client=sea_client,
+                statement_id=statement_id,
+                total_chunk_count=manifest.total_chunk_count,
+                lz4_compressed=lz4_compressed,
+                description=description,
             )
         else:
             # Empty result set
@@ -267,156 +308,14 @@ class ArrowQueue(ResultSetQueue):
         return slice
 
 
-class CloudFetchQueue(ResultSetQueue):
-    def __init__(
-        self,
-        schema_bytes,
-        max_download_threads: int,
-        ssl_options: SSLOptions,
-        start_row_offset: int = 0,
-        result_links: Optional[List[TSparkArrowResultLink]] = None,
-        lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
-    ):
-        """
-        A queue-like wrapper over CloudFetch arrow batches.
-
-        Attributes:
-            schema_bytes (bytes): Table schema in bytes.
-            max_download_threads (int): Maximum number of downloader thread pool threads.
-            start_row_offset (int): The offset of the first row of the cloud fetch links.
-            result_links (List[TSparkArrowResultLink]): Links containing the downloadable URL and metadata.
-            lz4_compressed (bool): Whether the files are lz4 compressed.
-            description (List[List[Any]]): Hive table schema description.
-        """
-
-        self.schema_bytes = schema_bytes
-        self.max_download_threads = max_download_threads
-        self.start_row_index = start_row_offset
-        self.result_links = result_links
-        self.lz4_compressed = lz4_compressed
-        self.description = description
-        self._ssl_options = ssl_options
-
-        logger.debug(
-            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
-                start_row_offset
-            )
-        )
-        if result_links is not None:
-            for result_link in result_links:
-                logger.debug(
-                    "- start row offset: {}, row count: {}".format(
-                        result_link.startRowOffset, result_link.rowCount
-                    )
-                )
-        self.download_manager = ResultFileDownloadManager(
-            links=result_links or [],
-            max_download_threads=self.max_download_threads,
-            lz4_compressed=self.lz4_compressed,
-            ssl_options=self._ssl_options,
-        )
-
-        self.table = self._create_next_table()
-        self.table_row_index = 0
-
-    def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
-        """
-        Get up to the next n rows of the cloud fetch Arrow dataframes.
-
-        Args:
-            num_rows (int): Number of rows to retrieve.
-
-        Returns:
-            pyarrow.Table
-        """
-
-        if not self.table:
-            logger.debug("CloudFetchQueue: no more rows available")
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
-        logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
-        results = self.table.slice(0, 0)
-        while num_rows > 0 and self.table:
-            # Get remaining of num_rows or the rest of the current table, whichever is smaller
-            length = min(num_rows, self.table.num_rows - self.table_row_index)
-            table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice])
-            self.table_row_index += table_slice.num_rows
-
-            # Replace current table with the next table if we are at the end of the current table
-            if self.table_row_index == self.table.num_rows:
-                self.table = self._create_next_table()
-                self.table_row_index = 0
-            num_rows -= table_slice.num_rows
-
-        logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
-        return results
-
-    def remaining_rows(self) -> "pyarrow.Table":
-        """
-        Get all remaining rows of the cloud fetch Arrow dataframes.
-
-        Returns:
-            pyarrow.Table
-        """
-
-        if not self.table:
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
-        results = self.table.slice(0, 0)
-        while self.table:
-            table_slice = self.table.slice(
-                self.table_row_index, self.table.num_rows - self.table_row_index
-            )
-            results = pyarrow.concat_tables([results, table_slice])
-            self.table_row_index += table_slice.num_rows
-            self.table = self._create_next_table()
-            self.table_row_index = 0
-        return results
-
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
-        logger.debug(
-            "CloudFetchQueue: Trying to get downloaded file for row {}".format(
-                self.start_row_index
-            )
-        )
-        # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
-        downloaded_file = self.download_manager.get_next_downloaded_file(
-            self.start_row_index
-        )
-        if not downloaded_file:
-            logger.debug(
-                "CloudFetchQueue: Cannot find downloaded file for row {}".format(
-                    self.start_row_index
-                )
-            )
-            # None signals no more Arrow tables can be built from the remaining handlers if any remain
-            return None
-        arrow_table = create_arrow_table_from_arrow_file(
-            downloaded_file.file_bytes, self.description
-        )
-
-        # The server rarely prepares the exact number of rows requested by the client in cloud fetch.
-        # Subsequently, we drop the extraneous rows in the last file if more rows are retrieved than requested
-        if arrow_table.num_rows > downloaded_file.row_count:
-            arrow_table = arrow_table.slice(0, downloaded_file.row_count)
-
-        # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
-        assert downloaded_file.row_count == arrow_table.num_rows
-        self.start_row_index += arrow_table.num_rows
-
-        logger.debug(
-            "CloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
-                arrow_table.num_rows, self.start_row_index
-            )
-        )
-
-        return arrow_table
-
-    def _create_empty_table(self) -> "pyarrow.Table":
-        # Create a 0-row table with just the schema bytes
-        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
+from databricks.sql.cloud_fetch_queue import (
+    ThriftCloudFetchQueue,
+    SeaCloudFetchQueue,
+    create_arrow_table_from_arrow_file,
+    convert_arrow_based_file_to_arrow_table,
+    convert_decimals_in_arrow_table,
+    convert_arrow_based_set_to_arrow_table,
+)
 
 
 def _bound(min_x, max_x, x):
@@ -652,61 +551,7 @@ def transform_paramstyle(
     return output
 
 
-def create_arrow_table_from_arrow_file(
-    file_bytes: bytes, description
-) -> "pyarrow.Table":
-    arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
-    return convert_decimals_in_arrow_table(arrow_table, description)
-
-
-def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
-    try:
-        return pyarrow.ipc.open_stream(file_bytes).read_all()
-    except Exception as e:
-        raise RuntimeError("Failure to convert arrow based file to arrow table", e)
-
-
-def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
-    ba = bytearray()
-    ba += schema_bytes
-    n_rows = 0
-    for arrow_batch in arrow_batches:
-        n_rows += arrow_batch.rowCount
-        ba += (
-            lz4.frame.decompress(arrow_batch.batch)
-            if lz4_compressed
-            else arrow_batch.batch
-        )
-    arrow_table = pyarrow.ipc.open_stream(ba).read_all()
-    return arrow_table, n_rows
-
-
-def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
-    new_columns = []
-    new_fields = []
-
-    for i, col in enumerate(table.itercolumns()):
-        field = table.field(i)
-
-        if description[i][1] == "decimal":
-            precision, scale = description[i][4], description[i][5]
-            assert scale is not None
-            assert precision is not None
-            # create the target decimal type
-            dtype = pyarrow.decimal128(precision, scale)
-
-            new_col = col.cast(dtype)
-            new_field = field.with_type(dtype)
-
-            new_columns.append(new_col)
-            new_fields.append(new_field)
-        else:
-            new_columns.append(col)
-            new_fields.append(field)
-
-    new_schema = pyarrow.schema(new_fields)
-
-    return pyarrow.Table.from_arrays(new_columns, schema=new_schema)
+# These functions are now imported from cloud_fetch_queue.py
 
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):

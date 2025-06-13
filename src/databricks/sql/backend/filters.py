@@ -17,6 +17,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
+from databricks.sql.utils import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse, CommandId
 from databricks.sql.backend.sea.models.base import ResultData
 from databricks.sql.backend.sea.backend import SeaDatabricksClient

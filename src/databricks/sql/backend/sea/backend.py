@@ -1,7 +1,8 @@
 import logging
+import uuid
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
@@ -22,7 +23,9 @@ from databricks.sql.backend.types import (
 )
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
+from databricks.sql.utils import SeaResultSetQueueFactory
 from databricks.sql.backend.sea.models.base import (
     ResultData,
     ExternalLink,
@@ -301,6 +304,84 @@ class SeaDatabricksClient(DatabricksClient):
             List of allowed session configuration parameter names
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
+
+    def fetch_chunk_links(
+        self, statement_id: str, chunk_index: int
+    ) -> List["ExternalLink"]:
+        """
+        Fetch links for a specific chunk index from the SEA API.
+
+        Args:
+            statement_id: The statement ID
+            chunk_index: The chunk index to fetch
+
+        Returns:
+            List[ExternalLink]: List of external links for the chunk
+
+        Raises:
+            Error: If there's an error fetching the chunk links
+        """
+        from databricks.sql.backend.sea.models.responses import GetChunksResponse
+        from databricks.sql.backend.sea.models.base import ExternalLink
+
+        logger.info(f"Fetching chunk {chunk_index} links for statement {statement_id}")
+
+        # Use the chunk-specific endpoint if we have a specific chunk index
+        path = self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index)
+
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=path,
+        )
+
+        # Extract the external_links from the response
+        external_links = response_data.get("external_links", [])
+        logger.info(
+            f"Received {len(external_links)} external links for chunk {chunk_index}"
+        )
+
+        # Convert the links to ExternalLink objects
+        links = []
+        for link_data in external_links:
+            link = ExternalLink(
+                external_link=link_data.get("external_link", ""),
+                expiration=link_data.get("expiration", ""),
+                chunk_index=link_data.get("chunk_index", 0),
+                byte_count=link_data.get("byte_count", 0),
+                row_count=link_data.get("row_count", 0),
+                row_offset=link_data.get("row_offset", 0),
+                next_chunk_index=link_data.get("next_chunk_index"),
+                next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
+                http_headers=link_data.get("http_headers", {}),
+            )
+            links.append(link)
+
+        return links
+
+    def get_chunk_links(
+        self, statement_id: str, chunk_index: int
+    ) -> "GetChunksResponse":
+        """
+        Get links for chunks starting from the specified index.
+
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+
+        Returns:
+            GetChunksResponse: Response containing external links
+        """
+        from databricks.sql.backend.sea.models.responses import GetChunksResponse
+
+        params = {"chunk_index": chunk_index}
+
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=self.CHUNKS_PATH_WITH_ID.format(statement_id),
+            params=params,
+        )
+
+        return GetChunksResponse.from_dict(response_data)
 
     def _get_schema_bytes(self, sea_response) -> Optional[bytes]:
         """
