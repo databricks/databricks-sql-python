@@ -177,18 +177,18 @@ class TestTelemetryClient:
     def test_export_event(self, telemetry_client_setup):
         """Test exporting an event."""
         client = telemetry_client_setup["client"]
-        client.flush = MagicMock()
+        client._flush = MagicMock()
         
         for i in range(5):
-            client.export_event(f"event-{i}")
+            client._export_event(f"event-{i}")
         
-        client.flush.assert_not_called()
+        client._flush.assert_not_called()
         assert len(client._events_batch) == 5
         
         for i in range(5, 10):
-            client.export_event(f"event-{i}")
+            client._export_event(f"event-{i}")
         
-        client.flush.assert_called_once()
+        client._flush.assert_called_once()
         assert len(client._events_batch) == 10
 
     @patch("requests.post")
@@ -244,7 +244,7 @@ class TestTelemetryClient:
         client._events_batch = ["event1", "event2"]
         client._send_telemetry = MagicMock()
         
-        client.flush()
+        client._flush()
         
         client._send_telemetry.assert_called_once_with(["event1", "event2"])
         assert client._events_batch == []
@@ -253,13 +253,11 @@ class TestTelemetryClient:
     def test_close(self, mock_factory_class, telemetry_client_setup):
         """Test closing the client."""
         client = telemetry_client_setup["client"]
-        connection_uuid = telemetry_client_setup["connection_uuid"]
-        client.flush = MagicMock()
+        client._flush = MagicMock()
         
         client.close()
         
-        client.flush.assert_called_once()
-        mock_factory_class.close.assert_called_once_with(connection_uuid)
+        client._flush.assert_called_once()
 
 
 class TestTelemetryClientFactory:
