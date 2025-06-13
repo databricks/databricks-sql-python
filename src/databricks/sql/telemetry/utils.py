@@ -1,6 +1,25 @@
 import json
 from enum import Enum
 from dataclasses import asdict
+from abc import ABC
+from typing import Any
+
+
+class JsonSerializableMixin(ABC):
+    """Mixin class to provide JSON serialization capabilities to dataclasses."""
+
+    def to_json(self) -> str:
+        """
+        Convert the object to a JSON string, excluding None values.
+        Handles Enum serialization and filters out None values from the output.
+        """
+        return json.dumps(
+            asdict(
+                self,
+                dict_factory=lambda data: {k: v for k, v in data if v is not None},
+            ),
+            cls=EnumEncoder,
+        )
 
 
 class EnumEncoder(json.JSONEncoder):
@@ -14,16 +33,3 @@ class EnumEncoder(json.JSONEncoder):
         if isinstance(obj, Enum):
             return obj.value
         return super().default(obj)
-
-
-def to_json_compact(dataclass_obj):
-    """
-    Convert a dataclass to JSON string, excluding None values.
-    """
-    return json.dumps(
-        asdict(
-            dataclass_obj,
-            dict_factory=lambda data: {k: v for k, v in data if v is not None},
-        ),
-        cls=EnumEncoder,
-    )
