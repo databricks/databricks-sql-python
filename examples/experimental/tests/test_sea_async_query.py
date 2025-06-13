@@ -17,7 +17,7 @@ def test_sea_async_query_with_cloud_fetch():
     Test executing a query asynchronously using the SEA backend with cloud fetch enabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
-    executes a simple query asynchronously with cloud fetch enabled, and verifies that execution completes successfully.
+    executes a query asynchronously with cloud fetch enabled, and verifies that execution completes successfully.
     """
     server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
@@ -51,12 +51,20 @@ def test_sea_async_query_with_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query asynchronously
+        # Execute a query that generates large rows to force multiple chunks
+        requested_row_count = 5000
         cursor = connection.cursor()
+        query = f"""
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 10000)) as test_value
+        FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+
         logger.info(
-            "Executing asynchronous query with cloud fetch: SELECT 1 as test_value"
+            f"Executing asynchronous query with cloud fetch to generate {requested_row_count} rows"
         )
-        cursor.execute_async("SELECT 1 as test_value")
+        cursor.execute_async(query)
         logger.info(
             "Asynchronous query submitted successfully with cloud fetch enabled"
         )
@@ -69,9 +77,23 @@ def test_sea_async_query_with_cloud_fetch():
 
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
+
+        # Fetch all rows
+        rows = cursor.fetchall()
+        actual_row_count = len(rows)
+
         logger.info(
-            "Successfully retrieved asynchronous query results with cloud fetch enabled"
+            f"Requested {requested_row_count} rows, received {actual_row_count} rows"
         )
+
+        # Verify row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
+
+        logger.info("PASS: Received correct number of rows with cloud fetch")
 
         # Close resources
         cursor.close()
@@ -95,7 +117,7 @@ def test_sea_async_query_without_cloud_fetch():
     Test executing a query asynchronously using the SEA backend with cloud fetch disabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
-    executes a simple query asynchronously with cloud fetch disabled, and verifies that execution completes successfully.
+    executes a query asynchronously with cloud fetch disabled, and verifies that execution completes successfully.
     """
     server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
@@ -130,12 +152,20 @@ def test_sea_async_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query asynchronously
+        # For non-cloud fetch, use a smaller row count to avoid exceeding inline limits
+        requested_row_count = 100
         cursor = connection.cursor()
+        query = f"""
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 100)) as test_value
+        FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+
         logger.info(
-            "Executing asynchronous query without cloud fetch: SELECT 1 as test_value"
+            f"Executing asynchronous query without cloud fetch to generate {requested_row_count} rows"
         )
-        cursor.execute_async("SELECT 1 as test_value")
+        cursor.execute_async(query)
         logger.info(
             "Asynchronous query submitted successfully with cloud fetch disabled"
         )
@@ -148,9 +178,23 @@ def test_sea_async_query_without_cloud_fetch():
 
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
+
+        # Fetch all rows
+        rows = cursor.fetchall()
+        actual_row_count = len(rows)
+
         logger.info(
-            "Successfully retrieved asynchronous query results with cloud fetch disabled"
+            f"Requested {requested_row_count} rows, received {actual_row_count} rows"
         )
+
+        # Verify row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
+
+        logger.info("PASS: Received correct number of rows without cloud fetch")
 
         # Close resources
         cursor.close()

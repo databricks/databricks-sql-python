@@ -110,25 +110,46 @@ class ResultFileDownloadManager:
             self._downloaded_files_cache[file.start_row_offset] = file
             return file
 
-        # Otherwise, just use the first task
-        task = self._download_tasks.pop(0)
-        # Future's `result()` method will wait for the call to complete, and return
-        # the value returned by the call. If the call throws an exception - `result()`
-        # will throw the same exception
-        file = task.result()
-        # Cache the file for future use
-        self._downloaded_files_cache[file.start_row_offset] = file
-
-        if (next_row_offset < file.start_row_offset) or (
-            next_row_offset > file.start_row_offset + file.row_count
-        ):
-            logger.warning(
-                "ResultFileDownloadManager: file does not contain row {}, start {}, row count {}".format(
-                    next_row_offset, file.start_row_offset, file.row_count
+        # If we didn't find a matching task, wait for all tasks to complete and check again
+        logger.info(
+            "ResultFileDownloadManager: No matching task found, waiting for all tasks to complete"
+        )
+        completed_files = []
+        for task in self._download_tasks:
+            try:
+                file = task.result()  # Wait for the task to complete
+                completed_files.append(file)
+                # Cache the file for future use
+                self._downloaded_files_cache[file.start_row_offset] = file
+                logger.info(
+                    f"Completed file: start_row_offset={file.start_row_offset}, row_count={file.row_count}"
                 )
-            )
+            except Exception as e:
+                logger.error(f"Error getting task result: {e}")
 
-        return file
+        # Clear the download tasks since we've processed them all
+        self._download_tasks = []
+
+        # Check if any of the completed files match the requested offset
+        matching_file = next(
+            (f for f in completed_files if f.start_row_offset == next_row_offset), None
+        )
+        if matching_file:
+            logger.info(
+                f"ResultFileDownloadManager: Found matching file with offset {next_row_offset}"
+            )
+            return matching_file
+
+        # If we still don't have a matching file, log the issue and return None
+        logger.warning(
+            f"ResultFileDownloadManager: No file found with row offset {next_row_offset}"
+        )
+        # Log cache contents for debugging
+        logger.info("ResultFileDownloadManager: Cache contents:")
+        for offset, cached_file in self._downloaded_files_cache.items():
+            logger.info(f"  offset={offset}, row_count={cached_file.row_count}")
+
+        return None
 
     def _schedule_downloads(self):
         """

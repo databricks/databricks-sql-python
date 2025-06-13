@@ -15,7 +15,7 @@ def test_sea_sync_query_with_cloud_fetch():
     Test executing a query synchronously using the SEA backend with cloud fetch enabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
-    executes a simple query with cloud fetch enabled, and verifies that execution completes successfully.
+    executes a query with cloud fetch enabled, and verifies that execution completes successfully.
     """
     server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
@@ -49,13 +49,37 @@ def test_sea_sync_query_with_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query
+        # Execute a query that generates large rows to force multiple chunks
+        requested_row_count = 10000
         cursor = connection.cursor()
+        query = f"""
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 10000)) as test_value
+        FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+
         logger.info(
-            "Executing synchronous query with cloud fetch: SELECT 1 as test_value"
+            f"Executing synchronous query with cloud fetch to generate {requested_row_count} rows"
         )
-        cursor.execute("SELECT 1 as test_value")
-        logger.info("Query executed successfully with cloud fetch enabled")
+        cursor.execute(query)
+
+        # Fetch all rows
+        rows = cursor.fetchall()
+        actual_row_count = len(rows)
+
+        logger.info(
+            f"Requested {requested_row_count} rows, received {actual_row_count} rows"
+        )
+
+        # Verify row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
+
+        logger.info("PASS: Received correct number of rows with cloud fetch")
 
         # Close resources
         cursor.close()
@@ -79,7 +103,7 @@ def test_sea_sync_query_without_cloud_fetch():
     Test executing a query synchronously using the SEA backend with cloud fetch disabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
-    executes a simple query with cloud fetch disabled, and verifies that execution completes successfully.
+    executes a query with cloud fetch disabled, and verifies that execution completes successfully.
     """
     server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
@@ -114,13 +138,37 @@ def test_sea_sync_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query
+        # For non-cloud fetch, use a smaller row count to avoid exceeding inline limits
+        requested_row_count = 100
         cursor = connection.cursor()
+        query = f"""
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 100)) as test_value
+        FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+
         logger.info(
-            "Executing synchronous query without cloud fetch: SELECT 1 as test_value"
+            f"Executing synchronous query without cloud fetch to generate {requested_row_count} rows"
         )
-        cursor.execute("SELECT 1 as test_value")
-        logger.info("Query executed successfully with cloud fetch disabled")
+        cursor.execute(query)
+
+        # Fetch all rows
+        rows = cursor.fetchall()
+        actual_row_count = len(rows)
+
+        logger.info(
+            f"Requested {requested_row_count} rows, received {actual_row_count} rows"
+        )
+
+        # Verify row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
+
+        logger.info("PASS: Received correct number of rows without cloud fetch")
 
         # Close resources
         cursor.close()

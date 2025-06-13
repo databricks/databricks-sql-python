@@ -166,29 +166,46 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         """Get up to the next n rows of the cloud fetch Arrow dataframes."""
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
-            logger.debug(
-                "SeaCloudFetchQueue: No table available, returning empty table"
-            )
+            logger.info("SeaCloudFetchQueue: No table available, returning empty table")
             return self._create_empty_table()
 
-        logger.debug("SeaCloudFetchQueue: Retrieving up to {} rows".format(num_rows))
+        logger.info("SeaCloudFetchQueue: Retrieving up to {} rows".format(num_rows))
         results = pyarrow.Table.from_pydict({})  # Empty table
+        rows_fetched = 0
+
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
+            logger.info(
+                "SeaCloudFetchQueue: Slicing table from index {} for {} rows (table has {} rows total)".format(
+                    self.table_row_index, length, self.table.num_rows
+                )
+            )
             table_slice = self.table.slice(self.table_row_index, length)
 
             # Concatenate results if we have any
             if results.num_rows > 0:
+                logger.info(
+                    "SeaCloudFetchQueue: Concatenating {} rows to existing {} rows".format(
+                        table_slice.num_rows, results.num_rows
+                    )
+                )
                 results = pyarrow.concat_tables([results, table_slice])
             else:
                 results = table_slice
 
             self.table_row_index += table_slice.num_rows
+            rows_fetched += table_slice.num_rows
+
+            logger.info(
+                "SeaCloudFetchQueue: After slice, table_row_index={}, rows_fetched={}".format(
+                    self.table_row_index, rows_fetched
+                )
+            )
 
             # Replace current table with the next table if we are at the end of the current table
             if self.table_row_index == self.table.num_rows:
-                logger.debug(
+                logger.info(
                     "SeaCloudFetchQueue: Reached end of current table, fetching next"
                 )
                 self.table = self._create_next_table()
@@ -196,7 +213,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
             num_rows -= table_slice.num_rows
 
-        logger.debug("SeaCloudFetchQueue: Retrieved {} rows".format(results.num_rows))
+        logger.info("SeaCloudFetchQueue: Retrieved {} rows".format(results.num_rows))
         return results
 
     @abstractmethod
@@ -371,27 +388,57 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         """Get all remaining rows of the cloud fetch Arrow dataframes."""
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
-            logger.debug(
-                "SeaCloudFetchQueue: No table available, returning empty table"
-            )
+            logger.info("SeaCloudFetchQueue: No table available, returning empty table")
             return self._create_empty_table()
 
-        logger.debug("SeaCloudFetchQueue: Retrieving all remaining rows")
+        logger.info("SeaCloudFetchQueue: Retrieving all remaining rows")
         results = pyarrow.Table.from_pydict({})  # Empty table
+        total_rows_fetched = 0
+
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
+            logger.info(
+                "SeaCloudFetchQueue: Got slice of {} rows from current table (from index {})".format(
+                    table_slice.num_rows, self.table_row_index
+                )
+            )
+
             if results.num_rows > 0:
+                logger.info(
+                    "SeaCloudFetchQueue: Concatenating {} rows to existing {} rows".format(
+                        table_slice.num_rows, results.num_rows
+                    )
+                )
                 results = pyarrow.concat_tables([results, table_slice])
             else:
                 results = table_slice
 
             self.table_row_index += table_slice.num_rows
-            self.table = self._create_next_table()
-            self.table_row_index = 0
+            total_rows_fetched += table_slice.num_rows
 
-        logger.debug(
+            logger.info(
+                "SeaCloudFetchQueue: After slice, table_row_index={}, total_rows_fetched={}".format(
+                    self.table_row_index, total_rows_fetched
+                )
+            )
+
+            # Get the next table
+            next_table = self._create_next_table()
+            if next_table is None:
+                logger.info("SeaCloudFetchQueue: No more tables available")
+                break
+
+            self.table = next_table
+            self.table_row_index = 0
+            logger.info(
+                "SeaCloudFetchQueue: Got next table with {} rows".format(
+                    self.table.num_rows if self.table else 0
+                )
+            )
+
+        logger.info(
             "SeaCloudFetchQueue: Retrieved {} total rows".format(results.num_rows)
         )
         return results
@@ -400,6 +447,11 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         """Create next table by retrieving the logical next downloaded file."""
         # if we're still processing the current table, just return it
         if self.table is not None and self.table_row_index < self.table.num_rows:
+            logger.info(
+                "SeaCloudFetchQueue: Still processing current table, rows left: {}".format(
+                    self.table.num_rows - self.table_row_index
+                )
+            )
             return self.table
 
         # if we've reached the end of the response, return None
@@ -407,7 +459,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             self._current_chunk_link
             and self._current_chunk_link.next_chunk_index is None
         ):
-            logger.debug(
+            logger.info(
                 "SeaCloudFetchQueue: Reached end of chunks (no next chunk index)"
             )
             return None
@@ -419,12 +471,12 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             else self._current_chunk_link.next_chunk_index
         )
         if next_chunk_index is None:
-            logger.debug(
+            logger.info(
                 "SeaCloudFetchQueue: Reached end of chunks (next_chunk_index is None)"
             )
             return None
 
-        logger.debug(
+        logger.info(
             "SeaCloudFetchQueue: Trying to get downloaded file for chunk {}".format(
                 next_chunk_index
             )
@@ -452,31 +504,60 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         # Get the data for the current chunk
         row_offset = self._current_chunk_link.row_offset
 
+        logger.info(
+            "SeaCloudFetchQueue: Current chunk details - index: {}, row_offset: {}, row_count: {}, next_chunk_index: {}".format(
+                self._current_chunk_link.chunk_index,
+                self._current_chunk_link.row_offset,
+                self._current_chunk_link.row_count,
+                self._current_chunk_link.next_chunk_index,
+            )
+        )
+
         if not self.download_manager:
-            logger.debug("SeaCloudFetchQueue: No download manager available")
+            logger.info("SeaCloudFetchQueue: No download manager available")
             return None
 
         downloaded_file = self.download_manager.get_next_downloaded_file(row_offset)
         if not downloaded_file:
-            logger.debug(
+            logger.info(
                 "SeaCloudFetchQueue: Cannot find downloaded file for row {}".format(
                     row_offset
                 )
             )
+            # If we can't find the file for the requested offset, we've reached the end
+            # This is a change from the original implementation, which would continue with the wrong file
+            logger.info("SeaCloudFetchQueue: No more files available, ending fetch")
             return None
+
+        logger.info(
+            "SeaCloudFetchQueue: Downloaded file details - start_row_offset: {}, row_count: {}".format(
+                downloaded_file.start_row_offset, downloaded_file.row_count
+            )
+        )
 
         arrow_table = create_arrow_table_from_arrow_file(
             downloaded_file.file_bytes, self.description
         )
 
+        logger.info(
+            "SeaCloudFetchQueue: Created arrow table with {} rows".format(
+                arrow_table.num_rows
+            )
+        )
+
         # Ensure the table has the correct number of rows
         if arrow_table.num_rows > downloaded_file.row_count:
+            logger.info(
+                "SeaCloudFetchQueue: Arrow table has more rows ({}) than expected ({}), slicing...".format(
+                    arrow_table.num_rows, downloaded_file.row_count
+                )
+            )
             arrow_table = arrow_table.slice(0, downloaded_file.row_count)
 
         # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
         assert downloaded_file.row_count == arrow_table.num_rows
 
-        logger.debug(
+        logger.info(
             "SeaCloudFetchQueue: Found downloaded file for chunk {}, row count: {}, row offset: {}".format(
                 self._current_chunk_index, arrow_table.num_rows, row_offset
             )

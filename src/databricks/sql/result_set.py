@@ -219,7 +219,7 @@ class ThriftResultSet(ResultSet):
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
         # Initialize results queue if not provided
@@ -518,7 +518,7 @@ class SeaResultSet(ResultSet):
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
         # Initialize queue for result data if not provided
@@ -666,8 +666,16 @@ class SeaResultSet(ResultSet):
             return self._convert_to_row_objects(rows)
         elif isinstance(self.results, SeaCloudFetchQueue):
             # For ARROW format with EXTERNAL_LINKS disposition
+            logger.info(f"SeaResultSet.fetchall: Getting all remaining rows")
             arrow_table = self.results.remaining_rows()
+            logger.info(
+                f"SeaResultSet.fetchall: Got arrow table with {arrow_table.num_rows} rows"
+            )
+
             if arrow_table.num_rows == 0:
+                logger.info(
+                    "SeaResultSet.fetchall: No rows returned, returning empty list"
+                )
                 return []
 
             # Convert Arrow table to Row objects
@@ -685,6 +693,9 @@ class SeaResultSet(ResultSet):
 
             # Increment the row index
             self._next_row_index += arrow_table.num_rows
+            logger.info(
+                f"SeaResultSet.fetchall: Converted {len(result_rows)} rows, new row index: {self._next_row_index}"
+            )
 
             return result_rows
         else:
