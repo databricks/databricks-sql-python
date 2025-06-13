@@ -22,7 +22,7 @@ class TestComplexTypes(PySQLPytestTestCase):
                     array_array_col ARRAY<ARRAY<STRING>>,
                     array_map_col ARRAY<MAP<STRING, INTEGER>>,
                     map_array_col MAP<STRING, ARRAY<STRING>>
-                )
+                ) USING DELTA
                 """
             )
             # Insert a record
@@ -41,7 +41,7 @@ class TestComplexTypes(PySQLPytestTestCase):
             )
             yield
             # Clean up the table after the test
-            cursor.execute("DROP TABLE IF EXISTS pysql_test_complex_types_table")
+            cursor.execute("DELETE FROM pysql_test_complex_types_table")
 
     @pytest.mark.parametrize(
         "field,expected_type",

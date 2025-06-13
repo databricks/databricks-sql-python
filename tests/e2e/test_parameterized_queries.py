@@ -179,9 +179,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         :paramstyle:
             This is a no-op but is included to make the test-code easier to read.
         """
-        INSERT_QUERY = f"INSERT INTO ___________________first.jprakash.pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM ___________________first.jprakash.pysql_e2e_inline_param_test_table LIMIT 1"
-        DELETE_QUERY = "DELETE FROM ___________________first.jprakash.pysql_e2e_inline_param_test_table"
+        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
+        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
+        DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
             with conn.cursor() as cursor:
