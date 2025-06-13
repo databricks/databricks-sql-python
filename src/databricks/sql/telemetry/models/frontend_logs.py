@@ -1,12 +1,11 @@
-import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from databricks.sql.telemetry.models.event import TelemetryEvent
-from databricks.sql.telemetry.utils import EnumEncoder
+from databricks.sql.telemetry.utils import JsonSerializableMixin
 from typing import Optional
 
 
 @dataclass
-class TelemetryClientContext:
+class TelemetryClientContext(JsonSerializableMixin):
     """
     Contains client-side context information for telemetry events.
     This includes timestamp and user agent information for tracking when and how the client is being used.
@@ -19,12 +18,9 @@ class TelemetryClientContext:
     timestamp_millis: int
     user_agent: str
 
-    def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
-
 
 @dataclass
-class FrontendLogContext:
+class FrontendLogContext(JsonSerializableMixin):
     """
     Wrapper for client context information in frontend logs.
     Provides additional context about the client environment for telemetry events.
@@ -35,12 +31,9 @@ class FrontendLogContext:
 
     client_context: TelemetryClientContext
 
-    def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
-
 
 @dataclass
-class FrontendLogEntry:
+class FrontendLogEntry(JsonSerializableMixin):
     """
     Contains the actual telemetry event data in a frontend log.
     Wraps the SQL driver log information for frontend processing.
@@ -51,12 +44,9 @@ class FrontendLogEntry:
 
     sql_driver_log: TelemetryEvent
 
-    def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)
-
 
 @dataclass
-class TelemetryFrontendLog:
+class TelemetryFrontendLog(JsonSerializableMixin):
     """
     Main container for frontend telemetry data.
     Aggregates workspace information, event ID, context, and the actual log entry.
@@ -73,6 +63,3 @@ class TelemetryFrontendLog:
     context: FrontendLogContext
     entry: FrontendLogEntry
     workspace_id: Optional[int] = None
-
-    def to_json(self):
-        return json.dumps(asdict(self), cls=EnumEncoder)

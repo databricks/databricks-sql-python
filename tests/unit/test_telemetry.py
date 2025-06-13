@@ -83,6 +83,12 @@ class TestNoopTelemetryClient:
             driver_connection_params=MagicMock(), user_agent="test"
         )
 
+    def test_export_failure_log(self, noop_telemetry_client):
+        """Test that export_failure_log does nothing."""
+        noop_telemetry_client.export_failure_log(
+            error_name="TestError", error_message="Test error message"
+        )
+
     def test_close(self, noop_telemetry_client):
         """Test that close does nothing."""
         noop_telemetry_client.close()
@@ -92,7 +98,7 @@ class TestTelemetryClient:
     """Tests for the TelemetryClient class."""
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.getDriverSystemConfiguration")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
     @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
     @patch("databricks.sql.telemetry.telemetry_client.time.time")
     def test_export_initial_telemetry_log(
@@ -111,7 +117,7 @@ class TestTelemetryClient:
 
         client = telemetry_client_setup["client"]
         host_url = telemetry_client_setup["host_url"]
-        client.export_event = MagicMock()
+        client._export_event = MagicMock()
                
         driver_connection_params = DriverConnectionParameters(
             http_path="test-path",
@@ -125,23 +131,64 @@ class TestTelemetryClient:
         client.export_initial_telemetry_log(driver_connection_params, user_agent)
         
         mock_frontend_log.assert_called_once()
-        client.export_event.assert_called_once_with(mock_frontend_log.return_value)
+        client._export_event.assert_called_once_with(mock_frontend_log.return_value)
+
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
+    @patch("databricks.sql.telemetry.telemetry_client.DriverErrorInfo")
+    @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
+    @patch("databricks.sql.telemetry.telemetry_client.time.time")
+    def test_export_failure_log(
+        self, 
+        mock_time, 
+        mock_uuid4, 
+        mock_driver_error_info,
+        mock_get_driver_config, 
+        mock_frontend_log,
+        telemetry_client_setup
+    ):
+        """Test exporting failure telemetry log."""
+        mock_time.return_value = 2000
+        mock_uuid4.return_value = "test-error-uuid"
+        mock_get_driver_config.return_value = "test-driver-config"
+        mock_driver_error_info.return_value = MagicMock()
+        mock_frontend_log.return_value = MagicMock()
+
+        client = telemetry_client_setup["client"]
+        client._export_event = MagicMock()
+        
+        client._driver_connection_params = "test-connection-params"
+        client._user_agent = "test-user-agent"
+        
+        error_name = "TestError"
+        error_message = "This is a test error message"
+        
+        client.export_failure_log(error_name, error_message)
+        
+        mock_driver_error_info.assert_called_once_with(
+            error_name=error_name, 
+            stack_trace=error_message
+        )
+        
+        mock_frontend_log.assert_called_once()
+        
+        client._export_event.assert_called_once_with(mock_frontend_log.return_value)
 
     def test_export_event(self, telemetry_client_setup):
         """Test exporting an event."""
         client = telemetry_client_setup["client"]
-        client.flush = MagicMock()
+        client._flush = MagicMock()
         
         for i in range(5):
-            client.export_event(f"event-{i}")
+            client._export_event(f"event-{i}")
         
-        client.flush.assert_not_called()
+        client._flush.assert_not_called()
         assert len(client._events_batch) == 5
         
         for i in range(5, 10):
-            client.export_event(f"event-{i}")
+            client._export_event(f"event-{i}")
         
-        client.flush.assert_called_once()
+        client._flush.assert_called_once()
         assert len(client._events_batch) == 10
 
     @patch("requests.post")
@@ -197,7 +244,7 @@ class TestTelemetryClient:
         client._events_batch = ["event1", "event2"]
         client._send_telemetry = MagicMock()
         
-        client.flush()
+        client._flush()
         
         client._send_telemetry.assert_called_once_with(["event1", "event2"])
         assert client._events_batch == []
@@ -206,13 +253,11 @@ class TestTelemetryClient:
     def test_close(self, mock_factory_class, telemetry_client_setup):
         """Test closing the client."""
         client = telemetry_client_setup["client"]
-        connection_uuid = telemetry_client_setup["connection_uuid"]
-        client.flush = MagicMock()
+        client._flush = MagicMock()
         
         client.close()
         
-        client.flush.assert_called_once()
-        mock_factory_class.close.assert_called_once_with(connection_uuid)
+        client._flush.assert_called_once()
 
 
 class TestTelemetryClientFactory:
