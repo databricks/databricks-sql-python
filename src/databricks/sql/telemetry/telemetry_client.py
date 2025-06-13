@@ -426,4 +426,3 @@ class TelemetryClientFactory:
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
-                
