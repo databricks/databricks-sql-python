@@ -300,6 +300,7 @@ class TelemetryClient(BaseTelemetryClient):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
         self._flush()
+        TelemetryClientFactory.close(self._connection_uuid)
 
 
 class TelemetryClientFactory:
@@ -415,7 +416,6 @@ class TelemetryClientFactory:
                 logger.debug(
                     "Removing telemetry client for connection %s", connection_uuid
                 )
-                TelemetryClientFactory.get_telemetry_client(connection_uuid).close()
                 TelemetryClientFactory._clients.pop(connection_uuid, None)
 
             # Shutdown executor if no more clients

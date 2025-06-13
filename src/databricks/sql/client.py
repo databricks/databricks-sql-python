@@ -470,7 +470,7 @@ class Connection:
 
         self.open = False
 
-        TelemetryClientFactory.close(self.get_session_id_hex())
+        self._telemetry_client.close()
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
