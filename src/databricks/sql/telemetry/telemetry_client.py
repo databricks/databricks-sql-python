@@ -103,14 +103,6 @@ class BaseTelemetryClient(ABC):
     """
 
     @abstractmethod
-    def export_event(self, event):
-        pass
-
-    @abstractmethod
-    def flush(self):
-        pass
-
-    @abstractmethod
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
         pass
 
@@ -135,12 +127,6 @@ class NoopTelemetryClient(BaseTelemetryClient):
         if cls._instance is None:
             cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
         return cls._instance
-
-    def export_event(self, event):
-        pass
-
-    def flush(self):
-        pass
 
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
         pass
@@ -182,7 +168,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._host_url = host_url
         self._executor = executor
 
-    def export_event(self, event):
+    def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
         logger.debug("Exporting event for connection %s", self._connection_uuid)
         with self._lock:
@@ -191,9 +177,9 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug(
                 "Batch size limit reached (%s), flushing events", self._batch_size
             )
-            self.flush()
+            self._flush()
 
-    def flush(self):
+    def _flush(self):
         """Flush the current batch of events to the server"""
         with self._lock:
             events_to_flush = self._events_batch.copy()
@@ -313,11 +299,7 @@ class TelemetryClient(BaseTelemetryClient):
     def close(self):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
-        try:
-            self.flush()
-            TelemetryClientFactory.close(self._connection_uuid)
-        except Exception as e:
-            logger.debug("Failed to close telemetry client: %s", e)
+        self._flush()
 
 
 class TelemetryClientFactory:
@@ -365,20 +347,8 @@ class TelemetryClientFactory:
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
 
         # Flush existing thread pool work and wait for completion
-        logger.debug(
-            "Flushing pending telemetry and waiting for thread pool completion..."
-        )
-        for client in cls._clients.items():
-            client.flush()  # Submit any pending events
-
-        if cls._executor:
-            try:
-                cls._executor.shutdown(
-                    wait=True
-                )  # This waits for all submitted work to complete
-                logger.debug("Thread pool shutdown completed successfully")
-            except Exception as e:
-                logger.debug("Thread pool shutdown failed: %s", e)
+        for uuid, _ in cls._clients.items():
+            cls.close(uuid)
 
         # Call the original exception handler to maintain normal behavior
         if cls._original_excepthook:
@@ -445,6 +415,7 @@ class TelemetryClientFactory:
                 logger.debug(
                     "Removing telemetry client for connection %s", connection_uuid
                 )
+                TelemetryClientFactory.get_telemetry_client(connection_uuid).close()
                 TelemetryClientFactory._clients.pop(connection_uuid, None)
 
             # Shutdown executor if no more clients
@@ -455,3 +426,4 @@ class TelemetryClientFactory:
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
+                
