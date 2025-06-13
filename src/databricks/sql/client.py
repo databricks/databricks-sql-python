@@ -18,6 +18,9 @@ from databricks.sql.exc import (
     OperationalError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
+    InterfaceError,
+    NotSupportedError,
+    ProgrammingError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
@@ -421,7 +424,7 @@ class Connection:
         Will throw an Error if the connection has been closed.
         """
         if not self.open:
-            raise Error(
+            raise InterfaceError(
                 "Cannot create cursor from closed connection",
                 connection_uuid=self.get_session_id_hex(),
             )
@@ -529,7 +532,7 @@ class Cursor:
             for row in self.active_result_set:
                 yield row
         else:
-            raise Error(
+            raise ProgrammingError(
                 "There is no active result set",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -669,7 +672,7 @@ class Cursor:
 
     def _check_not_closed(self):
         if not self.open:
-            raise Error(
+            raise InterfaceError(
                 "Attempting operation on closed cursor",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -689,7 +692,7 @@ class Cursor:
         elif isinstance(staging_allowed_local_path, type(list())):
             _staging_allowed_local_paths = staging_allowed_local_path
         else:
-            raise Error(
+            raise ProgrammingError(
                 "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -719,7 +722,7 @@ class Cursor:
                 else:
                     continue
             if not allow_operation:
-                raise Error(
+                raise ProgrammingError(
                     "Local file operations are restricted to paths within the configured staging_allowed_local_path",
                     connection_uuid=self.connection.get_session_id_hex(),
                 )
@@ -749,7 +752,7 @@ class Cursor:
             handler_args.pop("local_file")
             return self._handle_staging_remove(**handler_args)
         else:
-            raise Error(
+            raise ProgrammingError(
                 f"Operation {row.operation} is not supported. "
                 + "Supported operations are GET, PUT, and REMOVE",
                 connection_uuid=self.connection.get_session_id_hex(),
@@ -764,7 +767,7 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error(
+            raise ProgrammingError(
                 "Cannot perform PUT without specifying a local_file",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -783,7 +786,7 @@ class Cursor:
         # fmt: on
 
         if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
-            raise Error(
+            raise OperationalError(
                 f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -803,7 +806,7 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error(
+            raise ProgrammingError(
                 "Cannot perform GET without specifying a local_file",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -813,7 +816,7 @@ class Cursor:
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
         if not r.ok:
-            raise Error(
+            raise OperationalError(
                 f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -829,7 +832,7 @@ class Cursor:
         r = requests.delete(url=presigned_url, headers=headers)
 
         if not r.ok:
-            raise Error(
+            raise OperationalError(
                 f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -1029,7 +1032,7 @@ class Cursor:
 
             return self
         else:
-            raise Error(
+            raise OperationalError(
                 f"get_execution_result failed with Operation status {operation_state}",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -1181,7 +1184,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchall()
         else:
-            raise Error(
+            raise ProgrammingError(
                 "There is no active result set",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -1198,7 +1201,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchone()
         else:
-            raise Error(
+            raise ProgrammingError(
                 "There is no active result set",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -1223,7 +1226,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchmany(size)
         else:
-            raise Error(
+            raise ProgrammingError(
                 "There is no active result set",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -1233,7 +1236,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
-            raise Error(
+            raise ProgrammingError(
                 "There is no active result set",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
@@ -1243,7 +1246,7 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
         else:
-            raise Error(
+            raise ProgrammingError(
                 "There is no active result set",
                 connection_uuid=self.connection.get_session_id_hex(),
             )
