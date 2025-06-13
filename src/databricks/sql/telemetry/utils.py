@@ -1,8 +1,7 @@
 import json
 from enum import Enum
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 from abc import ABC
-from typing import Any
 
 
 class JsonSerializableMixin(ABC):
@@ -13,6 +12,11 @@ class JsonSerializableMixin(ABC):
         Convert the object to a JSON string, excluding None values.
         Handles Enum serialization and filters out None values from the output.
         """
+        if not is_dataclass(self):
+            raise TypeError(
+                f"{self.__class__.__name__} must be a dataclass to use JsonSerializableMixin"
+            )
+
         return json.dumps(
             asdict(
                 self,
