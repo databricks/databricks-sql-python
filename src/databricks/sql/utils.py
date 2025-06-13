@@ -16,9 +16,6 @@ from dateutil import parser
 
 import lz4.frame
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
-
 try:
     import pyarrow
 except ImportError:

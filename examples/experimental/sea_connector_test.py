@@ -10,8 +10,7 @@ import logging
 import subprocess
 from typing import List, Tuple
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 TEST_MODULES = [

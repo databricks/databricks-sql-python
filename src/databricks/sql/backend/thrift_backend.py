@@ -40,7 +40,6 @@ from databricks.sql.thrift_api.TCLIService.TCLIService import (
 )
 
 from databricks.sql.utils import (
-    ThriftResultSetQueueFactory,
     _bound,
     RequestErrorInfo,
     NoRetryReason,

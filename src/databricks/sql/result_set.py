@@ -474,19 +474,39 @@ class SeaResultSet(ResultSet):
             result_data: Result data from SEA response (optional)
             manifest: Manifest from SEA response (optional)
         """
+        # Extract and store SEA-specific properties
+        self.statement_id = (
+            execute_response.command_id.to_sea_statement_id()
+            if execute_response.command_id
+            else None
+        )
+
+        # Build the results queue
+        results_queue = None
 
         if result_data:
-            queue = SeaResultSetQueueFactory.build_queue(
-                sea_result_data=result_data,
-                manifest=manifest,
-                statement_id=execute_response.command_id.to_sea_statement_id(),
-                description=execute_response.description,
-                schema_bytes=execute_response.arrow_schema_bytes,
-            )
-        else:
-            logger.warning("No result data provided for SEA result set")
-            queue = JsonQueue([])
+            from typing import cast, List
 
+            # Convert description to the expected format
+            desc = None
+            if execute_response.description:
+                desc = cast(List[Tuple[Any, ...]], execute_response.description)
+
+            results_queue = SeaResultSetQueueFactory.build_queue(
+                result_data,
+                manifest,
+                str(self.statement_id),
+                description=desc,
+                schema_bytes=execute_response.arrow_schema_bytes
+                if execute_response.arrow_schema_bytes
+                else None,
+                max_download_threads=sea_client.max_download_threads,
+                ssl_options=sea_client.ssl_options,
+                sea_client=sea_client,
+                lz4_compressed=execute_response.lz4_compressed,
+            )
+
+        # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
             backend=sea_client,
@@ -495,12 +515,14 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            results_queue=queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
+
+        # Initialize queue for result data if not provided
+        self.results = results_queue or JsonQueue([])
 
     def _convert_to_row_objects(self, rows):
         """
