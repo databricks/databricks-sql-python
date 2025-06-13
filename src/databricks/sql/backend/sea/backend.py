@@ -5,6 +5,10 @@ from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
+    ResultFormat,
+    ResultDisposition,
+    ResultCompression,
+    WaitTimeout,
 )
 
 if TYPE_CHECKING:
@@ -405,9 +409,17 @@ class SeaDatabricksClient(DatabricksClient):
                     )
                 )
 
-        format = "ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY"
-        disposition = "EXTERNAL_LINKS" if use_cloud_fetch else "INLINE"
-        result_compression = "LZ4_FRAME" if lz4_compression else None
+        format = (
+            ResultFormat.ARROW_STREAM if use_cloud_fetch else ResultFormat.JSON_ARRAY
+        ).value
+        disposition = (
+            ResultDisposition.EXTERNAL_LINKS
+            if use_cloud_fetch
+            else ResultDisposition.INLINE
+        ).value
+        result_compression = (
+            ResultCompression.LZ4_FRAME if lz4_compression else ResultCompression.NONE
+        ).value
 
         request = ExecuteStatementRequest(
             warehouse_id=self.warehouse_id,
@@ -415,7 +427,7 @@ class SeaDatabricksClient(DatabricksClient):
             statement=operation,
             disposition=disposition,
             format=format,
-            wait_timeout="0s" if async_op else "10s",
+            wait_timeout=(WaitTimeout.ASYNC if async_op else WaitTimeout.SYNC).value,
             on_wait_timeout="CONTINUE",
             row_limit=max_rows,
             parameters=sea_parameters if sea_parameters else None,
