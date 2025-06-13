@@ -1,11 +1,7 @@
 name: Code Quality Checks
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+
+on: [pull_request]
+
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest

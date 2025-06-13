@@ -1,9 +1,10 @@
 name: Integration Tests
+
 on:
-  push:
-    paths-ignore:
-      - "**.MD"
-      - "**.md"
+  push:            
+    branches:
+      - main
+  pull_request:   
 
 jobs:
   run-e2e-tests:
