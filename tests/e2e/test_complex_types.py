@@ -12,9 +12,10 @@ class TestComplexTypes(PySQLPytestTestCase):
 
         with self.cursor() as cursor:
             # Create the table
+            cursor.execute("""DROP TABLE IF EXISTS pysql_e2e_test_complex_types_table""")
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS pysql_e2e_test_complex_types_table (
+                CREATE TABLE pysql_e2e_test_complex_types_table (
                     array_col ARRAY<STRING>,
                     map_col MAP<STRING, INTEGER>,
                     struct_col STRUCT<field1: STRING, field2: INTEGER>
