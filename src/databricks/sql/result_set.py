@@ -154,16 +154,6 @@ class ResultSet(ABC):
         """Fetch all remaining rows of a query result."""
         pass
 
-    @abstractmethod
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
-        """Fetch the next set of rows as an Arrow table."""
-        pass
-
-    @abstractmethod
-    def fetchall_arrow(self) -> "pyarrow.Table":
-        """Fetch all remaining rows as an Arrow table."""
-        pass
-
     def close(self) -> None:
         """
         Close the result set.
@@ -499,7 +489,7 @@ class SeaResultSet(ResultSet):
         # Initialize queue for result data if not provided
         self.results = results_queue or JsonQueue([])
 
-    def _convert_json_rows(self, rows):
+    def _convert_json_table(self, rows):
         """
         Convert raw data rows to Row objects with named columns based on description.
         Args:
@@ -513,59 +503,6 @@ class SeaResultSet(ResultSet):
         column_names = [col[0] for col in self.description]
         ResultRow = Row(*column_names)
         return [ResultRow(*row) for row in rows]
-
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
-        """
-        Fetch the next set of rows as an Arrow table.
-
-        Args:
-            size: Number of rows to fetch
-
-        Returns:
-            PyArrow Table containing the fetched rows
-
-        Raises:
-            ImportError: If PyArrow is not installed
-            ValueError: If size is negative
-        """
-        if size < 0:
-            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-
-        results = self.results.next_n_rows(size)
-        n_remaining_rows = size - results.num_rows
-        self._next_row_index += results.num_rows
-
-        while n_remaining_rows > 0:
-            partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results])
-            n_remaining_rows = n_remaining_rows - partial_results.num_rows
-            self._next_row_index += partial_results.num_rows
-
-        return results
-
-    def fetchall_arrow(self) -> "pyarrow.Table":
-        """
-        Fetch all remaining rows as an Arrow table.
-
-        Returns:
-            PyArrow Table containing all remaining rows
-
-        Raises:
-            ImportError: If PyArrow is not installed
-        """
-        results = self.results.remaining_rows()
-        self._next_row_index += results.num_rows
-
-        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
-        # Valid only for metadata commands result set
-        if isinstance(results, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(results.column_names, results.column_table)
-            }
-            return pyarrow.Table.from_pydict(data)
-
-        return results
 
     def fetchmany_json(self, size: int):
         """
@@ -584,14 +521,7 @@ class SeaResultSet(ResultSet):
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         results = self.results.next_n_rows(size)
-        n_remaining_rows = size - len(results)
         self._next_row_index += len(results)
-
-        while n_remaining_rows > 0:
-            partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = results + partial_results
-            n_remaining_rows = n_remaining_rows - len(partial_results)
-            self._next_row_index += len(partial_results)
 
         return results
 
@@ -616,7 +546,7 @@ class SeaResultSet(ResultSet):
             A single Row object or None if no more rows are available
         """
         if isinstance(self.results, JsonQueue):
-            res = self._convert_json_rows(self.fetchmany_json(1))
+            res = self._convert_json_table(self.fetchmany_json(1))
         else:
             raise NotImplementedError("fetchone only supported for JSON data")
 
@@ -636,7 +566,7 @@ class SeaResultSet(ResultSet):
             ValueError: If size is negative
         """
         if isinstance(self.results, JsonQueue):
-            return self._convert_json_rows(self.fetchmany_json(size))
+            return self._convert_json_table(self.fetchmany_json(size))
         else:
             raise NotImplementedError("fetchmany only supported for JSON data")
 
@@ -648,6 +578,6 @@ class SeaResultSet(ResultSet):
             List of Row objects containing all remaining rows
         """
         if isinstance(self.results, JsonQueue):
-            return self._convert_json_rows(self.fetchall_json())
+            return self._convert_json_table(self.fetchall_json())
         else:
             raise NotImplementedError("fetchall only supported for JSON data")

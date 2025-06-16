@@ -21,6 +21,7 @@ class TestSeaResultSet:
         """Create a mock connection."""
         connection = Mock()
         connection.open = True
+        connection.disable_pandas = False
         return connection
 
     @pytest.fixture
@@ -260,7 +261,7 @@ class TestSeaResultSet:
             ("col2", "INT", None, None, None, None, None),
         ]
         rows = [["value1", 123], ["value2", 456]]
-        converted_rows = result_set._convert_json_rows(rows)
+        converted_rows = result_set._convert_json_table(rows)
 
         assert len(converted_rows) == 2
         assert converted_rows[0].col1 == "value1"
@@ -270,7 +271,7 @@ class TestSeaResultSet:
 
         # Test with no description
         result_set.description = None
-        converted_rows = result_set._convert_json_rows(rows)
+        converted_rows = result_set._convert_json_table(rows)
         assert converted_rows == rows
 
         # Test with empty rows
@@ -278,5 +279,165 @@ class TestSeaResultSet:
             ("col1", "STRING", None, None, None, None, None),
             ("col2", "INT", None, None, None, None, None),
         ]
-        converted_rows = result_set._convert_json_rows([])
+        converted_rows = result_set._convert_json_table([])
         assert converted_rows == []
+
+    @pytest.fixture
+    def mock_arrow_queue(self):
+        """Create a mock queue that returns PyArrow tables."""
+        mock_queue = Mock()
+
+        # Mock PyArrow Table for next_n_rows
+        mock_table1 = Mock()
+        mock_table1.num_rows = 2
+        mock_queue.next_n_rows.return_value = mock_table1
+
+        # Mock PyArrow Table for remaining_rows
+        mock_table2 = Mock()
+        mock_table2.num_rows = 3
+        mock_queue.remaining_rows.return_value = mock_table2
+
+        return mock_queue
+
+    @patch("pyarrow.concat_tables")
+    def test_fetchmany_arrow(
+        self,
+        mock_concat_tables,
+        mock_connection,
+        mock_sea_client,
+        execute_response,
+        mock_arrow_queue,
+    ):
+        """Test fetchmany_arrow method."""
+        # Setup mock for pyarrow.concat_tables
+        mock_concat_result = Mock()
+        mock_concat_result.num_rows = 3
+        mock_concat_tables.return_value = mock_concat_result
+
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_arrow_queue
+
+        # Test with specific size
+        result = result_set.fetchmany_arrow(5)
+
+        # Verify next_n_rows was called with the correct size
+        mock_arrow_queue.next_n_rows.assert_called_with(5)
+
+        # Verify _next_row_index was updated
+        assert result_set._next_row_index == 2
+
+        # Test with negative size
+        with pytest.raises(
+            ValueError, match="size argument for fetchmany is -1 but must be >= 0"
+        ):
+            result_set.fetchmany_arrow(-1)
+
+    def test_fetchall_arrow(
+        self, mock_connection, mock_sea_client, execute_response, mock_arrow_queue
+    ):
+        """Test fetchall_arrow method."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_arrow_queue
+
+        # Test fetchall_arrow
+        result = result_set.fetchall_arrow()
+
+        # Verify remaining_rows was called
+        mock_arrow_queue.remaining_rows.assert_called_once()
+
+        # Verify _next_row_index was updated
+        assert result_set._next_row_index == 3
+
+    def test_fetchone(
+        self, mock_connection, mock_sea_client, execute_response, mock_json_queue
+    ):
+        """Test fetchone method."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_json_queue
+        result_set.description = [
+            ("col1", "STRING", None, None, None, None, None),
+            ("col2", "INT", None, None, None, None, None),
+        ]
+
+        # Mock fetchmany_json to return a single row
+        mock_json_queue.next_n_rows.return_value = [["value1", 123]]
+
+        # Test fetchone
+        row = result_set.fetchone()
+        assert row is not None
+        assert row.col1 == "value1"
+        assert row.col2 == 123
+
+        # Test fetchone with no results
+        mock_json_queue.next_n_rows.return_value = []
+        row = result_set.fetchone()
+        assert row is None
+
+        # Test fetchone with non-JsonQueue
+        result_set.results = Mock()
+        result_set.results.__class__ = type("NotJsonQueue", (), {})
+
+        with pytest.raises(
+            NotImplementedError, match="fetchone only supported for JSON data"
+        ):
+            result_set.fetchone()
+
+    def test_fetchmany_with_non_json_queue(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test fetchmany with a non-JsonQueue results object."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+
+        # Set results to a non-JsonQueue object
+        result_set.results = Mock()
+        result_set.results.__class__ = type("NotJsonQueue", (), {})
+
+        with pytest.raises(
+            NotImplementedError, match="fetchmany only supported for JSON data"
+        ):
+            result_set.fetchmany(2)
+
+    def test_fetchall_with_non_json_queue(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test fetchall with a non-JsonQueue results object."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+
+        # Set results to a non-JsonQueue object
+        result_set.results = Mock()
+        result_set.results.__class__ = type("NotJsonQueue", (), {})
+
+        with pytest.raises(
+            NotImplementedError, match="fetchall only supported for JSON data"
+        ):
+            result_set.fetchall()
