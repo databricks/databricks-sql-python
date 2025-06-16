@@ -305,59 +305,6 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
-    def fetch_chunk_links(
-        self, statement_id: str, chunk_index: int
-    ) -> List["ExternalLink"]:
-        """
-        Fetch links for a specific chunk index from the SEA API.
-
-        Args:
-            statement_id: The statement ID
-            chunk_index: The chunk index to fetch
-
-        Returns:
-            List[ExternalLink]: List of external links for the chunk
-
-        Raises:
-            Error: If there's an error fetching the chunk links
-        """
-        from databricks.sql.backend.sea.models.responses import GetChunksResponse
-        from databricks.sql.backend.sea.models.base import ExternalLink
-
-        logger.info(f"Fetching chunk {chunk_index} links for statement {statement_id}")
-
-        # Use the chunk-specific endpoint if we have a specific chunk index
-        path = self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index)
-
-        response_data = self.http_client._make_request(
-            method="GET",
-            path=path,
-        )
-
-        # Extract the external_links from the response
-        external_links = response_data.get("external_links", [])
-        logger.info(
-            f"Received {len(external_links)} external links for chunk {chunk_index}"
-        )
-
-        # Convert the links to ExternalLink objects
-        links = []
-        for link_data in external_links:
-            link = ExternalLink(
-                external_link=link_data.get("external_link", ""),
-                expiration=link_data.get("expiration", ""),
-                chunk_index=link_data.get("chunk_index", 0),
-                byte_count=link_data.get("byte_count", 0),
-                row_count=link_data.get("row_count", 0),
-                row_offset=link_data.get("row_offset", 0),
-                next_chunk_index=link_data.get("next_chunk_index"),
-                next_chunk_internal_link=link_data.get("next_chunk_internal_link"),
-                http_headers=link_data.get("http_headers", {}),
-            )
-            links.append(link)
-
-        return links
-
     def get_chunk_links(
         self, statement_id: str, chunk_index: int
     ) -> "GetChunksResponse":
