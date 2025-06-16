@@ -101,6 +101,25 @@ class ResultFileDownloadManager:
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
 
+    def add_links(self, links: List[TSparkArrowResultLink]):
+        """
+        Add more links to the download manager.
+        Args:
+            links: List of links to add
+        """
+        for link in links:
+            if link.rowCount <= 0:
+                continue
+            logger.debug(
+                "ResultFileDownloadManager: adding file link, start offset {}, row count: {}".format(
+                    link.startRowOffset, link.rowCount
+                )
+            )
+            self._pending_links.append(link)
+
+        # Make sure the download queue is always full
+        self._schedule_downloads()
+
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool
         self._pending_links = []
