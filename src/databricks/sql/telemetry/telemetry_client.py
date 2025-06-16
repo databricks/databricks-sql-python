@@ -104,15 +104,15 @@ class BaseTelemetryClient(ABC):
 
     @abstractmethod
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
-        raise NotImplementedError("Subclasses must implement export_initial_telemetry_log")
+        pass
 
     @abstractmethod
     def export_failure_log(self, error_name, error_message):
-        raise NotImplementedError("Subclasses must implement export_failure_log")
+        pass
 
     @abstractmethod
     def close(self):
-        raise NotImplementedError("Subclasses must implement close")
+        pass
 
 
 # A single instance of the no-op client that can be reused
