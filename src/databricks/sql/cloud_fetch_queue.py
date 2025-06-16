@@ -387,62 +387,30 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         return link
 
     def remaining_rows(self) -> "pyarrow.Table":
-        """Get all remaining rows of the cloud fetch Arrow dataframes."""
+        """
+        Get all remaining rows of the cloud fetch Arrow dataframes.
+
+        Returns:
+            pyarrow.Table
+        """
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
-            logger.info("SeaCloudFetchQueue: No table available, returning empty table")
             return self._create_empty_table()
 
-        logger.info("SeaCloudFetchQueue: Retrieving all remaining rows")
         results = pyarrow.Table.from_pydict({})  # Empty table
-        total_rows_fetched = 0
-
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            logger.info(
-                "SeaCloudFetchQueue: Got slice of {} rows from current table (from index {})".format(
-                    table_slice.num_rows, self.table_row_index
-                )
-            )
-
             if results.num_rows > 0:
-                logger.info(
-                    "SeaCloudFetchQueue: Concatenating {} rows to existing {} rows".format(
-                        table_slice.num_rows, results.num_rows
-                    )
-                )
                 results = pyarrow.concat_tables([results, table_slice])
             else:
                 results = table_slice
 
             self.table_row_index += table_slice.num_rows
-            total_rows_fetched += table_slice.num_rows
-
-            logger.info(
-                "SeaCloudFetchQueue: After slice, table_row_index={}, total_rows_fetched={}".format(
-                    self.table_row_index, total_rows_fetched
-                )
-            )
-
-            # Get the next table
-            next_table = self._create_next_table()
-            if next_table is None:
-                logger.info("SeaCloudFetchQueue: No more tables available")
-                break
-
-            self.table = next_table
+            self.table = self._create_next_table()
             self.table_row_index = 0
-            logger.info(
-                "SeaCloudFetchQueue: Got next table with {} rows".format(
-                    self.table.num_rows if self.table else 0
-                )
-            )
 
-        logger.info(
-            "SeaCloudFetchQueue: Retrieved {} total rows".format(results.num_rows)
-        )
         return results
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
