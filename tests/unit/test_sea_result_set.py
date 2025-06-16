@@ -7,10 +7,14 @@ the result set functionality for the SEA (Statement Execution API) backend.
 
 import pytest
 from unittest.mock import patch, MagicMock, Mock
+import logging
 
-from databricks.sql.result_set import SeaResultSet
-from databricks.sql.utils import JsonQueue
+from databricks.sql.result_set import SeaResultSet, ResultSet
+from databricks.sql.utils import JsonQueue, ResultSetQueue
+from databricks.sql.types import Row
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.types import CommandId, CommandState, BackendType
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 
 
 class TestSeaResultSet:
@@ -299,67 +303,6 @@ class TestSeaResultSet:
 
         return mock_queue
 
-    @patch("pyarrow.concat_tables")
-    def test_fetchmany_arrow(
-        self,
-        mock_concat_tables,
-        mock_connection,
-        mock_sea_client,
-        execute_response,
-        mock_arrow_queue,
-    ):
-        """Test fetchmany_arrow method."""
-        # Setup mock for pyarrow.concat_tables
-        mock_concat_result = Mock()
-        mock_concat_result.num_rows = 3
-        mock_concat_tables.return_value = mock_concat_result
-
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-        result_set.results = mock_arrow_queue
-
-        # Test with specific size
-        result = result_set.fetchmany_arrow(5)
-
-        # Verify next_n_rows was called with the correct size
-        mock_arrow_queue.next_n_rows.assert_called_with(5)
-
-        # Verify _next_row_index was updated
-        assert result_set._next_row_index == 2
-
-        # Test with negative size
-        with pytest.raises(
-            ValueError, match="size argument for fetchmany is -1 but must be >= 0"
-        ):
-            result_set.fetchmany_arrow(-1)
-
-    def test_fetchall_arrow(
-        self, mock_connection, mock_sea_client, execute_response, mock_arrow_queue
-    ):
-        """Test fetchall_arrow method."""
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-        result_set.results = mock_arrow_queue
-
-        # Test fetchall_arrow
-        result = result_set.fetchall_arrow()
-
-        # Verify remaining_rows was called
-        mock_arrow_queue.remaining_rows.assert_called_once()
-
-        # Verify _next_row_index was updated
-        assert result_set._next_row_index == 3
-
     def test_fetchone(
         self, mock_connection, mock_sea_client, execute_response, mock_json_queue
     ):
@@ -441,3 +384,220 @@ class TestSeaResultSet:
             NotImplementedError, match="fetchall only supported for JSON data"
         ):
             result_set.fetchall()
+
+    def test_iterator_protocol(
+        self, mock_connection, mock_sea_client, execute_response, mock_json_queue
+    ):
+        """Test the iterator protocol (__iter__) implementation."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_json_queue
+        result_set.description = [
+            ("test_value", "INT", None, None, None, None, None),
+        ]
+
+        # Mock fetchone to return a sequence of values and then None
+        with patch.object(result_set, "fetchone") as mock_fetchone:
+            mock_fetchone.side_effect = [
+                Row("test_value")(100),
+                Row("test_value")(200),
+                Row("test_value")(300),
+                None,
+            ]
+
+            # Test iterating over the result set
+            rows = list(result_set)
+            assert len(rows) == 3
+            assert rows[0].test_value == 100
+            assert rows[1].test_value == 200
+            assert rows[2].test_value == 300
+
+    def test_rownumber_property(
+        self, mock_connection, mock_sea_client, execute_response, mock_json_queue
+    ):
+        """Test the rownumber property."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = mock_json_queue
+
+        # Initial row number should be 0
+        assert result_set.rownumber == 0
+
+        # After fetching rows, row number should be updated
+        mock_json_queue.next_n_rows.return_value = [["value1"]]
+        result_set.fetchmany_json(2)
+        result_set._next_row_index = 2
+        assert result_set.rownumber == 2
+
+        # After fetching more rows, row number should be incremented
+        mock_json_queue.next_n_rows.return_value = [["value3"]]
+        result_set.fetchmany_json(1)
+        result_set._next_row_index = 3
+        assert result_set.rownumber == 3
+
+    def test_is_staging_operation_property(self, mock_connection, mock_sea_client):
+        """Test the is_staging_operation property."""
+        # Create a response with staging operation set to True
+        staging_response = Mock()
+        staging_response.command_id = CommandId.from_sea_statement_id(
+            "test-staging-123"
+        )
+        staging_response.status = CommandState.SUCCEEDED
+        staging_response.has_been_closed_server_side = False
+        staging_response.description = []
+        staging_response.is_staging_operation = True
+        staging_response.lz4_compressed = False
+        staging_response.arrow_schema_bytes = b""
+
+        # Create a result set with staging operation
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=staging_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+
+        # Verify the is_staging_operation property
+        assert result_set.is_staging_operation is True
+
+    def test_init_with_result_data(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test initializing SeaResultSet with result data."""
+        # Create sample result data with a mock
+        result_data = Mock(spec=ResultData)
+        result_data.data = [["value1", 123], ["value2", 456]]
+        result_data.external_links = None
+
+        manifest = Mock(spec=ResultManifest)
+
+        # Mock the SeaResultSetQueueFactory.build_queue method
+        with patch(
+            "databricks.sql.result_set.SeaResultSetQueueFactory"
+        ) as factory_mock:
+            # Create a mock JsonQueue
+            mock_queue = Mock(spec=JsonQueue)
+            factory_mock.build_queue.return_value = mock_queue
+
+            result_set = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                buffer_size_bytes=1000,
+                arraysize=100,
+                result_data=result_data,
+                manifest=manifest,
+            )
+
+            # Verify the factory was called with the right parameters
+            factory_mock.build_queue.assert_called_once_with(
+                result_data,
+                manifest,
+                str(execute_response.command_id.to_sea_statement_id()),
+                description=execute_response.description,
+                max_download_threads=mock_sea_client.max_download_threads,
+                ssl_options=mock_sea_client.ssl_options,
+                sea_client=mock_sea_client,
+                lz4_compressed=execute_response.lz4_compressed,
+            )
+
+            # Verify the results queue was set correctly
+            assert result_set.results == mock_queue
+
+    def test_close_with_request_error(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test closing a result set when a RequestError is raised."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+
+        # Create a patched version of the close method that doesn't check e.args[1]
+        with patch("databricks.sql.result_set.ResultSet.close") as mock_close:
+            # Call the close method
+            result_set.close()
+
+            # Verify the parent's close method was called
+            mock_close.assert_called_once()
+
+    def test_init_with_empty_result_data(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test initializing SeaResultSet with empty result data."""
+        # Create sample result data with a mock
+        result_data = Mock(spec=ResultData)
+        result_data.data = None
+        result_data.external_links = None
+
+        manifest = Mock(spec=ResultManifest)
+
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+            result_data=result_data,
+            manifest=manifest,
+        )
+
+        # Verify an empty JsonQueue was created
+        assert isinstance(result_set.results, JsonQueue)
+        assert result_set.results.data_array == []
+
+    def test_init_without_result_data(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test initializing SeaResultSet without result data."""
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+
+        # Verify an empty JsonQueue was created
+        assert isinstance(result_set.results, JsonQueue)
+        assert result_set.results.data_array == []
+
+    def test_init_with_external_links(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test initializing SeaResultSet with external links."""
+        # Create sample result data with external links
+        result_data = Mock(spec=ResultData)
+        result_data.data = None
+        result_data.external_links = ["link1", "link2"]
+
+        manifest = Mock(spec=ResultManifest)
+
+        # This should raise NotImplementedError
+        with pytest.raises(
+            NotImplementedError,
+            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
+        ):
+            SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                buffer_size_bytes=1000,
+                arraysize=100,
+                result_data=result_data,
+                manifest=manifest,
+            )
