@@ -318,7 +318,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         self._sea_client = sea_client
         self._statement_id = statement_id
-        self._total_chunk_count = total_chunk_count
 
         logger.debug(
             "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
@@ -342,12 +341,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Initialize table and position
         self.table = self._create_next_table()
-        if self.table:
-            logger.debug(
-                "SeaCloudFetchQueue: Initial table created with {} rows".format(
-                    self.table.num_rows
-                )
-            )
 
     def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
@@ -357,7 +350,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Parse the ISO format expiration time
         expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())
-
         return TSparkArrowResultLink(
             fileLink=link.external_link,
             expiryTime=expiry_time,
@@ -369,9 +361,10 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def _progress_chunk_link(self):
         """Progress to the next chunk link."""
-        next_chunk_index = self._current_chunk_link.next_chunk_index
-        self._current_chunk_link = None
 
+        next_chunk_index = self._current_chunk_link.next_chunk_index
+
+        self._current_chunk_link = None
         try:
             self._current_chunk_link = self._sea_client.get_chunk_link(
                 self._statement_id, next_chunk_index
@@ -382,6 +375,9 @@ class SeaCloudFetchQueue(CloudFetchQueue):
                     next_chunk_index, e
                 )
             )
+        logger.debug(
+            f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
+        )
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
