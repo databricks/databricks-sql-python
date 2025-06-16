@@ -102,12 +102,6 @@ class ResultSet(ABC):
         """Whether this result set represents a staging operation."""
         return self._is_staging_operation
 
-    # Define abstract methods that concrete implementations must implement
-    @abstractmethod
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        pass
-
     @abstractmethod
     def fetchone(self) -> Optional[Row]:
         """Fetch the next row of a query result set."""
@@ -508,16 +502,6 @@ class SeaResultSet(ResultSet):
 
         # Initialize queue for result data if not provided
         self.results = results_queue or JsonQueue([])
-
-    def _fill_results_buffer(self):
-        """
-        Fill the results buffer from the backend.
-
-        For SEA, we already have all the data in the results queue,
-        so this is a no-op.
-        """
-        # No-op for SEA as we already have all the data
-        pass
 
     def _convert_arrow_table(self, table):
         """
