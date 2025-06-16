@@ -351,10 +351,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
-        if not link:
-            logger.debug("SeaCloudFetchQueue: No link to convert to Thrift format")
-            return None
-
         logger.debug(
             "SeaCloudFetchQueue: Converting link to Thrift format".format(link)
         )
