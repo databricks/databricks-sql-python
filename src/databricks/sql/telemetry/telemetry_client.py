@@ -140,15 +140,15 @@ class TelemetryClient(BaseTelemetryClient):
     def __init__(
         self,
         telemetry_enabled,
-        connection_uuid,
+        session_id_hex,
         auth_provider,
         host_url,
         executor,
     ):
-        logger.debug("Initializing TelemetryClient for connection: %s", connection_uuid)
+        logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
         self._batch_size = 10  # TODO: Decide on batch size
-        self._connection_uuid = connection_uuid
+        self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
         self._events_batch = []
@@ -159,7 +159,7 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
-        logger.debug("Exporting event for connection %s", self._connection_uuid)
+        logger.debug("Exporting event for connection %s", self._session_id_hex)
         with self._lock:
             self._events_batch.append(event)
         if len(self._events_batch) >= self._batch_size:
@@ -230,7 +230,7 @@ class TelemetryClient(BaseTelemetryClient):
 
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
         logger.debug(
-            "Exporting initial telemetry log for connection %s", self._connection_uuid
+            "Exporting initial telemetry log for connection %s", self._session_id_hex
         )
 
         try:
@@ -247,7 +247,7 @@ class TelemetryClient(BaseTelemetryClient):
                 ),
                 entry=FrontendLogEntry(
                     sql_driver_log=TelemetryEvent(
-                        session_id=self._connection_uuid,
+                        session_id=self._session_id_hex,
                         system_configuration=TelemetryHelper.get_driver_system_configuration(),
                         driver_connection_params=self._driver_connection_params,
                     )
@@ -260,7 +260,7 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug("Failed to export initial telemetry log: %s", e)
 
     def export_failure_log(self, error_name, error_message):
-        logger.debug("Exporting failure log for connection %s", self._connection_uuid)
+        logger.debug("Exporting failure log for connection %s", self._session_id_hex)
         try:
             error_info = DriverErrorInfo(
                 error_name=error_name, stack_trace=error_message
@@ -275,7 +275,7 @@ class TelemetryClient(BaseTelemetryClient):
                 ),
                 entry=FrontendLogEntry(
                     sql_driver_log=TelemetryEvent(
-                        session_id=self._connection_uuid,
+                        session_id=self._session_id_hex,
                         system_configuration=TelemetryHelper.get_driver_system_configuration(),
                         driver_connection_params=self._driver_connection_params,
                         error_info=error_info,
@@ -288,9 +288,9 @@ class TelemetryClient(BaseTelemetryClient):
 
     def close(self):
         """Flush remaining events before closing"""
-        logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
+        logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._flush()
-        _remove_telemetry_client(self._connection_uuid)
+        _remove_telemetry_client(self._session_id_hex)
 
 
 # Module-level state
@@ -340,41 +340,41 @@ def _handle_unhandled_exception(exc_type, exc_value, exc_traceback):
 
 
 def initialize_telemetry_client(
-    telemetry_enabled, connection_uuid, auth_provider, host_url
+    telemetry_enabled, session_id_hex, auth_provider, host_url
 ):
     """Initialize a telemetry client for a specific connection if telemetry is enabled"""
     try:
         _initialize()
 
         with _lock:
-            if connection_uuid not in _clients:
+            if session_id_hex not in _clients:
                 logger.debug(
-                    "Creating new TelemetryClient for connection %s", connection_uuid
+                    "Creating new TelemetryClient for connection %s", session_id_hex
                 )
                 if telemetry_enabled:
-                    _clients[connection_uuid] = TelemetryClient(
+                    _clients[session_id_hex] = TelemetryClient(
                         telemetry_enabled=telemetry_enabled,
-                        connection_uuid=connection_uuid,
+                        session_id_hex=session_id_hex,
                         auth_provider=auth_provider,
                         host_url=host_url,
                         executor=_executor,
                     )
                 else:
-                    _clients[connection_uuid] = NOOP_TELEMETRY_CLIENT
+                    _clients[session_id_hex] = NOOP_TELEMETRY_CLIENT
     except Exception as e:
         logger.debug("Failed to initialize telemetry client: %s", e)
         # Fallback to NoopTelemetryClient to ensure connection doesn't fail
-        _clients[connection_uuid] = NOOP_TELEMETRY_CLIENT
+        _clients[session_id_hex] = NOOP_TELEMETRY_CLIENT
 
 
-def get_telemetry_client(connection_uuid):
+def get_telemetry_client(session_id_hex):
     """Get the telemetry client for a specific connection"""
     try:
-        if connection_uuid in _clients:
-            return _clients[connection_uuid]
+        if session_id_hex in _clients:
+            return _clients[session_id_hex]
         else:
             logger.error(
-                "Telemetry client not initialized for connection %s", connection_uuid
+                "Telemetry client not initialized for connection %s", session_id_hex
             )
             return NOOP_TELEMETRY_CLIENT
     except Exception as e:
@@ -382,13 +382,13 @@ def get_telemetry_client(connection_uuid):
         return NOOP_TELEMETRY_CLIENT
 
 
-def _remove_telemetry_client(connection_uuid):
+def _remove_telemetry_client(session_id_hex):
     """Remove the telemetry client for a specific connection"""
     global _initialized, _executor
     with _lock:
-        if connection_uuid in _clients:
-            logger.debug("Removing telemetry client for connection %s", connection_uuid)
-            _clients.pop(connection_uuid, None)
+        if session_id_hex in _clients:
+            logger.debug("Removing telemetry client for connection %s", session_id_hex)
+            _clients.pop(session_id_hex, None)
 
         # Shutdown executor if no more clients
         if not _clients and _executor:

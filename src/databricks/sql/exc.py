@@ -14,15 +14,15 @@ class Error(Exception):
     """
 
     def __init__(
-        self, message=None, context=None, connection_uuid=None, *args, **kwargs
+        self, message=None, context=None, session_id_hex=None, *args, **kwargs
     ):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}
 
         error_name = self.__class__.__name__
-        if connection_uuid:
-            telemetry_client = get_telemetry_client(connection_uuid)
+        if session_id_hex:
+            telemetry_client = get_telemetry_client(session_id_hex)
             telemetry_client.export_failure_log(error_name, self.message)
 
     def __str__(self):

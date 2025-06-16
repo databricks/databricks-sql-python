@@ -32,14 +32,14 @@ def noop_telemetry_client():
 @pytest.fixture
 def telemetry_client_setup():
     """Fixture for TelemetryClient setup data."""
-    connection_uuid = str(uuid.uuid4())
+    session_id_hex = str(uuid.uuid4())
     auth_provider = AccessTokenAuthProvider("test-token")
     host_url = "test-host"
     executor = MagicMock()
     
     client = TelemetryClient(
         telemetry_enabled=True,
-        connection_uuid=connection_uuid,
+        session_id_hex=session_id_hex,
         auth_provider=auth_provider,
         host_url=host_url,
         executor=executor,
@@ -47,7 +47,7 @@ def telemetry_client_setup():
     
     return {
         "client": client,
-        "connection_uuid": connection_uuid,
+        "session_id_hex": session_id_hex,
         "auth_provider": auth_provider,
         "host_url": host_url,
         "executor": executor,
@@ -217,7 +217,7 @@ class TestTelemetryClient:
         
         unauthenticated_client = TelemetryClient(
             telemetry_enabled=True,
-            connection_uuid=str(uuid.uuid4()),
+            session_id_hex=str(uuid.uuid4()),
             auth_provider=None,  # No auth provider
             host_url=host_url,
             executor=executor,
@@ -263,34 +263,34 @@ class TestTelemetrySystem:
 
     def test_initialize_telemetry_client_enabled(self, telemetry_system_reset):
         """Test initializing a telemetry client when telemetry is enabled."""
-        connection_uuid = "test-uuid"
+        session_id_hex = "test-uuid"
         auth_provider = MagicMock()
         host_url = "test-host"
         
         initialize_telemetry_client(
             telemetry_enabled=True,
-            connection_uuid=connection_uuid,
+            session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url=host_url,
         )
         
-        client = get_telemetry_client(connection_uuid)
+        client = get_telemetry_client(session_id_hex)
         assert isinstance(client, TelemetryClient)
-        assert client._connection_uuid == connection_uuid
+        assert client._session_id_hex == session_id_hex
         assert client._auth_provider == auth_provider
         assert client._host_url == host_url
 
     def test_initialize_telemetry_client_disabled(self, telemetry_system_reset):
         """Test initializing a telemetry client when telemetry is disabled."""
-        connection_uuid = "test-uuid"
+        session_id_hex = "test-uuid"
         initialize_telemetry_client(
             telemetry_enabled=False,
-            connection_uuid=connection_uuid,
+            session_id_hex=session_id_hex,
             auth_provider=MagicMock(),
             host_url="test-host",
         )
         
-        client = get_telemetry_client(connection_uuid)
+        client = get_telemetry_client(session_id_hex)
         assert client is NOOP_TELEMETRY_CLIENT
 
     def test_get_telemetry_client_nonexistent(self, telemetry_system_reset):
@@ -300,21 +300,21 @@ class TestTelemetrySystem:
 
     def test_close_telemetry_client(self, telemetry_system_reset):
         """Test closing a telemetry client."""
-        connection_uuid = "test-uuid"
+        session_id_hex = "test-uuid"
         auth_provider = MagicMock()
         host_url = "test-host"
         
         initialize_telemetry_client(
             telemetry_enabled=True,
-            connection_uuid=connection_uuid,
+            session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url=host_url,
         )
         
-        client = get_telemetry_client(connection_uuid)
+        client = get_telemetry_client(session_id_hex)
         assert isinstance(client, TelemetryClient)
         
-        _remove_telemetry_client(connection_uuid)
+        _remove_telemetry_client(session_id_hex)
         
-        client = get_telemetry_client(connection_uuid)
+        client = get_telemetry_client(session_id_hex)
         assert client is NOOP_TELEMETRY_CLIENT
