@@ -24,9 +24,6 @@ class ResultFileDownloadManager:
         ssl_options: SSLOptions,
     ):
         self._pending_links: List[TSparkArrowResultLink] = []
-        # Add a cache to store downloaded files by row offset
-        self._downloaded_files_cache: dict[int, DownloadedFile] = {}
-
         for link in links:
             if link.rowCount <= 0:
                 continue
@@ -59,97 +56,30 @@ class ResultFileDownloadManager:
         Args:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
         """
-        logger.info(
-            f"ResultFileDownloadManager: get_next_downloaded_file for row offset {next_row_offset}"
-        )
-
-        # Check if we have this file in the cache
-        if next_row_offset in self._downloaded_files_cache:
-            logger.info(
-                f"ResultFileDownloadManager: Found file in cache for row offset {next_row_offset}"
-            )
-            return self._downloaded_files_cache[next_row_offset]
 
         # Make sure the download queue is always full
         self._schedule_downloads()
 
         # No more files to download from this batch of links
         if len(self._download_tasks) == 0:
-            logger.info("ResultFileDownloadManager: No more download tasks")
             self._shutdown_manager()
             return None
 
-        # Log all pending download tasks
-        logger.info(
-            f"ResultFileDownloadManager: {len(self._download_tasks)} download tasks pending"
-        )
-
-        # Find the task that matches the requested row offset
-        matching_task_index = None
-        for i, task in enumerate(self._download_tasks):
-            if task.done():
-                try:
-                    file = task.result(timeout=0)  # Don't block
-                    logger.info(
-                        f"Task {i}: start_row_offset={file.start_row_offset}, row_count={file.row_count}"
-                    )
-                    if file.start_row_offset == next_row_offset:
-                        matching_task_index = i
-                        break
-                except Exception as e:
-                    logger.error(f"Error getting task result: {e}")
-
-        # If we found a matching task, use it
-        if matching_task_index is not None:
-            logger.info(
-                f"ResultFileDownloadManager: Found matching task at index {matching_task_index}"
-            )
-            task = self._download_tasks.pop(matching_task_index)
-            file = task.result()
-            # Cache the file for future use
-            self._downloaded_files_cache[file.start_row_offset] = file
-            return file
-
-        # If we didn't find a matching task, wait for all tasks to complete and check again
-        logger.info(
-            "ResultFileDownloadManager: No matching task found, waiting for all tasks to complete"
-        )
-        completed_files = []
-        for task in self._download_tasks:
-            try:
-                file = task.result()  # Wait for the task to complete
-                completed_files.append(file)
-                # Cache the file for future use
-                self._downloaded_files_cache[file.start_row_offset] = file
-                logger.info(
-                    f"Completed file: start_row_offset={file.start_row_offset}, row_count={file.row_count}"
+        task = self._download_tasks.pop(0)
+        # Future's `result()` method will wait for the call to complete, and return
+        # the value returned by the call. If the call throws an exception - `result()`
+        # will throw the same exception
+        file = task.result()
+        if (next_row_offset < file.start_row_offset) or (
+            next_row_offset > file.start_row_offset + file.row_count
+        ):
+            logger.debug(
+                "ResultFileDownloadManager: file does not contain row {}, start {}, row count {}".format(
+                    next_row_offset, file.start_row_offset, file.row_count
                 )
-            except Exception as e:
-                logger.error(f"Error getting task result: {e}")
-
-        # Clear the download tasks since we've processed them all
-        self._download_tasks = []
-
-        # Check if any of the completed files match the requested offset
-        matching_file = next(
-            (f for f in completed_files if f.start_row_offset == next_row_offset), None
-        )
-        if matching_file:
-            logger.info(
-                f"ResultFileDownloadManager: Found matching file with offset {next_row_offset}"
             )
-            return matching_file
 
-        # If we still don't have a matching file, log the issue and return None
-        logger.warning(
-            f"ResultFileDownloadManager: No file found with row offset {next_row_offset}"
-        )
-        # Log cache contents for debugging
-        logger.info("ResultFileDownloadManager: Cache contents:")
-        for offset, cached_file in self._downloaded_files_cache.items():
-            logger.info(f"  offset={offset}, row_count={cached_file.row_count}")
-
-        return None
+        return file
 
     def _schedule_downloads(self):
         """
@@ -170,26 +100,6 @@ class ResultFileDownloadManager:
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
-
-    def add_links(self, links: List[TSparkArrowResultLink]):
-        """
-        Add more links to the download manager.
-
-        Args:
-            links: List of links to add
-        """
-        for link in links:
-            if link.rowCount <= 0:
-                continue
-            logger.debug(
-                "ResultFileDownloadManager: adding file link, start offset {}, row count: {}".format(
-                    link.startRowOffset, link.rowCount
-                )
-            )
-            self._pending_links.append(link)
-
-        # Make sure the download queue is always full
-        self._schedule_downloads()
 
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool

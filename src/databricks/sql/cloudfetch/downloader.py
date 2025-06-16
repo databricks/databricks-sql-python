@@ -113,13 +113,9 @@ class ResultSetDownloadHandler:
                 else compressed_data
             )
 
-            # For compressed files, the decompressed size will be larger than the bytesNum (which is the compressed size)
-            # Only log a warning if the file is not compressed and sizes don't match
-            if (
-                not self.settings.is_lz4_compressed
-                and len(decompressed_data) != self.link.bytesNum
-            ):
-                logger.warning(
+            # The size of the downloaded file should match the size specified from TSparkArrowResultLink
+            if len(decompressed_data) != self.link.bytesNum:
+                logger.debug(
                     "ResultSetDownloadHandler: downloaded file size {} does not match the expected value {}".format(
                         len(decompressed_data), self.link.bytesNum
                     )
