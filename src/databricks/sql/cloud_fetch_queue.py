@@ -247,6 +247,32 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         """Create a 0-row table with just the schema bytes."""
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
+    def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
+        """Create next table by retrieving the logical next downloaded file."""
+        # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
+        if not self.download_manager:
+            logger.debug("ThriftCloudFetchQueue: No download manager available")
+            return None
+
+        downloaded_file = self.download_manager.get_next_downloaded_file(offset)
+        if not downloaded_file:
+            # None signals no more Arrow tables can be built from the remaining handlers if any remain
+            return None
+
+        arrow_table = create_arrow_table_from_arrow_file(
+            downloaded_file.file_bytes, self.description
+        )
+
+        # The server rarely prepares the exact number of rows requested by the client in cloud fetch.
+        # Subsequently, we drop the extraneous rows in the last file if more rows are retrieved than requested
+        if arrow_table.num_rows > downloaded_file.row_count:
+            arrow_table = arrow_table.slice(0, downloaded_file.row_count)
+
+        # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
+        assert downloaded_file.row_count == arrow_table.num_rows
+
+        return arrow_table
+
     @abstractmethod
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
@@ -365,17 +391,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def _fetch_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
         """Fetch link for the specified chunk index."""
-        # Check if we already have this chunk as our current chunk
-        if (
-            self._current_chunk_link
-            and self._current_chunk_link.chunk_index == chunk_index
-        ):
-            logger.debug(
-                "SeaCloudFetchQueue: Already have current chunk {}".format(chunk_index)
-            )
-            return self._current_chunk_link
-
-        # We need to fetch this chunk
         logger.debug(
             "SeaCloudFetchQueue: Fetching chunk {} using SEA client".format(chunk_index)
         )
@@ -467,57 +482,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             )
         )
 
-        if not self.download_manager:
-            logger.info("SeaCloudFetchQueue: No download manager available")
-            return None
-
-        downloaded_file = self.download_manager.get_next_downloaded_file(row_offset)
-        if not downloaded_file:
-            logger.info(
-                "SeaCloudFetchQueue: Cannot find downloaded file for row {}".format(
-                    row_offset
-                )
-            )
-            # If we can't find the file for the requested offset, we've reached the end
-            # This is a change from the original implementation, which would continue with the wrong file
-            logger.info("SeaCloudFetchQueue: No more files available, ending fetch")
-            return None
-
-        logger.info(
-            "SeaCloudFetchQueue: Downloaded file details - start_row_offset: {}, row_count: {}".format(
-                downloaded_file.start_row_offset, downloaded_file.row_count
-            )
-        )
-
-        arrow_table = create_arrow_table_from_arrow_file(
-            downloaded_file.file_bytes, self.description
-        )
-
-        logger.info(
-            "SeaCloudFetchQueue: Created arrow table with {} rows".format(
-                arrow_table.num_rows
-            )
-        )
-
-        # Ensure the table has the correct number of rows
-        if arrow_table.num_rows > downloaded_file.row_count:
-            logger.info(
-                "SeaCloudFetchQueue: Arrow table has more rows ({}) than expected ({}), slicing...".format(
-                    arrow_table.num_rows, downloaded_file.row_count
-                )
-            )
-            arrow_table = arrow_table.slice(0, downloaded_file.row_count)
-
-        # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
-        assert downloaded_file.row_count == arrow_table.num_rows
-
-        logger.info(
-            "SeaCloudFetchQueue: Found downloaded file for chunk {}, row count: {}, row offset: {}".format(
-                self._current_chunk_index, arrow_table.num_rows, row_offset
-            )
-        )
-
-        return arrow_table
+        return self._create_table_at_offset(row_offset)
 
 
 class ThriftCloudFetchQueue(CloudFetchQueue):
@@ -581,46 +546,17 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         self.table = self._create_next_table()
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
-        """Create next table by retrieving the logical next downloaded file."""
         logger.debug(
             "ThriftCloudFetchQueue: Trying to get downloaded file for row {}".format(
                 self.start_row_index
             )
         )
-        # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
-        if not self.download_manager:
-            logger.debug("ThriftCloudFetchQueue: No download manager available")
-            return None
-
-        downloaded_file = self.download_manager.get_next_downloaded_file(
-            self.start_row_index
-        )
-        if not downloaded_file:
-            logger.debug(
-                "ThriftCloudFetchQueue: Cannot find downloaded file for row {}".format(
-                    self.start_row_index
-                )
-            )
-            # None signals no more Arrow tables can be built from the remaining handlers if any remain
-            return None
-
-        arrow_table = create_arrow_table_from_arrow_file(
-            downloaded_file.file_bytes, self.description
-        )
-
-        # The server rarely prepares the exact number of rows requested by the client in cloud fetch.
-        # Subsequently, we drop the extraneous rows in the last file if more rows are retrieved than requested
-        if arrow_table.num_rows > downloaded_file.row_count:
-            arrow_table = arrow_table.slice(0, downloaded_file.row_count)
-
-        # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
-        assert downloaded_file.row_count == arrow_table.num_rows
-        self.start_row_index += arrow_table.num_rows
-
+        arrow_table = self._create_table_at_offset(self.start_row_index)
+        if arrow_table:
+            self.start_row_index += arrow_table.num_rows
         logger.debug(
             "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
                 arrow_table.num_rows, self.start_row_index
             )
         )
-
         return arrow_table
