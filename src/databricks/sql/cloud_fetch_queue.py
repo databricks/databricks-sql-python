@@ -162,6 +162,33 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         # Initialize download manager - will be set by subclasses
         self.download_manager: Optional["ResultFileDownloadManager"] = None
 
+    def remaining_rows(self) -> "pyarrow.Table":
+        """
+        Get all remaining rows of the cloud fetch Arrow dataframes.
+
+        Returns:
+            pyarrow.Table
+        """
+        if not self.table:
+            # Return empty pyarrow table to cause retry of fetch
+            return self._create_empty_table()
+
+        results = pyarrow.Table.from_pydict({})  # Empty table
+        while self.table:
+            table_slice = self.table.slice(
+                self.table_row_index, self.table.num_rows - self.table_row_index
+            )
+            if results.num_rows > 0:
+                results = pyarrow.concat_tables([results, table_slice])
+            else:
+                results = table_slice
+
+            self.table_row_index += table_slice.num_rows
+            self.table = self._create_next_table()
+            self.table_row_index = 0
+
+        return results
+
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """Get up to the next n rows of the cloud fetch Arrow dataframes."""
         if not self.table:
@@ -216,19 +243,14 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         logger.info("SeaCloudFetchQueue: Retrieved {} rows".format(results.num_rows))
         return results
 
-    @abstractmethod
-    def remaining_rows(self) -> "pyarrow.Table":
-        """Get all remaining rows of the cloud fetch Arrow dataframes."""
-        pass
+    def _create_empty_table(self) -> "pyarrow.Table":
+        """Create a 0-row table with just the schema bytes."""
+        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
     @abstractmethod
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
         pass
-
-    def _create_empty_table(self) -> "pyarrow.Table":
-        """Create a 0-row table with just the schema bytes."""
-        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
 
 class SeaCloudFetchQueue(CloudFetchQueue):
@@ -283,7 +305,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
         if initial_links:
-            initial_links = [] 
+            initial_links = []
             # logger.debug("SeaCloudFetchQueue: Initial links provided:")
             # for link in initial_links:
             #     logger.debug(
@@ -385,33 +407,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
                 self.download_manager.add_links(self._convert_to_thrift_links([link]))
 
         return link
-
-    def remaining_rows(self) -> "pyarrow.Table":
-        """
-        Get all remaining rows of the cloud fetch Arrow dataframes.
-
-        Returns:
-            pyarrow.Table
-        """
-        if not self.table:
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
-
-        results = pyarrow.Table.from_pydict({})  # Empty table
-        while self.table:
-            table_slice = self.table.slice(
-                self.table_row_index, self.table.num_rows - self.table_row_index
-            )
-            if results.num_rows > 0:
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
-
-            self.table_row_index += table_slice.num_rows
-            self.table = self._create_next_table()
-            self.table_row_index = 0
-
-        return results
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
@@ -595,33 +590,6 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
 
         # Initialize table and position
         self.table = self._create_next_table()
-
-    def remaining_rows(self) -> "pyarrow.Table":
-        """
-        Get all remaining rows of the cloud fetch Arrow dataframes.
-
-        Returns:
-            pyarrow.Table
-        """
-        if not self.table:
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
-
-        results = pyarrow.Table.from_pydict({})  # Empty table
-        while self.table:
-            table_slice = self.table.slice(
-                self.table_row_index, self.table.num_rows - self.table_row_index
-            )
-            if results.num_rows > 0:
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
-
-            self.table_row_index += table_slice.num_rows
-            self.table = self._create_next_table()
-            self.table_row_index = 0
-
-        return results
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
