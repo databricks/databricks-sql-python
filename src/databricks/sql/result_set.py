@@ -92,6 +92,44 @@ class ResultSet(ABC):
             else:
                 break
 
+    def _convert_arrow_table(self, table):
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+
+        if self.connection.disable_pandas is True:
+            return [
+                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
+            ]
+
+        # Need to use nullable types, as otherwise type can change when there are missing values.
+        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+        dtype_mapping = {
+            pyarrow.int8(): pandas.Int8Dtype(),
+            pyarrow.int16(): pandas.Int16Dtype(),
+            pyarrow.int32(): pandas.Int32Dtype(),
+            pyarrow.int64(): pandas.Int64Dtype(),
+            pyarrow.uint8(): pandas.UInt8Dtype(),
+            pyarrow.uint16(): pandas.UInt16Dtype(),
+            pyarrow.uint32(): pandas.UInt32Dtype(),
+            pyarrow.uint64(): pandas.UInt64Dtype(),
+            pyarrow.bool_(): pandas.BooleanDtype(),
+            pyarrow.float32(): pandas.Float32Dtype(),
+            pyarrow.float64(): pandas.Float64Dtype(),
+            pyarrow.string(): pandas.StringDtype(),
+        }
+
+        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+        df = table_renamed.to_pandas(
+            types_mapper=dtype_mapping.get,
+            date_as_object=True,
+            timestamp_as_object=True,
+        )
+
+        res = df.to_numpy(na_value=None, dtype="object")
+        return [ResultRow(*v) for v in res]
+
     @property
     def rownumber(self):
         return self._next_row_index
@@ -100,12 +138,6 @@ class ResultSet(ABC):
     def is_staging_operation(self) -> bool:
         """Whether this result set represents a staging operation."""
         return self._is_staging_operation
-
-    # Define abstract methods that concrete implementations must implement
-    @abstractmethod
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        pass
 
     @abstractmethod
     def fetchone(self) -> Optional[Row]:
@@ -250,44 +282,6 @@ class ThriftResultSet(ResultSet):
             result.append(ResultRow(*curr_row))
 
         return result
-
-    def _convert_arrow_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-
-        if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
-
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
-
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
-
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
 
     def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
@@ -458,8 +452,8 @@ class SeaResultSet(ResultSet):
         sea_client: "SeaDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
-        result_data: Optional[ResultData] = None,
-        manifest: Optional[ResultManifest] = None,
+        result_data: Optional["ResultData"] = None,
+        manifest: Optional["ResultManifest"] = None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
@@ -474,18 +468,20 @@ class SeaResultSet(ResultSet):
             manifest: Manifest from SEA response (optional)
         """
 
+        results_queue = None
         if result_data:
-            queue = SeaResultSetQueueFactory.build_queue(
-                sea_result_data=result_data,
-                manifest=manifest,
-                statement_id=execute_response.command_id.to_sea_statement_id(),
+            results_queue = SeaResultSetQueueFactory.build_queue(
+                result_data,
+                manifest,
+                str(execute_response.command_id.to_sea_statement_id()),
                 description=execute_response.description,
-                schema_bytes=execute_response.arrow_schema_bytes,
+                max_download_threads=sea_client.max_download_threads,
+                ssl_options=sea_client.ssl_options,
+                sea_client=sea_client,
+                lz4_compressed=execute_response.lz4_compressed,
             )
-        else:
-            logger.warning("No result data provided for SEA result set")
-            queue = JsonQueue([])
 
+        # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
             backend=sea_client,
@@ -494,20 +490,20 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            results_queue=queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
-    def _convert_to_row_objects(self, rows):
+        # Initialize queue for result data if not provided
+        self.results = results_queue or JsonQueue([])
+
+    def _convert_json_rows(self, rows):
         """
         Convert raw data rows to Row objects with named columns based on description.
-
         Args:
             rows: List of raw data rows
-
         Returns:
             List of Row objects with named columns
         """
@@ -518,170 +514,140 @@ class SeaResultSet(ResultSet):
         ResultRow = Row(*column_names)
         return [ResultRow(*row) for row in rows]
 
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        return None
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+        """
+        Fetch the next set of rows as an Arrow table.
+
+        Args:
+            size: Number of rows to fetch
+
+        Returns:
+            PyArrow Table containing the fetched rows
+
+        Raises:
+            ImportError: If PyArrow is not installed
+            ValueError: If size is negative
+        """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        results = self.results.next_n_rows(size)
+        n_remaining_rows = size - results.num_rows
+        self._next_row_index += results.num_rows
+
+        while n_remaining_rows > 0:
+            partial_results = self.results.next_n_rows(n_remaining_rows)
+            results = pyarrow.concat_tables([results, partial_results])
+            n_remaining_rows = n_remaining_rows - partial_results.num_rows
+            self._next_row_index += partial_results.num_rows
+
+        return results
+
+    def fetchall_arrow(self) -> "pyarrow.Table":
+        """
+        Fetch all remaining rows as an Arrow table.
+
+        Returns:
+            PyArrow Table containing all remaining rows
+
+        Raises:
+            ImportError: If PyArrow is not installed
+        """
+        results = self.results.remaining_rows()
+        self._next_row_index += results.num_rows
+
+        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
+        # Valid only for metadata commands result set
+        if isinstance(results, ColumnTable) and pyarrow:
+            data = {
+                name: col
+                for name, col in zip(results.column_names, results.column_table)
+            }
+            return pyarrow.Table.from_pydict(data)
+
+        return results
+
+    def fetchmany_json(self, size: int):
+        """
+        Fetch the next set of rows as a columnar table.
+
+        Args:
+            size: Number of rows to fetch
+
+        Returns:
+            Columnar table containing the fetched rows
+
+        Raises:
+            ValueError: If size is negative
+        """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        results = self.results.next_n_rows(size)
+        n_remaining_rows = size - len(results)
+        self._next_row_index += len(results)
+
+        while n_remaining_rows > 0:
+            partial_results = self.results.next_n_rows(n_remaining_rows)
+            results = results + partial_results
+            n_remaining_rows = n_remaining_rows - len(partial_results)
+            self._next_row_index += len(partial_results)
+
+        return results
+
+    def fetchall_json(self):
+        """
+        Fetch all remaining rows as a columnar table.
+
+        Returns:
+            Columnar table containing all remaining rows
+        """
+        results = self.results.remaining_rows()
+        self._next_row_index += len(results)
+
+        return results
 
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
+
+        Returns:
+            A single Row object or None if no more rows are available
         """
-        rows = self.results.next_n_rows(1)
-        if not rows:
-            return None
+        if isinstance(self.results, JsonQueue):
+            res = self._convert_json_rows(self.fetchmany_json(1))
+        else:
+            raise NotImplementedError("fetchone only supported for JSON data")
 
-        # Convert to Row object
-        converted_rows = self._convert_to_row_objects(rows)
-        return converted_rows[0] if converted_rows else None
+        return res[0] if res else None
 
-    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
+    def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a list of rows.
 
-        An empty sequence is returned when no more rows are available.
+        Args:
+            size: Number of rows to fetch (defaults to arraysize if None)
+
+        Returns:
+            List of Row objects
+
+        Raises:
+            ValueError: If size is negative
         """
-        if size is None:
-            size = self.arraysize
-
-        if size < 0:
-            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-
-        rows = self.results.next_n_rows(size)
-        self._next_row_index += len(rows)
-
-        # Convert to Row objects
-        return self._convert_to_row_objects(rows)
+        if isinstance(self.results, JsonQueue):
+            return self._convert_json_rows(self.fetchmany_json(size))
+        else:
+            raise NotImplementedError("fetchmany only supported for JSON data")
 
     def fetchall(self) -> List[Row]:
         """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
-        """
-
-        rows = self.results.remaining_rows()
-        self._next_row_index += len(rows)
-
-        # Convert to Row objects
-        return self._convert_to_row_objects(rows)
-
-    def _create_empty_arrow_table(self) -> Any:
-        """
-        Create an empty PyArrow table with the schema from the result set.
+        Fetch all remaining rows of a query result, returning them as a list of rows.
 
         Returns:
-            An empty PyArrow table with the correct schema.
+            List of Row objects containing all remaining rows
         """
-        import pyarrow
-
-        # Try to use schema bytes if available
-        if self._arrow_schema_bytes:
-            schema = pyarrow.ipc.read_schema(
-                pyarrow.BufferReader(self._arrow_schema_bytes)
-            )
-            return pyarrow.Table.from_pydict(
-                {name: [] for name in schema.names}, schema=schema
-            )
-
-        # Fall back to creating schema from description
-        if self.description:
-            # Map SQL types to PyArrow types
-            type_map = {
-                "boolean": pyarrow.bool_(),
-                "tinyint": pyarrow.int8(),
-                "smallint": pyarrow.int16(),
-                "int": pyarrow.int32(),
-                "bigint": pyarrow.int64(),
-                "float": pyarrow.float32(),
-                "double": pyarrow.float64(),
-                "string": pyarrow.string(),
-                "binary": pyarrow.binary(),
-                "timestamp": pyarrow.timestamp("us"),
-                "date": pyarrow.date32(),
-                "decimal": pyarrow.decimal128(38, 18),  # Default precision and scale
-            }
-
-            fields = []
-            for col_desc in self.description:
-                col_name = col_desc[0]
-                col_type = col_desc[1].lower() if col_desc[1] else "string"
-
-                # Handle decimal with precision and scale
-                if (
-                    col_type == "decimal"
-                    and col_desc[4] is not None
-                    and col_desc[5] is not None
-                ):
-                    arrow_type = pyarrow.decimal128(col_desc[4], col_desc[5])
-                else:
-                    arrow_type = type_map.get(col_type, pyarrow.string())
-
-                fields.append(pyarrow.field(col_name, arrow_type))
-
-            schema = pyarrow.schema(fields)
-            return pyarrow.Table.from_pydict(
-                {name: [] for name in schema.names}, schema=schema
-            )
-
-        # If no schema information is available, return an empty table
-        return pyarrow.Table.from_pydict({})
-
-    def _convert_rows_to_arrow_table(self, rows: List[Row]) -> Any:
-        """
-        Convert a list of Row objects to a PyArrow table.
-
-        Args:
-            rows: List of Row objects to convert.
-
-        Returns:
-            PyArrow table containing the data from the rows.
-        """
-        import pyarrow
-
-        if not rows:
-            return self._create_empty_arrow_table()
-
-        # Extract column names from description
-        if self.description:
-            column_names = [col[0] for col in self.description]
+        if isinstance(self.results, JsonQueue):
+            return self._convert_json_rows(self.fetchall_json())
         else:
-            # If no description, use the attribute names from the first row
-            column_names = rows[0]._fields
-
-        # Convert rows to columns
-        columns: dict[str, list] = {name: [] for name in column_names}
-
-        for row in rows:
-            for i, name in enumerate(column_names):
-                if hasattr(row, "_asdict"):  # If it's a Row object
-                    columns[name].append(row[i])
-                else:  # If it's a raw list
-                    columns[name].append(row[i])
-
-        # Create PyArrow table
-        return pyarrow.Table.from_pydict(columns)
-
-    def fetchmany_arrow(self, size: int) -> Any:
-        """Fetch the next set of rows as an Arrow table."""
-        if not pyarrow:
-            raise ImportError("PyArrow is required for Arrow support")
-
-        rows = self.fetchmany(size)
-        if not rows:
-            # Return empty Arrow table with schema
-            return self._create_empty_arrow_table()
-
-        # Convert rows to Arrow table
-        return self._convert_rows_to_arrow_table(rows)
-
-    def fetchall_arrow(self) -> Any:
-        """Fetch all remaining rows as an Arrow table."""
-        if not pyarrow:
-            raise ImportError("PyArrow is required for Arrow support")
-
-        rows = self.fetchall()
-        if not rows:
-            # Return empty Arrow table with schema
-            return self._create_empty_arrow_table()
-
-        # Convert rows to Arrow table
-        return self._convert_rows_to_arrow_table(rows)
+            raise NotImplementedError("fetchall only supported for JSON data")

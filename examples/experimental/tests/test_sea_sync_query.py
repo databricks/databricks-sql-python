@@ -55,8 +55,10 @@ def test_sea_sync_query_with_cloud_fetch():
         cursor.execute(
             "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
         )
-        rows = cursor.fetchall()
-        logger.info(f"Retrieved rows: {rows}")
+        results = [cursor.fetchone()]
+        results.extend(cursor.fetchmany(10))
+        results.extend(cursor.fetchall())
+        logger.info(f"{len(results)} rows retrieved against 100 requested")
 
         # Close resources
         cursor.close()
@@ -121,10 +123,11 @@ def test_sea_sync_query_without_cloud_fetch():
         cursor.execute(
             "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
         )
-        logger.info("Query executed successfully with cloud fetch disabled")
 
-        rows = cursor.fetchall()
-        logger.info(f"Retrieved rows: {rows}")
+        results = [cursor.fetchone()]
+        results.extend(cursor.fetchmany(10))
+        results.extend(cursor.fetchall())
+        logger.info(f"{len(results)} rows retrieved against 100 requested")
 
         # Close resources
         cursor.close()
