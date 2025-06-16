@@ -234,6 +234,10 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
+        self._arrow_pandas_type_override = kwargs.get(
+            "_arrow_pandas_type_override", {}
+        )
+        self._arrow_to_pandas_kwargs = kwargs.get("_arrow_to_pandas_kwargs", {})
 
         auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
