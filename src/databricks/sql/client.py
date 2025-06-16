@@ -53,8 +53,9 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOperationState,
 )
 from databricks.sql.telemetry.telemetry_client import (
-    TelemetryClientFactory,
     TelemetryHelper,
+    initialize_telemetry_client,
+    get_telemetry_client,
 )
 from databricks.sql.telemetry.models.enums import DatabricksClientType
 from databricks.sql.telemetry.models.event import (
@@ -306,14 +307,14 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
 
-        TelemetryClientFactory.initialize_telemetry_client(
+        initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             connection_uuid=self.get_session_id_hex(),
             auth_provider=auth_provider,
             host_url=self.host,
         )
 
-        self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
+        self._telemetry_client = get_telemetry_client(
             connection_uuid=self.get_session_id_hex()
         )
 

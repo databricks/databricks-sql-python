@@ -5,8 +5,10 @@ from unittest.mock import patch, MagicMock, call
 
 from databricks.sql.telemetry.telemetry_client import (
     TelemetryClient,
-    NoopTelemetryClient,
-    TelemetryClientFactory,
+    NOOP_TELEMETRY_CLIENT,
+    initialize_telemetry_client,
+    get_telemetry_client,
+    _remove_telemetry_client,
 )
 from databricks.sql.telemetry.models.enums import (
     AuthMech,
@@ -23,8 +25,8 @@ from databricks.sql.auth.authenticators import (
 
 @pytest.fixture
 def noop_telemetry_client():
-    """Fixture for NoopTelemetryClient."""
-    return NoopTelemetryClient()
+    """Fixture for NOOP_TELEMETRY_CLIENT."""
+    return NOOP_TELEMETRY_CLIENT
 
 
 @pytest.fixture
@@ -53,30 +55,27 @@ def telemetry_client_setup():
 
 
 @pytest.fixture
-def telemetry_factory_reset():
-    """Fixture to reset TelemetryClientFactory state before each test."""
-    # Reset the static class state before each test
-    TelemetryClientFactory._clients = {}
-    TelemetryClientFactory._executor = None
-    TelemetryClientFactory._initialized = False
+def telemetry_system_reset():
+    """Fixture to reset telemetry system state before each test."""
+    # Reset the static state before each test
+    from databricks.sql.telemetry.telemetry_client import _clients, _executor, _initialized
+    _clients.clear()
+    if _executor:
+        _executor.shutdown(wait=True)
+    _executor = None
+    _initialized = False
     yield
     # Cleanup after test if needed
-    TelemetryClientFactory._clients = {}
-    if TelemetryClientFactory._executor:
-        TelemetryClientFactory._executor.shutdown(wait=True)
-        TelemetryClientFactory._executor = None
-    TelemetryClientFactory._initialized = False
+    _clients.clear()
+    if _executor:
+        _executor.shutdown(wait=True)
+    _executor = None
+    _initialized = False
 
 
 class TestNoopTelemetryClient:
-    """Tests for the NoopTelemetryClient class."""
-
-    def test_singleton(self):
-        """Test that NoopTelemetryClient is a singleton."""
-        client1 = NoopTelemetryClient()
-        client2 = NoopTelemetryClient()
-        assert client1 is client2
-
+    """Tests for the NOOP_TELEMETRY_CLIENT."""
+   
     def test_export_initial_telemetry_log(self, noop_telemetry_client):
         """Test that export_initial_telemetry_log does nothing."""
         noop_telemetry_client.export_initial_telemetry_log(
@@ -249,8 +248,7 @@ class TestTelemetryClient:
         client._send_telemetry.assert_called_once_with(["event1", "event2"])
         assert client._events_batch == []
 
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClientFactory")
-    def test_close(self, mock_factory_class, telemetry_client_setup):
+    def test_close(self, telemetry_client_setup):
         """Test closing the client."""
         client = telemetry_client_setup["client"]
         client._flush = MagicMock()
@@ -260,115 +258,63 @@ class TestTelemetryClient:
         client._flush.assert_called_once()
 
 
-class TestTelemetryClientFactory:
-    """Tests for the TelemetryClientFactory static class."""
+class TestTelemetrySystem:
+    """Tests for the telemetry system functions."""
 
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient")
-    def test_initialize_telemetry_client_enabled(self, mock_client_class, telemetry_factory_reset):
+    def test_initialize_telemetry_client_enabled(self, telemetry_system_reset):
         """Test initializing a telemetry client when telemetry is enabled."""
         connection_uuid = "test-uuid"
         auth_provider = MagicMock()
         host_url = "test-host"
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
         
-        TelemetryClientFactory.initialize_telemetry_client(
+        initialize_telemetry_client(
             telemetry_enabled=True,
             connection_uuid=connection_uuid,
             auth_provider=auth_provider,
             host_url=host_url,
         )
         
-        # Verify a new client was created and stored
-        mock_client_class.assert_called_once_with(
-            telemetry_enabled=True,
-            connection_uuid=connection_uuid,
-            auth_provider=auth_provider,
-            host_url=host_url,
-            executor=TelemetryClientFactory._executor,
-        )
-        assert TelemetryClientFactory._clients[connection_uuid] == mock_client
-        
-        # Call again with the same connection_uuid
-        client2 = TelemetryClientFactory.get_telemetry_client(connection_uuid=connection_uuid)
-        
-        # Verify the same client was returned and no new client was created
-        assert client2 == mock_client
-        mock_client_class.assert_called_once()  # Still only called once
+        client = get_telemetry_client(connection_uuid)
+        assert isinstance(client, TelemetryClient)
+        assert client._connection_uuid == connection_uuid
+        assert client._auth_provider == auth_provider
+        assert client._host_url == host_url
 
-    def test_initialize_telemetry_client_disabled(self, telemetry_factory_reset):
+    def test_initialize_telemetry_client_disabled(self, telemetry_system_reset):
         """Test initializing a telemetry client when telemetry is disabled."""
         connection_uuid = "test-uuid"
-        TelemetryClientFactory.initialize_telemetry_client(
+        initialize_telemetry_client(
             telemetry_enabled=False,
             connection_uuid=connection_uuid,
             auth_provider=MagicMock(),
             host_url="test-host",
         )
         
-        # Verify a NoopTelemetryClient was stored
-        assert isinstance(TelemetryClientFactory._clients[connection_uuid], NoopTelemetryClient)
+        client = get_telemetry_client(connection_uuid)
+        assert client is NOOP_TELEMETRY_CLIENT
 
-        client2 = TelemetryClientFactory.get_telemetry_client(connection_uuid)
-        assert isinstance(client2, NoopTelemetryClient)
-
-    def test_get_telemetry_client_existing(self, telemetry_factory_reset):
-        """Test getting an existing telemetry client."""
-        connection_uuid = "test-uuid"
-        mock_client = MagicMock()
-        TelemetryClientFactory._clients[connection_uuid] = mock_client
-        
-        client = TelemetryClientFactory.get_telemetry_client(connection_uuid)
-        
-        assert client == mock_client
-
-    def test_get_telemetry_client_nonexistent(self, telemetry_factory_reset):
+    def test_get_telemetry_client_nonexistent(self, telemetry_system_reset):
         """Test getting a non-existent telemetry client."""
-        client = TelemetryClientFactory.get_telemetry_client("nonexistent-uuid")
-        
-        assert isinstance(client, NoopTelemetryClient)
+        client = get_telemetry_client("nonexistent-uuid")
+        assert client is NOOP_TELEMETRY_CLIENT
 
-    @patch("databricks.sql.telemetry.telemetry_client.ThreadPoolExecutor")
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient")
-    def test_close(self, mock_client_class, mock_executor_class, telemetry_factory_reset):
-        """Test that factory reinitializes properly after complete shutdown."""
-        connection_uuid1 = "test-uuid1"
-        mock_executor1 = MagicMock()
-        mock_client1 = MagicMock()
-        mock_executor_class.return_value = mock_executor1
-        mock_client_class.return_value = mock_client1
+    def test_close_telemetry_client(self, telemetry_system_reset):
+        """Test closing a telemetry client."""
+        connection_uuid = "test-uuid"
+        auth_provider = MagicMock()
+        host_url = "test-host"
         
-        TelemetryClientFactory._clients[connection_uuid1] = mock_client1
-        TelemetryClientFactory._executor = mock_executor1
-        TelemetryClientFactory._initialized = True
-        
-        TelemetryClientFactory.close(connection_uuid1)
-        
-        assert TelemetryClientFactory._clients == {}
-        assert TelemetryClientFactory._executor is None
-        assert TelemetryClientFactory._initialized is False
-        mock_executor1.shutdown.assert_called_once_with(wait=True)
-        
-        # Now create a new client - this should reinitialize the factory
-        connection_uuid2 = "test-uuid2"
-        mock_executor2 = MagicMock()
-        mock_client2 = MagicMock()
-        mock_executor_class.return_value = mock_executor2
-        mock_client_class.return_value = mock_client2
-        
-        TelemetryClientFactory.initialize_telemetry_client(
+        initialize_telemetry_client(
             telemetry_enabled=True,
-            connection_uuid=connection_uuid2,
-            auth_provider=MagicMock(),
-            host_url="test-host",
+            connection_uuid=connection_uuid,
+            auth_provider=auth_provider,
+            host_url=host_url,
         )
         
-        # Verify factory was reinitialized
-        assert TelemetryClientFactory._initialized is True
-        assert TelemetryClientFactory._executor is not None
-        assert TelemetryClientFactory._executor == mock_executor2
-        assert connection_uuid2 in TelemetryClientFactory._clients
-        assert TelemetryClientFactory._clients[connection_uuid2] == mock_client2
+        client = get_telemetry_client(connection_uuid)
+        assert isinstance(client, TelemetryClient)
         
-        # Verify new ThreadPoolExecutor was created
-        assert mock_executor_class.call_count == 1
+        _remove_telemetry_client(connection_uuid)
+        
+        client = get_telemetry_client(connection_uuid)
+        assert client is NOOP_TELEMETRY_CLIENT

@@ -2,7 +2,7 @@ import json
 import logging
 import traceback
 
-from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
+from databricks.sql.telemetry.telemetry_client import get_telemetry_client
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,7 @@ class Error(Exception):
 
         error_name = self.__class__.__name__
         if connection_uuid:
-            telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                connection_uuid
-            )
+            telemetry_client = get_telemetry_client(connection_uuid)
             telemetry_client.export_failure_log(error_name, self.message)
 
     def __str__(self):

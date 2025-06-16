@@ -115,27 +115,16 @@ class BaseTelemetryClient(ABC):
         pass
 
 
-class NoopTelemetryClient(BaseTelemetryClient):
-    """
-    NoopTelemetryClient is a telemetry client that does not send any events to the server.
-    It is used when telemetry is disabled.
-    """
-
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
-        return cls._instance
-
-    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
-        pass
-
-    def export_failure_log(self, error_name, error_message):
-        pass
-
-    def close(self):
-        pass
+# A single instance of the no-op client that can be reused
+NOOP_TELEMETRY_CLIENT = type(
+    "NoopTelemetryClient",
+    (BaseTelemetryClient,),
+    {
+        "export_initial_telemetry_log": lambda self, *args, **kwargs: None,
+        "export_failure_log": lambda self, *args, **kwargs: None,
+        "close": lambda self: None,
+    },
+)()
 
 
 class TelemetryClient(BaseTelemetryClient):
@@ -301,129 +290,111 @@ class TelemetryClient(BaseTelemetryClient):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._connection_uuid)
         self._flush()
-        TelemetryClientFactory.close(self._connection_uuid)
+        _remove_telemetry_client(self._connection_uuid)
 
 
-class TelemetryClientFactory:
-    """
-    Static factory class for creating and managing telemetry clients.
-    It uses a thread pool to handle asynchronous operations.
-    """
+# Module-level state
+_clients: Dict[str, BaseTelemetryClient] = {}
+_executor: Optional[ThreadPoolExecutor] = None
+_initialized: bool = False
+_lock = threading.Lock()
+_original_excepthook = None
+_excepthook_installed = False
 
-    _clients: Dict[
-        str, BaseTelemetryClient
-    ] = {}  # Map of connection_uuid -> BaseTelemetryClient
-    _executor: Optional[ThreadPoolExecutor] = None
-    _initialized: bool = False
-    _lock = threading.Lock()  # Thread safety for factory operations
-    _original_excepthook = None
-    _excepthook_installed = False
 
-    @classmethod
-    def _initialize(cls):
-        """Initialize the factory if not already initialized"""
-        with cls._lock:
-            if not cls._initialized:
-                cls._clients = {}
-                cls._executor = ThreadPoolExecutor(
-                    max_workers=10
-                )  # Thread pool for async operations TODO: Decide on max workers
-                cls._install_exception_hook()
-                cls._initialized = True
+def _initialize():
+    """Initialize the telemetry system if not already initialized"""
+    global _initialized, _executor
+    with _lock:
+        if not _initialized:
+            _clients.clear()
+            _executor = ThreadPoolExecutor(max_workers=10)
+            _install_exception_hook()
+            _initialized = True
+            logger.debug(
+                "Telemetry system initialized with thread pool (max_workers=10)"
+            )
+
+
+def _install_exception_hook():
+    """Install global exception handler for unhandled exceptions"""
+    global _excepthook_installed, _original_excepthook
+    if not _excepthook_installed:
+        _original_excepthook = sys.excepthook
+        sys.excepthook = _handle_unhandled_exception
+        _excepthook_installed = True
+        logger.debug("Global exception handler installed for telemetry")
+
+
+def _handle_unhandled_exception(exc_type, exc_value, exc_traceback):
+    """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
+    logger.debug("Handling unhandled exception: %s", exc_type.__name__)
+
+    clients_to_close = list(_clients.values())
+    for client in clients_to_close:
+        client.close()
+
+    # Call the original exception handler to maintain normal behavior
+    if _original_excepthook:
+        _original_excepthook(exc_type, exc_value, exc_traceback)
+
+
+def initialize_telemetry_client(
+    telemetry_enabled, connection_uuid, auth_provider, host_url
+):
+    """Initialize a telemetry client for a specific connection if telemetry is enabled"""
+    try:
+        _initialize()
+
+        with _lock:
+            if connection_uuid not in _clients:
                 logger.debug(
-                    "TelemetryClientFactory initialized with thread pool (max_workers=10)"
+                    "Creating new TelemetryClient for connection %s", connection_uuid
                 )
-
-    @classmethod
-    def _install_exception_hook(cls):
-        """Install global exception handler for unhandled exceptions"""
-        if not cls._excepthook_installed:
-            cls._original_excepthook = sys.excepthook
-            sys.excepthook = cls._handle_unhandled_exception
-            cls._excepthook_installed = True
-            logger.debug("Global exception handler installed for telemetry")
-
-    @classmethod
-    def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
-        """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
-        logger.debug("Handling unhandled exception: %s", exc_type.__name__)
-
-        clients_to_close = list(cls._clients.values())
-        for client in clients_to_close:
-            client.close()
-
-        # Call the original exception handler to maintain normal behavior
-        if cls._original_excepthook:
-            cls._original_excepthook(exc_type, exc_value, exc_traceback)
-
-    @staticmethod
-    def initialize_telemetry_client(
-        telemetry_enabled,
-        connection_uuid,
-        auth_provider,
-        host_url,
-    ):
-        """Initialize a telemetry client for a specific connection if telemetry is enabled"""
-        try:
-            TelemetryClientFactory._initialize()
-
-            with TelemetryClientFactory._lock:
-                if connection_uuid not in TelemetryClientFactory._clients:
-                    logger.debug(
-                        "Creating new TelemetryClient for connection %s",
-                        connection_uuid,
+                if telemetry_enabled:
+                    _clients[connection_uuid] = TelemetryClient(
+                        telemetry_enabled=telemetry_enabled,
+                        connection_uuid=connection_uuid,
+                        auth_provider=auth_provider,
+                        host_url=host_url,
+                        executor=_executor,
                     )
-                    if telemetry_enabled:
-                        TelemetryClientFactory._clients[
-                            connection_uuid
-                        ] = TelemetryClient(
-                            telemetry_enabled=telemetry_enabled,
-                            connection_uuid=connection_uuid,
-                            auth_provider=auth_provider,
-                            host_url=host_url,
-                            executor=TelemetryClientFactory._executor,
-                        )
-                    else:
-                        TelemetryClientFactory._clients[
-                            connection_uuid
-                        ] = NoopTelemetryClient()
-        except Exception as e:
-            logger.debug("Failed to initialize telemetry client: %s", e)
-            # Fallback to NoopTelemetryClient to ensure connection doesn't fail
-            TelemetryClientFactory._clients[connection_uuid] = NoopTelemetryClient()
+                else:
+                    _clients[connection_uuid] = NOOP_TELEMETRY_CLIENT
+    except Exception as e:
+        logger.debug("Failed to initialize telemetry client: %s", e)
+        # Fallback to NoopTelemetryClient to ensure connection doesn't fail
+        _clients[connection_uuid] = NOOP_TELEMETRY_CLIENT
 
-    @staticmethod
-    def get_telemetry_client(connection_uuid):
-        """Get the telemetry client for a specific connection"""
-        try:
-            if connection_uuid in TelemetryClientFactory._clients:
-                return TelemetryClientFactory._clients[connection_uuid]
-            else:
-                logger.error(
-                    "Telemetry client not initialized for connection %s",
-                    connection_uuid,
-                )
-                return NoopTelemetryClient()
-        except Exception as e:
-            logger.debug("Failed to get telemetry client: %s", e)
-            return NoopTelemetryClient()
 
-    @staticmethod
-    def close(connection_uuid):
-        """Close and remove the telemetry client for a specific connection"""
+def get_telemetry_client(connection_uuid):
+    """Get the telemetry client for a specific connection"""
+    try:
+        if connection_uuid in _clients:
+            return _clients[connection_uuid]
+        else:
+            logger.error(
+                "Telemetry client not initialized for connection %s", connection_uuid
+            )
+            return NOOP_TELEMETRY_CLIENT
+    except Exception as e:
+        logger.debug("Failed to get telemetry client: %s", e)
+        return NOOP_TELEMETRY_CLIENT
 
-        with TelemetryClientFactory._lock:
-            if connection_uuid in TelemetryClientFactory._clients:
-                logger.debug(
-                    "Removing telemetry client for connection %s", connection_uuid
-                )
-                TelemetryClientFactory._clients.pop(connection_uuid, None)
 
-            # Shutdown executor if no more clients
-            if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
-                logger.debug(
-                    "No more telemetry clients, shutting down thread pool executor"
-                )
-                TelemetryClientFactory._executor.shutdown(wait=True)
-                TelemetryClientFactory._executor = None
-                TelemetryClientFactory._initialized = False
+def _remove_telemetry_client(connection_uuid):
+    """Remove the telemetry client for a specific connection"""
+    global _initialized, _executor
+    with _lock:
+        if connection_uuid in _clients:
+            logger.debug("Removing telemetry client for connection %s", connection_uuid)
+            _clients.pop(connection_uuid, None)
+
+        # Shutdown executor if no more clients
+        if not _clients and _executor:
+            logger.debug(
+                "No more telemetry clients, shutting down thread pool executor"
+            )
+            _executor.shutdown(wait=True)
+            _executor = None
+            _initialized = False
