@@ -133,7 +133,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
     def __init__(
         self,
-        schema_bytes: bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
@@ -149,7 +148,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             lz4_compressed: Whether the data is LZ4 compressed
             description: Column descriptions
         """
-        self.schema_bytes = schema_bytes
         self.lz4_compressed = lz4_compressed
         self.description = description
         self._ssl_options = ssl_options
@@ -422,13 +420,13 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             description: Hive table schema description
         """
         super().__init__(
-            schema_bytes=schema_bytes,
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
             lz4_compressed=lz4_compressed,
             description=description,
         )
 
+        self.schema_bytes = schema_bytes
         self.start_row_index = start_row_offset
         self.result_links = result_links or []
 
