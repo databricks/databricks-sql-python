@@ -381,30 +381,19 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
         # Use the SEA client to fetch the chunk links
-        chunk_info = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
-        links = chunk_info.external_links
+        link = self._sea_client.get_chunk_link(self._statement_id, chunk_index)
 
-        if not links:
-            logger.debug(
-                "SeaCloudFetchQueue: No links found for chunk {}".format(chunk_index)
+        logger.debug(
+            "SeaCloudFetchQueue: Link details for chunk {}: row_offset={}, row_count={}, next_chunk_index={}".format(
+                link.chunk_index,
+                link.row_offset,
+                link.row_count,
+                link.next_chunk_index,
             )
-            return None
+        )
 
-        # Get the link for the requested chunk
-        link = next((l for l in links if l.chunk_index == chunk_index), None)
-
-        if link:
-            logger.debug(
-                "SeaCloudFetchQueue: Link details for chunk {}: row_offset={}, row_count={}, next_chunk_index={}".format(
-                    link.chunk_index,
-                    link.row_offset,
-                    link.row_count,
-                    link.next_chunk_index,
-                )
-            )
-
-            if self.download_manager:
-                self.download_manager.add_links(self._convert_to_thrift_links([link]))
+        if self.download_manager:
+            self.download_manager.add_links(self._convert_to_thrift_links([link]))
 
         return link
 

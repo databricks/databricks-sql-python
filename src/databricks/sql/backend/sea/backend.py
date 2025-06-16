@@ -43,6 +43,7 @@ from databricks.sql.backend.sea.models import (
     ExecuteStatementResponse,
     GetStatementResponse,
     CreateSessionResponse,
+    GetChunksResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -305,9 +306,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
-    def get_chunk_links(
-        self, statement_id: str, chunk_index: int
-    ) -> "GetChunksResponse":
+    def get_chunk_link(self, statement_id: str, chunk_index: int) -> "ExternalLink":
         """
         Get links for chunks starting from the specified index.
 
@@ -316,16 +315,21 @@ class SeaDatabricksClient(DatabricksClient):
             chunk_index: The starting chunk index
 
         Returns:
-            GetChunksResponse: Response containing external links
+            ExternalLink: External link for the chunk
         """
-        from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
         response_data = self.http_client._make_request(
             method="GET",
             path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
         )
+        response = GetChunksResponse.from_dict(response_data)
 
-        return GetChunksResponse.from_dict(response_data)
+        links = response.external_links
+        link = next((l for l in links if l.chunk_index == chunk_index), None)
+        if not link:
+            raise Error(f"No link found for chunk index {chunk_index}")
+
+        return link
 
     def _get_schema_bytes(self, sea_response) -> Optional[bytes]:
         """
