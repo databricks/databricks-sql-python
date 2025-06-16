@@ -283,16 +283,17 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
         if initial_links:
-            logger.debug("SeaCloudFetchQueue: Initial links provided:")
-            for link in initial_links:
-                logger.debug(
-                    "- chunk: {}, row offset: {}, row count: {}, next chunk: {}".format(
-                        link.chunk_index,
-                        link.row_offset,
-                        link.row_count,
-                        link.next_chunk_index,
-                    )
-                )
+            initial_links = [] 
+            # logger.debug("SeaCloudFetchQueue: Initial links provided:")
+            # for link in initial_links:
+            #     logger.debug(
+            #         "- chunk: {}, row offset: {}, row count: {}, next chunk: {}".format(
+            #             link.chunk_index,
+            #             link.row_offset,
+            #             link.row_count,
+            #             link.next_chunk_index,
+            #         )
+            #     )
 
         # Initialize download manager with initial links
         self.download_manager = ResultFileDownloadManager(
