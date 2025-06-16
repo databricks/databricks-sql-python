@@ -497,9 +497,6 @@ class SeaResultSet(ResultSet):
                 manifest,
                 str(self.statement_id),
                 description=desc,
-                schema_bytes=execute_response.arrow_schema_bytes
-                if execute_response.arrow_schema_bytes
-                else None,
                 max_download_threads=sea_client.max_download_threads,
                 ssl_options=sea_client.ssl_options,
                 sea_client=sea_client,

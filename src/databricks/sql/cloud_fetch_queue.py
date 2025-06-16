@@ -285,7 +285,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
     def __init__(
         self,
         initial_links: List["ExternalLink"],
-        schema_bytes: bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
         sea_client: "SeaDatabricksClient",
@@ -309,7 +308,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             description: Column descriptions
         """
         super().__init__(
-            schema_bytes=schema_bytes,
+            schema_bytes=b"",
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
             lz4_compressed=lz4_compressed,
@@ -344,10 +343,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
-        logger.debug(
-            "SeaCloudFetchQueue: Converting link to Thrift format".format(link)
-        )
-
         # Parse the ISO format expiration time
         expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())
         return TSparkArrowResultLink(
@@ -470,9 +465,9 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         arrow_table = self._create_table_at_offset(self.start_row_index)
         if arrow_table:
             self.start_row_index += arrow_table.num_rows
-        logger.debug(
-            "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
-                arrow_table.num_rows, self.start_row_index
+            logger.debug(
+                "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
+                    arrow_table.num_rows, self.start_row_index
+                )
             )
-        )
         return arrow_table

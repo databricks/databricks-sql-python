@@ -132,7 +132,6 @@ class SeaResultSetQueueFactory(ABC):
         manifest: Optional[ResultManifest],
         statement_id: str,
         description: Optional[List[Tuple[Any, ...]]] = None,
-        schema_bytes: Optional[bytes] = None,
         max_download_threads: Optional[int] = None,
         ssl_options: Optional[SSLOptions] = None,
         sea_client: Optional["SeaDatabricksClient"] = None,
@@ -146,7 +145,6 @@ class SeaResultSetQueueFactory(ABC):
             manifest (ResultManifest): Manifest from SEA response
             statement_id (str): Statement ID for the query
             description (List[List[Any]]): Column descriptions
-            schema_bytes (bytes): Arrow schema bytes
             max_download_threads (int): Maximum number of download threads
             ssl_options (SSLOptions): SSL options for downloads
             sea_client (SeaDatabricksClient): SEA client for fetching additional links
@@ -160,10 +158,6 @@ class SeaResultSetQueueFactory(ABC):
             return JsonQueue(sea_result_data.data)
         elif sea_result_data.external_links is not None:
             # EXTERNAL_LINKS disposition
-            if not schema_bytes:
-                raise ValueError(
-                    "Schema bytes are required for EXTERNAL_LINKS disposition"
-                )
             if not max_download_threads:
                 raise ValueError(
                     "Max download threads is required for EXTERNAL_LINKS disposition"
@@ -181,7 +175,6 @@ class SeaResultSetQueueFactory(ABC):
 
             return SeaCloudFetchQueue(
                 initial_links=sea_result_data.external_links,
-                schema_bytes=schema_bytes,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
                 sea_client=sea_client,
