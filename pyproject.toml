@@ -44,9 +44,6 @@ numpy = [
 "Homepage" = "https://github.com/databricks/databricks-sql-python"
 "Bug Tracker" = "https://github.com/databricks/databricks-sql-python/issues"
 
-[tool.poetry.group.dev.dependencies]
-pytest-cov = "4.1.0"
-
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
