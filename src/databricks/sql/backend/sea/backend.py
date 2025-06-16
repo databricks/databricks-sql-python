@@ -320,12 +320,9 @@ class SeaDatabricksClient(DatabricksClient):
         """
         from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
-        params = {"chunk_index": chunk_index}
-
         response_data = self.http_client._make_request(
             method="GET",
-            path=self.CHUNKS_PATH_WITH_ID.format(statement_id),
-            params=params,
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
         )
 
         return GetChunksResponse.from_dict(response_data)

@@ -360,7 +360,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Use the SEA client to fetch the chunk links
         chunk_info = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
-        links = chunk_info.links
+        links = chunk_info.external_links
 
         if not links:
             logger.debug(
