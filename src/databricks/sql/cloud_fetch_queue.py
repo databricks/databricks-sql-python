@@ -306,7 +306,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             description: Column descriptions
         """
         super().__init__(
-            schema_bytes=b"",
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
             lz4_compressed=lz4_compressed,
@@ -357,17 +356,19 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         next_chunk_index = self._current_chunk_link.next_chunk_index
 
-        self._current_chunk_link = None
-        try:
-            self._current_chunk_link = self._sea_client.get_chunk_link(
-                self._statement_id, next_chunk_index
-            )
-        except Exception as e:
-            logger.error(
-                "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
-                    next_chunk_index, e
+        if next_chunk_index is None:
+            self._current_chunk_link = None
+        else:
+            try:
+                self._current_chunk_link = self._sea_client.get_chunk_link(
+                    self._statement_id, next_chunk_index
                 )
-            )
+            except Exception as e:
+                logger.error(
+                    "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
+                        next_chunk_index, e
+                    )
+                )
         logger.debug(
             f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
         )
