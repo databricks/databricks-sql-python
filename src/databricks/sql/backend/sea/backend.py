@@ -1,7 +1,8 @@
 import logging
+import uuid
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
@@ -22,7 +23,9 @@ from databricks.sql.backend.types import (
 )
 from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
+from databricks.sql.utils import SeaResultSetQueueFactory
 from databricks.sql.backend.sea.models.base import (
     ResultData,
     ExternalLink,
@@ -301,6 +304,28 @@ class SeaDatabricksClient(DatabricksClient):
             List of allowed session configuration parameter names
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
+
+    def get_chunk_links(
+        self, statement_id: str, chunk_index: int
+    ) -> "GetChunksResponse":
+        """
+        Get links for chunks starting from the specified index.
+
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+
+        Returns:
+            GetChunksResponse: Response containing external links
+        """
+        from databricks.sql.backend.sea.models.responses import GetChunksResponse
+
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+        )
+
+        return GetChunksResponse.from_dict(response_data)
 
     def _get_schema_bytes(self, sea_response) -> Optional[bytes]:
         """
