@@ -93,6 +93,44 @@ class ResultSet(ABC):
             else:
                 break
 
+    def _convert_arrow_table(self, table):
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+
+        if self.connection.disable_pandas is True:
+            return [
+                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
+            ]
+
+        # Need to use nullable types, as otherwise type can change when there are missing values.
+        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+        dtype_mapping = {
+            pyarrow.int8(): pandas.Int8Dtype(),
+            pyarrow.int16(): pandas.Int16Dtype(),
+            pyarrow.int32(): pandas.Int32Dtype(),
+            pyarrow.int64(): pandas.Int64Dtype(),
+            pyarrow.uint8(): pandas.UInt8Dtype(),
+            pyarrow.uint16(): pandas.UInt16Dtype(),
+            pyarrow.uint32(): pandas.UInt32Dtype(),
+            pyarrow.uint64(): pandas.UInt64Dtype(),
+            pyarrow.bool_(): pandas.BooleanDtype(),
+            pyarrow.float32(): pandas.Float32Dtype(),
+            pyarrow.float64(): pandas.Float64Dtype(),
+            pyarrow.string(): pandas.StringDtype(),
+        }
+
+        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+        df = table_renamed.to_pandas(
+            types_mapper=dtype_mapping.get,
+            date_as_object=True,
+            timestamp_as_object=True,
+        )
+
+        res = df.to_numpy(na_value=None, dtype="object")
+        return [ResultRow(*v) for v in res]
+
     @property
     def rownumber(self):
         return self._next_row_index
@@ -233,44 +271,6 @@ class ThriftResultSet(ResultSet):
         )
         self.results = results
         self.has_more_rows = has_more_rows
-
-    def _convert_arrow_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-
-        if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
-
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
-
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
-
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
 
     def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
@@ -502,69 +502,6 @@ class SeaResultSet(ResultSet):
 
         # Initialize queue for result data if not provided
         self.results = results_queue or JsonQueue([])
-
-    def _convert_arrow_table(self, table):
-        """
-        Convert an Arrow table to a list of Row objects.
-
-        Args:
-            table: PyArrow Table to convert
-
-        Returns:
-            List of Row objects
-        """
-        if table.num_rows == 0:
-            return []
-
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-
-        if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
-
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is experimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
-
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
-
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
-
-    def _create_empty_arrow_table(self):
-        """
-        Create an empty Arrow table with the correct schema.
-
-        Returns:
-            Empty PyArrow Table with the schema from description
-        """
-        if not self.description:
-            return pyarrow.Table.from_pylist([])
-
-        column_names = [col[0] for col in self.description]
-        return pyarrow.Table.from_pydict({name: [] for name in column_names})
 
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
