@@ -7,7 +7,7 @@
 - Fix: `fetchall_arrow` to always return results in `arrow` format (databricks/databricks-sql-python/pull/551 by @shivam2680)
 - Enhance cursor close handling and context manager exception management to prevent server side resource leaks (databricks/databricks-sql-python/pull/554 by @madhav-db)
 - Added additional logging to enhance debugging (databricks/databricks-sql-python/pull/556 by @saishreeeee)
-- Feature : Added support for complex data types such as Arrays and Map [Private Preview] (databricks/databricks-sql-python/pull/559 by @jprakash-db)
+- Feature: Added support for complex data types such as Arrays and Map [Private Preview] (databricks/databricks-sql-python/pull/559 by @jprakash-db)
 
 # 4.0.3 (2025-04-22)
 
