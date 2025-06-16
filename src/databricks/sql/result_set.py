@@ -240,18 +240,6 @@ class ThriftResultSet(ResultSet):
         self.results = results
         self.has_more_rows = has_more_rows
 
-    def _convert_columnar_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-        result = []
-        for row_index in range(table.num_rows):
-            curr_row = []
-            for col_index in range(table.num_columns):
-                curr_row.append(table.get_item(col_index, row_index))
-            result.append(ResultRow(*curr_row))
-
-        return result
-
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -521,222 +509,213 @@ class SeaResultSet(ResultSet):
         # Initialize queue for result data if not provided
         self.results = results_queue or JsonQueue([])
 
-    def _convert_to_row_objects(self, rows):
+    def _fill_results_buffer(self):
         """
-        Convert raw data rows to Row objects with named columns based on description.
+        Fill the results buffer from the backend.
+
+        For SEA, we already have all the data in the results queue,
+        so this is a no-op.
+        """
+        # No-op for SEA as we already have all the data
+        pass
+
+    def _convert_arrow_table(self, table):
+        """
+        Convert an Arrow table to a list of Row objects.
 
         Args:
-            rows: List of raw data rows
+            table: PyArrow Table to convert
 
         Returns:
-            List of Row objects with named columns
+            List of Row objects
         """
-        if not self.description or not rows:
-            return rows
+        if table.num_rows == 0:
+            return []
 
-        column_names = [col[0] for col in self.description]
+        column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
-        return [ResultRow(*row) for row in rows]
 
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        # For INLINE disposition, we already have all the data
-        # No need to fetch more data from the backend
-        self.has_more_rows = False
+        if self.connection.disable_pandas is True:
+            return [
+                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
+            ]
 
-    def _convert_rows_to_arrow_table(self, rows):
-        """Convert rows to Arrow table."""
-        if not self.description:
-            return pyarrow.Table.from_pylist([])
+        # Need to use nullable types, as otherwise type can change when there are missing values.
+        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        # NOTE: This api is experimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+        dtype_mapping = {
+            pyarrow.int8(): pandas.Int8Dtype(),
+            pyarrow.int16(): pandas.Int16Dtype(),
+            pyarrow.int32(): pandas.Int32Dtype(),
+            pyarrow.int64(): pandas.Int64Dtype(),
+            pyarrow.uint8(): pandas.UInt8Dtype(),
+            pyarrow.uint16(): pandas.UInt16Dtype(),
+            pyarrow.uint32(): pandas.UInt32Dtype(),
+            pyarrow.uint64(): pandas.UInt64Dtype(),
+            pyarrow.bool_(): pandas.BooleanDtype(),
+            pyarrow.float32(): pandas.Float32Dtype(),
+            pyarrow.float64(): pandas.Float64Dtype(),
+            pyarrow.string(): pandas.StringDtype(),
+        }
 
-        # Create dict of column data
-        column_data = {}
-        column_names = [col[0] for col in self.description]
+        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+        df = table_renamed.to_pandas(
+            types_mapper=dtype_mapping.get,
+            date_as_object=True,
+            timestamp_as_object=True,
+        )
 
-        for i, name in enumerate(column_names):
-            column_data[name] = [row[i] for row in rows]
-
-        return pyarrow.Table.from_pydict(column_data)
+        res = df.to_numpy(na_value=None, dtype="object")
+        return [ResultRow(*v) for v in res]
 
     def _create_empty_arrow_table(self):
-        """Create an empty Arrow table with the correct schema."""
+        """
+        Create an empty Arrow table with the correct schema.
+
+        Returns:
+            Empty PyArrow Table with the schema from description
+        """
         if not self.description:
             return pyarrow.Table.from_pylist([])
 
         column_names = [col[0] for col in self.description]
         return pyarrow.Table.from_pydict({name: [] for name in column_names})
 
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+        """
+        Fetch the next set of rows as an Arrow table.
+
+        Args:
+            size: Number of rows to fetch
+
+        Returns:
+            PyArrow Table containing the fetched rows
+
+        Raises:
+            ImportError: If PyArrow is not installed
+            ValueError: If size is negative
+        """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        results = self.results.next_n_rows(size)
+        n_remaining_rows = size - results.num_rows
+        self._next_row_index += results.num_rows
+
+        while n_remaining_rows > 0:
+            partial_results = self.results.next_n_rows(n_remaining_rows)
+            results = pyarrow.concat_tables([results, partial_results])
+            n_remaining_rows = n_remaining_rows - partial_results.num_rows
+            self._next_row_index += partial_results.num_rows
+
+        return results
+
+    def fetchall_arrow(self) -> "pyarrow.Table":
+        """
+        Fetch all remaining rows as an Arrow table.
+
+        Returns:
+            PyArrow Table containing all remaining rows
+
+        Raises:
+            ImportError: If PyArrow is not installed
+        """
+        results = self.results.remaining_rows()
+        self._next_row_index += results.num_rows
+
+        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
+        # Valid only for metadata commands result set
+        if isinstance(results, ColumnTable) and pyarrow:
+            data = {
+                name: col
+                for name, col in zip(results.column_names, results.column_table)
+            }
+            return pyarrow.Table.from_pydict(data)
+
+        return results
+
+    def fetchmany_json(self, size: int):
+        """
+        Fetch the next set of rows as a columnar table.
+
+        Args:
+            size: Number of rows to fetch
+
+        Returns:
+            Columnar table containing the fetched rows
+
+        Raises:
+            ValueError: If size is negative
+        """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        results = self.results.next_n_rows(size)
+        n_remaining_rows = size - len(results)
+        self._next_row_index += len(results)
+
+        while n_remaining_rows > 0:
+            partial_results = self.results.next_n_rows(n_remaining_rows)
+            results = results + partial_results
+            n_remaining_rows = n_remaining_rows - len(partial_results)
+            self._next_row_index += len(partial_results)
+
+        return results
+
+    def fetchall_json(self):
+        """
+        Fetch all remaining rows as a columnar table.
+
+        Returns:
+            Columnar table containing all remaining rows
+        """
+        results = self.results.remaining_rows()
+        self._next_row_index += len(results)
+
+        return results
+
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
+
+        Returns:
+            A single Row object or None if no more rows are available
         """
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
-        # This pattern is maintained from the existing code
         if isinstance(self.results, JsonQueue):
-            rows = self.results.next_n_rows(1)
-            if not rows:
-                return None
-
-            # Convert to Row object
-            converted_rows = self._convert_to_row_objects(rows)
-            return converted_rows[0] if converted_rows else None
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.next_n_rows(1)
-            if arrow_table.num_rows == 0:
-                return None
-
-            # Convert Arrow table to Row object
-            column_names = [col[0] for col in self.description]
-            ResultRow = Row(*column_names)
-
-            # Get the first row as a list of values
-            row_values = [
-                arrow_table.column(i)[0].as_py() for i in range(arrow_table.num_columns)
-            ]
-
-            # Increment the row index
-            self._next_row_index += 1
-
-            return ResultRow(*row_values)
+            res = self.fetchmany_json(1)
         else:
-            # This should not happen with current implementation
-            raise NotImplementedError("Unsupported queue type")
+            res = self._convert_arrow_table(self.fetchmany_arrow(1))
 
-    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
+        return res[0] if res else None
+
+    def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a list of rows.
 
-        An empty sequence is returned when no more rows are available.
+        Args:
+            size: Number of rows to fetch (defaults to arraysize if None)
+
+        Returns:
+            List of Row objects
+
+        Raises:
+            ValueError: If size is negative
         """
-        if size is None:
-            size = self.arraysize
-
-        if size < 0:
-            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
         if isinstance(self.results, JsonQueue):
-            rows = self.results.next_n_rows(size)
-            self._next_row_index += len(rows)
-
-            # Convert to Row objects
-            return self._convert_to_row_objects(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.next_n_rows(size)
-            if arrow_table.num_rows == 0:
-                return []
-
-            # Convert Arrow table to Row objects
-            column_names = [col[0] for col in self.description]
-            ResultRow = Row(*column_names)
-
-            # Convert each row to a Row object
-            result_rows = []
-            for i in range(arrow_table.num_rows):
-                row_values = [
-                    arrow_table.column(j)[i].as_py()
-                    for j in range(arrow_table.num_columns)
-                ]
-                result_rows.append(ResultRow(*row_values))
-
-            # Increment the row index
-            self._next_row_index += arrow_table.num_rows
-
-            return result_rows
+            return self.fetchmany_json(size)
         else:
-            # This should not happen with current implementation
-            raise NotImplementedError("Unsupported queue type")
+            return self._convert_arrow_table(self.fetchmany_arrow(size))
 
     def fetchall(self) -> List[Row]:
         """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
+        Fetch all remaining rows of a query result, returning them as a list of rows.
+
+        Returns:
+            List of Row objects containing all remaining rows
         """
-        # Note: We check for the specific queue type to maintain consistency with ThriftResultSet
         if isinstance(self.results, JsonQueue):
-            rows = self.results.remaining_rows()
-            self._next_row_index += len(rows)
-
-            # Convert to Row objects
-            return self._convert_to_row_objects(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            logger.info(f"SeaResultSet.fetchall: Getting all remaining rows")
-            arrow_table = self.results.remaining_rows()
-            logger.info(
-                f"SeaResultSet.fetchall: Got arrow table with {arrow_table.num_rows} rows"
-            )
-
-            if arrow_table.num_rows == 0:
-                logger.info(
-                    "SeaResultSet.fetchall: No rows returned, returning empty list"
-                )
-                return []
-
-            # Convert Arrow table to Row objects
-            column_names = [col[0] for col in self.description]
-            ResultRow = Row(*column_names)
-
-            # Convert each row to a Row object
-            result_rows = []
-            for i in range(arrow_table.num_rows):
-                row_values = [
-                    arrow_table.column(j)[i].as_py()
-                    for j in range(arrow_table.num_columns)
-                ]
-                result_rows.append(ResultRow(*row_values))
-
-            # Increment the row index
-            self._next_row_index += arrow_table.num_rows
-            logger.info(
-                f"SeaResultSet.fetchall: Converted {len(result_rows)} rows, new row index: {self._next_row_index}"
-            )
-
-            return result_rows
+            return self.fetchall_json()
         else:
-            # This should not happen with current implementation
-            raise NotImplementedError("Unsupported queue type")
-
-    def fetchmany_arrow(self, size: int) -> Any:
-        """Fetch the next set of rows as an Arrow table."""
-        if not pyarrow:
-            raise ImportError("PyArrow is required for Arrow support")
-
-        if isinstance(self.results, JsonQueue):
-            rows = self.fetchmany(size)
-            if not rows:
-                # Return empty Arrow table with schema
-                return self._create_empty_arrow_table()
-
-            # Convert rows to Arrow table
-            return self._convert_rows_to_arrow_table(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.next_n_rows(size)
-            self._next_row_index += arrow_table.num_rows
-            return arrow_table
-        else:
-            raise NotImplementedError("Unsupported queue type")
-
-    def fetchall_arrow(self) -> Any:
-        """Fetch all remaining rows as an Arrow table."""
-        if not pyarrow:
-            raise ImportError("PyArrow is required for Arrow support")
-
-        if isinstance(self.results, JsonQueue):
-            rows = self.fetchall()
-            if not rows:
-                # Return empty Arrow table with schema
-                return self._create_empty_arrow_table()
-
-            # Convert rows to Arrow table
-            return self._convert_rows_to_arrow_table(rows)
-        elif isinstance(self.results, SeaCloudFetchQueue):
-            # For ARROW format with EXTERNAL_LINKS disposition
-            arrow_table = self.results.remaining_rows()
-            self._next_row_index += arrow_table.num_rows
-            return arrow_table
-        else:
-            raise NotImplementedError("Unsupported queue type")
+            return self._convert_arrow_table(self.fetchall_arrow())
