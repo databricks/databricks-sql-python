@@ -1,20 +1,11 @@
-"""
-Tests for the SEA (Statement Execution API) backend implementation.
-
-This module contains tests for the SeaDatabricksClient class, which implements
-the Databricks SQL connector's SEA backend functionality.
-"""
-
-import json
 import pytest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.result_set import SeaResultSet
-from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
+from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
-from databricks.sql.exc import Error, NotSupportedError
+from databricks.sql.exc import Error
 
 
 class TestSeaBackend:
@@ -49,23 +40,6 @@ class TestSeaBackend:
         )
 
         return client
-
-    @pytest.fixture
-    def sea_session_id(self):
-        """Create a SEA session ID."""
-        return SessionId.from_sea_session_id("test-session-123")
-
-    @pytest.fixture
-    def sea_command_id(self):
-        """Create a SEA command ID."""
-        return CommandId.from_sea_statement_id("test-statement-123")
-
-    @pytest.fixture
-    def mock_cursor(self):
-        """Create a mock cursor."""
-        cursor = Mock()
-        cursor.active_command_id = None
-        return cursor
 
     def test_init_extracts_warehouse_id(self, mock_http_client):
         """Test that the constructor properly extracts the warehouse ID from the HTTP path."""
@@ -201,92 +175,108 @@ class TestSeaBackend:
 
         assert "Not a valid SEA session ID" in str(excinfo.value)
 
-    # Tests for command execution and management
+    def test_session_configuration_helpers(self):
+        """Test the session configuration helper methods."""
+        # Test getting default value for a supported parameter
+        default_value = SeaDatabricksClient.get_default_session_configuration_value(
+            "ANSI_MODE"
+        )
+        assert default_value == "true"
 
-    def test_execute_command_sync(
-        self, sea_client, mock_http_client, mock_cursor, sea_session_id
-    ):
-        """Test executing a command synchronously."""
-        # Set up mock responses
-        execute_response = {
-            "statement_id": "test-statement-123",
-            "status": {"state": "SUCCEEDED"},
-            "manifest": {
-                "schema": [
-                    {
-                        "name": "col1",
-                        "type_name": "STRING",
-                        "type_text": "string",
-                        "nullable": True,
-                    }
-                ],
-                "total_row_count": 1,
-                "total_byte_count": 100,
-            },
-            "result": {"data": [["value1"]]},
+        # Test getting default value for an unsupported parameter
+        default_value = SeaDatabricksClient.get_default_session_configuration_value(
+            "UNSUPPORTED_PARAM"
+        )
+        assert default_value is None
+
+        # Test getting the list of allowed configurations
+        allowed_configs = SeaDatabricksClient.get_allowed_session_configurations()
+
+        expected_keys = {
+            "ANSI_MODE",
+            "ENABLE_PHOTON",
+            "LEGACY_TIME_PARSER_POLICY",
+            "MAX_FILE_PARTITION_BYTES",
+            "READ_ONLY_EXTERNAL_METASTORE",
+            "STATEMENT_TIMEOUT",
+            "TIMEZONE",
+            "USE_CACHED_RESULT",
         }
-        mock_http_client._make_request.return_value = execute_response
+        assert set(allowed_configs) == expected_keys
 
-        # Mock the get_execution_result method
-        with patch.object(
-            sea_client, "get_execution_result", return_value="mock_result_set"
-        ) as mock_get_result:
-            # Call the method
-            result = sea_client.execute_command(
+    def test_unimplemented_methods(self, sea_client):
+        """Test that unimplemented methods raise NotImplementedError."""
+        # Create dummy parameters for testing
+        session_id = SessionId.from_sea_session_id("test-session")
+        command_id = MagicMock()
+        cursor = MagicMock()
+
+        # Test execute_command
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.execute_command(
                 operation="SELECT 1",
-                session_id=sea_session_id,
+                session_id=session_id,
                 max_rows=100,
                 max_bytes=1000,
                 lz4_compression=False,
-                cursor=mock_cursor,
+                cursor=cursor,
                 use_cloud_fetch=False,
                 parameters=[],
                 async_op=False,
                 enforce_embedded_schema_correctness=False,
             )
+        assert "execute_command is not yet implemented" in str(excinfo.value)
 
-            # Verify the result
-            assert result == "mock_result_set"
+        # Test cancel_command
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.cancel_command(command_id)
+        assert "cancel_command is not yet implemented" in str(excinfo.value)
 
-            # Verify the HTTP request
-            mock_http_client._make_request.assert_called_once()
-            args, kwargs = mock_http_client._make_request.call_args
-            assert kwargs["method"] == "POST"
-            assert kwargs["path"] == sea_client.STATEMENT_PATH
-            assert "warehouse_id" in kwargs["data"]
-            assert "session_id" in kwargs["data"]
-            assert "statement" in kwargs["data"]
-            assert kwargs["data"]["statement"] == "SELECT 1"
+        # Test close_command
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.close_command(command_id)
+        assert "close_command is not yet implemented" in str(excinfo.value)
 
-            # Verify get_execution_result was called with the right command ID
-            mock_get_result.assert_called_once()
-            cmd_id_arg = mock_get_result.call_args[0][0]
-            assert isinstance(cmd_id_arg, CommandId)
-            assert cmd_id_arg.guid == "test-statement-123"
+        # Test get_query_state
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_query_state(command_id)
+        assert "get_query_state is not yet implemented" in str(excinfo.value)
 
-    def test_execute_command_async(
-        self, sea_client, mock_http_client, mock_cursor, sea_session_id
-    ):
-        """Test executing a command asynchronously."""
-        # Set up mock response
-        execute_response = {
-            "statement_id": "test-statement-456",
-            "status": {"state": "PENDING"},
-        }
-        mock_http_client._make_request.return_value = execute_response
+        # Test get_execution_result
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_execution_result(command_id, cursor)
+        assert "get_execution_result is not yet implemented" in str(excinfo.value)
 
-        # Call the method
-        result = sea_client.execute_command(
-            operation="SELECT 1",
-            session_id=sea_session_id,
-            max_rows=100,
-            max_bytes=1000,
-            lz4_compression=False,
-            cursor=mock_cursor,
-            use_cloud_fetch=False,
-            parameters=[],
-            async_op=True,  # Async mode
-            enforce_embedded_schema_correctness=False,
+        # Test metadata operations
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_catalogs(session_id, 100, 1000, cursor)
+        assert "get_catalogs is not yet implemented" in str(excinfo.value)
+
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_schemas(session_id, 100, 1000, cursor)
+        assert "get_schemas is not yet implemented" in str(excinfo.value)
+
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_tables(session_id, 100, 1000, cursor)
+        assert "get_tables is not yet implemented" in str(excinfo.value)
+
+        with pytest.raises(NotImplementedError) as excinfo:
+            sea_client.get_columns(session_id, 100, 1000, cursor)
+        assert "get_columns is not yet implemented" in str(excinfo.value)
+
+    def test_max_download_threads_property(self, sea_client):
+        """Test the max_download_threads property."""
+        assert sea_client.max_download_threads == 10
+
+        # Create a client with a custom value
+        custom_client = SeaDatabricksClient(
+            server_hostname="test-server.databricks.com",
+            port=443,
+            http_path="/sql/warehouses/abc123",
+            http_headers=[],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+            max_download_threads=20,
         )
 
         # Verify the result is None for async operation

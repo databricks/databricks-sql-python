@@ -840,8 +840,6 @@ class ThriftDatabricksClient(DatabricksClient):
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         has_more_rows = resp.hasMoreRows
 
-        status = self.get_query_state(command_id)
-
         execute_response = ExecuteResponse(
             command_id=command_id,
             status=status,
