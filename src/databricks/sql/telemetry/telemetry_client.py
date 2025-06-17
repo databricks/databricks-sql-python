@@ -104,27 +104,37 @@ class BaseTelemetryClient(ABC):
 
     @abstractmethod
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
-        pass
+        raise NotImplementedError(
+            "Subclasses must implement export_initial_telemetry_log"
+        )
 
     @abstractmethod
     def export_failure_log(self, error_name, error_message):
-        pass
+        raise NotImplementedError("Subclasses must implement export_failure_log")
 
     @abstractmethod
+    def close(self):
+        raise NotImplementedError("Subclasses must implement close")
+
+
+class NoopTelemetryClient(BaseTelemetryClient):
+    """
+    NoopTelemetryClient is a telemetry client that does not send any events to the server.
+    It is used when telemetry is disabled.
+    """
+
+    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
+        pass
+
+    def export_failure_log(self, error_name, error_message):
+        pass
+
     def close(self):
         pass
 
 
 # A single instance of the no-op client that can be reused
-NOOP_TELEMETRY_CLIENT = type(
-    "NoopTelemetryClient",
-    (BaseTelemetryClient,),
-    {
-        "export_initial_telemetry_log": lambda self, *args, **kwargs: None,
-        "export_failure_log": lambda self, *args, **kwargs: None,
-        "close": lambda self: None,
-    },
-)()
+NOOP_TELEMETRY_CLIENT = NoopTelemetryClient()
 
 
 class TelemetryClient(BaseTelemetryClient):

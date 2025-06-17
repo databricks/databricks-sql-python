@@ -7,6 +7,7 @@ from databricks.sql.telemetry.telemetry_client import get_telemetry_client
 logger = logging.getLogger(__name__)
 
 ### PEP-249 Mandated ###
+# https://peps.python.org/pep-0249/#exceptions
 class Error(Exception):
     """Base class for DB-API2.0 exceptions.
     `message`: An optional user-friendly error message. It should be short, actionable and stable
