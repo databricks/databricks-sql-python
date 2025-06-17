@@ -300,7 +300,6 @@ class TelemetryClient(BaseTelemetryClient):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._flush()
-        _remove_telemetry_client(self._session_id_hex)
 
 
 # Module-level state
@@ -392,13 +391,14 @@ def get_telemetry_client(session_id_hex):
         return NOOP_TELEMETRY_CLIENT
 
 
-def _remove_telemetry_client(session_id_hex):
+def close_telemetry_client(session_id_hex):
     """Remove the telemetry client for a specific connection"""
     global _initialized, _executor
     with _lock:
         if session_id_hex in _clients:
             logger.debug("Removing telemetry client for connection %s", session_id_hex)
-            _clients.pop(session_id_hex, None)
+            telemetry_client = _clients.pop(session_id_hex, None)
+            telemetry_client.close()
 
         # Shutdown executor if no more clients
         if not _clients and _executor:

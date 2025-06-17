@@ -56,6 +56,7 @@ from databricks.sql.telemetry.telemetry_client import (
     TelemetryHelper,
     initialize_telemetry_client,
     get_telemetry_client,
+    close_telemetry_client,
 )
 from databricks.sql.telemetry.models.enums import DatabricksClientType
 from databricks.sql.telemetry.models.event import (
@@ -471,7 +472,7 @@ class Connection:
 
         self.open = False
 
-        self._telemetry_client.close()
+        close_telemetry_client(self.get_session_id_hex())
 
     def commit(self):
         """No-op because Databricks does not support transactions"""

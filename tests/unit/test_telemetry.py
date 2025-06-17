@@ -8,7 +8,7 @@ from databricks.sql.telemetry.telemetry_client import (
     NOOP_TELEMETRY_CLIENT,
     initialize_telemetry_client,
     get_telemetry_client,
-    _remove_telemetry_client,
+    close_telemetry_client,
     TelemetryHelper,
     BaseTelemetryClient
 )
@@ -385,7 +385,33 @@ class TestTelemetrySystem:
         client = get_telemetry_client(session_id_hex)
         assert isinstance(client, TelemetryClient)
         
-        _remove_telemetry_client(session_id_hex)
+        client.close = MagicMock()
+        
+        close_telemetry_client(session_id_hex)
+        
+        client.close.assert_called_once()
+        
+        client = get_telemetry_client(session_id_hex)
+        assert client is NOOP_TELEMETRY_CLIENT
+
+    def test_close_telemetry_client_noop(self, telemetry_system_reset):
+        """Test closing a no-op telemetry client."""
+        session_id_hex = "test-uuid"
+        initialize_telemetry_client(
+            telemetry_enabled=False,
+            session_id_hex=session_id_hex,
+            auth_provider=MagicMock(),
+            host_url="test-host",
+        )
+        
+        client = get_telemetry_client(session_id_hex)
+        assert client is NOOP_TELEMETRY_CLIENT
+        
+        client.close = MagicMock()
+        
+        close_telemetry_client(session_id_hex)
+        
+        client.close.assert_called_once()
         
         client = get_telemetry_client(session_id_hex)
         assert client is NOOP_TELEMETRY_CLIENT
