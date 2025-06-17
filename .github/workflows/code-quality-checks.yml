@@ -61,7 +61,7 @@ jobs:
       #              run test suite
       #----------------------------------------------
       - name: Run tests
-        run: poetry run python -m pytest tests/unit 
+        run: poetry run python -m pytest tests/unit
   run-unit-tests-with-arrow:
     runs-on: ubuntu-latest
     strategy:
@@ -75,7 +75,7 @@ jobs:
           uses: actions/checkout@v2
       -   name: Set up python ${{ matrix.python-version }}
           id: setup-python
-          uses: actions/setup-python@v5
+          uses: actions/setup-python@v2
           with:
             python-version: ${{ matrix.python-version }}
       #----------------------------------------------
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13t"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
