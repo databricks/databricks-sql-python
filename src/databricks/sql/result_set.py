@@ -155,16 +155,6 @@ class ResultSet(ABC):
         """Fetch all remaining rows of a query result."""
         pass
 
-    @abstractmethod
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
-        """Fetch the next set of rows as an Arrow table."""
-        pass
-
-    @abstractmethod
-    def fetchall_arrow(self) -> "pyarrow.Table":
-        """Fetch all remaining rows as an Arrow table."""
-        pass
-
     def close(self) -> None:
         """
         Close the result set.
@@ -478,19 +468,13 @@ class SeaResultSet(ResultSet):
         # Build the results queue
         results_queue = None
 
+        results_queue = None
         if result_data:
-            from typing import cast, List
-
-            # Convert description to the expected format
-            desc = None
-            if execute_response.description:
-                desc = cast(List[Tuple[Any, ...]], execute_response.description)
-
             results_queue = SeaResultSetQueueFactory.build_queue(
                 result_data,
                 manifest,
-                str(self.statement_id),
-                description=desc,
+                str(execute_response.command_id.to_sea_statement_id()),
+                description=execute_response.description,
                 max_download_threads=sea_client.max_download_threads,
                 ssl_options=sea_client.ssl_options,
                 sea_client=sea_client,
@@ -536,38 +520,6 @@ class SeaResultSet(ResultSet):
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
 
-        while n_remaining_rows > 0:
-            partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results])
-            n_remaining_rows = n_remaining_rows - partial_results.num_rows
-            self._next_row_index += partial_results.num_rows
-
-        return results
-
-    def fetchall_arrow(self) -> "pyarrow.Table":
-        """
-        Fetch all remaining rows as an Arrow table.
-
-        Returns:
-            PyArrow Table containing all remaining rows
-
-        Raises:
-            ImportError: If PyArrow is not installed
-        """
-        results = self.results.remaining_rows()
-        self._next_row_index += results.num_rows
-
-        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
-        # Valid only for metadata commands result set
-        if isinstance(results, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(results.column_names, results.column_table)
-            }
-            return pyarrow.Table.from_pydict(data)
-
-        return results
-
     def fetchmany_json(self, size: int):
         """
         Fetch the next set of rows as a columnar table.
@@ -585,14 +537,7 @@ class SeaResultSet(ResultSet):
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         results = self.results.next_n_rows(size)
-        n_remaining_rows = size - len(results)
         self._next_row_index += len(results)
-
-        while n_remaining_rows > 0:
-            partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = results + partial_results
-            n_remaining_rows = n_remaining_rows - len(partial_results)
-            self._next_row_index += len(partial_results)
 
         return results
 
