@@ -6,12 +6,15 @@ from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
+    ResultFormat,
+    ResultDisposition,
+    ResultCompression,
+    WaitTimeout,
 )
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
-    from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -21,16 +24,10 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
+from databricks.sql.exc import ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
-from databricks.sql.utils import SeaResultSetQueueFactory
-from databricks.sql.backend.sea.models.base import (
-    ResultData,
-    ExternalLink,
-    ResultManifest,
-)
 
 from databricks.sql.backend.sea.models import (
     ExecuteStatementRequest,
@@ -44,6 +41,11 @@ from databricks.sql.backend.sea.models import (
     GetStatementResponse,
     CreateSessionResponse,
     GetChunksResponse,
+)
+from databricks.sql.backend.sea.models.responses import (
+    parse_status,
+    parse_manifest,
+    parse_result,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,9 +82,6 @@ def _filter_session_configuration(
 class SeaDatabricksClient(DatabricksClient):
     """
     Statement Execution API (SEA) implementation of the DatabricksClient interface.
-
-    This implementation provides session management functionality for SEA,
-    while other operations raise NotImplementedError.
     """
 
     # SEA API paths
@@ -92,8 +91,6 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
-    CHUNKS_PATH_WITH_ID = STATEMENT_PATH + "/{}/result/chunks"
-    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     def __init__(
         self,
@@ -126,7 +123,6 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         self._max_download_threads = kwargs.get("max_download_threads", 10)
-        self.ssl_options = ssl_options
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -284,19 +280,6 @@ class SeaDatabricksClient(DatabricksClient):
         return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
 
     @staticmethod
-    def is_session_configuration_parameter_supported(name: str) -> bool:
-        """
-        Check if a session configuration parameter is supported.
-
-        Args:
-            name: The name of the session configuration parameter
-
-        Returns:
-            True if the parameter is supported, False otherwise
-        """
-        return name.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP
-
-    @staticmethod
     def get_allowed_session_configurations() -> List[str]:
         """
         Get the list of allowed session configuration parameters.
@@ -343,92 +326,27 @@ class SeaDatabricksClient(DatabricksClient):
             tuple: (ExecuteResponse, ResultData, ResultManifest) - The normalized execute response,
                   result data object, and manifest object
         """
-        # Extract status
-        status_data = sea_response.get("status", {})
-        state = CommandState.from_sea_state(status_data.get("state", ""))
 
-        # Extract description from manifest
-        description = None
-        manifest_data = sea_response.get("manifest", {})
-        schema_data = manifest_data.get("schema", {})
-        columns_data = schema_data.get("columns", [])
+        # Parse the response
+        status = parse_status(sea_response)
+        manifest_obj = parse_manifest(sea_response)
+        result_data_obj = parse_result(sea_response)
 
-        if columns_data:
-            columns = []
-            for col_data in columns_data:
-                if not isinstance(col_data, dict):
-                    continue
-
-                # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
-                columns.append(
-                    (
-                        col_data.get("name", ""),  # name
-                        col_data.get("type_name", ""),  # type_code
-                        None,  # display_size (not provided by SEA)
-                        None,  # internal_size (not provided by SEA)
-                        col_data.get("precision"),  # precision
-                        col_data.get("scale"),  # scale
-                        col_data.get("nullable", True),  # null_ok
-                    )
-                )
-            description = columns if columns else None
+        # Extract description from manifest schema
+        description = self._extract_description_from_manifest(manifest_obj)
 
         # Check for compression
-        lz4_compressed = manifest_data.get("result_compression") == "LZ4_FRAME"
-
-        # Initialize result_data_obj and manifest_obj
-        result_data_obj = None
-        manifest_obj = None
-
-        result_data = sea_response.get("result", {})
-        if result_data:
-            # Convert external links
-            external_links = None
-            if "external_links" in result_data:
-                external_links = []
-                for link_data in result_data["external_links"]:
-                    external_links.append(
-                        ExternalLink(
-                            external_link=link_data.get("external_link", ""),
-                            expiration=link_data.get("expiration", ""),
-                            chunk_index=link_data.get("chunk_index", 0),
-                            byte_count=link_data.get("byte_count", 0),
-                            row_count=link_data.get("row_count", 0),
-                            row_offset=link_data.get("row_offset", 0),
-                            next_chunk_index=link_data.get("next_chunk_index"),
-                            next_chunk_internal_link=link_data.get(
-                                "next_chunk_internal_link"
-                            ),
-                            http_headers=link_data.get("http_headers", {}),
-                        )
-                    )
-
-            # Create the result data object
-            result_data_obj = ResultData(
-                data=result_data.get("data_array"), external_links=external_links
-            )
-
-        # Create the manifest object
-        manifest_obj = ResultManifest(
-            format=manifest_data.get("format", ""),
-            schema=manifest_data.get("schema", {}),
-            total_row_count=manifest_data.get("total_row_count", 0),
-            total_byte_count=manifest_data.get("total_byte_count", 0),
-            total_chunk_count=manifest_data.get("total_chunk_count", 0),
-            truncated=manifest_data.get("truncated", False),
-            chunks=manifest_data.get("chunks"),
-            result_compression=manifest_data.get("result_compression"),
-        )
+        lz4_compressed = manifest_obj.result_compression == "LZ4_FRAME"
 
         execute_response = ExecuteResponse(
             command_id=command_id,
-            status=state,
+            status=status.state,
             description=description,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=False,
             arrow_schema_bytes=None,
-            result_format=manifest_data.get("format"),
+            result_format=manifest_obj.format,
         )
 
         return execute_response, result_data_obj, manifest_obj
@@ -464,6 +382,7 @@ class SeaDatabricksClient(DatabricksClient):
         Returns:
             ResultSet: A SeaResultSet instance for the executed command
         """
+
         if session_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA session ID")
 
@@ -481,9 +400,17 @@ class SeaDatabricksClient(DatabricksClient):
                     )
                 )
 
-        format = "ARROW_STREAM" if use_cloud_fetch else "JSON_ARRAY"
-        disposition = "EXTERNAL_LINKS" if use_cloud_fetch else "INLINE"
-        result_compression = "LZ4_FRAME" if lz4_compression else None
+        format = (
+            ResultFormat.ARROW_STREAM if use_cloud_fetch else ResultFormat.JSON_ARRAY
+        ).value
+        disposition = (
+            ResultDisposition.EXTERNAL_LINKS
+            if use_cloud_fetch
+            else ResultDisposition.INLINE
+        ).value
+        result_compression = (
+            ResultCompression.LZ4_FRAME if lz4_compression else ResultCompression.NONE
+        ).value
 
         request = ExecuteStatementRequest(
             warehouse_id=self.warehouse_id,
@@ -491,7 +418,7 @@ class SeaDatabricksClient(DatabricksClient):
             statement=operation,
             disposition=disposition,
             format=format,
-            wait_timeout="0s" if async_op else "10s",
+            wait_timeout=(WaitTimeout.ASYNC if async_op else WaitTimeout.SYNC).value,
             on_wait_timeout="CONTINUE",
             row_limit=max_rows,
             parameters=sea_parameters if sea_parameters else None,
@@ -517,12 +444,11 @@ class SeaDatabricksClient(DatabricksClient):
         # Store the command ID in the cursor
         cursor.active_command_id = command_id
 
-        # If async operation, return None and let the client poll for results
+        # If async operation, return and let the client poll for results
         if async_op:
             return None
 
         # For synchronous operation, wait for the statement to complete
-        # Poll until the statement is done
         status = response.status
         state = status.state
 
@@ -552,6 +478,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 
@@ -574,6 +501,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 
@@ -599,6 +527,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 
@@ -633,6 +562,7 @@ class SeaDatabricksClient(DatabricksClient):
         Raises:
             ValueError: If the command ID is invalid
         """
+
         if command_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA command ID")
 

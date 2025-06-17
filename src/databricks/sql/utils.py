@@ -133,7 +133,6 @@ class SeaResultSetQueueFactory(ABC):
         statement_id: str,
         description: Optional[List[Tuple[Any, ...]]] = None,
         max_download_threads: Optional[int] = None,
-        ssl_options: Optional[SSLOptions] = None,
         sea_client: Optional["SeaDatabricksClient"] = None,
         lz4_compressed: bool = False,
     ) -> ResultSetQueue:
