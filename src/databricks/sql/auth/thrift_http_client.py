@@ -1,16 +1,18 @@
 import base64
+import json
 import logging
 import urllib.parse
-from typing import Dict, Union, Optional
+from typing import Dict, Union, Optional, Any
 
 import six
-import thrift
+import thrift.transport.THttpClient
 
 import ssl
 import warnings
 from http.client import HTTPResponse
 from io import BytesIO
 
+import urllib3
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
@@ -222,3 +224,151 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             logger.warning(
                 "DatabricksRetryPolicy is currently bypassed. The CommandType cannot be set."
             )
+
+    def make_rest_request(
+        self,
+        method: str,
+        endpoint_path: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Make a REST API request using the existing connection pool.
+
+        Args:
+            method (str): HTTP method (GET, POST, DELETE, etc.)
+            endpoint_path (str): API endpoint path (e.g., "sessions" or "statements/123")
+            data (dict, optional): Request payload data
+            params (dict, optional): Query parameters
+            headers (dict, optional): Additional headers
+
+        Returns:
+            dict: Response data parsed from JSON
+
+        Raises:
+            RequestError: If the request fails
+        """
+        # Ensure the transport is open
+        if not self.isOpen():
+            self.open()
+
+        # Prepare headers
+        request_headers = {
+            "Content-Type": "application/json",
+        }
+
+        # Add authentication headers
+        auth_headers: Dict[str, str] = {}
+        self.__auth_provider.add_headers(auth_headers)
+        request_headers.update(auth_headers)
+
+        # Add custom headers if provided
+        if headers:
+            request_headers.update(headers)
+
+        # Prepare request body
+        body = json.dumps(data).encode("utf-8") if data else None
+
+        # Build query string for params
+        query_string = ""
+        if params:
+            query_string = "?" + urllib.parse.urlencode(params)
+
+        # Determine full path
+        full_path = (
+            self.path.rstrip("/") + "/" + endpoint_path.lstrip("/") + query_string
+        )
+
+        # Log request details (debug level)
+        logger.debug(f"Making {method} request to {full_path}")
+
+        try:
+            # Make request using the connection pool
+            self.__resp = self.__pool.request(
+                method,
+                url=full_path,
+                body=body,
+                headers=request_headers,
+                preload_content=False,
+                timeout=self.__timeout,
+                retries=self.retry_policy,
+            )
+
+            # Store response status and headers
+            if self.__resp is not None:
+                self.code = self.__resp.status
+                self.message = self.__resp.reason
+                self.headers = self.__resp.headers
+
+                # Log response status
+                logger.debug(f"Response status: {self.code}, message: {self.message}")
+
+                # Read and parse response data
+                # Note: urllib3's HTTPResponse has a data attribute, but it's not in the type stubs
+                response_data = getattr(self.__resp, "data", None)
+
+                # Check for HTTP errors
+                self._check_rest_response_for_error(self.code, response_data)
+
+                # Parse JSON response if there is content
+                if response_data:
+                    result = json.loads(response_data.decode("utf-8"))
+
+                    # Log response content (truncated for large responses)
+                    content_str = json.dumps(result)
+                    if len(content_str) > 1000:
+                        logger.debug(
+                            f"Response content (truncated): {content_str[:1000]}..."
+                        )
+                    else:
+                        logger.debug(f"Response content: {content_str}")
+
+                    return result
+
+                return {}
+            else:
+                raise ValueError("No response received from server")
+
+        except urllib3.exceptions.HTTPError as e:
+            error_message = f"REST HTTP request failed: {str(e)}"
+            logger.error(error_message)
+            from databricks.sql.exc import RequestError
+
+            raise RequestError(error_message, e)
+
+    def _check_rest_response_for_error(
+        self, status_code: int, response_data: Optional[bytes]
+    ) -> None:
+        """
+        Check if the REST response indicates an error and raise an appropriate exception.
+
+        Args:
+            status_code: HTTP status code
+            response_data: Raw response data
+
+        Raises:
+            RequestError: If the response indicates an error
+        """
+        if status_code >= 400:
+            error_message = f"REST HTTP request failed with status {status_code}"
+
+            # Try to extract error details from JSON response
+            if response_data:
+                try:
+                    error_details = json.loads(response_data.decode("utf-8"))
+                    if isinstance(error_details, dict) and "message" in error_details:
+                        error_message = f"{error_message}: {error_details['message']}"
+                    logger.error(
+                        f"Request failed (status {status_code}): {error_details}"
+                    )
+                except (ValueError, KeyError):
+                    # If we can't parse JSON, log raw content
+                    content = response_data.decode("utf-8", errors="replace")
+                    logger.error(f"Request failed (status {status_code}): {content}")
+            else:
+                logger.error(f"Request failed (status {status_code}): No response data")
+
+            from databricks.sql.exc import RequestError
+
+            raise RequestError(error_message)

@@ -26,7 +26,8 @@ from databricks.sql.backend.types import (
     ExecuteResponse,
 )
 from databricks.sql.exc import ServerOperationError
-from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
+from databricks.sql.auth.thrift_http_client import THttpClient
+from databricks.sql.backend.sea.utils.http_client_adapter import SeaHttpClientAdapter
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
@@ -129,16 +130,22 @@ class SeaDatabricksClient(DatabricksClient):
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
-        # Initialize HTTP client
-        self.http_client = SeaHttpClient(
-            server_hostname=server_hostname,
-            port=port,
-            http_path=http_path,
-            http_headers=http_headers,
+        # Initialize ThriftHttpClient
+        thrift_client = THttpClient(
             auth_provider=auth_provider,
+            uri_or_host=f"https://{server_hostname}:{port}",
+            path=http_path,
             ssl_options=ssl_options,
-            **kwargs,
+            max_connections=kwargs.get("max_connections", 1),
+            retry_policy=kwargs.get("_retry_stop_after_attempts_count", 30),
         )
+
+        # Set custom headers
+        custom_headers = dict(http_headers)
+        thrift_client.setCustomHeaders(custom_headers)
+
+        # Initialize HTTP client adapter
+        self.http_client = SeaHttpClientAdapter(thrift_client=thrift_client)
 
     def _extract_warehouse_id(self, http_path: str) -> str:
         """
@@ -222,8 +229,8 @@ class SeaDatabricksClient(DatabricksClient):
             schema=schema,
         )
 
-        response = self.http_client._make_request(
-            method="POST", path=self.SESSION_PATH, data=request_data.to_dict()
+        response = self.http_client.post(
+            path=self.SESSION_PATH, data=request_data.to_dict()
         )
 
         session_response = CreateSessionResponse.from_dict(response)
@@ -262,8 +269,7 @@ class SeaDatabricksClient(DatabricksClient):
             session_id=sea_session_id,
         )
 
-        self.http_client._make_request(
-            method="DELETE",
+        self.http_client.delete(
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             data=request_data.to_dict(),
         )
@@ -340,8 +346,7 @@ class SeaDatabricksClient(DatabricksClient):
             ExternalLink: External link for the chunk
         """
 
-        response_data = self.http_client._make_request(
-            method="GET",
+        response_data = self.http_client.get(
             path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
         )
         response = GetChunksResponse.from_dict(response_data)
@@ -470,8 +475,8 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        response_data = self.http_client._make_request(
-            method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
+        response_data = self.http_client.post(
+            path=self.STATEMENT_PATH, data=request.to_dict()
         )
         response = ExecuteStatementResponse.from_dict(response_data)
         statement_id = response.statement_id
@@ -530,8 +535,7 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
-            method="POST",
+        self.http_client.post(
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
@@ -553,8 +557,7 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
-            method="DELETE",
+        self.http_client.delete(
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
@@ -579,10 +582,8 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = GetStatementRequest(statement_id=sea_statement_id)
-        response_data = self.http_client._make_request(
-            method="GET",
+        response_data = self.http_client.get(
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
         )
 
         # Parse the response
@@ -617,10 +618,8 @@ class SeaDatabricksClient(DatabricksClient):
         request = GetStatementRequest(statement_id=sea_statement_id)
 
         # Get the statement result
-        response_data = self.http_client._make_request(
-            method="GET",
+        response_data = self.http_client.get(
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
         )
 
         # Create and return a SeaResultSet
