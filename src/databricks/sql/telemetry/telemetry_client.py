@@ -317,15 +317,14 @@ _excepthook_installed = False
 def _initialize():
     """Initialize the telemetry system if not already initialized"""
     global _initialized, _executor
-    with _lock:
-        if not _initialized:
-            _clients.clear()
-            _executor = ThreadPoolExecutor(max_workers=10)
-            _install_exception_hook()
-            _initialized = True
-            logger.debug(
-                "Telemetry system initialized with thread pool (max_workers=10)"
-            )
+    if not _initialized:
+        _clients.clear()
+        _executor = ThreadPoolExecutor(max_workers=10)
+        _install_exception_hook()
+        _initialized = True
+        logger.debug(
+            "Telemetry system initialized with thread pool (max_workers=10)"
+        )
 
 
 def _install_exception_hook():
@@ -356,9 +355,8 @@ def initialize_telemetry_client(
 ):
     """Initialize a telemetry client for a specific connection if telemetry is enabled"""
     try:
-        _initialize()
-
         with _lock:
+            _initialize()
             if session_id_hex not in _clients:
                 logger.debug(
                     "Creating new TelemetryClient for connection %s", session_id_hex
@@ -371,8 +369,10 @@ def initialize_telemetry_client(
                         host_url=host_url,
                         executor=_executor,
                     )
+                    print("i have initialized the telemetry client yes")
                 else:
                     _clients[session_id_hex] = NoopTelemetryClient()
+                    print("i have initialized the noop client yes")
     except Exception as e:
         logger.debug("Failed to initialize telemetry client: %s", e)
         # Fallback to NoopTelemetryClient to ensure connection doesn't fail
@@ -397,20 +397,20 @@ def get_telemetry_client(session_id_hex):
 def close_telemetry_client(session_id_hex):
     """Remove the telemetry client for a specific connection"""
     global _initialized, _executor
+    with _lock:
+        if session_id_hex in _clients:
+            logger.debug("Removing telemetry client for connection %s", session_id_hex)
+            telemetry_client = _clients.pop(session_id_hex, None)
+            telemetry_client.close()
 
-    if session_id_hex in _clients:
-        logger.debug("Removing telemetry client for connection %s", session_id_hex)
-        telemetry_client = _clients.pop(session_id_hex, None)
-        telemetry_client.close()
-
-    # Shutdown executor if no more clients
-    try:
-        if not _clients and _executor:
-            logger.debug(
-                "No more telemetry clients, shutting down thread pool executor"
-            )
-            _executor.shutdown(wait=True)
-            _executor = None
-            _initialized = False
-    except Exception as e:
-        logger.debug("Failed to shutdown thread pool executor: %s", e)
+        # Shutdown executor if no more clients
+        try:
+            if not _clients and _executor:
+                logger.debug(
+                    "No more telemetry clients, shutting down thread pool executor"
+                )
+                _executor.shutdown(wait=True)
+                _executor = None
+                _initialized = False
+        except Exception as e:
+            logger.debug("Failed to shutdown thread pool executor: %s", e)
