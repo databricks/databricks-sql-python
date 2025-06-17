@@ -373,18 +373,19 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         if next_chunk_index is None:
             self._current_chunk_link = None
-        else:
-            try:
-                self._current_chunk_link = self._sea_client.get_chunk_link(
-                    self._statement_id, next_chunk_index
+            return None
+
+        try:
+            self._current_chunk_link = self._sea_client.get_chunk_link(
+                self._statement_id, next_chunk_index
+            )
+        except Exception as e:
+            logger.error(
+                "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
+                    next_chunk_index, e
                 )
-            except Exception as e:
-                logger.error(
-                    "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
-                        next_chunk_index, e
-                    )
-                )
-                return None
+            )
+            return None
 
         logger.debug(
             f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
