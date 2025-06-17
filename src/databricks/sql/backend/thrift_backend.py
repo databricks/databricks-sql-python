@@ -1232,8 +1232,6 @@ class ThriftDatabricksClient(DatabricksClient):
                 )
             )
 
-        from databricks.sql.utils import ThriftResultSetQueueFactory
-
         queue = ThriftResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
             t_row_set=resp.results,

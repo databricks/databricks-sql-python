@@ -480,7 +480,6 @@ class SeaResultSet(ResultSet):
                 str(execute_response.command_id.to_sea_statement_id()),
                 description=execute_response.description,
                 max_download_threads=sea_client.max_download_threads,
-                ssl_options=sea_client.ssl_options,
                 sea_client=sea_client,
                 lz4_compressed=execute_response.lz4_compressed,
             )
