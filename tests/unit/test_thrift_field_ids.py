@@ -7,13 +7,17 @@ and ensure compatibility with various Thrift implementations and protocols.
 
 import inspect
 import pytest
-import unittest
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 
-class TestThriftFieldIds(unittest.TestCase):
-    """Test suite for validating Thrift field ID constraints."""
+class TestThriftFieldIds:
+    """
+    Unit test to validate that all Thrift-generated field IDs comply with the maximum limit.
+
+    Field IDs in Thrift must stay below 3329 to avoid conflicts with reserved ranges
+    and ensure compatibility with various Thrift implementations and protocols.
+    """
 
     MAX_ALLOWED_FIELD_ID = 3329
 
@@ -42,7 +46,7 @@ class TestThriftFieldIds(unittest.TestCase):
         
         if violations:
             error_message = self._build_error_message(violations)
-            self.fail(error_message)
+            pytest.fail(error_message)
 
     def _check_class_field_ids(self, cls, class_name, violations):
         """
