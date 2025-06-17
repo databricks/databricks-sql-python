@@ -146,7 +146,7 @@ class GetStatementResponse:
 
 @dataclass
 class CreateSessionResponse:
-    """Response from creating a new session."""
+    """Representation of the response from creating a new session."""
 
     session_id: str
 
