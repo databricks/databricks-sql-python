@@ -61,7 +61,7 @@ jobs:
       #              run test suite
       #----------------------------------------------
       - name: Run tests
-        run: LOG_LEVEL=DEBUG poetry run python -m pytest tests/unit -v
+        run: poetry run python -m pytest tests/unit -v -s --log-cli-level=DEBUG
   run-unit-tests-with-arrow:
     runs-on: ubuntu-latest
     strategy:
@@ -112,7 +112,7 @@ jobs:
       #              run test suite
       #----------------------------------------------
       -   name: Run tests
-          run: LOG_LEVEL=DEBUG poetry run python -m pytest tests/unit -v
+          run: poetry run python -m pytest tests/unit -v -s --log-cli-level=DEBUG
   check-linting:
     runs-on: ubuntu-latest
     strategy:
