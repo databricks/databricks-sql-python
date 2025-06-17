@@ -272,6 +272,18 @@ class ThriftResultSet(ResultSet):
         self.results = results
         self.has_more_rows = has_more_rows
 
+    def _convert_columnar_table(self, table):
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+        result = []
+        for row_index in range(table.num_rows):
+            curr_row = []
+            for col_index in range(table.num_columns):
+                curr_row.append(table.get_item(col_index, row_index))
+            result.append(ResultRow(*curr_row))
+
+        return result
+
     def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
         Function to merge / combining the columnar results into a single result

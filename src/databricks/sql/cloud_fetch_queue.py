@@ -135,6 +135,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self,
         max_download_threads: int,
         ssl_options: SSLOptions,
+        schema_bytes: bytes,
         lz4_compressed: bool = True,
         description: Optional[List[Tuple[Any, ...]]] = None,
     ):
@@ -142,14 +143,15 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         Initialize the base CloudFetchQueue.
 
         Args:
-            schema_bytes: Arrow schema bytes
             max_download_threads: Maximum number of download threads
             ssl_options: SSL options for downloads
+            schema_bytes: Arrow schema bytes
             lz4_compressed: Whether the data is LZ4 compressed
             description: Column descriptions
         """
         self.lz4_compressed = lz4_compressed
         self.description = description
+        self.schema_bytes = schema_bytes
         self._ssl_options = ssl_options
         self.max_download_threads = max_download_threads
 
@@ -191,7 +193,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         """Get up to the next n rows of the cloud fetch Arrow dataframes."""
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
-            logger.info("SeaCloudFetchQueue: No table available, returning empty table")
             return self._create_empty_table()
 
         logger.info("SeaCloudFetchQueue: Retrieving up to {} rows".format(num_rows))
@@ -309,6 +310,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         super().__init__(
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
+            schema_bytes=b"",
             lz4_compressed=lz4_compressed,
             description=description,
         )
@@ -435,11 +437,11 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         super().__init__(
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
+            schema_bytes=schema_bytes,
             lz4_compressed=lz4_compressed,
             description=description,
         )
 
-        self.schema_bytes = schema_bytes
         self.start_row_index = start_row_offset
         self.result_links = result_links or []
 
