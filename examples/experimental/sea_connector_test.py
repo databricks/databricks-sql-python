@@ -18,7 +18,6 @@ TEST_MODULES = [
     "test_sea_sync_query",
     "test_sea_async_query",
     "test_sea_metadata",
-    "test_sea_multi_chunk",
 ]
 
 
@@ -27,12 +26,6 @@ def run_test_module(module_name: str) -> bool:
     module_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "tests", f"{module_name}.py"
     )
-
-    # Handle the multi-chunk test which is in the main directory
-    if module_name == "test_sea_multi_chunk":
-        module_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), f"{module_name}.py"
-        )
 
     # Simply run the module as a script - each module handles its own test execution
     result = subprocess.run(

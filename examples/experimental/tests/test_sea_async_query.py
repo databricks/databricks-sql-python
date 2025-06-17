@@ -77,24 +77,29 @@ def test_sea_async_query_with_cloud_fetch():
 
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
-        
+
         results = [cursor.fetchone()]
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
-        logger.info(f"{len(results)} rows retrieved against 100 requested")
+        actual_row_count = len(results)
+        logger.info(
+            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
+        )
 
         logger.info(
             f"Requested {requested_row_count} rows, received {actual_row_count} rows"
         )
-        
+
         # Verify total row count
         if actual_row_count != requested_row_count:
             logger.error(
                 f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
             )
             return False
-        
-        logger.info("PASS: Received correct number of rows with cloud fetch and all fetch methods work correctly")
+
+        logger.info(
+            "PASS: Received correct number of rows with cloud fetch and all fetch methods work correctly"
+        )
 
         # Close resources
         cursor.close()
@@ -182,12 +187,15 @@ def test_sea_async_query_without_cloud_fetch():
         results = [cursor.fetchone()]
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
-        logger.info(f"{len(results)} rows retrieved against 100 requested")
+        actual_row_count = len(results)
+        logger.info(
+            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
+        )
 
         logger.info(
             f"Requested {requested_row_count} rows, received {actual_row_count} rows"
         )
-        
+
         # Verify total row count
         if actual_row_count != requested_row_count:
             logger.error(
@@ -195,7 +203,9 @@ def test_sea_async_query_without_cloud_fetch():
             )
             return False
 
-        logger.info("PASS: Received correct number of rows without cloud fetch and all fetch methods work correctly")
+        logger.info(
+            "PASS: Received correct number of rows without cloud fetch and all fetch methods work correctly"
+        )
 
         # Close resources
         cursor.close()
