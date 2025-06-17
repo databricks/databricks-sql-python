@@ -305,6 +305,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             lz4_compressed: Whether the data is LZ4 compressed
             description: Column descriptions
         """
+
         super().__init__(
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
