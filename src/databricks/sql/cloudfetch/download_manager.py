@@ -104,9 +104,11 @@ class ResultFileDownloadManager:
     def add_link(self, link: TSparkArrowResultLink):
         """
         Add more links to the download manager.
+
         Args:
-            links: List of links to add
+            link: Link to add
         """
+
         if link.rowCount <= 0:
             return
 
