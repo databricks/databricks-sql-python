@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock, call
 
 from databricks.sql.telemetry.telemetry_client import (
     TelemetryClient,
-    NOOP_TELEMETRY_CLIENT,
+    NoopTelemetryClient,
     initialize_telemetry_client,
     get_telemetry_client,
     close_telemetry_client,
@@ -30,8 +30,8 @@ from databricks.sql.auth.authenticators import (
 
 @pytest.fixture
 def noop_telemetry_client():
-    """Fixture for NOOP_TELEMETRY_CLIENT."""
-    return NOOP_TELEMETRY_CLIENT
+    """Fixture for NoopTelemetryClient."""
+    return NoopTelemetryClient()
 
 
 @pytest.fixture
@@ -79,7 +79,13 @@ def telemetry_system_reset():
 
 
 class TestNoopTelemetryClient:
-    """Tests for the NOOP_TELEMETRY_CLIENT."""
+    """Tests for the NoopTelemetryClient."""
+
+    def test_singleton(self):
+        """Test that NoopTelemetryClient is a singleton."""
+        client1 = NoopTelemetryClient()
+        client2 = NoopTelemetryClient()
+        assert client1 is client2
    
     def test_export_initial_telemetry_log(self, noop_telemetry_client):
         """Test that export_initial_telemetry_log does nothing."""
@@ -362,12 +368,12 @@ class TestTelemetrySystem:
         )
         
         client = get_telemetry_client(session_id_hex)
-        assert client is NOOP_TELEMETRY_CLIENT
+        assert isinstance(client, NoopTelemetryClient)
 
     def test_get_telemetry_client_nonexistent(self, telemetry_system_reset):
         """Test getting a non-existent telemetry client."""
         client = get_telemetry_client("nonexistent-uuid")
-        assert client is NOOP_TELEMETRY_CLIENT
+        assert isinstance(client, NoopTelemetryClient)
 
     def test_close_telemetry_client(self, telemetry_system_reset):
         """Test closing a telemetry client."""
@@ -392,7 +398,7 @@ class TestTelemetrySystem:
         client.close.assert_called_once()
         
         client = get_telemetry_client(session_id_hex)
-        assert client is NOOP_TELEMETRY_CLIENT
+        assert isinstance(client, NoopTelemetryClient)
 
     def test_close_telemetry_client_noop(self, telemetry_system_reset):
         """Test closing a no-op telemetry client."""
@@ -405,7 +411,7 @@ class TestTelemetrySystem:
         )
         
         client = get_telemetry_client(session_id_hex)
-        assert client is NOOP_TELEMETRY_CLIENT
+        assert isinstance(client, NoopTelemetryClient)
         
         client.close = MagicMock()
         
@@ -414,7 +420,7 @@ class TestTelemetrySystem:
         client.close.assert_called_once()
         
         client = get_telemetry_client(session_id_hex)
-        assert client is NOOP_TELEMETRY_CLIENT
+        assert isinstance(client, NoopTelemetryClient)
 
     @patch("databricks.sql.telemetry.telemetry_client._handle_unhandled_exception")
     def test_global_exception_hook(self, mock_handle_exception, telemetry_system_reset):

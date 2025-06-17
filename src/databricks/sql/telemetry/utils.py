@@ -1,10 +1,9 @@
 import json
 from enum import Enum
 from dataclasses import asdict, is_dataclass
-from abc import ABC
 
 
-class JsonSerializableMixin(ABC):
+class JsonSerializableMixin:
     """Mixin class to provide JSON serialization capabilities to dataclasses."""
 
     def to_json(self) -> str:

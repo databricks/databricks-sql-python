@@ -123,6 +123,13 @@ class NoopTelemetryClient(BaseTelemetryClient):
     It is used when telemetry is disabled.
     """
 
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
+        return cls._instance
+
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
         pass
 
@@ -131,10 +138,6 @@ class NoopTelemetryClient(BaseTelemetryClient):
 
     def close(self):
         pass
-
-
-# A single instance of the no-op client that can be reused
-NOOP_TELEMETRY_CLIENT = NoopTelemetryClient()
 
 
 class TelemetryClient(BaseTelemetryClient):
@@ -369,11 +372,11 @@ def initialize_telemetry_client(
                         executor=_executor,
                     )
                 else:
-                    _clients[session_id_hex] = NOOP_TELEMETRY_CLIENT
+                    _clients[session_id_hex] = NoopTelemetryClient()
     except Exception as e:
         logger.debug("Failed to initialize telemetry client: %s", e)
         # Fallback to NoopTelemetryClient to ensure connection doesn't fail
-        _clients[session_id_hex] = NOOP_TELEMETRY_CLIENT
+        _clients[session_id_hex] = NoopTelemetryClient()
 
 
 def get_telemetry_client(session_id_hex):
@@ -385,10 +388,10 @@ def get_telemetry_client(session_id_hex):
             logger.error(
                 "Telemetry client not initialized for connection %s", session_id_hex
             )
-            return NOOP_TELEMETRY_CLIENT
+            return NoopTelemetryClient()
     except Exception as e:
         logger.debug("Failed to get telemetry client: %s", e)
-        return NOOP_TELEMETRY_CLIENT
+        return NoopTelemetryClient()
 
 
 def close_telemetry_client(session_id_hex):
@@ -401,10 +404,13 @@ def close_telemetry_client(session_id_hex):
             telemetry_client.close()
 
         # Shutdown executor if no more clients
-        if not _clients and _executor:
-            logger.debug(
-                "No more telemetry clients, shutting down thread pool executor"
-            )
-            _executor.shutdown(wait=True)
-            _executor = None
-            _initialized = False
+        try:
+            if not _clients and _executor:
+                logger.debug(
+                    "No more telemetry clients, shutting down thread pool executor"
+                )
+                _executor.shutdown(wait=True)
+                _executor = None
+                _initialized = False
+        except Exception as e:
+            logger.debug("Failed to shutdown thread pool executor: %s", e)
