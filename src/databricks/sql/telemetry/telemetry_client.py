@@ -322,9 +322,7 @@ def _initialize():
         _executor = ThreadPoolExecutor(max_workers=10)
         _install_exception_hook()
         _initialized = True
-        logger.debug(
-            "Telemetry system initialized with thread pool (max_workers=10)"
-        )
+        logger.debug("Telemetry system initialized with thread pool (max_workers=10)")
 
 
 def _install_exception_hook():
@@ -398,9 +396,9 @@ def close_telemetry_client(session_id_hex):
     """Remove the telemetry client for a specific connection"""
     global _initialized, _executor
     with _lock:
-        # if (telemetry_client := _clients.pop(session_id_hex, None)) is not None:
-        if session_id_hex in _clients:
-            telemetry_client = _clients.pop(session_id_hex)
+        if (telemetry_client := _clients.pop(session_id_hex, None)) is not None:
+        # if session_id_hex in _clients:
+        #     telemetry_client = _clients.pop(session_id_hex)
             logger.debug("Removing telemetry client for connection %s", session_id_hex)
             telemetry_client.close()
 
