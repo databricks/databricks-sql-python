@@ -323,7 +323,9 @@ class SeaDatabricksClient(DatabricksClient):
 
         return columns if columns else None
 
-    def _results_message_to_execute_response(self, sea_response, command_id):
+    def _results_message_to_execute_response(
+        self, response: GetStatementResponse
+    ) -> ExecuteResponse:
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
 
@@ -332,33 +334,27 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: The command ID
 
         Returns:
-            tuple: (ExecuteResponse, ResultData, ResultManifest) - The normalized execute response,
-                  result data object, and manifest object
+            ExecuteResponse: The normalized execute response
         """
 
-        # Parse the response
-        status = parse_status(sea_response)
-        manifest_obj = parse_manifest(sea_response)
-        result_data_obj = parse_result(sea_response)
-
         # Extract description from manifest schema
-        description = self._extract_description_from_manifest(manifest_obj)
+        description = self._extract_description_from_manifest(response.manifest)
 
         # Check for compression
-        lz4_compressed = manifest_obj.result_compression == "LZ4_FRAME"
+        lz4_compressed = response.manifest.result_compression == "LZ4_FRAME"
 
         execute_response = ExecuteResponse(
-            command_id=command_id,
-            status=status.state,
+            command_id=response.statement_id,
+            status=response.status.state,
             description=description,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=False,
             arrow_schema_bytes=None,
-            result_format=manifest_obj.format,
+            result_format=response.manifest.format,
         )
 
-        return execute_response, result_data_obj, manifest_obj
+        return execute_response
 
     def execute_command(
         self,
@@ -586,16 +582,12 @@ class SeaDatabricksClient(DatabricksClient):
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
+        response = GetStatementResponse.from_dict(response_data)
 
         # Create and return a SeaResultSet
         from databricks.sql.result_set import SeaResultSet
 
-        # Convert the response to an ExecuteResponse and extract result data
-        (
-            execute_response,
-            result_data,
-            manifest,
-        ) = self._results_message_to_execute_response(response_data, command_id)
+        execute_response = self._results_message_to_execute_response(response)
 
         return SeaResultSet(
             connection=cursor.connection,
@@ -603,8 +595,8 @@ class SeaDatabricksClient(DatabricksClient):
             sea_client=self,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
-            result_data=result_data,
-            manifest=manifest,
+            result_data=response.result,
+            manifest=response.manifest,
         )
 
     # == Metadata Operations ==
