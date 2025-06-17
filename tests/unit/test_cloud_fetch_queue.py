@@ -98,7 +98,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert queue._create_next_table() is None
         mock_get_next_downloaded_file.assert_called_with(0)
 
-    @patch("databricks.sql.cloud_fetch_queue.create_arrow_table_from_arrow_file")
+    @patch("databricks.sql.utils.create_arrow_table_from_arrow_file")
     @patch(
         "databricks.sql.cloudfetch.download_manager.ResultFileDownloadManager.get_next_downloaded_file",
         return_value=MagicMock(file_bytes=b"1234567890", row_count=4),
