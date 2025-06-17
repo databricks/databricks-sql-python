@@ -15,7 +15,12 @@ from databricks.sql.backend.sea.backend import (
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
-from databricks.sql.exc import Error, NotSupportedError, ServerOperationError
+from databricks.sql.exc import (
+    Error,
+    NotSupportedError,
+    ServerOperationError,
+    DatabaseError,
+)
 
 
 class TestSeaBackend:
@@ -523,6 +528,34 @@ class TestSeaBackend:
             sea_client.get_execution_result(thrift_command_id, mock_cursor)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
+    def test_check_command_state(self, sea_client, sea_command_id):
+        """Test _check_command_not_in_failed_or_closed_state method."""
+        # Test with RUNNING state (should not raise)
+        sea_client._check_command_not_in_failed_or_closed_state(
+            CommandState.RUNNING, sea_command_id
+        )
+
+        # Test with SUCCEEDED state (should not raise)
+        sea_client._check_command_not_in_failed_or_closed_state(
+            CommandState.SUCCEEDED, sea_command_id
+        )
+
+        # Test with CLOSED state (should raise DatabaseError)
+        with pytest.raises(DatabaseError) as excinfo:
+            sea_client._check_command_not_in_failed_or_closed_state(
+                CommandState.CLOSED, sea_command_id
+            )
+        assert "Command test-statement-123 unexpectedly closed server side" in str(
+            excinfo.value
+        )
+
+        # Test with FAILED state (should raise ServerOperationError)
+        with pytest.raises(ServerOperationError) as excinfo:
+            sea_client._check_command_not_in_failed_or_closed_state(
+                CommandState.FAILED, sea_command_id
+            )
+        assert "Command test-statement-123 failed" in str(excinfo.value)
+
     def test_utility_methods(self, sea_client):
         """Test utility methods."""
         # Test get_default_session_configuration_value
@@ -589,6 +622,18 @@ class TestSeaBackend:
         assert description[1][0] == "col2"  # name
         assert description[1][1] == "INT"  # type_code
         assert description[1][6] is False  # null_ok
+
+        # Test _extract_description_from_manifest with empty columns
+        empty_manifest = MagicMock()
+        empty_manifest.schema = {"columns": []}
+        assert sea_client._extract_description_from_manifest(empty_manifest) is None
+
+        # Test _extract_description_from_manifest with no columns key
+        no_columns_manifest = MagicMock()
+        no_columns_manifest.schema = {}
+        assert (
+            sea_client._extract_description_from_manifest(no_columns_manifest) is None
+        )
 
     def test_unimplemented_metadata_methods(
         self, sea_client, sea_session_id, mock_cursor
