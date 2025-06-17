@@ -1,10 +1,3 @@
-"""
-Unit test to validate that all Thrift-generated field IDs comply with the maximum limit.
-
-Field IDs in Thrift must stay below 3329 to avoid conflicts with reserved ranges
-and ensure compatibility with various Thrift implementations and protocols.
-"""
-
 import inspect
 import pytest
 
