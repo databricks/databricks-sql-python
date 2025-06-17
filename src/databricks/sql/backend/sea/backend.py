@@ -1,8 +1,10 @@
 import logging
+import uuid
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
+from databricks.sql.backend.sea.models.base import ExternalLink
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -25,6 +27,7 @@ from databricks.sql.backend.types import (
 )
 from databricks.sql.exc import ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
 from databricks.sql.backend.sea.models import (
@@ -38,6 +41,7 @@ from databricks.sql.backend.sea.models import (
     ExecuteStatementResponse,
     GetStatementResponse,
     CreateSessionResponse,
+    GetChunksResponse,
 )
 from databricks.sql.backend.sea.models.responses import (
     parse_status,
@@ -88,6 +92,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
+    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     def __init__(
         self,
@@ -322,6 +327,37 @@ class SeaDatabricksClient(DatabricksClient):
             )
 
         return columns if columns else None
+
+    def get_chunk_link(self, statement_id: str, chunk_index: int) -> ExternalLink:
+        """
+        Get links for chunks starting from the specified index.
+
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+
+        Returns:
+            ExternalLink: External link for the chunk
+        """
+
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+        )
+        response = GetChunksResponse.from_dict(response_data)
+
+        links = response.external_links
+        link = next((l for l in links if l.chunk_index == chunk_index), None)
+        if not link:
+            raise ServerOperationError(
+                f"No link found for chunk index {chunk_index}",
+                {
+                    "operation-id": statement_id,
+                    "diagnostic-info": None,
+                },
+            )
+
+        return link
 
     def _results_message_to_execute_response(self, sea_response, command_id):
         """
