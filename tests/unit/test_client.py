@@ -29,7 +29,6 @@ from databricks.sql.result_set import ResultSet, ThriftResultSet
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.backend.types import ExecuteResponse
 
-from databricks.sql.utils import ExecuteResponse
 from tests.unit.test_fetches import FetchTests
 from tests.unit.test_thrift_backend import ThriftBackendTestSuite
 from tests.unit.test_arrow_queue import ArrowQueueSuite
