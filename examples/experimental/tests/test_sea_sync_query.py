@@ -62,10 +62,14 @@ def test_sea_sync_query_with_cloud_fetch():
         logger.info(
             f"Executing synchronous query with cloud fetch to generate {requested_row_count} rows"
         )
+        cursor.execute(query)
         results = [cursor.fetchone()]
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
-        logger.info(f"{len(results)} rows retrieved against 100 requested")
+        actual_row_count = len(results)
+        logger.info(
+            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
+        )
 
         # Close resources
         cursor.close()

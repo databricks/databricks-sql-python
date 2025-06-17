@@ -472,15 +472,6 @@ class SeaResultSet(ResultSet):
             result_data: Result data from SEA response (optional)
             manifest: Manifest from SEA response (optional)
         """
-        # Extract and store SEA-specific properties
-        self.statement_id = (
-            execute_response.command_id.to_sea_statement_id()
-            if execute_response.command_id
-            else None
-        )
-
-        # Build the results queue
-        results_queue = None
 
         results_queue = None
         if result_data:
@@ -488,7 +479,7 @@ class SeaResultSet(ResultSet):
                 result_data,
                 manifest,
                 str(execute_response.command_id.to_sea_statement_id()),
-                ssl_options=self.connection.session.ssl_options,
+                ssl_options=connection.session.ssl_options,
                 description=execute_response.description,
                 max_download_threads=sea_client.max_download_threads,
                 sea_client=sea_client,
@@ -512,6 +503,21 @@ class SeaResultSet(ResultSet):
 
         # Initialize queue for result data if not provided
         self.results = results_queue or JsonQueue([])
+
+    def _convert_json_table(self, rows):
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+        Args:
+            rows: List of raw data rows
+        Returns:
+            List of Row objects with named columns
+        """
+        if not self.description or not rows:
+            return rows
+
+        column_names = [col[0] for col in self.description]
+        ResultRow = Row(*column_names)
+        return [ResultRow(*row) for row in rows]
 
     def fetchmany_json(self, size: int):
         """
@@ -586,7 +592,7 @@ class SeaResultSet(ResultSet):
             A single Row object or None if no more rows are available
         """
         if isinstance(self.results, JsonQueue):
-            res = self.fetchmany_json(1)
+            res = self._convert_json_table(self.fetchmany_json(1))
         else:
             res = self._convert_arrow_table(self.fetchmany_arrow(1))
 
@@ -606,7 +612,7 @@ class SeaResultSet(ResultSet):
             ValueError: If size is negative
         """
         if isinstance(self.results, JsonQueue):
-            return self.fetchmany_json(size)
+            return self._convert_json_table(self.fetchmany_json(size))
         else:
             return self._convert_arrow_table(self.fetchmany_arrow(size))
 
@@ -618,6 +624,6 @@ class SeaResultSet(ResultSet):
             List of Row objects containing all remaining rows
         """
         if isinstance(self.results, JsonQueue):
-            return self.fetchall_json()
+            return self._convert_json_table(self.fetchall_json())
         else:
             return self._convert_arrow_table(self.fetchall_arrow())
