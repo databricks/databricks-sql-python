@@ -11,8 +11,7 @@ from databricks.sql.backend.sea.models.base import (
     ResultData,
     ResultManifest,
 )
-from databricks.sql.cloud_fetch_queue import SeaCloudFetchQueue
-from databricks.sql.utils import SeaResultSetQueueFactory
+from databricks.sql.utils import SeaResultSetQueueFactory, SeaCloudFetchQueue
 
 try:
     import pyarrow
