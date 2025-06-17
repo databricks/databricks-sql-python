@@ -154,6 +154,16 @@ class ResultSet(ABC):
         """Fetch all remaining rows of a query result."""
         pass
 
+    @abstractmethod
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+        """Fetch the next set of rows as an Arrow table."""
+        pass
+
+    @abstractmethod
+    def fetchall_arrow(self) -> "pyarrow.Table":
+        """Fetch all remaining rows as an Arrow table."""
+        pass
+
     def close(self) -> None:
         """
         Close the result set.
@@ -534,6 +544,37 @@ class SeaResultSet(ResultSet):
         """
         results = self.results.remaining_rows()
         self._next_row_index += len(results)
+
+        return results
+
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+        """
+        Fetch the next set of rows as an Arrow table.
+
+        Args:
+            size: Number of rows to fetch
+
+        Returns:
+            PyArrow Table containing the fetched rows
+
+        Raises:
+            ImportError: If PyArrow is not installed
+            ValueError: If size is negative
+        """
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        results = self.results.next_n_rows(size)
+        self._next_row_index += results.num_rows
+
+        return results
+
+    def fetchall_arrow(self) -> "pyarrow.Table":
+        """
+        Fetch all remaining rows as an Arrow table.
+        """
+        results = self.results.remaining_rows()
+        self._next_row_index += results.num_rows
 
         return results
 
