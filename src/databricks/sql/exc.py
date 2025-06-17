@@ -1,6 +1,5 @@
 import json
 import logging
-import traceback
 
 from databricks.sql.telemetry.telemetry_client import get_telemetry_client
 
