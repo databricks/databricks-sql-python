@@ -24,7 +24,7 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import ServerOperationError
+from databricks.sql.exc import DatabaseError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
 
@@ -84,9 +84,6 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
-
-    # SEA API constants
-    POLLING_INTERVAL_SECONDS = 0.5
 
     def __init__(
         self,
@@ -356,6 +353,41 @@ class SeaDatabricksClient(DatabricksClient):
 
         return execute_response
 
+    def _check_command_not_in_failed_or_closed_state(
+        self, state: CommandState, command_id: CommandId
+    ) -> None:
+        if state == CommandState.CLOSED:
+            raise DatabaseError(
+                "Command {} unexpectedly closed server side".format(command_id),
+                {
+                    "operation-id": command_id,
+                },
+            )
+        if state == CommandState.FAILED:
+            raise ServerOperationError(
+                "Command {} failed".format(command_id),
+                {
+                    "operation-id": command_id,
+                },
+            )
+
+    def _wait_until_command_done(
+        self, response: ExecuteStatementResponse
+    ) -> CommandState:
+        """
+        Wait until a command is done.
+        """
+
+        state = response.status.state
+        command_id = CommandId.from_sea_statement_id(response.statement_id)
+
+        while state in [CommandState.PENDING, CommandState.RUNNING]:
+            state = self.get_query_state(command_id)
+
+        self._check_command_not_in_failed_or_closed_state(state, command_id)
+
+        return state
+
     def execute_command(
         self,
         operation: str,
@@ -453,24 +485,7 @@ class SeaDatabricksClient(DatabricksClient):
         if async_op:
             return None
 
-        # For synchronous operation, wait for the statement to complete
-        status = response.status
-        state = status.state
-
-        # Keep polling until we reach a terminal state
-        while state in [CommandState.PENDING, CommandState.RUNNING]:
-            time.sleep(self.POLLING_INTERVAL_SECONDS)
-            state = self.get_query_state(command_id)
-
-        if state != CommandState.SUCCEEDED:
-            raise ServerOperationError(
-                f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
-                {
-                    "operation-id": command_id.to_sea_statement_id(),
-                    "diagnostic-info": None,
-                },
-            )
-
+        self._wait_until_command_done(response)
         return self.get_execution_result(command_id, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
