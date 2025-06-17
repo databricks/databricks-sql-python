@@ -183,9 +183,9 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _flush(self):
         """Flush the current batch of events to the server"""
-        # with self._lock:
-        events_to_flush = self._events_batch.copy()
-        self._events_batch = []
+        with self._lock:
+            events_to_flush = self._events_batch.copy()
+            self._events_batch = []
 
         if events_to_flush:
             logger.debug("Flushing %s telemetry events to server", len(events_to_flush))
@@ -397,20 +397,20 @@ def get_telemetry_client(session_id_hex):
 def close_telemetry_client(session_id_hex):
     """Remove the telemetry client for a specific connection"""
     global _initialized, _executor
-    with _lock:
-        if session_id_hex in _clients:
-            logger.debug("Removing telemetry client for connection %s", session_id_hex)
-            telemetry_client = _clients.pop(session_id_hex, None)
-            telemetry_client.close()
 
-        # Shutdown executor if no more clients
-        try:
-            if not _clients and _executor:
-                logger.debug(
-                    "No more telemetry clients, shutting down thread pool executor"
-                )
-                _executor.shutdown(wait=True)
-                _executor = None
-                _initialized = False
-        except Exception as e:
-            logger.debug("Failed to shutdown thread pool executor: %s", e)
+    if session_id_hex in _clients:
+        logger.debug("Removing telemetry client for connection %s", session_id_hex)
+        telemetry_client = _clients.pop(session_id_hex, None)
+        telemetry_client.close()
+
+    # Shutdown executor if no more clients
+    try:
+        if not _clients and _executor:
+            logger.debug(
+                "No more telemetry clients, shutting down thread pool executor"
+            )
+            _executor.shutdown(wait=True)
+            _executor = None
+            _initialized = False
+    except Exception as e:
+        logger.debug("Failed to shutdown thread pool executor: %s", e)
