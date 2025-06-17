@@ -18,7 +18,7 @@ from databricks.sql.backend.sea.models.base import (
 )
 
 
-def parse_status(data: Dict[str, Any]) -> StatementStatus:
+def _parse_status(data: Dict[str, Any]) -> StatementStatus:
     """Parse status from response data."""
     status_data = data.get("status", {})
     error = None
@@ -40,7 +40,7 @@ def parse_status(data: Dict[str, Any]) -> StatementStatus:
     )
 
 
-def parse_manifest(data: Dict[str, Any]) -> ResultManifest:
+def _parse_manifest(data: Dict[str, Any]) -> ResultManifest:
     """Parse manifest from response data."""
 
     manifest_data = data.get("manifest", {})
@@ -69,7 +69,7 @@ def parse_manifest(data: Dict[str, Any]) -> ResultManifest:
     )
 
 
-def parse_result(data: Dict[str, Any]) -> ResultData:
+def _parse_result(data: Dict[str, Any]) -> ResultData:
     """Parse result data from response data."""
     result_data = data.get("result", {})
     external_links = None
@@ -118,9 +118,9 @@ class ExecuteStatementResponse:
         """Create an ExecuteStatementResponse from a dictionary."""
         return cls(
             statement_id=data.get("statement_id", ""),
-            status=parse_status(data),
-            manifest=parse_manifest(data),
-            result=parse_result(data),
+            status=_parse_status(data),
+            manifest=_parse_manifest(data),
+            result=_parse_result(data),
         )
 
 
@@ -138,9 +138,9 @@ class GetStatementResponse:
         """Create a GetStatementResponse from a dictionary."""
         return cls(
             statement_id=data.get("statement_id", ""),
-            status=parse_status(data),
-            manifest=parse_manifest(data),
-            result=parse_result(data),
+            status=_parse_status(data),
+            manifest=_parse_manifest(data),
+            result=_parse_result(data),
         )
 
 

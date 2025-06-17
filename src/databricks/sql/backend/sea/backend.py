@@ -40,11 +40,6 @@ from databricks.sql.backend.sea.models import (
     GetStatementResponse,
     CreateSessionResponse,
 )
-from databricks.sql.backend.sea.models.responses import (
-    parse_status,
-    parse_manifest,
-    parse_result,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -341,10 +336,12 @@ class SeaDatabricksClient(DatabricksClient):
         description = self._extract_description_from_manifest(response.manifest)
 
         # Check for compression
-        lz4_compressed = response.manifest.result_compression == "LZ4_FRAME"
+        lz4_compressed = (
+            response.manifest.result_compression == ResultCompression.LZ4_FRAME
+        )
 
         execute_response = ExecuteResponse(
-            command_id=response.statement_id,
+            command_id=CommandId.from_sea_statement_id(response.statement_id),
             status=response.status.state,
             description=description,
             has_been_closed_server_side=False,
