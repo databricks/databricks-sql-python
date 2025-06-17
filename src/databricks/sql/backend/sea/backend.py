@@ -308,9 +308,6 @@ class SeaDatabricksClient(DatabricksClient):
 
         columns = []
         for col_data in columns_data:
-            if not isinstance(col_data, dict):
-                continue
-
             # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
             columns.append(
                 (
