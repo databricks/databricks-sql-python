@@ -183,9 +183,9 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _flush(self):
         """Flush the current batch of events to the server"""
-        with self._lock:
-            events_to_flush = self._events_batch.copy()
-            self._events_batch = []
+        # with self._lock:
+        events_to_flush = self._events_batch.copy()
+        self._events_batch = []
 
         if events_to_flush:
             logger.debug("Flushing %s telemetry events to server", len(events_to_flush))
