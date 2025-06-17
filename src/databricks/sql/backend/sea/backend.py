@@ -289,6 +289,43 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
+    def _extract_description_from_manifest(self, manifest_obj) -> Optional[List]:
+        """
+        Extract column description from a manifest object.
+
+        Args:
+            manifest_obj: The ResultManifest object containing schema information
+
+        Returns:
+            Optional[List]: A list of column tuples or None if no columns are found
+        """
+
+        schema_data = manifest_obj.schema
+        columns_data = schema_data.get("columns", [])
+
+        if not columns_data:
+            return None
+
+        columns = []
+        for col_data in columns_data:
+            if not isinstance(col_data, dict):
+                continue
+
+            # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
+            columns.append(
+                (
+                    col_data.get("name", ""),  # name
+                    col_data.get("type_name", ""),  # type_code
+                    None,  # display_size (not provided by SEA)
+                    None,  # internal_size (not provided by SEA)
+                    col_data.get("precision"),  # precision
+                    col_data.get("scale"),  # scale
+                    col_data.get("nullable", True),  # null_ok
+                )
+            )
+
+        return columns if columns else None
+
     def get_chunk_link(self, statement_id: str, chunk_index: int) -> "ExternalLink":
         """
         Get links for chunks starting from the specified index.
