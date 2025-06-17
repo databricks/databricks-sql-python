@@ -488,6 +488,7 @@ class SeaResultSet(ResultSet):
                 result_data,
                 manifest,
                 str(execute_response.command_id.to_sea_statement_id()),
+                ssl_options=self.connection.session.ssl_options,
                 description=execute_response.description,
                 max_download_threads=sea_client.max_download_threads,
                 sea_client=sea_client,
@@ -511,27 +512,6 @@ class SeaResultSet(ResultSet):
 
         # Initialize queue for result data if not provided
         self.results = results_queue or JsonQueue([])
-
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
-        """
-        Fetch the next set of rows as an Arrow table.
-
-        Args:
-            size: Number of rows to fetch
-
-        Returns:
-            PyArrow Table containing the fetched rows
-
-        Raises:
-            ImportError: If PyArrow is not installed
-            ValueError: If size is negative
-        """
-        if size < 0:
-            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
-
-        results = self.results.next_n_rows(size)
-        n_remaining_rows = size - results.num_rows
-        self._next_row_index += results.num_rows
 
     def fetchmany_json(self, size: int):
         """

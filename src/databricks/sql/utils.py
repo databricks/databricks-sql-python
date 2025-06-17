@@ -131,6 +131,7 @@ class SeaResultSetQueueFactory(ABC):
         sea_result_data: ResultData,
         manifest: Optional[ResultManifest],
         statement_id: str,
+        ssl_options: Optional[SSLOptions] = None,
         description: Optional[List[Tuple[Any, ...]]] = None,
         max_download_threads: Optional[int] = None,
         sea_client: Optional["SeaDatabricksClient"] = None,

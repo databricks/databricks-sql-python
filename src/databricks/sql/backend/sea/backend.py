@@ -4,6 +4,7 @@ import time
 import re
 from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
+from databricks.sql.backend.sea.models.base import ExternalLink
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -91,6 +92,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
+    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     def __init__(
         self,
@@ -326,7 +328,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         return columns if columns else None
 
-    def get_chunk_link(self, statement_id: str, chunk_index: int) -> "ExternalLink":
+    def get_chunk_link(self, statement_id: str, chunk_index: int) -> ExternalLink:
         """
         Get links for chunks starting from the specified index.
 
@@ -347,7 +349,13 @@ class SeaDatabricksClient(DatabricksClient):
         links = response.external_links
         link = next((l for l in links if l.chunk_index == chunk_index), None)
         if not link:
-            raise Error(f"No link found for chunk index {chunk_index}")
+            raise ServerOperationError(
+                f"No link found for chunk index {chunk_index}",
+                {
+                    "operation-id": statement_id,
+                    "diagnostic-info": None,
+                },
+            )
 
         return link
 
