@@ -5,10 +5,10 @@ import datetime
 import decimal
 from abc import ABC, abstractmethod
 from collections import OrderedDict, namedtuple
-from collections.abc import Iterable
+from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 import re
 
 import lz4.frame
@@ -429,7 +429,7 @@ class RequestErrorInfo(
 # Taken from PyHive
 class ParamEscaper:
     _DATE_FORMAT = "%Y-%m-%d"
-    _TIME_FORMAT = "%H:%M:%S.%f"
+    _TIME_FORMAT = "%H:%M:%S.%f %z"
     _DATETIME_FORMAT = "{} {}".format(_DATE_FORMAT, _TIME_FORMAT)
 
     def escape_args(self, parameters):
@@ -458,13 +458,22 @@ class ParamEscaper:
         return "'{}'".format(item.replace("\\", "\\\\").replace("'", "\\'"))
 
     def escape_sequence(self, item):
-        l = map(str, map(self.escape_item, item))
-        return "(" + ",".join(l) + ")"
+        l = map(self.escape_item, item)
+        l = list(map(str, l))
+        return "ARRAY(" + ",".join(l) + ")"
+
+    def escape_mapping(self, item):
+        l = map(
+            self.escape_item,
+            (element for key, value in item.items() for element in (key, value)),
+        )
+        l = list(map(str, l))
+        return "MAP(" + ",".join(l) + ")"
 
     def escape_datetime(self, item, format, cutoff=0):
         dt_str = item.strftime(format)
         formatted = dt_str[:-cutoff] if cutoff and format.endswith(".%f") else dt_str
-        return "'{}'".format(formatted)
+        return "'{}'".format(formatted.strip())
 
     def escape_decimal(self, item):
         return str(item)
@@ -476,14 +485,16 @@ class ParamEscaper:
             return self.escape_number(item)
         elif isinstance(item, str):
             return self.escape_string(item)
-        elif isinstance(item, Iterable):
-            return self.escape_sequence(item)
         elif isinstance(item, datetime.datetime):
             return self.escape_datetime(item, self._DATETIME_FORMAT)
         elif isinstance(item, datetime.date):
             return self.escape_datetime(item, self._DATE_FORMAT)
         elif isinstance(item, decimal.Decimal):
             return self.escape_decimal(item)
+        elif isinstance(item, Sequence):
+            return self.escape_sequence(item)
+        elif isinstance(item, Mapping):
+            return self.escape_mapping(item)
         else:
             raise exc.ProgrammingError("Unsupported object {}".format(item))
 
