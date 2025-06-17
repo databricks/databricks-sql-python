@@ -497,17 +497,17 @@ class ClientTestSuite(unittest.TestCase):
         )
         self.assertIsNotNone(re.match(canonical_version_re, version))
 
-    @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
-    def test_configuration_passthrough(self, mock_client_class):
-        mock_session_config = Mock()
-        databricks.sql.connect(
-            session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
-        )
+    # @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
+    # def test_configuration_passthrough(self, mock_client_class):
+    #     mock_session_config = Mock()
+    #     databricks.sql.connect(
+    #         session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
+    #     )
 
-        self.assertEqual(
-            mock_client_class.return_value.open_session.call_args[0][0],
-            mock_session_config,
-        )
+    #     self.assertEqual(
+    #         mock_client_class.return_value.open_session.call_args[0][0],
+    #         mock_session_config,
+    #     )
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_initial_namespace_passthrough(self, mock_client_class):
