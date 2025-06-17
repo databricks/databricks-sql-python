@@ -6,7 +6,7 @@ the Databricks SQL connector's SEA backend functionality.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 
 from databricks.sql.backend.sea.backend import (
     SeaDatabricksClient,
@@ -216,17 +216,18 @@ class TestSeaBackend:
             },
             "result": {"data": [["value1"]]},
         }
+        mock_http_client._make_request.return_value = execute_response
 
         with patch.object(
             sea_client, "get_execution_result", return_value="mock_result_set"
         ) as mock_get_result:
             result = sea_client.execute_command(
                 operation="SELECT 1",
-                session_id=session_id,
+                session_id=sea_session_id,
                 max_rows=100,
                 max_bytes=1000,
                 lz4_compression=False,
-                cursor=cursor,
+                cursor=mock_cursor,
                 use_cloud_fetch=False,
                 parameters=[],
                 async_op=False,
@@ -275,7 +276,7 @@ class TestSeaBackend:
             max_rows=100,
             max_bytes=1000,
             lz4_compression=False,
-            cursor=cursor,
+            cursor=mock_cursor,
             use_cloud_fetch=False,
             parameters=[],
             async_op=True,
