@@ -3,6 +3,7 @@ import time
 import re
 from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
+from databricks.sql.backend.sea.models.base import ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -286,7 +287,9 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
-    def _extract_description_from_manifest(self, manifest_obj) -> Optional[List]:
+    def _extract_description_from_manifest(
+        self, manifest: ResultManifest
+    ) -> Optional[List]:
         """
         Extract column description from a manifest object.
 
@@ -297,7 +300,7 @@ class SeaDatabricksClient(DatabricksClient):
             Optional[List]: A list of column tuples or None if no columns are found
         """
 
-        schema_data = manifest_obj.schema
+        schema_data = manifest.schema
         columns_data = schema_data.get("columns", [])
 
         if not columns_data:
