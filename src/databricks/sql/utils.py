@@ -440,6 +440,83 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         pass
 
 
+class ThriftCloudFetchQueue(CloudFetchQueue):
+    """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for Thrift backend."""
+
+    def __init__(
+        self,
+        schema_bytes,
+        max_download_threads: int,
+        ssl_options: SSLOptions,
+        start_row_offset: int = 0,
+        result_links: Optional[List[TSparkArrowResultLink]] = None,
+        lz4_compressed: bool = True,
+        description: Optional[List[Tuple]] = None,
+    ):
+        """
+        Initialize the Thrift CloudFetchQueue.
+
+        Args:
+            schema_bytes: Table schema in bytes
+            max_download_threads: Maximum number of downloader thread pool threads
+            ssl_options: SSL options for downloads
+            start_row_offset: The offset of the first row of the cloud fetch links
+            result_links: Links containing the downloadable URL and metadata
+            lz4_compressed: Whether the files are lz4 compressed
+            description: Hive table schema description
+        """
+        super().__init__(
+            max_download_threads=max_download_threads,
+            ssl_options=ssl_options,
+            schema_bytes=schema_bytes,
+            lz4_compressed=lz4_compressed,
+            description=description,
+        )
+
+        self.start_row_index = start_row_offset
+        self.result_links = result_links or []
+
+        logger.debug(
+            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
+                start_row_offset
+            )
+        )
+        if self.result_links:
+            for result_link in self.result_links:
+                logger.debug(
+                    "- start row offset: {}, row count: {}".format(
+                        result_link.startRowOffset, result_link.rowCount
+                    )
+                )
+
+        # Initialize download manager
+        self.download_manager = ResultFileDownloadManager(
+            links=self.result_links,
+            max_download_threads=self.max_download_threads,
+            lz4_compressed=self.lz4_compressed,
+            ssl_options=self._ssl_options,
+        )
+
+        # Initialize table and position
+        self.table = self._create_next_table()
+
+    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+        logger.debug(
+            "ThriftCloudFetchQueue: Trying to get downloaded file for row {}".format(
+                self.start_row_index
+            )
+        )
+        arrow_table = self._create_table_at_offset(self.start_row_index)
+        if arrow_table:
+            self.start_row_index += arrow_table.num_rows
+            logger.debug(
+                "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
+                    arrow_table.num_rows, self.start_row_index
+                )
+            )
+        return arrow_table
+
+
 class SeaCloudFetchQueue(CloudFetchQueue):
     """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for SEA backend."""
 
@@ -568,83 +645,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         self._progress_chunk_link()
 
-        return arrow_table
-
-
-class ThriftCloudFetchQueue(CloudFetchQueue):
-    """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for Thrift backend."""
-
-    def __init__(
-        self,
-        schema_bytes,
-        max_download_threads: int,
-        ssl_options: SSLOptions,
-        start_row_offset: int = 0,
-        result_links: Optional[List[TSparkArrowResultLink]] = None,
-        lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
-    ):
-        """
-        Initialize the Thrift CloudFetchQueue.
-
-        Args:
-            schema_bytes: Table schema in bytes
-            max_download_threads: Maximum number of downloader thread pool threads
-            ssl_options: SSL options for downloads
-            start_row_offset: The offset of the first row of the cloud fetch links
-            result_links: Links containing the downloadable URL and metadata
-            lz4_compressed: Whether the files are lz4 compressed
-            description: Hive table schema description
-        """
-        super().__init__(
-            max_download_threads=max_download_threads,
-            ssl_options=ssl_options,
-            schema_bytes=schema_bytes,
-            lz4_compressed=lz4_compressed,
-            description=description,
-        )
-
-        self.start_row_index = start_row_offset
-        self.result_links = result_links or []
-
-        logger.debug(
-            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
-                start_row_offset
-            )
-        )
-        if self.result_links:
-            for result_link in self.result_links:
-                logger.debug(
-                    "- start row offset: {}, row count: {}".format(
-                        result_link.startRowOffset, result_link.rowCount
-                    )
-                )
-
-        # Initialize download manager
-        self.download_manager = ResultFileDownloadManager(
-            links=self.result_links,
-            max_download_threads=self.max_download_threads,
-            lz4_compressed=self.lz4_compressed,
-            ssl_options=self._ssl_options,
-        )
-
-        # Initialize table and position
-        self.table = self._create_next_table()
-
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
-        logger.debug(
-            "ThriftCloudFetchQueue: Trying to get downloaded file for row {}".format(
-                self.start_row_index
-            )
-        )
-        arrow_table = self._create_table_at_offset(self.start_row_index)
-        if arrow_table:
-            self.start_row_index += arrow_table.num_rows
-            logger.debug(
-                "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
-                    arrow_table.num_rows, self.start_row_index
-                )
-            )
         return arrow_table
 
 
@@ -894,6 +894,7 @@ def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
     except Exception as e:
         raise RuntimeError("Failure to convert arrow based file to arrow table", e)
 
+
 def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
     ba = bytearray()
     ba += schema_bytes
@@ -907,6 +908,7 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
         )
     arrow_table = pyarrow.ipc.open_stream(ba).read_all()
     return arrow_table, n_rows
+
 
 def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
     new_columns = []
@@ -934,6 +936,7 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
     new_schema = pyarrow.schema(new_fields)
 
     return pyarrow.Table.from_arrays(new_columns, schema=new_schema)
+
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
     converted_column_table = []
