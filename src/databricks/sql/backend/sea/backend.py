@@ -85,6 +85,9 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
 
+    # SEA API constants
+    POLLING_INTERVAL_SECONDS = 0.5
+
     def __init__(
         self,
         server_hostname: str,
@@ -456,7 +459,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Keep polling until we reach a terminal state
         while state in [CommandState.PENDING, CommandState.RUNNING]:
-            time.sleep(0.5)  # add a small delay to avoid excessive API calls
+            time.sleep(self.POLLING_INTERVAL_SECONDS)
             state = self.get_query_state(command_id)
 
         if state != CommandState.SUCCEEDED:
