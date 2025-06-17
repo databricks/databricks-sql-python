@@ -14,7 +14,7 @@ import csv
 from pathlib import Path
 from databricks.sql.client import Connection
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -195,7 +195,7 @@ def main():
         sys.exit(1)
     
     # Get row count from command line or use default
-    requested_row_count = 5000
+    requested_row_count = 10000
     
     if len(sys.argv) > 1:
         try:
