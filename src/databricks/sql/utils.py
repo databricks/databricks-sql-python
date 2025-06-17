@@ -884,47 +884,31 @@ def transform_paramstyle(
 def create_arrow_table_from_arrow_file(
     file_bytes: bytes, description
 ) -> "pyarrow.Table":
-    """
-    Create an Arrow table from an Arrow file.
-
-    Args:
-        file_bytes: The bytes of the Arrow file
-        description: The column descriptions
-
-    Returns:
-        pyarrow.Table: The Arrow table
-    """
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
 
 def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
-    """
-    Convert an Arrow file to an Arrow table.
-
-    Args:
-        file_bytes: The bytes of the Arrow file
-
-    Returns:
-        pyarrow.Table: The Arrow table
-    """
     try:
         return pyarrow.ipc.open_stream(file_bytes).read_all()
     except Exception as e:
         raise RuntimeError("Failure to convert arrow based file to arrow table", e)
 
+def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
+    ba = bytearray()
+    ba += schema_bytes
+    n_rows = 0
+    for arrow_batch in arrow_batches:
+        n_rows += arrow_batch.rowCount
+        ba += (
+            lz4.frame.decompress(arrow_batch.batch)
+            if lz4_compressed
+            else arrow_batch.batch
+        )
+    arrow_table = pyarrow.ipc.open_stream(ba).read_all()
+    return arrow_table, n_rows
 
 def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
-    """
-    Convert decimal columns in an Arrow table to the correct precision and scale.
-
-    Args:
-        table: The Arrow table
-        description: The column descriptions
-
-    Returns:
-        pyarrow.Table: The Arrow table with correct decimal types
-    """
     new_columns = []
     new_fields = []
 
@@ -951,35 +935,7 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
 
     return pyarrow.Table.from_arrays(new_columns, schema=new_schema)
 
-
-def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
-    """
-    Convert a set of Arrow batches to an Arrow table.
-
-    Args:
-        arrow_batches: The Arrow batches
-        lz4_compressed: Whether the batches are LZ4 compressed
-        schema_bytes: The schema bytes
-
-    Returns:
-        Tuple[pyarrow.Table, int]: The Arrow table and the number of rows
-    """
-    ba = bytearray()
-    ba += schema_bytes
-    n_rows = 0
-    for arrow_batch in arrow_batches:
-        n_rows += arrow_batch.rowCount
-        ba += (
-            lz4.frame.decompress(arrow_batch.batch)
-            if lz4_compressed
-            else arrow_batch.batch
-        )
-    arrow_table = pyarrow.ipc.open_stream(ba).read_all()
-    return arrow_table, n_rows
-
-
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
-
     converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":
