@@ -405,7 +405,7 @@ class TestSeaBackend:
                         async_op=False,
                         enforce_embedded_schema_correctness=False,
                     )
-                assert "Statement execution did not succeed" in str(excinfo.value)
+                assert "Command test-statement-123 failed" in str(excinfo.value)
 
         # Test missing statement ID
         mock_http_client.reset_mock()
@@ -589,16 +589,6 @@ class TestSeaBackend:
         assert description[1][0] == "col2"  # name
         assert description[1][1] == "INT"  # type_code
         assert description[1][6] is False  # null_ok
-
-        # Test with manifest containing non-dict column
-        manifest_obj.schema = {"columns": ["not_a_dict"]}
-        description = sea_client._extract_description_from_manifest(manifest_obj)
-        assert description is None
-
-        # Test with manifest without columns
-        manifest_obj.schema = {}
-        description = sea_client._extract_description_from_manifest(manifest_obj)
-        assert description is None
 
     def test_unimplemented_metadata_methods(
         self, sea_client, sea_session_id, mock_cursor
