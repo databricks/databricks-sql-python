@@ -3,6 +3,7 @@ Tests for the SeaResultSet class.
 """
 
 import pytest
+import unittest 
 from unittest.mock import patch, MagicMock, Mock
 
 from databricks.sql.result_set import SeaResultSet
@@ -38,30 +39,6 @@ class TestSeaResultSet(unittest.TestCase):
         ]
         mock_response.is_staging_operation = False
         return mock_response
-
-        # Create a mock CommandId
-        self.mock_command_id = MagicMock()
-        self.mock_command_id.to_sea_statement_id.return_value = "test-statement-id"
-
-        # Create a mock ExecuteResponse for inline data
-        self.mock_execute_response_inline = ExecuteResponse(
-            command_id=self.mock_command_id,
-            status=CommandState.SUCCEEDED,
-            description=self.sample_description,
-            has_been_closed_server_side=False,
-            lz4_compressed=False,
-            is_staging_operation=False,
-        )
-
-        # Create a mock ExecuteResponse for error
-        self.mock_execute_response_error = ExecuteResponse(
-            command_id=self.mock_command_id,
-            status=CommandState.FAILED,
-            description=None,
-            has_been_closed_server_side=False,
-            lz4_compressed=False,
-            is_staging_operation=False,
-        )
 
     def test_init_with_inline_data(self):
         """Test initialization with inline data."""

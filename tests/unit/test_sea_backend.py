@@ -6,7 +6,7 @@ the Databricks SQL connector's SEA backend functionality.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock
 
 from databricks.sql.backend.sea.backend import (
     SeaDatabricksClient,

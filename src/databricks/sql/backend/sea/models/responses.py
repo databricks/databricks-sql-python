@@ -4,7 +4,7 @@ Response models for the SEA (Statement Execution API) backend.
 These models define the structures used in SEA API responses.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from dataclasses import dataclass
 
 from databricks.sql.backend.types import CommandState
@@ -154,3 +154,38 @@ class CreateSessionResponse:
     def from_dict(cls, data: Dict[str, Any]) -> "CreateSessionResponse":
         """Create a CreateSessionResponse from a dictionary."""
         return cls(session_id=data.get("session_id", ""))
+
+
+@dataclass
+class GetChunksResponse:
+    """Response from getting chunks for a statement."""
+
+    statement_id: str
+    external_links: List[ExternalLink]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GetChunksResponse":
+        """Create a GetChunksResponse from a dictionary."""
+        external_links = []
+        if "external_links" in data:
+            for link_data in data["external_links"]:
+                external_links.append(
+                    ExternalLink(
+                        external_link=link_data.get("external_link", ""),
+                        expiration=link_data.get("expiration", ""),
+                        chunk_index=link_data.get("chunk_index", 0),
+                        byte_count=link_data.get("byte_count", 0),
+                        row_count=link_data.get("row_count", 0),
+                        row_offset=link_data.get("row_offset", 0),
+                        next_chunk_index=link_data.get("next_chunk_index"),
+                        next_chunk_internal_link=link_data.get(
+                            "next_chunk_internal_link"
+                        ),
+                        http_headers=link_data.get("http_headers"),
+                    )
+                )
+
+        return cls(
+            statement_id=data.get("statement_id", ""),
+            external_links=external_links,
+        )
