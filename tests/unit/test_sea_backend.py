@@ -354,10 +354,7 @@ class TestSeaBackend:
             "status": {"state": "SUCCEEDED"},
         }
         mock_http_client._make_request.return_value = execute_response
-        param = MagicMock()
-        param.name = "param1"
-        param.value = "value1"
-        param.type = "STRING"
+        param = {"name": "param1", "value": "value1", "type": "STRING"}
 
         with patch.object(sea_client, "get_execution_result"):
             sea_client.execute_command(

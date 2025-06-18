@@ -85,6 +85,9 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
 
+    # SEA constants
+    POLL_INTERVAL_SECONDS = 0.2
+
     def __init__(
         self,
         server_hostname: str,
@@ -383,6 +386,7 @@ class SeaDatabricksClient(DatabricksClient):
         command_id = CommandId.from_sea_statement_id(response.statement_id)
 
         while state in [CommandState.PENDING, CommandState.RUNNING]:
+            time.sleep(self.POLL_INTERVAL_SECONDS)
             state = self.get_query_state(command_id)
 
         self._check_command_not_in_failed_or_closed_state(state, command_id)
@@ -432,9 +436,9 @@ class SeaDatabricksClient(DatabricksClient):
             for param in parameters:
                 sea_parameters.append(
                     StatementParameter(
-                        name=param.name,
-                        value=param.value,
-                        type=param.type if hasattr(param, "type") else None,
+                        name=param["name"],
+                        value=param["value"],
+                        type=param["type"] if "type" in param else None,
                     )
                 )
 
