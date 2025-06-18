@@ -181,7 +181,6 @@ class ArrowQueue(ResultSetQueue):
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """Get upto the next n rows of the Arrow dataframe"""
-
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
         # Note that the table.slice API is not the same as Python's slice
         # The second argument should be length, not end index
