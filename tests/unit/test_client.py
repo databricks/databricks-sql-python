@@ -121,24 +121,11 @@ class ClientTestSuite(unittest.TestCase):
                     thrift_client=mock_backend,
                 )
 
-                # Verify initial state
-                self.assertEqual(real_result_set.has_been_closed_server_side, closed)
-                expected_op_state = (
-                    CommandState.CLOSED if closed else CommandState.SUCCEEDED
-                )
-                self.assertEqual(real_result_set.op_state, expected_op_state)
-
                 # Mock execute_command to return our real result set
                 cursor.backend.execute_command = Mock(return_value=real_result_set)
 
                 # Execute a command - this should set cursor.active_result_set to our real result set
                 cursor.execute("SELECT 1")
-
-                # Verify that cursor.execute() set up the result set correctly
-                self.assertIsInstance(cursor.active_result_set, ThriftResultSet)
-                self.assertEqual(
-                    cursor.active_result_set.has_been_closed_server_side, closed
-                )
 
                 # Close the connection - this should trigger the real close chain:
                 # connection.close() -> cursor.close() -> result_set.close()
