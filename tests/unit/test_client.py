@@ -52,6 +52,7 @@ class ThriftBackendMockFactory:
         )
 
         ThriftBackendMock.execute_command.return_value = MockTExecuteStatementResp
+
         return ThriftBackendMock
 
     @classmethod
