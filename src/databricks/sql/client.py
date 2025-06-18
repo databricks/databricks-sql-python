@@ -54,9 +54,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 )
 from databricks.sql.telemetry.telemetry_client import (
     TelemetryHelper,
-    initialize_telemetry_client,
-    get_telemetry_client,
-    close_telemetry_client,
+    TelemetryClientFactory,
 )
 from databricks.sql.telemetry.models.enums import DatabricksClientType
 from databricks.sql.telemetry.models.event import (
@@ -308,14 +306,14 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
 
-        initialize_telemetry_client(
+        TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             session_id_hex=self.get_session_id_hex(),
             auth_provider=auth_provider,
             host_url=self.host,
         )
 
-        self._telemetry_client = get_telemetry_client(
+        self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
             session_id_hex=self.get_session_id_hex()
         )
 
@@ -472,7 +470,7 @@ class Connection:
 
         self.open = False
 
-        close_telemetry_client(self.get_session_id_hex())
+        TelemetryClientFactory.close(self.get_session_id_hex())
 
     def commit(self):
         """No-op because Databricks does not support transactions"""

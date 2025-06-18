@@ -305,111 +305,131 @@ class TelemetryClient(BaseTelemetryClient):
         self._flush()
 
 
-# Module-level state
-_clients: Dict[str, BaseTelemetryClient] = {}
-_executor: Optional[ThreadPoolExecutor] = None
-_initialized: bool = False
-_lock = threading.Lock()
-_original_excepthook = None
-_excepthook_installed = False
+class TelemetryClientFactory:
+    """
+    Static factory class for creating and managing telemetry clients.
+    It uses a thread pool to handle asynchronous operations.
+    """
 
+    _clients: Dict[
+        str, BaseTelemetryClient
+    ] = {}  # Map of session_id_hex -> BaseTelemetryClient
+    _executor: Optional[ThreadPoolExecutor] = None
+    _initialized: bool = False
+    _lock = threading.Lock()  # Thread safety for factory operations
+    _original_excepthook = None
+    _excepthook_installed = False
 
-def _initialize():
-    """Initialize the telemetry system if not already initialized"""
-    global _initialized, _executor
-    if not _initialized:
-        _clients.clear()
-        _executor = ThreadPoolExecutor(max_workers=10)
-        _install_exception_hook()
-        _initialized = True
-        logger.debug("Telemetry system initialized with thread pool (max_workers=10)")
+    @classmethod
+    def _initialize(cls):
+        """Initialize the factory if not already initialized"""
 
-
-def _install_exception_hook():
-    """Install global exception handler for unhandled exceptions"""
-    global _excepthook_installed, _original_excepthook
-    if not _excepthook_installed:
-        _original_excepthook = sys.excepthook
-        sys.excepthook = _handle_unhandled_exception
-        _excepthook_installed = True
-        logger.debug("Global exception handler installed for telemetry")
-
-
-def _handle_unhandled_exception(exc_type, exc_value, exc_traceback):
-    """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
-    logger.debug("Handling unhandled exception: %s", exc_type.__name__)
-
-    clients_to_close = list(_clients.values())
-    for client in clients_to_close:
-        client.close()
-
-    # Call the original exception handler to maintain normal behavior
-    if _original_excepthook:
-        _original_excepthook(exc_type, exc_value, exc_traceback)
-
-
-def initialize_telemetry_client(
-    telemetry_enabled, session_id_hex, auth_provider, host_url
-):
-    """Initialize a telemetry client for a specific connection if telemetry is enabled"""
-    try:
-        with _lock:
-            _initialize()
-            if session_id_hex not in _clients:
-                logger.debug(
-                    "Creating new TelemetryClient for connection %s", session_id_hex
-                )
-                if telemetry_enabled:
-                    _clients[session_id_hex] = TelemetryClient(
-                        telemetry_enabled=telemetry_enabled,
-                        session_id_hex=session_id_hex,
-                        auth_provider=auth_provider,
-                        host_url=host_url,
-                        executor=_executor,
-                    )
-                    print("i have initialized the telemetry client yes")
-                else:
-                    _clients[session_id_hex] = NoopTelemetryClient()
-                    print("i have initialized the noop client yes")
-    except Exception as e:
-        logger.debug("Failed to initialize telemetry client: %s", e)
-        # Fallback to NoopTelemetryClient to ensure connection doesn't fail
-        _clients[session_id_hex] = NoopTelemetryClient()
-
-
-def get_telemetry_client(session_id_hex):
-    """Get the telemetry client for a specific connection"""
-    try:
-        if session_id_hex in _clients:
-            return _clients[session_id_hex]
-        else:
-            logger.error(
-                "Telemetry client not initialized for connection %s", session_id_hex
+        if not cls._initialized:
+            cls._clients = {}
+            cls._executor = ThreadPoolExecutor(
+                max_workers=10
+            )  # Thread pool for async operations TODO: Decide on max workers
+            cls._install_exception_hook()
+            cls._initialized = True
+            logger.debug(
+                "TelemetryClientFactory initialized with thread pool (max_workers=10)"
             )
-            return NoopTelemetryClient()
-    except Exception as e:
-        logger.debug("Failed to get telemetry client: %s", e)
-        return NoopTelemetryClient()
 
+    @classmethod
+    def _install_exception_hook(cls):
+        """Install global exception handler for unhandled exceptions"""
+        if not cls._excepthook_installed:
+            cls._original_excepthook = sys.excepthook
+            sys.excepthook = cls._handle_unhandled_exception
+            cls._excepthook_installed = True
+            logger.debug("Global exception handler installed for telemetry")
 
-def close_telemetry_client(session_id_hex):
-    """Remove the telemetry client for a specific connection"""
-    global _initialized, _executor
-    with _lock:
-        # if (telemetry_client := _clients.pop(session_id_hex, None)) is not None:
-        if session_id_hex in _clients:
-            telemetry_client = _clients.pop(session_id_hex)
-            logger.debug("Removing telemetry client for connection %s", session_id_hex)
-            telemetry_client.close()
+    @classmethod
+    def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
+        """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
+        logger.debug("Handling unhandled exception: %s", exc_type.__name__)
 
-        # Shutdown executor if no more clients
+        clients_to_close = list(cls._clients.values())
+        for client in clients_to_close:
+            client.close()
+
+        # Call the original exception handler to maintain normal behavior
+        if cls._original_excepthook:
+            cls._original_excepthook(exc_type, exc_value, exc_traceback)
+
+    @staticmethod
+    def initialize_telemetry_client(
+        telemetry_enabled,
+        session_id_hex,
+        auth_provider,
+        host_url,
+    ):
+        """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
-            if not _clients and _executor:
+
+            with TelemetryClientFactory._lock:
+                TelemetryClientFactory._initialize()
+
+                if session_id_hex not in TelemetryClientFactory._clients:
+                    logger.debug(
+                        "Creating new TelemetryClient for connection %s",
+                        session_id_hex,
+                    )
+                    if telemetry_enabled:
+                        TelemetryClientFactory._clients[
+                            session_id_hex
+                        ] = TelemetryClient(
+                            telemetry_enabled=telemetry_enabled,
+                            session_id_hex=session_id_hex,
+                            auth_provider=auth_provider,
+                            host_url=host_url,
+                            executor=TelemetryClientFactory._executor,
+                        )
+                    else:
+                        TelemetryClientFactory._clients[
+                            session_id_hex
+                        ] = NoopTelemetryClient()
+        except Exception as e:
+            logger.debug("Failed to initialize telemetry client: %s", e)
+            # Fallback to NoopTelemetryClient to ensure connection doesn't fail
+            TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
+
+    @staticmethod
+    def get_telemetry_client(session_id_hex):
+        """Get the telemetry client for a specific connection"""
+        try:
+            if session_id_hex in TelemetryClientFactory._clients:
+                return TelemetryClientFactory._clients[session_id_hex]
+            else:
+                logger.error(
+                    "Telemetry client not initialized for connection %s",
+                    session_id_hex,
+                )
+                return NoopTelemetryClient()
+        except Exception as e:
+            logger.debug("Failed to get telemetry client: %s", e)
+            return NoopTelemetryClient()
+
+    @staticmethod
+    def close(session_id_hex):
+        """Close and remove the telemetry client for a specific connection"""
+
+        with TelemetryClientFactory._lock:
+            if (
+                telemetry_client := TelemetryClientFactory._clients.pop(
+                    session_id_hex, None
+                )
+            ) is not None:
+                logger.debug(
+                    "Removing telemetry client for connection %s", session_id_hex
+                )
+                telemetry_client.close()
+
+            # Shutdown executor if no more clients
+            if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
                 logger.debug(
                     "No more telemetry clients, shutting down thread pool executor"
                 )
-                _executor.shutdown(wait=True)
-                _executor = None
-                _initialized = False
-        except Exception as e:
-            logger.debug("Failed to shutdown thread pool executor: %s", e)
+                TelemetryClientFactory._executor.shutdown(wait=True)
+                TelemetryClientFactory._executor = None
+                TelemetryClientFactory._initialized = False

@@ -336,7 +336,6 @@ class ClientTestSuite(unittest.TestCase):
             result_set.fetchmany(-1)
 
     def test_context_manager_closes_cursor(self):
-        print("hellow")
         mock_close = Mock()
         with client.Cursor(Mock(), Mock()) as cursor:
             cursor.close = mock_close
@@ -352,8 +351,7 @@ class ClientTestSuite(unittest.TestCase):
             cursor.close.assert_called()
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
-    def test_a_context_manager_closes_connection(self, mock_client_class):
-        print("hellow1")
+    def test_context_manager_closes_connection(self, mock_client_class):
         instance = mock_client_class.return_value
 
         mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
@@ -792,7 +790,6 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_connection_close_handles_cursor_close_exception(self):
         """Test that _close handles exceptions from cursor.close() properly."""
-        print("banana")
         cursors_closed = []
 
         def mock_close_with_exception():
