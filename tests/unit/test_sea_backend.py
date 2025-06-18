@@ -631,4 +631,255 @@ class TestSeaBackend:
         assert (
             sea_client._extract_description_from_manifest(no_columns_manifest) is None
         )
-  
+
+    def test_get_catalogs(self, sea_client, sea_session_id, mock_cursor):
+        """Test the get_catalogs method."""
+        # Mock the execute_command method
+        mock_result_set = Mock()
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Call get_catalogs
+            result = sea_client.get_catalogs(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+            )
+
+            # Verify execute_command was called with the correct parameters
+            mock_execute.assert_called_once_with(
+                operation="SHOW CATALOGS",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+            # Verify the result is correct
+            assert result == mock_result_set
+
+    def test_get_schemas(self, sea_client, sea_session_id, mock_cursor):
+        """Test the get_schemas method with various parameter combinations."""
+        # Mock the execute_command method
+        mock_result_set = Mock()
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Case 1: With catalog name only
+            result = sea_client.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            mock_execute.assert_called_with(
+                operation="SHOW SCHEMAS IN test_catalog",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+            # Case 2: With catalog and schema names
+            result = sea_client.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+                schema_name="test_schema",
+            )
+
+            mock_execute.assert_called_with(
+                operation="SHOW SCHEMAS IN test_catalog LIKE 'test_schema'",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+            # Case 3: Without catalog name (should raise ValueError)
+            with pytest.raises(ValueError) as excinfo:
+                sea_client.get_schemas(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                )
+            assert "Catalog name is required for get_schemas" in str(excinfo.value)
+
+    def test_get_tables(self, sea_client, sea_session_id, mock_cursor):
+        """Test the get_tables method with various parameter combinations."""
+        # Mock the execute_command method
+        mock_result_set = Mock()
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Mock the filter_tables_by_type method
+            with patch(
+                "databricks.sql.backend.filters.ResultSetFilter.filter_tables_by_type",
+                return_value=mock_result_set,
+            ) as mock_filter:
+                # Case 1: With catalog name only
+                result = sea_client.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="test_catalog",
+                )
+
+                mock_execute.assert_called_with(
+                    operation="SHOW TABLES IN CATALOG test_catalog",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=False,
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+                mock_filter.assert_called_with(mock_result_set, None)
+
+                # Case 2: With all parameters
+                table_types = ["TABLE", "VIEW"]
+                result = sea_client.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="test_catalog",
+                    schema_name="test_schema",
+                    table_name="test_table",
+                    table_types=table_types,
+                )
+
+                mock_execute.assert_called_with(
+                    operation="SHOW TABLES IN CATALOG test_catalog SCHEMA LIKE 'test_schema' LIKE 'test_table'",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=False,
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+                mock_filter.assert_called_with(mock_result_set, table_types)
+
+                # Case 3: With wildcard catalog
+                result = sea_client.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="*",
+                )
+
+                mock_execute.assert_called_with(
+                    operation="SHOW TABLES IN ALL CATALOGS",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=False,
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+
+                # Case 4: Without catalog name (should raise ValueError)
+                with pytest.raises(ValueError) as excinfo:
+                    sea_client.get_tables(
+                        session_id=sea_session_id,
+                        max_rows=100,
+                        max_bytes=1000,
+                        cursor=mock_cursor,
+                    )
+                assert "Catalog name is required for get_tables" in str(excinfo.value)
+
+    def test_get_columns(self, sea_client, sea_session_id, mock_cursor):
+        """Test the get_columns method with various parameter combinations."""
+        # Mock the execute_command method
+        mock_result_set = Mock()
+        with patch.object(
+            sea_client, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Case 1: With catalog name only
+            result = sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            mock_execute.assert_called_with(
+                operation="SHOW COLUMNS IN CATALOG test_catalog",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+            # Case 2: With all parameters
+            result = sea_client.get_columns(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+                schema_name="test_schema",
+                table_name="test_table",
+                column_name="test_column",
+            )
+
+            mock_execute.assert_called_with(
+                operation="SHOW COLUMNS IN CATALOG test_catalog SCHEMA LIKE 'test_schema' TABLE LIKE 'test_table' LIKE 'test_column'",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=False,
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+
+            # Case 3: Without catalog name (should raise ValueError)
+            with pytest.raises(ValueError) as excinfo:
+                sea_client.get_columns(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                )
+            assert "Catalog name is required for get_columns" in str(excinfo.value)
