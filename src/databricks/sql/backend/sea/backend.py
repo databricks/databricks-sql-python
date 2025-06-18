@@ -645,7 +645,7 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_schemas")
 
-        operation = f"SHOW SCHEMAS IN `{catalog_name}`"
+        operation = f"SHOW SCHEMAS IN {catalog_name}"
 
         if schema_name:
             operation += f" LIKE '{schema_name}'"
@@ -683,7 +683,7 @@ class SeaDatabricksClient(DatabricksClient):
         operation = "SHOW TABLES IN " + (
             "ALL CATALOGS"
             if catalog_name in [None, "*", "%"]
-            else f"CATALOG `{catalog_name}`"
+            else f"CATALOG {catalog_name}"
         )
 
         if schema_name:
@@ -706,7 +706,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
         assert result is not None, "execute_command returned None in synchronous mode"
 
-        # Apply client-side filtering by table_types if specified
+        # Apply client-side filtering by table_types
         from databricks.sql.backend.filters import ResultSetFilter
 
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
@@ -728,7 +728,7 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_columns")
 
-        operation = f"SHOW COLUMNS IN CATALOG `{catalog_name}`"
+        operation = f"SHOW COLUMNS IN CATALOG {catalog_name}"
 
         if schema_name:
             operation += f" SCHEMA LIKE '{schema_name}'"
