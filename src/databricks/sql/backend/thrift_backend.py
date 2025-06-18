@@ -796,6 +796,8 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_queue_opt = None
 
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        if command_id is None:
+            raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
 
         return ExecuteResponse(
             arrow_queue=arrow_queue_opt,
@@ -1156,6 +1158,8 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def _handle_execute_response(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        if command_id is None:
+            raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
 
         cursor.active_command_id = command_id
         self._check_direct_results_for_error(resp.directResults)
@@ -1169,6 +1173,9 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        if command_id is None:
+            raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
+
         cursor.active_command_id = command_id
         self._check_direct_results_for_error(resp.directResults)
 
