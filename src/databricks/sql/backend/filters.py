@@ -9,16 +9,11 @@ from typing import (
     List,
     Optional,
     Any,
-    Dict,
     Callable,
-    TypeVar,
-    Generic,
     cast,
     TYPE_CHECKING,
 )
 
-from databricks.sql.backend.types import ExecuteResponse, CommandId
-from databricks.sql.backend.sea.models.base import ResultData
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 if TYPE_CHECKING:
