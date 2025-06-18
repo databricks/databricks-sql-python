@@ -352,7 +352,7 @@ class ClientTestSuite(unittest.TestCase):
             cursor.close.assert_called()
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
-    def test_context_manager_closes_connection(self, mock_client_class):
+    def test_a_context_manager_closes_connection(self, mock_client_class):
         print("hellow1")
         instance = mock_client_class.return_value
 
@@ -790,41 +790,41 @@ class ClientTestSuite(unittest.TestCase):
 
         cursor.close.assert_called_once()
 
-    # def test_connection_close_handles_cursor_close_exception(self):
-    #     """Test that _close handles exceptions from cursor.close() properly."""
-    #     print("banana")
-    #     cursors_closed = []
+    def test_connection_close_handles_cursor_close_exception(self):
+        """Test that _close handles exceptions from cursor.close() properly."""
+        print("banana")
+        cursors_closed = []
 
-    #     def mock_close_with_exception():
-    #         cursors_closed.append(1)
-    #         raise Exception("Test error during close")
+        def mock_close_with_exception():
+            cursors_closed.append(1)
+            raise Exception("Test error during close")
 
-    #     cursor1 = Mock()
-    #     cursor1.close = mock_close_with_exception
+        cursor1 = Mock()
+        cursor1.close = mock_close_with_exception
 
-    #     def mock_close_normal():
-    #         cursors_closed.append(2)
+        def mock_close_normal():
+            cursors_closed.append(2)
 
-    #     cursor2 = Mock()
-    #     cursor2.close = mock_close_normal
+        cursor2 = Mock()
+        cursor2.close = mock_close_normal
 
-    #     mock_backend = Mock()
-    #     mock_session_handle = Mock()
+        mock_backend = Mock()
+        mock_session_handle = Mock()
 
-    #     try:
-    #         for cursor in [cursor1, cursor2]:
-    #             try:
-    #                 cursor.close()
-    #             except Exception:
-    #                 pass
+        try:
+            for cursor in [cursor1, cursor2]:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
 
-    #         mock_backend.close_session(mock_session_handle)
-    #     except Exception as e:
-    #         self.fail(f"Connection close should handle exceptions: {e}")
+            mock_backend.close_session(mock_session_handle)
+        except Exception as e:
+            self.fail(f"Connection close should handle exceptions: {e}")
 
-    #     self.assertEqual(
-    #         cursors_closed, [1, 2], "Both cursors should have close called"
-    #     )
+        self.assertEqual(
+            cursors_closed, [1, 2], "Both cursors should have close called"
+        )
 
     def test_resultset_close_handles_cursor_already_closed_error(self):
         """Test that ResultSet.close() handles CursorAlreadyClosedError properly."""
