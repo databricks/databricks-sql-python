@@ -1,7 +1,7 @@
 import logging
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.models.base import ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
@@ -286,10 +286,11 @@ class SeaDatabricksClient(DatabricksClient):
         self, manifest: ResultManifest
     ) -> Optional[List]:
         """
-        Extract column description from a manifest object.
+        Extract column description from a manifest object, in the format defined by
+        the spec: https://peps.python.org/pep-0249/#description
 
         Args:
-            manifest_obj: The ResultManifest object containing schema information
+            manifest: The ResultManifest object containing schema information
 
         Returns:
             Optional[List]: A list of column tuples or None if no columns are found
@@ -397,7 +398,7 @@ class SeaDatabricksClient(DatabricksClient):
         lz4_compression: bool,
         cursor: "Cursor",
         use_cloud_fetch: bool,
-        parameters: List,
+        parameters: List[Dict[str, Any]],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
     ) -> Union["ResultSet", None]:
