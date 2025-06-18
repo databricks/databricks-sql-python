@@ -15,6 +15,7 @@ from typing import (
 )
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.types import ExecuteResponse
 
 if TYPE_CHECKING:
     from databricks.sql.result_set import ResultSet, SeaResultSet
