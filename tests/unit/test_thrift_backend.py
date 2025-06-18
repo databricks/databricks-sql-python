@@ -86,7 +86,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     def _make_type_desc(self, type):
         return ttypes.TTypeDesc(
-            types=[ttypes.TTypeEntry(primitiveEntry=ttypes.TPrimitiveTypeEntry(type=type))]
+            types=[
+                ttypes.TTypeEntry(primitiveEntry=ttypes.TPrimitiveTypeEntry(type=type))
+            ]
         )
 
     def _make_fake_thrift_backend(self):

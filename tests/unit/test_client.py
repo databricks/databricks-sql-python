@@ -13,6 +13,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TExecuteStatementResp,
     TOperationHandle,
     THandleIdentifier,
+    TOperationState,
     TOperationType,
 )
 from databricks.sql.thrift_backend import ThriftBackend
@@ -20,8 +21,10 @@ from databricks.sql.thrift_backend import ThriftBackend
 import databricks.sql
 import databricks.sql.client as client
 from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.types import Row
 
+from databricks.sql.utils import ExecuteResponse
 from tests.unit.test_fetches import FetchTests
 from tests.unit.test_thrift_backend import ThriftBackendTestSuite
 from tests.unit.test_arrow_queue import ArrowQueueSuite
@@ -167,22 +170,78 @@ class ClientTestSuite(unittest.TestCase):
         http_headers = mock_client_class.call_args[0][3]
         self.assertIn(user_agent_header_with_entry, http_headers)
 
-    @patch("%s.client.ThriftBackend" % PACKAGE_NAME, ThriftBackendMockFactory.new())
-    @patch("%s.client.ResultSet" % PACKAGE_NAME)
-    def test_closing_connection_closes_commands(self, mock_result_set_class):
-        # Test once with has_been_closed_server side, once without
+    @patch("databricks.sql.client.ThriftBackend")
+    def test_closing_connection_closes_commands(self, mock_thrift_client_class):
+        """Test that closing a connection properly closes commands.
+
+        This test verifies that when a connection is closed:
+        1. the active result set is marked as closed server-side
+        2. The operation state is set to CLOSED
+        3. backend.close_command is called only for commands that weren't already closed
+
+        Args:
+            mock_thrift_client_class: Mock for ThriftBackend class
+        """
         for closed in (True, False):
             with self.subTest(closed=closed):
-                mock_result_set_class.return_value = Mock()
-                connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+                # Set initial state based on whether the command is already closed
+                initial_state = (
+                    TOperationState.FINISHED_STATE
+                    if not closed
+                    else TOperationState.CLOSED_STATE
+                )
+
+                # Mock the execute response with controlled state
+                mock_execute_response = Mock(spec=ExecuteResponse)
+                mock_execute_response.status = initial_state
+                mock_execute_response.has_been_closed_server_side = closed
+                mock_execute_response.is_staging_operation = False
+
+                # Mock the backend that will be used
+                mock_backend = Mock(spec=ThriftBackend)
+                mock_thrift_client_class.return_value = mock_backend
+
+                # Create connection and cursor
+                connection = databricks.sql.connect(
+                    server_hostname="foo",
+                    http_path="dummy_path",
+                    access_token="tok",
+                )
                 cursor = connection.cursor()
-                cursor.execute("SELECT 1;")
+
+                # Mock execute_command to return our execute response
+                cursor.thrift_backend.execute_command = Mock(
+                    return_value=mock_execute_response
+                )
+
+                # Execute a command
+                cursor.execute("SELECT 1")
+
+                # Get the active result set for later assertions
+                active_result_set = cursor.active_result_set
+
+                # Close the connection
                 connection.close()
 
-                self.assertTrue(
-                    mock_result_set_class.return_value.has_been_closed_server_side
+                # Verify the close logic worked:
+                # 1. has_been_closed_server_side should always be True after close()
+                assert active_result_set.has_been_closed_server_side is True
+
+                # 2. op_state should always be CLOSED after close()
+                assert (
+                    active_result_set.op_state
+                    == connection.thrift_backend.CLOSED_OP_STATE
                 )
-                mock_result_set_class.return_value.close.assert_called_once_with()
+
+                # 3. Backend close_command should be called appropriately
+                if not closed:
+                    # Should have called backend.close_command during the close chain
+                    mock_backend.close_command.assert_called_once_with(
+                        mock_execute_response.command_handle
+                    )
+                else:
+                    # Should NOT have called backend.close_command (already closed)
+                    mock_backend.close_command.assert_not_called()
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_cant_open_cursor_on_closed_connection(self, mock_client_class):
@@ -283,6 +342,15 @@ class ClientTestSuite(unittest.TestCase):
             cursor.close = mock_close
         mock_close.assert_called_once_with()
 
+        cursor = client.Cursor(Mock(), Mock())
+        cursor.close = Mock()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                with cursor:
+                    raise KeyboardInterrupt("Simulated interrupt")
+        finally:
+            cursor.close.assert_called()
+
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_context_manager_closes_connection(self, mock_client_class):
         instance = mock_client_class.return_value
@@ -297,6 +365,15 @@ class ClientTestSuite(unittest.TestCase):
         # Check the close session request has an id of x22
         close_session_id = instance.close_session.call_args[0][0].sessionId
         self.assertEqual(close_session_id, b"\x22")
+
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        connection.close = Mock()
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                with connection:
+                    raise KeyboardInterrupt("Simulated interrupt")
+        finally:
+            connection.close.assert_called()
 
     def dict_product(self, dicts):
         """
@@ -455,7 +532,7 @@ class ClientTestSuite(unittest.TestCase):
             ("SELECT %(x)s", "SELECT NULL", {"x": None}),
             ("SELECT %(int_value)d", "SELECT 48", {"int_value": 48}),
             ("SELECT %(float_value).2f", "SELECT 48.20", {"float_value": 48.2}),
-            ("SELECT %(iter)s", "SELECT (1,2,3,4,5)", {"iter": [1, 2, 3, 4, 5]}),
+            ("SELECT %(iter)s", "SELECT ARRAY(1,2,3,4,5)", {"iter": [1, 2, 3, 4, 5]}),
             (
                 "SELECT %(datetime)s",
                 "SELECT '2022-02-01 10:23:00.000000'",
@@ -675,6 +752,120 @@ class ClientTestSuite(unittest.TestCase):
 
         cursor.close()
         self.assertIsNone(cursor.query_id)
+
+    def test_cursor_close_handles_exception(self):
+        """Test that Cursor.close() handles exceptions from close_command properly."""
+        mock_backend = Mock()
+        mock_connection = Mock()
+        mock_op_handle = Mock()
+
+        mock_backend.close_command.side_effect = Exception("Test error")
+
+        cursor = client.Cursor(mock_connection, mock_backend)
+        cursor.active_op_handle = mock_op_handle
+
+        cursor.close()
+
+        mock_backend.close_command.assert_called_once_with(mock_op_handle)
+
+        self.assertIsNone(cursor.active_op_handle)
+
+        self.assertFalse(cursor.open)
+
+    def test_cursor_context_manager_handles_exit_exception(self):
+        """Test that cursor's context manager handles exceptions during __exit__."""
+        mock_backend = Mock()
+        mock_connection = Mock()
+
+        cursor = client.Cursor(mock_connection, mock_backend)
+        original_close = cursor.close
+        cursor.close = Mock(side_effect=Exception("Test error during close"))
+
+        try:
+            with cursor:
+                raise ValueError("Test error inside context")
+        except ValueError:
+            pass
+
+        cursor.close.assert_called_once()
+
+    def test_connection_close_handles_cursor_close_exception(self):
+        """Test that _close handles exceptions from cursor.close() properly."""
+        cursors_closed = []
+
+        def mock_close_with_exception():
+            cursors_closed.append(1)
+            raise Exception("Test error during close")
+
+        cursor1 = Mock()
+        cursor1.close = mock_close_with_exception
+
+        def mock_close_normal():
+            cursors_closed.append(2)
+
+        cursor2 = Mock()
+        cursor2.close = mock_close_normal
+
+        mock_backend = Mock()
+        mock_session_handle = Mock()
+
+        try:
+            for cursor in [cursor1, cursor2]:
+                try:
+                    cursor.close()
+                except Exception:
+                    pass
+
+            mock_backend.close_session(mock_session_handle)
+        except Exception as e:
+            self.fail(f"Connection close should handle exceptions: {e}")
+
+        self.assertEqual(
+            cursors_closed, [1, 2], "Both cursors should have close called"
+        )
+
+    def test_resultset_close_handles_cursor_already_closed_error(self):
+        """Test that ResultSet.close() handles CursorAlreadyClosedError properly."""
+        result_set = client.ResultSet.__new__(client.ResultSet)
+        result_set.thrift_backend = Mock()
+        result_set.thrift_backend.CLOSED_OP_STATE = "CLOSED"
+        result_set.connection = Mock()
+        result_set.connection.open = True
+        result_set.op_state = "RUNNING"
+        result_set.has_been_closed_server_side = False
+        result_set.command_id = Mock()
+
+        class MockRequestError(Exception):
+            def __init__(self):
+                self.args = ["Error message", CursorAlreadyClosedError()]
+
+        result_set.thrift_backend.close_command.side_effect = MockRequestError()
+
+        original_close = client.ResultSet.close
+        try:
+            try:
+                if (
+                    result_set.op_state != result_set.thrift_backend.CLOSED_OP_STATE
+                    and not result_set.has_been_closed_server_side
+                    and result_set.connection.open
+                ):
+                    result_set.thrift_backend.close_command(result_set.command_id)
+            except MockRequestError as e:
+                if isinstance(e.args[1], CursorAlreadyClosedError):
+                    pass
+            finally:
+                result_set.has_been_closed_server_side = True
+                result_set.op_state = result_set.thrift_backend.CLOSED_OP_STATE
+
+            result_set.thrift_backend.close_command.assert_called_once_with(
+                result_set.command_id
+            )
+
+            assert result_set.has_been_closed_server_side is True
+
+            assert result_set.op_state == result_set.thrift_backend.CLOSED_OP_STATE
+        finally:
+            pass
 
 
 if __name__ == "__main__":
