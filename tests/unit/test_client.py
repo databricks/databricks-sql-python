@@ -102,7 +102,7 @@ class ClientTestSuite(unittest.TestCase):
 
         for closed in (True, False):
             with self.subTest(closed=closed):
-                # set initial state based on whether the command is already closed
+                # Set initial state based on whether the command is already closed
                 initial_state = (
                     CommandState.CLOSED if closed else CommandState.SUCCEEDED
                 )
@@ -114,7 +114,7 @@ class ClientTestSuite(unittest.TestCase):
                 mock_execute_response.is_staging_operation = False
                 mock_execute_response.command_id = Mock(spec=CommandId)
 
-                # Mock the backend that will be used by the real ThriftResultSet
+                # Mock the backend that will be used
                 mock_backend = Mock(spec=ThriftDatabricksClient)
                 mock_backend.staging_allowed_local_path = None
                 mock_thrift_client_class.return_value = mock_backend
@@ -132,7 +132,7 @@ class ClientTestSuite(unittest.TestCase):
                 # Mock execute_command to return our real result set
                 cursor.backend.execute_command = Mock(return_value=real_result_set)
 
-                # Execute a command - this should set cursor.active_result_set to our real result set
+                # Execute a command
                 cursor.execute("SELECT 1")
 
                 # Close the connection
