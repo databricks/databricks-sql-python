@@ -51,6 +51,7 @@ class ResultSet(ABC):
         :param result_buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
         amount :param arraysize: The max number of rows to fetch at a time (PEP-249)
         """
+
         self.command_id = command_id
         self.op_state = op_state
         self.has_been_closed_server_side = has_been_closed_server_side
@@ -117,6 +118,7 @@ class ResultSet(ABC):
         If the connection has not been closed, and the result set has not already
         been closed on the server for some other reason, issue a request to the server to close it.
         """
+
         try:
             if (
                 self.op_state != CommandState.CLOSED
@@ -155,6 +157,7 @@ class ThriftResultSet(ResultSet):
             arraysize: Default number of rows to fetch
             use_cloud_fetch: Whether to use cloud fetch for retrieving results
         """
+
         super().__init__(
             connection,
             thrift_client,
