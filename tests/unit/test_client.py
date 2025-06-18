@@ -138,12 +138,12 @@ class ClientTestSuite(unittest.TestCase):
                 # Close the connection
                 connection.close()
 
-                # Verify the REAL close logic worked through the chain:
+                # Verify the close logic worked:
                 # 1. has_been_closed_server_side should always be True after close()
-                self.assertTrue(real_result_set.has_been_closed_server_side)
+                assert real_result_set.has_been_closed_server_side is True
 
                 # 2. op_state should always be CLOSED after close()
-                self.assertEqual(real_result_set.op_state, CommandState.CLOSED)
+                assert real_result_set.op_state == CommandState.CLOSED
 
                 # 3. Backend close_command should be called appropriately
                 if not closed:
