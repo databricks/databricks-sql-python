@@ -595,6 +595,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                         resultSet=None,
                         closeOperation=None,
                     ),
+                    operationHandle=self.operation_handle,
                 )
                 thrift_backend = ThriftDatabricksClient(
                     "foobar",
@@ -753,6 +754,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 resultSet=None,
                 closeOperation=None,
             ),
+            operationHandle=self.operation_handle,
         )
 
         tcli_service_instance.ExecuteStatement.return_value = t_execute_resp
@@ -783,6 +785,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     resultSet=None,
                     closeOperation=None,
                 ),
+                operationHandle=self.operation_handle,
             )
 
             resp_2 = resp_type(
@@ -795,6 +798,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     resultSet=None,
                     closeOperation=None,
                 ),
+                operationHandle=self.operation_handle,
             )
 
             resp_3 = resp_type(
@@ -805,6 +809,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     resultSet=ttypes.TFetchResultsResp(status=self.bad_status),
                     closeOperation=None,
                 ),
+                operationHandle=self.operation_handle,
             )
 
             resp_4 = resp_type(
@@ -815,6 +820,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     resultSet=None,
                     closeOperation=ttypes.TCloseOperationResp(status=self.bad_status),
                 ),
+                operationHandle=self.operation_handle,
             )
 
             for error_resp in [resp_1, resp_2, resp_3, resp_4]:
