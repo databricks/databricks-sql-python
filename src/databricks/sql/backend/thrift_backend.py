@@ -3,20 +3,17 @@ import errno
 import logging
 import math
 import time
-import uuid
 import threading
-from typing import List, Optional, Union, Any, TYPE_CHECKING
+from typing import Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
-    from databricks.sql.result_set import ResultSet, ThriftResultSet
+    from databricks.sql.result_set import ResultSet
 
-from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
 from databricks.sql.backend.types import (
     CommandState,
     SessionId,
     CommandId,
-    BackendType,
 )
 from databricks.sql.backend.utils import guid_to_hex_id
 
@@ -1233,7 +1230,7 @@ class ThriftDatabricksClient(DatabricksClient):
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
-        logger.debug("Cancelling command {}".format(guid_to_hex_id(command_id.guid)))
+        logger.debug("Cancelling command {}".format(command_id.to_hex_guid()))
         req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 
