@@ -49,6 +49,7 @@ class ResultSetFilter:
         Returns:
             A filtered SEA result set
         """
+
         # Get all remaining rows
         all_rows = result_set.results.remaining_rows()
 
@@ -108,6 +109,7 @@ class ResultSetFilter:
         Returns:
             A filtered result set
         """
+
         # Convert to uppercase for case-insensitive comparison if needed
         if not case_sensitive:
             allowed_values = [v.upper() for v in allowed_values]
@@ -154,6 +156,7 @@ class ResultSetFilter:
         Returns:
             A filtered result set containing only tables of the specified types
         """
+
         # Default table types if none specified
         DEFAULT_TABLE_TYPES = ["TABLE", "VIEW", "SYSTEM TABLE"]
         valid_types = (
