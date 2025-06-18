@@ -4,11 +4,6 @@ Tests for the ResultSetFilter class.
 
 import unittest
 from unittest.mock import MagicMock, patch
-import sys
-from typing import List, Dict, Any
-
-# Add the necessary path to import the filter module
-sys.path.append("/home/varun.edachali/conn/databricks-sql-python/src")
 
 from databricks.sql.backend.filters import ResultSetFilter
 
