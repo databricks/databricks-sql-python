@@ -483,9 +483,17 @@ class TelemetryClientFactory:
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
-            print("Initializing telemetry client: %s", session_id_hex)
+            print(
+                "\nWAITING: Initializing telemetry client: %s",
+                session_id_hex,
+                flush=True,
+            )
             with TelemetryClientFactory._lock:
-                print("Initializing telemetry client, got lock: %s", session_id_hex)
+                print(
+                    "\nACQUIRED: Initializing telemetry client, got lock: %s",
+                    session_id_hex,
+                    flush=True,
+                )
                 TelemetryClientFactory._initialize()
 
                 if session_id_hex not in TelemetryClientFactory._clients:
@@ -507,7 +515,11 @@ class TelemetryClientFactory:
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
-                print("Telemetry client initialized: %s", session_id_hex)
+                print(
+                    "\nRELEASED: Telemetry client initialized: %s",
+                    session_id_hex,
+                    flush=True,
+                )
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
@@ -532,9 +544,13 @@ class TelemetryClientFactory:
     @staticmethod
     def close(session_id_hex):
         """Close and remove the telemetry client for a specific connection"""
-        print("Closing telemetry client: %s", session_id_hex)
+        print("\nWAITING: Closing telemetry client: %s", session_id_hex, flush=True)
         with TelemetryClientFactory._lock:
-            print("Closing telemetry client, got lock: %s", session_id_hex)
+            print(
+                "\nACQUIRED: Closing telemetry client, got lock: %s",
+                session_id_hex,
+                flush=True,
+            )
             if (
                 telemetry_client := TelemetryClientFactory._clients.pop(
                     session_id_hex, None
@@ -550,8 +566,16 @@ class TelemetryClientFactory:
                 logger.debug(
                     "No more telemetry clients, shutting down thread pool executor"
                 )
-                print("Shutting down thread pool executor: %s", session_id_hex)
+                print(
+                    "\nSHUTDOWN: Shutting down thread pool executor: %s",
+                    session_id_hex,
+                    flush=True,
+                )
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
-                print("Thread pool executor shut down: %s", session_id_hex)
+                print(
+                    "\nRELEASED: Thread pool executor shut down: %s",
+                    session_id_hex,
+                    flush=True,
+                )
