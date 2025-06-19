@@ -330,6 +330,9 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             else:
                 raise ValueError("No response received from server")
 
+        except urllib3.exceptions.MaxRetryError:
+            # Let MaxRetryError pass through without wrapping for test compatibility
+            raise
         except urllib3.exceptions.HTTPError as e:
             error_message = f"REST HTTP request failed: {str(e)}"
             logger.error(error_message)
