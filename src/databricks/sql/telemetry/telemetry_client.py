@@ -539,12 +539,24 @@ class TelemetryClientFactory:
                             session_id_hex,
                             flush=True,
                         )
+                else:
+                    print(
+                        "\n    Session ID already in clients: %s",
+                        session_id_hex,
+                        flush=True,
+                    )
                 print(
                     "\nRELEASED: Telemetry client initialized: %s",
                     session_id_hex,
                     flush=True,
                 )
         except Exception as e:
+            print(
+                "\nERROR: Failed to initialize telemetry client: %s due to %s",
+                session_id_hex,
+                e,
+                flush=True,
+            )
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
             TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
