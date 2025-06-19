@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import uuid
 import time
@@ -403,12 +405,12 @@ class SeaDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: "Cursor",
+        cursor: Cursor,
         use_cloud_fetch: bool,
         parameters: List,
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> Union["ResultSet", None]:
+    ) -> Union[ResultSet, None]:
         """
         Execute a SQL command using the SEA backend.
 
@@ -592,8 +594,8 @@ class SeaDatabricksClient(DatabricksClient):
     def get_execution_result(
         self,
         command_id: CommandId,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> ResultSet:
         """
         Get the result of a command execution.
 
@@ -650,8 +652,8 @@ class SeaDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> ResultSet:
         """Get available catalogs by executing 'SHOW CATALOGS'."""
         result = self.execute_command(
             operation="SHOW CATALOGS",
@@ -673,10 +675,10 @@ class SeaDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
         if not catalog_name:
             raise ValueError("Catalog name is required for get_schemas")
@@ -706,12 +708,12 @@ class SeaDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
         if not catalog_name:
             raise ValueError("Catalog name is required for get_tables")
@@ -754,12 +756,12 @@ class SeaDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
         if not catalog_name:
             raise ValueError("Catalog name is required for get_columns")

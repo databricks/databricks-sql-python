@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
 
@@ -21,6 +23,7 @@ except ImportError:
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
+
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
@@ -40,8 +43,8 @@ class ResultSet(ABC):
 
     def __init__(
         self,
-        connection: "Connection",
-        backend: "DatabricksClient",
+        connection: Connection,
+        backend: DatabricksClient,
         arraysize: int,
         buffer_size_bytes: int,
         command_id: CommandId,
@@ -193,9 +196,9 @@ class ThriftResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        thrift_client: "ThriftDatabricksClient",
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        thrift_client: ThriftDatabricksClient,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
@@ -451,13 +454,13 @@ class SeaResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        sea_client: "SeaDatabricksClient",
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        sea_client: SeaDatabricksClient,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
-        result_data: Optional["ResultData"] = None,
-        manifest: Optional["ResultManifest"] = None,
+        result_data: Optional[ResultData] = None,
+        manifest: Optional[ResultManifest] = None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.

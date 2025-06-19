@@ -4,6 +4,8 @@ Client-side filtering utilities for Databricks SQL connector.
 This module provides filtering capabilities for result sets returned by different backends.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import (
     List,
@@ -37,8 +39,8 @@ class ResultSetFilter:
 
     @staticmethod
     def _filter_sea_result_set(
-        result_set: "SeaResultSet", filter_func: Callable[[List[Any]], bool]
-    ) -> "SeaResultSet":
+        result_set: SeaResultSet, filter_func: Callable[[List[Any]], bool]
+    ) -> SeaResultSet:
         """
         Filter a SEA result set using the provided filter function.
 
@@ -91,11 +93,11 @@ class ResultSetFilter:
 
     @staticmethod
     def filter_by_column_values(
-        result_set: "ResultSet",
+        result_set: ResultSet,
         column_index: int,
         allowed_values: List[str],
         case_sensitive: bool = False,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """
         Filter a result set by values in a specific column.
 
@@ -138,8 +140,8 @@ class ResultSetFilter:
 
     @staticmethod
     def filter_tables_by_type(
-        result_set: "ResultSet", table_types: Optional[List[str]] = None
-    ) -> "ResultSet":
+        result_set: ResultSet, table_types: Optional[List[str]] = None
+    ) -> ResultSet:
         """
         Filter a result set of tables by the specified table types.
 
