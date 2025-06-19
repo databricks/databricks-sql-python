@@ -104,7 +104,7 @@ class DatabricksClient(ABC):
             parameters: List of parameters to bind to the query
             async_op: Whether to execute the command asynchronously
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
-            row_limit: Maximum number of rows in the operation result. 
+            row_limit: Maximum number of rows in the operation result.
 
         Returns:
             If async_op is False, returns a ResultSet object containing the
