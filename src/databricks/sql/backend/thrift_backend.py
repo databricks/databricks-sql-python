@@ -970,6 +970,7 @@ class ThriftDatabricksClient(DatabricksClient):
             useArrowNativeTypes=spark_arrow_types,
             parameters=parameters,
             enforceEmbeddedSchemaCorrectness=enforce_embedded_schema_correctness,
+            resultRowLimit=row_limit,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 
