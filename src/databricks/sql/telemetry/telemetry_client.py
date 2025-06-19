@@ -495,6 +495,11 @@ class TelemetryClientFactory:
                     flush=True,
                 )
                 TelemetryClientFactory._initialize()
+                print(
+                    "\n TelemetryClientFactory initialized: %s",
+                    session_id_hex,
+                    flush=True,
+                )
 
                 if session_id_hex not in TelemetryClientFactory._clients:
                     logger.debug(
@@ -502,6 +507,7 @@ class TelemetryClientFactory:
                         session_id_hex,
                     )
                     if telemetry_enabled:
+                        print("\nTelemetry enabled: %s", session_id_hex, flush=True)
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = TelemetryClient(
@@ -511,10 +517,21 @@ class TelemetryClientFactory:
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
                         )
+                        print(
+                            "\n Telemetry client initialized: %s",
+                            session_id_hex,
+                            flush=True,
+                        )
                     else:
+                        print("\nTelemetry disabled: %s", session_id_hex, flush=True)
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
+                        print(
+                            "\n Noop Telemetry client initialized: %s",
+                            session_id_hex,
+                            flush=True,
+                        )
                 print(
                     "\nRELEASED: Telemetry client initialized: %s",
                     session_id_hex,
