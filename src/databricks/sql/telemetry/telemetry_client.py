@@ -415,14 +415,16 @@ class TelemetryClientFactory:
         """Close and remove the telemetry client for a specific connection"""
 
         with TelemetryClientFactory._lock:
-            if (
-                telemetry_client := TelemetryClientFactory._clients.pop(
-                    session_id_hex, None
-                )
-            ) is not None:
+            # if (
+            #     telemetry_client := TelemetryClientFactory._clients.pop(
+            #         session_id_hex, None
+            #     )
+            # ) is not None:
+            if session_id_hex in TelemetryClientFactory._clients:
                 logger.debug(
                     "Removing telemetry client for connection %s", session_id_hex
                 )
+                telemetry_client = TelemetryClientFactory._clients.pop(session_id_hex)
                 telemetry_client.close()
 
             # Shutdown executor if no more clients
