@@ -583,6 +583,9 @@ class ThriftBackend:
             self._transport.close()
             raise
 
+    def get_session_id_hex(self) -> str:
+        return self._session_id_hex
+
     def close_session(self, session_handle) -> None:
         req = ttypes.TCloseSessionReq(sessionHandle=session_handle)
         try:
