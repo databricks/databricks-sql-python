@@ -1,4 +1,3 @@
-from decimal import Decimal
 import errno
 import logging
 import math

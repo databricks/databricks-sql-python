@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 import logging
-import time
 import pandas
 
+from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import CommandId, CommandState
 
 try:
@@ -13,13 +15,11 @@ except ImportError:
     pyarrow = None
 
 if TYPE_CHECKING:
-    from databricks.sql.backend.databricks_client import DatabricksClient
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
 
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
-from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import ExecuteResponse, ColumnTable, ColumnQueue
 
 logger = logging.getLogger(__name__)
@@ -34,8 +34,8 @@ class ResultSet(ABC):
 
     def __init__(
         self,
-        connection: "Connection",
-        backend: "DatabricksClient",
+        connection: Connection,
+        backend: DatabricksClient,
         command_id: CommandId,
         op_state: Optional[CommandState],
         has_been_closed_server_side: bool,
@@ -139,9 +139,9 @@ class ThriftResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
+        connection: Connection,
         execute_response: ExecuteResponse,
-        thrift_client: "ThriftDatabricksClient",
+        thrift_client: ThriftDatabricksClient,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,

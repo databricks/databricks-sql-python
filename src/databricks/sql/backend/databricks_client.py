@@ -8,22 +8,17 @@ Implementations of this class are responsible for:
 - Fetching metadata about catalogs, schemas, tables, and columns
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
+    from databricks.sql.result_set import ResultSet
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.types import SessionId, CommandId, CommandState
-from databricks.sql.utils import ExecuteResponse
-from databricks.sql.types import SSLOptions
-
-# Forward reference for type hints
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from databricks.sql.result_set import ResultSet
 
 
 class DatabricksClient(ABC):
@@ -82,12 +77,12 @@ class DatabricksClient(ABC):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: "Cursor",
+        cursor: Cursor,
         use_cloud_fetch: bool,
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> Union["ResultSet", None]:
+    ) -> Union[ResultSet, None]:
         """
         Executes a SQL command or query within the specified session.
 
@@ -177,8 +172,8 @@ class DatabricksClient(ABC):
     def get_execution_result(
         self,
         command_id: CommandId,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> ResultSet:
         """
         Retrieves the results of a previously executed command.
 
@@ -205,8 +200,8 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> ResultSet:
         """
         Retrieves a list of available catalogs.
 
@@ -234,10 +229,10 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """
         Retrieves a list of schemas, optionally filtered by catalog and schema name patterns.
 
@@ -267,12 +262,12 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """
         Retrieves a list of tables, optionally filtered by catalog, schema, table name, and table types.
 
@@ -304,12 +299,12 @@ class DatabricksClient(ABC):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """
         Retrieves a list of columns, optionally filtered by catalog, schema, table, and column name patterns.
 
