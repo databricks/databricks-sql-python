@@ -4,7 +4,7 @@ import json
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -37,8 +37,8 @@ class DebugLock:
     def __init__(self, name: str = "DebugLock"):
         self._lock = threading.Lock()
         self._name = name
-        self._owner = None
-        self._waiters = []
+        self._owner: Optional[str] = None
+        self._waiters: List[str] = []
         self._debug_logger = logging.getLogger(f"{__name__}.{name}")
         # Ensure debug logging is visible
         if not self._debug_logger.handlers:
@@ -55,27 +55,25 @@ class DebugLock:
         thread_info = f"{current.name}-{current.ident}"
         if self._owner:
             self._debug_logger.warning(
-                f":rotating_light: WAITING: {thread_info} waiting for lock held by {self._owner}"
+                f": WAITING: {thread_info} waiting for lock held by {self._owner}"
             )
             self._waiters.append(thread_info)
         else:
             self._debug_logger.debug(
-                f":large_green_circle: TRYING: {thread_info} attempting to acquire lock"
+                f": TRYING: {thread_info} attempting to acquire lock"
             )
         # Try to acquire the lock
         acquired = self._lock.acquire(blocking, timeout)
         if acquired:
             self._owner = thread_info
-            self._debug_logger.info(
-                f":white_check_mark: ACQUIRED: {thread_info} got the lock"
-            )
+            self._debug_logger.info(f": ACQUIRED: {thread_info} got the lock")
             if self._waiters:
                 self._debug_logger.info(
-                    f":clipboard: WAITERS: {len(self._waiters)} threads waiting: {self._waiters}"
+                    f": WAITERS: {len(self._waiters)} threads waiting: {self._waiters}"
                 )
         else:
             self._debug_logger.error(
-                f":x: FAILED: {thread_info} failed to acquire lock (timeout)"
+                f": FAILED: {thread_info} failed to acquire lock (timeout)"
             )
             if thread_info in self._waiters:
                 self._waiters.remove(thread_info)
@@ -86,19 +84,17 @@ class DebugLock:
         thread_info = f"{current.name}-{current.ident}"
         if self._owner != thread_info:
             self._debug_logger.error(
-                f":rotating_light: ERROR: {thread_info} trying to release lock owned by {self._owner}"
+                f": ERROR: {thread_info} trying to release lock owned by {self._owner}"
             )
         else:
-            self._debug_logger.info(
-                f":unlock: RELEASED: {thread_info} released the lock"
-            )
+            self._debug_logger.info(f": RELEASED: {thread_info} released the lock")
             self._owner = None
             # Remove from waiters if present
             if thread_info in self._waiters:
                 self._waiters.remove(thread_info)
             if self._waiters:
                 self._debug_logger.info(
-                    f":loudspeaker: NEXT: {len(self._waiters)} threads still waiting: {self._waiters}"
+                    f": NEXT: {len(self._waiters)} threads still waiting: {self._waiters}"
                 )
         self._lock.release()
 
