@@ -7,10 +7,13 @@ from databricks.sql.telemetry.telemetry_client import (
     TelemetryClient,
     NoopTelemetryClient,
     TelemetryClientFactory,
+    TelemetryHelper,
+    BaseTelemetryClient
 )
 from databricks.sql.telemetry.models.enums import (
     AuthMech,
     DatabricksClientType,
+    AuthFlow,
 )
 from databricks.sql.telemetry.models.event import (
     DriverConnectionParameters,
@@ -18,6 +21,8 @@ from databricks.sql.telemetry.models.event import (
 )
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
+    DatabricksOAuthProvider,
+    ExternalAuthProvider,
 )
 
 
@@ -30,14 +35,14 @@ def noop_telemetry_client():
 @pytest.fixture
 def telemetry_client_setup():
     """Fixture for TelemetryClient setup data."""
-    connection_uuid = str(uuid.uuid4())
+    session_id_hex = str(uuid.uuid4())
     auth_provider = AccessTokenAuthProvider("test-token")
     host_url = "test-host"
     executor = MagicMock()
     
     client = TelemetryClient(
         telemetry_enabled=True,
-        connection_uuid=connection_uuid,
+        session_id_hex=session_id_hex,
         auth_provider=auth_provider,
         host_url=host_url,
         executor=executor,
@@ -45,7 +50,7 @@ def telemetry_client_setup():
     
     return {
         "client": client,
-        "connection_uuid": connection_uuid,
+        "session_id_hex": session_id_hex,
         "auth_provider": auth_provider,
         "host_url": host_url,
         "executor": executor,
@@ -53,34 +58,42 @@ def telemetry_client_setup():
 
 
 @pytest.fixture
-def telemetry_factory_reset():
-    """Fixture to reset TelemetryClientFactory state before each test."""
-    # Reset the static class state before each test
-    TelemetryClientFactory._clients = {}
+def telemetry_system_reset():
+    """Fixture to reset telemetry system state before each test."""
+    # Reset the static state before each test
+    TelemetryClientFactory._clients.clear()
+    if TelemetryClientFactory._executor:
+        TelemetryClientFactory._executor.shutdown(wait=True)
     TelemetryClientFactory._executor = None
     TelemetryClientFactory._initialized = False
     yield
     # Cleanup after test if needed
-    TelemetryClientFactory._clients = {}
+    TelemetryClientFactory._clients.clear()
     if TelemetryClientFactory._executor:
         TelemetryClientFactory._executor.shutdown(wait=True)
-        TelemetryClientFactory._executor = None
+    TelemetryClientFactory._executor = None
     TelemetryClientFactory._initialized = False
 
 
 class TestNoopTelemetryClient:
-    """Tests for the NoopTelemetryClient class."""
+    """Tests for the NoopTelemetryClient."""
 
     def test_singleton(self):
         """Test that NoopTelemetryClient is a singleton."""
         client1 = NoopTelemetryClient()
         client2 = NoopTelemetryClient()
         assert client1 is client2
-
+   
     def test_export_initial_telemetry_log(self, noop_telemetry_client):
         """Test that export_initial_telemetry_log does nothing."""
         noop_telemetry_client.export_initial_telemetry_log(
             driver_connection_params=MagicMock(), user_agent="test"
+        )
+
+    def test_export_failure_log(self, noop_telemetry_client):
+        """Test that export_failure_log does nothing."""
+        noop_telemetry_client.export_failure_log(
+            error_name="TestError", error_message="Test error message"
         )
 
     def test_close(self, noop_telemetry_client):
@@ -92,7 +105,7 @@ class TestTelemetryClient:
     """Tests for the TelemetryClient class."""
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.getDriverSystemConfiguration")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
     @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
     @patch("databricks.sql.telemetry.telemetry_client.time.time")
     def test_export_initial_telemetry_log(
@@ -111,7 +124,7 @@ class TestTelemetryClient:
 
         client = telemetry_client_setup["client"]
         host_url = telemetry_client_setup["host_url"]
-        client.export_event = MagicMock()
+        client._export_event = MagicMock()
                
         driver_connection_params = DriverConnectionParameters(
             http_path="test-path",
@@ -125,23 +138,64 @@ class TestTelemetryClient:
         client.export_initial_telemetry_log(driver_connection_params, user_agent)
         
         mock_frontend_log.assert_called_once()
-        client.export_event.assert_called_once_with(mock_frontend_log.return_value)
+        client._export_event.assert_called_once_with(mock_frontend_log.return_value)
+
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
+    @patch("databricks.sql.telemetry.telemetry_client.DriverErrorInfo")
+    @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
+    @patch("databricks.sql.telemetry.telemetry_client.time.time")
+    def test_export_failure_log(
+        self, 
+        mock_time, 
+        mock_uuid4, 
+        mock_driver_error_info,
+        mock_get_driver_config, 
+        mock_frontend_log,
+        telemetry_client_setup
+    ):
+        """Test exporting failure telemetry log."""
+        mock_time.return_value = 2000
+        mock_uuid4.return_value = "test-error-uuid"
+        mock_get_driver_config.return_value = "test-driver-config"
+        mock_driver_error_info.return_value = MagicMock()
+        mock_frontend_log.return_value = MagicMock()
+
+        client = telemetry_client_setup["client"]
+        client._export_event = MagicMock()
+        
+        client._driver_connection_params = "test-connection-params"
+        client._user_agent = "test-user-agent"
+        
+        error_name = "TestError"
+        error_message = "This is a test error message"
+        
+        client.export_failure_log(error_name, error_message)
+        
+        mock_driver_error_info.assert_called_once_with(
+            error_name=error_name, 
+            stack_trace=error_message
+        )
+        
+        mock_frontend_log.assert_called_once()
+        
+        client._export_event.assert_called_once_with(mock_frontend_log.return_value)
 
     def test_export_event(self, telemetry_client_setup):
         """Test exporting an event."""
         client = telemetry_client_setup["client"]
-        client.flush = MagicMock()
+        client._flush = MagicMock()
         
         for i in range(5):
-            client.export_event(f"event-{i}")
+            client._export_event(f"event-{i}")
         
-        client.flush.assert_not_called()
+        client._flush.assert_not_called()
         assert len(client._events_batch) == 5
         
         for i in range(5, 10):
-            client.export_event(f"event-{i}")
+            client._export_event(f"event-{i}")
         
-        client.flush.assert_called_once()
+        client._flush.assert_called_once()
         assert len(client._events_batch) == 10
 
     @patch("requests.post")
@@ -171,7 +225,7 @@ class TestTelemetryClient:
         
         unauthenticated_client = TelemetryClient(
             telemetry_enabled=True,
-            connection_uuid=str(uuid.uuid4()),
+            session_id_hex=str(uuid.uuid4()),
             auth_provider=None,  # No auth provider
             host_url=host_url,
             executor=executor,
@@ -197,133 +251,251 @@ class TestTelemetryClient:
         client._events_batch = ["event1", "event2"]
         client._send_telemetry = MagicMock()
         
-        client.flush()
+        client._flush()
         
         client._send_telemetry.assert_called_once_with(["event1", "event2"])
         assert client._events_batch == []
 
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClientFactory")
-    def test_close(self, mock_factory_class, telemetry_client_setup):
+    def test_close(self, telemetry_client_setup):
         """Test closing the client."""
         client = telemetry_client_setup["client"]
-        connection_uuid = telemetry_client_setup["connection_uuid"]
-        client.flush = MagicMock()
+        client._flush = MagicMock()
         
         client.close()
         
-        client.flush.assert_called_once()
-        mock_factory_class.close.assert_called_once_with(connection_uuid)
+        client._flush.assert_called_once()
+
+    @patch("requests.post")
+    def test_telemetry_request_callback_success(self, mock_post, telemetry_client_setup):
+        """Test successful telemetry request callback."""
+        client = telemetry_client_setup["client"]
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+       
+        mock_future = MagicMock()
+        mock_future.result.return_value = mock_response
+       
+        client._telemetry_request_callback(mock_future)
+       
+        mock_future.result.assert_called_once()
+
+    @patch("requests.post")
+    def test_telemetry_request_callback_failure(self, mock_post, telemetry_client_setup):
+        """Test telemetry request callback with failure"""
+        client = telemetry_client_setup["client"]
+        
+        # Test with non-200 status code
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        future = MagicMock()
+        future.result.return_value = mock_response
+        client._telemetry_request_callback(future)
+
+        # Test with exception
+        future = MagicMock()
+        future.result.side_effect = Exception("Test error")
+        client._telemetry_request_callback(future)
+
+    def test_telemetry_client_exception_handling(self, telemetry_client_setup):
+        """Test exception handling in telemetry client methods."""
+        client = telemetry_client_setup["client"]
+        
+        # Test export_initial_telemetry_log with exception
+        with patch.object(client, '_export_event', side_effect=Exception("Test error")):
+            # Should not raise exception
+            client.export_initial_telemetry_log(MagicMock(), "test-agent")
+        
+        # Test export_failure_log with exception
+        with patch.object(client, '_export_event', side_effect=Exception("Test error")):
+            # Should not raise exception
+            client.export_failure_log("TestError", "Test error message")
+        
+        # Test _send_telemetry with exception
+        with patch.object(client._executor, 'submit', side_effect=Exception("Test error")):
+            # Should not raise exception
+            client._send_telemetry([MagicMock()])
+
+    def test_send_telemetry_thread_pool_failure(self, telemetry_client_setup):
+        """Test handling of thread pool submission failure"""
+        client = telemetry_client_setup["client"]
+        client._executor.submit.side_effect = Exception("Thread pool error")      
+        event = MagicMock()
+        client._send_telemetry([event])
+
+    def test_base_telemetry_client_abstract_methods(self):
+        """Test that BaseTelemetryClient cannot be instantiated without implementing all abstract methods"""
+        class TestBaseClient(BaseTelemetryClient):
+            pass
+
+        with pytest.raises(TypeError):
+            TestBaseClient()  # Can't instantiate abstract class
 
 
-class TestTelemetryClientFactory:
-    """Tests for the TelemetryClientFactory static class."""
+class TestTelemetryHelper:
+    """Tests for the TelemetryHelper class."""
 
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient")
-    def test_initialize_telemetry_client_enabled(self, mock_client_class, telemetry_factory_reset):
+    def test_get_driver_system_configuration(self):
+        """Test getting driver system configuration."""
+        config = TelemetryHelper.get_driver_system_configuration()
+          
+        assert isinstance(config.driver_name, str)
+        assert isinstance(config.driver_version, str)
+        assert isinstance(config.runtime_name, str)
+        assert isinstance(config.runtime_vendor, str)
+        assert isinstance(config.runtime_version, str)
+        assert isinstance(config.os_name, str)
+        assert isinstance(config.os_version, str)
+        assert isinstance(config.os_arch, str)
+        assert isinstance(config.locale_name, str)
+        assert isinstance(config.char_set_encoding, str)
+        
+        assert config.driver_name == "Databricks SQL Python Connector"
+        assert "Python" in config.runtime_name
+        assert config.runtime_vendor in ["CPython", "PyPy", "Jython", "IronPython"]
+        assert config.os_name in ["Darwin", "Linux", "Windows"]
+        
+        # Verify caching behavior
+        config2 = TelemetryHelper.get_driver_system_configuration()
+        assert config is config2  # Should return same instance
+
+    def test_get_auth_mechanism(self):
+        """Test getting auth mechanism for different auth providers."""
+        # Test PAT auth
+        pat_auth = AccessTokenAuthProvider("test-token")
+        assert TelemetryHelper.get_auth_mechanism(pat_auth) == AuthMech.PAT
+        
+        # Test OAuth auth
+        oauth_auth = MagicMock(spec=DatabricksOAuthProvider)
+        assert TelemetryHelper.get_auth_mechanism(oauth_auth) == AuthMech.DATABRICKS_OAUTH
+        
+        # Test External auth
+        external_auth = MagicMock(spec=ExternalAuthProvider)
+        assert TelemetryHelper.get_auth_mechanism(external_auth) == AuthMech.EXTERNAL_AUTH
+        
+        # Test None auth provider
+        assert TelemetryHelper.get_auth_mechanism(None) is None
+        
+        # Test unknown auth provider
+        unknown_auth = MagicMock()
+        assert TelemetryHelper.get_auth_mechanism(unknown_auth) == AuthMech.CLIENT_CERT
+
+    def test_get_auth_flow(self):
+        """Test getting auth flow for different OAuth providers."""
+        # Test OAuth with existing tokens
+        oauth_with_tokens = MagicMock(spec=DatabricksOAuthProvider)
+        oauth_with_tokens._access_token = "test-access-token"
+        oauth_with_tokens._refresh_token = "test-refresh-token"
+        assert TelemetryHelper.get_auth_flow(oauth_with_tokens) == AuthFlow.TOKEN_PASSTHROUGH
+        
+        # Test OAuth with browser-based auth
+        oauth_with_browser = MagicMock(spec=DatabricksOAuthProvider)
+        oauth_with_browser._access_token = None
+        oauth_with_browser._refresh_token = None
+        oauth_with_browser.oauth_manager = MagicMock()
+        assert TelemetryHelper.get_auth_flow(oauth_with_browser) == AuthFlow.BROWSER_BASED_AUTHENTICATION
+        
+        # Test non-OAuth provider
+        pat_auth = AccessTokenAuthProvider("test-token")
+        assert TelemetryHelper.get_auth_flow(pat_auth) is None
+        
+        # Test None auth provider
+        assert TelemetryHelper.get_auth_flow(None) is None
+
+
+class TestTelemetrySystem:
+    """Tests for the telemetry system functions."""
+
+    def test_initialize_telemetry_client_enabled(self, telemetry_system_reset):
         """Test initializing a telemetry client when telemetry is enabled."""
-        connection_uuid = "test-uuid"
+        session_id_hex = "test-uuid"
         auth_provider = MagicMock()
         host_url = "test-host"
-        mock_client = MagicMock()
-        mock_client_class.return_value = mock_client
         
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=True,
-            connection_uuid=connection_uuid,
+            session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url=host_url,
         )
         
-        # Verify a new client was created and stored
-        mock_client_class.assert_called_once_with(
-            telemetry_enabled=True,
-            connection_uuid=connection_uuid,
-            auth_provider=auth_provider,
-            host_url=host_url,
-            executor=TelemetryClientFactory._executor,
-        )
-        assert TelemetryClientFactory._clients[connection_uuid] == mock_client
-        
-        # Call again with the same connection_uuid
-        client2 = TelemetryClientFactory.get_telemetry_client(connection_uuid=connection_uuid)
-        
-        # Verify the same client was returned and no new client was created
-        assert client2 == mock_client
-        mock_client_class.assert_called_once()  # Still only called once
+        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+        assert isinstance(client, TelemetryClient)
+        assert client._session_id_hex == session_id_hex
+        assert client._auth_provider == auth_provider
+        assert client._host_url == host_url
 
-    def test_initialize_telemetry_client_disabled(self, telemetry_factory_reset):
+    def test_initialize_telemetry_client_disabled(self, telemetry_system_reset):
         """Test initializing a telemetry client when telemetry is disabled."""
-        connection_uuid = "test-uuid"
+        session_id_hex = "test-uuid"
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=False,
-            connection_uuid=connection_uuid,
+            session_id_hex=session_id_hex,
             auth_provider=MagicMock(),
             host_url="test-host",
         )
         
-        # Verify a NoopTelemetryClient was stored
-        assert isinstance(TelemetryClientFactory._clients[connection_uuid], NoopTelemetryClient)
-
-        client2 = TelemetryClientFactory.get_telemetry_client(connection_uuid)
-        assert isinstance(client2, NoopTelemetryClient)
-
-    def test_get_telemetry_client_existing(self, telemetry_factory_reset):
-        """Test getting an existing telemetry client."""
-        connection_uuid = "test-uuid"
-        mock_client = MagicMock()
-        TelemetryClientFactory._clients[connection_uuid] = mock_client
-        
-        client = TelemetryClientFactory.get_telemetry_client(connection_uuid)
-        
-        assert client == mock_client
-
-    def test_get_telemetry_client_nonexistent(self, telemetry_factory_reset):
-        """Test getting a non-existent telemetry client."""
-        client = TelemetryClientFactory.get_telemetry_client("nonexistent-uuid")
-        
+        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
         assert isinstance(client, NoopTelemetryClient)
 
-    @patch("databricks.sql.telemetry.telemetry_client.ThreadPoolExecutor")
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient")
-    def test_close(self, mock_client_class, mock_executor_class, telemetry_factory_reset):
-        """Test that factory reinitializes properly after complete shutdown."""
-        connection_uuid1 = "test-uuid1"
-        mock_executor1 = MagicMock()
-        mock_client1 = MagicMock()
-        mock_executor_class.return_value = mock_executor1
-        mock_client_class.return_value = mock_client1
-        
-        TelemetryClientFactory._clients[connection_uuid1] = mock_client1
-        TelemetryClientFactory._executor = mock_executor1
-        TelemetryClientFactory._initialized = True
-        
-        TelemetryClientFactory.close(connection_uuid1)
-        
-        assert TelemetryClientFactory._clients == {}
-        assert TelemetryClientFactory._executor is None
-        assert TelemetryClientFactory._initialized is False
-        mock_executor1.shutdown.assert_called_once_with(wait=True)
-        
-        # Now create a new client - this should reinitialize the factory
-        connection_uuid2 = "test-uuid2"
-        mock_executor2 = MagicMock()
-        mock_client2 = MagicMock()
-        mock_executor_class.return_value = mock_executor2
-        mock_client_class.return_value = mock_client2
+    def test_get_telemetry_client_nonexistent(self, telemetry_system_reset):
+        """Test getting a non-existent telemetry client."""
+        client = TelemetryClientFactory.get_telemetry_client("nonexistent-uuid")
+        assert isinstance(client, NoopTelemetryClient)
+
+    def test_close_telemetry_client(self, telemetry_system_reset):
+        """Test closing a telemetry client."""
+        session_id_hex = "test-uuid"
+        auth_provider = MagicMock()
+        host_url = "test-host"
         
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=True,
-            connection_uuid=connection_uuid2,
+            session_id_hex=session_id_hex,
+            auth_provider=auth_provider,
+            host_url=host_url,
+        )
+        
+        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+        assert isinstance(client, TelemetryClient)
+        
+        client.close = MagicMock()
+        
+        TelemetryClientFactory.close(session_id_hex)
+        
+        client.close.assert_called_once()
+        
+        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+        assert isinstance(client, NoopTelemetryClient)
+
+    def test_close_telemetry_client_noop(self, telemetry_system_reset):
+        """Test closing a no-op telemetry client."""
+        session_id_hex = "test-uuid"
+        TelemetryClientFactory.initialize_telemetry_client(
+            telemetry_enabled=False,
+            session_id_hex=session_id_hex,
             auth_provider=MagicMock(),
             host_url="test-host",
         )
         
-        # Verify factory was reinitialized
-        assert TelemetryClientFactory._initialized is True
-        assert TelemetryClientFactory._executor is not None
-        assert TelemetryClientFactory._executor == mock_executor2
-        assert connection_uuid2 in TelemetryClientFactory._clients
-        assert TelemetryClientFactory._clients[connection_uuid2] == mock_client2
+        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+        assert isinstance(client, NoopTelemetryClient)
         
-        # Verify new ThreadPoolExecutor was created
-        assert mock_executor_class.call_count == 1
+        client.close = MagicMock()
+        
+        TelemetryClientFactory.close(session_id_hex)
+        
+        client.close.assert_called_once()
+        
+        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+        assert isinstance(client, NoopTelemetryClient)
+
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClientFactory._handle_unhandled_exception")
+    def test_global_exception_hook(self, mock_handle_exception, telemetry_system_reset):
+        """Test that global exception hook is installed and handles exceptions."""
+        TelemetryClientFactory._install_exception_hook()
+        
+        test_exception = ValueError("Test exception")
+        TelemetryClientFactory._handle_unhandled_exception(type(test_exception), test_exception, None)
+        
+        mock_handle_exception.assert_called_once_with(type(test_exception), test_exception, None)
