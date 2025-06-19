@@ -496,18 +496,23 @@ class TelemetryClientFactory:
                 )
                 TelemetryClientFactory._initialize()
                 print(
-                    "\n TelemetryClientFactory initialized: %s",
+                    "\n    TelemetryClientFactory initialized: %s",
                     session_id_hex,
                     flush=True,
                 )
 
                 if session_id_hex not in TelemetryClientFactory._clients:
+                    print(
+                        "\n    Session ID not in clients: %s",
+                        session_id_hex,
+                        flush=True,
+                    )
                     logger.debug(
                         "Creating new TelemetryClient for connection %s",
                         session_id_hex,
                     )
                     if telemetry_enabled:
-                        print("\nTelemetry enabled: %s", session_id_hex, flush=True)
+                        print("\n    Telemetry enabled: %s", session_id_hex, flush=True)
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = TelemetryClient(
@@ -518,17 +523,19 @@ class TelemetryClientFactory:
                             executor=TelemetryClientFactory._executor,
                         )
                         print(
-                            "\n Telemetry client initialized: %s",
+                            "\n    Telemetry client initialized: %s",
                             session_id_hex,
                             flush=True,
                         )
                     else:
-                        print("\nTelemetry disabled: %s", session_id_hex, flush=True)
+                        print(
+                            "\n    Telemetry disabled: %s", session_id_hex, flush=True
+                        )
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
                         print(
-                            "\n Noop Telemetry client initialized: %s",
+                            "\n    Noop Telemetry client initialized: %s",
                             session_id_hex,
                             flush=True,
                         )
