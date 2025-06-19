@@ -264,7 +264,6 @@ class ClientTestSuite(unittest.TestCase):
 
         self.assertEqual(kwargs["arraysize"], 999)
         self.assertEqual(kwargs["result_buffer_size_bytes"], 1234)
-        connection.close()
 
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
