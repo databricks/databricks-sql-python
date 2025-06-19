@@ -465,7 +465,7 @@ class TelemetryClientFactory:
     def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
         """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
-
+        print("Handling unhandled exception: %s", exc_type.__name__)
         clients_to_close = list(cls._clients.values())
         for client in clients_to_close:
             client.close()
@@ -530,8 +530,9 @@ class TelemetryClientFactory:
     @staticmethod
     def close(session_id_hex):
         """Close and remove the telemetry client for a specific connection"""
-
+        print("Closing telemetry client: %s", session_id_hex)
         with TelemetryClientFactory._lock:
+            print("Closing telemetry client, got lock: %s", session_id_hex)
             if (
                 telemetry_client := TelemetryClientFactory._clients.pop(
                     session_id_hex, None
@@ -547,6 +548,8 @@ class TelemetryClientFactory:
                 logger.debug(
                     "No more telemetry clients, shutting down thread pool executor"
                 )
+                print("Shutting down thread pool executor: %s", session_id_hex)
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
+                print("Thread pool executor shut down: %s", session_id_hex)
