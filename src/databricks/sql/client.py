@@ -341,7 +341,7 @@ class Connection:
         self,
         arraysize: int = DEFAULT_ARRAY_SIZE,
         buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-        row_limit: int = None,
+        row_limit: Optional[int] = None,
     ) -> "Cursor":
         """
         Return a new Cursor object using the connection.
@@ -400,22 +400,23 @@ class Cursor:
         visible by other cursors or connections.
         """
 
-        if not self.connection.session.use_sea and row_limit is not None:
+        self.connection: Connection = connection
+
+        if not connection.session.use_sea and row_limit is not None:
             logger.warning(
                 "Row limit is only supported for SEA protocol. Ignoring row_limit."
             )
 
-        self.connection = connection
-        self.rowcount = -1  # Return -1 as this is not supported
-        self.buffer_size_bytes = result_buffer_size_bytes
+        self.rowcount: int = -1  # Return -1 as this is not supported
+        self.buffer_size_bytes: int = result_buffer_size_bytes
         self.active_result_set: Union[ResultSet, None] = None
-        self.arraysize = arraysize
-        self.row_limit = row_limit
+        self.arraysize: int = arraysize
+        self.row_limit: Optional[int] = row_limit
         # Note that Cursor closed => active result set closed, but not vice versa
-        self.open = True
-        self.executing_command_id = None
-        self.backend = backend
-        self.active_command_id = None
+        self.open: bool = True
+        self.executing_command_id: Optional[CommandId] = None
+        self.backend: DatabricksClient = backend
+        self.active_command_id: Optional[CommandId] = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
