@@ -31,79 +31,79 @@ from abc import ABC, abstractmethod
 logger = logging.getLogger(__name__)
 
 
-# class DebugLock:
-#     """A wrapper around threading.Lock that provides detailed debugging for lock acquisition/release"""
+class DebugLock:
+    """A wrapper around threading.Lock that provides detailed debugging for lock acquisition/release"""
 
-#     def __init__(self, name: str = "DebugLock"):
-#         self._lock = threading.Lock()
-#         self._name = name
-#         self._owner: Optional[str] = None
-#         self._waiters: List[str] = []
-#         self._debug_logger = logging.getLogger(f"{__name__}.{name}")
-#         # Ensure debug logging is visible
-#         if not self._debug_logger.handlers:
-#             handler = logging.StreamHandler()
-#             formatter = logging.Formatter(
-#                 ":lock: %(asctime)s [%(threadName)s-%(thread)d] LOCK-%(name)s: %(message)s"
-#             )
-#             handler.setFormatter(formatter)
-#             self._debug_logger.addHandler(handler)
-#             self._debug_logger.setLevel(logging.DEBUG)
+    def __init__(self, name: str = "DebugLock"):
+        self._lock = threading.Lock()
+        self._name = name
+        self._owner: Optional[str] = None
+        self._waiters: List[str] = []
+        self._debug_logger = logging.getLogger(f"{__name__}.{name}")
+        # Ensure debug logging is visible
+        if not self._debug_logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                ":lock: %(asctime)s [%(threadName)s-%(thread)d] LOCK-%(name)s: %(message)s"
+            )
+            handler.setFormatter(formatter)
+            self._debug_logger.addHandler(handler)
+            self._debug_logger.setLevel(logging.DEBUG)
 
-#     def acquire(self, blocking=True, timeout=-1):
-#         current = threading.current_thread()
-#         thread_info = f"{current.name}-{current.ident}"
-#         if self._owner:
-#             self._debug_logger.warning(
-#                 f": WAITING: {thread_info} waiting for lock held by {self._owner}"
-#             )
-#             self._waiters.append(thread_info)
-#         else:
-#             self._debug_logger.debug(
-#                 f": TRYING: {thread_info} attempting to acquire lock"
-#             )
-#         # Try to acquire the lock
-#         acquired = self._lock.acquire(blocking, timeout)
-#         if acquired:
-#             self._owner = thread_info
-#             self._debug_logger.info(f": ACQUIRED: {thread_info} got the lock")
-#             if self._waiters:
-#                 self._debug_logger.info(
-#                     f": WAITERS: {len(self._waiters)} threads waiting: {self._waiters}"
-#                 )
-#         else:
-#             self._debug_logger.error(
-#                 f": FAILED: {thread_info} failed to acquire lock (timeout)"
-#             )
-#             if thread_info in self._waiters:
-#                 self._waiters.remove(thread_info)
-#         return acquired
+    def acquire(self, blocking=True, timeout=-1):
+        current = threading.current_thread()
+        thread_info = f"{current.name}-{current.ident}"
+        if self._owner:
+            self._debug_logger.warning(
+                f": WAITING: {thread_info} waiting for lock held by {self._owner}"
+            )
+            self._waiters.append(thread_info)
+        else:
+            self._debug_logger.debug(
+                f": TRYING: {thread_info} attempting to acquire lock"
+            )
+        # Try to acquire the lock
+        acquired = self._lock.acquire(blocking, timeout)
+        if acquired:
+            self._owner = thread_info
+            self._debug_logger.info(f": ACQUIRED: {thread_info} got the lock")
+            if self._waiters:
+                self._debug_logger.info(
+                    f": WAITERS: {len(self._waiters)} threads waiting: {self._waiters}"
+                )
+        else:
+            self._debug_logger.error(
+                f": FAILED: {thread_info} failed to acquire lock (timeout)"
+            )
+            if thread_info in self._waiters:
+                self._waiters.remove(thread_info)
+        return acquired
 
-#     def release(self):
-#         current = threading.current_thread()
-#         thread_info = f"{current.name}-{current.ident}"
-#         if self._owner != thread_info:
-#             self._debug_logger.error(
-#                 f": ERROR: {thread_info} trying to release lock owned by {self._owner}"
-#             )
-#         else:
-#             self._debug_logger.info(f": RELEASED: {thread_info} released the lock")
-#             self._owner = None
-#             # Remove from waiters if present
-#             if thread_info in self._waiters:
-#                 self._waiters.remove(thread_info)
-#             if self._waiters:
-#                 self._debug_logger.info(
-#                     f": NEXT: {len(self._waiters)} threads still waiting: {self._waiters}"
-#                 )
-#         self._lock.release()
+    def release(self):
+        current = threading.current_thread()
+        thread_info = f"{current.name}-{current.ident}"
+        if self._owner != thread_info:
+            self._debug_logger.error(
+                f": ERROR: {thread_info} trying to release lock owned by {self._owner}"
+            )
+        else:
+            self._debug_logger.info(f": RELEASED: {thread_info} released the lock")
+            self._owner = None
+            # Remove from waiters if present
+            if thread_info in self._waiters:
+                self._waiters.remove(thread_info)
+            if self._waiters:
+                self._debug_logger.info(
+                    f": NEXT: {len(self._waiters)} threads still waiting: {self._waiters}"
+                )
+        self._lock.release()
 
-#     def __enter__(self):
-#         self.acquire()
-#         return self
+    def __enter__(self):
+        self.acquire()
+        return self
 
-#     def __exit__(self, exc_type, exc_val, exc_tb):
-#         self.release()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
 
 
 class TelemetryHelper:
@@ -430,10 +430,10 @@ class TelemetryClientFactory:
     ] = {}  # Map of session_id_hex -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
-    _lock = threading.Lock()  # Thread safety for factory operations
-    # _lock = DebugLock(
-    #     "TelemetryClientFactory"
-    # )  # Thread safety for factory operations with debugging
+    # _lock = threading.Lock()  # Thread safety for factory operations
+    _lock = DebugLock(
+        "TelemetryClientFactory"
+    )  # Thread safety for factory operations with debugging
     _original_excepthook = None
     _excepthook_installed = False
 
