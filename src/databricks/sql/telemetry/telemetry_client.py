@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 class DebugLock:
     """A wrapper around threading.Lock that provides detailed debugging for lock acquisition/release"""
+
     def __init__(self, name: str = "DebugLock"):
         self._lock = threading.Lock()
         self._name = name
@@ -48,6 +49,7 @@ class DebugLock:
             handler.setFormatter(formatter)
             self._debug_logger.addHandler(handler)
             self._debug_logger.setLevel(logging.DEBUG)
+
     def acquire(self, blocking=True, timeout=-1):
         current = threading.current_thread()
         thread_info = f"{current.name}-{current.ident}"
@@ -64,7 +66,9 @@ class DebugLock:
         acquired = self._lock.acquire(blocking, timeout)
         if acquired:
             self._owner = thread_info
-            self._debug_logger.info(f":white_check_mark: ACQUIRED: {thread_info} got the lock")
+            self._debug_logger.info(
+                f":white_check_mark: ACQUIRED: {thread_info} got the lock"
+            )
             if self._waiters:
                 self._debug_logger.info(
                     f":clipboard: WAITERS: {len(self._waiters)} threads waiting: {self._waiters}"
@@ -76,6 +80,7 @@ class DebugLock:
             if thread_info in self._waiters:
                 self._waiters.remove(thread_info)
         return acquired
+
     def release(self):
         current = threading.current_thread()
         thread_info = f"{current.name}-{current.ident}"
@@ -84,7 +89,9 @@ class DebugLock:
                 f":rotating_light: ERROR: {thread_info} trying to release lock owned by {self._owner}"
             )
         else:
-            self._debug_logger.info(f":unlock: RELEASED: {thread_info} released the lock")
+            self._debug_logger.info(
+                f":unlock: RELEASED: {thread_info} released the lock"
+            )
             self._owner = None
             # Remove from waiters if present
             if thread_info in self._waiters:
@@ -94,9 +101,11 @@ class DebugLock:
                     f":loudspeaker: NEXT: {len(self._waiters)} threads still waiting: {self._waiters}"
                 )
         self._lock.release()
+
     def __enter__(self):
         self.acquire()
         return self
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.release()
 
@@ -426,7 +435,9 @@ class TelemetryClientFactory:
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     # _lock = threading.Lock()  # Thread safety for factory operations
-    _lock = DebugLock("TelemetryClientFactory")  # Thread safety for factory operations with debugging
+    _lock = DebugLock(
+        "TelemetryClientFactory"
+    )  # Thread safety for factory operations with debugging
     _original_excepthook = None
     _excepthook_installed = False
 
