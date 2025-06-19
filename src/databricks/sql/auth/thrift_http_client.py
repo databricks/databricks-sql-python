@@ -285,6 +285,11 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
         try:
             # Make request using the connection pool
+            logger.debug(f"making request to {full_path}")
+            logger.debug(f"\trequest headers: {request_headers}")
+            logger.debug(f"\trequest body: {body}")
+            logger.debug(f"\trequest params: {params}")
+            logger.debug(f"\trequest full path: {full_path}")
             self.__resp = self.__pool.request(
                 method,
                 url=full_path,
@@ -317,12 +322,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
 
                     # Log response content (truncated for large responses)
                     content_str = json.dumps(result)
-                    if len(content_str) > 1000:
-                        logger.debug(
-                            f"Response content (truncated): {content_str[:1000]}..."
-                        )
-                    else:
-                        logger.debug(f"Response content: {content_str}")
+                    logger.debug(f"Response content: {content_str}")
 
                     return result
 
