@@ -20,4 +20,3 @@ max-line-length=100
 [REPORTS]
 output-format=text
 reports=yes
-evaluation=10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)
