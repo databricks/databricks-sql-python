@@ -287,7 +287,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             # Make request using the connection pool
             logger.debug(f"making request to {full_path}")
             logger.debug(f"\trequest headers: {request_headers}")
-            logger.debug(f"\trequest body: {body}")
+            logger.debug(f"\trequest body: {body.decode('utf-8') if body else None}")
             logger.debug(f"\trequest params: {params}")
             logger.debug(f"\trequest full path: {full_path}")
             self.__resp = self.__pool.request(
