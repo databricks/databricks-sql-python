@@ -118,7 +118,7 @@ class PySQLPytestTestCase:
             cursor = conn.cursor(
                 arraysize=self.arraysize,
                 buffer_size_bytes=self.buffer_size_bytes,
-                **extra_cursor_params,
+                **dict(extra_cursor_params),
             )
             try:
                 yield cursor
