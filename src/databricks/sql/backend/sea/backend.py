@@ -130,14 +130,40 @@ class SeaDatabricksClient(DatabricksClient):
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
-        # Initialize ThriftHttpClient
+        # Extract retry policy parameters
+        retry_policy = kwargs.get("_retry_policy", None)
+        retry_stop_after_attempts_count = kwargs.get(
+            "_retry_stop_after_attempts_count", 30
+        )
+        retry_stop_after_attempts_duration = kwargs.get(
+            "_retry_stop_after_attempts_duration", 600
+        )
+        retry_delay_min = kwargs.get("_retry_delay_min", 1)
+        retry_delay_max = kwargs.get("_retry_delay_max", 60)
+        retry_delay_default = kwargs.get("_retry_delay_default", 5)
+        retry_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
+
+        # Create retry policy if not provided
+        if not retry_policy:
+            from databricks.sql.auth.retry import DatabricksRetryPolicy
+
+            retry_policy = DatabricksRetryPolicy(
+                delay_min=retry_delay_min,
+                delay_max=retry_delay_max,
+                stop_after_attempts_count=retry_stop_after_attempts_count,
+                stop_after_attempts_duration=retry_stop_after_attempts_duration,
+                delay_default=retry_delay_default,
+                force_dangerous_codes=retry_dangerous_codes,
+            )
+
+        # Initialize ThriftHttpClient with retry policy
         thrift_client = THttpClient(
             auth_provider=auth_provider,
             uri_or_host=f"https://{server_hostname}:{port}",
             path=http_path,
             ssl_options=ssl_options,
             max_connections=kwargs.get("max_connections", 1),
-            retry_policy=kwargs.get("_retry_stop_after_attempts_count", 30),
+            retry_policy=retry_policy,
         )
 
         # Set custom headers
@@ -475,48 +501,99 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        response_data = self.http_client.post(
-            path=self.STATEMENT_PATH, data=request.to_dict()
-        )
-        response = ExecuteStatementResponse.from_dict(response_data)
-        statement_id = response.statement_id
-        if not statement_id:
-            raise ServerOperationError(
-                "Failed to execute command: No statement ID returned",
-                {
-                    "operation-id": None,
-                    "diagnostic-info": None,
-                },
+        try:
+            response_data = self.http_client.post(
+                path=self.STATEMENT_PATH, data=request.to_dict()
             )
+            response = ExecuteStatementResponse.from_dict(response_data)
+            statement_id = response.statement_id
 
-        command_id = CommandId.from_sea_statement_id(statement_id)
+            if not statement_id:
+                raise ServerOperationError(
+                    "Failed to execute command: No statement ID returned",
+                    {
+                        "operation-id": None,
+                        "diagnostic-info": None,
+                    },
+                )
 
-        # Store the command ID in the cursor
-        cursor.active_command_id = command_id
+            command_id = CommandId.from_sea_statement_id(statement_id)
 
-        # If async operation, return and let the client poll for results
-        if async_op:
-            return None
+            # Store the command ID in the cursor
+            cursor.active_command_id = command_id
 
-        # For synchronous operation, wait for the statement to complete
-        status = response.status
-        state = status.state
+            # If async operation, return and let the client poll for results
+            if async_op:
+                return None
 
-        # Keep polling until we reach a terminal state
-        while state in [CommandState.PENDING, CommandState.RUNNING]:
-            time.sleep(0.5)  # add a small delay to avoid excessive API calls
-            state = self.get_query_state(command_id)
+            # For synchronous operation, wait for the statement to complete
+            status = response.status
+            state = status.state
 
-        if state != CommandState.SUCCEEDED:
-            raise ServerOperationError(
-                f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
-                {
-                    "operation-id": command_id.to_sea_statement_id(),
-                    "diagnostic-info": None,
-                },
-            )
+            # Keep polling until we reach a terminal state
+            while state in [CommandState.PENDING, CommandState.RUNNING]:
+                time.sleep(0.5)  # add a small delay to avoid excessive API calls
+                state = self.get_query_state(command_id)
 
-        return self.get_execution_result(command_id, cursor)
+            if state != CommandState.SUCCEEDED:
+                error_message = (
+                    status.error.message if status.error else "Unknown error"
+                )
+                error_code = status.error.error_code if status.error else None
+
+                # Map error codes to appropriate exceptions to match Thrift behavior
+                from databricks.sql.exc import (
+                    DatabaseError,
+                    ProgrammingError,
+                    OperationalError,
+                )
+
+                if (
+                    error_code == "SYNTAX_ERROR"
+                    or "syntax error" in error_message.lower()
+                ):
+                    raise DatabaseError(
+                        f"Syntax error in SQL statement: {error_message}"
+                    )
+                elif error_code == "TEMPORARILY_UNAVAILABLE":
+                    raise OperationalError(
+                        f"Service temporarily unavailable: {error_message}"
+                    )
+                elif error_code == "PERMISSION_DENIED":
+                    raise OperationalError(f"Permission denied: {error_message}")
+                else:
+                    raise ServerOperationError(
+                        f"Statement execution failed: {error_message}",
+                        {
+                            "operation-id": command_id.to_sea_statement_id(),
+                            "diagnostic-info": None,
+                        },
+                    )
+
+            return self.get_execution_result(command_id, cursor)
+
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import DatabaseError, OperationalError, RequestError
+
+            if isinstance(e, (DatabaseError, OperationalError, RequestError)):
+                # Pass through these exceptions as they're already properly typed
+                raise
+            elif "syntax error" in str(e).lower():
+                # Syntax errors
+                raise DatabaseError(f"Syntax error in SQL statement: {str(e)}")
+            elif "permission denied" in str(e).lower():
+                # Permission errors
+                raise OperationalError(f"Permission denied: {str(e)}")
+            elif "database" in str(e).lower() and "not found" in str(e).lower():
+                # Database not found errors
+                raise DatabaseError(f"Database not found: {str(e)}")
+            elif "table" in str(e).lower() and "not found" in str(e).lower():
+                # Table not found errors
+                raise DatabaseError(f"Table not found: {str(e)}")
+            else:
+                # Generic operational errors
+                raise OperationalError(f"Error executing command: {str(e)}")
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
