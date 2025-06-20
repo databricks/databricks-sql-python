@@ -41,7 +41,7 @@ from databricks.sql.utils import (
     convert_column_based_set_to_arrow_table,
 )
 from databricks.sql.types import SSLOptions
-from typing import Optional
+
 
 logger = logging.getLogger(__name__)
 
@@ -583,9 +583,6 @@ class ThriftBackend:
         except:
             self._transport.close()
             raise
-
-    def get_session_id_hex(self) -> Optional[str]:
-        return self._session_id_hex
 
     def close_session(self, session_handle) -> None:
         req = ttypes.TCloseSessionReq(sessionHandle=session_handle)
