@@ -330,61 +330,15 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             else:
                 raise ValueError("No response received from server")
 
-        except urllib3.exceptions.MaxRetryError as e:
-            # Special handling for test_retry_max_count_not_exceeded
-            if "too many 404 error responses" in str(e) and endpoint_path == "/api/2.0/sql/sessions":
-                raise
-                
-            # Handle other MaxRetryError cases
-            error_message = f"REST HTTP request failed: {str(e)}"
-            logger.error(error_message)
-            
-            # Create context dictionary similar to what ThriftBackend uses
-            context = {
-                "method": method,
-                "endpoint": endpoint_path,
-                "http-code": getattr(self, "code", None),
-                "original-exception": e,
-            }
-            
-            # Special handling for test_retry_max_duration_not_exceeded and test_retry_exponential_backoff
-            if "Retry-After" in str(e) and "would exceed" in str(e):
-                from databricks.sql.exc import MaxRetryDurationError, RequestError
-                # Create a MaxRetryDurationError
-                max_retry_duration_error = MaxRetryDurationError(
-                    f"Retry request would exceed Retry policy max retry duration"
-                )
-                
-                # Create a RequestError with the MaxRetryDurationError as the second argument
-                # This is a hack to make the test pass, but it's necessary because the test
-                # expects a specific structure for the exception
-                error = RequestError(error_message, context, e)
-                error.args = (error_message, max_retry_duration_error)
-                raise error
-            
-            # For all other MaxRetryError cases
-            from databricks.sql.exc import RequestError
-            error = RequestError(error_message, context, e)
-            error.args = (error_message, e)
-            raise error
-            
+        except urllib3.exceptions.MaxRetryError:
+            # Let MaxRetryError pass through without wrapping for test compatibility
+            raise
         except urllib3.exceptions.HTTPError as e:
             error_message = f"REST HTTP request failed: {str(e)}"
             logger.error(error_message)
-            
-            # Create context dictionary similar to what ThriftBackend uses
-            context = {
-                "method": method,
-                "endpoint": endpoint_path,
-                "http-code": getattr(self, "code", None),
-                "original-exception": e,
-            }
-            
-            # Create a RequestError with the HTTPError as the second argument
             from databricks.sql.exc import RequestError
-            error = RequestError(error_message, context, e)
-            error.args = (error_message, e)
-            raise error
+
+            raise RequestError(error_message, e)
 
     def _check_rest_response_for_error(
         self, status_code: int, response_data: Optional[bytes]
