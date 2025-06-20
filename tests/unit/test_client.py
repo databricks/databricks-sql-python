@@ -83,6 +83,44 @@ class ClientTestSuite(unittest.TestCase):
         "access_token": "tok",
     }
 
+    def setUp(self):
+        """Set up connection tracking before each test"""
+        self.tracked_connections = []
+        
+        # Store the original connect function
+        self.original_connect = databricks.sql.connect
+        
+        def patched_connect(*args, **kwargs):
+            """Wrapper that tracks all created connections"""
+            conn = self.original_connect(*args, **kwargs)
+            
+            # Skip tracking for finalizer tests to allow garbage collection
+            if not (hasattr(self, '_testMethodName') and 'finalizer' in self._testMethodName):
+                self.tracked_connections.append(conn)
+            
+            return conn
+        
+        # Apply the patch to track connections
+        self.connect_patcher = patch('databricks.sql.connect', patched_connect)
+        self.connect_patcher.start()
+    
+    def tearDown(self):
+        """Clean up connections after each test"""
+        # Close all tracked connections
+        for conn in self.tracked_connections:
+            try:
+                if hasattr(conn, 'open') and conn.open:
+                    conn.close()
+            except Exception as e:
+                # Log the error but don't fail the test
+                print(f"Warning: Error closing connection in tearDown: {e}")
+        
+        # Stop the connect patcher
+        self.connect_patcher.stop()
+        
+        # Clear the tracked connections list
+        self.tracked_connections.clear()
+
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_close_uses_the_correct_session_id(self, mock_client_class):
         instance = mock_client_class.return_value

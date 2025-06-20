@@ -446,7 +446,7 @@ class Connection:
         if close_cursors:
             for cursor in self._cursors:
                 cursor.close()
-
+        print(f"Closing session {self.get_session_id_hex()}")
         logger.info(f"Closing session {self.get_session_id_hex()}")
         if not self.open:
             logger.debug("Session appears to have been closed already")
