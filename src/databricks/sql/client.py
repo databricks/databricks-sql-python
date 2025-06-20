@@ -402,11 +402,6 @@ class Cursor:
 
         self.connection: Connection = connection
 
-        if not connection.session.use_sea and row_limit is not None:
-            logger.warning(
-                "Row limit is only supported for SEA protocol. Ignoring row_limit."
-            )
-
         self.rowcount: int = -1  # Return -1 as this is not supported
         self.buffer_size_bytes: int = result_buffer_size_bytes
         self.active_result_set: Union[ResultSet, None] = None
@@ -802,6 +797,7 @@ class Cursor:
             parameters=prepared_params,
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
+            row_limit=self.row_limit,
         )
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
@@ -858,6 +854,7 @@ class Cursor:
             parameters=prepared_params,
             async_op=True,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
+            row_limit=self.row_limit,
         )
 
         return self

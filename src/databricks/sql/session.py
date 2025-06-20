@@ -76,9 +76,7 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        self.use_sea = kwargs.get("use_sea", False)
         self.backend = self._create_backend(
-            self.use_sea,
             server_hostname,
             http_path,
             all_headers,
@@ -91,7 +89,6 @@ class Session:
 
     def _create_backend(
         self,
-        use_sea: bool,
         server_hostname: str,
         http_path: str,
         all_headers: List[Tuple[str, str]],
@@ -100,6 +97,8 @@ class Session:
         kwargs: dict,
     ) -> DatabricksClient:
         """Create and return the appropriate backend client."""
+        use_sea = kwargs.get("use_sea", False)
+
         databricks_client_class: Type[DatabricksClient]
         if use_sea:
             logger.debug("Creating SEA backend client")
