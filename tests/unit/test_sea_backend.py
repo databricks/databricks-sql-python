@@ -25,9 +25,12 @@ class TestSeaBackend:
     def mock_http_client(self):
         """Create a mock HTTP client."""
         with patch(
-            "databricks.sql.backend.sea.backend.SeaHttpClient"
+            "databricks.sql.backend.sea.backend.SeaHttpClientAdapter"
         ) as mock_client_class:
             mock_client = mock_client_class.return_value
+            mock_client.get.return_value = {}
+            mock_client.post.return_value = {}
+            mock_client.delete.return_value = {}
             yield mock_client
 
     @pytest.fixture
@@ -138,18 +141,18 @@ class TestSeaBackend:
     def test_session_management(self, sea_client, mock_http_client, thrift_session_id):
         """Test session management methods."""
         # Test open_session with minimal parameters
-        mock_http_client._make_request.return_value = {"session_id": "test-session-123"}
+        mock_http_client.post.return_value = {"session_id": "test-session-123"}
         session_id = sea_client.open_session(None, None, None)
         assert isinstance(session_id, SessionId)
         assert session_id.backend_type == BackendType.SEA
         assert session_id.guid == "test-session-123"
-        mock_http_client._make_request.assert_called_with(
-            method="POST", path=sea_client.SESSION_PATH, data={"warehouse_id": "abc123"}
+        mock_http_client.post.assert_called_with(
+            path=sea_client.SESSION_PATH, data={"warehouse_id": "abc123"}
         )
 
         # Test open_session with all parameters
         mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {"session_id": "test-session-456"}
+        mock_http_client.post.return_value = {"session_id": "test-session-456"}
         session_config = {
             "ANSI_MODE": "FALSE",  # Supported parameter
             "STATEMENT_TIMEOUT": "3600",  # Supported parameter
@@ -168,13 +171,13 @@ class TestSeaBackend:
             "catalog": catalog,
             "schema": schema,
         }
-        mock_http_client._make_request.assert_called_with(
-            method="POST", path=sea_client.SESSION_PATH, data=expected_data
+        mock_http_client.post.assert_called_with(
+            path=sea_client.SESSION_PATH, data=expected_data
         )
 
         # Test open_session error handling
         mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {}
+        mock_http_client.post.return_value = {}
         with pytest.raises(Error) as excinfo:
             sea_client.open_session(None, None, None)
         assert "Failed to create session" in str(excinfo.value)
@@ -183,8 +186,7 @@ class TestSeaBackend:
         mock_http_client.reset_mock()
         session_id = SessionId.from_sea_session_id("test-session-789")
         sea_client.close_session(session_id)
-        mock_http_client._make_request.assert_called_with(
-            method="DELETE",
+        mock_http_client.delete.assert_called_with(
             path=sea_client.SESSION_PATH_WITH_ID.format("test-session-789"),
             data={"session_id": "test-session-789", "warehouse_id": "abc123"},
         )
@@ -216,7 +218,7 @@ class TestSeaBackend:
             },
             "result": {"data": [["value1"]]},
         }
-        mock_http_client._make_request.return_value = execute_response
+        mock_http_client.post.return_value = execute_response
 
         with patch.object(
             sea_client, "get_execution_result", return_value="mock_result_set"
@@ -268,7 +270,7 @@ class TestSeaBackend:
             "statement_id": "test-statement-456",
             "status": {"state": "PENDING"},
         }
-        mock_http_client._make_request.return_value = execute_response
+        mock_http_client.post.return_value = execute_response
 
         result = sea_client.execute_command(
             operation="SELECT 1",
@@ -288,7 +290,7 @@ class TestSeaBackend:
 
         # Test async with missing statement ID
         mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {"status": {"state": "PENDING"}}
+        mock_http_client.post.return_value = {"status": {"state": "PENDING"}}
         with pytest.raises(ServerOperationError) as excinfo:
             sea_client.execute_command(
                 operation="SELECT 1",
@@ -321,7 +323,8 @@ class TestSeaBackend:
             "manifest": {"schema": [], "total_row_count": 0, "total_byte_count": 0},
             "result": {"data": []},
         }
-        mock_http_client._make_request.side_effect = [initial_response, poll_response]
+        mock_http_client.post.side_effect = [initial_response]
+        mock_http_client.get.side_effect = [poll_response]
 
         with patch.object(
             sea_client, "get_execution_result", return_value="mock_result_set"
@@ -343,12 +346,12 @@ class TestSeaBackend:
 
         # Test with parameters
         mock_http_client.reset_mock()
-        mock_http_client._make_request.side_effect = None  # Reset side_effect
+        mock_http_client.post.side_effect = None  # Reset side_effect
         execute_response = {
             "statement_id": "test-statement-123",
             "status": {"state": "SUCCEEDED"},
         }
-        mock_http_client._make_request.return_value = execute_response
+        mock_http_client.post.return_value = execute_response
         param = MagicMock()
         param.name = "param1"
         param.value = "value1"
@@ -367,7 +370,7 @@ class TestSeaBackend:
                 async_op=False,
                 enforce_embedded_schema_correctness=False,
             )
-            args, kwargs = mock_http_client._make_request.call_args
+            args, kwargs = mock_http_client.post.call_args
             assert "parameters" in kwargs["data"]
             assert len(kwargs["data"]["parameters"]) == 1
             assert kwargs["data"]["parameters"][0]["name"] == "param1"
@@ -386,7 +389,7 @@ class TestSeaBackend:
                 },
             },
         }
-        mock_http_client._make_request.return_value = error_response
+        mock_http_client.post.return_value = error_response
 
         with patch("time.sleep"):
             with patch.object(
@@ -409,7 +412,7 @@ class TestSeaBackend:
 
         # Test missing statement ID
         mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {"status": {"state": "SUCCEEDED"}}
+        mock_http_client.post.return_value = {"status": {"state": "SUCCEEDED"}}
         with pytest.raises(ServerOperationError) as excinfo:
             sea_client.execute_command(
                 operation="SELECT 1",
@@ -437,10 +440,9 @@ class TestSeaBackend:
     ):
         """Test command management methods."""
         # Test cancel_command
-        mock_http_client._make_request.return_value = {}
+        mock_http_client.post.return_value = {}
         sea_client.cancel_command(sea_command_id)
-        mock_http_client._make_request.assert_called_with(
-            method="POST",
+        mock_http_client.post.assert_called_with(
             path=sea_client.CANCEL_STATEMENT_PATH_WITH_ID.format("test-statement-123"),
             data={"statement_id": "test-statement-123"},
         )
@@ -453,8 +455,7 @@ class TestSeaBackend:
         # Test close_command
         mock_http_client.reset_mock()
         sea_client.close_command(sea_command_id)
-        mock_http_client._make_request.assert_called_with(
-            method="DELETE",
+        mock_http_client.delete.assert_called_with(
             path=sea_client.STATEMENT_PATH_WITH_ID.format("test-statement-123"),
             data={"statement_id": "test-statement-123"},
         )
@@ -466,16 +467,14 @@ class TestSeaBackend:
 
         # Test get_query_state
         mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {
+        mock_http_client.get.return_value = {
             "statement_id": "test-statement-123",
             "status": {"state": "RUNNING"},
         }
         state = sea_client.get_query_state(sea_command_id)
         assert state == CommandState.RUNNING
-        mock_http_client._make_request.assert_called_with(
-            method="GET",
+        mock_http_client.get.assert_called_with(
             path=sea_client.STATEMENT_PATH_WITH_ID.format("test-statement-123"),
-            data={"statement_id": "test-statement-123"},
         )
 
         # Test get_query_state with invalid ID
@@ -513,7 +512,7 @@ class TestSeaBackend:
                 "data_array": [["1"]],
             },
         }
-        mock_http_client._make_request.return_value = sea_response
+        mock_http_client.get.return_value = sea_response
         result = sea_client.get_execution_result(sea_command_id, mock_cursor)
         assert result.command_id.to_sea_statement_id() == "test-statement-123"
         assert result.status == CommandState.SUCCEEDED
