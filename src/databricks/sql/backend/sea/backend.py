@@ -10,6 +10,7 @@ from databricks.sql.backend.sea.utils.constants import (
     ResultDisposition,
     ResultCompression,
     WaitTimeout,
+    MetadataCommands,
 )
 
 if TYPE_CHECKING:
@@ -635,7 +636,7 @@ class SeaDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         """Get available catalogs by executing 'SHOW CATALOGS'."""
         result = self.execute_command(
-            operation="SHOW CATALOGS",
+            operation=MetadataCommands.SHOW_CATALOGS.value,
             session_id=session_id,
             max_rows=max_rows,
             max_bytes=max_bytes,
@@ -662,10 +663,10 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_schemas")
 
-        operation = f"SHOW SCHEMAS IN {catalog_name}"
+        operation = MetadataCommands.SHOW_SCHEMAS.value.format(catalog_name)
 
         if schema_name:
-            operation += f" LIKE '{schema_name}'"
+            operation += MetadataCommands.LIKE_PATTERN.value.format(schema_name)
 
         result = self.execute_command(
             operation=operation,
@@ -697,17 +698,19 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_tables")
 
-        operation = "SHOW TABLES IN " + (
-            "ALL CATALOGS"
+        operation = (
+            MetadataCommands.SHOW_TABLES_ALL_CATALOGS.value
             if catalog_name in [None, "*", "%"]
-            else f"CATALOG {catalog_name}"
+            else MetadataCommands.SHOW_TABLES.value.format(
+                MetadataCommands.CATALOG_SPECIFIC.value.format(catalog_name)
+            )
         )
 
         if schema_name:
-            operation += f" SCHEMA LIKE '{schema_name}'"
+            operation += MetadataCommands.SCHEMA_LIKE_PATTERN.value.format(schema_name)
 
         if table_name:
-            operation += f" LIKE '{table_name}'"
+            operation += MetadataCommands.LIKE_PATTERN.value.format(table_name)
 
         result = self.execute_command(
             operation=operation,
@@ -745,16 +748,16 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_columns")
 
-        operation = f"SHOW COLUMNS IN CATALOG {catalog_name}"
+        operation = MetadataCommands.SHOW_COLUMNS.value.format(catalog_name)
 
         if schema_name:
-            operation += f" SCHEMA LIKE '{schema_name}'"
+            operation += MetadataCommands.SCHEMA_LIKE_PATTERN.value.format(schema_name)
 
         if table_name:
-            operation += f" TABLE LIKE '{table_name}'"
+            operation += MetadataCommands.TABLE_LIKE_PATTERN.value.format(table_name)
 
         if column_name:
-            operation += f" LIKE '{column_name}'"
+            operation += MetadataCommands.LIKE_PATTERN.value.format(column_name)
 
         result = self.execute_command(
             operation=operation,
