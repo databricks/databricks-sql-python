@@ -348,21 +348,19 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             response_data: Raw response data
 
         Raises:
-            RequestError: If the response indicates an error
+            Various exceptions based on the error type
         """
         if status_code >= 400:
             error_message = f"REST HTTP request failed with status {status_code}"
             error_code = None
-
+            
             # Try to extract error details from JSON response
             if response_data:
                 try:
                     error_details = json.loads(response_data.decode("utf-8"))
                     if isinstance(error_details, dict):
                         if "message" in error_details:
-                            error_message = (
-                                f"{error_message}: {error_details['message']}"
-                            )
+                            error_message = f"{error_message}: {error_details['message']}"
                         if "error_code" in error_details:
                             error_code = error_details["error_code"]
                         elif "errorCode" in error_details:
@@ -378,68 +376,64 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
                 logger.error(f"Request failed (status {status_code}): No response data")
 
             from databricks.sql.exc import (
-                RequestError,
-                OperationalError,
+                RequestError, 
+                OperationalError, 
                 DatabaseError,
                 SessionAlreadyClosedError,
                 CursorAlreadyClosedError,
+                NonRecoverableNetworkError,
+                UnsafeToRetryError
             )
-
-            # Map status codes to appropriate exceptions to match Thrift behavior
+            
+            # Map HTTP status codes to appropriate exceptions
             if status_code == 429:
-                # Rate limiting errors
+                # Rate limiting errors - similar to what ThriftDatabricksClient does
                 retry_after = None
                 if self.headers and "Retry-After" in self.headers:
                     retry_after = self.headers["Retry-After"]
-
+                    
                 rate_limit_msg = f"Maximum rate has been exceeded. Please reduce the rate of requests and try again"
                 if retry_after:
                     rate_limit_msg += f" after {retry_after} seconds."
                 raise RequestError(rate_limit_msg)
-
+                
             elif status_code == 503:
                 # Service unavailable errors
-                raise OperationalError(
-                    "TEMPORARILY_UNAVAILABLE: Service temporarily unavailable"
-                )
-
+                raise OperationalError("TEMPORARILY_UNAVAILABLE: Service temporarily unavailable")
+                
             elif status_code == 404:
                 # Not found errors - could be session or operation already closed
                 if error_message and "session" in error_message.lower():
-                    raise SessionAlreadyClosedError(
-                        "Session was closed by a prior request"
-                    )
-                elif error_message and (
-                    "operation" in error_message.lower()
-                    or "statement" in error_message.lower()
-                ):
-                    raise CursorAlreadyClosedError(
-                        "Operation was canceled by a prior request"
-                    )
+                    raise SessionAlreadyClosedError("Session was closed by a prior request")
+                elif error_message and ("operation" in error_message.lower() or "statement" in error_message.lower()):
+                    raise CursorAlreadyClosedError("Operation was canceled by a prior request")
                 else:
                     raise RequestError(error_message)
-
+                    
             elif status_code == 401:
                 # Authentication errors
-                raise OperationalError(
-                    "Authentication failed. Please check your credentials."
-                )
-
+                raise OperationalError("Authentication failed. Please check your credentials.")
+                
             elif status_code == 403:
                 # Permission errors
-                raise OperationalError(
-                    "Permission denied. You do not have access to this resource."
-                )
-
+                raise OperationalError("Permission denied. You do not have access to this resource.")
+                
             elif status_code == 400:
                 # Bad request errors - often syntax errors
                 if error_message and "syntax" in error_message.lower():
-                    raise DatabaseError(
-                        f"Syntax error in SQL statement: {error_message}"
-                    )
+                    raise DatabaseError(f"Syntax error in SQL statement: {error_message}")
                 else:
                     raise RequestError(error_message)
-
+                    
+            elif status_code == 501:
+                # Not implemented errors
+                raise NonRecoverableNetworkError(f"Not implemented: {error_message}")
+                
+            elif status_code == 502 or status_code == 504:
+                # Bad gateway or gateway timeout errors
+                # These are considered dangerous to retry for ExecuteStatement
+                raise UnsafeToRetryError(f"Gateway error: {error_message}")
+                
             else:
                 # Generic errors
                 raise RequestError(error_message)
