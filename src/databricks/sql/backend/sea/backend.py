@@ -130,6 +130,32 @@ class SeaDatabricksClient(DatabricksClient):
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
+        # Extract retry policy parameters
+        retry_policy = kwargs.get("_retry_policy", None)
+        retry_stop_after_attempts_count = kwargs.get(
+            "_retry_stop_after_attempts_count", 30
+        )
+        retry_stop_after_attempts_duration = kwargs.get(
+            "_retry_stop_after_attempts_duration", 600
+        )
+        retry_delay_min = kwargs.get("_retry_delay_min", 1)
+        retry_delay_max = kwargs.get("_retry_delay_max", 60)
+        retry_delay_default = kwargs.get("_retry_delay_default", 5)
+        retry_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
+
+        # Create retry policy if not provided
+        if not retry_policy:
+            from databricks.sql.auth.retry import DatabricksRetryPolicy
+
+            retry_policy = DatabricksRetryPolicy(
+                delay_min=retry_delay_min,
+                delay_max=retry_delay_max,
+                stop_after_attempts_count=retry_stop_after_attempts_count,
+                stop_after_attempts_duration=retry_stop_after_attempts_duration,
+                delay_default=retry_delay_default,
+                force_dangerous_codes=retry_dangerous_codes,
+            )
+
         # Initialize ThriftHttpClient
         thrift_client = THttpClient(
             auth_provider=auth_provider,
@@ -137,7 +163,7 @@ class SeaDatabricksClient(DatabricksClient):
             path=http_path,
             ssl_options=ssl_options,
             max_connections=kwargs.get("max_connections", 1),
-            retry_policy=kwargs.get("_retry_stop_after_attempts_count", 30),
+            retry_policy=retry_policy,  # Use the configured retry policy
         )
 
         # Set custom headers
@@ -229,22 +255,31 @@ class SeaDatabricksClient(DatabricksClient):
             schema=schema,
         )
 
-        response = self.http_client.post(
-            path=self.SESSION_PATH, data=request_data.to_dict()
-        )
-
-        session_response = CreateSessionResponse.from_dict(response)
-        session_id = session_response.session_id
-        if not session_id:
-            raise ServerOperationError(
-                "Failed to create session: No session ID returned",
-                {
-                    "operation-id": None,
-                    "diagnostic-info": None,
-                },
+        try:
+            response = self.http_client.post(
+                path=self.SESSION_PATH, data=request_data.to_dict()
             )
 
-        return SessionId.from_sea_session_id(session_id)
+            session_response = CreateSessionResponse.from_dict(response)
+            session_id = session_response.session_id
+            if not session_id:
+                raise ServerOperationError(
+                    "Failed to create session: No session ID returned",
+                    {
+                        "operation-id": None,
+                        "diagnostic-info": None,
+                    },
+                )
+
+            return SessionId.from_sea_session_id(session_id)
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import RequestError, OperationalError
+
+            if isinstance(e, (RequestError, ServerOperationError)):
+                raise
+            else:
+                raise OperationalError(f"Error opening session: {str(e)}")
 
     def close_session(self, session_id: SessionId) -> None:
         """
@@ -269,10 +304,25 @@ class SeaDatabricksClient(DatabricksClient):
             session_id=sea_session_id,
         )
 
-        self.http_client.delete(
-            path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
-            data=request_data.to_dict(),
-        )
+        try:
+            self.http_client.delete(
+                path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
+                data=request_data.to_dict(),
+            )
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import (
+                RequestError,
+                OperationalError,
+                SessionAlreadyClosedError,
+            )
+
+            if isinstance(e, RequestError) and "404" in str(e):
+                raise SessionAlreadyClosedError("Session is already closed")
+            elif isinstance(e, (RequestError, ServerOperationError)):
+                raise
+            else:
+                raise OperationalError(f"Error closing session: {str(e)}")
 
     @staticmethod
     def get_default_session_configuration_value(name: str) -> Optional[str]:
@@ -475,48 +525,57 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        response_data = self.http_client.post(
-            path=self.STATEMENT_PATH, data=request.to_dict()
-        )
-        response = ExecuteStatementResponse.from_dict(response_data)
-        statement_id = response.statement_id
-        if not statement_id:
-            raise ServerOperationError(
-                "Failed to execute command: No statement ID returned",
-                {
-                    "operation-id": None,
-                    "diagnostic-info": None,
-                },
+        try:
+            response_data = self.http_client.post(
+                path=self.STATEMENT_PATH, data=request.to_dict()
             )
+            response = ExecuteStatementResponse.from_dict(response_data)
+            statement_id = response.statement_id
+            if not statement_id:
+                raise ServerOperationError(
+                    "Failed to execute command: No statement ID returned",
+                    {
+                        "operation-id": None,
+                        "diagnostic-info": None,
+                    },
+                )
 
-        command_id = CommandId.from_sea_statement_id(statement_id)
+            command_id = CommandId.from_sea_statement_id(statement_id)
 
-        # Store the command ID in the cursor
-        cursor.active_command_id = command_id
+            # Store the command ID in the cursor
+            cursor.active_command_id = command_id
 
-        # If async operation, return and let the client poll for results
-        if async_op:
-            return None
+            # If async operation, return and let the client poll for results
+            if async_op:
+                return None
 
-        # For synchronous operation, wait for the statement to complete
-        status = response.status
-        state = status.state
+            # For synchronous operation, wait for the statement to complete
+            status = response.status
+            state = status.state
 
-        # Keep polling until we reach a terminal state
-        while state in [CommandState.PENDING, CommandState.RUNNING]:
-            time.sleep(0.5)  # add a small delay to avoid excessive API calls
-            state = self.get_query_state(command_id)
+            # Keep polling until we reach a terminal state
+            while state in [CommandState.PENDING, CommandState.RUNNING]:
+                time.sleep(0.5)  # add a small delay to avoid excessive API calls
+                state = self.get_query_state(command_id)
 
-        if state != CommandState.SUCCEEDED:
-            raise ServerOperationError(
-                f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
-                {
-                    "operation-id": command_id.to_sea_statement_id(),
-                    "diagnostic-info": None,
-                },
-            )
+            if state != CommandState.SUCCEEDED:
+                raise ServerOperationError(
+                    f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
+                    {
+                        "operation-id": command_id.to_sea_statement_id(),
+                        "diagnostic-info": None,
+                    },
+                )
 
-        return self.get_execution_result(command_id, cursor)
+            return self.get_execution_result(command_id, cursor)
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import RequestError, OperationalError
+
+            if isinstance(e, (RequestError, ServerOperationError)):
+                raise
+            else:
+                raise OperationalError(f"Error executing command: {str(e)}")
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
@@ -535,10 +594,25 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
-        self.http_client.post(
-            path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
-        )
+        try:
+            self.http_client.post(
+                path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+                data=request.to_dict(),
+            )
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import RequestError, OperationalError
+
+            if isinstance(e, RequestError) and "404" in str(e):
+                # Operation was already closed, so we can ignore this
+                logger.warning(
+                    f"Attempted to cancel a command that was already closed: {sea_statement_id}"
+                )
+                return
+            elif isinstance(e, (RequestError, ServerOperationError)):
+                raise
+            else:
+                raise OperationalError(f"Error canceling command: {str(e)}")
 
     def close_command(self, command_id: CommandId) -> None:
         """
@@ -557,10 +631,25 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
-        self.http_client.delete(
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
-        )
+        try:
+            self.http_client.delete(
+                path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+                data=request.to_dict(),
+            )
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import (
+                RequestError,
+                OperationalError,
+                CursorAlreadyClosedError,
+            )
+
+            if isinstance(e, RequestError) and "404" in str(e):
+                raise CursorAlreadyClosedError("Cursor is already closed")
+            elif isinstance(e, (RequestError, ServerOperationError)):
+                raise
+            else:
+                raise OperationalError(f"Error closing command: {str(e)}")
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         """
@@ -582,13 +671,28 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = GetStatementRequest(statement_id=sea_statement_id)
-        response_data = self.http_client.get(
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-        )
+        try:
+            response_data = self.http_client.get(
+                path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            )
 
-        # Parse the response
-        response = GetStatementResponse.from_dict(response_data)
-        return response.status.state
+            # Parse the response
+            response = GetStatementResponse.from_dict(response_data)
+            return response.status.state
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import RequestError, OperationalError
+
+            if isinstance(e, RequestError) and "404" in str(e):
+                # If the operation is not found, it was likely already closed
+                logger.warning(
+                    f"Operation not found when checking state: {sea_statement_id}"
+                )
+                return CommandState.CANCELLED
+            elif isinstance(e, (RequestError, ServerOperationError)):
+                raise
+            else:
+                raise OperationalError(f"Error getting query state: {str(e)}")
 
     def get_execution_result(
         self,
@@ -617,30 +721,39 @@ class SeaDatabricksClient(DatabricksClient):
         # Create the request model
         request = GetStatementRequest(statement_id=sea_statement_id)
 
-        # Get the statement result
-        response_data = self.http_client.get(
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-        )
+        try:
+            # Get the statement result
+            response_data = self.http_client.get(
+                path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            )
 
-        # Create and return a SeaResultSet
-        from databricks.sql.result_set import SeaResultSet
+            # Create and return a SeaResultSet
+            from databricks.sql.result_set import SeaResultSet
 
-        # Convert the response to an ExecuteResponse and extract result data
-        (
-            execute_response,
-            result_data,
-            manifest,
-        ) = self._results_message_to_execute_response(response_data, command_id)
+            # Convert the response to an ExecuteResponse and extract result data
+            (
+                execute_response,
+                result_data,
+                manifest,
+            ) = self._results_message_to_execute_response(response_data, command_id)
 
-        return SeaResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            sea_client=self,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-            arraysize=cursor.arraysize,
-            result_data=result_data,
-            manifest=manifest,
-        )
+            return SeaResultSet(
+                connection=cursor.connection,
+                execute_response=execute_response,
+                sea_client=self,
+                buffer_size_bytes=cursor.buffer_size_bytes,
+                arraysize=cursor.arraysize,
+                result_data=result_data,
+                manifest=manifest,
+            )
+        except Exception as e:
+            # Map exceptions to match Thrift behavior
+            from databricks.sql.exc import RequestError, OperationalError
+
+            if isinstance(e, (RequestError, ServerOperationError)):
+                raise
+            else:
+                raise OperationalError(f"Error getting execution result: {str(e)}")
 
     # == Metadata Operations ==
 
