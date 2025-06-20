@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class ResultSetFilter:
     """
-    A general-purpose filter for result sets that can be applied to any backend.
+    A general-purpose filter for result sets.
 
     This class provides methods to filter result sets based on various criteria,
     similar to the client-side filtering in the JDBC connector.
