@@ -130,35 +130,14 @@ class SeaDatabricksClient(DatabricksClient):
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
-        # Extract retry policy parameters
-        retry_policy = kwargs.get("_retry_policy", None)
-        retry_stop_after_attempts_count = kwargs.get("_retry_stop_after_attempts_count", 30)
-        retry_stop_after_attempts_duration = kwargs.get("_retry_stop_after_attempts_duration", 600)
-        retry_delay_min = kwargs.get("_retry_delay_min", 1)
-        retry_delay_max = kwargs.get("_retry_delay_max", 60)
-        retry_delay_default = kwargs.get("_retry_delay_default", 5)
-        retry_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
-        
-        # Create retry policy if not provided
-        if not retry_policy:
-            from databricks.sql.auth.retry import DatabricksRetryPolicy
-            retry_policy = DatabricksRetryPolicy(
-                delay_min=retry_delay_min,
-                delay_max=retry_delay_max,
-                stop_after_attempts_count=retry_stop_after_attempts_count,
-                stop_after_attempts_duration=retry_stop_after_attempts_duration,
-                delay_default=retry_delay_default,
-                force_dangerous_codes=retry_dangerous_codes,
-            )
-
-        # Initialize ThriftHttpClient with retry policy
+        # Initialize ThriftHttpClient
         thrift_client = THttpClient(
             auth_provider=auth_provider,
             uri_or_host=f"https://{server_hostname}:{port}",
             path=http_path,
             ssl_options=ssl_options,
             max_connections=kwargs.get("max_connections", 1),
-            retry_policy=retry_policy,
+            retry_policy=kwargs.get("_retry_stop_after_attempts_count", 30),
         )
 
         # Set custom headers
@@ -415,7 +394,7 @@ class SeaDatabricksClient(DatabricksClient):
             description=description,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
-            is_staging_operation=manifest_obj.is_volume_operation,
+            is_staging_operation=False,
             arrow_schema_bytes=None,
             result_format=manifest_obj.format,
         )
@@ -496,56 +475,48 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        try:
-            response_data = self.http_client.post(
-                path=self.STATEMENT_PATH, data=request.to_dict()
+        response_data = self.http_client.post(
+            path=self.STATEMENT_PATH, data=request.to_dict()
+        )
+        response = ExecuteStatementResponse.from_dict(response_data)
+        statement_id = response.statement_id
+        if not statement_id:
+            raise ServerOperationError(
+                "Failed to execute command: No statement ID returned",
+                {
+                    "operation-id": None,
+                    "diagnostic-info": None,
+                },
             )
-            response = ExecuteStatementResponse.from_dict(response_data)
-            statement_id = response.statement_id
-            if not statement_id:
-                raise ServerOperationError(
-                    "Failed to execute command: No statement ID returned",
-                    {
-                        "operation-id": None,
-                        "diagnostic-info": None,
-                    },
-                )
 
-            command_id = CommandId.from_sea_statement_id(statement_id)
+        command_id = CommandId.from_sea_statement_id(statement_id)
 
-            # Store the command ID in the cursor
-            cursor.active_command_id = command_id
+        # Store the command ID in the cursor
+        cursor.active_command_id = command_id
 
-            # If async operation, return and let the client poll for results
-            if async_op:
-                return None
+        # If async operation, return and let the client poll for results
+        if async_op:
+            return None
 
-            # For synchronous operation, wait for the statement to complete
-            status = response.status
-            state = status.state
+        # For synchronous operation, wait for the statement to complete
+        status = response.status
+        state = status.state
 
-            # Keep polling until we reach a terminal state
-            while state in [CommandState.PENDING, CommandState.RUNNING]:
-                time.sleep(0.5)  # add a small delay to avoid excessive API calls
-                state = self.get_query_state(command_id)
+        # Keep polling until we reach a terminal state
+        while state in [CommandState.PENDING, CommandState.RUNNING]:
+            time.sleep(0.5)  # add a small delay to avoid excessive API calls
+            state = self.get_query_state(command_id)
 
-            if state != CommandState.SUCCEEDED:
-                raise ServerOperationError(
-                    f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
-                    {
-                        "operation-id": command_id.to_sea_statement_id(),
-                        "diagnostic-info": None,
-                    },
-                )
+        if state != CommandState.SUCCEEDED:
+            raise ServerOperationError(
+                f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
+                {
+                    "operation-id": command_id.to_sea_statement_id(),
+                    "diagnostic-info": None,
+                },
+            )
 
-            return self.get_execution_result(command_id, cursor)
-        except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import RequestError, OperationalError
-            if isinstance(e, (ServerOperationError, RequestError)):
-                raise
-            else:
-                raise OperationalError(f"Error executing command: {str(e)}")
+        return self.get_execution_result(command_id, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
