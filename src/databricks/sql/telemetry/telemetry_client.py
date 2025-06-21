@@ -367,15 +367,36 @@ class TelemetryClientFactory:
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
 
+            print(
+                "\nWAITING: Initializing telemetry client: %s",
+                session_id_hex,
+                flush=True,
+            )
             with TelemetryClientFactory._lock:
+                print(
+                    "\nACQUIRED: Initializing telemetry client, got lock: %s",
+                    session_id_hex,
+                    flush=True,
+                )
                 TelemetryClientFactory._initialize()
+                print(
+                    "\n    TelemetryClientFactory initialized: %s",
+                    session_id_hex,
+                    flush=True,
+                )
 
                 if session_id_hex not in TelemetryClientFactory._clients:
+                    print(
+                        "\n    Session ID not in clients: %s",
+                        session_id_hex,
+                        flush=True,
+                    )
                     logger.debug(
                         "Creating new TelemetryClient for connection %s",
                         session_id_hex,
                     )
                     if telemetry_enabled:
+                        print("\n    Telemetry enabled: %s", session_id_hex, flush=True)
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = TelemetryClient(
@@ -385,11 +406,41 @@ class TelemetryClientFactory:
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
                         )
+                        print(
+                            "\n    Telemetry client initialized: %s",
+                            session_id_hex,
+                            flush=True,
+                        )
                     else:
+                        print(
+                            "\n    Telemetry disabled: %s", session_id_hex, flush=True
+                        )
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
+                        print(
+                            "\n    Noop Telemetry client initialized: %s",
+                            session_id_hex,
+                            flush=True,
+                        )
+                else:
+                    print(
+                        "\n    Session ID already in clients: %s",
+                        session_id_hex,
+                        flush=True,
+                    )
+                print(
+                    "\nRELEASED: Telemetry client initialized: %s",
+                    session_id_hex,
+                    flush=True,
+                )
         except Exception as e:
+            print(
+                "\nERROR: Failed to initialize telemetry client: %s due to %s",
+                session_id_hex,
+                e,
+                flush=True,
+            )
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
             TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
@@ -413,8 +464,13 @@ class TelemetryClientFactory:
     @staticmethod
     def close(session_id_hex):
         """Close and remove the telemetry client for a specific connection"""
-
+        print("\nWAITING: Closing telemetry client: %s", session_id_hex, flush=True)
         with TelemetryClientFactory._lock:
+            print(
+                "\nACQUIRED: Closing telemetry client, got lock: %s",
+                session_id_hex,
+                flush=True,
+            )
             # if (
             #     telemetry_client := TelemetryClientFactory._clients.pop(
             #         session_id_hex, None
@@ -432,6 +488,16 @@ class TelemetryClientFactory:
                 logger.debug(
                     "No more telemetry clients, shutting down thread pool executor"
                 )
+                print(
+                    "\nSHUTDOWN: Shutting down thread pool executor: %s",
+                    session_id_hex,
+                    flush=True,
+                )
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
+            print(
+                "\nRELEASED: Thread pool executor shut down: %s",
+                session_id_hex,
+                flush=True,
+            )
