@@ -440,7 +440,9 @@ class Connection:
 
     def close(self) -> None:
         """Close the underlying session and mark all associated cursors as closed."""
-        print("Connection close: session_id_hex: ", self.get_session_id_hex(), flush=True)
+        print(
+            "Connection close: session_id_hex: ", self.get_session_id_hex(), flush=True
+        )
         self._close()
 
     def _close(self, close_cursors=True) -> None:
