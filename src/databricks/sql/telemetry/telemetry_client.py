@@ -31,81 +31,6 @@ from abc import ABC, abstractmethod
 logger = logging.getLogger(__name__)
 
 
-# class DebugLock:
-#     """A wrapper around threading.Lock that provides detailed debugging for lock acquisition/release"""
-
-#     def __init__(self, name: str = "DebugLock"):
-#         self._lock = threading.Lock()
-#         self._name = name
-#         self._owner: Optional[str] = None
-#         self._waiters: List[str] = []
-#         self._debug_logger = logging.getLogger(f"{__name__}.{name}")
-#         # Ensure debug logging is visible
-#         if not self._debug_logger.handlers:
-#             handler = logging.StreamHandler()
-#             formatter = logging.Formatter(
-#                 ":lock: %(asctime)s [%(threadName)s-%(thread)d] LOCK-%(name)s: %(message)s"
-#             )
-#             handler.setFormatter(formatter)
-#             self._debug_logger.addHandler(handler)
-#             self._debug_logger.setLevel(logging.DEBUG)
-
-#     def acquire(self, blocking=True, timeout=-1):
-#         current = threading.current_thread()
-#         thread_info = f"{current.name}-{current.ident}"
-#         if self._owner:
-#             self._debug_logger.warning(
-#                 f": WAITING: {thread_info} waiting for lock held by {self._owner}"
-#             )
-#             self._waiters.append(thread_info)
-#         else:
-#             self._debug_logger.debug(
-#                 f": TRYING: {thread_info} attempting to acquire lock"
-#             )
-#         # Try to acquire the lock
-#         acquired = self._lock.acquire(blocking, timeout)
-#         if acquired:
-#             self._owner = thread_info
-#             self._debug_logger.info(f": ACQUIRED: {thread_info} got the lock")
-#             if self._waiters:
-#                 self._debug_logger.info(
-#                     f": WAITERS: {len(self._waiters)} threads waiting: {self._waiters}"
-#                 )
-#         else:
-#             self._debug_logger.error(
-#                 f": FAILED: {thread_info} failed to acquire lock (timeout)"
-#             )
-#             if thread_info in self._waiters:
-#                 self._waiters.remove(thread_info)
-#         return acquired
-
-#     def release(self):
-#         current = threading.current_thread()
-#         thread_info = f"{current.name}-{current.ident}"
-#         if self._owner != thread_info:
-#             self._debug_logger.error(
-#                 f": ERROR: {thread_info} trying to release lock owned by {self._owner}"
-#             )
-#         else:
-#             self._debug_logger.info(f": RELEASED: {thread_info} released the lock")
-#             self._owner = None
-#             # Remove from waiters if present
-#             if thread_info in self._waiters:
-#                 self._waiters.remove(thread_info)
-#             if self._waiters:
-#                 self._debug_logger.info(
-#                     f": NEXT: {len(self._waiters)} threads still waiting: {self._waiters}"
-#                 )
-#         self._lock.release()
-
-#     def __enter__(self):
-#         self.acquire()
-#         return self
-
-#     def __exit__(self, exc_type, exc_val, exc_tb):
-#         self.release()
-
-
 class TelemetryHelper:
     """Helper class for getting telemetry related information."""
 
@@ -430,10 +355,7 @@ class TelemetryClientFactory:
     ] = {}  # Map of session_id_hex -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
-    _lock = threading.Lock()  # Thread safety for factory operations
-    # _lock = DebugLock(
-    #     "TelemetryClientFactory"
-    # )  # Thread safety for factory operations with debugging
+    _lock = threading.RLock()  # Thread safety for factory operations
     _original_excepthook = None
     _excepthook_installed = False
 
@@ -465,7 +387,6 @@ class TelemetryClientFactory:
     def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
         """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
-        print("Handling unhandled exception: %s", exc_type.__name__)
         clients_to_close = list(cls._clients.values())
         for client in clients_to_close:
             client.close()
@@ -483,36 +404,15 @@ class TelemetryClientFactory:
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
-            print(
-                "\nWAITING: Initializing telemetry client: %s",
-                session_id_hex,
-                flush=True,
-            )
             with TelemetryClientFactory._lock:
-                print(
-                    "\nACQUIRED: Initializing telemetry client, got lock: %s",
-                    session_id_hex,
-                    flush=True,
-                )
                 TelemetryClientFactory._initialize()
-                print(
-                    "\n    TelemetryClientFactory initialized: %s",
-                    session_id_hex,
-                    flush=True,
-                )
 
                 if session_id_hex not in TelemetryClientFactory._clients:
-                    print(
-                        "\n    Session ID not in clients: %s",
-                        session_id_hex,
-                        flush=True,
-                    )
                     logger.debug(
                         "Creating new TelemetryClient for connection %s",
                         session_id_hex,
                     )
                     if telemetry_enabled:
-                        print("\n    Telemetry enabled: %s", session_id_hex, flush=True)
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = TelemetryClient(
@@ -522,41 +422,11 @@ class TelemetryClientFactory:
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
                         )
-                        print(
-                            "\n    Telemetry client initialized: %s",
-                            session_id_hex,
-                            flush=True,
-                        )
                     else:
-                        print(
-                            "\n    Telemetry disabled: %s", session_id_hex, flush=True
-                        )
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
-                        print(
-                            "\n    Noop Telemetry client initialized: %s",
-                            session_id_hex,
-                            flush=True,
-                        )
-                else:
-                    print(
-                        "\n    Session ID already in clients: %s",
-                        session_id_hex,
-                        flush=True,
-                    )
-                print(
-                    "\nRELEASED: Telemetry client initialized: %s",
-                    session_id_hex,
-                    flush=True,
-                )
         except Exception as e:
-            print(
-                "\nERROR: Failed to initialize telemetry client: %s due to %s",
-                session_id_hex,
-                e,
-                flush=True,
-            )
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
             TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
@@ -580,13 +450,7 @@ class TelemetryClientFactory:
     @staticmethod
     def close(session_id_hex):
         """Close and remove the telemetry client for a specific connection"""
-        print("\nWAITING: Closing telemetry client: %s", session_id_hex, flush=True)
         with TelemetryClientFactory._lock:
-            print(
-                "\nACQUIRED: Closing telemetry client, got lock: %s",
-                session_id_hex,
-                flush=True,
-            )
             if (
                 telemetry_client := TelemetryClientFactory._clients.pop(
                     session_id_hex, None
@@ -602,16 +466,6 @@ class TelemetryClientFactory:
                 logger.debug(
                     "No more telemetry clients, shutting down thread pool executor"
                 )
-                print(
-                    "\nSHUTDOWN: Shutting down thread pool executor: %s",
-                    session_id_hex,
-                    flush=True,
-                )
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
-                print(
-                    "\nRELEASED: Thread pool executor shut down: %s",
-                    session_id_hex,
-                    flush=True,
-                )

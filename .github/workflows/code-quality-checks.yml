@@ -112,7 +112,7 @@ jobs:
       #              run test suite
       #----------------------------------------------
       -   name: Run tests
-          run: poetry run python -m pytest tests/unit -v -s 
+          run: poetry run python -m pytest tests/unit 
   check-linting:
     runs-on: ubuntu-latest
     strategy:
