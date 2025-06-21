@@ -4,7 +4,7 @@ import json
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -113,6 +113,12 @@ class BaseTelemetryClient(ABC):
         raise NotImplementedError("Subclasses must implement export_failure_log")
 
     @abstractmethod
+    def export_latency_log(
+        self, latency_ms, sql_execution_event, sql_statement_id=None
+    ):
+        raise NotImplementedError("Subclasses must implement export_latency_log")
+
+    @abstractmethod
     def close(self):
         raise NotImplementedError("Subclasses must implement close")
 
@@ -134,6 +140,11 @@ class NoopTelemetryClient(BaseTelemetryClient):
         pass
 
     def export_failure_log(self, error_name, error_message):
+        pass
+
+    def export_latency_log(
+        self, latency_ms, sql_execution_event, sql_statement_id=None
+    ):
         pass
 
     def close(self):
@@ -299,6 +310,34 @@ class TelemetryClient(BaseTelemetryClient):
         except Exception as e:
             logger.debug("Failed to export failure log: %s", e)
 
+    def export_latency_log(
+        self, latency_ms, sql_execution_event, sql_statement_id=None
+    ):
+        logger.debug("Exporting latency log for connection %s", self._session_id_hex)
+        try:
+            telemetry_frontend_log = TelemetryFrontendLog(
+                frontend_log_event_id=str(uuid.uuid4()),
+                context=FrontendLogContext(
+                    client_context=TelemetryClientContext(
+                        timestamp_millis=int(time.time() * 1000),
+                        user_agent=self._user_agent,
+                    )
+                ),
+                entry=FrontendLogEntry(
+                    sql_driver_log=TelemetryEvent(
+                        session_id=self._session_id_hex,
+                        system_configuration=TelemetryHelper.get_driver_system_configuration(),
+                        driver_connection_params=self._driver_connection_params,
+                        sql_statement_id=sql_statement_id,
+                        sql_operation=sql_execution_event,
+                        operation_latency_ms=latency_ms,
+                    )
+                ),
+            )
+            self._export_event(telemetry_frontend_log)
+        except Exception as e:
+            logger.debug("Failed to export latency log: %s", e)
+
     def close(self):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
@@ -316,7 +355,7 @@ class TelemetryClientFactory:
     ] = {}  # Map of session_id_hex -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
-    _lock = threading.Lock()  # Thread safety for factory operations
+    _lock = threading.RLock()  # Thread safety for factory operations
     _original_excepthook = None
     _excepthook_installed = False
 
@@ -348,7 +387,6 @@ class TelemetryClientFactory:
     def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
         """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
-
         clients_to_close = list(cls._clients.values())
         for client in clients_to_close:
             client.close()
@@ -366,7 +404,6 @@ class TelemetryClientFactory:
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
-
             with TelemetryClientFactory._lock:
                 TelemetryClientFactory._initialize()
 
@@ -413,7 +450,6 @@ class TelemetryClientFactory:
     @staticmethod
     def close(session_id_hex):
         """Close and remove the telemetry client for a specific connection"""
-
         with TelemetryClientFactory._lock:
             if (
                 telemetry_client := TelemetryClientFactory._clients.pop(

@@ -42,6 +42,7 @@ from databricks.sql.utils import (
 )
 from databricks.sql.types import SSLOptions
 
+
 logger = logging.getLogger(__name__)
 
 unsafe_logger = logging.getLogger("databricks.sql.unsafe")
