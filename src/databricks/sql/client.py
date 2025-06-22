@@ -377,6 +377,11 @@ class Connection:
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
             )
+            print(
+                "LMAO GC closing connection IN MAIN THREAD (INTERRUPTS EVERYTHING): ",
+                self.get_session_id_hex(),
+                flush=True,
+            )
             try:
                 self._close(close_cursors=False)
             except OperationalError as e:
