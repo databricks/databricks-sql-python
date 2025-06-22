@@ -387,6 +387,7 @@ class TelemetryClientFactory:
     def _handle_unhandled_exception(cls, exc_type, exc_value, exc_traceback):
         """Handle unhandled exceptions by sending telemetry and flushing thread pool"""
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
+
         clients_to_close = list(cls._clients.values())
         for client in clients_to_close:
             client.close()
@@ -403,6 +404,7 @@ class TelemetryClientFactory:
         host_url,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
+
         try:
             with TelemetryClientFactory._lock:
                 TelemetryClientFactory._initialize()
@@ -450,6 +452,7 @@ class TelemetryClientFactory:
     @staticmethod
     def close(session_id_hex):
         """Close and remove the telemetry client for a specific connection"""
+
         with TelemetryClientFactory._lock:
             if (
                 telemetry_client := TelemetryClientFactory._clients.pop(
