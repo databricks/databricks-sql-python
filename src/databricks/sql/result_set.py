@@ -3,7 +3,6 @@ import json
 from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
 
 import logging
-import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
@@ -23,10 +22,14 @@ if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
-from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+    JsonQueue,
+    SeaResultSetQueueFactory,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
