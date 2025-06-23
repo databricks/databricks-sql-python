@@ -1,16 +1,16 @@
 import logging
+import uuid
 import time
 import re
-from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.models.base import ResultManifest
+from databricks.sql.backend.sea.models.base import ExternalLink
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
     ResultDisposition,
     ResultCompression,
     WaitTimeout,
-    MetadataCommands,
 )
 
 if TYPE_CHECKING:
@@ -25,8 +25,9 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import DatabaseError, ServerOperationError
+from databricks.sql.exc import ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 
 from databricks.sql.backend.sea.models import (
@@ -40,11 +41,12 @@ from databricks.sql.backend.sea.models import (
     ExecuteStatementResponse,
     GetStatementResponse,
     CreateSessionResponse,
+    GetChunksResponse,
 )
 from databricks.sql.backend.sea.models.responses import (
-    _parse_status,
-    _parse_manifest,
-    _parse_result,
+    parse_status,
+    parse_manifest,
+    parse_result,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,9 +92,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
-
-    # SEA constants
-    POLL_INTERVAL_SECONDS = 0.2
+    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     def __init__(
         self,
@@ -124,7 +124,7 @@ class SeaDatabricksClient(DatabricksClient):
             http_path,
         )
 
-        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        super().__init__(ssl_options, **kwargs)
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -136,7 +136,7 @@ class SeaDatabricksClient(DatabricksClient):
             http_path=http_path,
             http_headers=http_headers,
             auth_provider=auth_provider,
-            ssl_options=ssl_options,
+            ssl_options=self._ssl_options,
             **kwargs,
         )
 
@@ -291,21 +291,18 @@ class SeaDatabricksClient(DatabricksClient):
         """
         return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
 
-    def _extract_description_from_manifest(
-        self, manifest: ResultManifest
-    ) -> Optional[List]:
+    def _extract_description_from_manifest(self, manifest_obj) -> Optional[List]:
         """
-        Extract column description from a manifest object, in the format defined by
-        the spec: https://peps.python.org/pep-0249/#description
+        Extract column description from a manifest object.
 
         Args:
-            manifest: The ResultManifest object containing schema information
+            manifest_obj: The ResultManifest object containing schema information
 
         Returns:
             Optional[List]: A list of column tuples or None if no columns are found
         """
 
-        schema_data = manifest.schema
+        schema_data = manifest_obj.schema
         columns_data = schema_data.get("columns", [])
 
         if not columns_data:
@@ -313,6 +310,9 @@ class SeaDatabricksClient(DatabricksClient):
 
         columns = []
         for col_data in columns_data:
+            if not isinstance(col_data, dict):
+                continue
+
             # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
             columns.append(
                 (
@@ -328,9 +328,38 @@ class SeaDatabricksClient(DatabricksClient):
 
         return columns if columns else None
 
-    def _results_message_to_execute_response(
-        self, response: GetStatementResponse
-    ) -> ExecuteResponse:
+    def get_chunk_link(self, statement_id: str, chunk_index: int) -> ExternalLink:
+        """
+        Get links for chunks starting from the specified index.
+
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+
+        Returns:
+            ExternalLink: External link for the chunk
+        """
+
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+        )
+        response = GetChunksResponse.from_dict(response_data)
+
+        links = response.external_links
+        link = next((l for l in links if l.chunk_index == chunk_index), None)
+        if not link:
+            raise ServerOperationError(
+                f"No link found for chunk index {chunk_index}",
+                {
+                    "operation-id": statement_id,
+                    "diagnostic-info": None,
+                },
+            )
+
+        return link
+
+    def _results_message_to_execute_response(self, sea_response, command_id):
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
 
@@ -339,65 +368,33 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: The command ID
 
         Returns:
-            ExecuteResponse: The normalized execute response
+            tuple: (ExecuteResponse, ResultData, ResultManifest) - The normalized execute response,
+                  result data object, and manifest object
         """
 
+        # Parse the response
+        status = parse_status(sea_response)
+        manifest_obj = parse_manifest(sea_response)
+        result_data_obj = parse_result(sea_response)
+
         # Extract description from manifest schema
-        description = self._extract_description_from_manifest(response.manifest)
+        description = self._extract_description_from_manifest(manifest_obj)
 
         # Check for compression
-        lz4_compressed = (
-            response.manifest.result_compression == ResultCompression.LZ4_FRAME
-        )
+        lz4_compressed = manifest_obj.result_compression == "LZ4_FRAME"
 
         execute_response = ExecuteResponse(
-            command_id=CommandId.from_sea_statement_id(response.statement_id),
-            status=response.status.state,
+            command_id=command_id,
+            status=status.state,
             description=description,
             has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=False,
             arrow_schema_bytes=None,
-            result_format=response.manifest.format,
+            result_format=manifest_obj.format,
         )
 
-        return execute_response
-
-    def _check_command_not_in_failed_or_closed_state(
-        self, state: CommandState, command_id: CommandId
-    ) -> None:
-        if state == CommandState.CLOSED:
-            raise DatabaseError(
-                "Command {} unexpectedly closed server side".format(command_id),
-                {
-                    "operation-id": command_id,
-                },
-            )
-        if state == CommandState.FAILED:
-            raise ServerOperationError(
-                "Command {} failed".format(command_id),
-                {
-                    "operation-id": command_id,
-                },
-            )
-
-    def _wait_until_command_done(
-        self, response: ExecuteStatementResponse
-    ) -> CommandState:
-        """
-        Wait until a command is done.
-        """
-
-        state = response.status.state
-        command_id = CommandId.from_sea_statement_id(response.statement_id)
-
-        while state in [CommandState.PENDING, CommandState.RUNNING]:
-            time.sleep(self.POLL_INTERVAL_SECONDS)
-            state = self.get_query_state(command_id)
-
-        self._check_command_not_in_failed_or_closed_state(state, command_id)
-
-        return state
+        return execute_response, result_data_obj, manifest_obj
 
     def execute_command(
         self,
@@ -408,7 +405,7 @@ class SeaDatabricksClient(DatabricksClient):
         lz4_compression: bool,
         cursor: "Cursor",
         use_cloud_fetch: bool,
-        parameters: List[Dict[str, Any]],
+        parameters: List,
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
     ) -> Union["ResultSet", None]:
@@ -442,9 +439,9 @@ class SeaDatabricksClient(DatabricksClient):
             for param in parameters:
                 sea_parameters.append(
                     StatementParameter(
-                        name=param["name"],
-                        value=param["value"],
-                        type=param["type"] if "type" in param else None,
+                        name=param.name,
+                        value=param.value,
+                        type=param.type if hasattr(param, "type") else None,
                     )
                 )
 
@@ -496,7 +493,24 @@ class SeaDatabricksClient(DatabricksClient):
         if async_op:
             return None
 
-        self._wait_until_command_done(response)
+        # For synchronous operation, wait for the statement to complete
+        status = response.status
+        state = status.state
+
+        # Keep polling until we reach a terminal state
+        while state in [CommandState.PENDING, CommandState.RUNNING]:
+            time.sleep(0.5)  # add a small delay to avoid excessive API calls
+            state = self.get_query_state(command_id)
+
+        if state != CommandState.SUCCEEDED:
+            raise ServerOperationError(
+                f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
+                {
+                    "operation-id": command_id.to_sea_statement_id(),
+                    "diagnostic-info": None,
+                },
+            )
+
         return self.get_execution_result(command_id, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
@@ -608,12 +622,16 @@ class SeaDatabricksClient(DatabricksClient):
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
-        response = GetStatementResponse.from_dict(response_data)
 
         # Create and return a SeaResultSet
         from databricks.sql.result_set import SeaResultSet
 
-        execute_response = self._results_message_to_execute_response(response)
+        # Convert the response to an ExecuteResponse and extract result data
+        (
+            execute_response,
+            result_data,
+            manifest,
+        ) = self._results_message_to_execute_response(response_data, command_id)
 
         return SeaResultSet(
             connection=cursor.connection,
@@ -621,8 +639,8 @@ class SeaDatabricksClient(DatabricksClient):
             sea_client=self,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
-            result_data=response.result,
-            manifest=response.manifest,
+            result_data=result_data,
+            manifest=manifest,
         )
 
     # == Metadata Operations ==
@@ -636,7 +654,7 @@ class SeaDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         """Get available catalogs by executing 'SHOW CATALOGS'."""
         result = self.execute_command(
-            operation=MetadataCommands.SHOW_CATALOGS.value,
+            operation="SHOW CATALOGS",
             session_id=session_id,
             max_rows=max_rows,
             max_bytes=max_bytes,
@@ -663,10 +681,10 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_schemas")
 
-        operation = MetadataCommands.SHOW_SCHEMAS.value.format(catalog_name)
+        operation = f"SHOW SCHEMAS IN `{catalog_name}`"
 
         if schema_name:
-            operation += MetadataCommands.LIKE_PATTERN.value.format(schema_name)
+            operation += f" LIKE '{schema_name}'"
 
         result = self.execute_command(
             operation=operation,
@@ -698,19 +716,17 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_tables")
 
-        operation = (
-            MetadataCommands.SHOW_TABLES_ALL_CATALOGS.value
+        operation = "SHOW TABLES IN " + (
+            "ALL CATALOGS"
             if catalog_name in [None, "*", "%"]
-            else MetadataCommands.SHOW_TABLES.value.format(
-                MetadataCommands.CATALOG_SPECIFIC.value.format(catalog_name)
-            )
+            else f"CATALOG `{catalog_name}`"
         )
 
         if schema_name:
-            operation += MetadataCommands.SCHEMA_LIKE_PATTERN.value.format(schema_name)
+            operation += f" SCHEMA LIKE '{schema_name}'"
 
         if table_name:
-            operation += MetadataCommands.LIKE_PATTERN.value.format(table_name)
+            operation += f" LIKE '{table_name}'"
 
         result = self.execute_command(
             operation=operation,
@@ -726,7 +742,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
         assert result is not None, "execute_command returned None in synchronous mode"
 
-        # Apply client-side filtering by table_types
+        # Apply client-side filtering by table_types if specified
         from databricks.sql.backend.filters import ResultSetFilter
 
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
@@ -748,16 +764,16 @@ class SeaDatabricksClient(DatabricksClient):
         if not catalog_name:
             raise ValueError("Catalog name is required for get_columns")
 
-        operation = MetadataCommands.SHOW_COLUMNS.value.format(catalog_name)
+        operation = f"SHOW COLUMNS IN CATALOG `{catalog_name}`"
 
         if schema_name:
-            operation += MetadataCommands.SCHEMA_LIKE_PATTERN.value.format(schema_name)
+            operation += f" SCHEMA LIKE '{schema_name}'"
 
         if table_name:
-            operation += MetadataCommands.TABLE_LIKE_PATTERN.value.format(table_name)
+            operation += f" TABLE LIKE '{table_name}'"
 
         if column_name:
-            operation += MetadataCommands.LIKE_PATTERN.value.format(column_name)
+            operation += f" LIKE '{column_name}'"
 
         result = self.execute_command(
             operation=operation,
