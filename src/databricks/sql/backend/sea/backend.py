@@ -124,7 +124,7 @@ class SeaDatabricksClient(DatabricksClient):
             http_path,
         )
 
-        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        super().__init__(ssl_options, **kwargs)
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -136,7 +136,7 @@ class SeaDatabricksClient(DatabricksClient):
             http_path=http_path,
             http_headers=http_headers,
             auth_provider=auth_provider,
-            ssl_options=ssl_options,
+            ssl_options=self._ssl_options,
             **kwargs,
         )
 

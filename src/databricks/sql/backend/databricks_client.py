@@ -11,6 +11,8 @@ Implementations of this class are responsible for:
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING
 
+from databricks.sql.types import SSLOptions
+
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
@@ -25,6 +27,13 @@ if TYPE_CHECKING:
 
 
 class DatabricksClient(ABC):
+    def __init__(self, ssl_options: SSLOptions, **kwargs):
+        self._use_arrow_native_complex_types = kwargs.get(
+            "_use_arrow_native_complex_types", True
+        )
+        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        self._ssl_options = ssl_options
+
     # == Connection and Session Management ==
     @abstractmethod
     def open_session(
