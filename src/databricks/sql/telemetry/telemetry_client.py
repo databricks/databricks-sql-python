@@ -158,7 +158,7 @@ class TelemetryClient(BaseTelemetryClient):
     # Telemetry endpoint paths
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
-    DEFAULT_BATCH_SIZE = 10  
+    DEFAULT_BATCH_SIZE = 10
 
     def __init__(
         self,
