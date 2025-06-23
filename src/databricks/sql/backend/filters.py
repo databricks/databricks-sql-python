@@ -9,36 +9,27 @@ from typing import (
     List,
     Optional,
     Any,
-    Dict,
     Callable,
-    TypeVar,
-    Generic,
     cast,
-    TYPE_CHECKING,
 )
 
-from databricks.sql.backend.types import ExecuteResponse, CommandId
-from databricks.sql.backend.sea.models.base import ResultData
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.types import ExecuteResponse
 
-if TYPE_CHECKING:
-    from databricks.sql.result_set import ResultSet, SeaResultSet
+from databricks.sql.result_set import ResultSet, SeaResultSet
 
 logger = logging.getLogger(__name__)
 
 
 class ResultSetFilter:
     """
-    A general-purpose filter for result sets that can be applied to any backend.
-
-    This class provides methods to filter result sets based on various criteria,
-    similar to the client-side filtering in the JDBC connector.
+    A general-purpose filter for result sets.
     """
 
     @staticmethod
     def _filter_sea_result_set(
-        result_set: "SeaResultSet", filter_func: Callable[[List[Any]], bool]
-    ) -> "SeaResultSet":
+        result_set: SeaResultSet, filter_func: Callable[[List[Any]], bool]
+    ) -> SeaResultSet:
         """
         Filter a SEA result set using the provided filter function.
 
@@ -49,14 +40,12 @@ class ResultSetFilter:
         Returns:
             A filtered SEA result set
         """
+
         # Get all remaining rows
         all_rows = result_set.results.remaining_rows()
 
         # Filter rows
         filtered_rows = [row for row in all_rows if filter_func(row)]
-
-        # Import SeaResultSet here to avoid circular imports
-        from databricks.sql.result_set import SeaResultSet
 
         # Reuse the command_id from the original result set
         command_id = result_set.command_id
@@ -73,9 +62,12 @@ class ResultSetFilter:
         )
 
         # Create a new ResultData object with filtered data
+
         from databricks.sql.backend.sea.models.base import ResultData
 
         result_data = ResultData(data=filtered_rows, external_links=None)
+
+        from databricks.sql.result_set import SeaResultSet
 
         # Create a new SeaResultSet with the filtered data
         filtered_result_set = SeaResultSet(
@@ -91,11 +83,11 @@ class ResultSetFilter:
 
     @staticmethod
     def filter_by_column_values(
-        result_set: "ResultSet",
+        result_set: ResultSet,
         column_index: int,
         allowed_values: List[str],
         case_sensitive: bool = False,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         """
         Filter a result set by values in a specific column.
 
@@ -108,6 +100,7 @@ class ResultSetFilter:
         Returns:
             A filtered result set
         """
+
         # Convert to uppercase for case-insensitive comparison if needed
         if not case_sensitive:
             allowed_values = [v.upper() for v in allowed_values]
@@ -138,8 +131,8 @@ class ResultSetFilter:
 
     @staticmethod
     def filter_tables_by_type(
-        result_set: "ResultSet", table_types: Optional[List[str]] = None
-    ) -> "ResultSet":
+        result_set: ResultSet, table_types: Optional[List[str]] = None
+    ) -> ResultSet:
         """
         Filter a result set of tables by the specified table types.
 
@@ -154,6 +147,7 @@ class ResultSetFilter:
         Returns:
             A filtered result set containing only tables of the specified types
         """
+
         # Default table types if none specified
         DEFAULT_TABLE_TYPES = ["TABLE", "VIEW", "SYSTEM TABLE"]
         valid_types = (
