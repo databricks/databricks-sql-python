@@ -921,10 +921,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
                 )
-                mock_result = (Mock(), Mock())
-                thrift_backend._results_message_to_execute_response = Mock(
-                    return_value=mock_result
-                )
+                thrift_backend._results_message_to_execute_response = Mock()
 
                 thrift_backend._handle_execute_response(execute_resp, Mock())
 
