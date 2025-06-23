@@ -45,23 +45,3 @@ class WaitTimeout(Enum):
 
     ASYNC = "0s"
     SYNC = "10s"
-
-
-class MetadataCommands(Enum):
-    """SQL commands used in the SEA backend.
-
-    These constants are used for metadata operations and other SQL queries
-    to ensure consistency and avoid string literal duplication.
-    """
-
-    SHOW_CATALOGS = "SHOW CATALOGS"
-    SHOW_SCHEMAS = "SHOW SCHEMAS IN {}"
-    SHOW_TABLES = "SHOW TABLES IN {}"
-    SHOW_TABLES_ALL_CATALOGS = "SHOW TABLES IN ALL CATALOGS"
-    SHOW_COLUMNS = "SHOW COLUMNS IN CATALOG {}"
-
-    SCHEMA_LIKE_PATTERN = " SCHEMA LIKE '{}'"
-    TABLE_LIKE_PATTERN = " TABLE LIKE '{}'"
-    LIKE_PATTERN = " LIKE '{}'"
-
-    CATALOG_SPECIFIC = "CATALOG {}"
