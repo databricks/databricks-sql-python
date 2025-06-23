@@ -368,14 +368,8 @@ class TelemetryClientFactory:
         try:
 
             with TelemetryClientFactory._lock:
-
                 TelemetryClientFactory._initialize()
                 if session_id_hex not in TelemetryClientFactory._clients:
-                    logger.debug(
-                        "Session ID not in clients: %s",
-                        session_id_hex,
-                        flush=True,
-                    )
                     logger.debug(
                         "Creating new TelemetryClient for connection %s",
                         session_id_hex,
@@ -391,13 +385,9 @@ class TelemetryClientFactory:
                             executor=TelemetryClientFactory._executor,
                         )
                     else:
-                        logger.debug("Telemetry disabled: %s", session_id_hex)
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
-                        logger.debug(
-                            "Noop Telemetry client initialized: %s", session_id_hex
-                        )
 
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
@@ -423,6 +413,7 @@ class TelemetryClientFactory:
     @staticmethod
     def close(session_id_hex):
         """Close and remove the telemetry client for a specific connection"""
+
         with TelemetryClientFactory._lock:
             if (
                 telemetry_client := TelemetryClientFactory._clients.pop(
@@ -432,7 +423,6 @@ class TelemetryClientFactory:
                 logger.debug(
                     "Removing telemetry client for connection %s", session_id_hex
                 )
-                telemetry_client = TelemetryClientFactory._clients.pop(session_id_hex)
                 telemetry_client.close()
 
             # Shutdown executor if no more clients
