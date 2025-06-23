@@ -305,7 +305,7 @@ class Connection:
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )
-        print("Connection init : session_id_hex", self.get_session_id_hex(), flush=True)
+
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             session_id_hex=self.get_session_id_hex(),
@@ -377,11 +377,6 @@ class Connection:
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
             )
-            print(
-                "LMAO GC closing connection IN MAIN THREAD (INTERRUPTS EVERYTHING): ",
-                self.get_session_id_hex(),
-                flush=True,
-            )
             try:
                 self._close(close_cursors=False)
             except OperationalError as e:
@@ -445,9 +440,6 @@ class Connection:
 
     def close(self) -> None:
         """Close the underlying session and mark all associated cursors as closed."""
-        print(
-            "Connection close: session_id_hex: ", self.get_session_id_hex(), flush=True
-        )
         self._close()
 
     def _close(self, close_cursors=True) -> None:

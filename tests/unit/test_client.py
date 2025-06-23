@@ -353,7 +353,6 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.client.ThriftBackend" % PACKAGE_NAME)
     def test_context_manager_closes_connection(self, mock_client_class):
-        print("stalling test")
         instance = mock_client_class.return_value
 
         mock_open_session_resp = MagicMock(spec=TOpenSessionResp)()
