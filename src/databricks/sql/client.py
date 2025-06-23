@@ -1185,7 +1185,6 @@ class Cursor:
         )
         return self
 
-    @log_latency()
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a sequence of sequences.
@@ -1219,7 +1218,6 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    @log_latency()
     def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a sequence of sequences (e.g. a
@@ -1245,7 +1243,6 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    @log_latency()
     def fetchall_arrow(self) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
@@ -1256,7 +1253,6 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    @log_latency()
     def fetchmany_arrow(self, size) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
@@ -1380,7 +1376,11 @@ class Cursor:
         return ExecutionResultFormat.FORMAT_UNSPECIFIED
 
     def get_retry_count(self) -> int:
-        # return len(self.thrift_backend.retry_policy.history)
+        if (
+            hasattr(self.thrift_backend, "retry_policy")
+            and self.thrift_backend.retry_policy
+        ):
+            return len(self.thrift_backend.retry_policy.history)
         return 0
 
     def get_statement_type(self, func_name: str) -> StatementType:
@@ -1712,5 +1712,9 @@ class ResultSet:
         return StatementType.SQL
 
     def get_retry_count(self) -> int:
-        # return len(self.thrift_backend.retry_policy.history)
+        if (
+            hasattr(self.thrift_backend, "retry_policy")
+            and self.thrift_backend.retry_policy
+        ):
+            return len(self.thrift_backend.retry_policy.history)
         return 0

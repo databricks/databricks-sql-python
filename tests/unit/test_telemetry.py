@@ -96,6 +96,12 @@ class TestNoopTelemetryClient:
             error_name="TestError", error_message="Test error message"
         )
 
+    def test_export_latency_log(self, noop_telemetry_client):
+        """Test that export_latency_log does nothing."""
+        noop_telemetry_client.export_latency_log(
+            latency_ms=100, sql_execution_event="EXECUTE_STATEMENT", sql_statement_id="test-id"
+        )
+
     def test_close(self, noop_telemetry_client):
         """Test that close does nothing."""
         noop_telemetry_client.close()
@@ -176,6 +182,40 @@ class TestTelemetryClient:
             error_name=error_name, 
             stack_trace=error_message
         )
+        
+        mock_frontend_log.assert_called_once()
+        
+        client._export_event.assert_called_once_with(mock_frontend_log.return_value)
+
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
+    @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
+    @patch("databricks.sql.telemetry.telemetry_client.time.time")
+    def test_export_latency_log(
+        self, 
+        mock_time, 
+        mock_uuid4, 
+        mock_get_driver_config, 
+        mock_frontend_log,
+        telemetry_client_setup
+    ):
+        """Test exporting latency telemetry log."""
+        mock_time.return_value = 3000
+        mock_uuid4.return_value = "test-latency-uuid"
+        mock_get_driver_config.return_value = "test-driver-config"
+        mock_frontend_log.return_value = MagicMock()
+
+        client = telemetry_client_setup["client"]
+        client._export_event = MagicMock()
+        
+        client._driver_connection_params = "test-connection-params"
+        client._user_agent = "test-user-agent"
+        
+        latency_ms = 150
+        sql_execution_event = "test-execution-event"
+        sql_statement_id = "test-statement-id"
+        
+        client.export_latency_log(latency_ms, sql_execution_event, sql_statement_id)
         
         mock_frontend_log.assert_called_once()
         
@@ -310,6 +350,11 @@ class TestTelemetryClient:
         with patch.object(client, '_export_event', side_effect=Exception("Test error")):
             # Should not raise exception
             client.export_failure_log("TestError", "Test error message")
+        
+        # Test export_latency_log with exception
+        with patch.object(client, '_export_event', side_effect=Exception("Test error")):
+            # Should not raise exception
+            client.export_latency_log(100, "EXECUTE_STATEMENT", "test-statement-id")
         
         # Test _send_telemetry with exception
         with patch.object(client._executor, 'submit', side_effect=Exception("Test error")):

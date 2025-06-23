@@ -113,9 +113,7 @@ class BaseTelemetryClient(ABC):
         raise NotImplementedError("Subclasses must implement export_failure_log")
 
     @abstractmethod
-    def export_latency_log(
-        self, latency_ms, sql_execution_event, sql_statement_id=None
-    ):
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
         raise NotImplementedError("Subclasses must implement export_latency_log")
 
     @abstractmethod
@@ -310,9 +308,7 @@ class TelemetryClient(BaseTelemetryClient):
         except Exception as e:
             logger.debug("Failed to export failure log: %s", e)
 
-    def export_latency_log(
-        self, latency_ms, sql_execution_event, sql_statement_id=None
-    ):
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
         logger.debug("Exporting latency log for connection %s", self._session_id_hex)
         try:
             telemetry_frontend_log = TelemetryFrontendLog(
