@@ -41,9 +41,7 @@ from databricks.sql.backend.sea.models import (
     GetStatementResponse,
     CreateSessionResponse,
 )
-from databricks.sql.backend.sea.models.responses import (
-    GetChunksResponse,
-)
+from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 logger = logging.getLogger(__name__)
 
