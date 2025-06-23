@@ -43,11 +43,6 @@ from databricks.sql.backend.sea.models import (
     CreateSessionResponse,
     GetChunksResponse,
 )
-from databricks.sql.backend.sea.models.responses import (
-    parse_status,
-    parse_manifest,
-    parse_result,
-)
 
 logger = logging.getLogger(__name__)
 
