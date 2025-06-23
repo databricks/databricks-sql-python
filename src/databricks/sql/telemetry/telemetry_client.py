@@ -369,6 +369,7 @@ class TelemetryClientFactory:
 
             with TelemetryClientFactory._lock:
                 TelemetryClientFactory._initialize()
+
                 if session_id_hex not in TelemetryClientFactory._clients:
                     logger.debug(
                         "Creating new TelemetryClient for connection %s",
@@ -388,7 +389,6 @@ class TelemetryClientFactory:
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
-
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
