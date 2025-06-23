@@ -316,7 +316,8 @@ class TelemetryClientFactory:
     ] = {}  # Map of session_id_hex -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
-    _lock = threading.Lock()  # Thread safety for factory operations
+    _lock = threading.RLock()  # Thread safety for factory operations
+    # used RLock instead of Lock to avoid deadlocks when garbage collection is triggered
     _original_excepthook = None
     _excepthook_installed = False
 
