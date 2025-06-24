@@ -2,6 +2,7 @@ import datetime
 from contextlib import contextmanager
 from decimal import Decimal
 from enum import Enum
+import json
 from typing import Dict, List, Type, Union
 from unittest.mock import patch
 
@@ -404,10 +405,17 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                             "Consider using native parameters." not in caplog.text
                         ), "Log message should not be supressed"
 
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_positional_native_params_with_defaults(self, extra_params):
         query = "SELECT ? col"
         with self.cursor(extra_params) as cursor:
@@ -426,10 +434,17 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             ["foo", "bar", "baz"],
         ),
     )
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_positional_native_multiple(self, params, extra_params):
         query = "SELECT ? `foo`, ? `bar`, ? `baz`"
 
@@ -442,10 +457,17 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         assert set(outcome) == set(expected)
 
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_readme_example(self, extra_params):
         with self.cursor(extra_params) as cursor:
             result = cursor.execute(
@@ -511,10 +533,17 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 class TestInlineParameterSyntax(PySQLPytestTestCase):
     """The inline parameter approach uses pyformat markers"""
 
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_params_as_dict(self, extra_params):
         query = "SELECT %(foo)s foo, %(bar)s bar, %(baz)s baz"
         params = {"foo": 1, "bar": 2, "baz": 3}
@@ -528,10 +557,17 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         assert result.bar == 2
         assert result.baz == 3
 
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_params_as_sequence(self, extra_params):
         """One side-effect of ParamEscaper using Python string interpolation to inline the values
         is that it can work with "ordinal" parameters, but only if a user writes parameter markers
@@ -563,10 +599,17 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
             ):
                 cursor.execute(query, parameters=params)
 
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_inline_named_dont_break_sql(self, extra_params):
         """With inline mode, ordinal parameters can break the SQL syntax
         because `%` symbols are used to wildcard match within LIKE statements. This test
@@ -582,10 +625,17 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
             result = cursor.execute(query, parameters=params).fetchone()
             print("hello")
 
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_native_ordinals_dont_break_sql(self, extra_params):
         """This test accompanies test_inline_ordinals_can_break_sql to prove that ordinal
         parameters work in native mode for the exact same query, if we use the right marker `?`
@@ -609,10 +659,17 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
             with pytest.raises(ValueError, match="unsupported format character"):
                 result = cursor.execute(query, parameters=params).fetchone()
 
-    @pytest.mark.parametrize("extra_params", [
-        {},
-        {"use_sea": True, "use_cloud_fetch": False}
-    ])
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
     def test_native_like_wildcard_works(self, extra_params):
         """This is a mirror of test_inline_like_wildcard_breaks that proves that LIKE
         wildcards work under the native approach.
