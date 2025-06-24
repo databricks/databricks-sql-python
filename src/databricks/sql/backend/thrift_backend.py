@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import errno
 import logging
 import math
@@ -810,7 +812,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
 
     def get_execution_result(
-        self, command_id: CommandId, cursor: "Cursor"
+        self, command_id: CommandId, cursor: Cursor
     ) -> "ResultSet":
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -939,7 +941,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: "Cursor",
+        cursor: Cursor,
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
@@ -1007,7 +1009,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
     ) -> "ResultSet":
         from databricks.sql.result_set import ThriftResultSet
 
@@ -1039,7 +1041,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
@@ -1075,7 +1077,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
@@ -1115,7 +1117,7 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
