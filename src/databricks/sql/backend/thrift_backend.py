@@ -5,6 +5,8 @@ import time
 import threading
 from typing import Union, TYPE_CHECKING
 
+from databricks.sql.result_set import ThriftResultSet
+
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
@@ -810,8 +812,6 @@ class ThriftDatabricksClient(DatabricksClient):
     def get_execution_result(
         self, command_id: CommandId, cursor: "Cursor"
     ) -> "ResultSet":
-        from databricks.sql.result_set import ThriftResultSet
-
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
@@ -945,8 +945,6 @@ class ThriftDatabricksClient(DatabricksClient):
         async_op=False,
         enforce_embedded_schema_correctness=False,
     ) -> Union["ResultSet", None]:
-        from databricks.sql.result_set import ThriftResultSet
-
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
