@@ -1,13 +1,3 @@
-"""
-Abstract client interface for interacting with Databricks SQL services.
-
-Implementations of this class are responsible for:
-- Managing connections to Databricks SQL services
-- Executing SQL queries and commands
-- Retrieving query results
-- Fetching metadata about catalogs, schemas, tables, and columns
-"""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -22,6 +12,16 @@ from databricks.sql.backend.types import SessionId, CommandId, CommandState
 
 
 class DatabricksClient(ABC):
+    """
+    Abstract client interface for interacting with Databricks SQL services.
+
+    Implementations of this class are responsible for:
+    - Managing connections to Databricks SQL services
+    - Executing SQL queries and commands
+    - Retrieving query results
+    - Fetching metadata about catalogs, schemas, tables, and columns
+    """
+
     # == Connection and Session Management ==
     @abstractmethod
     def open_session(
