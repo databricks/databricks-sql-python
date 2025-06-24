@@ -404,9 +404,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                             "Consider using native parameters." not in caplog.text
                         ), "Log message should not be supressed"
 
-    def test_positional_native_params_with_defaults(self):
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_positional_native_params_with_defaults(self, extra_params):
         query = "SELECT ? col"
-        with self.cursor() as cursor:
+        with self.cursor(extra_params) as cursor:
             result = cursor.execute(query, parameters=[1]).fetchone()
 
         assert result.col == 1
@@ -422,10 +426,15 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             ["foo", "bar", "baz"],
         ),
     )
-    def test_positional_native_multiple(self, params):
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_positional_native_multiple(self, params, extra_params):
         query = "SELECT ? `foo`, ? `bar`, ? `baz`"
 
-        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+        combined_params = {"use_inline_params": False, **extra_params}
+        with self.cursor(extra_params=combined_params) as cursor:
             result = cursor.execute(query, params).fetchone()
 
         expected = [i.value if isinstance(i, DbsqlParameterBase) else i for i in params]
@@ -433,8 +442,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 
         assert set(outcome) == set(expected)
 
-    def test_readme_example(self):
-        with self.cursor() as cursor:
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_readme_example(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             result = cursor.execute(
                 "SELECT :param `p`, * FROM RANGE(10)", {"param": "foo"}
             ).fetchall()
@@ -498,11 +511,16 @@ class TestParameterizedQueries(PySQLPytestTestCase):
 class TestInlineParameterSyntax(PySQLPytestTestCase):
     """The inline parameter approach uses pyformat markers"""
 
-    def test_params_as_dict(self):
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_params_as_dict(self, extra_params):
         query = "SELECT %(foo)s foo, %(bar)s bar, %(baz)s baz"
         params = {"foo": 1, "bar": 2, "baz": 3}
 
-        with self.connection(extra_params={"use_inline_params": True}) as conn:
+        combined_params = {"use_inline_params": True, **extra_params}
+        with self.connection(extra_params=combined_params) as conn:
             with conn.cursor() as cursor:
                 result = cursor.execute(query, parameters=params).fetchone()
 
@@ -510,7 +528,11 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         assert result.bar == 2
         assert result.baz == 3
 
-    def test_params_as_sequence(self):
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_params_as_sequence(self, extra_params):
         """One side-effect of ParamEscaper using Python string interpolation to inline the values
         is that it can work with "ordinal" parameters, but only if a user writes parameter markers
         that are not defined with PEP-249. This test exists to prove that it works in the ideal case.
@@ -520,7 +542,8 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         query = "SELECT %s foo, %s bar, %s baz"
         params = (1, 2, 3)
 
-        with self.connection(extra_params={"use_inline_params": True}) as conn:
+        combined_params = {"use_inline_params": True, **extra_params}
+        with self.connection(extra_params=combined_params) as conn:
             with conn.cursor() as cursor:
                 result = cursor.execute(query, parameters=params).fetchone()
                 assert result.foo == 1
@@ -540,7 +563,11 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
             ):
                 cursor.execute(query, parameters=params)
 
-    def test_inline_named_dont_break_sql(self):
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_inline_named_dont_break_sql(self, extra_params):
         """With inline mode, ordinal parameters can break the SQL syntax
         because `%` symbols are used to wildcard match within LIKE statements. This test
         just proves that's the case.
@@ -550,17 +577,23 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         SELECT col_1 FROM base WHERE col_1 LIKE CONCAT(%(one)s, 'onite')
         """
         params = {"one": "%(one)s"}
-        with self.cursor(extra_params={"use_inline_params": True}) as cursor:
+        combined_params = {"use_inline_params": True, **extra_params}
+        with self.cursor(extra_params=combined_params) as cursor:
             result = cursor.execute(query, parameters=params).fetchone()
             print("hello")
 
-    def test_native_ordinals_dont_break_sql(self):
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_native_ordinals_dont_break_sql(self, extra_params):
         """This test accompanies test_inline_ordinals_can_break_sql to prove that ordinal
         parameters work in native mode for the exact same query, if we use the right marker `?`
         """
         query = "SELECT 'samsonite', ? WHERE 'samsonite' LIKE '%sonite'"
         params = ["luggage"]
-        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+        combined_params = {"use_inline_params": False, **extra_params}
+        with self.cursor(extra_params=combined_params) as cursor:
             result = cursor.execute(query, parameters=params).fetchone()
 
         assert result.samsonite == "samsonite"
@@ -576,13 +609,18 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
             with pytest.raises(ValueError, match="unsupported format character"):
                 result = cursor.execute(query, parameters=params).fetchone()
 
-    def test_native_like_wildcard_works(self):
+    @pytest.mark.parametrize("extra_params", [
+        {},
+        {"use_sea": True, "use_cloud_fetch": False}
+    ])
+    def test_native_like_wildcard_works(self, extra_params):
         """This is a mirror of test_inline_like_wildcard_breaks that proves that LIKE
         wildcards work under the native approach.
         """
         query = "SELECT 1 `col` WHERE 'foo' LIKE '%'"
         params = {"param": "bar"}
-        with self.cursor(extra_params={"use_inline_params": False}) as cursor:
+        combined_params = {"use_inline_params": False, **extra_params}
+        with self.cursor(extra_params=combined_params) as cursor:
             result = cursor.execute(query, parameters=params).fetchone()
 
         assert result.col == 1
