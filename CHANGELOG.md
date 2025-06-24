@@ -1,5 +1,8 @@
 # Release History
 
+# 4.0.5 (2025-06-24)
+- Fix: Reverted change in cursor close handling which led to errors impacting users
+
 # 4.0.4 (2025-06-16)
 
 - Update thrift client library after cleaning up unused fields and structs (databricks/databricks-sql-python#553 by @vikrantpuppala)
