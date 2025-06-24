@@ -304,11 +304,11 @@ class Connection:
 
     def get_session_id(self):
         """Get the raw session ID (backend-specific)"""
-        return self.session.get_id()
+        return self.session.guid
 
     def get_session_id_hex(self):
         """Get the session ID in hex format"""
-        return self.session.get_id_hex()
+        return self.session.guid_hex
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
@@ -784,7 +784,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
         self.active_result_set = self.backend.execute_command(
             operation=prepared_operation,
-            session_id=self.connection.session.get_session_id(),
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -840,7 +840,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
         self.backend.execute_command(
             operation=prepared_operation,
-            session_id=self.connection.session.get_session_id(),
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -927,7 +927,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         self.active_result_set = self.backend.get_catalogs(
-            session_id=self.connection.session.get_session_id(),
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -946,7 +946,7 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         self.active_result_set = self.backend.get_schemas(
-            session_id=self.connection.session.get_session_id(),
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -972,7 +972,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         self.active_result_set = self.backend.get_tables(
-            session_id=self.connection.session.get_session_id(),
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1000,7 +1000,7 @@ class Cursor:
         self._close_and_clear_active_result_set()
 
         self.active_result_set = self.backend.get_columns(
-            session_id=self.connection.session.get_session_id(),
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,

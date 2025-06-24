@@ -95,11 +95,11 @@ class Session:
         )
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True
-        logger.info("Successfully opened session %s", str(self.get_id_hex()))
+        logger.info("Successfully opened session %s", str(self.guid_hex))
 
     @staticmethod
     def get_protocol_version(session_id: SessionId):
-        return session_id.get_protocol_version()
+        return session_id.protocol_version
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
@@ -111,21 +111,24 @@ class Session:
         else:
             return False
 
-    def get_session_id(self) -> SessionId:
+    @property
+    def session_id(self) -> SessionId:
         """Get the normalized session ID"""
         return self._session_id
 
-    def get_id(self):
+    @property
+    def guid(self) -> Any:
         """Get the raw session ID (backend-specific)"""
-        return self._session_id.get_guid()
+        return self._session_id.guid
 
-    def get_id_hex(self) -> str:
+    @property
+    def guid_hex(self) -> str:
         """Get the session ID in hex format"""
-        return self._session_id.get_hex_guid()
+        return self._session_id.hex_guid
 
     def close(self) -> None:
         """Close the underlying session."""
-        logger.info("Closing session %s", self.get_id_hex())
+        logger.info("Closing session %s", self.guid_hex)
         if not self.is_open:
             logger.debug("Session appears to have been closed already")
             return

@@ -139,7 +139,7 @@ class SessionId:
                 if isinstance(self.secret, bytes)
                 else str(self.secret)
             )
-            return f"{self.get_hex_guid()}|{secret_hex}"
+            return f"{self.hex_guid}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
@@ -217,14 +217,8 @@ class SessionId:
 
         return self.guid
 
-    def get_guid(self) -> Any:
-        """
-        Get the ID of the session.
-        """
-
-        return self.guid
-
-    def get_hex_guid(self) -> str:
+    @property
+    def hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the session ID.
 
@@ -237,7 +231,8 @@ class SessionId:
         else:
             return str(self.guid)
 
-    def get_protocol_version(self):
+    @property
+    def protocol_version(self):
         """
         Get the server protocol version for this session.
 
