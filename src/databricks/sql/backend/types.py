@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Dict, Optional, Any
 import logging
 
-from databricks.sql.backend.utils import guid_to_hex_id
+from databricks.sql.backend.utils.guid_utils import guid_to_hex_id
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
