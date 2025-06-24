@@ -156,6 +156,11 @@ jobs:
       #----------------------------------------------
       - name: Black
         run: poetry run black --check src
+      #----------------------------------------------
+      #              pylint the code
+      #----------------------------------------------
+      - name: Pylint
+        run: poetry run pylint --rcfile=pylintrc src
 
   check-types:
     runs-on: ubuntu-latest

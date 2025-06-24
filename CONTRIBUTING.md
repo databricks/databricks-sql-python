@@ -145,9 +145,11 @@ The `PySQLStagingIngestionTestSuite` namespace requires a cluster running DBR ve
 The suites marked `[not documented]` require additional configuration which will be documented at a later time.
 
 
-### Code formatting
+### Code formatting and linting
 
-This project uses [Black](https://pypi.org/project/black/).
+This project uses [Black](https://pypi.org/project/black/) for code formatting and [Pylint](https://pylint.org/) for linting.
+
+#### Black
 
 ```
 poetry run python3 -m black src --check
@@ -156,6 +158,25 @@ poetry run python3 -m black src --check
 Remove the `--check` flag to write reformatted files to disk.
 
 To simplify reviews you can format your changes in a separate commit.
+
+#### Pylint
+
+```
+poetry run pylint --rcfile=pylintrc src
+```
+
+#### Pre-commit hooks
+
+We use [pre-commit](https://pre-commit.com/) to automatically run Black and other checks before each commit.
+
+To set up pre-commit hooks:
+
+```bash
+# Set up the git hooks
+poetry run pre-commit install
+```
+
+This will set up the hooks defined in `.pre-commit-config.yaml` to run automatically on each commit.
 
 ### Change a pinned dependency version
 
