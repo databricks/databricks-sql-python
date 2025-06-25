@@ -229,16 +229,17 @@ class TestTelemetryClient:
         client = telemetry_client_setup["client"]
         client._flush = MagicMock()
         
-        for i in range(TelemetryClient.DEFAULT_BATCH_SIZE-1):
+        for i in range(5):
             client._export_event(f"event-{i}")
         
         client._flush.assert_not_called()
-        assert len(client._events_batch) == TelemetryClient.DEFAULT_BATCH_SIZE - 1
+        assert len(client._events_batch) == 5
         
-        # Add one more event to reach batch size (this will trigger flush)
-        client._export_event(f"event-{TelemetryClient.DEFAULT_BATCH_SIZE - 1}")
+        for i in range(5):
+            client._export_event(f"event-{i}")
         
         client._flush.assert_called_once()
+        assert len(client._events_batch) == 10
 
     @patch("requests.post")
     def test_send_telemetry_authenticated(self, mock_post, telemetry_client_setup):

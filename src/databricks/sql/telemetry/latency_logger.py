@@ -13,16 +13,27 @@ from uuid import UUID
 class TelemetryExtractor:
     def __init__(self, obj):
         self._obj = obj
-    
+
     def __getattr__(self, name):
         return getattr(self._obj, name)
-    
-    def get_session_id_hex(self): pass
-    def get_statement_id(self): pass
-    def get_statement_type(self): pass
-    def get_is_compressed(self): pass
-    def get_execution_result(self): pass
-    def get_retry_count(self): pass
+
+    def get_session_id_hex(self):
+        pass
+
+    def get_statement_id(self):
+        pass
+
+    def get_statement_type(self):
+        pass
+
+    def get_is_compressed(self):
+        pass
+
+    def get_execution_result(self):
+        pass
+
+    def get_retry_count(self):
+        pass
 
 
 class CursorExtractor(TelemetryExtractor):
@@ -58,8 +69,8 @@ class CursorExtractor(TelemetryExtractor):
     def get_statement_type(self: str) -> StatementType:
         # TODO: Implement this
         return StatementType.SQL
-    
-    
+
+
 class ResultSetExtractor(TelemetryExtractor):
     def get_statement_id(self) -> Optional[str]:
         if self.command_id:
@@ -95,9 +106,9 @@ class ResultSetExtractor(TelemetryExtractor):
 
 
 def get_extractor(obj):
-    if obj.__class__.__name__ == 'Cursor':
+    if obj.__class__.__name__ == "Cursor":
         return CursorExtractor(obj)
-    elif obj.__class__.__name__ == 'ResultSet':
+    elif obj.__class__.__name__ == "ResultSet":
         return ResultSetExtractor(obj)
     else:
         return TelemetryExtractor(obj)
