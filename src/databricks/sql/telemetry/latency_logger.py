@@ -66,7 +66,7 @@ class CursorExtractor(TelemetryExtractor):
             return len(self.thrift_backend.retry_policy.history)
         return 0
 
-    def get_statement_type(self: str) -> StatementType:
+    def get_statement_type(self) -> StatementType:
         # TODO: Implement this
         return StatementType.SQL
 
@@ -92,7 +92,7 @@ class ResultSetExtractor(TelemetryExtractor):
             return ExecutionResultFormat.INLINE_ARROW
         return ExecutionResultFormat.FORMAT_UNSPECIFIED
 
-    def get_statement_type(self: str) -> StatementType:
+    def get_statement_type(self) -> StatementType:
         # TODO: Implement this
         return StatementType.SQL
 
