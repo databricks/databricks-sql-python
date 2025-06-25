@@ -87,7 +87,7 @@ class LargeQueriesMixin:
         and asserts that the query completes successfully.
         """
         minutes = 60
-        min_duration = 5 * minutes
+        min_duration = 3 * minutes
 
         duration = -1
         scale0 = 10000

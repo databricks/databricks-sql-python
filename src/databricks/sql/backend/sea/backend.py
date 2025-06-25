@@ -11,7 +11,7 @@ import urllib3
 
 import databricks
 from databricks.sql.auth.retry import CommandType
-from databricks.sql.backend.sea.models.base import ExternalLink
+from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -320,6 +320,7 @@ class SeaDatabricksClient(DatabricksClient):
             user_friendly_error_message = error_info.user_friendly_error_message(
                 no_retry_reason, attempt, elapsed
             )
+            logger.info(f"User friendly error message: {user_friendly_error_message}")
             network_request_error = RequestError(
                 user_friendly_error_message, full_error_info_context, error_info.error
             )
@@ -594,14 +595,6 @@ class SeaDatabricksClient(DatabricksClient):
 
             session_response = CreateSessionResponse.from_dict(response)
             session_id = session_response.session_id
-            if not session_id:
-                raise ServerOperationError(
-                    "Failed to create session: No session ID returned",
-                    {
-                        "operation-id": None,
-                        "diagnostic-info": None,
-                    },
-                )
 
             return SessionId.from_sea_session_id(session_id)
         except Exception as e:
@@ -733,7 +726,9 @@ class SeaDatabricksClient(DatabricksClient):
 
         return link
 
-    def _results_message_to_execute_response(self, sea_response, command_id):
+    def _results_message_to_execute_response(
+        self, response: GetStatementResponse, command_id: CommandId
+    ) -> ExecuteResponse:
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
 
@@ -811,7 +806,7 @@ class SeaDatabricksClient(DatabricksClient):
         lz4_compression: bool,
         cursor: "Cursor",
         use_cloud_fetch: bool,
-        parameters: List[Dict[str, Any]],
+        parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
     ) -> Union["ResultSet", None]:
@@ -845,9 +840,9 @@ class SeaDatabricksClient(DatabricksClient):
             for param in parameters:
                 sea_parameters.append(
                     StatementParameter(
-                        name=param["name"],
-                        value=param["value"],
-                        type=param["type"] if "type" in param else None,
+                        name=param.name,
+                        value=param.value.stringValue,
+                        type=param.type,
                     )
                 )
 
@@ -1057,16 +1052,15 @@ class SeaDatabricksClient(DatabricksClient):
                 params=None,
                 headers=None,
             )
+            response = GetStatementResponse.from_dict(response_data)
 
             # Create and return a SeaResultSet
             from databricks.sql.result_set import SeaResultSet
 
             # Convert the response to an ExecuteResponse and extract result data
-            (
-                execute_response,
-                result_data,
-                manifest,
-            ) = self._results_message_to_execute_response(response_data, command_id)
+            execute_response = self._results_message_to_execute_response(
+                response, command_id
+            )
 
             return SeaResultSet(
                 connection=cursor.connection,
@@ -1074,8 +1068,8 @@ class SeaDatabricksClient(DatabricksClient):
                 sea_client=self,
                 buffer_size_bytes=cursor.buffer_size_bytes,
                 arraysize=cursor.arraysize,
-                result_data=result_data,
-                manifest=manifest,
+                result_data=response.result,
+                manifest=response.manifest,
             )
         except Exception as e:
             logger.error("SeaDatabricksClient.get_execution_result: Exception: %s", e)
@@ -1091,9 +1085,12 @@ class SeaDatabricksClient(DatabricksClient):
             ExternalLink: External link for the chunk
         """
 
-        response_data = self.http_client._make_request(
-            method="GET",
+        response_data = self.make_request(
+            method_name="GET",
             path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+            data=None,
+            params=None,
+            headers=None,
         )
         response = GetChunksResponse.from_dict(response_data)
 
@@ -1180,9 +1177,6 @@ class SeaDatabricksClient(DatabricksClient):
         table_types: Optional[List[str]] = None,
     ) -> "ResultSet":
         """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
-        if not catalog_name:
-            raise ValueError("Catalog name is required for get_tables")
-
         operation = (
             MetadataCommands.SHOW_TABLES_ALL_CATALOGS.value
             if catalog_name in [None, "*", "%"]
