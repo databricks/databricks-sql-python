@@ -90,6 +90,7 @@ class PySQLPytestTestCase:
         params = {
             "server_hostname": self.arguments["host"],
             "http_path": self.arguments["http_path"],
+            "use_sea": True,
             **self.auth_params(),
         }
 
@@ -116,7 +117,7 @@ class PySQLPytestTestCase:
     def cursor(self, extra_params=()):
         with self.connection(extra_params) as conn:
             cursor = conn.cursor(
-                arraysize=self.arraysize, buffer_size_bytes=self.buffer_size_bytes
+                arraysize=None, buffer_size_bytes=self.buffer_size_bytes
             )
             try:
                 yield cursor

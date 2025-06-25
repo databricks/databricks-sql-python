@@ -2,11 +2,6 @@ import unittest
 from unittest.mock import patch, Mock
 import gc
 
-from databricks.sql.thrift_api.TCLIService.ttypes import (
-    TOpenSessionResp,
-    TSessionHandle,
-    THandleIdentifier,
-)
 from databricks.sql.backend.types import SessionId, BackendType
 
 import databricks.sql

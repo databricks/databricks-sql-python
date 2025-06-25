@@ -298,7 +298,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self,
         max_download_threads: int,
         ssl_options: SSLOptions,
-        schema_bytes: bytes,
+        schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
         description: Optional[List[Tuple]] = None,
     ):
@@ -407,6 +407,8 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
     def _create_empty_table(self) -> "pyarrow.Table":
         """Create a 0-row table with just the schema bytes."""
+        if not self.schema_bytes:
+            return pyarrow.Table.from_pydict({})
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
@@ -550,7 +552,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         super().__init__(
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
-            schema_bytes=b"",
+            schema_bytes=None,
             lz4_compressed=lz4_compressed,
             description=description,
         )
