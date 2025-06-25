@@ -31,6 +31,15 @@ class FetchTests(unittest.TestCase):
         _, table = FetchTests.make_arrow_table(batch)
         queue = ArrowQueue(table, len(batch))
         return queue
+    
+    @classmethod
+    def mock_thrift_backend_with_retry_policy(cls): # Required for log_latency() decorator
+        """Create a simple thrift_backend mock with retry_policy for basic tests."""
+        mock_thrift_backend = Mock()
+        mock_retry_policy = Mock()
+        mock_retry_policy.history = []
+        mock_thrift_backend.retry_policy = mock_retry_policy
+        return mock_thrift_backend
 
     @staticmethod
     def make_dummy_result_set_from_initial_results(initial_results):
@@ -39,7 +48,7 @@ class FetchTests(unittest.TestCase):
         arrow_queue = ArrowQueue(arrow_table, len(initial_results), 0)
         rs = client.ResultSet(
             connection=Mock(),
-            thrift_backend=None,
+            thrift_backend=FetchTests.mock_thrift_backend_with_retry_policy(),
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=True,
@@ -79,7 +88,7 @@ class FetchTests(unittest.TestCase):
 
             return results, batch_index < len(batch_list)
 
-        mock_thrift_backend = Mock()
+        mock_thrift_backend = FetchTests.mock_thrift_backend_with_retry_policy()
         mock_thrift_backend.fetch_results = fetch_results
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
 

@@ -4,7 +4,7 @@ import json
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -113,6 +113,10 @@ class BaseTelemetryClient(ABC):
         raise NotImplementedError("Subclasses must implement export_failure_log")
 
     @abstractmethod
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
+        raise NotImplementedError("Subclasses must implement export_latency_log")
+
+    @abstractmethod
     def close(self):
         raise NotImplementedError("Subclasses must implement close")
 
@@ -134,6 +138,9 @@ class NoopTelemetryClient(BaseTelemetryClient):
         pass
 
     def export_failure_log(self, error_name, error_message):
+        pass
+
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
         pass
 
     def close(self):
@@ -299,6 +306,32 @@ class TelemetryClient(BaseTelemetryClient):
         except Exception as e:
             logger.debug("Failed to export failure log: %s", e)
 
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
+        logger.debug("Exporting latency log for connection %s", self._session_id_hex)
+        try:
+            telemetry_frontend_log = TelemetryFrontendLog(
+                frontend_log_event_id=str(uuid.uuid4()),
+                context=FrontendLogContext(
+                    client_context=TelemetryClientContext(
+                        timestamp_millis=int(time.time() * 1000),
+                        user_agent=self._user_agent,
+                    )
+                ),
+                entry=FrontendLogEntry(
+                    sql_driver_log=TelemetryEvent(
+                        session_id=self._session_id_hex,
+                        system_configuration=TelemetryHelper.get_driver_system_configuration(),
+                        driver_connection_params=self._driver_connection_params,
+                        sql_statement_id=sql_statement_id,
+                        sql_operation=sql_execution_event,
+                        operation_latency_ms=latency_ms,
+                    )
+                ),
+            )
+            self._export_event(telemetry_frontend_log)
+        except Exception as e:
+            logger.debug("Failed to export latency log: %s", e)
+
     def close(self):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
@@ -431,6 +464,9 @@ class TelemetryClientFactory:
                 logger.debug(
                     "No more telemetry clients, shutting down thread pool executor"
                 )
-                TelemetryClientFactory._executor.shutdown(wait=True)
+                try:
+                    TelemetryClientFactory._executor.shutdown(wait=True)
+                except Exception as e:
+                    logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False

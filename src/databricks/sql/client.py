@@ -61,7 +61,7 @@ from databricks.sql.telemetry.models.event import (
     DriverConnectionParameters,
     HostDetails,
 )
-
+from databricks.sql.telemetry.latency_logger import log_latency
 
 logger = logging.getLogger(__name__)
 
@@ -745,6 +745,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency()
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -784,6 +785,7 @@ class Cursor:
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
 
+    @log_latency()
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -811,6 +813,7 @@ class Cursor:
         with open(local_file, "wb") as fp:
             fp.write(r.content)
 
+    @log_latency()
     def _handle_staging_remove(
         self, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -824,6 +827,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency()
     def execute(
         self,
         operation: str,
@@ -914,6 +918,7 @@ class Cursor:
 
         return self
 
+    @log_latency()
     def execute_async(
         self,
         operation: str,
@@ -1039,6 +1044,7 @@ class Cursor:
             self.execute(operation, parameters)
         return self
 
+    @log_latency()
     def catalogs(self) -> "Cursor":
         """
         Get all available catalogs.
@@ -1062,6 +1068,7 @@ class Cursor:
         )
         return self
 
+    @log_latency()
     def schemas(
         self, catalog_name: Optional[str] = None, schema_name: Optional[str] = None
     ) -> "Cursor":
@@ -1090,6 +1097,7 @@ class Cursor:
         )
         return self
 
+    @log_latency()
     def tables(
         self,
         catalog_name: Optional[str] = None,
@@ -1125,6 +1133,7 @@ class Cursor:
         )
         return self
 
+    @log_latency()
     def columns(
         self,
         catalog_name: Optional[str] = None,
@@ -1379,6 +1388,7 @@ class ResultSet:
         self.results = results
         self.has_more_rows = has_more_rows
 
+    @log_latency()
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1391,6 +1401,7 @@ class ResultSet:
 
         return result
 
+    @log_latency()
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
