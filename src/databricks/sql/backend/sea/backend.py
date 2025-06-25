@@ -180,7 +180,14 @@ class SeaDatabricksClient(DatabricksClient):
         # Extract retry policy parameters
         self._initialize_retry_args(kwargs)
         self._auth_provider = auth_provider
+
         self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
+        if not self.enable_v3_retries:
+            logger.warning(
+                "Legacy retry behavior is enabled for this connection."
+                " This behaviour is deprecated and will be removed in a future release."
+            )
+
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}

@@ -127,7 +127,7 @@ class DatabricksRetryPolicy(Retry):
             total=_attempts_remaining,
             respect_retry_after_header=True,
             backoff_factor=self.delay_min,
-            allowed_methods=["POST"],
+            allowed_methods=["POST", "DELETE"],
             status_forcelist=[429, 503, *self.force_dangerous_codes],
         )
 

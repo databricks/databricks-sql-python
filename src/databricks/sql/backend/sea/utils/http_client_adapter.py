@@ -92,10 +92,6 @@ class SeaHttpClientAdapter:
         Returns:
             Response data parsed from JSON
         """
-        # Set the command type for retry policy
-        command_type = self._determine_command_type(path, "GET", None)
-        self.thrift_client.set_retry_command_type(command_type)
-
         return self.thrift_client.make_rest_request(
             "GET", path, params=params, headers=headers
         )
@@ -119,10 +115,6 @@ class SeaHttpClientAdapter:
         Returns:
             Response data parsed from JSON
         """
-        # Set the command type for retry policy
-        command_type = self._determine_command_type(path, "POST", data)
-        self.thrift_client.set_retry_command_type(command_type)
-
         response = self.thrift_client.make_rest_request(
             "POST", path, data=data, params=params, headers=headers
         )
@@ -147,10 +139,6 @@ class SeaHttpClientAdapter:
         Returns:
             Response data parsed from JSON
         """
-        # Set the command type for retry policy
-        command_type = self._determine_command_type(path, "DELETE", data)
-        self.thrift_client.set_retry_command_type(command_type)
-
         return self.thrift_client.make_rest_request(
             "DELETE", path, data=data, params=params, headers=headers
         )
