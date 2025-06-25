@@ -127,7 +127,7 @@ class DatabricksRetryPolicy(Retry):
             total=_attempts_remaining,
             respect_retry_after_header=True,
             backoff_factor=self.delay_min,
-            allowed_methods=["POST"],
+            allowed_methods=["POST", "DELETE"],  # Allow DELETE for CLOSE_SESSION and CLOSE_OPERATION
             status_forcelist=[429, 503, *self.force_dangerous_codes],
         )
 
@@ -256,6 +256,13 @@ class DatabricksRetryPolicy(Retry):
         """
         return self._delay_default
 
+    def _is_method_retryable(self, method: str) -> bool:
+        """Check if the given HTTP method is retryable.
+        
+        We allow POST (for ExecuteStatement) and DELETE (for CloseSession/CloseOperation).
+        """
+        return method.upper() in ["POST", "DELETE"]
+
     def start_retry_timer(self) -> None:
         """Timer is used to monitor the overall time across successive requests
 
@@ -371,9 +378,9 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 501:
             return False, "Received code 501 from server."
 
-        # Request failed and this method is not retryable. We only retry POST requests.
+        # Request failed and this method is not retryable. We retry POST and DELETE requests.
         if not self._is_method_retryable(method):
-            return False, "Only POST requests are retried"
+            return False, "Only POST and DELETE requests are retried"
 
         # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
         if status_code == 404 and self.command_type == CommandType.GET_OPERATION_STATUS:

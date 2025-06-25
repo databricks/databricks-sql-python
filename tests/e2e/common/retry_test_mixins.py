@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import json
 import time
 from typing import Optional, List
 from unittest.mock import MagicMock, PropertyMock, patch
@@ -75,6 +76,35 @@ def mocked_server_response(
         False if redirect_location is None else redirect_location
     )
 
+    # For SEA backend, we need to provide JSON response data
+    # Create appropriate JSON responses based on the status code
+    if status >= 400:
+        # Error responses
+        error_response = {
+            "error": {
+                "message": f"Simulated error {status}",
+                "error_code": f"SIMULATED_ERROR_{status}"
+            }
+        }
+        mock_response.data = json.dumps(error_response).encode("utf-8")
+    elif status == 200:
+        # Success responses - provide minimal valid responses for different SEA endpoints
+        success_response = {
+            "session_id": "test-session-123",
+            "statement_id": "test-statement-123", 
+            "status": {"state": "SUCCEEDED"},
+            "manifest": {
+                "format": "JSON_ARRAY",
+                "schema": {"column_count": 0, "columns": []},
+                "total_row_count": 0
+            },
+            "result": {"data": []}
+        }
+        mock_response.data = json.dumps(success_response).encode("utf-8")
+    else:
+        # Other status codes - provide empty JSON
+        mock_response.data = json.dumps({}).encode("utf-8")
+
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.return_value = mock_response
         try:
@@ -105,6 +135,36 @@ def mock_sequential_server_responses(responses: List[dict]):
         _mock.get_redirect_location.return_value = (
             False if resp["redirect_location"] is None else resp["redirect_location"]
         )
+        
+        # For SEA backend, we need to provide JSON response data
+        status = resp["status"]
+        if status >= 400:
+            # Error responses
+            error_response = {
+                "error": {
+                    "message": f"Simulated error {status}",
+                    "error_code": f"SIMULATED_ERROR_{status}"
+                }
+            }
+            _mock.data = json.dumps(error_response).encode("utf-8")
+        elif status == 200:
+            # Success responses - provide minimal valid responses for different SEA endpoints
+            success_response = {
+                "session_id": "test-session-123",
+                "statement_id": "test-statement-123", 
+                "status": {"state": "SUCCEEDED"},
+                "manifest": {
+                    "format": "JSON_ARRAY",
+                    "schema": {"column_count": 0, "columns": []},
+                    "total_row_count": 0
+                },
+                "result": {"data": []}
+            }
+            _mock.data = json.dumps(success_response).encode("utf-8")
+        else:
+            # Other status codes - provide empty JSON
+            _mock.data = json.dumps({}).encode("utf-8")
+        
         mock_responses.append(_mock)
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
