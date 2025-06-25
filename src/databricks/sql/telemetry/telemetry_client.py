@@ -399,7 +399,6 @@ class TelemetryClientFactory:
         host_url,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
-
         try:
             with TelemetryClientFactory._lock:
                 TelemetryClientFactory._initialize()

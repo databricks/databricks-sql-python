@@ -235,7 +235,7 @@ class TestTelemetryClient:
         client._flush.assert_not_called()
         assert len(client._events_batch) == 5
         
-        for i in range(5):
+        for i in range(5, 10):
             client._export_event(f"event-{i}")
         
         client._flush.assert_called_once()
