@@ -15,8 +15,7 @@ import re
 import dateutil
 import lz4.frame
 
-if TYPE_CHECKING:
-    from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 try:
     import pyarrow
