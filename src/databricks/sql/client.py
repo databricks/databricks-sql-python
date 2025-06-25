@@ -31,8 +31,6 @@ from databricks.sql.utils import (
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
-    ArrowQueue,
-    CloudFetchQueue,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -64,7 +62,6 @@ from databricks.sql.telemetry.models.event import (
     HostDetails,
 )
 from databricks.sql.telemetry.latency_logger import log_latency
-from databricks.sql.telemetry.models.enums import ExecutionResultFormat, StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -1354,39 +1351,6 @@ class Cursor:
         """Does nothing by default"""
         pass
 
-    def get_statement_id(self) -> Optional[str]:
-        return self.query_id
-
-    def get_session_id_hex(self) -> Optional[str]:
-        return self.connection.get_session_id_hex()
-
-    def get_is_compressed(self) -> bool:
-        return self.connection.lz4_compression
-
-    def get_execution_result(self) -> ExecutionResultFormat:
-        if self.active_result_set is None:
-            return ExecutionResultFormat.FORMAT_UNSPECIFIED
-
-        if isinstance(self.active_result_set.results, ColumnQueue):
-            return ExecutionResultFormat.COLUMNAR_INLINE
-        elif isinstance(self.active_result_set.results, CloudFetchQueue):
-            return ExecutionResultFormat.EXTERNAL_LINKS
-        elif isinstance(self.active_result_set.results, ArrowQueue):
-            return ExecutionResultFormat.INLINE_ARROW
-        return ExecutionResultFormat.FORMAT_UNSPECIFIED
-
-    def get_retry_count(self) -> int:
-        if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
-        ):
-            return len(self.thrift_backend.retry_policy.history)
-        return 0
-
-    def get_statement_type(self, func_name: str) -> StatementType:
-        # TODO: Implement this
-        return StatementType.SQL
-
 
 class ResultSet:
     def __init__(
@@ -1687,34 +1651,3 @@ class ResultSet:
             for column in table_schema_message.columns
         ]
 
-    def get_statement_id(self) -> Optional[str]:
-        if self.command_id:
-            return str(UUID(bytes=self.command_id.operationId.guid))
-        return None
-
-    def get_session_id_hex(self) -> Optional[str]:
-        return self.connection.get_session_id_hex()
-
-    def get_is_compressed(self) -> bool:
-        return self.lz4_compressed
-
-    def get_execution_result(self) -> ExecutionResultFormat:
-        if isinstance(self.results, ColumnQueue):
-            return ExecutionResultFormat.COLUMNAR_INLINE
-        elif isinstance(self.results, CloudFetchQueue):
-            return ExecutionResultFormat.EXTERNAL_LINKS
-        elif isinstance(self.results, ArrowQueue):
-            return ExecutionResultFormat.INLINE_ARROW
-        return ExecutionResultFormat.FORMAT_UNSPECIFIED
-
-    def get_statement_type(self, func_name: str) -> StatementType:
-        # TODO: Implement this
-        return StatementType.SQL
-
-    def get_retry_count(self) -> int:
-        if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
-        ):
-            return len(self.thrift_backend.retry_policy.history)
-        return 0
