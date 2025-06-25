@@ -283,92 +283,46 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         # Log request details (debug level)
         logger.debug(f"Making {method} request to {full_path}")
 
-        try:
-            # Make request using the connection pool
-            logger.debug(f"making request to {full_path}")
-            logger.debug(f"\trequest headers: {request_headers}")
-            logger.debug(f"\trequest body: {body.decode('utf-8') if body else None}")
-            logger.debug(f"\trequest params: {params}")
-            logger.debug(f"\trequest full path: {full_path}")
-            self.__resp = self.__pool.request(
-                method,
-                url=full_path,
-                body=body,
-                headers=request_headers,
-                preload_content=False,
-                timeout=self.__timeout,
-                retries=self.retry_policy,
-            )
+        # Make request using the connection pool - let urllib3 exceptions propagate
+        logger.debug(f"making request to {full_path}")
+        logger.debug(f"\trequest headers: {request_headers}")
+        logger.debug(f"\trequest body: {body.decode('utf-8') if body else None}")
+        logger.debug(f"\trequest params: {params}")
+        logger.debug(f"\trequest full path: {full_path}")
+        self.__resp = self.__pool.request(
+            method,
+            url=full_path,
+            body=body,
+            headers=request_headers,
+            preload_content=False,
+            timeout=self.__timeout,
+            retries=self.retry_policy,
+        )
+        logger.debug(f"Response: {self.__resp}")
 
-            # Store response status and headers
-            if self.__resp is not None:
-                self.code = self.__resp.status
-                self.message = self.__resp.reason
-                self.headers = self.__resp.headers
+        # Store response status and headers
+        if self.__resp is not None:
+            self.code = self.__resp.status
+            self.message = self.__resp.reason
+            self.headers = self.__resp.headers
 
-                # Log response status
-                logger.debug(f"Response status: {self.code}, message: {self.message}")
+            # Log response status
+            logger.debug(f"Response status: {self.code}, message: {self.message}")
 
-                # Read and parse response data
-                # Note: urllib3's HTTPResponse has a data attribute, but it's not in the type stubs
-                response_data = getattr(self.__resp, "data", None)
+            # Read and parse response data
+            # Note: urllib3's HTTPResponse has a data attribute, but it's not in the type stubs
+            response_data = getattr(self.__resp, "data", None)
 
-                # Check for HTTP errors
-                self._check_rest_response_for_error(self.code, response_data)
-
-                # Parse JSON response if there is content
-                if response_data:
-                    result = json.loads(response_data.decode("utf-8"))
-
-                    # Log response content (truncated for large responses)
-                    content_str = json.dumps(result)
-                    logger.debug(f"Response content: {content_str}")
-
-                    return result
-
-                return {}
-            else:
-                raise ValueError("No response received from server")
-
-        except urllib3.exceptions.HTTPError as e:
-            error_message = f"REST HTTP request failed: {str(e)}"
-            logger.error(error_message)
-            from databricks.sql.exc import RequestError
-
-            raise RequestError(error_message, e)
-
-    def _check_rest_response_for_error(
-        self, status_code: int, response_data: Optional[bytes]
-    ) -> None:
-        """
-        Check if the REST response indicates an error and raise an appropriate exception.
-
-        Args:
-            status_code: HTTP status code
-            response_data: Raw response data
-
-        Raises:
-            RequestError: If the response indicates an error
-        """
-        if status_code >= 400:
-            error_message = f"REST HTTP request failed with status {status_code}"
-
-            # Try to extract error details from JSON response
+            # Parse JSON response if there is content
             if response_data:
-                try:
-                    error_details = json.loads(response_data.decode("utf-8"))
-                    if isinstance(error_details, dict) and "message" in error_details:
-                        error_message = f"{error_message}: {error_details['message']}"
-                    logger.error(
-                        f"Request failed (status {status_code}): {error_details}"
-                    )
-                except (ValueError, KeyError):
-                    # If we can't parse JSON, log raw content
-                    content = response_data.decode("utf-8", errors="replace")
-                    logger.error(f"Request failed (status {status_code}): {content}")
-            else:
-                logger.error(f"Request failed (status {status_code}): No response data")
+                result = json.loads(response_data.decode("utf-8"))
 
-            from databricks.sql.exc import RequestError
+                # Log response content (truncated for large responses)
+                content_str = json.dumps(result)
+                logger.debug(f"Response content: {content_str}")
 
-            raise RequestError(error_message)
+                return result
+
+            return {}
+        else:
+            raise ValueError("No response received from server")

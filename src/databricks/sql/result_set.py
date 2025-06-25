@@ -5,7 +5,6 @@ import logging
 import time
 import pandas
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import (
     ExternalLink,
     ResultData,
@@ -19,6 +18,7 @@ except ImportError:
     pyarrow = None
 
 if TYPE_CHECKING:
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient

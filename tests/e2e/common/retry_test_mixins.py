@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import json
 import time
 from typing import Optional, List
 from unittest.mock import MagicMock, PropertyMock, patch
@@ -13,6 +14,7 @@ from databricks.sql.exc import (
     RequestError,
     SessionAlreadyClosedError,
     UnsafeToRetryError,
+    DatabaseError,
 )
 
 
@@ -75,6 +77,42 @@ def mocked_server_response(
         False if redirect_location is None else redirect_location
     )
 
+    # For the SEA backend, we need to provide proper JSON response data
+    if status >= 400:
+        # For error responses, provide proper SEA error structure
+        # This could be either a session creation error or statement execution error
+        error_response = {
+            "statement_id": "test-statement-123",
+            "status": {
+                "state": "FAILED",
+                "error": {
+                    "message": f"HTTP {status} error - Server unavailable",
+                    "error_code": f"HTTP_{status}_ERROR",
+                },
+            },
+        }
+        mock_response.data = json.dumps(error_response).encode("utf-8")
+    else:
+        # For success responses, provide proper SEA session response
+        success_response = {
+            "statement_id": "test-statement-123",
+            "status": {"state": "SUCCEEDED"},
+            "manifest": {
+                "schema": [
+                    {
+                        "name": "col1",
+                        "type_name": "STRING",
+                        "type_text": "string",
+                        "nullable": True,
+                    }
+                ],
+                "total_row_count": 1,
+                "total_byte_count": 100,
+            },
+            "result": {"data": [["value1"]]},
+        }
+        mock_response.data = json.dumps(success_response).encode("utf-8")
+
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.return_value = mock_response
         try:
@@ -105,6 +143,43 @@ def mock_sequential_server_responses(responses: List[dict]):
         _mock.get_redirect_location.return_value = (
             False if resp["redirect_location"] is None else resp["redirect_location"]
         )
+
+        # Add proper SEA response data based on the status code
+        status = resp["status"]
+        if status >= 400:
+            # For error responses, provide proper SEA error structure
+            error_response = {
+                "statement_id": "test-statement-123",
+                "status": {
+                    "state": "FAILED",
+                    "error": {
+                        "message": f"HTTP {status} error - Server unavailable",
+                        "error_code": f"HTTP_{status}_ERROR",
+                    },
+                },
+            }
+            _mock.data = json.dumps(error_response).encode("utf-8")
+        else:
+            # For success responses, provide proper SEA session response
+            success_response = {
+                "statement_id": "test-statement-123",
+                "status": {"state": "SUCCEEDED"},
+                "manifest": {
+                    "schema": [
+                        {
+                            "name": "col1",
+                            "type_name": "STRING",
+                            "type_text": "string",
+                            "nullable": True,
+                        }
+                    ],
+                    "total_row_count": 1,
+                    "total_byte_count": 100,
+                },
+                "result": {"data": [["value1"]]},
+            }
+            _mock.data = json.dumps(success_response).encode("utf-8")
+
         mock_responses.append(_mock)
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
@@ -257,9 +332,13 @@ class PySQLRetryTestsMixin:
             with conn.cursor() as cursor:
                 for dangerous_code in DANGEROUS_CODES:
                     with mocked_server_response(status=dangerous_code):
-                        with pytest.raises(RequestError) as cm:
+                        with pytest.raises((RequestError, DatabaseError)) as cm:
                             cursor.execute("Not a real query")
-                            assert isinstance(cm.value.args[1], UnsafeToRetryError)
+                            # For SEA backend, dangerous codes result in DatabaseError 
+                            # when the statement execution fails with proper error response
+                            # For Thrift backend, it should raise RequestError with UnsafeToRetryError
+                            if isinstance(cm.value, RequestError):
+                                assert isinstance(cm.value.args[1], UnsafeToRetryError)
 
         # Prove that these codes are retried if forced by the user
         with self.connection(

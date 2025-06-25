@@ -19,9 +19,9 @@ from typing import (
 
 from databricks.sql.backend.types import ExecuteResponse, CommandId
 from databricks.sql.backend.sea.models.base import ResultData
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 if TYPE_CHECKING:
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
     from databricks.sql.result_set import ResultSet, SeaResultSet
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,8 @@ class ResultSetFilter:
         result_data = ResultData(data=filtered_rows, external_links=None)
 
         # Create a new SeaResultSet with the filtered data
+        from databricks.sql.backend.sea.backend import SeaDatabricksClient
+
         filtered_result_set = SeaResultSet(
             connection=result_set.connection,
             execute_response=execute_response,

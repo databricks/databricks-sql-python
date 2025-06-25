@@ -1,9 +1,16 @@
+import errno
 import logging
+import math
+import threading
 import uuid
 import time
 import re
 from typing import Dict, Tuple, List, Optional, Any, Union, TYPE_CHECKING, Set
 
+import urllib3
+
+import databricks
+from databricks.sql.auth.retry import CommandType
 from databricks.sql.backend.sea.models.base import ExternalLink
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
@@ -11,6 +18,17 @@ from databricks.sql.backend.sea.utils.constants import (
     ResultDisposition,
     ResultCompression,
     WaitTimeout,
+)
+
+from databricks.sql.backend.thrift_backend import (
+    DATABRICKS_ERROR_OR_REDIRECT_HEADER,
+    DATABRICKS_REASON_HEADER,
+    THRIFT_ERROR_MESSAGE_HEADER,
+    DEFAULT_SOCKET_TIMEOUT,
+)
+from databricks.sql.utils import NoRetryReason, RequestErrorInfo, _bound
+from databricks.sql.thrift_api.TCLIService.TCLIService import (
+    Client as TCLIServiceClient,
 )
 
 if TYPE_CHECKING:
@@ -25,7 +43,7 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import ServerOperationError
+from databricks.sql.exc import DatabaseError, RequestError, ServerOperationError
 from databricks.sql.auth.thrift_http_client import THttpClient
 from databricks.sql.backend.sea.utils.http_client_adapter import SeaHttpClientAdapter
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -51,6 +69,27 @@ from databricks.sql.backend.sea.models.responses import (
 )
 
 logger = logging.getLogger(__name__)
+
+unsafe_logger = logging.getLogger("databricks.sql.unsafe")
+unsafe_logger.setLevel(logging.DEBUG)
+
+# To capture these logs in client code, add a non-NullHandler.
+# See our e2e test suite for an example with logging.FileHandler
+unsafe_logger.addHandler(logging.NullHandler())
+
+# Disable propagation so that handlers for `databricks.sql` don't pick up these messages
+unsafe_logger.propagate = False
+
+# see Connection.__init__ for parameter descriptions.
+# - Min/Max avoids unsustainable configs (sane values are far more constrained)
+# - 900s attempts-duration lines up w ODBC/JDBC drivers (for cluster startup > 10 mins)
+_retry_policy = {  # (type, default, min, max)
+    "_retry_delay_min": (float, 1, 0.1, 60),
+    "_retry_delay_max": (float, 60, 5, 3600),
+    "_retry_stop_after_attempts_count": (int, 30, 1, 60),
+    "_retry_stop_after_attempts_duration": (float, 900, 1, 86400),
+    "_retry_delay_default": (float, 5, 1, 60),
+}
 
 
 def _filter_session_configuration(
@@ -95,6 +134,12 @@ class SeaDatabricksClient(DatabricksClient):
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
     CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
+    _retry_delay_min: float
+    _retry_delay_max: float
+    _retry_stop_after_attempts_count: int
+    _retry_stop_after_attempts_duration: float
+    _retry_delay_default: float
+
     def __init__(
         self,
         server_hostname: str,
@@ -130,48 +175,328 @@ class SeaDatabricksClient(DatabricksClient):
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
+        self._ssl_options = ssl_options
+
         # Extract retry policy parameters
-        retry_policy = kwargs.get("_retry_policy", None)
-        retry_stop_after_attempts_count = kwargs.get(
-            "_retry_stop_after_attempts_count", 30
-        )
-        retry_stop_after_attempts_duration = kwargs.get(
-            "_retry_stop_after_attempts_duration", 600
-        )
-        retry_delay_min = kwargs.get("_retry_delay_min", 1)
-        retry_delay_max = kwargs.get("_retry_delay_max", 60)
-        retry_delay_default = kwargs.get("_retry_delay_default", 5)
-        retry_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
+        self._initialize_retry_args(kwargs)
+        self._auth_provider = auth_provider
+        self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
+        self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
-        # Create retry policy if not provided
-        if not retry_policy:
-            from databricks.sql.auth.retry import DatabricksRetryPolicy
+        additional_transport_args = {}
+        _max_redirects: Union[None, int] = kwargs.get("_retry_max_redirects")
+        if _max_redirects:
+            if _max_redirects > self._retry_stop_after_attempts_count:
+                logger.warn(
+                    "_retry_max_redirects > _retry_stop_after_attempts_count so it will have no affect!"
+                )
+            urllib3_kwargs = {"redirect": _max_redirects}
+        else:
+            urllib3_kwargs = {}
 
-            retry_policy = DatabricksRetryPolicy(
-                delay_min=retry_delay_min,
-                delay_max=retry_delay_max,
-                stop_after_attempts_count=retry_stop_after_attempts_count,
-                stop_after_attempts_duration=retry_stop_after_attempts_duration,
-                delay_default=retry_delay_default,
-                force_dangerous_codes=retry_dangerous_codes,
+        if self.enable_v3_retries:
+            self.retry_policy = databricks.sql.auth.thrift_http_client.DatabricksRetryPolicy(
+                delay_min=self._retry_delay_min,
+                delay_max=self._retry_delay_max,
+                stop_after_attempts_count=self._retry_stop_after_attempts_count,
+                stop_after_attempts_duration=self._retry_stop_after_attempts_duration,
+                delay_default=self._retry_delay_default,
+                force_dangerous_codes=self.force_dangerous_codes,
+                urllib3_kwargs=urllib3_kwargs,
             )
 
+            additional_transport_args["retry_policy"] = self.retry_policy
+
         # Initialize ThriftHttpClient
-        thrift_client = THttpClient(
-            auth_provider=auth_provider,
+        self._transport = databricks.sql.auth.thrift_http_client.THttpClient(
+            auth_provider=self._auth_provider,
             uri_or_host=f"https://{server_hostname}:{port}",
-            path=http_path,
-            ssl_options=ssl_options,
-            max_connections=kwargs.get("max_connections", 1),
-            retry_policy=retry_policy,  # Use the configured retry policy
+            ssl_options=self._ssl_options,
+            **additional_transport_args,  # type: ignore
         )
 
-        # Set custom headers
-        custom_headers = dict(http_headers)
-        thrift_client.setCustomHeaders(custom_headers)
+        timeout = kwargs.get("_socket_timeout", DEFAULT_SOCKET_TIMEOUT)
+        # setTimeout defaults to 15 minutes and is expected in ms
+        self._transport.setTimeout(timeout and (float(timeout) * 1000.0))
+
+        self._transport.setCustomHeaders(dict(http_headers))
+
+        # protocol = thrift.protocol.TBinaryProtocol.TBinaryProtocol(self._transport)
+        # self._client = TCLIServiceClient(protocol)
+
+        try:
+            self._transport.open()
+        except:
+            self._transport.close()
+            raise
+
+        self._request_lock = threading.RLock()
 
         # Initialize HTTP client adapter
-        self.http_client = SeaHttpClientAdapter(thrift_client=thrift_client)
+        self.http_client = SeaHttpClientAdapter(thrift_client=self._transport)
+
+    # TODO: Move this bounding logic into DatabricksRetryPolicy for v3 (PECO-918)
+    def _initialize_retry_args(self, kwargs):
+        # Configure retries & timing: use user-settings or defaults, and bound
+        # by policy. Log.warn when given param gets restricted.
+        for key, (type_, default, min, max) in _retry_policy.items():
+            given_or_default = type_(kwargs.get(key, default))
+            bound = _bound(min, max, given_or_default)
+            setattr(self, key, bound)
+            logger.debug(
+                "retry parameter: {} given_or_default {}".format(key, given_or_default)
+            )
+            if bound != given_or_default:
+                logger.warning(
+                    "Override out of policy retry parameter: "
+                    + "{} given {}, restricted to {}".format(
+                        key, given_or_default, bound
+                    )
+                )
+
+        # Fail on retry delay min > max; consider later adding fail on min > duration?
+        if (
+            self._retry_stop_after_attempts_count > 1
+            and self._retry_delay_min > self._retry_delay_max
+        ):
+            raise ValueError(
+                "Invalid configuration enables retries with retry delay min(={}) > max(={})".format(
+                    self._retry_delay_min, self._retry_delay_max
+                )
+            )
+
+    @staticmethod
+    def _check_response_for_error(response):
+        pass  # TODO: implement
+
+    @staticmethod
+    def _extract_error_message_from_headers(headers):
+        err_msg = ""
+        if THRIFT_ERROR_MESSAGE_HEADER in headers:
+            err_msg = headers[THRIFT_ERROR_MESSAGE_HEADER]
+        if DATABRICKS_ERROR_OR_REDIRECT_HEADER in headers:
+            if (
+                err_msg
+            ):  # We don't expect both to be set, but log both here just in case
+                err_msg = "Thriftserver error: {}, Databricks error: {}".format(
+                    err_msg, headers[DATABRICKS_ERROR_OR_REDIRECT_HEADER]
+                )
+            else:
+                err_msg = headers[DATABRICKS_ERROR_OR_REDIRECT_HEADER]
+            if DATABRICKS_REASON_HEADER in headers:
+                err_msg += ": " + headers[DATABRICKS_REASON_HEADER]
+
+        if not err_msg:
+            # if authentication token is invalid we need this branch
+            if DATABRICKS_REASON_HEADER in headers:
+                err_msg += ": " + headers[DATABRICKS_REASON_HEADER]
+
+        return err_msg
+
+    def _handle_request_error(self, error_info, attempt, elapsed):
+        max_attempts = self._retry_stop_after_attempts_count
+        max_duration_s = self._retry_stop_after_attempts_duration
+
+        if (
+            error_info.retry_delay is not None
+            and elapsed + error_info.retry_delay > max_duration_s
+        ):
+            no_retry_reason = NoRetryReason.OUT_OF_TIME
+        elif error_info.retry_delay is not None and attempt >= max_attempts:
+            no_retry_reason = NoRetryReason.OUT_OF_ATTEMPTS
+        elif error_info.retry_delay is None:
+            no_retry_reason = NoRetryReason.NOT_RETRYABLE
+        else:
+            no_retry_reason = None
+
+        full_error_info_context = error_info.full_info_logging_context(
+            no_retry_reason, attempt, max_attempts, elapsed, max_duration_s
+        )
+
+        if no_retry_reason is not None:
+            user_friendly_error_message = error_info.user_friendly_error_message(
+                no_retry_reason, attempt, elapsed
+            )
+            network_request_error = RequestError(
+                user_friendly_error_message, full_error_info_context, error_info.error
+            )
+            logger.info(network_request_error.message_with_context())
+
+            raise network_request_error
+
+        logger.info(
+            "Retrying request after error in {} seconds: {}".format(
+                error_info.retry_delay, full_error_info_context
+            )
+        )
+        time.sleep(error_info.retry_delay)
+
+    # FUTURE: Consider moving to https://github.com/litl/backoff or
+    # https://github.com/jd/tenacity for retry logic.
+    def make_request(self, method_name, path, data, params, headers, retryable=True):
+        """Execute given request, attempting retries when
+            1. Receiving HTTP 429/503 from server
+            2. OSError is raised during a GetOperationStatus
+
+        For delay between attempts, honor the given Retry-After header, but with bounds.
+        Use lower bound of expontial-backoff based on _retry_delay_min,
+        and upper bound of _retry_delay_max.
+        Will stop retry attempts if total elapsed time + next retry delay would exceed
+        _retry_stop_after_attempts_duration.
+        """
+
+        # basic strategy: build range iterator rep'ing number of available
+        # retries. bounds can be computed from there. iterate over it with
+        # retries until success or final failure achieved.
+
+        t0 = time.time()
+
+        def get_elapsed():
+            return time.time() - t0
+
+        def bound_retry_delay(attempt, proposed_delay):
+            """bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]"""
+            delay = int(proposed_delay)
+            delay = max(delay, self._retry_delay_min * math.pow(1.5, attempt - 1))
+            delay = min(delay, self._retry_delay_max)
+            return delay
+
+        def extract_retry_delay(attempt):
+            # encapsulate retry checks, returns None || delay-in-secs
+            # Retry IFF 429/503 code + Retry-After header set
+            http_code = getattr(self._transport, "code", None)
+            retry_after = getattr(self._transport, "headers", {}).get("Retry-After", 1)
+            if http_code in [429, 503]:
+                # bound delay (seconds) by [min_delay*1.5^(attempt-1), max_delay]
+                return bound_retry_delay(attempt, int(retry_after))
+            return None
+
+        def attempt_request(attempt):
+            # splits out lockable attempt, from delay & retry loop
+            # returns tuple: (method_return, delay_fn(), error, error_message)
+            # - non-None method_return -> success, return and be done
+            # - non-None retry_delay -> sleep delay before retry
+            # - error, error_message always set when available
+
+            error, error_message, retry_delay = None, None, None
+            try:
+                logger.debug("Sending request: {}(<REDACTED>)".format(method_name))
+                unsafe_logger.debug("Sending request: {}".format(path))
+
+                # These three lines are no-ops if the v3 retry policy is not in use
+                if self.enable_v3_retries:
+                    command_type = self.http_client._determine_command_type(
+                        path, method_name, data
+                    )
+                    self.http_client.thrift_client.set_retry_command_type(command_type)
+                    self.http_client.thrift_client.startRetryTimer()
+
+                if method_name == "GET":
+                    response = self.http_client.get(path, params, headers)
+                elif method_name == "POST":
+                    response = self.http_client.post(path, data, params, headers)
+                elif method_name == "DELETE":
+                    response = self.http_client.delete(path, data, params, headers)
+                else:
+                    raise ValueError(f"Unsupported method: {method_name}")
+
+                return response
+
+            except urllib3.exceptions.HTTPError as err:
+                # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
+
+                # TODO: don't use exception handling for GOS polling...
+
+                logger.error("ThriftBackend.attempt_request: HTTPError: %s", err)
+
+                if command_type == CommandType.GET_OPERATION_STATUS:
+                    delay_default = (
+                        self.enable_v3_retries
+                        and self.retry_policy.delay_default
+                        or self._retry_delay_default
+                    )
+                    retry_delay = bound_retry_delay(attempt, delay_default)
+                    logger.info(
+                        f"GetOperationStatus failed with HTTP error and will be retried: {str(err)}"
+                    )
+                else:
+                    raise err
+            except OSError as err:
+                error = err
+                error_message = str(err)
+                # fmt: off
+                # The built-in errno package encapsulates OSError codes, which are OS-specific.
+                # log.info for errors we believe are not unusual or unexpected. log.warn for
+                # for others like EEXIST, EBADF, ERANGE which are not expected in this context.
+                #
+                # I manually tested this retry behaviour using mitmweb and confirmed that
+                # GetOperationStatus requests are retried when I forced network connection
+                # interruptions / timeouts / reconnects. See #24 for more info.
+                                        # | Debian | Darwin |
+                info_errs = [           # |--------|--------|
+                    errno.ESHUTDOWN,    # |   32   |   32   |
+                    errno.EAFNOSUPPORT, # |   97   |   47   |
+                    errno.ECONNRESET,   # |   104  |   54   |
+                    errno.ETIMEDOUT,    # |   110  |   60   |
+                ]
+
+                # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
+                if command_type == CommandType.GET_OPERATION_STATUS or err.errno == errno.ETIMEDOUT:
+                    retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
+
+                    # fmt: on
+                    log_string = f"{command_type} failed with code {err.errno} and will attempt to retry"
+                    if err.errno in info_errs:
+                        logger.info(log_string)
+                    else:
+                        logger.warning(log_string)
+            except Exception as err:
+                logger.error("ThriftBackend.attempt_request: Exception: %s", err)
+                error = err
+                retry_delay = extract_retry_delay(attempt)
+                error_message = SeaDatabricksClient._extract_error_message_from_headers(
+                    getattr(self._transport, "headers", {})
+                )
+            finally:
+                # Calling `close()` here releases the active HTTP connection back to the pool
+                self._transport.close()
+
+            return RequestErrorInfo(
+                error=error,
+                error_message=error_message,
+                retry_delay=retry_delay,
+                http_code=getattr(self._transport, "code", None),
+                method=method_name,
+                request=data,
+            )
+
+        # The real work:
+        # - for each available attempt:
+        #       lock-and-attempt
+        #       return on success
+        #       if available: bounded delay and retry
+        #       if not: raise error
+        max_attempts = self._retry_stop_after_attempts_count if retryable else 1
+
+        # use index-1 counting for logging/human consistency
+        for attempt in range(1, max_attempts + 1):
+            # We have a lock here because .cancel can be called from a separate thread.
+            # We do not want threads to be simultaneously sharing the Thrift Transport
+            # because we use its state to determine retries
+            with self._request_lock:
+                response_or_error_info = attempt_request(attempt)
+            elapsed = get_elapsed()
+
+            # conditions: success, non-retry-able, no-attempts-left, no-time-left, delay+retry
+            if not isinstance(response_or_error_info, RequestErrorInfo):
+                # log nothing here, presume that main request logging covers
+                response = response_or_error_info
+                SeaDatabricksClient._check_response_for_error(response)
+                return response
+
+            error_info = response_or_error_info
+            # The error handler will either sleep or throw an exception
+            self._handle_request_error(error_info, attempt, elapsed)
 
     def _extract_warehouse_id(self, http_path: str) -> str:
         """
@@ -256,8 +581,12 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         try:
-            response = self.http_client.post(
-                path=self.SESSION_PATH, data=request_data.to_dict()
+            response = self.make_request(
+                method_name="POST",
+                path=self.SESSION_PATH,
+                data=request_data.to_dict(),
+                params=None,
+                headers=None,
             )
 
             session_response = CreateSessionResponse.from_dict(response)
@@ -273,13 +602,8 @@ class SeaDatabricksClient(DatabricksClient):
 
             return SessionId.from_sea_session_id(session_id)
         except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import RequestError, OperationalError
-
-            if isinstance(e, (RequestError, ServerOperationError)):
-                raise
-            else:
-                raise OperationalError(f"Error opening session: {str(e)}")
+            logger.error("SeaDatabricksClient.open_session: Exception: %s", e)
+            raise
 
     def close_session(self, session_id: SessionId) -> None:
         """
@@ -305,24 +629,16 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         try:
-            self.http_client.delete(
+            self.make_request(
+                method_name="DELETE",
                 path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
                 data=request_data.to_dict(),
+                params=None,
+                headers=None,
             )
         except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import (
-                RequestError,
-                OperationalError,
-                SessionAlreadyClosedError,
-            )
-
-            if isinstance(e, RequestError) and "404" in str(e):
-                raise SessionAlreadyClosedError("Session is already closed")
-            elif isinstance(e, (RequestError, ServerOperationError)):
-                raise
-            else:
-                raise OperationalError(f"Error closing session: {str(e)}")
+            logger.error("SeaDatabricksClient.close_session: Exception: %s", e)
+            raise
 
     @staticmethod
     def get_default_session_configuration_value(name: str) -> Optional[str]:
@@ -526,8 +842,12 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         try:
-            response_data = self.http_client.post(
-                path=self.STATEMENT_PATH, data=request.to_dict()
+            response_data = self.make_request(
+                method_name="POST",
+                path=self.STATEMENT_PATH,
+                data=request.to_dict(),
+                params=None,
+                headers=None,
             )
             response = ExecuteStatementResponse.from_dict(response_data)
             statement_id = response.statement_id
@@ -558,8 +878,8 @@ class SeaDatabricksClient(DatabricksClient):
                 time.sleep(0.5)  # add a small delay to avoid excessive API calls
                 state = self.get_query_state(command_id)
 
-            if state != CommandState.SUCCEEDED:
-                raise ServerOperationError(
+            if state in [CommandState.FAILED, CommandState.CLOSED]:
+                raise DatabaseError(
                     f"Statement execution did not succeed: {status.error.message if status.error else 'Unknown error'}",
                     {
                         "operation-id": command_id.to_sea_statement_id(),
@@ -569,13 +889,8 @@ class SeaDatabricksClient(DatabricksClient):
 
             return self.get_execution_result(command_id, cursor)
         except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import RequestError, OperationalError
-
-            if isinstance(e, (RequestError, ServerOperationError)):
-                raise
-            else:
-                raise OperationalError(f"Error executing command: {str(e)}")
+            logger.error("SeaDatabricksClient.execute_command: Exception: %s", e)
+            raise
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
@@ -595,24 +910,16 @@ class SeaDatabricksClient(DatabricksClient):
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
         try:
-            self.http_client.post(
+            self.make_request(
+                method_name="POST",
                 path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
                 data=request.to_dict(),
+                params=None,
+                headers=None,
             )
         except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import RequestError, OperationalError
-
-            if isinstance(e, RequestError) and "404" in str(e):
-                # Operation was already closed, so we can ignore this
-                logger.warning(
-                    f"Attempted to cancel a command that was already closed: {sea_statement_id}"
-                )
-                return
-            elif isinstance(e, (RequestError, ServerOperationError)):
-                raise
-            else:
-                raise OperationalError(f"Error canceling command: {str(e)}")
+            logger.error("SeaDatabricksClient.cancel_command: Exception: %s", e)
+            raise
 
     def close_command(self, command_id: CommandId) -> None:
         """
@@ -632,24 +939,16 @@ class SeaDatabricksClient(DatabricksClient):
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
         try:
-            self.http_client.delete(
+            self.make_request(
+                method_name="DELETE",
                 path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
                 data=request.to_dict(),
+                params=None,
+                headers=None,
             )
         except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import (
-                RequestError,
-                OperationalError,
-                CursorAlreadyClosedError,
-            )
-
-            if isinstance(e, RequestError) and "404" in str(e):
-                raise CursorAlreadyClosedError("Cursor is already closed")
-            elif isinstance(e, (RequestError, ServerOperationError)):
-                raise
-            else:
-                raise OperationalError(f"Error closing command: {str(e)}")
+            logger.error("SeaDatabricksClient.close_command: Exception: %s", e)
+            raise
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         """
@@ -672,27 +971,20 @@ class SeaDatabricksClient(DatabricksClient):
 
         request = GetStatementRequest(statement_id=sea_statement_id)
         try:
-            response_data = self.http_client.get(
+            response_data = self.make_request(
+                method_name="GET",
                 path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+                data=None,
+                params=None,
+                headers=None,
             )
 
             # Parse the response
             response = GetStatementResponse.from_dict(response_data)
             return response.status.state
         except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import RequestError, OperationalError
-
-            if isinstance(e, RequestError) and "404" in str(e):
-                # If the operation is not found, it was likely already closed
-                logger.warning(
-                    f"Operation not found when checking state: {sea_statement_id}"
-                )
-                return CommandState.CANCELLED
-            elif isinstance(e, (RequestError, ServerOperationError)):
-                raise
-            else:
-                raise OperationalError(f"Error getting query state: {str(e)}")
+            logger.error("SeaDatabricksClient.get_query_state: Exception: %s", e)
+            raise
 
     def get_execution_result(
         self,
@@ -723,8 +1015,12 @@ class SeaDatabricksClient(DatabricksClient):
 
         try:
             # Get the statement result
-            response_data = self.http_client.get(
+            response_data = self.make_request(
+                method_name="GET",
                 path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+                data=None,
+                params=None,
+                headers=None,
             )
 
             # Create and return a SeaResultSet
@@ -747,13 +1043,8 @@ class SeaDatabricksClient(DatabricksClient):
                 manifest=manifest,
             )
         except Exception as e:
-            # Map exceptions to match Thrift behavior
-            from databricks.sql.exc import RequestError, OperationalError
-
-            if isinstance(e, (RequestError, ServerOperationError)):
-                raise
-            else:
-                raise OperationalError(f"Error getting execution result: {str(e)}")
+            logger.error("SeaDatabricksClient.get_execution_result: Exception: %s", e)
+            raise
 
     # == Metadata Operations ==
 
