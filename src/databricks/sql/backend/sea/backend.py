@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 import time
 import re
-from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
@@ -12,11 +14,12 @@ from databricks.sql.backend.sea.utils.constants import (
     WaitTimeout,
     MetadataCommands,
 )
+
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
-    from databricks.sql.result_set import ResultSet
+    from databricks.sql.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -409,7 +412,7 @@ class SeaDatabricksClient(DatabricksClient):
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
-    ) -> Union["ResultSet", None]:
+    ) -> Union[SeaResultSet, None]:
         """
         Execute a SQL command using the SEA backend.
 
@@ -426,7 +429,7 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
 
         Returns:
-            ResultSet: A SeaResultSet instance for the executed command
+            SeaResultSet: A SeaResultSet instance for the executed command
         """
 
         if session_id.backend_type != BackendType.SEA:
@@ -576,8 +579,8 @@ class SeaDatabricksClient(DatabricksClient):
     def get_execution_result(
         self,
         command_id: CommandId,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> SeaResultSet:
         """
         Get the result of a command execution.
 
@@ -586,7 +589,7 @@ class SeaDatabricksClient(DatabricksClient):
             cursor: Cursor executing the command
 
         Returns:
-            ResultSet: A SeaResultSet instance with the execution results
+            SeaResultSet: A SeaResultSet instance with the execution results
 
         Raises:
             ValueError: If the command ID is invalid
@@ -659,8 +662,8 @@ class SeaDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> SeaResultSet:
         """Get available catalogs by executing 'SHOW CATALOGS'."""
         result = self.execute_command(
             operation=MetadataCommands.SHOW_CATALOGS.value,
@@ -682,10 +685,10 @@ class SeaDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ) -> SeaResultSet:
         """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
         if not catalog_name:
             raise ValueError("Catalog name is required for get_schemas")
@@ -720,7 +723,7 @@ class SeaDatabricksClient(DatabricksClient):
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         table_types: Optional[List[str]] = None,
-    ) -> "ResultSet":
+    ) -> SeaResultSet:
         """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
         operation = (
             MetadataCommands.SHOW_TABLES_ALL_CATALOGS.value
@@ -750,12 +753,6 @@ class SeaDatabricksClient(DatabricksClient):
         )
         assert result is not None, "execute_command returned None in synchronous mode"
 
-        from databricks.sql.result_set import SeaResultSet
-
-        assert isinstance(
-            result, SeaResultSet
-        ), "execute_command returned a non-SeaResultSet"
-
         # Apply client-side filtering by table_types
         from databricks.sql.backend.sea.utils.filters import ResultSetFilter
 
@@ -768,12 +765,12 @@ class SeaDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name: Optional[str] = None,
         schema_name: Optional[str] = None,
         table_name: Optional[str] = None,
         column_name: Optional[str] = None,
-    ) -> "ResultSet":
+    ) -> SeaResultSet:
         """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
         if not catalog_name:
             raise ValueError("Catalog name is required for get_columns")
