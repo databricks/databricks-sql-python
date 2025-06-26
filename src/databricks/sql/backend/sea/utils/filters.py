@@ -112,7 +112,6 @@ class ResultSetFilter:
             result_set,
             lambda row: (
                 len(row) > column_index
-                and isinstance(row[column_index], str)
                 and (
                     row[column_index].upper()
                     if not case_sensitive
