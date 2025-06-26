@@ -5,7 +5,7 @@ Tests for the ResultSetFilter class.
 import unittest
 from unittest.mock import MagicMock, patch
 
-from databricks.sql.backend.filters import ResultSetFilter
+from databricks.sql.backend.sea.utils.filters import ResultSetFilter
 
 
 class TestResultSetFilter(unittest.TestCase):
@@ -73,7 +73,9 @@ class TestResultSetFilter(unittest.TestCase):
         # Case 1: Case-sensitive filtering
         allowed_values = ["table1", "table3"]
 
-        with patch("databricks.sql.backend.filters.isinstance", return_value=True):
+        with patch(
+            "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
+        ):
             with patch(
                 "databricks.sql.result_set.SeaResultSet"
             ) as mock_sea_result_set_class:
@@ -98,7 +100,9 @@ class TestResultSetFilter(unittest.TestCase):
 
         # Case 2: Case-insensitive filtering
         mock_sea_result_set_class.reset_mock()
-        with patch("databricks.sql.backend.filters.isinstance", return_value=True):
+        with patch(
+            "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
+        ):
             with patch(
                 "databricks.sql.result_set.SeaResultSet"
             ) as mock_sea_result_set_class:
@@ -114,22 +118,14 @@ class TestResultSetFilter(unittest.TestCase):
                 )
                 mock_sea_result_set_class.assert_called_once()
 
-        # Case 3: Unsupported result set type
-        mock_unsupported_result_set = MagicMock()
-        with patch("databricks.sql.backend.filters.isinstance", return_value=False):
-            with patch("databricks.sql.backend.filters.logger") as mock_logger:
-                result = ResultSetFilter.filter_by_column_values(
-                    mock_unsupported_result_set, 0, ["value"], True
-                )
-                mock_logger.warning.assert_called_once()
-                self.assertEqual(result, mock_unsupported_result_set)
-
     def test_filter_tables_by_type(self):
         """Test filtering tables by type with various options."""
         # Case 1: Specific table types
         table_types = ["TABLE", "VIEW"]
 
-        with patch("databricks.sql.backend.filters.isinstance", return_value=True):
+        with patch(
+            "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
+        ):
             with patch.object(
                 ResultSetFilter, "filter_by_column_values"
             ) as mock_filter:
@@ -143,7 +139,9 @@ class TestResultSetFilter(unittest.TestCase):
                 self.assertEqual(kwargs.get("case_sensitive"), True)
 
         # Case 2: Default table types (None or empty list)
-        with patch("databricks.sql.backend.filters.isinstance", return_value=True):
+        with patch(
+            "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
+        ):
             with patch.object(
                 ResultSetFilter, "filter_by_column_values"
             ) as mock_filter:

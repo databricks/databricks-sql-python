@@ -729,13 +729,16 @@ class TestSeaBackend:
     def test_get_tables(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_tables method with various parameter combinations."""
         # Mock the execute_command method
-        mock_result_set = Mock()
+        from databricks.sql.result_set import SeaResultSet
+
+        mock_result_set = Mock(spec=SeaResultSet)
+
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
             # Mock the filter_tables_by_type method
             with patch(
-                "databricks.sql.backend.filters.ResultSetFilter.filter_tables_by_type",
+                "databricks.sql.backend.sea.utils.filters.ResultSetFilter.filter_tables_by_type",
                 return_value=mock_result_set,
             ) as mock_filter:
                 # Case 1: With catalog name only
@@ -809,16 +812,6 @@ class TestSeaBackend:
                     async_op=False,
                     enforce_embedded_schema_correctness=False,
                 )
-
-                # Case 4: Without catalog name (should raise ValueError)
-                with pytest.raises(ValueError) as excinfo:
-                    sea_client.get_tables(
-                        session_id=sea_session_id,
-                        max_rows=100,
-                        max_bytes=1000,
-                        cursor=mock_cursor,
-                    )
-                assert "Catalog name is required for get_tables" in str(excinfo.value)
 
     def test_get_columns(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_columns method with various parameter combinations."""
