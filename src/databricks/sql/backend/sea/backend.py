@@ -12,6 +12,7 @@ from databricks.sql.backend.sea.utils.constants import (
     WaitTimeout,
     MetadataCommands,
 )
+from databricks.sql.result_set import SeaResultSet
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -722,6 +723,9 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+        assert isinstance(
+            result, SeaResultSet
+        ), "SEA backend execute_command returned a non-SeaResultSet"
 
         # Apply client-side filtering by table_types
         from databricks.sql.backend.sea.utils.filters import ResultSetFilter
