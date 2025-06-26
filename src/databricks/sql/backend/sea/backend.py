@@ -1,7 +1,7 @@
 import logging
 import time
 import re
-from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set, cast
 
 from databricks.sql.backend.sea.models.base import ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
@@ -12,7 +12,6 @@ from databricks.sql.backend.sea.utils.constants import (
     WaitTimeout,
     MetadataCommands,
 )
-from databricks.sql.result_set import SeaResultSet
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -723,13 +722,12 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
-        assert isinstance(
-            result, SeaResultSet
-        ), "SEA backend execute_command returned a non-SeaResultSet"
 
         # Apply client-side filtering by table_types
         from databricks.sql.backend.sea.utils.filters import ResultSetFilter
+        from databricks.sql.result_set import SeaResultSet
 
+        result = cast(SeaResultSet, result)
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
 
         return result

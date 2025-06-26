@@ -4,6 +4,8 @@ Client-side filtering utilities for Databricks SQL connector.
 This module provides filtering capabilities for result sets returned by different backends.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import (
     List,
@@ -11,12 +13,13 @@ from typing import (
     Any,
     Callable,
     cast,
+    TYPE_CHECKING,
 )
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.types import ExecuteResponse
+if TYPE_CHECKING:
+    from databricks.sql.result_set import SeaResultSet
 
-from databricks.sql.result_set import ResultSet, SeaResultSet
+from databricks.sql.backend.types import ExecuteResponse
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +65,11 @@ class ResultSetFilter:
         )
 
         # Create a new ResultData object with filtered data
-
         from databricks.sql.backend.sea.models.base import ResultData
 
         result_data = ResultData(data=filtered_rows, external_links=None)
 
+        from databricks.sql.backend.sea.backend import SeaDatabricksClient
         from databricks.sql.result_set import SeaResultSet
 
         # Create a new SeaResultSet with the filtered data
