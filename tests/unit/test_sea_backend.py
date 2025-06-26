@@ -810,16 +810,6 @@ class TestSeaBackend:
                     enforce_embedded_schema_correctness=False,
                 )
 
-                # Case 4: Without catalog name (should raise ValueError)
-                with pytest.raises(ValueError) as excinfo:
-                    sea_client.get_tables(
-                        session_id=sea_session_id,
-                        max_rows=100,
-                        max_bytes=1000,
-                        cursor=mock_cursor,
-                    )
-                assert "Catalog name is required for get_tables" in str(excinfo.value)
-
     def test_get_columns(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_columns method with various parameter combinations."""
         # Mock the execute_command method

@@ -695,9 +695,6 @@ class SeaDatabricksClient(DatabricksClient):
         table_types: Optional[List[str]] = None,
     ) -> "ResultSet":
         """Get tables by executing 'SHOW TABLES IN catalog [SCHEMA LIKE pattern] [LIKE pattern]'."""
-        if not catalog_name:
-            raise ValueError("Catalog name is required for get_tables")
-
         operation = (
             MetadataCommands.SHOW_TABLES_ALL_CATALOGS.value
             if catalog_name in [None, "*", "%"]
