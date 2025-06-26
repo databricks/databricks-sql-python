@@ -51,7 +51,7 @@ from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
 
-from databricks.sql.exc import SessionAlreadyClosedError, CursorAlreadyClosedError
+from databricks.sql.exc import SessionAlreadyClosedError
 
 log = logging.getLogger(__name__)
 
