@@ -92,4 +92,4 @@ class ResultManifest:
     truncated: bool = False
     chunks: Optional[List[ChunkInfo]] = None
     result_compression: Optional[str] = None
-    is_volume_operation: Optional[bool] = None
+    is_volume_operation: bool = False
