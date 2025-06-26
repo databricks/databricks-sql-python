@@ -724,7 +724,7 @@ class SeaDatabricksClient(DatabricksClient):
         assert result is not None, "execute_command returned None in synchronous mode"
 
         # Apply client-side filtering by table_types
-        from databricks.sql.backend.filters import ResultSetFilter
+        from databricks.sql.backend.sea.utils.filters import ResultSetFilter
 
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
 

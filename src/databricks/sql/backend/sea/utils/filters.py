@@ -83,11 +83,11 @@ class ResultSetFilter:
 
     @staticmethod
     def filter_by_column_values(
-        result_set: ResultSet,
+        result_set: SeaResultSet,
         column_index: int,
         allowed_values: List[str],
         case_sensitive: bool = False,
-    ) -> ResultSet:
+    ) -> SeaResultSet:
         """
         Filter a result set by values in a specific column.
 
@@ -105,34 +105,24 @@ class ResultSetFilter:
         if not case_sensitive:
             allowed_values = [v.upper() for v in allowed_values]
 
-        # Determine the type of result set and apply appropriate filtering
-        from databricks.sql.result_set import SeaResultSet
-
-        if isinstance(result_set, SeaResultSet):
-            return ResultSetFilter._filter_sea_result_set(
-                result_set,
-                lambda row: (
-                    len(row) > column_index
-                    and isinstance(row[column_index], str)
-                    and (
-                        row[column_index].upper()
-                        if not case_sensitive
-                        else row[column_index]
-                    )
-                    in allowed_values
-                ),
-            )
-
-        # For other result set types, return the original (should be handled by specific implementations)
-        logger.warning(
-            f"Filtering not implemented for result set type: {type(result_set).__name__}"
+        return ResultSetFilter._filter_sea_result_set(
+            result_set,
+            lambda row: (
+                len(row) > column_index
+                and isinstance(row[column_index], str)
+                and (
+                    row[column_index].upper()
+                    if not case_sensitive
+                    else row[column_index]
+                )
+                in allowed_values
+            ),
         )
-        return result_set
 
     @staticmethod
     def filter_tables_by_type(
-        result_set: ResultSet, table_types: Optional[List[str]] = None
-    ) -> ResultSet:
+        result_set: SeaResultSet, table_types: Optional[List[str]] = None
+    ) -> SeaResultSet:
         """
         Filter a result set of tables by the specified table types.
 

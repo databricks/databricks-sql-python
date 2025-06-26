@@ -735,7 +735,7 @@ class TestSeaBackend:
         ) as mock_execute:
             # Mock the filter_tables_by_type method
             with patch(
-                "databricks.sql.backend.filters.ResultSetFilter.filter_tables_by_type",
+                "databricks.sql.backend.sea.utils.filters.ResultSetFilter.filter_tables_by_type",
                 return_value=mock_result_set,
             ) as mock_filter:
                 # Case 1: With catalog name only
