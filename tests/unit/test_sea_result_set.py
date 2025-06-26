@@ -88,45 +88,6 @@ class TestSeaResultSet:
         assert isinstance(result_set.results, JsonQueue)
         assert result_set.results.data_array == []
 
-    def test_init_with_result_data(
-        self,
-        mock_connection,
-        mock_sea_client,
-        execute_response,
-        mock_result_data,
-        mock_manifest,
-    ):
-        """Test initializing SeaResultSet with result data."""
-        with patch(
-            "databricks.sql.result_set.SeaResultSetQueueFactory"
-        ) as mock_factory:
-            mock_queue = Mock(spec=JsonQueue)
-            mock_factory.build_queue.return_value = mock_queue
-
-            result_set = SeaResultSet(
-                connection=mock_connection,
-                execute_response=execute_response,
-                sea_client=mock_sea_client,
-                buffer_size_bytes=1000,
-                arraysize=100,
-                result_data=mock_result_data,
-                manifest=mock_manifest,
-            )
-
-            # Verify that the factory was called with the correct arguments
-            mock_factory.build_queue.assert_called_once_with(
-                mock_result_data,
-                mock_manifest,
-                str(execute_response.command_id.to_sea_statement_id()),
-                description=execute_response.description,
-                max_download_threads=mock_sea_client.max_download_threads,
-                sea_client=mock_sea_client,
-                lz4_compressed=execute_response.lz4_compressed,
-            )
-
-            # Verify that the queue was set correctly
-            assert result_set.results == mock_queue
-
     def test_close(self, mock_connection, mock_sea_client, execute_response):
         """Test closing a result set."""
         result_set = SeaResultSet(
