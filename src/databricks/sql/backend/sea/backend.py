@@ -27,7 +27,7 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import DatabaseError, ServerOperationError
+from databricks.sql.exc import DatabaseError, ProgrammingError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
 
@@ -172,7 +172,7 @@ class SeaDatabricksClient(DatabricksClient):
             f"Note: SEA only works for warehouses."
         )
         logger.error(error_message)
-        raise ValueError(error_message)
+        raise ProgrammingError(error_message)
 
     @property
     def max_download_threads(self) -> int:
@@ -244,14 +244,14 @@ class SeaDatabricksClient(DatabricksClient):
             session_id: The session identifier returned by open_session()
 
         Raises:
-            ValueError: If the session ID is invalid
+            ProgrammingError: If the session ID is invalid
             OperationalError: If there's an error closing the session
         """
 
         logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
         if session_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA session ID")
+            raise ProgrammingError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
         request_data = DeleteSessionRequest(
@@ -429,7 +429,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if session_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA session ID")
+            raise ProgrammingError("Not a valid SEA session ID")
 
         sea_session_id = session_id.to_sea_session_id()
 
@@ -504,11 +504,11 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to cancel
 
         Raises:
-            ValueError: If the command ID is invalid
+            ProgrammingError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
+            raise ProgrammingError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
 
@@ -527,11 +527,11 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to close
 
         Raises:
-            ValueError: If the command ID is invalid
+            ProgrammingError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
+            raise ProgrammingError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
 
@@ -553,7 +553,7 @@ class SeaDatabricksClient(DatabricksClient):
             CommandState: The current state of the command
 
         Raises:
-            ValueError: If the command ID is invalid
+            ProgrammingError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -592,7 +592,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
+            raise ProgrammingError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
 
@@ -658,7 +658,7 @@ class SeaDatabricksClient(DatabricksClient):
     ) -> SeaResultSet:
         """Get schemas by executing 'SHOW SCHEMAS IN catalog [LIKE pattern]'."""
         if not catalog_name:
-            raise ValueError("Catalog name is required for get_schemas")
+            raise DatabaseError("Catalog name is required for get_schemas")
 
         operation = MetadataCommands.SHOW_SCHEMAS.value.format(catalog_name)
 
@@ -740,7 +740,7 @@ class SeaDatabricksClient(DatabricksClient):
     ) -> SeaResultSet:
         """Get columns by executing 'SHOW COLUMNS IN CATALOG catalog [SCHEMA LIKE pattern] [TABLE LIKE pattern] [LIKE pattern]'."""
         if not catalog_name:
-            raise ValueError("Catalog name is required for get_columns")
+            raise DatabaseError("Catalog name is required for get_columns")
 
         operation = MetadataCommands.SHOW_COLUMNS.value.format(catalog_name)
 

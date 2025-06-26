@@ -18,6 +18,7 @@ from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.exc import (
     Error,
     NotSupportedError,
+    ProgrammingError,
     ServerOperationError,
     DatabaseError,
 )
@@ -129,7 +130,7 @@ class TestSeaBackend:
         assert client3.max_download_threads == 5
 
         # Test with invalid HTTP path
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             SeaDatabricksClient(
                 server_hostname="test-server.databricks.com",
                 port=443,
@@ -195,7 +196,7 @@ class TestSeaBackend:
         )
 
         # Test close_session with invalid ID type
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.close_session(thrift_session_id)
         assert "Not a valid SEA session ID" in str(excinfo.value)
 
@@ -244,7 +245,7 @@ class TestSeaBackend:
             assert cmd_id_arg.guid == "test-statement-123"
 
         # Test with invalid session ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             mock_thrift_handle = MagicMock()
             mock_thrift_handle.sessionId.guid = b"guid"
             mock_thrift_handle.sessionId.secret = b"secret"
@@ -448,7 +449,7 @@ class TestSeaBackend:
         )
 
         # Test cancel_command with invalid ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.cancel_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -462,7 +463,7 @@ class TestSeaBackend:
         )
 
         # Test close_command with invalid ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.close_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -521,7 +522,7 @@ class TestSeaBackend:
         assert result.status == CommandState.SUCCEEDED
 
         # Test get_execution_result with invalid ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.get_execution_result(thrift_command_id, mock_cursor)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -717,7 +718,7 @@ class TestSeaBackend:
             )
 
             # Case 3: Without catalog name (should raise ValueError)
-            with pytest.raises(ValueError) as excinfo:
+            with pytest.raises(DatabaseError) as excinfo:
                 sea_client.get_schemas(
                     session_id=sea_session_id,
                     max_rows=100,
@@ -868,7 +869,7 @@ class TestSeaBackend:
             )
 
             # Case 3: Without catalog name (should raise ValueError)
-            with pytest.raises(ValueError) as excinfo:
+            with pytest.raises(DatabaseError) as excinfo:
                 sea_client.get_columns(
                     session_id=sea_session_id,
                     max_rows=100,
