@@ -729,7 +729,10 @@ class TestSeaBackend:
     def test_get_tables(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_tables method with various parameter combinations."""
         # Mock the execute_command method
-        mock_result_set = Mock()
+        from databricks.sql.result_set import SeaResultSet
+
+        mock_result_set = Mock(spec=SeaResultSet)
+
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:

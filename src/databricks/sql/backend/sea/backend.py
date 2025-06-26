@@ -1,7 +1,7 @@
 import logging
 import time
 import re
-from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set, cast
+from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.models.base import ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
@@ -718,11 +718,15 @@ class SeaDatabricksClient(DatabricksClient):
         )
         assert result is not None, "execute_command returned None in synchronous mode"
 
-        # Apply client-side filtering by table_types
-        from databricks.sql.backend.sea.utils.filters import ResultSetFilter
         from databricks.sql.result_set import SeaResultSet
 
-        result = cast(SeaResultSet, result)
+        assert isinstance(
+            result, SeaResultSet
+        ), "execute_command returned a non-SeaResultSet"
+
+        # Apply client-side filtering by table_types
+        from databricks.sql.backend.sea.utils.filters import ResultSetFilter
+
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
 
         return result
