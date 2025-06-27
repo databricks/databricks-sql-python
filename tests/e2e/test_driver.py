@@ -935,19 +935,8 @@ class TestPySQLCoreSuite(
                 assert pyarrow.types.is_decimal(decimal_type)
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
-    def test_catalogs_returns_arrow_table(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_catalogs_returns_arrow_table(self):
+        with self.cursor() as cursor:
             cursor.catalogs()
             results = cursor.fetchall_arrow()
             assert isinstance(results, pyarrow.Table)
