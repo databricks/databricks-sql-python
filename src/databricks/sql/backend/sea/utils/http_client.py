@@ -7,7 +7,6 @@ from typing import Dict, Any, Optional, List, Tuple, Union
 from urllib.parse import urljoin
 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
-from urllib3.exceptions import HTTPError, MaxRetryError
 from urllib3.util import make_headers
 
 from databricks.sql.auth.authenticators import AuthProvider
@@ -227,77 +226,46 @@ class SeaHttpClient:
 
         logger.debug(f"Making {method} request to {url}")
 
+        # When v3 retries are enabled, urllib3 handles retries internally via DatabricksRetryPolicy
+        # When disabled, we let exceptions bubble up (similar to Thrift backend approach)
+        response = self._pool.request(
+            method=method.upper(),
+            url=url,
+            body=body,
+            headers=headers,
+            preload_content=True,
+            retries=self.retry_policy,
+        )
+
+        logger.debug(f"Response status: {response.status}")
+
+        # Handle successful responses
+        if 200 <= response.status < 300:
+            if response.data:
+                try:
+                    result = json.loads(response.data.decode("utf-8"))
+                    logger.debug("Successfully parsed JSON response")
+                    return result
+                except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                    logger.error(f"Failed to parse JSON response: {e}")
+                    raise RequestError(f"Invalid JSON response: {e}", e)
+            return {}
+
+        # Handle error responses
+        error_message = f"SEA HTTP request failed with status {response.status}"
+        
         try:
-            response = self._pool.request(
-                method=method.upper(),
-                url=url,
-                body=body,
-                headers=headers,
-                preload_content=True,
-                retries=self.retry_policy,
-            )
+            if response.data:
+                error_details = json.loads(response.data.decode("utf-8"))
+                if isinstance(error_details, dict) and "message" in error_details:
+                    error_message = f"{error_message}: {error_details['message']}"
+                logger.error(f"Request failed: {error_details}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # Log raw response if we can't parse JSON
+            content = response.data.decode("utf-8", errors="replace") if response.data else ""
+            logger.error(f"Request failed with non-JSON response: {content}")
 
-            logger.debug(f"Response status: {response.status}")
-
-            # Handle successful responses
-            if 200 <= response.status < 300:
-                if response.data:
-                    try:
-                        result = json.loads(response.data.decode("utf-8"))
-                        logger.debug("Successfully parsed JSON response")
-                        return result
-                    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                        logger.error(f"Failed to parse JSON response: {e}")
-                        raise RequestError(f"Invalid JSON response: {e}", e)
-                return {}
-
-            # Handle error responses
-            error_message = f"SEA HTTP request failed with status {response.status}"
-            
-            try:
-                if response.data:
-                    error_details = json.loads(response.data.decode("utf-8"))
-                    if isinstance(error_details, dict) and "message" in error_details:
-                        error_message = f"{error_message}: {error_details['message']}"
-                    logger.error(f"Request failed: {error_details}")
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                # Log raw response if we can't parse JSON
-                content = response.data.decode("utf-8", errors="replace") if response.data else ""
-                logger.error(f"Request failed with non-JSON response: {content}")
-
-            raise RequestError(error_message, None)
-
-        except MaxRetryError as e:
-            # Extract the most recent error from the retry history
-            error_message = f"SEA request failed after retries: {str(e)}"
-            
-            if hasattr(e, "reason") and e.reason:
-                if hasattr(e.reason, "response"):
-                    # Extract status code and body from the final failed response
-                    response = e.reason.response
-                    error_message = f"SEA request failed after retries (status {response.status})"
-                    try:
-                        if response.data:
-                            error_details = json.loads(response.data.decode("utf-8"))
-                            if isinstance(error_details, dict) and "message" in error_details:
-                                error_message = f"{error_message}: {error_details['message']}"
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        pass
-                else:
-                    error_message = f"SEA request failed after retries: {str(e.reason)}"
-            
-            logger.error(error_message)
-            raise RequestError(error_message, e)
-
-        except HTTPError as e:
-            error_message = f"SEA HTTP error: {str(e)}"
-            logger.error(error_message)
-            raise RequestError(error_message, e)
-
-        except Exception as e:
-            error_message = f"Unexpected error in SEA request: {str(e)}"
-            logger.error(error_message)
-            raise RequestError(error_message, e)
+        raise RequestError(error_message, None)
 
     def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
         """
