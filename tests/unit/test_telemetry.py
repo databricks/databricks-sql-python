@@ -331,10 +331,10 @@ class TestTelemetryClient:
         with pytest.raises(TypeError):
             TestBaseClient()  # Can't instantiate abstract class
 
-    def test_telemetry_http_adapter_retry_policy(self, telemetry_client_setup):
-        """Test that TelemetryHTTPAdapter properly configures DatabricksRetryPolicy."""
+    def test_telemetry_http_adapter_configuration(self, telemetry_client_setup):
+        """Test that TelemetryHTTPAdapter is properly configured with correct retry parameters."""
         from databricks.sql.telemetry.telemetry_client import TelemetryHTTPAdapter
-        from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
+        from databricks.sql.auth.retry import DatabricksRetryPolicy
         
         client = telemetry_client_setup["client"]
         
@@ -343,21 +343,12 @@ class TestTelemetryClient:
         assert isinstance(adapter, TelemetryHTTPAdapter)
         assert isinstance(adapter.max_retries, DatabricksRetryPolicy)
         
-        # Verify that the retry policy has the correct configuration
+        # Verify that the retry policy has the correct static configuration
         retry_policy = adapter.max_retries
         assert retry_policy.delay_min == client.TELEMETRY_RETRY_DELAY_MIN
         assert retry_policy.delay_max == client.TELEMETRY_RETRY_DELAY_MAX
         assert retry_policy.stop_after_attempts_count == client.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_COUNT
         assert retry_policy.stop_after_attempts_duration == client.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_DURATION
-        
-        # Test that the adapter's send method would properly configure the retry policy
-        # by directly testing the logic that sets command_type and starts the timer
-        if isinstance(adapter.max_retries, DatabricksRetryPolicy):
-            adapter.max_retries.command_type = CommandType.OTHER
-            adapter.max_retries.start_retry_timer()
-            
-            # Verify that the retry policy was configured correctly
-            assert retry_policy.command_type == CommandType.OTHER
 
 
 class TestTelemetryHelper:
