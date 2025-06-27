@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import List, Optional, TYPE_CHECKING
 
@@ -450,13 +452,13 @@ class SeaResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        sea_client: "SeaDatabricksClient",
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        sea_client: SeaDatabricksClient,
+        result_data: ResultData,
+        manifest: Optional[ResultManifest] = None,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
-        result_data: Optional["ResultData"] = None,
-        manifest: Optional["ResultManifest"] = None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
@@ -467,21 +469,19 @@ class SeaResultSet(ResultSet):
             sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
-            result_data: Result data from SEA response (optional)
-            manifest: Manifest from SEA response (optional)
+            result_data: Result data from SEA response
+            manifest: Manifest from SEA response
         """
 
-        results_queue = None
-        if result_data:
-            results_queue = SeaResultSetQueueFactory.build_queue(
-                result_data,
-                manifest,
-                str(execute_response.command_id.to_sea_statement_id()),
-                description=execute_response.description,
-                max_download_threads=sea_client.max_download_threads,
-                sea_client=sea_client,
-                lz4_compressed=execute_response.lz4_compressed,
-            )
+        results_queue = SeaResultSetQueueFactory.build_queue(
+            result_data,
+            manifest,
+            str(execute_response.command_id.to_sea_statement_id()),
+            description=execute_response.description,
+            max_download_threads=sea_client.max_download_threads,
+            sea_client=sea_client,
+            lz4_compressed=execute_response.lz4_compressed,
+        )
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -503,6 +503,8 @@ class SeaResultSet(ResultSet):
         """
         Convert raw data rows to Arrow table.
         """
+        if not rows:
+            return pyarrow.Table.from_pydict({})
 
         columns = []
         num_cols = len(rows[0])

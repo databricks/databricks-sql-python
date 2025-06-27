@@ -135,7 +135,7 @@ class TestSeaResultSetQueueFactory:
     def test_build_queue_with_empty_data(self, mock_sea_client, mock_description):
         """Test building a queue with empty data."""
         # Create a ResultData object with no data
-        result_data = ResultData(data=None, external_links=None, row_count=0)
+        result_data = ResultData(data=[], external_links=None, row_count=0)
 
         # Build the queue
         queue = SeaResultSetQueueFactory.build_queue(

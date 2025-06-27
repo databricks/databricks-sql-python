@@ -74,10 +74,10 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
             result_data=result_data,
             manifest=None,
+            buffer_size_bytes=1000,
+            arraysize=100,
         )
         result_set.results = JsonQueue(sample_data)
 
@@ -96,6 +96,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -115,6 +116,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -135,6 +137,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -157,6 +160,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -301,39 +305,40 @@ class TestSeaResultSet:
         self, mock_connection, mock_sea_client, execute_response, sample_data
     ):
         """Test that fetchmany_arrow raises NotImplementedError for non-JSON data."""
-        # Create a result set without JSON data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
 
         # Test that NotImplementedError is raised
         with pytest.raises(
-            NotImplementedError, match="fetchmany_arrow only supported for JSON data"
+            NotImplementedError,
+            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
         ):
-            result_set.fetchmany_arrow(10)
+            # Create a result set without JSON data
+            result_set = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=ResultData(data=None, external_links=[]),
+                buffer_size_bytes=1000,
+                arraysize=100,
+            )
 
     def test_fetchall_arrow_not_implemented(
         self, mock_connection, mock_sea_client, execute_response, sample_data
     ):
         """Test that fetchall_arrow raises NotImplementedError for non-JSON data."""
-        # Create a result set without JSON data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-
         # Test that NotImplementedError is raised
         with pytest.raises(
-            NotImplementedError, match="fetchall_arrow only supported for JSON data"
+            NotImplementedError,
+            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
         ):
-            result_set.fetchall_arrow()
+            # Create a result set without JSON data
+            result_set = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=ResultData(data=None, external_links=[]),
+                buffer_size_bytes=1000,
+                arraysize=100,
+            )
 
     def test_is_staging_operation(
         self, mock_connection, mock_sea_client, execute_response
@@ -347,6 +352,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
