@@ -77,9 +77,9 @@ class ResultSetFilter:
             connection=result_set.connection,
             execute_response=execute_response,
             sea_client=cast(SeaDatabricksClient, result_set.backend),
+            result_data=result_data,
             buffer_size_bytes=result_set.buffer_size_bytes,
             arraysize=result_set.arraysize,
-            result_data=result_data,
         )
 
         return filtered_result_set

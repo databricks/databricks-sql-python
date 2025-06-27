@@ -616,10 +616,10 @@ class SeaDatabricksClient(DatabricksClient):
             connection=cursor.connection,
             execute_response=execute_response,
             sea_client=self,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-            arraysize=cursor.arraysize,
             result_data=response.result,
             manifest=response.manifest,
+            buffer_size_bytes=cursor.buffer_size_bytes,
+            arraysize=cursor.arraysize,
         )
 
     # == Metadata Operations ==

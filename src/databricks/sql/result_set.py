@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 import logging
-import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+from databricks.sql.backend.sea.conversion import SqlTypeConverter
 
 try:
     import pyarrow
@@ -16,10 +19,14 @@ if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
-from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+    JsonQueue,
+    SeaResultSetQueueFactory,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -88,6 +95,44 @@ class ResultSet(ABC):
             else:
                 break
 
+    def _convert_arrow_table(self, table):
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+
+        if self.connection.disable_pandas is True:
+            return [
+                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
+            ]
+
+        # Need to use nullable types, as otherwise type can change when there are missing values.
+        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+        dtype_mapping = {
+            pyarrow.int8(): pandas.Int8Dtype(),
+            pyarrow.int16(): pandas.Int16Dtype(),
+            pyarrow.int32(): pandas.Int32Dtype(),
+            pyarrow.int64(): pandas.Int64Dtype(),
+            pyarrow.uint8(): pandas.UInt8Dtype(),
+            pyarrow.uint16(): pandas.UInt16Dtype(),
+            pyarrow.uint32(): pandas.UInt32Dtype(),
+            pyarrow.uint64(): pandas.UInt64Dtype(),
+            pyarrow.bool_(): pandas.BooleanDtype(),
+            pyarrow.float32(): pandas.Float32Dtype(),
+            pyarrow.float64(): pandas.Float64Dtype(),
+            pyarrow.string(): pandas.StringDtype(),
+        }
+
+        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+        df = table_renamed.to_pandas(
+            types_mapper=dtype_mapping.get,
+            date_as_object=True,
+            timestamp_as_object=True,
+        )
+
+        res = df.to_numpy(na_value=None, dtype="object")
+        return [ResultRow(*v) for v in res]
+
     @property
     def rownumber(self):
         return self._next_row_index
@@ -96,12 +141,6 @@ class ResultSet(ABC):
     def is_staging_operation(self) -> bool:
         """Whether this result set represents a staging operation."""
         return self._is_staging_operation
-
-    # Define abstract methods that concrete implementations must implement
-    @abstractmethod
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        pass
 
     @abstractmethod
     def fetchone(self) -> Optional[Row]:
@@ -189,10 +228,10 @@ class ThriftResultSet(ResultSet):
         # Build the results queue if t_row_set is provided
         results_queue = None
         if t_row_set and execute_response.result_format is not None:
-            from databricks.sql.utils import ResultSetQueueFactory
+            from databricks.sql.utils import ThriftResultSetQueueFactory
 
             # Create the results queue using the provided format
-            results_queue = ResultSetQueueFactory.build_queue(
+            results_queue = ThriftResultSetQueueFactory.build_queue(
                 row_set_type=execute_response.result_format,
                 t_row_set=t_row_set,
                 arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
@@ -248,44 +287,6 @@ class ThriftResultSet(ResultSet):
             result.append(ResultRow(*curr_row))
 
         return result
-
-    def _convert_arrow_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-
-        if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
-
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
-
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
-
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
 
     def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
@@ -451,13 +452,13 @@ class SeaResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        sea_client: "SeaDatabricksClient",
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        sea_client: SeaDatabricksClient,
+        result_data: ResultData,
+        manifest: Optional[ResultManifest] = None,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
-        result_data=None,
-        manifest=None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
@@ -468,10 +469,21 @@ class SeaResultSet(ResultSet):
             sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
-            result_data: Result data from SEA response (optional)
-            manifest: Manifest from SEA response (optional)
+            result_data: Result data from SEA response
+            manifest: Manifest from SEA response
         """
 
+        results_queue = SeaResultSetQueueFactory.build_queue(
+            result_data,
+            manifest,
+            str(execute_response.command_id.to_sea_statement_id()),
+            description=execute_response.description,
+            max_download_threads=sea_client.max_download_threads,
+            sea_client=sea_client,
+            lz4_compressed=execute_response.lz4_compressed,
+        )
+
+        # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
             backend=sea_client,
@@ -480,46 +492,201 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        raise NotImplementedError(
-            "_fill_results_buffer is not implemented for SEA backend"
-        )
+    def _convert_json_to_arrow(self, rows: List) -> "pyarrow.Table":
+        """
+        Convert raw data rows to Arrow table.
+        """
+        if not rows:
+            return pyarrow.Table.from_pydict({})
+
+        columns = []
+        num_cols = len(rows[0])
+        for i in range(num_cols):
+            columns.append([row[i] for row in rows])
+        names = [col[0] for col in self.description]
+        return pyarrow.Table.from_arrays(columns, names=names)
+
+    def _convert_json_types(self, rows: List) -> List:
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+        Also converts string values to appropriate Python types based on column metadata.
+        """
+
+        if not self.description or not rows:
+            return rows
+
+        # JSON + INLINE gives us string values, so we convert them to appropriate
+        #   types based on column metadata
+        converted_rows = []
+        for row in rows:
+            converted_row = []
+
+            for i, value in enumerate(row):
+                column_type = self.description[i][1]
+                precision = self.description[i][4]
+                scale = self.description[i][5]
+
+                try:
+                    converted_value = SqlTypeConverter.convert_value(
+                        value, column_type, precision=precision, scale=scale
+                    )
+                    converted_row.append(converted_value)
+                except Exception as e:
+                    logger.warning(
+                        f"Error converting value '{value}' to {column_type}: {e}"
+                    )
+                    converted_row.append(value)
+
+            converted_rows.append(converted_row)
+
+        return converted_rows
+
+    def _create_json_table(self, rows: List) -> List[Row]:
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+        Also converts string values to appropriate Python types based on column metadata.
+
+        Args:
+            rows: List of raw data rows
+        Returns:
+            List of Row objects with named columns and converted values
+        """
+
+        if not self.description or not rows:
+            return rows
+
+        ResultRow = Row(*[col[0] for col in self.description])
+        rows = self._convert_json_types(rows)
+
+        return [ResultRow(*row) for row in rows]
+
+    def fetchmany_json(self, size: int) -> List:
+        """
+        Fetch the next set of rows as a columnar table.
+
+        Args:
+            size: Number of rows to fetch
+
+        Returns:
+            Columnar table containing the fetched rows
+
+        Raises:
+            ValueError: If size is negative
+        """
+
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        results = self.results.next_n_rows(size)
+        self._next_row_index += len(results)
+
+        return results
+
+    def fetchall_json(self) -> List:
+        """
+        Fetch all remaining rows as a columnar table.
+
+        Returns:
+            Columnar table containing all remaining rows
+        """
+
+        results = self.results.remaining_rows()
+        self._next_row_index += len(results)
+
+        return results
+
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+        """
+        Fetch the next set of rows as an Arrow table.
+
+        Args:
+            size: Number of rows to fetch
+
+        Returns:
+            PyArrow Table containing the fetched rows
+
+        Raises:
+            ImportError: If PyArrow is not installed
+            ValueError: If size is negative
+        """
+
+        if size < 0:
+            raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
+
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchmany_arrow only supported for JSON data")
+
+        rows = self._convert_json_types(self.results.next_n_rows(size))
+        results = self._convert_json_to_arrow(rows)
+        self._next_row_index += results.num_rows
+
+        return results
+
+    def fetchall_arrow(self) -> "pyarrow.Table":
+        """
+        Fetch all remaining rows as an Arrow table.
+        """
+
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchall_arrow only supported for JSON data")
+
+        rows = self._convert_json_types(self.results.remaining_rows())
+        results = self._convert_json_to_arrow(rows)
+        self._next_row_index += results.num_rows
+
+        return results
 
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
+
+        Returns:
+            A single Row object or None if no more rows are available
         """
 
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
+        if isinstance(self.results, JsonQueue):
+            res = self._create_json_table(self.fetchmany_json(1))
+        else:
+            raise NotImplementedError("fetchone only supported for JSON data")
 
-    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
+        return res[0] if res else None
+
+    def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a list of rows.
 
-        An empty sequence is returned when no more rows are available.
+        Args:
+            size: Number of rows to fetch (defaults to arraysize if None)
+
+        Returns:
+            List of Row objects
+
+        Raises:
+            ValueError: If size is negative
         """
 
-        raise NotImplementedError("fetchmany is not implemented for SEA backend")
+        if isinstance(self.results, JsonQueue):
+            return self._create_json_table(self.fetchmany_json(size))
+        else:
+            raise NotImplementedError("fetchmany only supported for JSON data")
 
     def fetchall(self) -> List[Row]:
         """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
+        Fetch all remaining rows of a query result, returning them as a list of rows.
+
+        Returns:
+            List of Row objects containing all remaining rows
         """
 
-        raise NotImplementedError("fetchall is not implemented for SEA backend")
-
-    def fetchmany_arrow(self, size: int) -> Any:
-        """Fetch the next set of rows as an Arrow table."""
-        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
-
-    def fetchall_arrow(self) -> Any:
-        """Fetch all remaining rows as an Arrow table."""
-        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")
+        if isinstance(self.results, JsonQueue):
+            return self._create_json_table(self.fetchall_json())
+        else:
+            raise NotImplementedError("fetchall only supported for JSON data")
