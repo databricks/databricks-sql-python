@@ -253,7 +253,7 @@ class Connection:
                 host_url=server_hostname,
                 http_path=http_path,
                 port=self.port,
-                original_exception=e
+                original_exception=e,
             ) from e
 
         self.server_telemetry_enabled = True
@@ -314,7 +314,7 @@ class Connection:
                 http_path=http_path,
                 port=self.port,
                 user_agent=useragent_header,
-                original_exception=e
+                original_exception=e,
             ) from e
 
         self._session_handle = self._open_session_resp.sessionHandle

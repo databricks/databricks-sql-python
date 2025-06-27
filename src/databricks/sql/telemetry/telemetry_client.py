@@ -18,7 +18,11 @@ from databricks.sql.telemetry.models.frontend_logs import (
     FrontendLogContext,
     FrontendLogEntry,
 )
-from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow, DatabricksClientType
+from databricks.sql.telemetry.models.enums import (
+    AuthMech,
+    AuthFlow,
+    DatabricksClientType,
+)
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     DatabricksOAuthProvider,
@@ -462,8 +466,7 @@ class TelemetryClientFactory:
             )
 
             error_info = DriverErrorInfo(
-                error_name=error_name, 
-                stack_trace=error_message
+                error_name=error_name, stack_trace=error_message
             )
 
             telemetry_frontend_log = TelemetryFrontendLog(
