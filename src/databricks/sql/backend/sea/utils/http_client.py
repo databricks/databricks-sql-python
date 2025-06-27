@@ -1,11 +1,19 @@
 import json
 import logging
-import requests
-from typing import Callable, Dict, Any, Optional, List, Tuple
+import ssl
+import urllib.parse
+import urllib.request
+from typing import Dict, Any, Optional, List, Tuple, Union
 from urllib.parse import urljoin
 
+from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
+from urllib3.exceptions import HTTPError, MaxRetryError
+from urllib3.util import make_headers
+
 from databricks.sql.auth.authenticators import AuthProvider
+from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
+from databricks.sql.exc import RequestError
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +22,8 @@ class SeaHttpClient:
     """
     HTTP client for Statement Execution API (SEA).
 
-    This client handles the HTTP communication with the SEA endpoints,
-    including authentication, request formatting, and response parsing.
+    This client uses urllib3 for robust HTTP communication with retry policies
+    and connection pooling, similar to the Thrift HTTP client but simplified.
     """
 
     def __init__(
@@ -38,65 +46,142 @@ class SeaHttpClient:
             http_headers: List of HTTP headers to include in requests
             auth_provider: Authentication provider
             ssl_options: SSL configuration options
-            **kwargs: Additional keyword arguments
+            **kwargs: Additional keyword arguments including retry policy settings
         """
 
         self.server_hostname = server_hostname
-        self.port = port
+        self.port = port or 443
         self.http_path = http_path
         self.auth_provider = auth_provider
         self.ssl_options = ssl_options
 
-        self.base_url = f"https://{server_hostname}:{port}"
+        # Build base URL
+        self.base_url = f"https://{server_hostname}:{self.port}"
+        
+        # Parse URL for proxy handling
+        parsed_url = urllib.parse.urlparse(self.base_url)
+        self.scheme = parsed_url.scheme
+        self.host = parsed_url.hostname
+        self.port = parsed_url.port or (443 if self.scheme == "https" else 80)
 
+        # Setup headers
         self.headers: Dict[str, str] = dict(http_headers)
         self.headers.update({"Content-Type": "application/json"})
 
-        self.max_retries = kwargs.get("_retry_stop_after_attempts_count", 30)
+        # Extract retry policy settings
+        self._retry_delay_min = kwargs.get("_retry_delay_min", 1.0)
+        self._retry_delay_max = kwargs.get("_retry_delay_max", 60.0)
+        self._retry_stop_after_attempts_count = kwargs.get(
+            "_retry_stop_after_attempts_count", 30
+        )
+        self._retry_stop_after_attempts_duration = kwargs.get(
+            "_retry_stop_after_attempts_duration", 900.0
+        )
+        self._retry_delay_default = kwargs.get("_retry_delay_default", 5.0)
+        self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
-        # Create a session for connection pooling
-        self.session = requests.Session()
+        # Connection pooling settings
+        self.max_connections = kwargs.get("max_connections", 10)
 
-        # Configure SSL verification
-        if ssl_options.tls_verify:
-            self.session.verify = ssl_options.tls_trusted_ca_file or True
+        # Setup retry policy
+        self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
+        
+        if self.enable_v3_retries:
+            self.retry_policy = DatabricksRetryPolicy(
+                delay_min=self._retry_delay_min,
+                delay_max=self._retry_delay_max,
+                stop_after_attempts_count=self._retry_stop_after_attempts_count,
+                stop_after_attempts_duration=self._retry_stop_after_attempts_duration,
+                delay_default=self._retry_delay_default,
+                force_dangerous_codes=self.force_dangerous_codes,
+                urllib3_kwargs={"allowed_methods": ["GET", "POST", "DELETE"]},
+            )
         else:
-            self.session.verify = False
+            # Legacy behavior - no automatic retries
+            self.retry_policy = 0
 
-        # Configure client certificates if provided
-        if ssl_options.tls_client_cert_file:
-            client_cert = ssl_options.tls_client_cert_file
-            client_key = ssl_options.tls_client_cert_key_file
-            client_key_password = ssl_options.tls_client_cert_key_password
+        # Handle proxy settings
+        try:
+            proxy = urllib.request.getproxies().get(self.scheme)
+        except (KeyError, AttributeError):
+            proxy = None
+        else:
+            if urllib.request.proxy_bypass(self.host):
+                proxy = None
 
-            if client_key:
-                self.session.cert = (client_cert, client_key)
-            else:
-                self.session.cert = client_cert
+        if proxy:
+            parsed_proxy = urllib.parse.urlparse(proxy)
+            self.realhost = self.host
+            self.realport = self.port
+            self.proxy_uri = proxy
+            self.host = parsed_proxy.hostname
+            self.port = parsed_proxy.port
+            self.proxy_auth = self._basic_proxy_auth_headers(parsed_proxy)
+        else:
+            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
 
-            if client_key_password:
-                # Note: requests doesn't directly support key passwords
-                # This would require more complex handling with libraries like pyOpenSSL
-                logger.warning(
-                    "Client key password provided but not supported by requests library"
-                )
+        # Initialize connection pool
+        self._pool = None
+        self._open()
+
+    def _basic_proxy_auth_headers(self, proxy_parsed) -> Optional[Dict[str, str]]:
+        """Create basic auth headers for proxy if credentials are provided."""
+        if proxy_parsed is None or not proxy_parsed.username:
+            return None
+        ap = f"{urllib.parse.unquote(proxy_parsed.username)}:{urllib.parse.unquote(proxy_parsed.password)}"
+        return make_headers(proxy_basic_auth=ap)
+
+    def _open(self):
+        """Initialize the connection pool."""
+        pool_kwargs = {"maxsize": self.max_connections}
+
+        if self.scheme == "http":
+            pool_class = HTTPConnectionPool
+        else:  # https
+            pool_class = HTTPSConnectionPool
+            pool_kwargs.update({
+                "cert_reqs": ssl.CERT_REQUIRED if self.ssl_options.tls_verify else ssl.CERT_NONE,
+                "ca_certs": self.ssl_options.tls_trusted_ca_file,
+                "cert_file": self.ssl_options.tls_client_cert_file,
+                "key_file": self.ssl_options.tls_client_cert_key_file,
+                "key_password": self.ssl_options.tls_client_cert_key_password,
+            })
+
+        if self.proxy_uri:
+            proxy_manager = ProxyManager(
+                self.proxy_uri,
+                num_pools=1,
+                proxy_headers=self.proxy_auth,
+            )
+            self._pool = proxy_manager.connection_from_host(
+                host=self.realhost,
+                port=self.realport,
+                scheme=self.scheme,
+                pool_kwargs=pool_kwargs,
+            )
+        else:
+            self._pool = pool_class(self.host, self.port, **pool_kwargs)
+
+    def close(self):
+        """Close the connection pool."""
+        if self._pool:
+            self._pool.clear()
+
+    def set_retry_command_type(self, command_type: CommandType):
+        """Set the command type for retry policy decision making."""
+        if isinstance(self.retry_policy, DatabricksRetryPolicy):
+            self.retry_policy.command_type = command_type
+
+    def start_retry_timer(self):
+        """Start the retry timer for duration-based retry limits."""
+        if isinstance(self.retry_policy, DatabricksRetryPolicy):
+            self.retry_policy.start_retry_timer()
 
     def _get_auth_headers(self) -> Dict[str, str]:
         """Get authentication headers from the auth provider."""
         headers: Dict[str, str] = {}
         self.auth_provider.add_headers(headers)
         return headers
-
-    def _get_call(self, method: str) -> Callable:
-        """Get the appropriate HTTP method function."""
-        method = method.upper()
-        if method == "GET":
-            return self.session.get
-        if method == "POST":
-            return self.session.post
-        if method == "DELETE":
-            return self.session.delete
-        raise ValueError(f"Unsupported HTTP method: {method}")
 
     def _make_request(
         self,
@@ -118,69 +203,123 @@ class SeaHttpClient:
             Dict[str, Any]: Response data parsed from JSON
 
         Raises:
-            RequestError: If the request fails
+            RequestError: If the request fails after retries
         """
 
-        url = urljoin(self.base_url, path)
-        headers: Dict[str, str] = {**self.headers, **self._get_auth_headers()}
+        # Build full URL
+        if path.startswith("/"):
+            url = path
+        else:
+            url = f"/{path.lstrip('/')}"
 
-        logger.debug(f"making {method} request to {url}")
+        # Prepare headers
+        headers = {**self.headers, **self._get_auth_headers()}
+
+        # Prepare request body
+        body = json.dumps(data).encode("utf-8") if data else b""
+        if body:
+            headers["Content-Length"] = str(len(body))
+
+        # Set command type for retry policy
+        command_type = self._get_command_type_from_path(path, method)
+        self.set_retry_command_type(command_type)
+        self.start_retry_timer()
+
+        logger.debug(f"Making {method} request to {url}")
 
         try:
-            call = self._get_call(method)
-            response = call(
+            response = self._pool.request(
+                method=method.upper(),
                 url=url,
+                body=body,
                 headers=headers,
-                json=data,
-                params=params,
+                preload_content=True,
+                retries=self.retry_policy,
             )
 
-            # Check for HTTP errors
-            response.raise_for_status()
+            logger.debug(f"Response status: {response.status}")
 
-            # Log response details
-            logger.debug(f"Response status: {response.status_code}")
+            # Handle successful responses
+            if 200 <= response.status < 300:
+                if response.data:
+                    try:
+                        result = json.loads(response.data.decode("utf-8"))
+                        logger.debug("Successfully parsed JSON response")
+                        return result
+                    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                        logger.error(f"Failed to parse JSON response: {e}")
+                        raise RequestError(f"Invalid JSON response: {e}", e)
+                return {}
 
-            # Parse JSON response
-            if response.content:
-                result = response.json()
-                # Log response content (but limit it for large responses)
-                content_str = json.dumps(result)
-                if len(content_str) > 1000:
-                    logger.debug(
-                        f"Response content (truncated): {content_str[:1000]}..."
-                    )
+            # Handle error responses
+            error_message = f"SEA HTTP request failed with status {response.status}"
+            
+            try:
+                if response.data:
+                    error_details = json.loads(response.data.decode("utf-8"))
+                    if isinstance(error_details, dict) and "message" in error_details:
+                        error_message = f"{error_message}: {error_details['message']}"
+                    logger.error(f"Request failed: {error_details}")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                # Log raw response if we can't parse JSON
+                content = response.data.decode("utf-8", errors="replace") if response.data else ""
+                logger.error(f"Request failed with non-JSON response: {content}")
+
+            raise RequestError(error_message, None)
+
+        except MaxRetryError as e:
+            # Extract the most recent error from the retry history
+            error_message = f"SEA request failed after retries: {str(e)}"
+            
+            if hasattr(e, "reason") and e.reason:
+                if hasattr(e.reason, "response"):
+                    # Extract status code and body from the final failed response
+                    response = e.reason.response
+                    error_message = f"SEA request failed after retries (status {response.status})"
+                    try:
+                        if response.data:
+                            error_details = json.loads(response.data.decode("utf-8"))
+                            if isinstance(error_details, dict) and "message" in error_details:
+                                error_message = f"{error_message}: {error_details['message']}"
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        pass
                 else:
-                    logger.debug(f"Response content: {content_str}")
-                return result
-            return {}
-
-        except requests.exceptions.RequestException as e:
-            # Handle request errors and extract details from response if available
-            error_message = f"SEA HTTP request failed: {str(e)}"
-
-            if hasattr(e, "response") and e.response is not None:
-                status_code = e.response.status_code
-                try:
-                    error_details = e.response.json()
-                    error_message = (
-                        f"{error_message}: {error_details.get('message', '')}"
-                    )
-                    logger.error(
-                        f"Request failed (status {status_code}): {error_details}"
-                    )
-                except (ValueError, KeyError):
-                    # If we can't parse JSON, log raw content
-                    content = (
-                        e.response.content.decode("utf-8", errors="replace")
-                        if isinstance(e.response.content, bytes)
-                        else str(e.response.content)
-                    )
-                    logger.error(f"Request failed (status {status_code}): {content}")
-            else:
-                logger.error(error_message)
-
-            # Re-raise as a RequestError
-            from databricks.sql.exc import RequestError
-
+                    error_message = f"SEA request failed after retries: {str(e.reason)}"
+            
+            logger.error(error_message)
             raise RequestError(error_message, e)
+
+        except HTTPError as e:
+            error_message = f"SEA HTTP error: {str(e)}"
+            logger.error(error_message)
+            raise RequestError(error_message, e)
+
+        except Exception as e:
+            error_message = f"Unexpected error in SEA request: {str(e)}"
+            logger.error(error_message)
+            raise RequestError(error_message, e)
+
+    def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
+        """
+        Determine the command type based on the API path and method.
+        
+        This helps the retry policy make appropriate decisions for different
+        types of SEA operations.
+        """
+        path = path.lower()
+        method = method.upper()
+        
+        if "/statements" in path:
+            if method == "POST" and path.endswith("/statements"):
+                return CommandType.EXECUTE_STATEMENT
+            elif "/cancel" in path:
+                return CommandType.OTHER  # Cancel operation
+            elif method == "DELETE":
+                return CommandType.CLOSE_OPERATION
+            elif method == "GET":
+                return CommandType.GET_OPERATION_STATUS
+        elif "/sessions" in path:
+            if method == "DELETE":
+                return CommandType.CLOSE_SESSION
+        
+        return CommandType.OTHER
