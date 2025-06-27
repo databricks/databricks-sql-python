@@ -183,10 +183,8 @@ class SqlTypeConverter:
         if value is None:
             return None
 
-        # Normalize SQL type
         sql_type = sql_type.lower().strip()
 
-        # Handle primitive types using the mapping
         if sql_type not in SqlTypeConverter.TYPE_MAPPING:
             return value
 
