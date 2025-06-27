@@ -39,8 +39,7 @@ class FetchBenchmarkTests(unittest.TestCase):
                 is_direct_results=False,
                 description=Mock(),
                 command_id=None,
-                arrow_queue=arrow_queue,
-                arrow_schema=arrow_table.schema,
+                arrow_schema_bytes=arrow_table.schema,
             ),
         )
         rs.description = [

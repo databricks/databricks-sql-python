@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 import time
 import re
-from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.models.base import ResultManifest
+from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -43,6 +43,7 @@ from databricks.sql.backend.sea.models import (
     GetStatementResponse,
     CreateSessionResponse,
 )
+from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
+    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     # SEA constants
     POLL_INTERVAL_SECONDS = 0.2
@@ -121,7 +123,7 @@ class SeaDatabricksClient(DatabricksClient):
             http_path,
         )
 
-        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        super().__init__(ssl_options=ssl_options, **kwargs)
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -133,7 +135,7 @@ class SeaDatabricksClient(DatabricksClient):
             http_path=http_path,
             http_headers=http_headers,
             auth_provider=auth_provider,
-            ssl_options=ssl_options,
+            ssl_options=self._ssl_options,
             **kwargs,
         )
 
@@ -148,7 +150,7 @@ class SeaDatabricksClient(DatabricksClient):
             The extracted warehouse ID
 
         Raises:
-            ValueError: If the warehouse ID cannot be extracted from the path
+            ProgrammingError: If the warehouse ID cannot be extracted from the path
         """
 
         warehouse_pattern = re.compile(r".*/warehouses/(.+)")
@@ -344,7 +346,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Check for compression
         lz4_compressed = (
-            response.manifest.result_compression == ResultCompression.LZ4_FRAME
+            response.manifest.result_compression == ResultCompression.LZ4_FRAME.value
         )
 
         execute_response = ExecuteResponse(
@@ -425,7 +427,7 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
 
         Returns:
-            ResultSet: A SeaResultSet instance for the executed command
+            SeaResultSet: A SeaResultSet instance for the executed command
         """
 
         if session_id.backend_type != BackendType.SEA:
@@ -557,7 +559,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
+            raise ProgrammingError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
 
@@ -588,7 +590,7 @@ class SeaDatabricksClient(DatabricksClient):
             SeaResultSet: A SeaResultSet instance with the execution results
 
         Raises:
-            ValueError: If the command ID is invalid
+            ProgrammingError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -621,6 +623,35 @@ class SeaDatabricksClient(DatabricksClient):
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
         )
+
+    def get_chunk_link(self, statement_id: str, chunk_index: int) -> ExternalLink:
+        """
+        Get links for chunks starting from the specified index.
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+        Returns:
+            ExternalLink: External link for the chunk
+        """
+
+        response_data = self.http_client._make_request(
+            method="GET",
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+        )
+        response = GetChunksResponse.from_dict(response_data)
+
+        links = response.external_links
+        link = next((l for l in links if l.chunk_index == chunk_index), None)
+        if not link:
+            raise ServerOperationError(
+                f"No link found for chunk index {chunk_index}",
+                {
+                    "operation-id": statement_id,
+                    "diagnostic-info": None,
+                },
+            )
+
+        return link
 
     # == Metadata Operations ==
 

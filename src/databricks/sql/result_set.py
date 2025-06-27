@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING
+import json
+from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
 
 import logging
+import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
@@ -19,8 +21,9 @@ if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
-from databricks.sql.exc import RequestError, CursorAlreadyClosedError
+from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
     ColumnTable,
     ColumnQueue,
@@ -255,7 +258,7 @@ class ThriftResultSet(ResultSet):
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
         # Initialize results queue if not provided
@@ -477,6 +480,7 @@ class SeaResultSet(ResultSet):
             result_data,
             manifest,
             str(execute_response.command_id.to_sea_statement_id()),
+            ssl_options=connection.session.ssl_options,
             description=execute_response.description,
             max_download_threads=sea_client.max_download_threads,
             sea_client=sea_client,
@@ -620,11 +624,11 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        if not isinstance(self.results, JsonQueue):
-            raise NotImplementedError("fetchmany_arrow only supported for JSON data")
+        results = self.results.next_n_rows(size)
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_types(results)
+            results = self._convert_json_to_arrow(results)
 
-        rows = self._convert_json_types(self.results.next_n_rows(size))
-        results = self._convert_json_to_arrow(rows)
         self._next_row_index += results.num_rows
 
         return results
@@ -634,11 +638,11 @@ class SeaResultSet(ResultSet):
         Fetch all remaining rows as an Arrow table.
         """
 
-        if not isinstance(self.results, JsonQueue):
-            raise NotImplementedError("fetchall_arrow only supported for JSON data")
+        results = self.results.remaining_rows()
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_types(results)
+            results = self._convert_json_to_arrow(results)
 
-        rows = self._convert_json_types(self.results.remaining_rows())
-        results = self._convert_json_to_arrow(rows)
         self._next_row_index += results.num_rows
 
         return results
@@ -655,7 +659,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             res = self._create_json_table(self.fetchmany_json(1))
         else:
-            raise NotImplementedError("fetchone only supported for JSON data")
+            res = self._convert_arrow_table(self.fetchmany_arrow(1))
 
         return res[0] if res else None
 
@@ -676,7 +680,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchmany_json(size))
         else:
-            raise NotImplementedError("fetchmany only supported for JSON data")
+            return self._convert_arrow_table(self.fetchmany_arrow(size))
 
     def fetchall(self) -> List[Row]:
         """
@@ -689,4 +693,4 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchall_json())
         else:
-            raise NotImplementedError("fetchall only supported for JSON data")
+            return self._convert_arrow_table(self.fetchall_arrow())
