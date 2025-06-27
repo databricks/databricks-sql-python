@@ -6,7 +6,7 @@ import unittest
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from databricks.sql.conversion import SqlType, SqlTypeConverter
+from databricks.sql.backend.sea.conversion import SqlType, SqlTypeConverter
 
 
 class TestSqlType(unittest.TestCase):
@@ -15,13 +15,12 @@ class TestSqlType(unittest.TestCase):
     def test_is_numeric(self):
         """Test the is_numeric method."""
         self.assertTrue(SqlType.is_numeric(SqlType.INT))
-        self.assertTrue(SqlType.is_numeric(SqlType.TINYINT))
-        self.assertTrue(SqlType.is_numeric(SqlType.SMALLINT))
-        self.assertTrue(SqlType.is_numeric(SqlType.BIGINT))
+        self.assertTrue(SqlType.is_numeric(SqlType.BYTE))
+        self.assertTrue(SqlType.is_numeric(SqlType.SHORT))
+        self.assertTrue(SqlType.is_numeric(SqlType.LONG))
         self.assertTrue(SqlType.is_numeric(SqlType.FLOAT))
         self.assertTrue(SqlType.is_numeric(SqlType.DOUBLE))
         self.assertTrue(SqlType.is_numeric(SqlType.DECIMAL))
-        self.assertTrue(SqlType.is_numeric(SqlType.NUMERIC))
         self.assertFalse(SqlType.is_numeric(SqlType.BOOLEAN))
         self.assertFalse(SqlType.is_numeric(SqlType.STRING))
         self.assertFalse(SqlType.is_numeric(SqlType.DATE))
@@ -29,34 +28,27 @@ class TestSqlType(unittest.TestCase):
     def test_is_boolean(self):
         """Test the is_boolean method."""
         self.assertTrue(SqlType.is_boolean(SqlType.BOOLEAN))
-        self.assertTrue(SqlType.is_boolean(SqlType.BIT))
         self.assertFalse(SqlType.is_boolean(SqlType.INT))
         self.assertFalse(SqlType.is_boolean(SqlType.STRING))
 
     def test_is_datetime(self):
         """Test the is_datetime method."""
         self.assertTrue(SqlType.is_datetime(SqlType.DATE))
-        self.assertTrue(SqlType.is_datetime(SqlType.TIME))
         self.assertTrue(SqlType.is_datetime(SqlType.TIMESTAMP))
-        self.assertTrue(SqlType.is_datetime(SqlType.TIMESTAMP_NTZ))
-        self.assertTrue(SqlType.is_datetime(SqlType.TIMESTAMP_LTZ))
-        self.assertTrue(SqlType.is_datetime(SqlType.TIMESTAMP_TZ))
+        self.assertTrue(SqlType.is_datetime(SqlType.INTERVAL))
         self.assertFalse(SqlType.is_datetime(SqlType.INT))
         self.assertFalse(SqlType.is_datetime(SqlType.STRING))
 
     def test_is_string(self):
         """Test the is_string method."""
         self.assertTrue(SqlType.is_string(SqlType.CHAR))
-        self.assertTrue(SqlType.is_string(SqlType.VARCHAR))
         self.assertTrue(SqlType.is_string(SqlType.STRING))
-        self.assertTrue(SqlType.is_string(SqlType.TEXT))
         self.assertFalse(SqlType.is_string(SqlType.INT))
         self.assertFalse(SqlType.is_string(SqlType.DATE))
 
     def test_is_binary(self):
         """Test the is_binary method."""
         self.assertTrue(SqlType.is_binary(SqlType.BINARY))
-        self.assertTrue(SqlType.is_binary(SqlType.VARBINARY))
         self.assertFalse(SqlType.is_binary(SqlType.INT))
         self.assertFalse(SqlType.is_binary(SqlType.STRING))
 
@@ -75,9 +67,9 @@ class TestSqlTypeConverter(unittest.TestCase):
     def test_numeric_conversions(self):
         """Test numeric type conversions."""
         self.assertEqual(SqlTypeConverter.convert_value("123", SqlType.INT), 123)
-        self.assertEqual(SqlTypeConverter.convert_value("123", SqlType.TINYINT), 123)
-        self.assertEqual(SqlTypeConverter.convert_value("123", SqlType.SMALLINT), 123)
-        self.assertEqual(SqlTypeConverter.convert_value("123", SqlType.BIGINT), 123)
+        self.assertEqual(SqlTypeConverter.convert_value("123", SqlType.BYTE), 123)
+        self.assertEqual(SqlTypeConverter.convert_value("123", SqlType.SHORT), 123)
+        self.assertEqual(SqlTypeConverter.convert_value("123", SqlType.LONG), 123)
         self.assertEqual(
             SqlTypeConverter.convert_value("123.45", SqlType.FLOAT), 123.45
         )
@@ -114,9 +106,6 @@ class TestSqlTypeConverter(unittest.TestCase):
             date(2023, 1, 15),
         )
         self.assertEqual(
-            SqlTypeConverter.convert_value("14:30:45", SqlType.TIME), time(14, 30, 45)
-        )
-        self.assertEqual(
             SqlTypeConverter.convert_value("2023-01-15 14:30:45", SqlType.TIMESTAMP),
             datetime(2023, 1, 15, 14, 30, 45),
         )
@@ -124,15 +113,19 @@ class TestSqlTypeConverter(unittest.TestCase):
     def test_string_conversions(self):
         """Test string type conversions."""
         self.assertEqual(SqlTypeConverter.convert_value("test", SqlType.STRING), "test")
-        self.assertEqual(
-            SqlTypeConverter.convert_value("test", SqlType.VARCHAR), "test"
-        )
         self.assertEqual(SqlTypeConverter.convert_value("test", SqlType.CHAR), "test")
-        self.assertEqual(SqlTypeConverter.convert_value("test", SqlType.TEXT), "test")
+
+    def test_binary_conversions(self):
+        """Test binary type conversions."""
+        hex_str = "68656c6c6f"  # "hello" in hex
+        expected_bytes = b"hello"
+
+        self.assertEqual(
+            SqlTypeConverter.convert_value(hex_str, SqlType.BINARY), expected_bytes
+        )
 
     def test_error_handling(self):
         """Test error handling in conversions."""
-        # Test invalid conversions - should return original value
         self.assertEqual(SqlTypeConverter.convert_value("abc", SqlType.INT), "abc")
         self.assertEqual(SqlTypeConverter.convert_value("abc", SqlType.FLOAT), "abc")
         self.assertEqual(SqlTypeConverter.convert_value("abc", SqlType.DECIMAL), "abc")
@@ -154,6 +147,10 @@ class TestSqlTypeConverter(unittest.TestCase):
         )
         self.assertEqual(
             SqlTypeConverter.convert_value('{"a": 1}', "struct<a:int>"), '{"a": 1}'
+        )
+        self.assertEqual(
+            SqlTypeConverter.convert_value('{"a": 1}', SqlType.USER_DEFINED_TYPE),
+            '{"a": 1}',
         )
 
 

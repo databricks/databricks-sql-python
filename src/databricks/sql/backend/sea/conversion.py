@@ -15,89 +15,75 @@ logger = logging.getLogger(__name__)
 
 
 class SqlType:
-    """SQL type constants for improved maintainability."""
+    """
+    SQL type constants
+    """
 
     # Numeric types
-    TINYINT = "tinyint"
-    SMALLINT = "smallint"
+    BYTE = "byte"
+    SHORT = "short"
     INT = "int"
-    INTEGER = "integer"
-    BIGINT = "bigint"
+    LONG = "long"
     FLOAT = "float"
-    REAL = "real"
     DOUBLE = "double"
     DECIMAL = "decimal"
-    NUMERIC = "numeric"
 
-    # Boolean types
+    # Boolean type
     BOOLEAN = "boolean"
-    BIT = "bit"
 
     # Date/Time types
     DATE = "date"
-    TIME = "time"
     TIMESTAMP = "timestamp"
-    TIMESTAMP_NTZ = "timestamp_ntz"
-    TIMESTAMP_LTZ = "timestamp_ltz"
-    TIMESTAMP_TZ = "timestamp_tz"
+    INTERVAL = "interval"
 
     # String types
     CHAR = "char"
-    VARCHAR = "varchar"
     STRING = "string"
-    TEXT = "text"
 
-    # Binary types
+    # Binary type
     BINARY = "binary"
-    VARBINARY = "varbinary"
 
     # Complex types
     ARRAY = "array"
     MAP = "map"
     STRUCT = "struct"
 
+    # Other types
+    NULL = "null"
+    USER_DEFINED_TYPE = "user_defined_type"
+
     @classmethod
     def is_numeric(cls, sql_type: str) -> bool:
         """Check if the SQL type is a numeric type."""
         return sql_type.lower() in (
-            cls.TINYINT,
-            cls.SMALLINT,
+            cls.BYTE,
+            cls.SHORT,
             cls.INT,
-            cls.INTEGER,
-            cls.BIGINT,
+            cls.LONG,
             cls.FLOAT,
-            cls.REAL,
             cls.DOUBLE,
             cls.DECIMAL,
-            cls.NUMERIC,
         )
 
     @classmethod
     def is_boolean(cls, sql_type: str) -> bool:
         """Check if the SQL type is a boolean type."""
-        return sql_type.lower() in (cls.BOOLEAN, cls.BIT)
+        return sql_type.lower() == cls.BOOLEAN
 
     @classmethod
     def is_datetime(cls, sql_type: str) -> bool:
         """Check if the SQL type is a date/time type."""
-        return sql_type.lower() in (
-            cls.DATE,
-            cls.TIME,
-            cls.TIMESTAMP,
-            cls.TIMESTAMP_NTZ,
-            cls.TIMESTAMP_LTZ,
-            cls.TIMESTAMP_TZ,
-        )
+        return sql_type.lower() in (cls.DATE, cls.TIMESTAMP, cls.INTERVAL)
 
     @classmethod
     def is_string(cls, sql_type: str) -> bool:
         """Check if the SQL type is a string type."""
-        return sql_type.lower() in (cls.CHAR, cls.VARCHAR, cls.STRING, cls.TEXT)
+        return sql_type.lower() in (cls.CHAR, cls.STRING)
 
     @classmethod
     def is_binary(cls, sql_type: str) -> bool:
         """Check if the SQL type is a binary type."""
-        return sql_type.lower() in (cls.BINARY, cls.VARBINARY)
+        return sql_type.lower() == cls.BINARY
 
     @classmethod
     def is_complex(cls, sql_type: str) -> bool:
@@ -107,25 +93,25 @@ class SqlType:
             sql_type.startswith(cls.ARRAY)
             or sql_type.startswith(cls.MAP)
             or sql_type.startswith(cls.STRUCT)
+            or sql_type == cls.USER_DEFINED_TYPE
         )
 
 
 class SqlTypeConverter:
     """
     Utility class for converting SQL types to Python types.
-    Based on the JDBC ConverterHelper implementation.
+    Based on the types supported by the Databricks SDK.
     """
 
     # SQL type to conversion function mapping
+    # TODO: complex types
     TYPE_MAPPING: Dict[str, Callable] = {
         # Numeric types
-        SqlType.TINYINT: lambda v: int(v),
-        SqlType.SMALLINT: lambda v: int(v),
+        SqlType.BYTE: lambda v: int(v),
+        SqlType.SHORT: lambda v: int(v),
         SqlType.INT: lambda v: int(v),
-        SqlType.INTEGER: lambda v: int(v),
-        SqlType.BIGINT: lambda v: int(v),
+        SqlType.LONG: lambda v: int(v),
         SqlType.FLOAT: lambda v: float(v),
-        SqlType.REAL: lambda v: float(v),
         SqlType.DOUBLE: lambda v: float(v),
         SqlType.DECIMAL: lambda v, p=None, s=None: (
             decimal.Decimal(v).quantize(
@@ -134,31 +120,21 @@ class SqlTypeConverter:
             if p is not None and s is not None
             else decimal.Decimal(v)
         ),
-        SqlType.NUMERIC: lambda v, p=None, s=None: (
-            decimal.Decimal(v).quantize(
-                decimal.Decimal(f'0.{"0" * s}'), context=decimal.Context(prec=p)
-            )
-            if p is not None and s is not None
-            else decimal.Decimal(v)
-        ),
-        # Boolean types
+        # Boolean type
         SqlType.BOOLEAN: lambda v: v.lower() in ("true", "t", "1", "yes", "y"),
-        SqlType.BIT: lambda v: v.lower() in ("true", "t", "1", "yes", "y"),
         # Date/Time types
         SqlType.DATE: lambda v: datetime.date.fromisoformat(v),
-        SqlType.TIME: lambda v: datetime.time.fromisoformat(v),
         SqlType.TIMESTAMP: lambda v: parser.parse(v),
-        SqlType.TIMESTAMP_NTZ: lambda v: parser.parse(v).replace(tzinfo=None),
-        SqlType.TIMESTAMP_LTZ: lambda v: parser.parse(v).astimezone(tz=None),
-        SqlType.TIMESTAMP_TZ: lambda v: parser.parse(v),
+        SqlType.INTERVAL: lambda v: v,  # Keep as string for now
         # String types - no conversion needed
         SqlType.CHAR: lambda v: v,
-        SqlType.VARCHAR: lambda v: v,
         SqlType.STRING: lambda v: v,
-        SqlType.TEXT: lambda v: v,
-        # Binary types
+        # Binary type
         SqlType.BINARY: lambda v: bytes.fromhex(v),
-        SqlType.VARBINARY: lambda v: bytes.fromhex(v),
+        # Other types
+        SqlType.NULL: lambda v: None,
+        # Complex types and user-defined types return as-is
+        SqlType.USER_DEFINED_TYPE: lambda v: v,
     }
 
     @staticmethod
@@ -180,6 +156,7 @@ class SqlTypeConverter:
         Returns:
             The converted value in the appropriate Python type
         """
+
         if value is None:
             return None
 
@@ -190,7 +167,7 @@ class SqlTypeConverter:
 
         converter_func = SqlTypeConverter.TYPE_MAPPING[sql_type]
         try:
-            if sql_type in (SqlType.DECIMAL, SqlType.NUMERIC):
+            if sql_type == SqlType.DECIMAL:
                 return converter_func(value, precision, scale)
             else:
                 return converter_func(value)
