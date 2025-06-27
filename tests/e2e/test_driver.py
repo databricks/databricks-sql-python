@@ -496,8 +496,8 @@ class TestPySQLCoreSuite(
                 for table in table_names:
                     cursor.execute("DROP TABLE IF EXISTS {}".format(table))
 
-    def test_escape_single_quotes(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_escape_single_quotes(self):
+        with self.cursor({}) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             # Test escape syntax directly
             cursor.execute(
@@ -522,7 +522,7 @@ class TestPySQLCoreSuite(
             assert rows[0]["col_1"] == "you're"
 
     def test_get_schemas(self):
-        with self.cursor() as cursor:
+        with self.cursor({}) as cursor:
             database_name = "db_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             try:
                 cursor.execute("CREATE DATABASE IF NOT EXISTS {}".format(database_name))
@@ -540,7 +540,7 @@ class TestPySQLCoreSuite(
                 cursor.execute("DROP DATABASE IF EXISTS {}".format(database_name))
 
     def test_get_catalogs(self):
-        with self.cursor() as cursor:
+        with self.cursor({}) as cursor:
             cursor.catalogs()
             cursor.fetchall()
             catalogs_desc = cursor.description
@@ -591,7 +591,7 @@ class TestPySQLCoreSuite(
             assert results[0][0] == unicode_str
 
     def test_cancel_during_execute(self):
-        with self.cursor() as cursor:
+        with self.cursor({}) as cursor:
 
             def execute_really_long_query():
                 cursor.execute(

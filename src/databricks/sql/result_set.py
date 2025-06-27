@@ -503,6 +503,7 @@ class SeaResultSet(ResultSet):
         """
         Convert raw data rows to Arrow table.
         """
+
         columns = []
         num_cols = len(rows[0])
         for i in range(num_cols):
