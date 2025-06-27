@@ -56,7 +56,7 @@ class SeaHttpClient:
 
         # Build base URL
         self.base_url = f"https://{server_hostname}:{self.port}"
-        
+
         # Parse URL for proxy handling
         parsed_url = urllib.parse.urlparse(self.base_url)
         self.scheme = parsed_url.scheme
@@ -84,7 +84,7 @@ class SeaHttpClient:
 
         # Setup retry policy
         self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
-        
+
         if self.enable_v3_retries:
             self.retry_policy = DatabricksRetryPolicy(
                 delay_min=self._retry_delay_min,
@@ -138,13 +138,17 @@ class SeaHttpClient:
             pool_class = HTTPConnectionPool
         else:  # https
             pool_class = HTTPSConnectionPool
-            pool_kwargs.update({
-                "cert_reqs": ssl.CERT_REQUIRED if self.ssl_options.tls_verify else ssl.CERT_NONE,
-                "ca_certs": self.ssl_options.tls_trusted_ca_file,
-                "cert_file": self.ssl_options.tls_client_cert_file,
-                "key_file": self.ssl_options.tls_client_cert_key_file,
-                "key_password": self.ssl_options.tls_client_cert_key_password,
-            })
+            pool_kwargs.update(
+                {
+                    "cert_reqs": ssl.CERT_REQUIRED
+                    if self.ssl_options.tls_verify
+                    else ssl.CERT_NONE,
+                    "ca_certs": self.ssl_options.tls_trusted_ca_file,
+                    "cert_file": self.ssl_options.tls_client_cert_file,
+                    "key_file": self.ssl_options.tls_client_cert_key_file,
+                    "key_password": self.ssl_options.tls_client_cert_key_password,
+                }
+            )
 
         if self.proxy_uri:
             proxy_manager = ProxyManager(
@@ -253,7 +257,7 @@ class SeaHttpClient:
 
         # Handle error responses
         error_message = f"SEA HTTP request failed with status {response.status}"
-        
+
         try:
             if response.data:
                 error_details = json.loads(response.data.decode("utf-8"))
@@ -262,7 +266,9 @@ class SeaHttpClient:
                 logger.error(f"Request failed: {error_details}")
         except (json.JSONDecodeError, UnicodeDecodeError):
             # Log raw response if we can't parse JSON
-            content = response.data.decode("utf-8", errors="replace") if response.data else ""
+            content = (
+                response.data.decode("utf-8", errors="replace") if response.data else ""
+            )
             logger.error(f"Request failed with non-JSON response: {content}")
 
         raise RequestError(error_message, None)
@@ -270,13 +276,13 @@ class SeaHttpClient:
     def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
         """
         Determine the command type based on the API path and method.
-        
+
         This helps the retry policy make appropriate decisions for different
         types of SEA operations.
         """
         path = path.lower()
         method = method.upper()
-        
+
         if "/statements" in path:
             if method == "POST" and path.endswith("/statements"):
                 return CommandType.EXECUTE_STATEMENT
@@ -289,5 +295,5 @@ class SeaHttpClient:
         elif "/sessions" in path:
             if method == "DELETE":
                 return CommandType.CLOSE_SESSION
-        
+
         return CommandType.OTHER
