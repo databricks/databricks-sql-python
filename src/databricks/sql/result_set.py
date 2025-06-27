@@ -562,7 +562,7 @@ class SeaResultSet(ResultSet):
 
         return [ResultRow(*row) for row in rows]
 
-    def fetchmany_json(self, size: int):
+    def fetchmany_json(self, size: int) -> List:
         """
         Fetch the next set of rows as a columnar table.
 
@@ -583,7 +583,7 @@ class SeaResultSet(ResultSet):
 
         return results
 
-    def fetchall_json(self):
+    def fetchall_json(self) -> List:
         """
         Fetch all remaining rows as a columnar table.
 
