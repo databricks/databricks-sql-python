@@ -120,7 +120,7 @@ class SeaResultSetQueueFactory(ABC):
         description: Optional[List[Tuple[Any, ...]]] = None,
         schema_bytes: Optional[bytes] = None,
         max_download_threads: Optional[int] = None,
-        sea_client: Optional["SeaDatabricksClient"] = None,
+        sea_client: Optional[SeaDatabricksClient] = None,
         lz4_compressed: bool = False,
     ) -> ResultSetQueue:
         """
