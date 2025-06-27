@@ -25,6 +25,13 @@ class SeaHttpClient:
     and connection pooling, similar to the Thrift HTTP client but simplified.
     """
 
+    retry_policy: Union[DatabricksRetryPolicy, int]
+    _pool: Optional[Union[HTTPConnectionPool, HTTPSConnectionPool]]
+    proxy_uri: Optional[str]
+    realhost: Optional[str]
+    realport: Optional[int]
+    proxy_auth: Optional[Dict[str, str]]
+
     def __init__(
         self,
         server_hostname: str,
@@ -105,7 +112,7 @@ class SeaHttpClient:
         except (KeyError, AttributeError):
             proxy = None
         else:
-            if urllib.request.proxy_bypass(self.host):
+            if self.host and urllib.request.proxy_bypass(self.host):
                 proxy = None
 
         if proxy:
@@ -114,10 +121,13 @@ class SeaHttpClient:
             self.realport = self.port
             self.proxy_uri = proxy
             self.host = parsed_proxy.hostname
-            self.port = parsed_proxy.port
+            self.port = parsed_proxy.port or (443 if self.scheme == "https" else 80)
             self.proxy_auth = self._basic_proxy_auth_headers(parsed_proxy)
         else:
-            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
+            self.realhost = None
+            self.realport = None
+            self.proxy_auth = None
+            self.proxy_uri = None
 
         # Initialize connection pool
         self._pool = None
@@ -150,7 +160,7 @@ class SeaHttpClient:
                 }
             )
 
-        if self.proxy_uri:
+        if self.using_proxy():
             proxy_manager = ProxyManager(
                 self.proxy_uri,
                 num_pools=1,
@@ -169,6 +179,10 @@ class SeaHttpClient:
         """Close the connection pool."""
         if self._pool:
             self._pool.clear()
+
+    def using_proxy(self) -> bool:
+        """Check if proxy is being used (for compatibility with Thrift client)."""
+        return self.realhost is not None
 
     def set_retry_command_type(self, command_type: CommandType):
         """Set the command type for retry policy decision making."""
@@ -232,6 +246,9 @@ class SeaHttpClient:
 
         # When v3 retries are enabled, urllib3 handles retries internally via DatabricksRetryPolicy
         # When disabled, we let exceptions bubble up (similar to Thrift backend approach)
+        if self._pool is None:
+            raise RequestError("Connection pool not initialized", None)
+
         response = self._pool.request(
             method=method.upper(),
             url=url,
