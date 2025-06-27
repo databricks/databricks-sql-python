@@ -55,50 +55,6 @@ class SqlType:
     NULL = "null"
     USER_DEFINED_TYPE = "user_defined_type"
 
-    @classmethod
-    def is_numeric(cls, sql_type: str) -> bool:
-        """Check if the SQL type is a numeric type."""
-        return sql_type.lower() in (
-            cls.BYTE,
-            cls.SHORT,
-            cls.INT,
-            cls.LONG,
-            cls.FLOAT,
-            cls.DOUBLE,
-            cls.DECIMAL,
-        )
-
-    @classmethod
-    def is_boolean(cls, sql_type: str) -> bool:
-        """Check if the SQL type is a boolean type."""
-        return sql_type.lower() == cls.BOOLEAN
-
-    @classmethod
-    def is_datetime(cls, sql_type: str) -> bool:
-        """Check if the SQL type is a date/time type."""
-        return sql_type.lower() in (cls.DATE, cls.TIMESTAMP, cls.INTERVAL)
-
-    @classmethod
-    def is_string(cls, sql_type: str) -> bool:
-        """Check if the SQL type is a string type."""
-        return sql_type.lower() in (cls.CHAR, cls.STRING)
-
-    @classmethod
-    def is_binary(cls, sql_type: str) -> bool:
-        """Check if the SQL type is a binary type."""
-        return sql_type.lower() == cls.BINARY
-
-    @classmethod
-    def is_complex(cls, sql_type: str) -> bool:
-        """Check if the SQL type is a complex type."""
-        sql_type = sql_type.lower()
-        return (
-            sql_type.startswith(cls.ARRAY)
-            or sql_type.startswith(cls.MAP)
-            or sql_type.startswith(cls.STRUCT)
-            or sql_type == cls.USER_DEFINED_TYPE
-        )
-
 
 class SqlTypeConverter:
     """
