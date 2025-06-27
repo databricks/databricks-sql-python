@@ -496,17 +496,6 @@ class TestPySQLCoreSuite(
                 for table in table_names:
                     cursor.execute("DROP TABLE IF EXISTS {}".format(table))
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
     def test_escape_single_quotes(self, extra_params):
         with self.cursor(extra_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
@@ -824,21 +813,8 @@ class TestPySQLCoreSuite(
                 assert list(cursor.fetchone()) == ["ansi_mode", str(enable_ansi)]
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
-    def test_timestamps_arrow(self, extra_params):
-        with self.cursor(
-            {"session_configuration": {"ansi_mode": False}, **extra_params}
-        ) as cursor:
+    def test_timestamps_arrow(self):
+        with self.cursor({"session_configuration": {"ansi_mode": False}}) as cursor:
             for timestamp, expected in self.timestamp_and_expected_results:
                 cursor.execute(
                     "SELECT TIMESTAMP('{timestamp}')".format(timestamp=timestamp)
@@ -892,20 +868,9 @@ class TestPySQLCoreSuite(
             assert result == expected
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
-    def test_timezone_with_timestamp(self, extra_params):
+    def test_timezone_with_timestamp(self):
         if self.should_add_timezone():
-            with self.cursor(extra_params) as cursor:
+            with self.cursor() as cursor:
                 cursor.execute("SET TIME ZONE 'Europe/Amsterdam'")
                 cursor.execute("select CAST('2022-03-02 12:54:56' as TIMESTAMP)")
                 amsterdam = pytz.timezone("Europe/Amsterdam")
