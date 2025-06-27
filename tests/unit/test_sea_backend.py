@@ -13,6 +13,7 @@ from databricks.sql.backend.sea.backend import (
     _filter_session_configuration,
 )
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.exc import (
@@ -355,7 +356,7 @@ class TestSeaBackend:
             "status": {"state": "SUCCEEDED"},
         }
         mock_http_client._make_request.return_value = execute_response
-        param = {"name": "param1", "value": "value1", "type": "STRING"}
+        param = ttypes.TSparkParameter(name="param1", value="value1", type="STRING")
 
         with patch.object(sea_client, "get_execution_result"):
             sea_client.execute_command(
