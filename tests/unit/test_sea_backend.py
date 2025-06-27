@@ -637,6 +637,31 @@ class TestSeaBackend:
             sea_client._extract_description_from_manifest(no_columns_manifest) is None
         )
 
+    def test_results_message_to_execute_response_is_staging_operation(self, sea_client):
+        """Test that is_staging_operation is correctly set from manifest.is_volume_operation."""
+        # Test when is_volume_operation is True
+        response = MagicMock()
+        response.statement_id = "test-statement-123"
+        response.status.state = CommandState.SUCCEEDED
+        response.manifest.is_volume_operation = True
+        response.manifest.result_compression = "NONE"
+        response.manifest.format = "JSON_ARRAY"
+
+        # Mock the _extract_description_from_manifest method to return None
+        with patch.object(
+            sea_client, "_extract_description_from_manifest", return_value=None
+        ):
+            result = sea_client._results_message_to_execute_response(response)
+            assert result.is_staging_operation is True
+
+        # Test when is_volume_operation is False
+        response.manifest.is_volume_operation = False
+        with patch.object(
+            sea_client, "_extract_description_from_manifest", return_value=None
+        ):
+            result = sea_client._results_message_to_execute_response(response)
+            assert result.is_staging_operation is False
+
     def test_get_catalogs(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_catalogs method."""
         # Mock the execute_command method
