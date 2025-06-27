@@ -8,10 +8,10 @@ the result set functionality for the SEA (Statement Execution API) backend.
 import pytest
 from unittest.mock import patch, MagicMock, Mock
 
-from databricks.sql.result_set import SeaResultSet
-from databricks.sql.backend.types import CommandId, CommandState, BackendType
+from databricks.sql.result_set import SeaResultSet, Row
 from databricks.sql.utils import JsonQueue
-from databricks.sql.types import Row
+from databricks.sql.backend.types import CommandId, CommandState, BackendType
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 
 class TestSeaResultSet:
@@ -22,15 +22,12 @@ class TestSeaResultSet:
         """Create a mock connection."""
         connection = Mock()
         connection.open = True
-        connection.disable_pandas = False
         return connection
 
     @pytest.fixture
     def mock_sea_client(self):
         """Create a mock SEA client."""
-        client = Mock()
-        client.max_download_threads = 10
-        return client
+        return Mock()
 
     @pytest.fixture
     def execute_response(self):
@@ -42,26 +39,54 @@ class TestSeaResultSet:
         mock_response.is_direct_results = False
         mock_response.results_queue = None
         mock_response.description = [
-            ("col1", "INT", None, None, None, None, None),
-            ("col2", "STRING", None, None, None, None, None),
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+            ("col3", "boolean", None, None, None, None, None),
         ]
         mock_response.is_staging_operation = False
         mock_response.lz4_compressed = False
-        mock_response.arrow_schema_bytes = b""
+        mock_response.arrow_schema_bytes = None
         return mock_response
 
     @pytest.fixture
-    def mock_result_data(self):
-        """Create mock result data."""
-        result_data = Mock()
-        result_data.data = [[1, "value1"], [2, "value2"], [3, "value3"]]
-        result_data.external_links = None
-        return result_data
+    def sample_data(self):
+        """Create sample data for testing."""
+        return [
+            ["value1", "1", "true"],
+            ["value2", "2", "false"],
+            ["value3", "3", "true"],
+            ["value4", "4", "false"],
+            ["value5", "5", "true"],
+        ]
 
     @pytest.fixture
-    def mock_manifest(self):
-        """Create a mock manifest."""
-        return Mock()
+    def result_set_with_data(
+        self, mock_connection, mock_sea_client, execute_response, sample_data
+    ):
+        """Create a SeaResultSet with sample data."""
+        # Create ResultData with inline data
+        result_data = ResultData(
+            data=sample_data, external_links=None, row_count=len(sample_data)
+        )
+
+        # Initialize SeaResultSet with result data
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            result_data=result_data,
+            manifest=None,
+            buffer_size_bytes=1000,
+            arraysize=100,
+        )
+        result_set.results = JsonQueue(sample_data)
+
+        return result_set
+
+    @pytest.fixture
+    def json_queue(self, sample_data):
+        """Create a JsonQueue with sample data."""
+        return JsonQueue(sample_data)
 
     def test_init_with_execute_response(
         self, mock_connection, mock_sea_client, execute_response
@@ -71,6 +96,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -84,16 +110,13 @@ class TestSeaResultSet:
         assert result_set.arraysize == 100
         assert result_set.description == execute_response.description
 
-        # Verify that a JsonQueue was created with empty data
-        assert isinstance(result_set.results, JsonQueue)
-        assert result_set.results.data_array == []
-
     def test_close(self, mock_connection, mock_sea_client, execute_response):
         """Test closing a result set."""
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -114,6 +137,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -136,6 +160,7 @@ class TestSeaResultSet:
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -148,282 +173,189 @@ class TestSeaResultSet:
         assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
-    def test_convert_json_table(
-        self, mock_connection, mock_sea_client, execute_response
-    ):
-        """Test converting JSON data to Row objects."""
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
+    def test_init_with_result_data(self, result_set_with_data, sample_data):
+        """Test initializing SeaResultSet with result data."""
+        # Verify the results queue was created correctly
+        assert isinstance(result_set_with_data.results, JsonQueue)
+        assert result_set_with_data.results.data_array == sample_data
+        assert result_set_with_data.results.n_valid_rows == len(sample_data)
 
-        # Sample data
-        data = [[1, "value1"], [2, "value2"]]
+    def test_convert_json_types(self, result_set_with_data, sample_data):
+        """Test the _convert_json_types method."""
+        # Call _convert_json_types
+        converted_rows = result_set_with_data._convert_json_types(sample_data)
 
-        # Convert to Row objects
-        rows = result_set._convert_json_table(data)
+        # Verify the conversion
+        assert len(converted_rows) == len(sample_data)
+        assert converted_rows[0][0] == "value1"  # string stays as string
+        assert converted_rows[0][1] == 1  # "1" converted to int
+        assert converted_rows[0][2] is True  # "true" converted to boolean
 
-        # Check that we got Row objects with the correct values
+    def test_create_json_table(self, result_set_with_data, sample_data):
+        """Test the _create_json_table method."""
+        # Call _create_json_table
+        result_rows = result_set_with_data._create_json_table(sample_data)
+
+        # Verify the result
+        assert len(result_rows) == len(sample_data)
+        assert isinstance(result_rows[0], Row)
+        assert result_rows[0].col1 == "value1"
+        assert result_rows[0].col2 == 1
+        assert result_rows[0].col3 is True
+
+    def test_fetchmany_json(self, result_set_with_data):
+        """Test the fetchmany_json method."""
+        # Test fetching a subset of rows
+        result = result_set_with_data.fetchmany_json(2)
+        assert len(result) == 2
+        assert result_set_with_data._next_row_index == 2
+
+        # Test fetching the next subset
+        result = result_set_with_data.fetchmany_json(2)
+        assert len(result) == 2
+        assert result_set_with_data._next_row_index == 4
+
+        # Test fetching more than available
+        result = result_set_with_data.fetchmany_json(10)
+        assert len(result) == 1  # Only one row left
+        assert result_set_with_data._next_row_index == 5
+
+    def test_fetchall_json(self, result_set_with_data, sample_data):
+        """Test the fetchall_json method."""
+        # Test fetching all rows
+        result = result_set_with_data.fetchall_json()
+        assert result == sample_data
+        assert result_set_with_data._next_row_index == len(sample_data)
+
+        # Test fetching again (should return empty)
+        result = result_set_with_data.fetchall_json()
+        assert result == []
+        assert result_set_with_data._next_row_index == len(sample_data)
+
+    def test_fetchone(self, result_set_with_data):
+        """Test the fetchone method."""
+        # Test fetching one row at a time
+        row1 = result_set_with_data.fetchone()
+        assert isinstance(row1, Row)
+        assert row1.col1 == "value1"
+        assert row1.col2 == 1
+        assert row1.col3 is True
+        assert result_set_with_data._next_row_index == 1
+
+        row2 = result_set_with_data.fetchone()
+        assert isinstance(row2, Row)
+        assert row2.col1 == "value2"
+        assert row2.col2 == 2
+        assert row2.col3 is False
+        assert result_set_with_data._next_row_index == 2
+
+        # Fetch the rest
+        result_set_with_data.fetchall()
+
+        # Test fetching when no more rows
+        row_none = result_set_with_data.fetchone()
+        assert row_none is None
+
+    def test_fetchmany(self, result_set_with_data):
+        """Test the fetchmany method."""
+        # Test fetching multiple rows
+        rows = result_set_with_data.fetchmany(2)
         assert len(rows) == 2
         assert isinstance(rows[0], Row)
-        assert rows[0].col1 == 1
-        assert rows[0].col2 == "value1"
-        assert rows[1].col1 == 2
-        assert rows[1].col2 == "value2"
+        assert rows[0].col1 == "value1"
+        assert rows[0].col2 == 1
+        assert rows[0].col3 is True
+        assert rows[1].col1 == "value2"
+        assert rows[1].col2 == 2
+        assert rows[1].col3 is False
+        assert result_set_with_data._next_row_index == 2
 
-    def test_convert_json_table_empty(
-        self, mock_connection, mock_sea_client, execute_response
-    ):
-        """Test converting empty JSON data."""
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-
-        # Empty data
-        data = []
-
-        # Convert to Row objects
-        rows = result_set._convert_json_table(data)
-
-        # Check that we got an empty list
-        assert rows == []
-
-    def test_convert_json_table_no_description(
-        self, mock_connection, mock_sea_client, execute_response
-    ):
-        """Test converting JSON data with no description."""
-        execute_response.description = None
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-
-        # Sample data
-        data = [[1, "value1"], [2, "value2"]]
-
-        # Convert to Row objects
-        rows = result_set._convert_json_table(data)
-
-        # Check that we got the original data
-        assert rows == data
-
-    def test_fetchone(
-        self, mock_connection, mock_sea_client, execute_response, mock_result_data
-    ):
-        """Test fetching one row."""
-        # Create a result set with data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-            result_data=mock_result_data,
-        )
-
-        # Replace the results queue with a JsonQueue containing test data
-        result_set.results = JsonQueue([[1, "value1"], [2, "value2"], [3, "value3"]])
-
-        # Fetch one row
-        row = result_set.fetchone()
-
-        # Check that we got a Row object with the correct values
-        assert isinstance(row, Row)
-        assert row.col1 == 1
-        assert row.col2 == "value1"
-
-        # Check that the row index was updated
-        assert result_set._next_row_index == 1
-
-    def test_fetchone_empty(self, mock_connection, mock_sea_client, execute_response):
-        """Test fetching one row from an empty result set."""
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-
-        # Fetch one row
-        row = result_set.fetchone()
-
-        # Check that we got None
-        assert row is None
-
-    def test_fetchmany(
-        self, mock_connection, mock_sea_client, execute_response, mock_result_data
-    ):
-        """Test fetching multiple rows."""
-        # Create a result set with data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-            result_data=mock_result_data,
-        )
-
-        # Replace the results queue with a JsonQueue containing test data
-        result_set.results = JsonQueue([[1, "value1"], [2, "value2"], [3, "value3"]])
-
-        # Fetch two rows
-        rows = result_set.fetchmany(2)
-
-        # Check that we got two Row objects with the correct values
-        assert len(rows) == 2
-        assert isinstance(rows[0], Row)
-        assert rows[0].col1 == 1
-        assert rows[0].col2 == "value1"
-        assert rows[1].col1 == 2
-        assert rows[1].col2 == "value2"
-
-        # Check that the row index was updated
-        assert result_set._next_row_index == 2
-
-    def test_fetchmany_negative_size(
-        self, mock_connection, mock_sea_client, execute_response
-    ):
-        """Test fetching with a negative size."""
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-
-        # Try to fetch with a negative size
+        # Test with invalid size
         with pytest.raises(
             ValueError, match="size argument for fetchmany is -1 but must be >= 0"
         ):
-            result_set.fetchmany(-1)
+            result_set_with_data.fetchmany(-1)
 
-    def test_fetchall(
-        self, mock_connection, mock_sea_client, execute_response, mock_result_data
-    ):
-        """Test fetching all rows."""
-        # Create a result set with data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-            result_data=mock_result_data,
-        )
-
-        # Replace the results queue with a JsonQueue containing test data
-        result_set.results = JsonQueue([[1, "value1"], [2, "value2"], [3, "value3"]])
-
-        # Fetch all rows
-        rows = result_set.fetchall()
-
-        # Check that we got three Row objects with the correct values
-        assert len(rows) == 3
+    def test_fetchall(self, result_set_with_data, sample_data):
+        """Test the fetchall method."""
+        # Test fetching all rows
+        rows = result_set_with_data.fetchall()
+        assert len(rows) == len(sample_data)
         assert isinstance(rows[0], Row)
-        assert rows[0].col1 == 1
-        assert rows[0].col2 == "value1"
-        assert rows[1].col1 == 2
-        assert rows[1].col2 == "value2"
-        assert rows[2].col1 == 3
-        assert rows[2].col2 == "value3"
+        assert rows[0].col1 == "value1"
+        assert rows[0].col2 == 1
+        assert rows[0].col3 is True
+        assert result_set_with_data._next_row_index == len(sample_data)
 
-        # Check that the row index was updated
-        assert result_set._next_row_index == 3
+        # Test fetching again (should return empty)
+        rows = result_set_with_data.fetchall()
+        assert len(rows) == 0
 
-    def test_fetchmany_json(
-        self, mock_connection, mock_sea_client, execute_response, mock_result_data
-    ):
-        """Test fetching JSON data directly."""
-        # Create a result set with data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-            result_data=mock_result_data,
-        )
-
-        # Replace the results queue with a JsonQueue containing test data
-        result_set.results = JsonQueue([[1, "value1"], [2, "value2"], [3, "value3"]])
-
-        # Fetch two rows as JSON
-        rows = result_set.fetchmany_json(2)
-
-        # Check that we got the raw data
-        assert rows == [[1, "value1"], [2, "value2"]]
-
-        # Check that the row index was updated
-        assert result_set._next_row_index == 2
-
-    def test_fetchall_json(
-        self, mock_connection, mock_sea_client, execute_response, mock_result_data
-    ):
-        """Test fetching all JSON data directly."""
-        # Create a result set with data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            buffer_size_bytes=1000,
-            arraysize=100,
-            result_data=mock_result_data,
-        )
-
-        # Replace the results queue with a JsonQueue containing test data
-        result_set.results = JsonQueue([[1, "value1"], [2, "value2"], [3, "value3"]])
-
-        # Fetch all rows as JSON
-        rows = result_set.fetchall_json()
-
-        # Check that we got the raw data
-        assert rows == [[1, "value1"], [2, "value2"], [3, "value3"]]
-
-        # Check that the row index was updated
-        assert result_set._next_row_index == 3
-
-    def test_iteration(
-        self, mock_connection, mock_sea_client, execute_response, mock_result_data
-    ):
+    def test_iteration(self, result_set_with_data, sample_data):
         """Test iterating over the result set."""
-        # Create a result set with data
+        # Test iteration
+        rows = list(result_set_with_data)
+        assert len(rows) == len(sample_data)
+        assert isinstance(rows[0], Row)
+        assert rows[0].col1 == "value1"
+        assert rows[0].col2 == 1
+        assert rows[0].col3 is True
+
+    def test_fetchmany_arrow_not_implemented(
+        self, mock_connection, mock_sea_client, execute_response, sample_data
+    ):
+        """Test that fetchmany_arrow raises NotImplementedError for non-JSON data."""
+
+        # Test that NotImplementedError is raised
+        with pytest.raises(
+            NotImplementedError,
+            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
+        ):
+            # Create a result set without JSON data
+            result_set = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=ResultData(data=None, external_links=[]),
+                buffer_size_bytes=1000,
+                arraysize=100,
+            )
+
+    def test_fetchall_arrow_not_implemented(
+        self, mock_connection, mock_sea_client, execute_response, sample_data
+    ):
+        """Test that fetchall_arrow raises NotImplementedError for non-JSON data."""
+        # Test that NotImplementedError is raised
+        with pytest.raises(
+            NotImplementedError,
+            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
+        ):
+            # Create a result set without JSON data
+            result_set = SeaResultSet(
+                connection=mock_connection,
+                execute_response=execute_response,
+                sea_client=mock_sea_client,
+                result_data=ResultData(data=None, external_links=[]),
+                buffer_size_bytes=1000,
+                arraysize=100,
+            )
+
+    def test_is_staging_operation(
+        self, mock_connection, mock_sea_client, execute_response
+    ):
+        """Test the is_staging_operation property."""
+        # Set is_staging_operation to True
+        execute_response.is_staging_operation = True
+
+        # Create a result set
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
             sea_client=mock_sea_client,
+            result_data=ResultData(data=[]),
             buffer_size_bytes=1000,
             arraysize=100,
-            result_data=mock_result_data,
         )
 
-        # Replace the results queue with a JsonQueue containing test data
-        result_set.results = JsonQueue([[1, "value1"], [2, "value2"], [3, "value3"]])
-
-        # Iterate over the result set
-        rows = list(result_set)
-
-        # Check that we got three Row objects with the correct values
-        assert len(rows) == 3
-        assert isinstance(rows[0], Row)
-        assert rows[0].col1 == 1
-        assert rows[0].col2 == "value1"
-        assert rows[1].col1 == 2
-        assert rows[1].col2 == "value2"
-        assert rows[2].col1 == 3
-        assert rows[2].col2 == "value3"
-
-        # Check that the row index was updated
-        assert result_set._next_row_index == 3
+        # Test the property
+        assert result_set.is_staging_operation is True

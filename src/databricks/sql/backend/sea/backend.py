@@ -15,8 +15,6 @@ from databricks.sql.backend.sea.utils.constants import (
     MetadataCommands,
 )
 
-from databricks.sql.thrift_api.TCLIService import ttypes
-
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import SeaResultSet
@@ -409,7 +407,7 @@ class SeaDatabricksClient(DatabricksClient):
         lz4_compression: bool,
         cursor: Cursor,
         use_cloud_fetch: bool,
-        parameters: List[ttypes.TSparkParameter],
+        parameters: List[Dict[str, Any]],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
     ) -> Union[SeaResultSet, None]:
@@ -443,9 +441,9 @@ class SeaDatabricksClient(DatabricksClient):
             for param in parameters:
                 sea_parameters.append(
                     StatementParameter(
-                        name=param.name,
-                        value=param.value.stringValue,
-                        type=param.type,
+                        name=param["name"],
+                        value=param["value"],
+                        type=param["type"] if "type" in param else None,
                     )
                 )
 
@@ -620,10 +618,10 @@ class SeaDatabricksClient(DatabricksClient):
             connection=cursor.connection,
             execute_response=execute_response,
             sea_client=self,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-            arraysize=cursor.arraysize,
             result_data=response.result,
             manifest=response.manifest,
+            buffer_size_bytes=cursor.buffer_size_bytes,
+            arraysize=cursor.arraysize,
         )
 
     def get_chunk_link(self, statement_id: str, chunk_index: int) -> ExternalLink:

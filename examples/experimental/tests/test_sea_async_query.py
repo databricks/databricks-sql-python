@@ -17,7 +17,7 @@ def test_sea_async_query_with_cloud_fetch():
     Test executing a query asynchronously using the SEA backend with cloud fetch enabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
-    executes a query asynchronously with cloud fetch enabled, and verifies that execution completes successfully.
+    executes a simple query asynchronously with cloud fetch enabled, and verifies that execution completes successfully.
     """
     server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
@@ -82,9 +82,6 @@ def test_sea_async_query_with_cloud_fetch():
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
         actual_row_count = len(results)
-        logger.info(
-            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
-        )
 
         logger.info(
             f"Requested {requested_row_count} rows, received {actual_row_count} rows"
@@ -123,7 +120,7 @@ def test_sea_async_query_without_cloud_fetch():
     Test executing a query asynchronously using the SEA backend with cloud fetch disabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
-    executes a query asynchronously with cloud fetch disabled, and verifies that execution completes successfully.
+    executes a simple query asynchronously with cloud fetch disabled, and verifies that execution completes successfully.
     """
     server_hostname = os.environ.get("DATABRICKS_SERVER_HOSTNAME")
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
@@ -188,9 +185,6 @@ def test_sea_async_query_without_cloud_fetch():
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
         actual_row_count = len(results)
-        logger.info(
-            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
-        )
 
         logger.info(
             f"Requested {requested_row_count} rows, received {actual_row_count} rows"

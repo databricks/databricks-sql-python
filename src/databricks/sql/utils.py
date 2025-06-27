@@ -22,7 +22,8 @@ try:
 except ImportError:
     pyarrow = None
 
-from databricks.sql import OperationalError, exc
+from databricks.sql import OperationalError
+from databricks.sql.exc import ProgrammingError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
@@ -172,9 +173,7 @@ class SeaResultSetQueueFactory(ABC):
                 lz4_compressed=lz4_compressed,
                 description=description,
             )
-        else:
-            # Empty result set
-            return JsonQueue([])
+        raise ProgrammingError("No result data or external links found")
 
 
 class JsonQueue(ResultSetQueue):
