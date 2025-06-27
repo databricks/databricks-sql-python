@@ -21,6 +21,8 @@ from databricks.sql.exc import (
     InterfaceError,
     NotSupportedError,
     ProgrammingError,
+    AuthenticationError,
+    ConnectionError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
@@ -241,9 +243,18 @@ class Connection:
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
 
-        auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, **kwargs
-        )
+        try:
+            auth_provider = get_python_sql_connector_auth_provider(
+                server_hostname, **kwargs
+            )
+        except Exception as e:
+            raise AuthenticationError(
+                message=f"Failed to create authentication provider: {str(e)}",
+                host_url=server_hostname,
+                http_path=http_path,
+                port=self.port,
+                original_exception=e
+            ) from e
 
         self.server_telemetry_enabled = True
         self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
@@ -281,20 +292,31 @@ class Connection:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        self.thrift_backend = ThriftBackend(
-            self.host,
-            self.port,
-            http_path,
-            (http_headers or []) + base_headers,
-            auth_provider,
-            ssl_options=self._ssl_options,
-            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
-            **kwargs,
-        )
+        try:
+            self.thrift_backend = ThriftBackend(
+                self.host,
+                self.port,
+                http_path,
+                (http_headers or []) + base_headers,
+                auth_provider,
+                ssl_options=self._ssl_options,
+                _use_arrow_native_complex_types=_use_arrow_native_complex_types,
+                **kwargs,
+            )
 
-        self._open_session_resp = self.thrift_backend.open_session(
-            session_configuration, catalog, schema
-        )
+            self._open_session_resp = self.thrift_backend.open_session(
+                session_configuration, catalog, schema
+            )
+        except Exception as e:
+            raise ConnectionError(
+                message=f"Failed to establish connection: {str(e)}",
+                host_url=self.host,
+                http_path=http_path,
+                port=self.port,
+                user_agent=useragent_header,
+                original_exception=e
+            ) from e
+
         self._session_handle = self._open_session_resp.sessionHandle
         self.protocol_version = self.get_protocol_version(self._open_session_resp)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
