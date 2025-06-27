@@ -471,9 +471,9 @@ class SeaResultSet(ResultSet):
             manifest: Manifest from SEA response (optional)
         """
 
-        self.results = None
+        results_queue = None
         if result_data:
-            self.results = SeaResultSetQueueFactory.build_queue(
+            results_queue = SeaResultSetQueueFactory.build_queue(
                 result_data,
                 manifest,
                 str(execute_response.command_id.to_sea_statement_id()),
@@ -492,6 +492,7 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
