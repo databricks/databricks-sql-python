@@ -24,7 +24,12 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+    JsonQueue,
+    SeaResultSetQueueFactory,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -475,6 +480,7 @@ class SeaResultSet(ResultSet):
             result_data,
             manifest,
             str(execute_response.command_id.to_sea_statement_id()),
+            ssl_options=connection.session.ssl_options,
             description=execute_response.description,
             max_download_threads=sea_client.max_download_threads,
             sea_client=sea_client,
@@ -618,11 +624,11 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        if not isinstance(self.results, JsonQueue):
-            raise NotImplementedError("fetchmany_arrow only supported for JSON data")
+        results = self.results.next_n_rows(size)
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_types(results)
+            results = self._convert_json_to_arrow(results)
 
-        rows = self._convert_json_types(self.results.next_n_rows(size))
-        results = self._convert_json_to_arrow(rows)
         self._next_row_index += results.num_rows
 
         return results
@@ -632,11 +638,11 @@ class SeaResultSet(ResultSet):
         Fetch all remaining rows as an Arrow table.
         """
 
-        if not isinstance(self.results, JsonQueue):
-            raise NotImplementedError("fetchall_arrow only supported for JSON data")
+        results = self.results.remaining_rows()
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_types(results)
+            results = self._convert_json_to_arrow(results)
 
-        rows = self._convert_json_types(self.results.remaining_rows())
-        results = self._convert_json_to_arrow(rows)
         self._next_row_index += results.num_rows
 
         return results
