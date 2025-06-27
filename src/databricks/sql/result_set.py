@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 import json
 from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
@@ -7,12 +9,8 @@ import time
 import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import (
-    ExternalLink,
-    ResultData,
-    ResultManifest,
-)
-from databricks.sql.utils import SeaResultSetQueueFactory
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+from databricks.sql.backend.sea.conversion import SqlTypeConverter
 
 try:
     import pyarrow
@@ -26,7 +24,12 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+    JsonQueue,
+    SeaResultSetQueueFactory,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -452,13 +455,13 @@ class SeaResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        sea_client: "SeaDatabricksClient",
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        sea_client: SeaDatabricksClient,
+        result_data: ResultData,
+        manifest: Optional[ResultManifest] = None,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
-        result_data: Optional["ResultData"] = None,
-        manifest: Optional["ResultManifest"] = None,
     ):
         """
         Initialize a SeaResultSet with the response from a SEA query execution.
@@ -469,22 +472,20 @@ class SeaResultSet(ResultSet):
             sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
-            result_data: Result data from SEA response (optional)
-            manifest: Manifest from SEA response (optional)
+            result_data: Result data from SEA response
+            manifest: Manifest from SEA response
         """
 
-        results_queue = None
-        if result_data:
-            results_queue = SeaResultSetQueueFactory.build_queue(
-                result_data,
-                manifest,
-                str(execute_response.command_id.to_sea_statement_id()),
-                ssl_options=connection.session.ssl_options,
-                description=execute_response.description,
-                max_download_threads=sea_client.max_download_threads,
-                sea_client=sea_client,
-                lz4_compressed=execute_response.lz4_compressed,
-            )
+        results_queue = SeaResultSetQueueFactory.build_queue(
+            result_data,
+            manifest,
+            str(execute_response.command_id.to_sea_statement_id()),
+            ssl_options=connection.session.ssl_options,
+            description=execute_response.description,
+            max_download_threads=sea_client.max_download_threads,
+            sea_client=sea_client,
+            lz4_compressed=execute_response.lz4_compressed,
+        )
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -495,31 +496,82 @@ class SeaResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
-        # Initialize queue for result data if not provided
-        self.results = results_queue or JsonQueue([])
+    def _convert_json_to_arrow(self, rows: List) -> "pyarrow.Table":
+        """
+        Convert raw data rows to Arrow table.
+        """
+        if not rows:
+            return pyarrow.Table.from_pydict({})
 
-    def _convert_json_table(self, rows):
+        columns = []
+        num_cols = len(rows[0])
+        for i in range(num_cols):
+            columns.append([row[i] for row in rows])
+        names = [col[0] for col in self.description]
+        return pyarrow.Table.from_arrays(columns, names=names)
+
+    def _convert_json_types(self, rows: List) -> List:
         """
         Convert raw data rows to Row objects with named columns based on description.
-        Args:
-            rows: List of raw data rows
-        Returns:
-            List of Row objects with named columns
+        Also converts string values to appropriate Python types based on column metadata.
         """
+
         if not self.description or not rows:
             return rows
 
-        column_names = [col[0] for col in self.description]
-        ResultRow = Row(*column_names)
+        # JSON + INLINE gives us string values, so we convert them to appropriate
+        #   types based on column metadata
+        converted_rows = []
+        for row in rows:
+            converted_row = []
+
+            for i, value in enumerate(row):
+                column_type = self.description[i][1]
+                precision = self.description[i][4]
+                scale = self.description[i][5]
+
+                try:
+                    converted_value = SqlTypeConverter.convert_value(
+                        value, column_type, precision=precision, scale=scale
+                    )
+                    converted_row.append(converted_value)
+                except Exception as e:
+                    logger.warning(
+                        f"Error converting value '{value}' to {column_type}: {e}"
+                    )
+                    converted_row.append(value)
+
+            converted_rows.append(converted_row)
+
+        return converted_rows
+
+    def _create_json_table(self, rows: List) -> List[Row]:
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+        Also converts string values to appropriate Python types based on column metadata.
+
+        Args:
+            rows: List of raw data rows
+        Returns:
+            List of Row objects with named columns and converted values
+        """
+
+        if not self.description or not rows:
+            return rows
+
+        ResultRow = Row(*[col[0] for col in self.description])
+        rows = self._convert_json_types(rows)
+
         return [ResultRow(*row) for row in rows]
 
-    def fetchmany_json(self, size: int):
+    def fetchmany_json(self, size: int) -> List:
         """
         Fetch the next set of rows as a columnar table.
 
@@ -532,6 +584,7 @@ class SeaResultSet(ResultSet):
         Raises:
             ValueError: If size is negative
         """
+
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
@@ -540,54 +593,18 @@ class SeaResultSet(ResultSet):
 
         return results
 
-    def fetchall_json(self):
+    def fetchall_json(self) -> List:
         """
         Fetch all remaining rows as a columnar table.
 
         Returns:
             Columnar table containing all remaining rows
         """
+
         results = self.results.remaining_rows()
         self._next_row_index += len(results)
 
         return results
-
-    def _convert_complex_types_to_string(
-        self, rows: "pyarrow.Table"
-    ) -> "pyarrow.Table":
-        """
-        Convert complex types (array, struct, map) to string representation.
-
-        Args:
-            rows: Input PyArrow table
-
-        Returns:
-            PyArrow table with complex types converted to strings
-        """
-
-        if not pyarrow:
-            return rows
-
-        def convert_complex_column_to_string(col: "pyarrow.Array") -> "pyarrow.Array":
-            python_values = col.to_pylist()
-            json_strings = [
-                (None if val is None else json.dumps(val)) for val in python_values
-            ]
-            return pyarrow.array(json_strings, type=pyarrow.string())
-
-        converted_columns = []
-        for col in rows.columns:
-            converted_col = col
-            if (
-                pyarrow.types.is_list(col.type)
-                or pyarrow.types.is_large_list(col.type)
-                or pyarrow.types.is_struct(col.type)
-                or pyarrow.types.is_map(col.type)
-            ):
-                converted_col = convert_complex_column_to_string(col)
-            converted_columns.append(converted_col)
-
-        return pyarrow.Table.from_arrays(converted_columns, names=rows.column_names)
 
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
@@ -603,14 +620,16 @@ class SeaResultSet(ResultSet):
             ImportError: If PyArrow is not installed
             ValueError: If size is negative
         """
+
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         results = self.results.next_n_rows(size)
-        self._next_row_index += results.num_rows
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_types(results)
+            results = self._convert_json_to_arrow(results)
 
-        if not self.backend._use_arrow_native_complex_types:
-            results = self._convert_complex_types_to_string(results)
+        self._next_row_index += results.num_rows
 
         return results
 
@@ -618,11 +637,13 @@ class SeaResultSet(ResultSet):
         """
         Fetch all remaining rows as an Arrow table.
         """
-        results = self.results.remaining_rows()
-        self._next_row_index += results.num_rows
 
-        if not self.backend._use_arrow_native_complex_types:
-            results = self._convert_complex_types_to_string(results)
+        results = self.results.remaining_rows()
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_types(results)
+            results = self._convert_json_to_arrow(results)
+
+        self._next_row_index += results.num_rows
 
         return results
 
@@ -634,8 +655,9 @@ class SeaResultSet(ResultSet):
         Returns:
             A single Row object or None if no more rows are available
         """
+
         if isinstance(self.results, JsonQueue):
-            res = self._convert_json_table(self.fetchmany_json(1))
+            res = self._create_json_table(self.fetchmany_json(1))
         else:
             res = self._convert_arrow_table(self.fetchmany_arrow(1))
 
@@ -654,8 +676,9 @@ class SeaResultSet(ResultSet):
         Raises:
             ValueError: If size is negative
         """
+
         if isinstance(self.results, JsonQueue):
-            return self._convert_json_table(self.fetchmany_json(size))
+            return self._create_json_table(self.fetchmany_json(size))
         else:
             return self._convert_arrow_table(self.fetchmany_arrow(size))
 
@@ -666,7 +689,8 @@ class SeaResultSet(ResultSet):
         Returns:
             List of Row objects containing all remaining rows
         """
+
         if isinstance(self.results, JsonQueue):
-            return self._convert_json_table(self.fetchall_json())
+            return self._create_json_table(self.fetchall_json())
         else:
             return self._convert_arrow_table(self.fetchall_arrow())
