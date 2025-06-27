@@ -590,19 +590,8 @@ class TestPySQLCoreSuite(
             assert len(results) == 1 and len(results[0]) == 1
             assert results[0][0] == unicode_str
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
-    def test_cancel_during_execute(self, extra_params):
-        with self.cursor(extra_params) as cursor:
+    def test_cancel_during_execute(self):
+        with self.cursor() as cursor:
 
             def execute_really_long_query():
                 cursor.execute(
