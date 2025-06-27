@@ -510,7 +510,7 @@ class SeaResultSet(ResultSet):
         names = [col[0] for col in self.description]
         return pyarrow.Table.from_arrays(columns, names=names)
 
-    def _convert_json_types(self, rows):
+    def _convert_json_types(self, rows: List) -> List:
         """
         Convert raw data rows to Row objects with named columns based on description.
         Also converts string values to appropriate Python types based on column metadata.
