@@ -6,6 +6,7 @@ import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+from databricks.sql.conversion import SqlTypeConverter
 
 try:
     import pyarrow
@@ -503,17 +504,44 @@ class SeaResultSet(ResultSet):
     def _convert_json_table(self, rows):
         """
         Convert raw data rows to Row objects with named columns based on description.
+        Also converts string values to appropriate Python types based on column metadata.
+
         Args:
             rows: List of raw data rows
         Returns:
-            List of Row objects with named columns
+            List of Row objects with named columns and converted values
         """
         if not self.description or not rows:
             return rows
 
         column_names = [col[0] for col in self.description]
         ResultRow = Row(*column_names)
-        return [ResultRow(*row) for row in rows]
+
+        # JSON + INLINE gives us string values, so we convert them to appropriate
+        #   types based on column metadata
+        converted_rows = []
+        for row in rows:
+            converted_row = []
+
+            for i, value in enumerate(row):
+                column_type = self.description[i][1]
+                precision = self.description[i][4]
+                scale = self.description[i][5]
+
+                try:
+                    converted_value = SqlTypeConverter.convert_value(
+                        value, column_type, precision=precision, scale=scale
+                    )
+                    converted_row.append(converted_value)
+                except Exception as e:
+                    logger.warning(
+                        f"Error converting value '{value}' to {column_type}: {e}"
+                    )
+                    converted_row.append(value)
+
+            converted_rows.append(ResultRow(*converted_row))
+
+        return converted_rows
 
     def fetchmany_json(self, size: int):
         """
