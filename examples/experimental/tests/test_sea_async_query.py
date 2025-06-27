@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def test_sea_async_query_with_cloud_fetch():
     """
-    Test executing a query asynchronously using the SEA backend with cloud fetch enabled.
+    Test executing a simple query asynchronously using the SEA backend with cloud fetch enabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
     executes a query asynchronously with cloud fetch enabled, and verifies that execution completes successfully.
@@ -120,7 +120,7 @@ def test_sea_async_query_with_cloud_fetch():
 
 def test_sea_async_query_without_cloud_fetch():
     """
-    Test executing a query asynchronously using the SEA backend with cloud fetch disabled.
+    Test executing a simple query asynchronously using the SEA backend with cloud fetch disabled.
 
     This function connects to a Databricks SQL endpoint using the SEA backend,
     executes a query asynchronously with cloud fetch disabled, and verifies that execution completes successfully.
