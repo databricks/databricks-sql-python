@@ -499,7 +499,7 @@ class SeaResultSet(ResultSet):
             arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
-    def _convert_json_to_arrow(self, rows):
+    def _convert_json_to_arrow(self, rows: List) -> "pyarrow.Table":
         """
         Convert raw data rows to Arrow table.
         """
@@ -544,7 +544,7 @@ class SeaResultSet(ResultSet):
 
         return converted_rows
 
-    def _create_json_table(self, rows):
+    def _create_json_table(self, rows: List) -> List[Row]:
         """
         Convert raw data rows to Row objects with named columns based on description.
         Also converts string values to appropriate Python types based on column metadata.
