@@ -497,22 +497,19 @@ class TelemetryClientFactory:
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
             # Send synchronously for connection errors since we're probably about to exit
-            try:
-                response = requests.post(
-                    url,
-                    data=json.dumps(request),
-                    headers=headers,
-                    timeout=5,
+            response = requests.post(
+                url,
+                data=json.dumps(request),
+                headers=headers,
+                timeout=5,
+            )
+            if response.status_code == 200:
+                logger.debug("Connection error telemetry sent successfully")
+            else:
+                logger.debug(
+                    "Connection error telemetry failed with status: %s",
+                    response.status_code,
                 )
-                if response.status_code == 200:
-                    logger.debug("Connection error telemetry sent successfully")
-                else:
-                    logger.debug(
-                        "Connection error telemetry failed with status: %s",
-                        response.status_code,
-                    )
-            except Exception as e:
-                logger.debug("Failed to send connection error telemetry: %s", e)
 
         except Exception as e:
-            logger.debug("Failed to create connection error telemetry: %s", e)
+            logger.debug("Failed to send connection error telemetry: %s", e)
