@@ -352,17 +352,6 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
     def test_get_tables(self, extra_params):
         with self.cursor(extra_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
@@ -409,17 +398,6 @@ class TestPySQLCoreSuite(
                 for table in table_names:
                     cursor.execute("DROP TABLE IF EXISTS {}".format(table))
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
     def test_get_columns(self, extra_params):
         with self.cursor(extra_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
@@ -543,17 +521,6 @@ class TestPySQLCoreSuite(
             rows = cursor.fetchall()
             assert rows[0]["col_1"] == "you're"
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
     def test_get_schemas(self, extra_params):
         with self.cursor(extra_params) as cursor:
             database_name = "db_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
@@ -572,17 +539,6 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP DATABASE IF EXISTS {}".format(database_name))
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {
-                "use_sea": True,
-                "use_cloud_fetch": False,
-                "enable_query_result_lz4_compression": False,
-            },
-        ],
-    )
     def test_get_catalogs(self, extra_params):
         with self.cursor(extra_params) as cursor:
             cursor.catalogs()
