@@ -149,7 +149,7 @@ class SeaResultSetQueueFactory(ABC):
             raise NotImplementedError(
                 "EXTERNAL_LINKS disposition is not implemented for SEA backend"
             )
-        raise ProgrammingError("No result data or external links found")
+        return JsonQueue([])
 
 
 class JsonQueue(ResultSetQueue):
