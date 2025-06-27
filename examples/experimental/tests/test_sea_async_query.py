@@ -82,9 +82,6 @@ def test_sea_async_query_with_cloud_fetch():
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
         actual_row_count = len(results)
-        logger.info(
-            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
-        )
 
         logger.info(
             f"Requested {requested_row_count} rows, received {actual_row_count} rows"
@@ -188,9 +185,6 @@ def test_sea_async_query_without_cloud_fetch():
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
         actual_row_count = len(results)
-        logger.info(
-            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
-        )
 
         logger.info(
             f"Requested {requested_row_count} rows, received {actual_row_count} rows"

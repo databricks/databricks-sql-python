@@ -515,6 +515,7 @@ class SeaResultSet(ResultSet):
         Convert raw data rows to Row objects with named columns based on description.
         Also converts string values to appropriate Python types based on column metadata.
         """
+
         if not self.description or not rows:
             return rows
 
@@ -554,6 +555,7 @@ class SeaResultSet(ResultSet):
         Returns:
             List of Row objects with named columns and converted values
         """
+
         if not self.description or not rows:
             return rows
 
@@ -575,6 +577,7 @@ class SeaResultSet(ResultSet):
         Raises:
             ValueError: If size is negative
         """
+
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
@@ -590,6 +593,7 @@ class SeaResultSet(ResultSet):
         Returns:
             Columnar table containing all remaining rows
         """
+
         results = self.results.remaining_rows()
         self._next_row_index += len(results)
 
@@ -609,6 +613,7 @@ class SeaResultSet(ResultSet):
             ImportError: If PyArrow is not installed
             ValueError: If size is negative
         """
+
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
@@ -625,6 +630,7 @@ class SeaResultSet(ResultSet):
         """
         Fetch all remaining rows as an Arrow table.
         """
+
         if not isinstance(self.results, JsonQueue):
             raise NotImplementedError("fetchall_arrow only supported for JSON data")
 
@@ -642,6 +648,7 @@ class SeaResultSet(ResultSet):
         Returns:
             A single Row object or None if no more rows are available
         """
+
         if isinstance(self.results, JsonQueue):
             res = self._create_json_table(self.fetchmany_json(1))
         else:
@@ -662,6 +669,7 @@ class SeaResultSet(ResultSet):
         Raises:
             ValueError: If size is negative
         """
+
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchmany_json(size))
         else:
@@ -674,6 +682,7 @@ class SeaResultSet(ResultSet):
         Returns:
             List of Row objects containing all remaining rows
         """
+
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchall_json())
         else:
