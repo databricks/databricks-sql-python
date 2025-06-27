@@ -501,21 +501,24 @@ class SeaResultSet(ResultSet):
         # Initialize queue for result data if not provided
         self.results = results_queue or JsonQueue([])
 
-    def _convert_json_table(self, rows):
+    def _convert_json_to_arrow(self, rows):
+        """
+        Convert raw data rows to Arrow table.
+        """
+        columns = []
+        num_cols = len(rows[0])
+        for i in range(num_cols):
+            columns.append([row[i] for row in rows])
+        names = [col[0] for col in self.description]
+        return pyarrow.Table.from_arrays(columns, names=names)
+
+    def _convert_json_types(self, rows):
         """
         Convert raw data rows to Row objects with named columns based on description.
         Also converts string values to appropriate Python types based on column metadata.
-
-        Args:
-            rows: List of raw data rows
-        Returns:
-            List of Row objects with named columns and converted values
         """
         if not self.description or not rows:
             return rows
-
-        column_names = [col[0] for col in self.description]
-        ResultRow = Row(*column_names)
 
         # JSON + INLINE gives us string values, so we convert them to appropriate
         #   types based on column metadata
@@ -539,9 +542,27 @@ class SeaResultSet(ResultSet):
                     )
                     converted_row.append(value)
 
-            converted_rows.append(ResultRow(*converted_row))
+            converted_rows.append(converted_row)
 
         return converted_rows
+
+    def _convert_json_table(self, rows):
+        """
+        Convert raw data rows to Row objects with named columns based on description.
+        Also converts string values to appropriate Python types based on column metadata.
+
+        Args:
+            rows: List of raw data rows
+        Returns:
+            List of Row objects with named columns and converted values
+        """
+        if not self.description or not rows:
+            return rows
+
+        ResultRow = Row(*[col[0] for col in self.description])
+        rows = self._convert_json_types(rows)
+
+        return [ResultRow(*row) for row in rows]
 
     def fetchmany_json(self, size: int):
         """
@@ -593,7 +614,11 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        results = self.results.next_n_rows(size)
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchmany_arrow only supported for JSON data")
+
+        rows = self._convert_json_types(self.results.next_n_rows(size))
+        results = self._convert_json_to_arrow(rows)
         self._next_row_index += results.num_rows
 
         return results
@@ -602,7 +627,11 @@ class SeaResultSet(ResultSet):
         """
         Fetch all remaining rows as an Arrow table.
         """
-        results = self.results.remaining_rows()
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchall_arrow only supported for JSON data")
+
+        rows = self._convert_json_types(self.results.remaining_rows())
+        results = self._convert_json_to_arrow(rows)
         self._next_row_index += results.num_rows
 
         return results
