@@ -3,7 +3,13 @@ Main script to run all SEA connector tests.
 
 This script runs all the individual test modules and displays
 a summary of test results with visual indicators.
+
+In order to run the script, the following environment variables need to be set:
+- DATABRICKS_SERVER_HOSTNAME: The hostname of the Databricks server
+- DATABRICKS_HTTP_PATH: The HTTP path of the Databricks server
+- DATABRICKS_TOKEN: The token to use for authentication
 """
+
 import os
 import sys
 import logging
