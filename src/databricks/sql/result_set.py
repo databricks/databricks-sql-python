@@ -471,9 +471,9 @@ class SeaResultSet(ResultSet):
             manifest: Manifest from SEA response (optional)
         """
 
-        results_queue = None
+        self.results = None
         if result_data:
-            results_queue = SeaResultSetQueueFactory.build_queue(
+            self.results = SeaResultSetQueueFactory.build_queue(
                 result_data,
                 manifest,
                 str(execute_response.command_id.to_sea_statement_id()),
@@ -497,9 +497,6 @@ class SeaResultSet(ResultSet):
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
-
-        # Initialize queue for result data if not provided
-        self.results = results_queue or JsonQueue([])
 
     def _convert_json_to_arrow(self, rows):
         """
@@ -546,7 +543,7 @@ class SeaResultSet(ResultSet):
 
         return converted_rows
 
-    def _convert_json_table(self, rows):
+    def _create_json_table(self, rows):
         """
         Convert raw data rows to Row objects with named columns based on description.
         Also converts string values to appropriate Python types based on column metadata.
@@ -645,7 +642,7 @@ class SeaResultSet(ResultSet):
             A single Row object or None if no more rows are available
         """
         if isinstance(self.results, JsonQueue):
-            res = self._convert_json_table(self.fetchmany_json(1))
+            res = self._create_json_table(self.fetchmany_json(1))
         else:
             raise NotImplementedError("fetchone only supported for JSON data")
 
@@ -665,7 +662,7 @@ class SeaResultSet(ResultSet):
             ValueError: If size is negative
         """
         if isinstance(self.results, JsonQueue):
-            return self._convert_json_table(self.fetchmany_json(size))
+            return self._create_json_table(self.fetchmany_json(size))
         else:
             raise NotImplementedError("fetchmany only supported for JSON data")
 
@@ -677,6 +674,6 @@ class SeaResultSet(ResultSet):
             List of Row objects containing all remaining rows
         """
         if isinstance(self.results, JsonQueue):
-            return self._convert_json_table(self.fetchall_json())
+            return self._create_json_table(self.fetchall_json())
         else:
             raise NotImplementedError("fetchall only supported for JSON data")
