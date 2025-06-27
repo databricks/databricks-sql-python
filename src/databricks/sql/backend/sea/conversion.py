@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 class SqlType:
     """
     SQL type constants
+
+    The list of types can be found in the SEA REST API Reference:
+    https://docs.databricks.com/api/workspace/statementexecution/executestatement
     """
 
     # Numeric types
