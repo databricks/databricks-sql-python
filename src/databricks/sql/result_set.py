@@ -24,12 +24,7 @@ from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
 from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import (
-    ColumnTable,
-    ColumnQueue,
-    JsonQueue,
-    SeaResultSetQueueFactory,
-)
+from databricks.sql.utils import ColumnTable, ColumnQueue, JsonQueue
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -480,7 +475,6 @@ class SeaResultSet(ResultSet):
             result_data,
             manifest,
             str(execute_response.command_id.to_sea_statement_id()),
-            ssl_options=connection.session.ssl_options,
             description=execute_response.description,
             max_download_threads=sea_client.max_download_threads,
             sea_client=sea_client,
@@ -606,6 +600,43 @@ class SeaResultSet(ResultSet):
 
         return results
 
+    def _convert_complex_types_to_string(
+        self, rows: "pyarrow.Table"
+    ) -> "pyarrow.Table":
+        """
+        Convert complex types (array, struct, map) to string representation.
+
+        Args:
+            rows: Input PyArrow table
+
+        Returns:
+            PyArrow table with complex types converted to strings
+        """
+
+        if not pyarrow:
+            return rows
+
+        def convert_complex_column_to_string(col: "pyarrow.Array") -> "pyarrow.Array":
+            python_values = col.to_pylist()
+            json_strings = [
+                (None if val is None else json.dumps(val)) for val in python_values
+            ]
+            return pyarrow.array(json_strings, type=pyarrow.string())
+
+        converted_columns = []
+        for col in rows.columns:
+            converted_col = col
+            if (
+                pyarrow.types.is_list(col.type)
+                or pyarrow.types.is_large_list(col.type)
+                or pyarrow.types.is_struct(col.type)
+                or pyarrow.types.is_map(col.type)
+            ):
+                converted_col = convert_complex_column_to_string(col)
+            converted_columns.append(converted_col)
+
+        return pyarrow.Table.from_arrays(converted_columns, names=rows.column_names)
+
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows as an Arrow table.
@@ -631,6 +662,9 @@ class SeaResultSet(ResultSet):
 
         self._next_row_index += results.num_rows
 
+        if not self.backend._use_arrow_native_complex_types:
+            results = self._convert_complex_types_to_string(results)
+
         return results
 
     def fetchall_arrow(self) -> "pyarrow.Table":
@@ -644,6 +678,9 @@ class SeaResultSet(ResultSet):
             results = self._convert_json_to_arrow(results)
 
         self._next_row_index += results.num_rows
+
+        if not self.backend._use_arrow_native_complex_types:
+            results = self._convert_complex_types_to_string(results)
 
         return results
 
