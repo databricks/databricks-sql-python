@@ -284,16 +284,30 @@ class SeaHttpClient:
 
         try:
             if response.data:
-                error_details = json.loads(response.data.decode("utf-8"))
-                if isinstance(error_details, dict) and "message" in error_details:
-                    error_message = f"{error_message}: {error_details['message']}"
-                logger.error(f"Request failed: {error_details}")
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            # Log raw response if we can't parse JSON
-            content = (
-                response.data.decode("utf-8", errors="replace") if response.data else ""
-            )
-            logger.error(f"Request failed with non-JSON response: {content}")
+                decoded_data = response.data.decode("utf-8")
+                # Ensure we have a string before attempting JSON parsing
+                if isinstance(decoded_data, str):
+                    error_details = json.loads(decoded_data)
+                    if isinstance(error_details, dict) and "message" in error_details:
+                        error_message = f"{error_message}: {error_details['message']}"
+                    logger.error(f"Request failed: {error_details}")
+                else:
+                    # Handle case where decode returns non-string (e.g., MagicMock in tests)
+                    logger.error(
+                        f"Request failed with non-string response data: {type(decoded_data)}"
+                    )
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+            # Log raw response if we can't parse JSON or if we get unexpected types
+            try:
+                content = (
+                    response.data.decode("utf-8", errors="replace")
+                    if response.data
+                    else ""
+                )
+                logger.error(f"Request failed with non-JSON response: {content}")
+            except (AttributeError, TypeError):
+                # Handle case where response.data itself might be a mock
+                logger.error(f"Request failed with unparseable response data")
 
         raise RequestError(error_message, None)
 
