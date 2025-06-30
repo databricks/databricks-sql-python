@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
+from urllib3.exceptions import MaxRetryError
 
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
@@ -98,6 +99,15 @@ class SeaHttpClient:
         self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
 
         if self.enable_v3_retries:
+            urllib3_kwargs = {"allowed_methods": ["GET", "POST", "DELETE"]}
+            _max_redirects = kwargs.get("_retry_max_redirects")
+            if _max_redirects:
+                if _max_redirects > self._retry_stop_after_attempts_count:
+                    logger.warning(
+                        "_retry_max_redirects > _retry_stop_after_attempts_count so it will have no affect!"
+                    )
+                urllib3_kwargs["redirect"] = _max_redirects
+
             self.retry_policy = DatabricksRetryPolicy(
                 delay_min=self._retry_delay_min,
                 delay_max=self._retry_delay_max,
@@ -105,7 +115,7 @@ class SeaHttpClient:
                 stop_after_attempts_duration=self._retry_stop_after_attempts_duration,
                 delay_default=self._retry_delay_default,
                 force_dangerous_codes=self.force_dangerous_codes,
-                urllib3_kwargs={"allowed_methods": ["GET", "POST", "DELETE"]},
+                urllib3_kwargs=urllib3_kwargs,
             )
         else:
             # Legacy behavior - no automatic retries
@@ -273,6 +283,18 @@ class SeaHttpClient:
             # These exceptions are raised by DatabricksRetryPolicy when detecting
             # "already closed" scenarios (404 responses with retry history)
             error_message = f"Request failed: {e}"
+            # Construct RequestError with proper 3-argument format (message, context, error) like Thrift backend
+            raise RequestError(error_message, None, e)
+        except MaxRetryError as e:
+            # urllib3 MaxRetryError should bubble up for redirect tests to catch
+            # Don't convert to RequestError, let the test framework handle it
+            logger.error(f"SEA HTTP request failed with MaxRetryError: {e}")
+            raise
+        except Exception as e:
+            # Broad exception handler like Thrift backend to catch any unexpected errors
+            # (including test mocking issues like StopIteration)
+            logger.error(f"SEA HTTP request failed with exception: {e}")
+            error_message = f"Error during request to server. {e}"
             # Construct RequestError with proper 3-argument format (message, context, error) like Thrift backend
             raise RequestError(error_message, None, e)
 
