@@ -8,6 +8,19 @@ from decimal import Decimal
 from datetime import datetime, date
 from uuid import UUID
 
+def noop_log_latency_decorator(*args, **kwargs):
+    """
+    This is a no-op decorator. It is used to patch the log_latency decorator
+    during tests, so that the tests for client logic are not affected by the
+    telemetry logging logic. It accepts any arguments and returns a decorator
+    that returns the original function unmodified.
+    """
+    def decorator(func):
+        return func
+    return decorator
+
+patch('databricks.sql.telemetry.latency_logger.log_latency', new=noop_log_latency_decorator).start()
+
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOpenSessionResp,
     TExecuteStatementResp,
@@ -37,11 +50,6 @@ class ThriftBackendMockFactory:
 
         cls.apply_property_to_mock(ThriftBackendMock, staging_allowed_local_path=None)
         MockTExecuteStatementResp = MagicMock(spec=TExecuteStatementResp())
-
-        # Mock retry_policy with history attribute
-        mock_retry_policy = Mock()
-        mock_retry_policy.history = []
-        cls.apply_property_to_mock(ThriftBackendMock, retry_policy=mock_retry_policy)
 
         cls.apply_property_to_mock(
             MockTExecuteStatementResp,
@@ -73,15 +81,6 @@ class ThriftBackendMockFactory:
 
             prop = PropertyMock(**kwargs)
             setattr(type(mock_obj), key, prop)
-
-    @classmethod
-    def mock_thrift_backend_with_retry_policy(cls): # Required for log_latency() decorator
-        """Create a simple thrift_backend mock with retry_policy for basic tests."""
-        mock_thrift_backend = Mock()
-        mock_retry_policy = Mock()
-        mock_retry_policy.history = []
-        mock_thrift_backend.retry_policy = mock_retry_policy
-        return mock_thrift_backend
 
 
 class ClientTestSuite(unittest.TestCase):
@@ -332,7 +331,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_result_sets[1].fetchall.assert_called_once_with()
 
     def test_closed_cursor_doesnt_allow_operations(self):
-        cursor = client.Cursor(Mock(), ThriftBackendMockFactory.mock_thrift_backend_with_retry_policy())
+        cursor = client.Cursor(Mock(), Mock())
         cursor.close()
 
         with self.assertRaises(Error) as e:
@@ -394,7 +393,7 @@ class ClientTestSuite(unittest.TestCase):
         for req_args in req_args_combinations:
             req_args = {k: v for k, v in req_args.items() if v != "NOT_SET"}
             with self.subTest(req_args=req_args):
-                mock_thrift_backend = ThriftBackendMockFactory.mock_thrift_backend_with_retry_policy()
+                mock_thrift_backend = Mock()
 
                 cursor = client.Cursor(Mock(), mock_thrift_backend)
                 cursor.schemas(**req_args)
@@ -417,7 +416,7 @@ class ClientTestSuite(unittest.TestCase):
         for req_args in req_args_combinations:
             req_args = {k: v for k, v in req_args.items() if v != "NOT_SET"}
             with self.subTest(req_args=req_args):
-                mock_thrift_backend = ThriftBackendMockFactory.mock_thrift_backend_with_retry_policy()
+                mock_thrift_backend = Mock()
 
                 cursor = client.Cursor(Mock(), mock_thrift_backend)
                 cursor.tables(**req_args)
@@ -440,7 +439,7 @@ class ClientTestSuite(unittest.TestCase):
         for req_args in req_args_combinations:
             req_args = {k: v for k, v in req_args.items() if v != "NOT_SET"}
             with self.subTest(req_args=req_args):
-                mock_thrift_backend = ThriftBackendMockFactory.mock_thrift_backend_with_retry_policy()
+                mock_thrift_backend = Mock()
 
                 cursor = client.Cursor(Mock(), mock_thrift_backend)
                 cursor.columns(**req_args)

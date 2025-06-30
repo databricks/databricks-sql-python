@@ -45,9 +45,6 @@ class TelemetryExtractor:
     def get_statement_id(self):
         pass
 
-    def get_statement_type(self):
-        pass
-
     def get_is_compressed(self):
         pass
 
@@ -95,10 +92,6 @@ class CursorExtractor(TelemetryExtractor):
             return len(self.thrift_backend.retry_policy.history)
         return 0
 
-    def get_statement_type(self) -> StatementType:
-        # TODO: Implement this
-        return StatementType.SQL
-
 
 class ResultSetExtractor(TelemetryExtractor):
     """
@@ -127,10 +120,6 @@ class ResultSetExtractor(TelemetryExtractor):
         elif isinstance(self.results, ArrowQueue):
             return ExecutionResultFormat.INLINE_ARROW
         return ExecutionResultFormat.FORMAT_UNSPECIFIED
-
-    def get_statement_type(self) -> StatementType:
-        # TODO: Implement this
-        return StatementType.SQL
 
     def get_retry_count(self) -> int:
         if (
@@ -166,7 +155,7 @@ def get_extractor(obj):
         raise NotImplementedError(f"No extractor found for {obj.__class__.__name__}")
 
 
-def log_latency():
+def log_latency(statement_type: StatementType = StatementType.NONE):
     """
     Decorator for logging execution latency and telemetry information.
 
@@ -180,14 +169,12 @@ def log_latency():
     - Creates a SqlExecutionEvent with execution details
     - Sends the telemetry data asynchronously via TelemetryClient
 
-    Usage:
-        @log_latency()
-        def execute(self, query):
-            # Method implementation
-            pass
+    Args:
+        statement_type (StatementType): The type of SQL statement being executed.
 
-        @log_latency()
-        def fetchall(self):
+    Usage:
+        @log_latency(StatementType.SQL)
+        def execute(self, query):
             # Method implementation
             pass
 
@@ -216,7 +203,7 @@ def log_latency():
                 statement_id = extractor.get_statement_id()
 
                 sql_exec_event = SqlExecutionEvent(
-                    statement_type=extractor.get_statement_type(),
+                    statement_type=statement_type,
                     is_compressed=extractor.get_is_compressed(),
                     execution_result=extractor.get_execution_result(),
                     retry_count=extractor.get_retry_count(),
