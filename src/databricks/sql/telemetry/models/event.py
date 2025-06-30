@@ -149,9 +149,9 @@ class TelemetryEvent(JsonSerializableMixin):
         operation_latency_ms (Optional[int]): Operation latency in milliseconds
     """
 
-    session_id: str
     system_configuration: DriverSystemConfiguration
     driver_connection_params: DriverConnectionParameters
+    session_id: Optional[str] = None
     sql_statement_id: Optional[str] = None
     auth_type: Optional[str] = None
     vol_operation: Optional[DriverVolumeOperation] = None

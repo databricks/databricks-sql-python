@@ -499,3 +499,68 @@ class TestTelemetrySystem:
         TelemetryClientFactory._handle_unhandled_exception(type(test_exception), test_exception, None)
         
         mock_handle_exception.assert_called_once_with(type(test_exception), test_exception, None)
+
+    @patch("requests.post")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHelper.get_driver_system_configuration")
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryFrontendLog")
+    @patch("databricks.sql.telemetry.telemetry_client.DriverErrorInfo")
+    @patch("databricks.sql.telemetry.telemetry_client.DriverConnectionParameters")
+    @patch("databricks.sql.telemetry.telemetry_client.uuid.uuid4")
+    @patch("databricks.sql.telemetry.telemetry_client.time.time")
+    def test_send_connection_error_telemetry(
+        self, 
+        mock_time, 
+        mock_uuid4, 
+        mock_driver_connection_params,
+        mock_driver_error_info,
+        mock_frontend_log,
+        mock_get_driver_config, 
+        mock_post, 
+        telemetry_system_reset
+    ):
+        """Test connection error telemetry functionality."""
+        # Setup mocks
+        mock_time.return_value = 1000
+        mock_uuid4.return_value = "test-uuid"
+        mock_get_driver_config.return_value = MagicMock()
+        mock_driver_connection_params.return_value = MagicMock()
+        mock_driver_error_info.return_value = MagicMock()
+        
+        mock_frontend_log_instance = MagicMock()
+        mock_frontend_log_instance.to_json.return_value = '{"test": "data"}'
+        mock_frontend_log.return_value = mock_frontend_log_instance
+        
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+
+        # Test successful call
+        TelemetryClientFactory.send_connection_error_telemetry(
+            error_name="ConnectionError",
+            error_message="Failed to connect",
+            host_url="test.databricks.com",
+            http_path="/sql/1.0/endpoints/test",
+            port=443,
+            user_agent="TestAgent"
+        )
+
+        # Verify requests.post was called correctly
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert args[0] == "https://test.databricks.com/telemetry-unauth"
+        assert kwargs["headers"]["Accept"] == "application/json"
+        assert kwargs["timeout"] == 5
+        
+        # Test that exceptions don't break the function
+        mock_post.reset_mock()
+        mock_post.side_effect = Exception("Network error")
+        
+        # Should not raise exception
+        TelemetryClientFactory.send_connection_error_telemetry(
+            error_name="AuthenticationError",
+            error_message="Auth failed",
+            host_url="test.databricks.com",
+            http_path="/sql/1.0/endpoints/test"
+        )
+        
+        mock_post.assert_called_once()
