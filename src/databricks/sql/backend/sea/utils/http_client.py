@@ -12,7 +12,12 @@ from urllib3.util import make_headers
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
-from databricks.sql.exc import RequestError, MaxRetryDurationError
+from databricks.sql.exc import (
+    RequestError,
+    MaxRetryDurationError,
+    SessionAlreadyClosedError,
+    CursorAlreadyClosedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +269,12 @@ class SeaHttpClient:
             error_message = f"Request failed due to retry duration limit: {e}"
             # Construct RequestError with message, context, and specific error (like Thrift backend)
             raise RequestError(error_message, None, e)
+        except (SessionAlreadyClosedError, CursorAlreadyClosedError) as e:
+            # These exceptions are raised by DatabricksRetryPolicy when detecting
+            # "already closed" scenarios (404 responses with retry history)
+            error_message = f"Request failed: {e}"
+            # Construct RequestError with proper 3-argument format (message, context, error) like Thrift backend
+            raise RequestError(error_message, None, e)
 
         logger.debug(f"Response status: {response.status}")
 
@@ -282,34 +293,51 @@ class SeaHttpClient:
         # Handle error responses
         error_message = f"SEA HTTP request failed with status {response.status}"
 
-        try:
-            if response.data:
-                decoded_data = response.data.decode("utf-8")
-                # Ensure we have a string before attempting JSON parsing
-                if isinstance(decoded_data, str):
-                    error_details = json.loads(decoded_data)
-                    if isinstance(error_details, dict) and "message" in error_details:
-                        error_message = f"{error_message}: {error_details['message']}"
-                    logger.error(f"Request failed: {error_details}")
-                else:
-                    # Handle case where decode returns non-string (e.g., MagicMock in tests)
-                    logger.error(
-                        f"Request failed with non-string response data: {type(decoded_data)}"
-                    )
-        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
-            # Log raw response if we can't parse JSON or if we get unexpected types
-            try:
-                content = (
-                    response.data.decode("utf-8", errors="replace")
-                    if response.data
-                    else ""
-                )
-                logger.error(f"Request failed with non-JSON response: {content}")
-            except (AttributeError, TypeError):
-                # Handle case where response.data itself might be a mock
-                logger.error(f"Request failed with unparseable response data")
+        # Try to extract additional error details from response, but don't fail if we can't
+        error_message = self._try_add_error_details_to_message(response, error_message)
 
         raise RequestError(error_message, None)
+
+    def _try_add_error_details_to_message(self, response, error_message: str) -> str:
+        """
+        Try to extract error details from response and add to error message.
+        This method is defensive and will not raise exceptions if parsing fails.
+        It handles mock objects and malformed responses gracefully.
+        """
+        try:
+            # Check if response.data exists and is accessible
+            if not hasattr(response, "data") or response.data is None:
+                return error_message
+
+            # Try to decode the response data
+            try:
+                decoded_data = response.data.decode("utf-8")
+            except (AttributeError, UnicodeDecodeError, TypeError):
+                # response.data might be a mock object or not bytes
+                return error_message
+
+            # Ensure we have a string before attempting JSON parsing
+            if not isinstance(decoded_data, str):
+                return error_message
+
+            # Try to parse as JSON
+            try:
+                error_details = json.loads(decoded_data)
+                if isinstance(error_details, dict) and "message" in error_details:
+                    enhanced_message = f"{error_message}: {error_details['message']}"
+                    logger.error(f"Request failed: {error_details}")
+                    return enhanced_message
+            except json.JSONDecodeError:
+                # Not valid JSON, log what we can
+                logger.debug(
+                    f"Request failed with non-JSON response: {decoded_data[:200]}"
+                )
+
+        except Exception:
+            # Catch-all for any unexpected issues (e.g., mock objects with unexpected behavior)
+            logger.debug("Could not parse error response data")
+
+        return error_message
 
     def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
         """

@@ -130,8 +130,8 @@ class DatabricksRetryPolicy(Retry):
             allowed_methods=["POST"],
             status_forcelist=[429, 503, *self.force_dangerous_codes],
         )
-
-        urllib3_kwargs.update(**_urllib_kwargs_we_care_about)
+        _urllib_kwargs_we_care_about.update(**urllib3_kwargs)
+        urllib3_kwargs = _urllib_kwargs_we_care_about
 
         super().__init__(
             **urllib3_kwargs,
