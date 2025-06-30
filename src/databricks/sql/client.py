@@ -24,6 +24,7 @@ from databricks.sql.exc import (
     AuthenticationError,
     ConnectionError,
 )
+from urllib3.exceptions import MaxRetryError
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import (
@@ -307,6 +308,8 @@ class Connection:
             self._open_session_resp = self.thrift_backend.open_session(
                 session_configuration, catalog, schema
             )
+        except (RequestError, MaxRetryError) as e:
+            raise
         except Exception as e:
             raise ConnectionError(
                 message=f"Failed to establish connection: {str(e)}",
