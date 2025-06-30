@@ -11,10 +11,32 @@ from uuid import UUID
 
 
 class TelemetryExtractor:
+    """
+    Base class for extracting telemetry information from various object types.
+
+    This class serves as a proxy that delegates attribute access to the wrapped object
+    while providing a common interface for extracting telemetry-related data.
+    """
+
     def __init__(self, obj):
+        """
+        Initialize the extractor with an object to wrap.
+
+        Args:
+            obj: The object to extract telemetry information from.
+        """
         self._obj = obj
 
     def __getattr__(self, name):
+        """
+        Delegate attribute access to the wrapped object.
+
+        Args:
+            name (str): The name of the attribute to access.
+
+        Returns:
+            The attribute value from the wrapped object.
+        """
         return getattr(self._obj, name)
 
     def get_session_id_hex(self):
@@ -37,6 +59,13 @@ class TelemetryExtractor:
 
 
 class CursorExtractor(TelemetryExtractor):
+    """
+    Telemetry extractor specialized for Cursor objects.
+
+    Extracts telemetry information from database cursor objects, including
+    statement IDs, session information, compression settings, and result formats.
+    """
+
     def get_statement_id(self) -> Optional[str]:
         return self.query_id
 
@@ -72,6 +101,13 @@ class CursorExtractor(TelemetryExtractor):
 
 
 class ResultSetExtractor(TelemetryExtractor):
+    """
+    Telemetry extractor specialized for ResultSet objects.
+
+    Extracts telemetry information from database result set objects, including
+    operation IDs, session information, compression settings, and result formats.
+    """
+
     def get_statement_id(self) -> Optional[str]:
         if self.command_id:
             return str(UUID(bytes=self.command_id.operationId.guid))
@@ -106,15 +142,63 @@ class ResultSetExtractor(TelemetryExtractor):
 
 
 def get_extractor(obj):
+    """
+    Factory function to create the appropriate telemetry extractor for an object.
+
+    Determines the object type and returns the corresponding specialized extractor
+    that can extract telemetry information from that object type.
+
+    Args:
+        obj: The object to create an extractor for. Can be a Cursor, ResultSet,
+             or any other object.
+
+    Returns:
+        TelemetryExtractor: A specialized extractor instance:
+            - CursorExtractor for Cursor objects
+            - ResultSetExtractor for ResultSet objects
+            - TelemetryExtractor (base) for all other objects
+    """
     if obj.__class__.__name__ == "Cursor":
         return CursorExtractor(obj)
     elif obj.__class__.__name__ == "ResultSet":
         return ResultSetExtractor(obj)
     else:
-        return TelemetryExtractor(obj)
+        raise NotImplementedError(f"No extractor found for {obj.__class__.__name__}")
 
 
 def log_latency():
+    """
+    Decorator for logging execution latency and telemetry information.
+
+    This decorator measures the execution time of a method and sends telemetry
+    data about the operation, including latency, statement information, and
+    execution context.
+
+    The decorator automatically:
+    - Measures execution time using high-precision performance counters
+    - Extracts telemetry information from the method's object (self)
+    - Creates a SqlExecutionEvent with execution details
+    - Sends the telemetry data asynchronously via TelemetryClient
+
+    Usage:
+        @log_latency()
+        def execute(self, query):
+            # Method implementation
+            pass
+
+        @log_latency()
+        def fetchall(self):
+            # Method implementation
+            pass
+
+    Returns:
+        function: A decorator that wraps methods to add latency logging.
+
+    Note:
+        The wrapped method's object (self) must be compatible with the
+        telemetry extractor system (e.g., Cursor or ResultSet objects).
+    """
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
