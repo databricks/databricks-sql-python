@@ -12,7 +12,7 @@ from urllib3.util import make_headers
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
-from databricks.sql.exc import RequestError
+from databricks.sql.exc import RequestError, MaxRetryDurationError
 
 logger = logging.getLogger(__name__)
 
@@ -249,14 +249,21 @@ class SeaHttpClient:
         if self._pool is None:
             raise RequestError("Connection pool not initialized", None)
 
-        response = self._pool.request(
-            method=method.upper(),
-            url=url,
-            body=body,
-            headers=headers,
-            preload_content=True,
-            retries=self.retry_policy,
-        )
+        try:
+            response = self._pool.request(
+                method=method.upper(),
+                url=url,
+                body=body,
+                headers=headers,
+                preload_content=True,
+                retries=self.retry_policy,
+            )
+        except MaxRetryDurationError as e:
+            # MaxRetryDurationError is raised directly by DatabricksRetryPolicy
+            # when duration limits are exceeded (like in test_retry_exponential_backoff)
+            error_message = f"Request failed due to retry duration limit: {e}"
+            # Construct RequestError with message, context, and specific error (like Thrift backend)
+            raise RequestError(error_message, None, e)
 
         logger.debug(f"Response status: {response.status}")
 
