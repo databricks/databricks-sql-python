@@ -1,14 +1,18 @@
 import abc
-import base64
+import jwt
 import logging
+import time
 from typing import Callable, Dict, List
-
+from databricks.sql.common.http import HttpMethod, DatabricksHttpClient, HttpHeader
 from databricks.sql.auth.oauth import OAuthManager
-from databricks.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_host
+from databricks.sql.auth.endpoint import get_oauth_endpoints
+from databricks.sql.common.http import DatabricksHttpClient, OAuthResponse
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
+
+logger = logging.getLogger(__name__)
 
 
 class AuthProvider:
@@ -31,6 +35,35 @@ class CredentialsProvider(abc.ABC):
     @abc.abstractmethod
     def __call__(self, *args, **kwargs) -> HeaderFactory:
         ...
+
+
+class Token:
+    """
+    A class to represent a token.
+
+    Attributes:
+        access_token (str): The access token string.
+        token_type (str): The type of token (e.g., "Bearer").
+        refresh_token (str): The refresh token string.
+    """
+
+    def __init__(self, access_token: str, token_type: str, refresh_token: str):
+        self.access_token = access_token
+        self.token_type = token_type
+        self.refresh_token = refresh_token
+
+    def is_expired(self):
+        try:
+            decoded_token = jwt.decode(
+                self.access_token, options={"verify_signature": False}
+            )
+            exp_time = decoded_token.get("exp")
+            current_time = time.time()
+            buffer_time = 30  # 30 seconds buffer
+            return exp_time and (exp_time - buffer_time) <= current_time
+        except Exception as e:
+            logger.error("Failed to decode token: %s", e)
+            return e
 
 
 # Private API: this is an evolving interface and it will change in the future.
@@ -146,3 +179,74 @@ class ExternalAuthProvider(AuthProvider):
         headers = self._header_factory()
         for k, v in headers.items():
             request_headers[k] = v
+
+
+class AzureServicePrincipalCredentialProvider(CredentialsProvider):
+    """
+    A credential provider for Azure Service Principal authentication with Databricks.
+
+    This class implements the CredentialsProvider protocol to authenticate requests
+    to Databricks REST APIs using Azure Active Directory (AAD) service principal
+    credentials. It handles OAuth 2.0 client credentials flow to obtain access tokens
+    from Azure AD and automatically refreshes them when they expire.
+
+    Attributes:
+        client_id (str): The Azure service principal's client ID.
+        client_secret (str): The Azure service principal's client secret.
+        tenant_id (str): The Azure AD tenant ID.
+    """
+
+    AZURE_AAD_ENDPOINT = "https://login.microsoftonline.com"
+    DATABRICKS_SCOPE = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default"
+    AZURE_TOKEN_ENDPOINT = "oauth2/token"
+
+    def __init__(self, client_id: str, client_secret: str, tenant_id: str):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.tenant_id = tenant_id
+        self._token: Token = None
+        self._http_client = DatabricksHttpClient.get_instance()
+
+    def auth_type(self) -> str:
+        return "azure-service-principal"
+
+    def __call__(self, *args, **kwargs) -> HeaderFactory:
+        def header_factory() -> Dict[str, str]:
+            self._refresh()
+            return {HttpHeader.AUTHORIZATION: f"Bearer {self._token.access_token}"}
+
+        return header_factory
+
+    def _refresh(self) -> None:
+        if self._token is None or self._token.is_expired():
+            self._token = self._get_token()
+
+    def _get_token(self) -> Token:
+        request_url = (
+            f"{self.AZURE_AAD_ENDPOINT}/{self.tenant_id}/{self.AZURE_TOKEN_ENDPOINT}"
+        )
+        headers = {
+            HttpHeader.CONTENT_TYPE: "application/x-www-form-urlencoded",
+        }
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "scope": self.DATABRICKS_SCOPE,
+        }
+
+        response = self._http_client.execute(
+            method=HttpMethod.POST, url=request_url, headers=headers, data=data
+        )
+
+        if response.status_code == 200:
+            oauth_response = OAuthResponse(**response.json())
+            return Token(
+                oauth_response.access_token,
+                oauth_response.token_type,
+                oauth_response.refresh_token,
+            )
+        else:
+            raise Exception(
+                f"Failed to get token: {response.status_code} {response.text}"
+            )
