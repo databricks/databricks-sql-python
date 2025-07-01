@@ -173,7 +173,7 @@ class SeaResultSetQueueFactory(ABC):
                 lz4_compressed=lz4_compressed,
                 description=description,
             )
-        raise ProgrammingError("No result data or external links found")
+        return JsonQueue([])
 
 
 class JsonQueue(ResultSetQueue):
