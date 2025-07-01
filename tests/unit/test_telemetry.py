@@ -186,13 +186,15 @@ class TestTelemetryClient:
         client = telemetry_client_setup["client"]
         client._flush = MagicMock()
         
-        for i in range(TelemetryClient._batch_size-1):
+        batch_size = client._batch_size
+        
+        for i in range(batch_size - 1):
             client._export_event(f"event-{i}")
         
         client._flush.assert_not_called()
-        assert len(client._events_batch) == TelemetryClient._batch_size-1
+        assert len(client._events_batch) == batch_size - 1
         
-        client._export_event(f"event-{TelemetryClient._batch_size - 1}")
+        client._export_event(f"event-{batch_size - 1}")
         
         client._flush.assert_called_once()
 
