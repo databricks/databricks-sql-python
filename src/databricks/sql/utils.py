@@ -140,7 +140,6 @@ class SeaResultSetQueueFactory(ABC):
             ResultSetQueue: The appropriate queue for the result data
         """
 
-        print(sea_result_data)
         if sea_result_data.data is not None:
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(sea_result_data.data)
