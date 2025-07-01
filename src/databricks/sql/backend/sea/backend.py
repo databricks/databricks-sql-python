@@ -290,7 +290,7 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
-    ) -> Optional[List]:
+    ) -> List[Tuple]:
         """
         Extract column description from a manifest object, in the format defined by
         the spec: https://peps.python.org/pep-0249/#description
@@ -299,14 +299,11 @@ class SeaDatabricksClient(DatabricksClient):
             manifest: The ResultManifest object containing schema information
 
         Returns:
-            Optional[List]: A list of column tuples or None if no columns are found
+            List[Tuple]: A list of column tuples
         """
 
         schema_data = manifest.schema
         columns_data = schema_data.get("columns", [])
-
-        if not columns_data:
-            return None
 
         columns = []
         for col_data in columns_data:
@@ -323,7 +320,7 @@ class SeaDatabricksClient(DatabricksClient):
                 )
             )
 
-        return columns if columns else None
+        return columns
 
     def _results_message_to_execute_response(
         self, response: GetStatementResponse

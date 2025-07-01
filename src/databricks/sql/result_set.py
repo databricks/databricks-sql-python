@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
 import pandas
@@ -50,7 +50,7 @@ class ResultSet(ABC):
         has_been_closed_server_side: bool = False,
         is_direct_results: bool = False,
         results_queue=None,
-        description=None,
+        description: List[Tuple] = [],
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
         arrow_schema_bytes: Optional[bytes] = None,

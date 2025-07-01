@@ -621,18 +621,6 @@ class TestSeaBackend:
         assert description[1][1] == "INT"  # type_code
         assert description[1][6] is False  # null_ok
 
-        # Test _extract_description_from_manifest with empty columns
-        empty_manifest = MagicMock()
-        empty_manifest.schema = {"columns": []}
-        assert sea_client._extract_description_from_manifest(empty_manifest) is None
-
-        # Test _extract_description_from_manifest with no columns key
-        no_columns_manifest = MagicMock()
-        no_columns_manifest.schema = {}
-        assert (
-            sea_client._extract_description_from_manifest(no_columns_manifest) is None
-        )
-
     def test_results_message_to_execute_response_is_staging_operation(self, sea_client):
         """Test that is_staging_operation is correctly set from manifest.is_volume_operation."""
         # Test when is_volume_operation is True

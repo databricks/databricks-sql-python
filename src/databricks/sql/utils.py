@@ -61,7 +61,7 @@ class ThriftResultSetQueueFactory(ABC):
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -117,7 +117,7 @@ class SeaResultSetQueueFactory(ABC):
         sea_result_data: ResultData,
         manifest: Optional[ResultManifest],
         statement_id: str,
-        description: Optional[List[Tuple[Any, ...]]] = None,
+        description: List[Tuple] = [],
         schema_bytes: Optional[bytes] = None,
         max_download_threads: Optional[int] = None,
         sea_client: Optional[SeaDatabricksClient] = None,
@@ -274,7 +274,7 @@ class CloudFetchQueue(ResultSetQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.
