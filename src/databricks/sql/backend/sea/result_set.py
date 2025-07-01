@@ -15,6 +15,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
+from databricks.sql.exc import ProgrammingError
 from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse

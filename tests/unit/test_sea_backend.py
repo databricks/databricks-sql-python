@@ -196,7 +196,7 @@ class TestSeaBackend:
         )
 
         # Test close_session with invalid ID type
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.close_session(thrift_session_id)
         assert "Not a valid SEA session ID" in str(excinfo.value)
 
@@ -245,7 +245,7 @@ class TestSeaBackend:
             assert cmd_id_arg.guid == "test-statement-123"
 
         # Test with invalid session ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             mock_thrift_handle = MagicMock()
             mock_thrift_handle.sessionId.guid = b"guid"
             mock_thrift_handle.sessionId.secret = b"secret"
@@ -449,7 +449,7 @@ class TestSeaBackend:
         )
 
         # Test cancel_command with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.cancel_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -463,7 +463,7 @@ class TestSeaBackend:
         )
 
         # Test close_command with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.close_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -522,7 +522,7 @@ class TestSeaBackend:
         assert result.status == CommandState.SUCCEEDED
 
         # Test get_execution_result with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.get_execution_result(thrift_command_id, mock_cursor)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 

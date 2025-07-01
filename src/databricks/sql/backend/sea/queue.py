@@ -27,9 +27,7 @@ class SeaResultSetQueueFactory(ABC):
             manifest (ResultManifest): Manifest from SEA response
             statement_id (str): Statement ID for the query
             description (List[List[Any]]): Column descriptions
-            schema_bytes (bytes): Arrow schema bytes
             max_download_threads (int): Maximum number of download threads
-            ssl_options (SSLOptions): SSL options for downloads
             sea_client (SeaDatabricksClient): SEA client for fetching additional links
             lz4_compressed (bool): Whether the data is LZ4 compressed
 

@@ -251,7 +251,7 @@ class SeaDatabricksClient(DatabricksClient):
         logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
         if session_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA session ID")
+            raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
         request_data = DeleteSessionRequest(
@@ -426,7 +426,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if session_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA session ID")
+            raise ValueError("Not a valid SEA session ID")
 
         sea_session_id = session_id.to_sea_session_id()
 
@@ -505,11 +505,11 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
         if sea_statement_id is None:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
         self.http_client._make_request(
@@ -530,11 +530,11 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
         if sea_statement_id is None:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
         self.http_client._make_request(
@@ -562,7 +562,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         sea_statement_id = command_id.to_sea_statement_id()
         if sea_statement_id is None:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         request = GetStatementRequest(statement_id=sea_statement_id)
         response_data = self.http_client._make_request(
@@ -595,11 +595,11 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
         if sea_statement_id is None:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         # Create the request model
         request = GetStatementRequest(statement_id=sea_statement_id)
