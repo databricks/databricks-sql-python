@@ -17,7 +17,7 @@ from databricks.sql.backend.sea.utils.constants import (
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
-    from databricks.sql.result_set import SeaResultSet
+    from databricks.sql.backend.sea.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -613,7 +613,7 @@ class SeaDatabricksClient(DatabricksClient):
         response = GetStatementResponse.from_dict(response_data)
 
         # Create and return a SeaResultSet
-        from databricks.sql.result_set import SeaResultSet
+        from databricks.sql.backend.sea.result_set import SeaResultSet
 
         execute_response = self._results_message_to_execute_response(response)
 

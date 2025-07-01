@@ -8,7 +8,7 @@ the result set functionality for the SEA (Statement Execution API) backend.
 import pytest
 from unittest.mock import Mock
 
-from databricks.sql.result_set import SeaResultSet, Row
+from databricks.sql.backend.sea.result_set import SeaResultSet, Row
 from databricks.sql.backend.sea.queue import JsonQueue
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
@@ -199,13 +199,12 @@ class TestSeaResultSet:
     def test_convert_json_types(self, result_set_with_data, sample_data):
         """Test the _convert_json_types method."""
         # Call _convert_json_types
-        converted_rows = result_set_with_data._convert_json_types(sample_data)
+        converted_row = result_set_with_data._convert_json_types(sample_data[0])
 
         # Verify the conversion
-        assert len(converted_rows) == len(sample_data)
-        assert converted_rows[0][0] == "value1"  # string stays as string
-        assert converted_rows[0][1] == 1  # "1" converted to int
-        assert converted_rows[0][2] is True  # "true" converted to boolean
+        assert converted_row[0] == "value1"  # string stays as string
+        assert converted_row[1] == 1  # "1" converted to int
+        assert converted_row[2] is True  # "true" converted to boolean
 
     def test_create_json_table(self, result_set_with_data, sample_data):
         """Test the _create_json_table method."""

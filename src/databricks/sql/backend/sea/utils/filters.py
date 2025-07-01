@@ -17,7 +17,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from databricks.sql.result_set import SeaResultSet
+    from databricks.sql.backend.sea.result_set import SeaResultSet
 
 from databricks.sql.backend.types import ExecuteResponse
 
@@ -70,7 +70,7 @@ class ResultSetFilter:
         result_data = ResultData(data=filtered_rows, external_links=None)
 
         from databricks.sql.backend.sea.backend import SeaDatabricksClient
-        from databricks.sql.result_set import SeaResultSet
+        from databricks.sql.backend.sea.result_set import SeaResultSet
 
         # Create a new SeaResultSet with the filtered data
         manifest = result_set.manifest
