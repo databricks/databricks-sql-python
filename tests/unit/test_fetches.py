@@ -7,19 +7,6 @@ try:
 except ImportError:
     pa = None
 
-def noop_log_latency_decorator(*args, **kwargs):
-    """
-    This is a no-op decorator. It is used to patch the log_latency decorator
-    during tests, so that the tests for fetches logic are not affected by the
-    telemetry logging logic. It accepts any arguments and returns a decorator
-    that returns the original function unmodified.
-    """
-    def decorator(func):
-        return func
-    return decorator
-
-patch('databricks.sql.telemetry.latency_logger.log_latency', new=noop_log_latency_decorator).start()
-
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
 
@@ -71,6 +58,14 @@ class FetchTests(unittest.TestCase):
             for col_id in range(num_cols)
         ]
         return rs
+    
+    @staticmethod
+    def mock_thrift_backend_with_retry_policy():
+        mock_thrift_backend = Mock()
+        mock_retry_policy = Mock()
+        mock_retry_policy.history = []
+        mock_thrift_backend.retry_policy = mock_retry_policy
+        return mock_thrift_backend
 
     @staticmethod
     def make_dummy_result_set_from_batch_list(batch_list):
@@ -92,7 +87,7 @@ class FetchTests(unittest.TestCase):
 
             return results, batch_index < len(batch_list)
 
-        mock_thrift_backend = Mock()
+        mock_thrift_backend = FetchTests.mock_thrift_backend_with_retry_policy()
         mock_thrift_backend.fetch_results = fetch_results
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
 

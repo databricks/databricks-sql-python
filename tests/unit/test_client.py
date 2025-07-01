@@ -8,19 +8,6 @@ from decimal import Decimal
 from datetime import datetime, date
 from uuid import UUID
 
-def noop_log_latency_decorator(*args, **kwargs):
-    """
-    This is a no-op decorator. It is used to patch the log_latency decorator
-    during tests, so that the tests for client logic are not affected by the
-    telemetry logging logic. It accepts any arguments and returns a decorator
-    that returns the original function unmodified.
-    """
-    def decorator(func):
-        return func
-    return decorator
-
-patch('databricks.sql.telemetry.latency_logger.log_latency', new=noop_log_latency_decorator).start()
-
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOpenSessionResp,
     TExecuteStatementResp,
@@ -50,6 +37,10 @@ class ThriftBackendMockFactory:
 
         cls.apply_property_to_mock(ThriftBackendMock, staging_allowed_local_path=None)
         MockTExecuteStatementResp = MagicMock(spec=TExecuteStatementResp())
+
+        mock_retry_policy = Mock()
+        mock_retry_policy.history = []
+        cls.apply_property_to_mock(ThriftBackendMock, retry_policy=mock_retry_policy)
 
         cls.apply_property_to_mock(
             MockTExecuteStatementResp,
@@ -331,7 +322,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_result_sets[1].fetchall.assert_called_once_with()
 
     def test_closed_cursor_doesnt_allow_operations(self):
-        cursor = client.Cursor(Mock(), Mock())
+        cursor = client.Cursor(Mock(), ThriftBackendMockFactory.new())
         cursor.close()
 
         with self.assertRaises(Error) as e:
@@ -343,14 +334,19 @@ class ClientTestSuite(unittest.TestCase):
             self.assertIn("closed", e.msg)
 
     def test_negative_fetch_throws_exception(self):
-        result_set = client.ResultSet(Mock(), Mock(), Mock())
+        mock_connection = Mock()
+        mock_connection.get_session_id_hex.return_value = "test_session"
+        mock_execute_response = Mock()
+        mock_execute_response.command_handle = None  
+        
+        result_set = client.ResultSet(mock_connection, mock_execute_response, ThriftBackendMockFactory.new())
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
 
     def test_context_manager_closes_cursor(self):
         mock_close = Mock()
-        with client.Cursor(Mock(), Mock()) as cursor:
+        with client.Cursor(Mock(), ThriftBackendMockFactory.new()) as cursor:
             cursor.close = mock_close
         mock_close.assert_called_once_with()
 
@@ -393,7 +389,7 @@ class ClientTestSuite(unittest.TestCase):
         for req_args in req_args_combinations:
             req_args = {k: v for k, v in req_args.items() if v != "NOT_SET"}
             with self.subTest(req_args=req_args):
-                mock_thrift_backend = Mock()
+                mock_thrift_backend = ThriftBackendMockFactory.new()
 
                 cursor = client.Cursor(Mock(), mock_thrift_backend)
                 cursor.schemas(**req_args)
@@ -416,7 +412,7 @@ class ClientTestSuite(unittest.TestCase):
         for req_args in req_args_combinations:
             req_args = {k: v for k, v in req_args.items() if v != "NOT_SET"}
             with self.subTest(req_args=req_args):
-                mock_thrift_backend = Mock()
+                mock_thrift_backend = ThriftBackendMockFactory.new()
 
                 cursor = client.Cursor(Mock(), mock_thrift_backend)
                 cursor.tables(**req_args)
@@ -439,7 +435,7 @@ class ClientTestSuite(unittest.TestCase):
         for req_args in req_args_combinations:
             req_args = {k: v for k, v in req_args.items() if v != "NOT_SET"}
             with self.subTest(req_args=req_args):
-                mock_thrift_backend = Mock()
+                mock_thrift_backend = ThriftBackendMockFactory.new()
 
                 cursor = client.Cursor(Mock(), mock_thrift_backend)
                 cursor.columns(**req_args)
