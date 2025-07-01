@@ -73,11 +73,15 @@ class ResultSetFilter:
         from databricks.sql.result_set import SeaResultSet
 
         # Create a new SeaResultSet with the filtered data
+        manifest = result_set.manifest
+        manifest.total_row_count = len(filtered_rows)
+
         filtered_result_set = SeaResultSet(
             connection=result_set.connection,
             execute_response=execute_response,
             sea_client=cast(SeaDatabricksClient, result_set.backend),
             result_data=result_data,
+            manifest=manifest,
             buffer_size_bytes=result_set.buffer_size_bytes,
             arraysize=result_set.arraysize,
         )

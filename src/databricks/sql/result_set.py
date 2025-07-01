@@ -473,10 +473,16 @@ class SeaResultSet(ResultSet):
             manifest: Manifest from SEA response
         """
 
+        self.manifest = manifest
+
+        statement_id = execute_response.command_id.to_sea_statement_id()
+        if statement_id is None:
+            raise ValueError("Command ID is not a SEA statement ID")
+
         results_queue = SeaResultSetQueueFactory.build_queue(
             result_data,
-            manifest,
-            str(execute_response.command_id.to_sea_statement_id()),
+            self.manifest,
+            statement_id,
             description=execute_response.description,
             max_download_threads=sea_client.max_download_threads,
             sea_client=sea_client,
