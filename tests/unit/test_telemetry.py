@@ -188,14 +188,15 @@ class TestTelemetryClient:
         client = telemetry_client_setup["client"]
         client._flush = MagicMock()
         
-        for i in range(TelemetryClient.DEFAULT_BATCH_SIZE-1):
+        batch_size = client._batch_size
+
+        for i in range(batch_size - 1):
             client._export_event(f"event-{i}")
         
         client._flush.assert_not_called()
-        assert len(client._events_batch) == TelemetryClient.DEFAULT_BATCH_SIZE - 1
-        
-        # Add one more event to reach batch size (this will trigger flush)
-        client._export_event(f"event-{TelemetryClient.DEFAULT_BATCH_SIZE - 1}")
+        assert len(client._events_batch) == batch_size - 1
+
+        client._export_event(f"event-{batch_size - 1}")
         
         client._flush.assert_called_once()
 
@@ -658,11 +659,9 @@ class TestTelemetryRaceConditions:
             executor=executor,
         )
         
-        # Mock _send_telemetry to avoid actual network calls
         client._send_telemetry = MagicMock()
         
-        # Add events to trigger flush
-        for i in range(TelemetryClient.DEFAULT_BATCH_SIZE - 1):
+        for i in range(client._batch_size - 1):
             client._export_event(f"event-{i}")
         
         # Track flush operations
@@ -690,13 +689,13 @@ class TestTelemetryRaceConditions:
         # Verify flush was called the expected number of times
         assert flush_count == 10
         
-        # Verify _send_telemetry was called at least once (some calls may have empty batches due to lock)
-        assert client._send_telemetry.call_count >= 1
+        # Verify _send_telemetry was called once
+        assert client._send_telemetry.call_count == 1
         
         # Verify that the total events processed is correct (no data loss)
         # The first flush should have processed all events, subsequent flushes should have empty batches
         total_events_sent = sum(len(call.args[0]) for call in client._send_telemetry.call_args_list)
-        assert total_events_sent == TelemetryClient.DEFAULT_BATCH_SIZE - 1
+        assert total_events_sent == client._batch_size - 1
 
     def test_telemetry_client_factory_concurrent_initialization(self, race_condition_setup):
         """Test race conditions in TelemetryClientFactory.initialize_telemetry_client with concurrent access."""
