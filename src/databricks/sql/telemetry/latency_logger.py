@@ -145,7 +145,7 @@ def get_extractor(obj):
         TelemetryExtractor: A specialized extractor instance:
             - CursorExtractor for Cursor objects
             - ResultSetExtractor for ResultSet objects
-            - TelemetryExtractor (base) for all other objects
+            - Throws an NotImplementedError for all other objects
     """
     if obj.__class__.__name__ == "Cursor":
         return CursorExtractor(obj)
