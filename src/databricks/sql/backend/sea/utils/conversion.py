@@ -9,7 +9,7 @@ import datetime
 import decimal
 import logging
 from dateutil import parser
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class SqlTypeConverter:
         value: str,
         sql_type: str,
         **kwargs,
-    ) -> Any:
+    ) -> object:
         """
         Convert a string value to the appropriate Python type based on SQL type.
 
@@ -141,9 +141,6 @@ class SqlTypeConverter:
         Returns:
             The converted value in the appropriate Python type
         """
-
-        if value is None:
-            return None
 
         sql_type = sql_type.lower().strip()
 

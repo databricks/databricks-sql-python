@@ -15,12 +15,6 @@ from databricks.sql.backend.sea.utils.conversion import SqlType, SqlTypeConverte
 class TestSqlTypeConverter:
     """Test suite for the SqlTypeConverter class."""
 
-    def test_convert_value_null(self):
-        """Test converting null values."""
-        assert SqlTypeConverter.convert_value(None, SqlType.INT) is None
-        assert SqlTypeConverter.convert_value(None, SqlType.STRING) is None
-        assert SqlTypeConverter.convert_value(None, SqlType.BOOLEAN) is None
-
     def test_convert_numeric_types(self):
         """Test converting numeric types."""
         # Test integer types
