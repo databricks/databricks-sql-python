@@ -8,7 +8,7 @@ import pandas
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
-from databricks.sql.backend.sea.conversion import SqlTypeConverter
+from databricks.sql.backend.sea.utils.conversion import SqlTypeConverter
 
 try:
     import pyarrow

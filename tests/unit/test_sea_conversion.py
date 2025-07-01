@@ -9,7 +9,7 @@ import datetime
 import decimal
 from unittest.mock import Mock, patch
 
-from databricks.sql.backend.sea.conversion import SqlType, SqlTypeConverter
+from databricks.sql.backend.sea.utils.conversion import SqlType, SqlTypeConverter
 
 
 class TestSqlTypeConverter:
