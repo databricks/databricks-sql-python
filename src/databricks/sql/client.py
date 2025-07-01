@@ -746,7 +746,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    @log_latency()
+    @log_latency(StatementType.SQL)
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -786,7 +786,7 @@ class Cursor:
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
 
-    @log_latency()
+    @log_latency(StatementType.SQL)
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -814,7 +814,7 @@ class Cursor:
         with open(local_file, "wb") as fp:
             fp.write(r.content)
 
-    @log_latency()
+    @log_latency(StatementType.SQL)
     def _handle_staging_remove(
         self, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -828,7 +828,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    @log_latency(StatementType.SQL)
+    @log_latency(StatementType.QUERY)
     def execute(
         self,
         operation: str,
@@ -919,7 +919,7 @@ class Cursor:
 
         return self
 
-    @log_latency(StatementType.SQL)
+    @log_latency(StatementType.QUERY)
     def execute_async(
         self,
         operation: str,
