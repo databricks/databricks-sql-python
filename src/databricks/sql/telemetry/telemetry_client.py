@@ -176,41 +176,41 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
-        self._flush_timer = None
 
-        # Start the periodic flush timer
-        self._start_flush_timer()
+        # Background thread for periodic flushing
+        self._flush_stop_event = threading.Event()
+        self._flush_thread = None
 
-    def _start_flush_timer(self):
-        """Start the periodic flush timer"""
+        # Start the periodic flush thread
+        self._start_flush_thread()
 
-        self._flush_timer = threading.Timer(
-            self._flush_interval_seconds, self._periodic_flush
-        )
-        self._flush_timer.daemon = True  # Don't prevent program exit
-        self._flush_timer.start()
+    def _start_flush_thread(self):
+        """Start the background thread for periodic flushing"""
+        self._flush_thread = threading.Thread(target=self._flush_worker, daemon=True)
+        self._flush_thread.start()
         logger.debug(
-            "Started flush timer for connection %s (interval: %d seconds)",
+            "Started flush thread for connection %s (interval: %d seconds)",
             self._session_id_hex,
             self._flush_interval_seconds,
         )
 
-    def _periodic_flush(self):
-        """Periodic flush callback - flushes events and reschedules the timer"""
+    def _flush_worker(self):
+        """Background worker thread for periodic flushing"""
+        while not self._flush_stop_event.wait(self._flush_interval_seconds):
+            logger.debug(
+                "Performing periodic flush for connection %s", self._session_id_hex
+            )
+            self._flush()
 
-        logger.debug(
-            "Performing periodic flush for connection %s", self._session_id_hex
-        )
-        self._flush()
-        # Reschedule the next flush
-        self._start_flush_timer()
-
-    def _stop_flush_timer(self):
-        """Stop the periodic flush timer"""
-        if self._flush_timer is not None:
-            self._flush_timer.cancel()
-            self._flush_timer = None
-            logger.debug("Stopped flush timer for connection %s", self._session_id_hex)
+    def _stop_flush_thread(self):
+        """Stop the background flush thread"""
+        if self._flush_thread is not None:
+            self._flush_stop_event.set()
+            self._flush_thread.join(
+                timeout=1.0
+            )  # Wait up to 1 second for graceful shutdown
+            self._flush_thread = None
+            logger.debug("Stopped flush thread for connection %s", self._session_id_hex)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -346,7 +346,7 @@ class TelemetryClient(BaseTelemetryClient):
     def close(self):
         """Flush remaining events and stop timer before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
-        self._stop_flush_timer()
+        self._stop_flush_thread()
         self._flush()
 
 
