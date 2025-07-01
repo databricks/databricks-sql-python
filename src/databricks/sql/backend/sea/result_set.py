@@ -130,7 +130,7 @@ class SeaResultSet(ResultSet):
         names = [col[0] for col in self.description]
         return pyarrow.Table.from_arrays(cols, names=names)
 
-    def _create_json_table(self, rows: List[List]) -> List[Row]:
+    def _create_json_table(self, rows: List[List[str]]) -> List[Row]:
         """
         Convert raw data rows to Row objects with named columns based on description.
 
@@ -143,7 +143,7 @@ class SeaResultSet(ResultSet):
         ResultRow = Row(*[col[0] for col in self.description])
         return [ResultRow(*self._convert_json_types(row)) for row in rows]
 
-    def fetchmany_json(self, size: int) -> List[List]:
+    def fetchmany_json(self, size: int) -> List[List[str]]:
         """
         Fetch the next set of rows as a columnar table.
 
@@ -165,7 +165,7 @@ class SeaResultSet(ResultSet):
 
         return results
 
-    def fetchall_json(self) -> List[List]:
+    def fetchall_json(self) -> List[List[str]]:
         """
         Fetch all remaining rows as a columnar table.
 
