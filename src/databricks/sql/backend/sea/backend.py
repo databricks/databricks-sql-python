@@ -511,6 +511,8 @@ class SeaDatabricksClient(DatabricksClient):
             raise ProgrammingError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ProgrammingError("Not a valid SEA command ID")
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
         self.http_client._make_request(
@@ -534,6 +536,8 @@ class SeaDatabricksClient(DatabricksClient):
             raise ProgrammingError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ProgrammingError("Not a valid SEA command ID")
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
         self.http_client._make_request(
@@ -560,6 +564,8 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ProgrammingError("Not a valid SEA command ID")
 
         request = GetStatementRequest(statement_id=sea_statement_id)
         response_data = self.http_client._make_request(
@@ -595,6 +601,8 @@ class SeaDatabricksClient(DatabricksClient):
             raise ProgrammingError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ProgrammingError("Not a valid SEA command ID")
 
         # Create the request model
         request = GetStatementRequest(statement_id=sea_statement_id)

@@ -522,9 +522,6 @@ class SeaResultSet(ResultSet):
         Convert string values to appropriate Python types based on column metadata.
         """
 
-        if not self.description or not rows:
-            return rows
-
         # JSON + INLINE gives us string values, so we convert them to appropriate
         #   types based on column metadata
         converted_rows = []
@@ -561,9 +558,6 @@ class SeaResultSet(ResultSet):
         Returns:
             List of Row objects with named columns and converted values
         """
-
-        if not self.description or not rows:
-            return rows
 
         ResultRow = Row(*[col[0] for col in self.description])
         rows = self._convert_json_types(rows)
