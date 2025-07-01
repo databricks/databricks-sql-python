@@ -7,6 +7,7 @@ from databricks.sql.common.http import HttpMethod, DatabricksHttpClient, HttpHea
 from databricks.sql.auth.oauth import OAuthManager
 from databricks.sql.auth.endpoint import get_oauth_endpoints
 from databricks.sql.common.http import DatabricksHttpClient, OAuthResponse
+from urllib.parse import urlencode
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
@@ -197,7 +198,6 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
     """
 
     AZURE_AAD_ENDPOINT = "https://login.microsoftonline.com"
-    DATABRICKS_SCOPE = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default"
     AZURE_TOKEN_ENDPOINT = "oauth2/token"
 
     def __init__(self, client_id: str, client_secret: str, tenant_id: str):
@@ -213,7 +213,9 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
     def __call__(self, *args, **kwargs) -> HeaderFactory:
         def header_factory() -> Dict[str, str]:
             self._refresh()
-            return {HttpHeader.AUTHORIZATION: f"Bearer {self._token.access_token}"}
+            return {
+                HttpHeader.AUTHORIZATION.value: f"{self._token.token_type} {self._token.access_token}",
+            }
 
         return header_factory
 
@@ -226,14 +228,15 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
             f"{self.AZURE_AAD_ENDPOINT}/{self.tenant_id}/{self.AZURE_TOKEN_ENDPOINT}"
         )
         headers = {
-            HttpHeader.CONTENT_TYPE: "application/x-www-form-urlencoded",
+            HttpHeader.CONTENT_TYPE.value: "application/x-www-form-urlencoded",
         }
-        data = {
-            "grant_type": "client_credentials",
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-            "scope": self.DATABRICKS_SCOPE,
-        }
+        data = urlencode(
+            {
+                "grant_type": "client_credentials",
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+            }
+        )
 
         response = self._http_client.execute(
             method=HttpMethod.POST, url=request_url, headers=headers, data=data

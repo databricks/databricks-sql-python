@@ -57,7 +57,7 @@ class DatabricksHttpClient:
         return cls._instance
 
     def execute(self, method: HttpMethod, url: str, **kwargs) -> requests.Response:
-        with self.session.request(method, url, **kwargs) as response:
+        with self.session.request(method.value, url, **kwargs) as response:
             return response
 
     def close(self):
