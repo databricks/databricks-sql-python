@@ -512,17 +512,14 @@ class SeaResultSet(ResultSet):
         if not rows:
             return pyarrow.Table.from_pydict({})
 
-        columns = []
-        num_cols = len(rows[0])
-        for i in range(num_cols):
-            columns.append([row[i] for row in rows])
+        # Transpose rows to columns efficiently using zip
+        columns = list(map(list, zip(*rows)))
         names = [col[0] for col in self.description]
         return pyarrow.Table.from_arrays(columns, names=names)
 
     def _convert_json_types(self, rows: List[List]) -> List[List]:
         """
-        Convert raw data rows to Row objects with named columns based on description.
-        Also converts string values to appropriate Python types based on column metadata.
+        Convert string values to appropriate Python types based on column metadata.
         """
 
         if not self.description or not rows:
