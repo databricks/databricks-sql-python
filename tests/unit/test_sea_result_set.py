@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import Mock
 
 from databricks.sql.result_set import SeaResultSet, Row
-from databricks.sql.utils import JsonQueue
+from databricks.sql.backend.sea.queue import JsonQueue
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
