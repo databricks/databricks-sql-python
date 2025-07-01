@@ -194,7 +194,7 @@ class TestSeaResultSet:
         # Verify the results queue was created correctly
         assert isinstance(result_set_with_data.results, JsonQueue)
         assert result_set_with_data.results.data_array == sample_data
-        assert result_set_with_data.results.n_valid_rows == len(sample_data)
+        assert result_set_with_data.results.num_rows == len(sample_data)
 
     def test_convert_json_types(self, result_set_with_data, sample_data):
         """Test the _convert_json_types method."""

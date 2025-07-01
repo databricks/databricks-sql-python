@@ -30,7 +30,7 @@ class TestJsonQueue:
         queue = JsonQueue(sample_data)
         assert queue.data_array == sample_data
         assert queue.cur_row_index == 0
-        assert queue.n_valid_rows == len(sample_data)
+        assert queue.num_rows == len(sample_data)
 
     def test_next_n_rows_partial(self, sample_data):
         """Test fetching a subset of rows."""
@@ -82,7 +82,7 @@ class TestJsonQueue:
         assert queue.next_n_rows(10) == []
         assert queue.remaining_rows() == []
         assert queue.cur_row_index == 0
-        assert queue.n_valid_rows == 0
+        assert queue.num_rows == 0
 
 
 class TestSeaResultSetQueueFactory:
@@ -130,7 +130,7 @@ class TestSeaResultSetQueueFactory:
         # Verify the queue is a JsonQueue with the correct data
         assert isinstance(queue, JsonQueue)
         assert queue.data_array == data
-        assert queue.n_valid_rows == len(data)
+        assert queue.num_rows == len(data)
 
     def test_build_queue_with_empty_data(self, mock_sea_client, mock_description):
         """Test building a queue with empty data."""
@@ -149,7 +149,7 @@ class TestSeaResultSetQueueFactory:
         # Verify the queue is a JsonQueue with empty data
         assert isinstance(queue, JsonQueue)
         assert queue.data_array == []
-        assert queue.n_valid_rows == 0
+        assert queue.num_rows == 0
 
     def test_build_queue_with_external_links(self, mock_sea_client, mock_description):
         """Test building a queue with external links raises NotImplementedError."""

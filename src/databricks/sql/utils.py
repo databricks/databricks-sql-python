@@ -118,7 +118,6 @@ class SeaResultSetQueueFactory(ABC):
         manifest: Optional[ResultManifest],
         statement_id: str,
         description: List[Tuple] = [],
-        schema_bytes: Optional[bytes] = None,
         max_download_threads: Optional[int] = None,
         sea_client: Optional[SeaDatabricksClient] = None,
         lz4_compressed: bool = False,
@@ -141,6 +140,7 @@ class SeaResultSetQueueFactory(ABC):
             ResultSetQueue: The appropriate queue for the result data
         """
 
+        print(sea_result_data)
         if sea_result_data.data is not None:
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(sea_result_data.data)
@@ -159,11 +159,11 @@ class JsonQueue(ResultSetQueue):
         """Initialize with JSON array data."""
         self.data_array = data_array
         self.cur_row_index = 0
-        self.n_valid_rows = len(data_array)
+        self.num_rows = len(data_array)
 
     def next_n_rows(self, num_rows):
         """Get the next n rows from the data array."""
-        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
+        length = min(num_rows, self.num_rows - self.cur_row_index)
         slice = self.data_array[self.cur_row_index : self.cur_row_index + length]
         self.cur_row_index += length
         return slice
