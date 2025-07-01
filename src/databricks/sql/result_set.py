@@ -505,7 +505,7 @@ class SeaResultSet(ResultSet):
             arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
         )
 
-    def _convert_json_to_arrow(self, rows: List) -> "pyarrow.Table":
+    def _convert_json_to_arrow(self, rows: List[List]) -> "pyarrow.Table":
         """
         Convert raw data rows to Arrow table.
         """
@@ -519,7 +519,7 @@ class SeaResultSet(ResultSet):
         names = [col[0] for col in self.description]
         return pyarrow.Table.from_arrays(columns, names=names)
 
-    def _convert_json_types(self, rows: List) -> List:
+    def _convert_json_types(self, rows: List[List]) -> List[List]:
         """
         Convert raw data rows to Row objects with named columns based on description.
         Also converts string values to appropriate Python types based on column metadata.
@@ -554,7 +554,7 @@ class SeaResultSet(ResultSet):
 
         return converted_rows
 
-    def _create_json_table(self, rows: List) -> List[Row]:
+    def _create_json_table(self, rows: List[List]) -> List[Row]:
         """
         Convert raw data rows to Row objects with named columns based on description.
         Also converts string values to appropriate Python types based on column metadata.
@@ -573,7 +573,7 @@ class SeaResultSet(ResultSet):
 
         return [ResultRow(*row) for row in rows]
 
-    def fetchmany_json(self, size: int) -> List:
+    def fetchmany_json(self, size: int) -> List[List]:
         """
         Fetch the next set of rows as a columnar table.
 
@@ -595,7 +595,7 @@ class SeaResultSet(ResultSet):
 
         return results
 
-    def fetchall_json(self) -> List:
+    def fetchall_json(self) -> List[List]:
         """
         Fetch all remaining rows as a columnar table.
 
