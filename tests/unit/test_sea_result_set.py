@@ -6,11 +6,11 @@ the result set functionality for the SEA (Statement Execution API) backend.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import Mock
 
 from databricks.sql.result_set import SeaResultSet, Row
 from databricks.sql.utils import JsonQueue
-from databricks.sql.backend.types import CommandId, CommandState, BackendType
+from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 
@@ -88,6 +88,18 @@ class TestSeaResultSet:
         """Create a JsonQueue with sample data."""
         return JsonQueue(sample_data)
 
+    def empty_manifest(self):
+        """Create an empty manifest."""
+        return ResultManifest(
+            format="JSON_ARRAY",
+            schema={},
+            total_row_count=0,
+            total_byte_count=0,
+            total_chunk_count=0,
+            truncated=False,
+            is_volume_operation=False,
+        )
+
     def test_init_with_execute_response(
         self, mock_connection, mock_sea_client, execute_response
     ):
@@ -97,6 +109,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self.empty_manifest(),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -117,6 +130,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self.empty_manifest(),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -138,6 +152,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self.empty_manifest(),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -161,6 +176,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self.empty_manifest(),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -317,6 +333,7 @@ class TestSeaResultSet:
                 execute_response=execute_response,
                 sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
+                manifest=self.empty_manifest(),
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
@@ -336,6 +353,7 @@ class TestSeaResultSet:
                 execute_response=execute_response,
                 sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
+                manifest=self.empty_manifest(),
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
@@ -353,6 +371,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self.empty_manifest(),
             buffer_size_bytes=1000,
             arraysize=100,
         )

@@ -456,7 +456,7 @@ class SeaResultSet(ResultSet):
         execute_response: ExecuteResponse,
         sea_client: SeaDatabricksClient,
         result_data: ResultData,
-        manifest: Optional[ResultManifest] = None,
+        manifest: ResultManifest,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
     ):
