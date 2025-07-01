@@ -83,7 +83,7 @@ class SeaResultSet(ResultSet):
 
     def _convert_json_types(self, row: List) -> List:
         """
-        Convert string values to appropriate Python types based on column metadata.
+        Convert string values in the row to appropriate Python types based on column metadata.
         """
 
         # JSON + INLINE gives us string values, so we convert them to appropriate
@@ -111,7 +111,14 @@ class SeaResultSet(ResultSet):
     def _convert_json_to_arrow_table(self, rows: List[List]) -> "pyarrow.Table":
         """
         Convert raw data rows to Arrow table.
+
+        Args:
+            rows: List of raw data rows
+
+        Returns:
+            PyArrow Table containing the converted values
         """
+
         if not rows:
             return pyarrow.Table.from_pydict({})
 
@@ -125,7 +132,6 @@ class SeaResultSet(ResultSet):
     def _create_json_table(self, rows: List[List]) -> List[Row]:
         """
         Convert raw data rows to Row objects with named columns based on description.
-        Also converts string values to appropriate Python types based on column metadata.
 
         Args:
             rows: List of raw data rows
