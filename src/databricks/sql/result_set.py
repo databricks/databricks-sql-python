@@ -502,7 +502,7 @@ class SeaResultSet(ResultSet):
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
     def _convert_json_to_arrow(self, rows: List[List]) -> "pyarrow.Table":
