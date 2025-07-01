@@ -150,6 +150,9 @@ class TelemetryClient(BaseTelemetryClient):
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
 
+    DEFAULT_BATCH_SIZE = 100
+    DEFAULT_FLUSH_INTERVAL_SECONDS = 90
+
     def __init__(
         self,
         telemetry_enabled,
@@ -157,10 +160,12 @@ class TelemetryClient(BaseTelemetryClient):
         auth_provider,
         host_url,
         executor,
+        batch_size=None,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
-        self._batch_size = 10  # TODO: Decide on batch size
+        self._batch_size = batch_size if batch_size is not None else self.DEFAULT_BATCH_SIZE
+        self._flush_interval_seconds = self.DEFAULT_FLUSH_INTERVAL_SECONDS
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
@@ -169,9 +174,41 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
+        self._flush_timer = None
+        
+        # Start the periodic flush timer
+        self._start_flush_timer()
+
+    def _start_flush_timer(self):
+        """Start the periodic flush timer"""
+        
+        self._flush_timer = threading.Timer(
+            self._flush_interval_seconds, 
+            self._periodic_flush
+        )
+        self._flush_timer.daemon = True  # Don't prevent program exit
+        self._flush_timer.start()
+        logger.debug("Started flush timer for connection %s (interval: %d seconds)", 
+                    self._session_id_hex, self._flush_interval_seconds)
+
+    def _periodic_flush(self):
+        """Periodic flush callback - flushes events and reschedules the timer"""
+       
+        logger.debug("Performing periodic flush for connection %s", self._session_id_hex)
+        self._flush()
+        # Reschedule the next flush
+        self._start_flush_timer()
+
+    def _stop_flush_timer(self):
+        """Stop the periodic flush timer"""
+        if self._flush_timer is not None:
+            self._flush_timer.cancel()
+            self._flush_timer = None
+            logger.debug("Stopped flush timer for connection %s", self._session_id_hex)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
+            
         logger.debug("Exporting event for connection %s", self._session_id_hex)
         with self._lock:
             self._events_batch.append(event)
@@ -183,6 +220,7 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _flush(self):
         """Flush the current batch of events to the server"""
+            
         with self._lock:
             events_to_flush = self._events_batch.copy()
             self._events_batch = []
@@ -300,8 +338,9 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug("Failed to export failure log: %s", e)
 
     def close(self):
-        """Flush remaining events before closing"""
+        """Flush remaining events and stop timer before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
+        self._stop_flush_timer()
         self._flush()
 
 
@@ -364,6 +403,7 @@ class TelemetryClientFactory:
         session_id_hex,
         auth_provider,
         host_url,
+        batch_size=None,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
@@ -385,6 +425,7 @@ class TelemetryClientFactory:
                             auth_provider=auth_provider,
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
+                            batch_size=batch_size,
                         )
                     else:
                         TelemetryClientFactory._clients[

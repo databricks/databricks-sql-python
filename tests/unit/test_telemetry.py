@@ -181,22 +181,20 @@ class TestTelemetryClient:
         
         client._export_event.assert_called_once_with(mock_frontend_log.return_value)
 
-    def test_export_event(self, telemetry_client_setup):
-        """Test exporting an event."""
+    def test_batch_size_flush(self, telemetry_client_setup):
+        """Test batch size flush."""
         client = telemetry_client_setup["client"]
         client._flush = MagicMock()
         
-        for i in range(5):
+        for i in range(TelemetryClient._batch_size-1):
             client._export_event(f"event-{i}")
         
         client._flush.assert_not_called()
-        assert len(client._events_batch) == 5
+        assert len(client._events_batch) == TelemetryClient._batch_size-1
         
-        for i in range(5, 10):
-            client._export_event(f"event-{i}")
+        client._export_event(f"event-{TelemetryClient._batch_size - 1}")
         
         client._flush.assert_called_once()
-        assert len(client._events_batch) == 10
 
     @patch("requests.post")
     def test_send_telemetry_authenticated(self, mock_post, telemetry_client_setup):
