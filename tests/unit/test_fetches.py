@@ -10,7 +10,7 @@ except ImportError:
 def noop_log_latency_decorator(*args, **kwargs):
     """
     This is a no-op decorator. It is used to patch the log_latency decorator
-    during tests, so that the tests for client logic are not affected by the
+    during tests, so that the tests for fetches logic are not affected by the
     telemetry logging logic. It accepts any arguments and returns a decorator
     that returns the original function unmodified.
     """
