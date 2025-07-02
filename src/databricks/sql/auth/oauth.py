@@ -12,11 +12,55 @@ import oauthlib.oauth2
 import requests
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from requests.exceptions import RequestException
-
+from databricks.sql.common.http import HttpMethod, DatabricksHttpClient, HttpHeader
+from databricks.sql.common.http import OAuthResponse
 from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
 from databricks.sql.auth.endpoint import OAuthEndpointCollection
+from abc import abstractmethod, ABC
+from urllib.parse import urlencode
+import jwt
+import time
 
 logger = logging.getLogger(__name__)
+
+
+class Token:
+    """
+    A class to represent a token.
+
+    Attributes:
+        access_token (str): The access token string.
+        token_type (str): The type of token (e.g., "Bearer").
+        refresh_token (str): The refresh token string.
+    """
+
+    def __init__(self, access_token: str, token_type: str, refresh_token: str):
+        self.access_token = access_token
+        self.token_type = token_type
+        self.refresh_token = refresh_token
+
+    def is_expired(self):
+        try:
+            decoded_token = jwt.decode(
+                self.access_token, options={"verify_signature": False}
+            )
+            exp_time = decoded_token.get("exp")
+            current_time = time.time()
+            buffer_time = 30  # 30 seconds buffer
+            return exp_time and (exp_time - buffer_time) <= current_time
+        except Exception as e:
+            logger.error("Failed to decode token: %s", e)
+            return e
+
+
+class RefreshableTokenSource(ABC):
+    @abstractmethod
+    def get_token(self) -> Token:
+        pass
+
+    @abstractmethod
+    def refresh(self):
+        pass
 
 
 class IgnoreNetrcAuth(requests.auth.AuthBase):
@@ -258,3 +302,53 @@ class OAuthManager:
             client, token_request_url, redirect_url, code, verifier
         )
         return self.__get_tokens_from_response(oauth_response)
+
+
+class ClientCredentialsTokenSource(RefreshableTokenSource):
+    def __init__(
+        self,
+        token_url: str,
+        oauth_client_id: str,
+        oauth_client_secret: str,
+        extra_params: dict = None,
+    ):
+        self.oauth_client_id = oauth_client_id
+        self.oauth_client_secret = oauth_client_secret
+        self.token_url = token_url
+        self.extra_params = extra_params
+        self.token: Token = None
+        self._http_client = DatabricksHttpClient()
+
+    def get_token(self) -> Token:
+        if self.token is None or self.token.is_expired():
+            self.token = self.refresh()
+        return self.token
+
+    def refresh(self) -> None:
+        headers = {
+            HttpHeader.CONTENT_TYPE.value: "application/x-www-form-urlencoded",
+        }
+        data = urlencode(
+            {
+                "grant_type": "client_credentials",
+                "client_id": self.oauth_client_id,
+                "client_secret": self.oauth_client_secret,
+                **self.extra_params,
+            }
+        )
+
+        response = self._http_client.execute(
+            method=HttpMethod.POST, url=self.token_url, headers=headers, data=data
+        )
+
+        if response.status_code == 200:
+            oauth_response = OAuthResponse(**response.json())
+            return Token(
+                oauth_response.access_token,
+                oauth_response.token_type,
+                oauth_response.refresh_token,
+            )
+        else:
+            raise Exception(
+                f"Failed to get token: {response.status_code} {response.text}"
+            )

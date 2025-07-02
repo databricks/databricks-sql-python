@@ -1,13 +1,14 @@
 import abc
-import jwt
 import logging
-import time
 from typing import Callable, Dict, List
-from databricks.sql.common.http import HttpMethod, DatabricksHttpClient, HttpHeader
-from databricks.sql.auth.oauth import OAuthManager
+from databricks.sql.common.http import HttpHeader
+from databricks.sql.auth.oauth import (
+    OAuthManager,
+    RefreshableTokenSource,
+    ClientCredentialsTokenSource,
+)
 from databricks.sql.auth.endpoint import get_oauth_endpoints
-from databricks.sql.common.http import DatabricksHttpClient, OAuthResponse
-from urllib.parse import urlencode
+from databricks.sql.common.auth import AuthType, get_effective_azure_login_app_id
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
@@ -36,35 +37,6 @@ class CredentialsProvider(abc.ABC):
     @abc.abstractmethod
     def __call__(self, *args, **kwargs) -> HeaderFactory:
         ...
-
-
-class Token:
-    """
-    A class to represent a token.
-
-    Attributes:
-        access_token (str): The access token string.
-        token_type (str): The type of token (e.g., "Bearer").
-        refresh_token (str): The refresh token string.
-    """
-
-    def __init__(self, access_token: str, token_type: str, refresh_token: str):
-        self.access_token = access_token
-        self.token_type = token_type
-        self.refresh_token = refresh_token
-
-    def is_expired(self):
-        try:
-            decoded_token = jwt.decode(
-                self.access_token, options={"verify_signature": False}
-            )
-            exp_time = decoded_token.get("exp")
-            current_time = time.time()
-            buffer_time = 30  # 30 seconds buffer
-            return exp_time and (exp_time - buffer_time) <= current_time
-        except Exception as e:
-            logger.error("Failed to decode token: %s", e)
-            return e
 
 
 # Private API: this is an evolving interface and it will change in the future.
@@ -192,64 +164,68 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
     from Azure AD and automatically refreshes them when they expire.
 
     Attributes:
-        client_id (str): The Azure service principal's client ID.
-        client_secret (str): The Azure service principal's client secret.
-        tenant_id (str): The Azure AD tenant ID.
+        hostname (str): The Databricks workspace hostname.
+        oauth_client_id (str): The Azure service principal's client ID.
+        oauth_client_secret (str): The Azure service principal's client secret.
+        azure_tenant_id (str): The Azure AD tenant ID.
+        azure_workspace_resource_id (str, optional): The Azure workspace resource ID.
     """
 
     AZURE_AAD_ENDPOINT = "https://login.microsoftonline.com"
     AZURE_TOKEN_ENDPOINT = "oauth2/token"
 
-    def __init__(self, client_id: str, client_secret: str, tenant_id: str):
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.tenant_id = tenant_id
-        self._token: Token = None
-        self._http_client = DatabricksHttpClient.get_instance()
+    AZURE_MANAGED_RESOURCE = "https://management.core.windows.net/"
+
+    DATABRICKS_AZURE_SP_TOKEN_HEADER = "X-Databricks-Azure-SP-Management-Token"
+    DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER = (
+        "X-Databricks-Azure-Workspace-Resource-Id"
+    )
+
+    def __init__(
+        self,
+        hostname: str,
+        oauth_client_id: str,
+        oauth_client_secret: str,
+        azure_tenant_id: str,
+        azure_workspace_resource_id: str = None,
+    ):
+        self.hostname = hostname
+        self.oauth_client_id = oauth_client_id
+        self.oauth_client_secret = oauth_client_secret
+        self.azure_tenant_id = azure_tenant_id
+        self.azure_workspace_resource_id = azure_workspace_resource_id
 
     def auth_type(self) -> str:
-        return "azure-service-principal"
+        return AuthType.AZURE_SP_M2M.value
+
+    def get_token_source(self, resource: str) -> RefreshableTokenSource:
+        return ClientCredentialsTokenSource(
+            token_url=f"{self.AZURE_AAD_ENDPOINT}/{self.azure_tenant_id}/{self.AZURE_TOKEN_ENDPOINT}",
+            oauth_client_id=self.oauth_client_id,
+            oauth_client_secret=self.oauth_client_secret,
+            extra_params={"resource": resource},
+        )
 
     def __call__(self, *args, **kwargs) -> HeaderFactory:
+        inner = self.get_token_source(
+            resource=get_effective_azure_login_app_id(self.hostname)
+        )
+        cloud = self.get_token_source(resource=self.AZURE_MANAGED_RESOURCE)
+
         def header_factory() -> Dict[str, str]:
-            self._refresh()
-            return {
-                HttpHeader.AUTHORIZATION.value: f"{self._token.token_type} {self._token.access_token}",
+            inner_token = inner.get_token()
+            cloud_token = cloud.get_token()
+
+            headers = {
+                HttpHeader.AUTHORIZATION.value: f"{inner_token.token_type} {inner_token.access_token}",
+                self.DATABRICKS_AZURE_SP_TOKEN_HEADER: cloud_token.access_token,
             }
+
+            if self.azure_workspace_resource_id:
+                headers[
+                    self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER
+                ] = self.azure_workspace_resource_id
+
+            return headers
 
         return header_factory
-
-    def _refresh(self) -> None:
-        if self._token is None or self._token.is_expired():
-            self._token = self._get_token()
-
-    def _get_token(self) -> Token:
-        request_url = (
-            f"{self.AZURE_AAD_ENDPOINT}/{self.tenant_id}/{self.AZURE_TOKEN_ENDPOINT}"
-        )
-        headers = {
-            HttpHeader.CONTENT_TYPE.value: "application/x-www-form-urlencoded",
-        }
-        data = urlencode(
-            {
-                "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-            }
-        )
-
-        response = self._http_client.execute(
-            method=HttpMethod.POST, url=request_url, headers=headers, data=data
-        )
-
-        if response.status_code == 200:
-            oauth_response = OAuthResponse(**response.json())
-            return Token(
-                oauth_response.access_token,
-                oauth_response.token_type,
-                oauth_response.refresh_token,
-            )
-        else:
-            raise Exception(
-                f"Failed to get token: {response.status_code} {response.text}"
-            )
