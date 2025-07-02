@@ -80,9 +80,6 @@ class FetchTests(unittest.TestCase):
             return results, batch_index < len(batch_list)
 
         mock_thrift_backend = Mock()
-        mock_retry_policy = Mock()
-        mock_retry_policy.history = []
-        mock_thrift_backend.retry_policy = mock_retry_policy
         mock_thrift_backend.fetch_results = fetch_results
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
 
