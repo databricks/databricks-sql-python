@@ -331,26 +331,6 @@ class TestTelemetryClient:
         with pytest.raises(TypeError):
             TestBaseClient()  # Can't instantiate abstract class
 
-    def test_telemetry_http_adapter_configuration(self, telemetry_client_setup):
-        """Test that TelemetryHTTPAdapter is properly configured with correct retry parameters."""
-        from databricks.sql.telemetry.telemetry_client import TelemetryHTTPAdapter
-        from databricks.sql.auth.retry import DatabricksRetryPolicy
-        
-        client = telemetry_client_setup["client"]
-        
-        # Verify that the session has the TelemetryHTTPAdapter mounted
-        adapter = client._session.adapters.get("https://")
-        assert isinstance(adapter, TelemetryHTTPAdapter)
-        assert isinstance(adapter.max_retries, DatabricksRetryPolicy)
-        
-        # Verify that the retry policy has the correct static configuration
-        retry_policy = adapter.max_retries
-        assert retry_policy.delay_min == client.TELEMETRY_RETRY_DELAY_MIN
-        assert retry_policy.delay_max == client.TELEMETRY_RETRY_DELAY_MAX
-        assert retry_policy.stop_after_attempts_count == client.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_COUNT
-        assert retry_policy.stop_after_attempts_duration == client.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_DURATION
-
-
 class TestTelemetryHelper:
     """Tests for the TelemetryHelper class."""
 

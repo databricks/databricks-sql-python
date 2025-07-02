@@ -41,13 +41,8 @@ class TelemetryHTTPAdapter(HTTPAdapter):
     """
 
     def send(self, request, **kwargs):
-        # The DatabricksRetryPolicy needs state set before the first attempt.
-        if isinstance(self.max_retries, DatabricksRetryPolicy):
-            # Telemetry requests are idempotent and safe to retry. We use CommandType.OTHER
-            # to signal this to the retry policy, bypassing stricter rules for commands
-            # like ExecuteStatement.
-            self.max_retries.command_type = CommandType.OTHER
-            self.max_retries.start_retry_timer()
+        self.max_retries.command_type = CommandType.OTHER
+        self.max_retries.start_retry_timer()
         return super().send(request, **kwargs)
 
 
