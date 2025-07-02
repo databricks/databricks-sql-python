@@ -14,7 +14,7 @@ class SeaResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
         sea_result_data: ResultData,
-        manifest: Optional[ResultManifest],
+        manifest: ResultManifest,
         statement_id: str,
         description: List[Tuple] = [],
         max_download_threads: Optional[int] = None,
