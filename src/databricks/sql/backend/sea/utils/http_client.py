@@ -270,7 +270,7 @@ class SeaHttpClient:
                 url=url,
                 body=body,
                 headers=headers,
-                preload_content=True,
+                preload_content=False,
                 retries=self.retry_policy,
             )
         except MaxRetryDurationError as e:
