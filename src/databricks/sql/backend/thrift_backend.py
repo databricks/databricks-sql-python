@@ -40,11 +40,11 @@ from databricks.sql.thrift_api.TCLIService.TCLIService import (
 )
 
 from databricks.sql.utils import (
-    ResultSetQueueFactory,
+    ThriftResultSetQueueFactory,
     _bound,
     RequestErrorInfo,
     NoRetryReason,
-    ResultSetQueueFactory,
+    ThriftResultSetQueueFactory,
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
@@ -1232,7 +1232,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 )
             )
 
-        queue = ResultSetQueueFactory.build_queue(
+        queue = ThriftResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
             t_row_set=resp.results,
             arrow_schema_bytes=arrow_schema_bytes,
