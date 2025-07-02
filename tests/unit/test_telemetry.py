@@ -184,19 +184,19 @@ class TestTelemetryClient:
     def test_batch_size_flush(self, telemetry_client_setup):
         """Test batch size flush."""
         client = telemetry_client_setup["client"]
-        client._flush = MagicMock()
+        client.flush = MagicMock()
         
         batch_size = client._batch_size
         
         for i in range(batch_size - 1):
             client._export_event(f"event-{i}")
         
-        client._flush.assert_not_called()
+        client.flush.assert_not_called()
         assert len(client._events_batch) == batch_size - 1
         
         client._export_event(f"event-{batch_size - 1}")
         
-        client._flush.assert_called_once()
+        client.flush.assert_called_once()
 
     @patch("requests.post")
     def test_send_telemetry_authenticated(self, mock_post, telemetry_client_setup):
@@ -251,7 +251,7 @@ class TestTelemetryClient:
         client._events_batch = ["event1", "event2"]
         client._send_telemetry = MagicMock()
         
-        client._flush()
+        client.flush()
         
         client._send_telemetry.assert_called_once_with(["event1", "event2"])
         assert client._events_batch == []
@@ -259,11 +259,11 @@ class TestTelemetryClient:
     def test_close(self, telemetry_client_setup):
         """Test closing the client."""
         client = telemetry_client_setup["client"]
-        client._flush = MagicMock()
+        client.flush = MagicMock()
         
         client.close()
         
-        client._flush.assert_called_once()
+        client.flush.assert_called_once()
 
     @patch("requests.post")
     def test_telemetry_request_callback_success(self, mock_post, telemetry_client_setup):

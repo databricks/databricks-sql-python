@@ -116,6 +116,10 @@ class BaseTelemetryClient(ABC):
     def close(self):
         raise NotImplementedError("Subclasses must implement close")
 
+    @abstractmethod
+    def flush(self):
+        raise NotImplementedError("Subclasses must implement flush")
+
 
 class NoopTelemetryClient(BaseTelemetryClient):
     """
@@ -139,6 +143,9 @@ class NoopTelemetryClient(BaseTelemetryClient):
     def close(self):
         pass
 
+    def flush(self):
+        pass
+
 
 class TelemetryClient(BaseTelemetryClient):
     """
@@ -151,7 +158,6 @@ class TelemetryClient(BaseTelemetryClient):
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
 
     DEFAULT_BATCH_SIZE = 100
-    DEFAULT_FLUSH_INTERVAL_SECONDS = 90
 
     def __init__(
         self,
@@ -167,7 +173,6 @@ class TelemetryClient(BaseTelemetryClient):
         self._batch_size = (
             batch_size if batch_size is not None else self.DEFAULT_BATCH_SIZE
         )
-        self._flush_interval_seconds = self.DEFAULT_FLUSH_INTERVAL_SECONDS
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
@@ -176,41 +181,6 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
-
-        # Background thread for periodic flushing
-        self._flush_stop_event = threading.Event()
-        self._flush_thread = None
-
-        # Start the periodic flush thread
-        self._start_flush_thread()
-
-    def _start_flush_thread(self):
-        """Start the background thread for periodic flushing"""
-        self._flush_thread = threading.Thread(target=self._flush_worker, daemon=True)
-        self._flush_thread.start()
-        logger.debug(
-            "Started flush thread for connection %s (interval: %d seconds)",
-            self._session_id_hex,
-            self._flush_interval_seconds,
-        )
-
-    def _flush_worker(self):
-        """Background worker thread for periodic flushing"""
-        while not self._flush_stop_event.wait(self._flush_interval_seconds):
-            logger.debug(
-                "Performing periodic flush for connection %s", self._session_id_hex
-            )
-            self._flush()
-
-    def _stop_flush_thread(self):
-        """Stop the background flush thread"""
-        if self._flush_thread is not None:
-            self._flush_stop_event.set()
-            self._flush_thread.join(
-                timeout=1.0
-            )  # Wait up to 1 second for graceful shutdown
-            self._flush_thread = None
-            logger.debug("Stopped flush thread for connection %s", self._session_id_hex)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -222,9 +192,9 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug(
                 "Batch size limit reached (%s), flushing events", self._batch_size
             )
-            self._flush()
+            self.flush()
 
-    def _flush(self):
+    def flush(self):
         """Flush the current batch of events to the server"""
 
         with self._lock:
@@ -344,16 +314,15 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug("Failed to export failure log: %s", e)
 
     def close(self):
-        """Flush remaining events and stop timer before closing"""
+        """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
-        self._stop_flush_thread()
-        self._flush()
+        self.flush()
 
 
 class TelemetryClientFactory:
     """
     Static factory class for creating and managing telemetry clients.
-    It uses a thread pool to handle asynchronous operations.
+    It uses a thread pool to handle asynchronous operations and a single flush thread for all clients.
     """
 
     _clients: Dict[
@@ -366,6 +335,11 @@ class TelemetryClientFactory:
     _original_excepthook = None
     _excepthook_installed = False
 
+    # Shared flush thread for all clients
+    _flush_thread = None
+    _flush_event = threading.Event()
+    _flush_interval_seconds = 90
+
     @classmethod
     def _initialize(cls):
         """Initialize the factory if not already initialized"""
@@ -376,10 +350,41 @@ class TelemetryClientFactory:
                 max_workers=10
             )  # Thread pool for async operations TODO: Decide on max workers
             cls._install_exception_hook()
+            cls._start_flush_thread()
             cls._initialized = True
             logger.debug(
-                "TelemetryClientFactory initialized with thread pool (max_workers=10)"
+                "TelemetryClientFactory initialized with thread pool (max_workers=10) and shared flush thread"
             )
+
+    @classmethod
+    def _start_flush_thread(cls):
+        """Start the shared background thread for periodic flushing of all clients"""
+        cls._flush_event.clear()
+        cls._flush_thread = threading.Thread(target=cls._flush_worker, daemon=True)
+        cls._flush_thread.start()
+
+    @classmethod
+    def _flush_worker(cls):
+        """Background worker thread for periodic flushing of all clients"""
+        while not cls._flush_event.wait(cls._flush_interval_seconds):
+            logger.debug("Performing periodic flush for all telemetry clients")
+
+            with cls._lock:
+                clients_to_flush = list(cls._clients.values())
+
+                for client in clients_to_flush:
+                    try:
+                        client.flush()
+                    except Exception as e:
+                        logger.debug("Failed to flush telemetry client: %s", e)
+
+    @classmethod
+    def _stop_flush_thread(cls):
+        """Stop the shared background flush thread"""
+        if cls._flush_thread is not None:
+            cls._flush_event.set()
+            cls._flush_thread.join(timeout=1.0)
+            cls._flush_thread = None
 
     @classmethod
     def _install_exception_hook(cls):
@@ -473,11 +478,12 @@ class TelemetryClientFactory:
                 )
                 telemetry_client.close()
 
-            # Shutdown executor if no more clients
+            # Shutdown executor and flush thread if no more clients
             if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
                 logger.debug(
-                    "No more telemetry clients, shutting down thread pool executor"
+                    "No more telemetry clients, shutting down thread pool executor and flush thread"
                 )
+                TelemetryClientFactory._stop_flush_thread()
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
