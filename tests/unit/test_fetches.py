@@ -1,6 +1,6 @@
 import unittest
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 try:
     import pyarrow as pa
@@ -58,7 +58,7 @@ class FetchTests(unittest.TestCase):
             for col_id in range(num_cols)
         ]
         return rs
-    
+
     @staticmethod
     def make_dummy_result_set_from_batch_list(batch_list):
         batch_index = 0
