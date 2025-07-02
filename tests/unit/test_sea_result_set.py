@@ -10,6 +10,7 @@ from unittest.mock import Mock
 
 from databricks.sql.backend.sea.result_set import SeaResultSet, Row
 from databricks.sql.backend.sea.queue import JsonQueue
+from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
@@ -59,6 +60,16 @@ class TestSeaResultSet:
             ["value5", "5", "true"],
         ]
 
+    def _create_empty_manifest(self, format: ResultFormat):
+        """Create an empty manifest."""
+        return ResultManifest(
+            format=format.value,
+            schema={},
+            total_row_count=-1,
+            total_byte_count=-1,
+            total_chunk_count=-1,
+        )
+
     @pytest.fixture
     def result_set_with_data(
         self, mock_connection, mock_sea_client, execute_response, sample_data
@@ -75,7 +86,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=result_data,
-            manifest=None,
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -88,18 +99,6 @@ class TestSeaResultSet:
         """Create a JsonQueue with sample data."""
         return JsonQueue(sample_data)
 
-    def empty_manifest(self):
-        """Create an empty manifest."""
-        return ResultManifest(
-            format="JSON_ARRAY",
-            schema={},
-            total_row_count=0,
-            total_byte_count=0,
-            total_chunk_count=0,
-            truncated=False,
-            is_volume_operation=False,
-        )
-
     def test_init_with_execute_response(
         self, mock_connection, mock_sea_client, execute_response
     ):
@@ -109,7 +108,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
-            manifest=self.empty_manifest(),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -130,7 +129,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
-            manifest=self.empty_manifest(),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -152,7 +151,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
-            manifest=self.empty_manifest(),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -176,7 +175,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
-            manifest=self.empty_manifest(),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -332,7 +331,7 @@ class TestSeaResultSet:
                 execute_response=execute_response,
                 sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
-                manifest=self.empty_manifest(),
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
@@ -352,7 +351,7 @@ class TestSeaResultSet:
                 execute_response=execute_response,
                 sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
-                manifest=self.empty_manifest(),
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
@@ -370,7 +369,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
-            manifest=self.empty_manifest(),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )

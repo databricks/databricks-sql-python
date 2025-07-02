@@ -5,6 +5,8 @@ from typing import List, Optional, Tuple
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+from databricks.sql.backend.sea.utils.constants import ResultFormat
+from databricks.sql.exc import ProgrammingError
 from databricks.sql.utils import ResultSetQueue
 
 
@@ -35,15 +37,15 @@ class SeaResultSetQueueFactory(ABC):
             ResultSetQueue: The appropriate queue for the result data
         """
 
-        if sea_result_data.data is not None:
+        if manifest.format == ResultFormat.JSON_ARRAY.value:
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(sea_result_data.data)
-        elif sea_result_data.external_links is not None:
+        elif manifest.format == ResultFormat.ARROW_STREAM.value:
             # EXTERNAL_LINKS disposition
             raise NotImplementedError(
                 "EXTERNAL_LINKS disposition is not implemented for SEA backend"
             )
-        return JsonQueue([])
+        raise ProgrammingError("Invalid result format")
 
 
 class JsonQueue(ResultSetQueue):
@@ -53,7 +55,7 @@ class JsonQueue(ResultSetQueue):
         """Initialize with JSON array data."""
         self.data_array = data_array
         self.cur_row_index = 0
-        self.num_rows = len(data_array)
+        self.num_rows = len(data_array) if data_array else 0
 
     def next_n_rows(self, num_rows):
         """Get the next n rows from the data array."""

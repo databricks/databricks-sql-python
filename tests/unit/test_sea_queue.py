@@ -9,6 +9,7 @@ from unittest.mock import Mock, MagicMock, patch
 
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
+from databricks.sql.backend.sea.utils.constants import ResultFormat
 
 
 class TestJsonQueue:
@@ -104,6 +105,15 @@ class TestSeaResultSetQueueFactory:
             ("col3", "boolean", None, None, None, None, None),
         ]
 
+    def _create_empty_manifest(self, format: ResultFormat):
+        return ResultManifest(
+            format=format.value,
+            schema={},
+            total_row_count=-1,
+            total_byte_count=-1,
+            total_chunk_count=-1,
+        )
+
     def test_build_queue_with_inline_data(self, mock_sea_client, mock_description):
         """Test building a queue with inline JSON data."""
         # Create sample data for inline JSON result
@@ -116,7 +126,7 @@ class TestSeaResultSetQueueFactory:
         result_data = ResultData(data=data, external_links=None, row_count=len(data))
 
         # Create a manifest (not used for inline data)
-        manifest = None
+        manifest = self._create_empty_manifest(ResultFormat.JSON_ARRAY)
 
         # Build the queue
         queue = SeaResultSetQueueFactory.build_queue(
@@ -140,7 +150,7 @@ class TestSeaResultSetQueueFactory:
         # Build the queue
         queue = SeaResultSetQueueFactory.build_queue(
             result_data,
-            None,
+            self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             "test-statement-123",
             description=mock_description,
             sea_client=mock_sea_client,
@@ -165,7 +175,7 @@ class TestSeaResultSetQueueFactory:
         ):
             SeaResultSetQueueFactory.build_queue(
                 result_data,
-                None,
+                self._create_empty_manifest(ResultFormat.ARROW_STREAM),
                 "test-statement-123",
                 description=mock_description,
                 sea_client=mock_sea_client,
