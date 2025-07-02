@@ -162,8 +162,8 @@ class TelemetryClient(BaseTelemetryClient):
     """
 
     TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_COUNT = 3
-    TELEMETRY_RETRY_DELAY_MIN = 0.5  # seconds
-    TELEMETRY_RETRY_DELAY_MAX = 5.0  # seconds
+    TELEMETRY_RETRY_DELAY_MIN = 1.0 
+    TELEMETRY_RETRY_DELAY_MAX = 10.0 
     TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_DURATION = 30.0
 
     # Telemetry endpoint paths
@@ -195,8 +195,8 @@ class TelemetryClient(BaseTelemetryClient):
             delay_max=self.TELEMETRY_RETRY_DELAY_MAX,
             stop_after_attempts_count=self.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_COUNT,
             stop_after_attempts_duration=self.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_DURATION,
-            delay_default=1.0,  # Not directly used by telemetry, but required by constructor
-            force_dangerous_codes=[],  # Telemetry doesn't have "dangerous" codes
+            delay_default=1.0, 
+            force_dangerous_codes=[],  
         )
         self._session = requests.Session()
         adapter = TelemetryHTTPAdapter(max_retries=self._telemetry_retry_policy)
