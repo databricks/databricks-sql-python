@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING
 
 import logging
 
@@ -82,7 +82,7 @@ class SeaResultSet(ResultSet):
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
-    def _convert_json_types(self, row: List) -> List:
+    def _convert_json_types(self, row: List[str]) -> List[Any]:
         """
         Convert string values in the row to appropriate Python types based on column metadata.
         """
@@ -109,7 +109,7 @@ class SeaResultSet(ResultSet):
 
         return converted_row
 
-    def _convert_json_to_arrow_table(self, rows: List[List]) -> "pyarrow.Table":
+    def _convert_json_to_arrow_table(self, rows: List[List[str]]) -> "pyarrow.Table":
         """
         Convert raw data rows to Arrow table.
 
