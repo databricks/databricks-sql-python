@@ -195,18 +195,26 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 result = func(self, *args, **kwargs)
                 return result
             finally:
+
+                def _safe_call(func_to_call):
+                    """Calls a function and returns a default value on any exception."""
+                    try:
+                        return func_to_call()
+                    except Exception:
+                        return None
+
                 end_time = time.perf_counter()
                 duration_ms = int((end_time - start_time) * 1000)
 
                 extractor = get_extractor(self)
-                session_id_hex = extractor.get_session_id_hex()
-                statement_id = extractor.get_statement_id()
+                session_id_hex = _safe_call(extractor.get_session_id_hex)
+                statement_id = _safe_call(extractor.get_statement_id)
 
                 sql_exec_event = SqlExecutionEvent(
                     statement_type=statement_type,
-                    is_compressed=extractor.get_is_compressed(),
-                    execution_result=extractor.get_execution_result(),
-                    retry_count=extractor.get_retry_count(),
+                    is_compressed=_safe_call(extractor.get_is_compressed),
+                    execution_result=_safe_call(extractor.get_execution_result),
+                    retry_count=_safe_call(extractor.get_retry_count),
                 )
 
                 telemetry_client = TelemetryClientFactory.get_telemetry_client(
