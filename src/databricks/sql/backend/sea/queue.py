@@ -51,20 +51,20 @@ class SeaResultSetQueueFactory(ABC):
 class JsonQueue(ResultSetQueue):
     """Queue implementation for JSON_ARRAY format data."""
 
-    def __init__(self, data_array):
+    def __init__(self, data_array: Optional[List[List[str]]]):
         """Initialize with JSON array data."""
         self.data_array = data_array or []
         self.cur_row_index = 0
         self.num_rows = len(self.data_array)
 
-    def next_n_rows(self, num_rows):
+    def next_n_rows(self, num_rows: int) -> List[List[str]]:
         """Get the next n rows from the data array."""
         length = min(num_rows, self.num_rows - self.cur_row_index)
         slice = self.data_array[self.cur_row_index : self.cur_row_index + length]
         self.cur_row_index += length
         return slice
 
-    def remaining_rows(self):
+    def remaining_rows(self) -> List[List[str]]:
         """Get all remaining rows from the data array."""
         slice = self.data_array[self.cur_row_index :]
         self.cur_row_index += len(slice)
