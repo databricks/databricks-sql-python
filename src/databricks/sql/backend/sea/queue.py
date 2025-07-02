@@ -53,9 +53,9 @@ class JsonQueue(ResultSetQueue):
 
     def __init__(self, data_array):
         """Initialize with JSON array data."""
-        self.data_array = data_array
+        self.data_array = data_array or []
         self.cur_row_index = 0
-        self.num_rows = len(data_array) if data_array else 0
+        self.num_rows = len(self.data_array)
 
     def next_n_rows(self, num_rows):
         """Get the next n rows from the data array."""
