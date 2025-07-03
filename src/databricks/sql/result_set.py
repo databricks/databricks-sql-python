@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
 import pandas
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.types import Row
-from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
     ColumnTable,
     ColumnQueue,
@@ -249,7 +249,7 @@ class ThriftResultSet(ResultSet):
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Initialize results queue if not provided
