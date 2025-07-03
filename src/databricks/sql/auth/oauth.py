@@ -59,7 +59,7 @@ class RefreshableTokenSource(ABC):
         pass
 
     @abstractmethod
-    def refresh(self):
+    def refresh(self) -> Token:
         pass
 
 
@@ -334,7 +334,7 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
             self.token = self.refresh()
         return self.token
 
-    def refresh(self) -> None:
+    def refresh(self) -> Token:
         headers = {
             HttpHeader.CONTENT_TYPE.value: "application/x-www-form-urlencoded",
         }

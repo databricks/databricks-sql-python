@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 from databricks.sql.common.http import HttpHeader
 from databricks.sql.auth.oauth import (
     OAuthManager,
@@ -183,11 +183,11 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
 
     def __init__(
         self,
-        hostname: str,
-        oauth_client_id: str,
-        oauth_client_secret: str,
-        azure_tenant_id: str,
-        azure_workspace_resource_id: str = None,
+        hostname: Optional[str],
+        oauth_client_id: Optional[str],
+        oauth_client_secret: Optional[str],
+        azure_tenant_id: Optional[str],
+        azure_workspace_resource_id: Optional[str] = None,
     ):
         self.hostname = hostname
         self.oauth_client_id = oauth_client_id
