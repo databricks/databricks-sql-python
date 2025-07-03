@@ -7,7 +7,11 @@ the result set functionality for the SEA (Statement Execution API) backend.
 
 import pytest
 from unittest.mock import Mock, patch
-import pyarrow
+
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 from databricks.sql.backend.sea.result_set import SeaResultSet, Row
 from databricks.sql.backend.sea.queue import JsonQueue
@@ -106,10 +110,11 @@ class TestSeaResultSet:
     def mock_arrow_queue(self):
         """Create a mock Arrow queue."""
         queue = Mock()
-        queue.next_n_rows.return_value = Mock(spec=pyarrow.Table)
-        queue.next_n_rows.return_value.num_rows = 0
-        queue.remaining_rows.return_value = Mock(spec=pyarrow.Table)
-        queue.remaining_rows.return_value.num_rows = 0
+        if pyarrow is not None:
+            queue.next_n_rows.return_value = Mock(spec=pyarrow.Table)
+            queue.next_n_rows.return_value.num_rows = 0
+            queue.remaining_rows.return_value = Mock(spec=pyarrow.Table)
+            queue.remaining_rows.return_value.num_rows = 0
         return queue
 
     @pytest.fixture
@@ -313,6 +318,7 @@ class TestSeaResultSet:
         assert converted_row[1] == 1  # "1" converted to int
         assert converted_row[2] is True  # "true" converted to boolean
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_convert_json_to_arrow_table(self, result_set_with_data, sample_data):
         """Test the _convert_json_to_arrow_table method."""
         # Call _convert_json_to_arrow_table
@@ -323,6 +329,7 @@ class TestSeaResultSet:
         assert result_table.num_rows == len(sample_data)
         assert result_table.num_columns == 3
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_convert_json_to_arrow_table_empty(self, result_set_with_data):
         """Test the _convert_json_to_arrow_table method with empty data."""
         # Call _convert_json_to_arrow_table with empty data
@@ -380,6 +387,7 @@ class TestSeaResultSet:
         assert result == []
         assert result_set_with_data._next_row_index == len(sample_data)
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_fetchmany_arrow(self, result_set_with_data, sample_data):
         """Test the fetchmany_arrow method."""
         # Test with JSON queue (should convert to Arrow)
@@ -388,6 +396,7 @@ class TestSeaResultSet:
         assert result.num_rows == 2
         assert result_set_with_data._next_row_index == 2
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_fetchmany_arrow_negative_size(self, result_set_with_data):
         """Test the fetchmany_arrow method with negative size."""
         with pytest.raises(
@@ -395,6 +404,7 @@ class TestSeaResultSet:
         ):
             result_set_with_data.fetchmany_arrow(-1)
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_fetchall_arrow(self, result_set_with_data, sample_data):
         """Test the fetchall_arrow method."""
         # Test with JSON queue (should convert to Arrow)
@@ -497,6 +507,7 @@ class TestSeaResultSet:
         assert result_set.is_staging_operation is True
 
     # Edge case tests
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_fetchone_empty_arrow_queue(self, result_set_with_arrow_queue):
         """Test fetchone with an empty Arrow queue."""
         # Setup _convert_arrow_table to return empty list
@@ -525,6 +536,7 @@ class TestSeaResultSet:
         # Verify _create_json_table was called
         result_set_with_json_queue._create_json_table.assert_called_once()
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_fetchmany_empty_arrow_queue(self, result_set_with_arrow_queue):
         """Test fetchmany with an empty Arrow queue."""
         # Setup _convert_arrow_table to return empty list
@@ -539,6 +551,7 @@ class TestSeaResultSet:
         # Verify _convert_arrow_table was called
         result_set_with_arrow_queue._convert_arrow_table.assert_called_once()
 
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
     def test_fetchall_empty_arrow_queue(self, result_set_with_arrow_queue):
         """Test fetchall with an empty Arrow queue."""
         # Setup _convert_arrow_table to return empty list
@@ -599,29 +612,3 @@ class TestSeaResultSet:
 
         # Verify warnings were logged
         assert mock_logger.warning.call_count == 2
-
-    def test_import_coverage(self):
-        """Test that import statements are covered."""
-        # Test pyarrow import coverage
-        try:
-            import pyarrow
-
-            assert pyarrow is not None
-        except ImportError:
-            # This branch should be covered by the import statement
-            pass
-
-        # Test TYPE_CHECKING import coverage
-        from typing import TYPE_CHECKING
-
-        assert TYPE_CHECKING is not None
-
-    def test_pyarrow_not_available(self):
-        """Test behavior when pyarrow is not available."""
-        # This test covers the case where pyarrow import fails
-        # The actual import is done at module level, but we can test the behavior
-        with patch.dict("sys.modules", {"pyarrow": None}):
-            # The module should still load even if pyarrow is None
-            from databricks.sql.backend.sea.result_set import SeaResultSet
-
-            assert SeaResultSet is not None

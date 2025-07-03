@@ -5,9 +5,7 @@ This module contains tests for the JsonQueue, SeaResultSetQueueFactory, and SeaC
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-import pyarrow
-import dateutil
+from unittest.mock import Mock, patch
 
 from databricks.sql.backend.sea.queue import (
     JsonQueue,
