@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 class SeaResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
-        sea_result_data: ResultData,
+        result_data: ResultData,
         manifest: ResultManifest,
         statement_id: str,
         ssl_options: Optional[SSLOptions] = None,
@@ -45,7 +45,7 @@ class SeaResultSetQueueFactory(ABC):
         Factory method to build a result set queue for SEA backend.
 
         Args:
-            sea_result_data (ResultData): Result data from SEA response
+            result_data (ResultData): Result data from SEA response
             manifest (ResultManifest): Manifest from SEA response
             statement_id (str): Statement ID for the query
             description (List[List[Any]]): Column descriptions
@@ -59,7 +59,7 @@ class SeaResultSetQueueFactory(ABC):
 
         if manifest.format == ResultFormat.JSON_ARRAY.value:
             # INLINE disposition with JSON_ARRAY format
-            return JsonQueue(sea_result_data.data)
+            return JsonQueue(result_data.data)
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
             # EXTERNAL_LINKS disposition
             if not max_download_threads:
@@ -74,11 +74,13 @@ class SeaResultSetQueueFactory(ABC):
                 raise ValueError(
                     "SEA client is required for EXTERNAL_LINKS disposition"
                 )
-            if not manifest:
-                raise ValueError("Manifest is required for EXTERNAL_LINKS disposition")
+            if not result_data.external_links:
+                raise ValueError(
+                    "External links are required for EXTERNAL_LINKS disposition"
+                )
 
             return SeaCloudFetchQueue(
-                initial_links=sea_result_data.external_links,
+                initial_links=result_data.external_links,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
                 sea_client=sea_client,
@@ -125,7 +127,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         statement_id: str,
         total_chunk_count: int,
         lz4_compressed: bool = False,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ):
         """
         Initialize the SEA CloudFetchQueue.

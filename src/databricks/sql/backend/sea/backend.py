@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
 from databricks.sql.backend.sea.utils.constants import (

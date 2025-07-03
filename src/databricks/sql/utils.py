@@ -369,7 +369,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ):
         """
         Initialize the Thrift CloudFetchQueue.
