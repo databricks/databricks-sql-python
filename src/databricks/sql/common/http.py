@@ -12,13 +12,13 @@ class HttpMethod(str, Enum):
     PUT = "PUT"
     DELETE = "DELETE"
 
-
+# HTTP request headers
 class HttpHeader(str, Enum):
     CONTENT_TYPE = "Content-Type"
     AUTHORIZATION = "Authorization"
 
 
-# Dataclass for HTTP Response
+# Dataclass for OAuthHTTP Response
 @dataclass
 class OAuthResponse:
     token_type: str = ""
