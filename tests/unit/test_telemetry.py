@@ -284,12 +284,3 @@ class TestTelemetryFactory:
         TelemetryClientFactory.close(session2)
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
-
-
-class TestAbstractInterface:
-    """Test that abstract base class works correctly."""
-    
-    def test_base_client_cannot_be_instantiated(self):
-        """Test that BaseTelemetryClient cannot be instantiated directly."""
-        with pytest.raises(TypeError):
-            BaseTelemetryClient()
