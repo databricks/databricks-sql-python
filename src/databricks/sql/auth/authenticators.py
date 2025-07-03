@@ -1,14 +1,20 @@
 import abc
-import base64
 import logging
-from typing import Callable, Dict, List
-
-from databricks.sql.auth.oauth import OAuthManager
-from databricks.sql.auth.endpoint import get_oauth_endpoints, infer_cloud_from_host
+from typing import Callable, Dict, List, Optional
+from databricks.sql.common.http import HttpHeader
+from databricks.sql.auth.oauth import (
+    OAuthManager,
+    RefreshableTokenSource,
+    ClientCredentialsTokenSource,
+)
+from databricks.sql.auth.endpoint import get_oauth_endpoints
+from databricks.sql.auth.common import AuthType, get_effective_azure_login_app_id
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
+
+logger = logging.getLogger(__name__)
 
 
 class AuthProvider:
@@ -146,3 +152,80 @@ class ExternalAuthProvider(AuthProvider):
         headers = self._header_factory()
         for k, v in headers.items():
             request_headers[k] = v
+
+
+class AzureServicePrincipalCredentialProvider(CredentialsProvider):
+    """
+    A credential provider for Azure Service Principal authentication with Databricks.
+
+    This class implements the CredentialsProvider protocol to authenticate requests
+    to Databricks REST APIs using Azure Active Directory (AAD) service principal
+    credentials. It handles OAuth 2.0 client credentials flow to obtain access tokens
+    from Azure AD and automatically refreshes them when they expire.
+
+    Attributes:
+        hostname (str): The Databricks workspace hostname.
+        oauth_client_id (str): The Azure service principal's client ID.
+        oauth_client_secret (str): The Azure service principal's client secret.
+        azure_tenant_id (str): The Azure AD tenant ID.
+        azure_workspace_resource_id (str, optional): The Azure workspace resource ID.
+    """
+
+    AZURE_AAD_ENDPOINT = "https://login.microsoftonline.com"
+    AZURE_TOKEN_ENDPOINT = "oauth2/token"
+
+    AZURE_MANAGED_RESOURCE = "https://management.core.windows.net/"
+
+    DATABRICKS_AZURE_SP_TOKEN_HEADER = "X-Databricks-Azure-SP-Management-Token"
+    DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER = (
+        "X-Databricks-Azure-Workspace-Resource-Id"
+    )
+
+    def __init__(
+        self,
+        hostname,
+        oauth_client_id,
+        oauth_client_secret,
+        azure_tenant_id,
+        azure_workspace_resource_id=None,
+    ):
+        self.hostname = hostname
+        self.oauth_client_id = oauth_client_id
+        self.oauth_client_secret = oauth_client_secret
+        self.azure_tenant_id = azure_tenant_id
+        self.azure_workspace_resource_id = azure_workspace_resource_id
+
+    def auth_type(self) -> str:
+        return AuthType.AZURE_SP_M2M.value
+
+    def get_token_source(self, resource: str) -> RefreshableTokenSource:
+        return ClientCredentialsTokenSource(
+            token_url=f"{self.AZURE_AAD_ENDPOINT}/{self.azure_tenant_id}/{self.AZURE_TOKEN_ENDPOINT}",
+            oauth_client_id=self.oauth_client_id,
+            oauth_client_secret=self.oauth_client_secret,
+            extra_params={"resource": resource},
+        )
+
+    def __call__(self, *args, **kwargs) -> HeaderFactory:
+        inner = self.get_token_source(
+            resource=get_effective_azure_login_app_id(self.hostname)
+        )
+        cloud = self.get_token_source(resource=self.AZURE_MANAGED_RESOURCE)
+
+        def header_factory() -> Dict[str, str]:
+            inner_token = inner.get_token()
+            cloud_token = cloud.get_token()
+
+            headers = {
+                HttpHeader.AUTHORIZATION.value: f"{inner_token.token_type} {inner_token.access_token}",
+                self.DATABRICKS_AZURE_SP_TOKEN_HEADER: cloud_token.access_token,
+            }
+
+            if self.azure_workspace_resource_id:
+                headers[
+                    self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER
+                ] = self.azure_workspace_resource_id
+
+            return headers
+
+        return header_factory
