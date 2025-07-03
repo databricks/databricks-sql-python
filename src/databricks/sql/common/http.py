@@ -12,6 +12,7 @@ class HttpMethod(str, Enum):
     PUT = "PUT"
     DELETE = "DELETE"
 
+
 # HTTP request headers
 class HttpHeader(str, Enum):
     CONTENT_TYPE = "Content-Type"
