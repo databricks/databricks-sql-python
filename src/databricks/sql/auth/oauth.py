@@ -326,7 +326,7 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         self.oauth_client_secret = oauth_client_secret
         self.token_url = token_url
         self.extra_params = extra_params
-        self.token: Token = None
+        self.token: Optional[Token] = None
         self._http_client = DatabricksHttpClient.get_instance()
 
     def get_token(self) -> Token:
