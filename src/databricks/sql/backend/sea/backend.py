@@ -48,10 +48,10 @@ logger = logging.getLogger(__name__)
 
 
 def _filter_session_configuration(
-    session_configuration: Optional[Dict[str, Any]]
-) -> Optional[Dict[str, str]]:
+    session_configuration: Optional[Dict[str, Any]],
+) -> Dict[str, str]:
     if not session_configuration:
-        return None
+        return {}
 
     filtered_session_configuration = {}
     ignored_configs: Set[str] = set()

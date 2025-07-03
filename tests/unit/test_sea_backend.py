@@ -621,7 +621,7 @@ class TestSeaBackend:
         assert description[1][1] == "INT"  # type_code
         assert description[1][6] is False  # null_ok
 
-    def test_filter_session_configuration_string_values(self):
+    def test_filter_session_configuration(self):
         """Test that _filter_session_configuration converts all values to strings."""
         session_config = {
             "ANSI_MODE": True,
@@ -656,10 +656,7 @@ class TestSeaBackend:
         assert result == expected_result
 
         # Test with None input
-        assert _filter_session_configuration(None) is None
-
-        # Test with empty dict
-        assert _filter_session_configuration({}) is None
+        assert _filter_session_configuration(None) == {}
 
         # Test with only unsupported parameters
         unsupported_config = {
