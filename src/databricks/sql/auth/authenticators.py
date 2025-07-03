@@ -183,11 +183,11 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
 
     def __init__(
         self,
-        hostname: Optional[str],
-        oauth_client_id: Optional[str],
-        oauth_client_secret: Optional[str],
-        azure_tenant_id: Optional[str],
-        azure_workspace_resource_id: Optional[str] = None,
+        hostname,
+        oauth_client_id,
+        oauth_client_secret,
+        azure_tenant_id,
+        azure_workspace_resource_id=None,
     ):
         self.hostname = hostname
         self.oauth_client_id = oauth_client_id

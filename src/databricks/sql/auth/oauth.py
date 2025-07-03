@@ -317,9 +317,9 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
 
     def __init__(
         self,
-        token_url: Optional[str],
-        oauth_client_id: Optional[str],
-        oauth_client_secret: Optional[str],
+        token_url,
+        oauth_client_id,
+        oauth_client_secret,
         extra_params: dict = {},
     ):
         self.oauth_client_id = oauth_client_id
