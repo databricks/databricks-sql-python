@@ -25,8 +25,6 @@ from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
     ColumnTable,
     ColumnQueue,
-    JsonQueue,
-    SeaResultSetQueueFactory,
 )
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 

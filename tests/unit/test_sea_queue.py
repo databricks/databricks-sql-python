@@ -160,23 +160,3 @@ class TestSeaResultSetQueueFactory:
         assert isinstance(queue, JsonQueue)
         assert queue.data_array == []
         assert queue.num_rows == 0
-
-    def test_build_queue_with_external_links(self, mock_sea_client, mock_description):
-        """Test building a queue with external links raises NotImplementedError."""
-        # Create a ResultData object with external links
-        result_data = ResultData(
-            data=None, external_links=["link1", "link2"], row_count=10
-        )
-
-        # Verify that NotImplementedError is raised
-        with pytest.raises(
-            NotImplementedError,
-            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
-        ):
-            SeaResultSetQueueFactory.build_queue(
-                result_data,
-                self._create_empty_manifest(ResultFormat.ARROW_STREAM),
-                "test-statement-123",
-                description=mock_description,
-                sea_client=mock_sea_client,
-            )

@@ -315,46 +315,6 @@ class TestSeaResultSet:
         assert rows[0].col2 == 1
         assert rows[0].col3 is True
 
-    def test_fetchmany_arrow_not_implemented(
-        self, mock_connection, mock_sea_client, execute_response, sample_data
-    ):
-        """Test that fetchmany_arrow raises NotImplementedError for non-JSON data."""
-
-        # Test that NotImplementedError is raised
-        with pytest.raises(
-            NotImplementedError,
-            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
-        ):
-            # Create a result set without JSON data
-            result_set = SeaResultSet(
-                connection=mock_connection,
-                execute_response=execute_response,
-                sea_client=mock_sea_client,
-                result_data=ResultData(data=None, external_links=[]),
-                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
-                buffer_size_bytes=1000,
-                arraysize=100,
-            )
-
-    def test_fetchall_arrow_not_implemented(
-        self, mock_connection, mock_sea_client, execute_response, sample_data
-    ):
-        """Test that fetchall_arrow raises NotImplementedError for non-JSON data."""
-        # Test that NotImplementedError is raised
-        with pytest.raises(
-            NotImplementedError,
-            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
-        ):
-            # Create a result set without JSON data
-            result_set = SeaResultSet(
-                connection=mock_connection,
-                execute_response=execute_response,
-                sea_client=mock_sea_client,
-                result_data=ResultData(data=None, external_links=[]),
-                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
-                buffer_size_bytes=1000,
-                arraysize=100,
-            )
 
     def test_is_staging_operation(
         self, mock_connection, mock_sea_client, execute_response
