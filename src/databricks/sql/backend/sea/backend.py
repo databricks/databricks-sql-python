@@ -405,6 +405,7 @@ class SeaDatabricksClient(DatabricksClient):
         parameters: List[Dict[str, Any]],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
+        row_limit: Optional[int] = None,
     ) -> Union[SeaResultSet, None]:
         """
         Execute a SQL command using the SEA backend.
@@ -462,7 +463,7 @@ class SeaDatabricksClient(DatabricksClient):
             format=format,
             wait_timeout=(WaitTimeout.ASYNC if async_op else WaitTimeout.SYNC).value,
             on_wait_timeout="CONTINUE",
-            row_limit=max_rows,
+            row_limit=row_limit,
             parameters=sea_parameters if sea_parameters else None,
             result_compression=result_compression,
         )
