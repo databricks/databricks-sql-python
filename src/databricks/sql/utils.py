@@ -16,6 +16,7 @@ import dateutil
 import lz4.frame
 
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:
     import pyarrow
@@ -65,7 +66,7 @@ class ThriftResultSetQueueFactory(ABC):
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue for Thrift backend.
@@ -298,7 +299,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         ssl_options: SSLOptions,
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ):
         """
         Initialize the base CloudFetchQueue.

@@ -6,11 +6,12 @@ the result set functionality for the SEA (Statement Execution API) backend.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import Mock
 
-from databricks.sql.result_set import SeaResultSet, Row
-from databricks.sql.utils import JsonQueue
-from databricks.sql.backend.types import CommandId, CommandState, BackendType
+from databricks.sql.backend.sea.result_set import SeaResultSet, Row
+from databricks.sql.backend.sea.queue import JsonQueue
+from databricks.sql.backend.sea.utils.constants import ResultFormat
+from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 
@@ -59,23 +60,6 @@ class TestSeaResultSet:
             ["value5", "5", "true"],
         ]
 
-    @pytest.fixture
-    def result_set_with_data(
-        self, mock_connection, mock_sea_client, execute_response, sample_data
-    ):
-        """Create a SeaResultSet with sample data."""
-        # Create ResultData with inline data
-        result_data = ResultData(
-            data=sample_data, external_links=None, row_count=len(sample_data)
-        )
-
-        # Initialize SeaResultSet with result data
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            sea_client=mock_sea_client,
-            result_data=result_data,
-            manifest=None,
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -97,6 +81,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -117,6 +102,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -138,6 +124,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -161,6 +148,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
@@ -178,18 +166,17 @@ class TestSeaResultSet:
         # Verify the results queue was created correctly
         assert isinstance(result_set_with_data.results, JsonQueue)
         assert result_set_with_data.results.data_array == sample_data
-        assert result_set_with_data.results.n_valid_rows == len(sample_data)
+        assert result_set_with_data.results.num_rows == len(sample_data)
 
     def test_convert_json_types(self, result_set_with_data, sample_data):
         """Test the _convert_json_types method."""
         # Call _convert_json_types
-        converted_rows = result_set_with_data._convert_json_types(sample_data)
+        converted_row = result_set_with_data._convert_json_types(sample_data[0])
 
         # Verify the conversion
-        assert len(converted_rows) == len(sample_data)
-        assert converted_rows[0][0] == "value1"  # string stays as string
-        assert converted_rows[0][1] == 1  # "1" converted to int
-        assert converted_rows[0][2] is True  # "true" converted to boolean
+        assert converted_row[0] == "value1"  # string stays as string
+        assert converted_row[1] == 1  # "1" converted to int
+        assert converted_row[2] is True  # "true" converted to boolean
 
     def test_create_json_table(self, result_set_with_data, sample_data):
         """Test the _create_json_table method."""
@@ -317,6 +304,7 @@ class TestSeaResultSet:
                 execute_response=execute_response,
                 sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
@@ -336,6 +324,7 @@ class TestSeaResultSet:
                 execute_response=execute_response,
                 sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
+                manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
@@ -353,6 +342,7 @@ class TestSeaResultSet:
             execute_response=execute_response,
             sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )

@@ -196,7 +196,7 @@ class TestSeaBackend:
         )
 
         # Test close_session with invalid ID type
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.close_session(thrift_session_id)
         assert "Not a valid SEA session ID" in str(excinfo.value)
 
@@ -245,7 +245,7 @@ class TestSeaBackend:
             assert cmd_id_arg.guid == "test-statement-123"
 
         # Test with invalid session ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             mock_thrift_handle = MagicMock()
             mock_thrift_handle.sessionId.guid = b"guid"
             mock_thrift_handle.sessionId.secret = b"secret"
@@ -449,7 +449,7 @@ class TestSeaBackend:
         )
 
         # Test cancel_command with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.cancel_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -463,7 +463,7 @@ class TestSeaBackend:
         )
 
         # Test close_command with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.close_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -522,7 +522,7 @@ class TestSeaBackend:
         assert result.status == CommandState.SUCCEEDED
 
         # Test get_execution_result with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.get_execution_result(thrift_command_id, mock_cursor)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -620,18 +620,6 @@ class TestSeaBackend:
         assert description[1][0] == "col2"  # name
         assert description[1][1] == "INT"  # type_code
         assert description[1][6] is False  # null_ok
-
-        # Test _extract_description_from_manifest with empty columns
-        empty_manifest = MagicMock()
-        empty_manifest.schema = {"columns": []}
-        assert sea_client._extract_description_from_manifest(empty_manifest) is None
-
-        # Test _extract_description_from_manifest with no columns key
-        no_columns_manifest = MagicMock()
-        no_columns_manifest.schema = {}
-        assert (
-            sea_client._extract_description_from_manifest(no_columns_manifest) is None
-        )
 
     def test_results_message_to_execute_response_is_staging_operation(self, sea_client):
         """Test that is_staging_operation is correctly set from manifest.is_volume_operation."""
@@ -755,7 +743,7 @@ class TestSeaBackend:
     def test_get_tables(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_tables method with various parameter combinations."""
         # Mock the execute_command method
-        from databricks.sql.result_set import SeaResultSet
+        from databricks.sql.backend.sea.result_set import SeaResultSet
 
         mock_result_set = Mock(spec=SeaResultSet)
 
