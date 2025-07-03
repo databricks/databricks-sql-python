@@ -60,6 +60,33 @@ class TestSeaResultSet:
             ["value5", "5", "true"],
         ]
 
+    def _create_empty_manifest(self, format: ResultFormat):
+        """Create an empty manifest."""
+        return ResultManifest(
+            format=format.value,
+            schema={},
+            total_row_count=-1,
+            total_byte_count=-1,
+            total_chunk_count=-1,
+        )
+
+    @pytest.fixture
+    def result_set_with_data(
+        self, mock_connection, mock_sea_client, execute_response, sample_data
+    ):
+        """Create a SeaResultSet with sample data."""
+        # Create ResultData with inline data
+        result_data = ResultData(
+            data=sample_data, external_links=None, row_count=len(sample_data)
+        )
+
+        # Initialize SeaResultSet with result data
+        result_set = SeaResultSet(
+            connection=mock_connection,
+            execute_response=execute_response,
+            sea_client=mock_sea_client,
+            result_data=result_data,
+            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
             arraysize=100,
         )
