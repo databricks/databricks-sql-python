@@ -27,7 +27,7 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import DatabaseError, ProgrammingError, ServerOperationError
+from databricks.sql.exc import DatabaseError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
 
@@ -150,7 +150,7 @@ class SeaDatabricksClient(DatabricksClient):
             The extracted warehouse ID
 
         Raises:
-            ProgrammingError: If the warehouse ID cannot be extracted from the path
+            ValueError: If the warehouse ID cannot be extracted from the path
         """
 
         warehouse_pattern = re.compile(r".*/warehouses/(.+)")
@@ -174,7 +174,7 @@ class SeaDatabricksClient(DatabricksClient):
             f"Note: SEA only works for warehouses."
         )
         logger.error(error_message)
-        raise ProgrammingError(error_message)
+        raise ValueError(error_message)
 
     @property
     def max_download_threads(self) -> int:
@@ -246,7 +246,7 @@ class SeaDatabricksClient(DatabricksClient):
             session_id: The session identifier returned by open_session()
 
         Raises:
-            ProgrammingError: If the session ID is invalid
+            ValueError: If the session ID is invalid
             OperationalError: If there's an error closing the session
         """
 
@@ -503,7 +503,7 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to cancel
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -528,7 +528,7 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to close
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -593,7 +593,7 @@ class SeaDatabricksClient(DatabricksClient):
             SeaResultSet: A SeaResultSet instance with the execution results
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
