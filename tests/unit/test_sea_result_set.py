@@ -315,7 +315,6 @@ class TestSeaResultSet:
         assert rows[0].col2 == 1
         assert rows[0].col3 is True
 
-
     def test_is_staging_operation(
         self, mock_connection, mock_sea_client, execute_response
     ):

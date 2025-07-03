@@ -482,7 +482,7 @@ class TestSeaBackend:
         )
 
         # Test get_query_state with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.get_query_state(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 

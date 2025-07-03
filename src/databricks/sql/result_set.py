@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import json
-from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 import logging
 import pandas
-
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
-from databricks.sql.backend.sea.conversion import SqlTypeConverter
 
 try:
     import pyarrow
