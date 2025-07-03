@@ -8,7 +8,7 @@ import time
 from databricks.sql.client import Connection
 from databricks.sql.backend.types import CommandState
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
