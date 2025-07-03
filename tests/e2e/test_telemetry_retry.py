@@ -1,10 +1,9 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import io
+import time
 
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
-from databricks.sql.telemetry.models.event import DriverConnectionParameters, HostDetails, DatabricksClientType
-from databricks.sql.telemetry.models.enums import AuthMech
 from databricks.sql.auth.retry import DatabricksRetryPolicy
 
 PATCH_TARGET = 'urllib3.connectionpool.HTTPSConnectionPool._get_conn'
@@ -64,40 +63,18 @@ class TestTelemetryClientRetries:
         adapter.max_retries = retry_policy
         return client, adapter
 
-    def test_success_no_retry(self):
-        client, _ = self.get_client("session-success")
-        params = DriverConnectionParameters(
-            http_path="test-path", mode=DatabricksClientType.THRIFT,
-            host_info=HostDetails(host_url="test.databricks.com", port=443),
-            auth_mech=AuthMech.PAT
-        )
-        mock_responses = [{"status": 200}]
-        
-        with patch(PATCH_TARGET, return_value=create_mock_conn(mock_responses)) as mock_get_conn:
-            client.export_initial_telemetry_log(params, "test-agent")
-            TelemetryClientFactory.close(client._session_id_hex)
-            
-            mock_get_conn.return_value.getresponse.assert_called_once()
-        client, _ = self.get_client("session-retry-once", num_retries=1)
-        mock_responses = [{"status": 503}, {"status": 200}]
-        
-        with patch(PATCH_TARGET, return_value=create_mock_conn(mock_responses)) as mock_get_conn:
-            client.export_failure_log("TestError", "Test message")
-            TelemetryClientFactory.close(client._session_id_hex)
-            
-            assert mock_get_conn.return_value.getresponse.call_count == 2
-
     @pytest.mark.parametrize(
     "status_code, description",
     [
         (401, "Unauthorized"),
         (403, "Forbidden"),
         (501, "Not Implemented"),
+        (200, "Success"),
     ],
     )
     def test_non_retryable_status_codes_are_not_retried(self, status_code, description):
         """
-        Verifies that terminal error codes (401, 403, 501, etc.) are not retried.
+        Verifies that terminal error codes (401, 403, 501) and success codes (200) are not retried.
         """
         # Use the status code in the session ID for easier debugging if it fails
         client, _ = self.get_client(f"session-{status_code}")
@@ -109,24 +86,22 @@ class TestTelemetryClientRetries:
 
             mock_get_conn.return_value.getresponse.assert_called_once()
 
-    def test_respects_retry_after_header(self):
-        client, _ = self.get_client("session-retry-after", num_retries=1)
-        mock_responses = [{"status": 429, "headers": {'Retry-After': '1'}}, {"status": 200}]
-        
-        with patch(PATCH_TARGET, return_value=create_mock_conn(mock_responses)) as mock_get_conn:
-            client.export_failure_log("TestError", "Test message")
-            TelemetryClientFactory.close(client._session_id_hex)
-            
-            assert mock_get_conn.return_value.getresponse.call_count == 2
-
     def test_exceeds_retry_count_limit(self):
+        """
+        Verifies that the client retries up to the specified number of times before giving up.
+        Verifies that the client respects the Retry-After header and retries on 429, 502, 503.
+        """
         num_retries = 3
         expected_total_calls = num_retries + 1 
+        retry_after = 1
         client, _ = self.get_client("session-exceed-limit", num_retries=num_retries)
-        mock_responses = [{"status": 503}] * expected_total_calls
+        mock_responses = [{"status": 503, "headers": {"Retry-After": str(retry_after)}}, {"status": 429}, {"status": 502}, {"status": 503}]
         
         with patch(PATCH_TARGET, return_value=create_mock_conn(mock_responses)) as mock_get_conn:
+            start_time = time.time()
             client.export_failure_log("TestError", "Test message")
             TelemetryClientFactory.close(client._session_id_hex)
+            end_time = time.time()
             
             assert mock_get_conn.return_value.getresponse.call_count == expected_total_calls
+            assert end_time - start_time > retry_after
