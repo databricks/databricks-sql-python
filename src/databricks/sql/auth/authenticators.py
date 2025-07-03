@@ -8,7 +8,7 @@ from databricks.sql.auth.oauth import (
     ClientCredentialsTokenSource,
 )
 from databricks.sql.auth.endpoint import get_oauth_endpoints
-from databricks.sql.common.auth import AuthType, get_effective_azure_login_app_id
+from databricks.sql.auth.common import AuthType, get_effective_azure_login_app_id
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.

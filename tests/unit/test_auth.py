@@ -15,11 +15,10 @@ from databricks.sql.auth.auth import (
     get_python_sql_connector_auth_provider,
     PYSQL_OAUTH_CLIENT_ID,
 )
-from databricks.sql.auth.oauth import OAuthManager
+from databricks.sql.auth.oauth import OAuthManager, Token, ClientCredentialsTokenSource
 from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
     AzureServicePrincipalCredentialProvider,
-    Token,
 )
 from databricks.sql.auth.endpoint import (
     CloudType,
@@ -198,7 +197,7 @@ class Auth(unittest.TestCase):
         self.assertTrue(auth_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
 
 
-class TestAzureServicePrincipalCredentialProvider:
+class TestClientCredentialsTokenSource:
     @pytest.fixture
     def indefinite_token(self):
         secret_key = "mysecret"
@@ -206,8 +205,8 @@ class TestAzureServicePrincipalCredentialProvider:
 
         payload = {"sub": "user123", "role": "admin", "exp": expires_in_100_years}
 
-        token = jwt.encode(payload, secret_key, algorithm="HS256")
-        return Token(token, "Bearer", "refresh_token")
+        access_token = jwt.encode(payload, secret_key, algorithm="HS256")
+        return Token(access_token, "Bearer", "refresh_token")
 
     @pytest.fixture
     def http_response(self):
@@ -224,56 +223,36 @@ class TestAzureServicePrincipalCredentialProvider:
         return status_response
 
     @pytest.fixture
-    def provider(self):
-        return AzureServicePrincipalCredentialProvider(
-            client_id="dummy-client",
-            client_secret="dummy-secret",
-            tenant_id="dummy-tenant",
+    def token_source(self):
+        return ClientCredentialsTokenSource(
+            token_url="https://token_url.com",
+            oauth_client_id="client_id",
+            oauth_client_secret="client_secret",
         )
 
-    def test_token_refresh(self, provider):
-        with patch.object(provider, "_get_token") as mock_get_token:
-            mock_get_token.return_value = Token(
-                "access_token", "Bearer", "refresh_token"
-            )
-            header_factory = provider()
-            headers = header_factory()
-
-            assert headers["Authorization"] == "Bearer access_token"
-            mock_get_token.assert_called_once()
-
     def test_no_token_refresh__when_token_is_not_expired(
-        self, provider, indefinite_token
+        self, token_source, indefinite_token
     ):
-        with patch.object(provider, "_get_token") as mock_get_token:
+        with patch.object(token_source, "refresh") as mock_get_token:
             mock_get_token.return_value = indefinite_token
 
-            # Call the provider multiple times
-            header_factory1 = provider()
-            header_factory2 = provider()
-            header_factory3 = provider()
+            # Mulitple calls for token
+            token1 = token_source.get_token()
+            token2 = token_source.get_token()
+            token3 = token_source.get_token()
 
-            # Get headers from each factory
-            headers1 = header_factory1()
-            headers2 = header_factory2()
-            headers3 = header_factory3()
+            assert token1 == token2 == token3
+            assert token1.access_token == indefinite_token.access_token
+            assert token1.token_type == indefinite_token.token_type
+            assert token1.refresh_token == indefinite_token.refresh_token
 
-            # Verify _get_token was called only once
-            mock_get_token.assert_called_once()
+            # should refresh only once as token is not expired
+            assert mock_get_token.call_count == 1
 
-            # Verify all headers contain the same token
-            expected_auth_header = f"Bearer {indefinite_token.access_token}"
-            assert headers1["Authorization"] == expected_auth_header
-            assert headers2["Authorization"] == expected_auth_header
-            assert headers3["Authorization"] == expected_auth_header
-
-    def test_get_token_success(self, provider, http_response):
-
-        # Patch the HTTP client's execute method
-        with patch.object(
-            provider._http_client, "execute", return_value=http_response(200)
-        ) as mock_execute:
-            token = provider._get_token()
+    def test_get_token_success(self, token_source, http_response):
+        with patch.object(token_source._http_client, "execute") as mock_execute:
+            mock_execute.return_value = http_response(200)
+            token = token_source.get_token()
 
             # Assert
             assert isinstance(token, Token)
@@ -281,10 +260,38 @@ class TestAzureServicePrincipalCredentialProvider:
             assert token.token_type == "Bearer"
             assert token.refresh_token is None
 
-    def test_get_token_failure(self, provider, http_response):
-        with patch.object(
-            provider._http_client, "execute", return_value=http_response(400)
-        ) as mock_execute:
+    def test_get_token_failure(self, token_source, http_response):
+        with patch.object(token_source._http_client, "execute") as mock_execute:
+            mock_execute.return_value = http_response(400)
             with pytest.raises(Exception) as e:
-                provider._get_token()
+                token_source.get_token()
             assert "Failed to get token: 400" in str(e.value)
+
+
+class TestAzureServicePrincipalCredentialProvider:
+    @pytest.fixture
+    def credential_provider(self):
+        return AzureServicePrincipalCredentialProvider(
+            hostname="hostname",
+            oauth_client_id="client_id",
+            oauth_client_secret="client_secret",
+            azure_tenant_id="tenant_id",
+        )
+
+    def test_provider_credentials(self, credential_provider):
+
+        test_token = Token("access_token", "Bearer", "refresh_token")
+
+        with patch.object(
+            credential_provider, "get_token_source"
+        ) as mock_get_token_source:
+            mock_get_token_source.return_value = MagicMock()
+            mock_get_token_source.return_value.get_token.return_value = test_token
+
+            headers = credential_provider()()
+
+            assert headers["Authorization"] == f"Bearer {test_token.access_token}"
+            assert (
+                headers["X-Databricks-Azure-SP-Management-Token"]
+                == test_token.access_token
+            )

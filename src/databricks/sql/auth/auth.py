@@ -7,7 +7,7 @@ from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
     AzureServicePrincipalCredentialProvider,
 )
-from databricks.sql.common.auth import AuthType
+from databricks.sql.auth.common import AuthType
 
 
 class ClientContext:

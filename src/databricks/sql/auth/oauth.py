@@ -305,19 +305,29 @@ class OAuthManager:
 
 
 class ClientCredentialsTokenSource(RefreshableTokenSource):
+    """
+    A token source that uses client credentials to get a token from the token endpoint.
+    It will refresh the token if it is expired.
+
+    Attributes:
+        token_url (str): The URL of the token endpoint.
+        oauth_client_id (str): The client ID.
+        oauth_client_secret (str): The client secret.
+    """
+
     def __init__(
         self,
         token_url: str,
         oauth_client_id: str,
         oauth_client_secret: str,
-        extra_params: dict = None,
+        extra_params: dict = {},
     ):
         self.oauth_client_id = oauth_client_id
         self.oauth_client_secret = oauth_client_secret
         self.token_url = token_url
         self.extra_params = extra_params
         self.token: Token = None
-        self._http_client = DatabricksHttpClient()
+        self._http_client = DatabricksHttpClient.get_instance()
 
     def get_token(self) -> Token:
         if self.token is None or self.token.is_expired():
