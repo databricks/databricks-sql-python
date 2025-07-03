@@ -369,7 +369,7 @@ class CommandId:
 
         return cls(BackendType.SEA, statement_id)
 
-    def to_thrift_handle(self):
+    def to_thrift_handle(self) -> Optional[ttypes.TOperationHandle]:
         """
         Convert this CommandId to a Thrift TOperationHandle.
 
@@ -390,7 +390,7 @@ class CommandId:
             modifiedRowCount=self.modified_row_count,
         )
 
-    def to_sea_statement_id(self):
+    def to_sea_statement_id(self) -> Optional[str]:
         """
         Get the SEA statement ID string.
 
@@ -401,7 +401,7 @@ class CommandId:
         if self.backend_type != BackendType.SEA:
             return None
 
-        return self.guid
+        return str(self.guid)
 
     def to_hex_guid(self) -> str:
         """
@@ -423,7 +423,7 @@ class ExecuteResponse:
 
     command_id: CommandId
     status: CommandState
-    description: Optional[List[Tuple]] = None
+    description: List[Tuple]
     has_been_closed_server_side: bool = False
     lz4_compressed: bool = True
     is_staging_operation: bool = False

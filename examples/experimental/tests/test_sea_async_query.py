@@ -51,12 +51,20 @@ def test_sea_async_query_with_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query asynchronously
+        # Execute a query that generates large rows to force multiple chunks
+        requested_row_count = 5000
         cursor = connection.cursor()
+        query = f"""
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 10000)) as test_value
+        FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+
         logger.info(
-            "Executing asynchronous query with cloud fetch: SELECT 1 as test_value"
+            f"Executing asynchronous query with cloud fetch to generate {requested_row_count} rows"
         )
-        cursor.execute_async("SELECT 1 as test_value")
+        cursor.execute_async(query)
         logger.info(
             "Asynchronous query submitted successfully with cloud fetch enabled"
         )
@@ -69,8 +77,25 @@ def test_sea_async_query_with_cloud_fetch():
 
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
+
+        results = [cursor.fetchone()]
+        results.extend(cursor.fetchmany(10))
+        results.extend(cursor.fetchall())
+        actual_row_count = len(results)
+
         logger.info(
-            "Successfully retrieved asynchronous query results with cloud fetch enabled"
+            f"Requested {requested_row_count} rows, received {actual_row_count} rows"
+        )
+
+        # Verify total row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
+
+        logger.info(
+            "PASS: Received correct number of rows with cloud fetch and all fetch methods work correctly"
         )
 
         # Close resources
@@ -130,12 +155,20 @@ def test_sea_async_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query asynchronously
+        # For non-cloud fetch, use a smaller row count to avoid exceeding inline limits
+        requested_row_count = 100
         cursor = connection.cursor()
+        query = f"""
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 100)) as test_value
+        FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+
         logger.info(
-            "Executing asynchronous query without cloud fetch: SELECT 1 as test_value"
+            f"Executing asynchronous query without cloud fetch to generate {requested_row_count} rows"
         )
-        cursor.execute_async("SELECT 1 as test_value")
+        cursor.execute_async(query)
         logger.info(
             "Asynchronous query submitted successfully with cloud fetch disabled"
         )
@@ -148,8 +181,24 @@ def test_sea_async_query_without_cloud_fetch():
 
         logger.info("Query is no longer pending, getting results...")
         cursor.get_async_execution_result()
+        results = [cursor.fetchone()]
+        results.extend(cursor.fetchmany(10))
+        results.extend(cursor.fetchall())
+        actual_row_count = len(results)
+
         logger.info(
-            "Successfully retrieved asynchronous query results with cloud fetch disabled"
+            f"Requested {requested_row_count} rows, received {actual_row_count} rows"
+        )
+
+        # Verify total row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
+
+        logger.info(
+            "PASS: Received correct number of rows without cloud fetch and all fetch methods work correctly"
         )
 
         # Close resources
