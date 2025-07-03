@@ -6,7 +6,7 @@ import secrets
 import webbrowser
 from datetime import datetime, timezone
 from http.server import HTTPServer
-from typing import List
+from typing import List, Optional
 
 import oauthlib.oauth2
 import requests
@@ -317,9 +317,9 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
 
     def __init__(
         self,
-        token_url: str,
-        oauth_client_id: str,
-        oauth_client_secret: str,
+        token_url: Optional[str],
+        oauth_client_id: Optional[str],
+        oauth_client_secret: Optional[str],
         extra_params: dict = {},
     ):
         self.oauth_client_id = oauth_client_id

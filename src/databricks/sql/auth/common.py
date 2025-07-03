@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 
 
 class AuthType(Enum):
@@ -7,7 +8,7 @@ class AuthType(Enum):
     AZURE_SP_M2M = "azure-sp-m2m"
 
 
-def get_effective_azure_login_app_id(hostname: str) -> str:
+def get_effective_azure_login_app_id(hostname: Optional[str]) -> str:
     """
     Get the effective Azure login app ID for a given hostname.
     This function determines the appropriate Azure login app ID based on the hostname.
