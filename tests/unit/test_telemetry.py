@@ -198,7 +198,7 @@ class TestTelemetryClient:
         client._flush.assert_called_once()
         assert len(client._events_batch) == 10
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_send_telemetry_authenticated(self, mock_post, telemetry_client_setup):
         """Test sending telemetry to the server with authentication."""
         client = telemetry_client_setup["client"]
@@ -212,12 +212,12 @@ class TestTelemetryClient:
         
         executor.submit.assert_called_once()
         args, kwargs = executor.submit.call_args
-        assert args[0] == requests.post
+        assert args[0] == client._session.post
         assert kwargs["timeout"] == 10
         assert "Authorization" in kwargs["headers"]
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_send_telemetry_unauthenticated(self, mock_post, telemetry_client_setup):
         """Test sending telemetry to the server without authentication."""
         host_url = telemetry_client_setup["host_url"]
@@ -239,7 +239,7 @@ class TestTelemetryClient:
         
         executor.submit.assert_called_once()
         args, kwargs = executor.submit.call_args
-        assert args[0] == requests.post
+        assert args[0] == unauthenticated_client._session.post
         assert kwargs["timeout"] == 10
         assert "Authorization" not in kwargs["headers"]  # No auth header
         assert kwargs["headers"]["Accept"] == "application/json"
@@ -330,7 +330,6 @@ class TestTelemetryClient:
 
         with pytest.raises(TypeError):
             TestBaseClient()  # Can't instantiate abstract class
-
 
 class TestTelemetryHelper:
     """Tests for the TelemetryHelper class."""
