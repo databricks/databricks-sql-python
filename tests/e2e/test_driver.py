@@ -368,7 +368,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_create_table_will_return_empty_result_set(self, extra_params):
@@ -581,7 +581,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_get_arrow(self, extra_params):
@@ -657,7 +657,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_can_execute_command_after_failure(self, extra_params):
@@ -682,7 +682,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_can_execute_command_after_success(self, extra_params):
@@ -709,7 +709,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_fetchone(self, extra_params):
@@ -756,7 +756,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_fetchmany_when_stride_fits(self, extra_params):
@@ -779,7 +779,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_fetchmany_in_excess(self, extra_params):
@@ -802,7 +802,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_iterator_api(self, extra_params):
@@ -890,7 +890,7 @@ class TestPySQLCoreSuite(
             },
             {
                 "use_sea": True,
-            }
+            },
         ],
     )
     def test_multi_timestamps_arrow(self, extra_params):

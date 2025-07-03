@@ -74,13 +74,9 @@ class SeaResultSetQueueFactory(ABC):
                 raise ValueError(
                     "SEA client is required for EXTERNAL_LINKS disposition"
                 )
-            if not result_data.external_links:
-                raise ValueError(
-                    "External links are required for EXTERNAL_LINKS disposition"
-                )
 
             return SeaCloudFetchQueue(
-                initial_links=result_data.external_links,
+                initial_links=result_data.external_links or [],
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
                 sea_client=sea_client,
@@ -163,7 +159,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         initial_link = next((l for l in initial_links if l.chunk_index == 0), None)
         if not initial_link:
-            raise ValueError("No initial link found for chunk index 0")
+            return
 
         self.download_manager = ResultFileDownloadManager(
             links=[],
