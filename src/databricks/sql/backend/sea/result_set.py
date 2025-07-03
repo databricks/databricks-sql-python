@@ -60,6 +60,7 @@ class SeaResultSet(ResultSet):
             result_data,
             self.manifest,
             statement_id,
+            ssl_options=connection.session.ssl_options,
             description=execute_response.description,
             max_download_threads=sea_client.max_download_threads,
             sea_client=sea_client,

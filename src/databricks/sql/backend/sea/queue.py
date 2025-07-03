@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC
 from typing import List, Optional, Tuple, Union
 
+from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
+
 try:
     import pyarrow
 except ImportError:
@@ -33,6 +35,7 @@ class SeaResultSetQueueFactory(ABC):
         sea_result_data: ResultData,
         manifest: ResultManifest,
         statement_id: str,
+        ssl_options: Optional[SSLOptions] = None,
         description: List[Tuple] = [],
         max_download_threads: Optional[int] = None,
         sea_client: Optional[SeaDatabricksClient] = None,
