@@ -156,7 +156,6 @@ class TelemetryClient(BaseTelemetryClient):
     # Telemetry endpoint paths
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
-    DEFAULT_BATCH_SIZE = 10
 
     def __init__(
         self,
@@ -168,7 +167,7 @@ class TelemetryClient(BaseTelemetryClient):
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
-        self._batch_size = self.DEFAULT_BATCH_SIZE  # TODO: Decide on batch size
+        self._batch_size = 10  # TODO: Decide on batch size
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
@@ -403,7 +402,7 @@ class TelemetryClientFactory:
             if session_id_hex in TelemetryClientFactory._clients:
                 return TelemetryClientFactory._clients[session_id_hex]
             else:
-                logger.error(
+                logger.debug(
                     "Telemetry client not initialized for connection %s",
                     session_id_hex,
                 )
