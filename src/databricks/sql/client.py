@@ -213,6 +213,11 @@ class Connection:
         # (True by default)
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
+        # _arrow_pandas_type_override
+        # Override the default pandas dtype mapping for Arrow types.
+        # This is a dictionary of Arrow types to pandas dtypes.
+        # _arrow_to_pandas_kwargs
+        # Additional or modified arguments to pass to pandas.DataFrame constructor.
 
         logger.debug(
             "Connection.__init__(server_hostname=%s, http_path=%s)",
@@ -229,6 +234,8 @@ class Connection:
         self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
+        self._arrow_pandas_type_override = kwargs.get("_arrow_pandas_type_override", {})
+        self._arrow_to_pandas_kwargs = kwargs.get("_arrow_to_pandas_kwargs", {})
 
         auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
@@ -1319,7 +1326,9 @@ class ResultSet:
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
         # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
+        DEFAULT_DTYPE_MAPPING: Dict[
+            pyarrow.DataType, pandas.api.extensions.ExtensionDtype
+        ] = {
             pyarrow.int8(): pandas.Int8Dtype(),
             pyarrow.int16(): pandas.Int16Dtype(),
             pyarrow.int32(): pandas.Int32Dtype(),
@@ -1334,13 +1343,35 @@ class ResultSet:
             pyarrow.string(): pandas.StringDtype(),
         }
 
+        arrow_pandas_type_override = self.connection._arrow_pandas_type_override
+        if not isinstance(arrow_pandas_type_override, dict):
+            logger.debug(
+                "_arrow_pandas_type_override on connection was not a dict, using default type mapping"
+            )
+            arrow_pandas_type_override = {}
+
+        dtype_mapping = {
+            **DEFAULT_DTYPE_MAPPING,
+            **arrow_pandas_type_override,
+        }
+
+        to_pandas_kwargs: dict[str, Any] = {
+            "types_mapper": dtype_mapping.get,
+            "date_as_object": True,
+            "timestamp_as_object": True,
+        }
+
+        arrow_to_pandas_kwargs = self.connection._arrow_to_pandas_kwargs
+        if isinstance(arrow_to_pandas_kwargs, dict):
+            to_pandas_kwargs.update(arrow_to_pandas_kwargs)
+        else:
+            logger.debug(
+                "_arrow_to_pandas_kwargs on connection was not a dict, using default arguments"
+            )
+
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
+        df = table_renamed.to_pandas(**to_pandas_kwargs)
 
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
