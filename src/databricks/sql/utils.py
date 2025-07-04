@@ -281,7 +281,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             logger.info(
-                "SeaCloudFetchQueue: Slicing table from index {} for {} rows (table has {} rows total)".format(
+                "CloudFetchQueue: Slicing table from index {} for {} rows (table has {} rows total)".format(
                     self.table_row_index, length, self.table.num_rows
                 )
             )
@@ -290,7 +290,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             # Concatenate results if we have any
             if results.num_rows > 0:
                 logger.info(
-                    "SeaCloudFetchQueue: Concatenating {} rows to existing {} rows".format(
+                    "CloudFetchQueue: Concatenating {} rows to existing {} rows".format(
                         table_slice.num_rows, results.num_rows
                     )
                 )
@@ -302,7 +302,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             rows_fetched += table_slice.num_rows
 
             logger.info(
-                "SeaCloudFetchQueue: After slice, table_row_index={}, rows_fetched={}".format(
+                "CloudFetchQueue: After slice, table_row_index={}, rows_fetched={}".format(
                     self.table_row_index, rows_fetched
                 )
             )
@@ -310,14 +310,14 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             # Replace current table with the next table if we are at the end of the current table
             if self.table_row_index == self.table.num_rows:
                 logger.info(
-                    "SeaCloudFetchQueue: Reached end of current table, fetching next"
+                    "CloudFetchQueue: Reached end of current table, fetching next"
                 )
                 self.table = self._create_next_table()
                 self.table_row_index = 0
 
             num_rows -= table_slice.num_rows
 
-        logger.info("SeaCloudFetchQueue: Retrieved {} rows".format(results.num_rows))
+        logger.info("CloudFetchQueue: Retrieved {} rows".format(results.num_rows))
         return results
 
     def _create_empty_table(self) -> "pyarrow.Table":
@@ -330,7 +330,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         """Create next table by retrieving the logical next downloaded file."""
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
         if not self.download_manager:
-            logger.debug("ThriftCloudFetchQueue: No download manager available")
+            logger.debug("CloudFetchQueue: No download manager available")
             return None
 
         downloaded_file = self.download_manager.get_next_downloaded_file(offset)
