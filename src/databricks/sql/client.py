@@ -1505,6 +1505,7 @@ class ResultSet:
                 and self.connection.open
             ):
                 self.thrift_backend.close_command(self.command_id)
+                self.results.close()
         except RequestError as e:
             if isinstance(e.args[1], CursorAlreadyClosedError):
                 logger.info("Operation was canceled by a prior request")
