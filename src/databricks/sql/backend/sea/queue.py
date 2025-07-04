@@ -130,7 +130,8 @@ class LinkFetcher:
         self._map_lock = threading.Lock()
         self.chunk_index_to_link: Dict[int, "ExternalLink"] = {}
 
-    def _set_current_chunk_link(self, link: "ExternalLink"):
+    def _set_current_chunk_link(self):
+        link = self._current_chunk_link
         with self._map_lock:
             self.chunk_index_to_link[link.chunk_index] = link
 
