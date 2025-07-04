@@ -170,7 +170,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Track the current chunk we're processing
         self._current_chunk_link: Optional["ExternalLink"] = initial_link
-        self._download_current_link()
 
         # Initialize table and position
         self.table = self._create_next_table()
@@ -187,18 +186,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             startRowOffset=link.row_offset,
             httpHeaders=link.http_headers or {},
         )
-
-    def _download_current_link(self):
-        """Download the current chunk link."""
-        if not self._current_chunk_link:
-            return None
-
-        if not self.download_manager:
-            logger.debug("SeaCloudFetchQueue: No download manager, returning")
-            return None
-
-        thrift_link = self._convert_to_thrift_link(self._current_chunk_link)
-        self.download_manager.add_link(thrift_link)
 
     def _progress_chunk_link(self):
         """Progress to the next chunk link."""
@@ -221,18 +208,25 @@ class SeaCloudFetchQueue(CloudFetchQueue):
                     next_chunk_index, e
                 )
             )
+            self._current_chunk_link = None
             return None
 
         logger.debug(
             f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
         )
-        self._download_current_link()
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
         if not self._current_chunk_link:
             logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
             return None
+
+        if not self.download_manager:
+            logger.debug("SeaCloudFetchQueue: No download manager, returning")
+            return None
+
+        thrift_link = self._convert_to_thrift_link(self._current_chunk_link)
+        self.download_manager.add_link(thrift_link)
 
         row_offset = self._current_chunk_link.row_offset
         arrow_table = self._create_table_at_offset(row_offset)

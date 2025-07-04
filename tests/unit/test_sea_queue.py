@@ -488,76 +488,6 @@ class TestSeaCloudFetchQueue:
         mock_download_manager_class.assert_not_called()
 
     @patch("databricks.sql.backend.sea.queue.logger")
-    def test_download_current_link_no_current_link(self, mock_logger):
-        """Test _download_current_link with no current link."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = None
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._download_current_link(queue)
-
-        # Verify the result is None
-        assert result is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_download_current_link_no_download_manager(
-        self, mock_logger, mock_sea_client, ssl_options
-    ):
-        """Test _download_current_link with no download manager."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=0,
-            chunk_index=0,
-            next_chunk_index=1,
-            http_headers={"Authorization": "Bearer token123"},
-        )
-        queue.download_manager = None
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._download_current_link(queue)
-
-        # Verify debug message was logged
-        mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: No download manager, returning"
-        )
-
-        # Verify the result is None
-        assert result is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_download_current_link_success(self, mock_logger):
-        """Test _download_current_link with successful download."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=0,
-            chunk_index=0,
-            next_chunk_index=1,
-            http_headers={"Authorization": "Bearer token123"},
-        )
-        queue.download_manager = Mock()
-
-        # Mock the _convert_to_thrift_link method
-        mock_thrift_link = Mock()
-        queue._convert_to_thrift_link = Mock(return_value=mock_thrift_link)
-
-        # Call the method directly
-        SeaCloudFetchQueue._download_current_link(queue)
-
-        # Verify the download manager add_link was called
-        queue.download_manager.add_link.assert_called_once_with(mock_thrift_link)
-
-    @patch("databricks.sql.backend.sea.queue.logger")
     def test_progress_chunk_link_no_current_link(self, mock_logger):
         """Test _progress_chunk_link with no current link."""
         # Create a queue instance without initializing
@@ -610,7 +540,6 @@ class TestSeaCloudFetchQueue:
         )
         queue._sea_client = mock_sea_client
         queue._statement_id = "test-statement-123"
-        queue._download_current_link = Mock()
 
         # Setup the mock client to return a new link
         next_link = ExternalLink(
@@ -635,9 +564,6 @@ class TestSeaCloudFetchQueue:
         mock_logger.debug.assert_called_with(
             f"SeaCloudFetchQueue: Progressed to link for chunk 1: {next_link}"
         )
-
-        # Verify _download_current_link was called
-        queue._download_current_link.assert_called_once()
 
     @patch("databricks.sql.backend.sea.queue.logger")
     def test_progress_chunk_link_error(self, mock_logger, mock_sea_client):
@@ -710,6 +636,7 @@ class TestSeaCloudFetchQueue:
             next_chunk_index=1,
             http_headers={"Authorization": "Bearer token123"},
         )
+        queue.download_manager = Mock()
 
         # Mock the dependencies
         mock_table = Mock()

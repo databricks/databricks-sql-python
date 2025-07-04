@@ -237,7 +237,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.table = None
         self.table_row_index = 0
 
-        # Initialize download manager - will be set by subclasses
+        # Initialize download manager
         self.download_manager: Optional["ResultFileDownloadManager"] = None
 
     def remaining_rows(self) -> "pyarrow.Table":
