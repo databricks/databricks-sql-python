@@ -1,6 +1,5 @@
 import unittest
 import pytest
-from typing import Optional
 from unittest.mock import patch, MagicMock
 import jwt
 from databricks.sql.auth.auth import (
@@ -10,7 +9,6 @@ from databricks.sql.auth.auth import (
     AuthType,
 )
 import time
-from datetime import datetime, timedelta
 from databricks.sql.auth.auth import (
     get_python_sql_connector_auth_provider,
     PYSQL_OAUTH_CLIENT_ID,

@@ -4,6 +4,12 @@ from urllib3.util.retry import Retry
 from enum import Enum
 import threading
 from dataclasses import dataclass
+from contextlib import contextmanager
+from typing import Generator
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # Enums for HTTP Methods
 class HttpMethod(str, Enum):
@@ -56,10 +62,19 @@ class DatabricksHttpClient:
                 if cls._instance is None:
                     cls._instance = DatabricksHttpClient()
         return cls._instance
-
-    def execute(self, method: HttpMethod, url: str, **kwargs) -> requests.Response:
-        with self.session.request(method.value, url, **kwargs) as response:
-            return response
+    
+    @contextmanager
+    def execute(self, method: HttpMethod, url: str, **kwargs) -> Generator[requests.Response, None, None]:
+        response = None
+        try:
+            response = self.session.request(method.value, url, **kwargs)
+            yield response
+        except Exception as e:
+            logger.error(f"Error executing HTTP request in DatabricksHttpClient: {e}")
+            raise e
+        finally:
+            if response is not None:
+                response.close()
 
     def close(self):
         self.session.close()

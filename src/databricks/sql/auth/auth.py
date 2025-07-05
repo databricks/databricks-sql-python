@@ -116,9 +116,7 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
     client_id = kwargs.get("oauth_client_id")
     redirect_port_range = kwargs.get("oauth_redirect_port_range")
 
-    if auth_type == AuthType.AZURE_SP_M2M.value:
-        pass
-    else:
+    if auth_type != AuthType.AZURE_SP_M2M.value:
         (client_id, redirect_port_range) = get_client_id_and_redirect_port(
             auth_type == AuthType.AZURE_OAUTH.value
         )
@@ -140,7 +138,7 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         azure_tenant_id=kwargs.get("azure_tenant_id"),
         azure_workspace_resource_id=kwargs.get("azure_workspace_resource_id"),
         oauth_redirect_port_range=[kwargs["oauth_redirect_port"]]
-        if client_id and kwargs.get("oauth_redirect_port")
+        if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
         else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),

@@ -39,7 +39,7 @@ class Token:
         self.token_type = token_type
         self.refresh_token = refresh_token
 
-    def is_expired(self):
+    def is_expired(self) -> bool:
         try:
             decoded_token = jwt.decode(
                 self.access_token, options={"verify_signature": False}
@@ -50,7 +50,7 @@ class Token:
             return exp_time and (exp_time - buffer_time) <= current_time
         except Exception as e:
             logger.error("Failed to decode token: %s", e)
-            return e
+            raise e
 
 
 class RefreshableTokenSource(ABC):
@@ -347,18 +347,17 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
             }
         )
 
-        response = self._http_client.execute(
+        with self._http_client.execute(
             method=HttpMethod.POST, url=self.token_url, headers=headers, data=data
-        )
-
-        if response.status_code == 200:
-            oauth_response = OAuthResponse(**response.json())
-            return Token(
-                oauth_response.access_token,
-                oauth_response.token_type,
-                oauth_response.refresh_token,
-            )
-        else:
-            raise Exception(
-                f"Failed to get token: {response.status_code} {response.text}"
-            )
+        ) as response:
+            if response.status_code == 200:
+                oauth_response = OAuthResponse(**response.json())
+                return Token(
+                    oauth_response.access_token,
+                    oauth_response.token_type,
+                    oauth_response.refresh_token,
+                )
+            else:
+                raise Exception(
+                    f"Failed to get token: {response.status_code} {response.text}"
+                )

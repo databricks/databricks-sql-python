@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 from databricks.sql.common.http import HttpHeader
 from databricks.sql.auth.oauth import (
     OAuthManager,
@@ -9,12 +9,12 @@ from databricks.sql.auth.oauth import (
 )
 from databricks.sql.auth.endpoint import get_oauth_endpoints
 from databricks.sql.auth.common import AuthType, get_effective_azure_login_app_id
+from databricks.sdk import WorkspaceClient
 
 # Private API: this is an evolving interface and it will change in the future.
 # Please must not depend on it in your applications.
 from databricks.sql.experimental.oauth_persistence import OAuthToken, OAuthPersistence
 
-logger = logging.getLogger(__name__)
 
 
 class AuthProvider:
@@ -189,6 +189,13 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         azure_tenant_id,
         azure_workspace_resource_id=None,
     ):
+        self.workspace_api_client = WorkspaceClient(
+            host=hostname,
+            azure_workspace_resource_id=azure_workspace_resource_id,
+            azure_tenant_id=azure_tenant_id,
+            azure_client_id=oauth_client_id,
+            azure_client_secret=oauth_client_secret,
+        )
         self.hostname = hostname
         self.oauth_client_id = oauth_client_id
         self.oauth_client_secret = oauth_client_secret
@@ -207,25 +214,26 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         )
 
     def __call__(self, *args, **kwargs) -> HeaderFactory:
-        inner = self.get_token_source(
-            resource=get_effective_azure_login_app_id(self.hostname)
-        )
-        cloud = self.get_token_source(resource=self.AZURE_MANAGED_RESOURCE)
+        # inner = self.get_token_source(
+        #     resource=get_effective_azure_login_app_id(self.hostname)
+        # )
+        # cloud = self.get_token_source(resource=self.AZURE_MANAGED_RESOURCE)
 
         def header_factory() -> Dict[str, str]:
-            inner_token = inner.get_token()
-            cloud_token = cloud.get_token()
+            # inner_token = inner.get_token()
+            # cloud_token = cloud.get_token()
 
-            headers = {
-                HttpHeader.AUTHORIZATION.value: f"{inner_token.token_type} {inner_token.access_token}",
-                self.DATABRICKS_AZURE_SP_TOKEN_HEADER: cloud_token.access_token,
-            }
+            # headers = {
+            #     HttpHeader.AUTHORIZATION.value: f"{inner_token.token_type} {inner_token.access_token}",
+            #     self.DATABRICKS_AZURE_SP_TOKEN_HEADER: cloud_token.access_token,
+            # }
 
-            if self.azure_workspace_resource_id:
-                headers[
-                    self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER
-                ] = self.azure_workspace_resource_id
+            # if self.azure_workspace_resource_id:
+            #     headers[
+            #         self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER
+            #     ] = self.azure_workspace_resource_id
 
-            return headers
+            # return headers
+            return self.workspace_api_client.config.authenticate()
 
         return header_factory
