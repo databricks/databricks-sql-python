@@ -66,7 +66,7 @@ def get_effective_azure_login_app_id(hostname) -> str:
             return app_id
 
     # default databricks resource id
-    return AzureAppId.PROD.value
+    return AzureAppId.PROD.value[1]
 
 
 def get_azure_tenant_id_from_host(host: str, http_client=None) -> str:
