@@ -24,6 +24,7 @@ from databricks.sql.auth.endpoint import (
     AzureOAuthEndpointCollection,
 )
 from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
+from databricks.sql.common.http import DatabricksHttpClient
 from databricks.sql.experimental.oauth_persistence import OAuthPersistenceCache
 
 
@@ -248,8 +249,10 @@ class TestClientCredentialsTokenSource:
             assert mock_get_token.call_count == 1
 
     def test_get_token_success(self, token_source, http_response):
-        with patch.object(token_source._http_client, "execute") as mock_execute:
-            mock_execute.return_value = http_response(200)
+        databricks_http_client = DatabricksHttpClient.get_instance()
+        with patch.object(
+            databricks_http_client.session, "request", return_value=http_response(200)
+        ) as mock_request:
             token = token_source.get_token()
 
             # Assert
@@ -259,8 +262,10 @@ class TestClientCredentialsTokenSource:
             assert token.refresh_token is None
 
     def test_get_token_failure(self, token_source, http_response):
-        with patch.object(token_source._http_client, "execute") as mock_execute:
-            mock_execute.return_value = http_response(400)
+        databricks_http_client = DatabricksHttpClient.get_instance()
+        with patch.object(
+            databricks_http_client.session, "request", return_value=http_response(400)
+        ) as mock_request:
             with pytest.raises(Exception) as e:
                 token_source.get_token()
             assert "Failed to get token: 400" in str(e.value)
