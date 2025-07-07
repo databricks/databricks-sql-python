@@ -23,12 +23,20 @@ class TestSeaResultSet:
         """Create a mock connection."""
         connection = Mock()
         connection.open = True
-        return connection
 
-    @pytest.fixture
-    def mock_sea_client(self):
-        """Create a mock SEA client."""
-        return Mock()
+        # Mock the session.backend to return a SeaDatabricksClient
+        mock_session = Mock()
+        from databricks.sql.backend.sea.backend import SeaDatabricksClient
+
+        mock_backend = Mock(spec=SeaDatabricksClient)
+        mock_backend.max_download_threads = 10
+        mock_backend.close_command = Mock()
+        # Ensure isinstance check passes
+        mock_backend.__class__ = SeaDatabricksClient
+        mock_session.backend = mock_backend
+        connection.session = mock_session
+
+        return connection
 
     @pytest.fixture
     def execute_response(self):
@@ -71,9 +79,7 @@ class TestSeaResultSet:
         )
 
     @pytest.fixture
-    def result_set_with_data(
-        self, mock_connection, mock_sea_client, execute_response, sample_data
-    ):
+    def result_set_with_data(self, mock_connection, execute_response, sample_data):
         """Create a SeaResultSet with sample data."""
         # Create ResultData with inline data
         result_data = ResultData(
@@ -84,7 +90,6 @@ class TestSeaResultSet:
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
-            sea_client=mock_sea_client,
             result_data=result_data,
             manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
@@ -99,14 +104,11 @@ class TestSeaResultSet:
         """Create a JsonQueue with sample data."""
         return JsonQueue(sample_data)
 
-    def test_init_with_execute_response(
-        self, mock_connection, mock_sea_client, execute_response
-    ):
+    def test_init_with_execute_response(self, mock_connection, execute_response):
         """Test initializing SeaResultSet with an execute response."""
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
-            sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
             manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
@@ -117,17 +119,15 @@ class TestSeaResultSet:
         assert result_set.command_id == execute_response.command_id
         assert result_set.status == CommandState.SUCCEEDED
         assert result_set.connection == mock_connection
-        assert result_set.backend == mock_sea_client
         assert result_set.buffer_size_bytes == 1000
         assert result_set.arraysize == 100
         assert result_set.description == execute_response.description
 
-    def test_close(self, mock_connection, mock_sea_client, execute_response):
+    def test_close(self, mock_connection, execute_response):
         """Test closing a result set."""
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
-            sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
             manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
@@ -138,18 +138,19 @@ class TestSeaResultSet:
         result_set.close()
 
         # Verify the backend's close_command was called
-        mock_sea_client.close_command.assert_called_once_with(result_set.command_id)
+        mock_connection.session.backend.close_command.assert_called_once_with(
+            result_set.command_id
+        )
         assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
     def test_close_when_already_closed_server_side(
-        self, mock_connection, mock_sea_client, execute_response
+        self, mock_connection, execute_response
     ):
         """Test closing a result set that has already been closed server-side."""
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
-            sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
             manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
@@ -161,19 +162,16 @@ class TestSeaResultSet:
         result_set.close()
 
         # Verify the backend's close_command was NOT called
-        mock_sea_client.close_command.assert_not_called()
+        mock_connection.session.backend.close_command.assert_not_called()
         assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
-    def test_close_when_connection_closed(
-        self, mock_connection, mock_sea_client, execute_response
-    ):
+    def test_close_when_connection_closed(self, mock_connection, execute_response):
         """Test closing a result set when the connection is closed."""
         mock_connection.open = False
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
-            sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
             manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,
@@ -184,7 +182,7 @@ class TestSeaResultSet:
         result_set.close()
 
         # Verify the backend's close_command was NOT called
-        mock_sea_client.close_command.assert_not_called()
+        mock_connection.session.backend.close_command.assert_not_called()
         assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
@@ -316,7 +314,7 @@ class TestSeaResultSet:
         assert rows[0].col3 is True
 
     def test_fetchmany_arrow_not_implemented(
-        self, mock_connection, mock_sea_client, execute_response, sample_data
+        self, mock_connection, execute_response, sample_data
     ):
         """Test that fetchmany_arrow raises NotImplementedError for non-JSON data."""
 
@@ -329,7 +327,6 @@ class TestSeaResultSet:
             result_set = SeaResultSet(
                 connection=mock_connection,
                 execute_response=execute_response,
-                sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
                 manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
                 buffer_size_bytes=1000,
@@ -337,7 +334,7 @@ class TestSeaResultSet:
             )
 
     def test_fetchall_arrow_not_implemented(
-        self, mock_connection, mock_sea_client, execute_response, sample_data
+        self, mock_connection, execute_response, sample_data
     ):
         """Test that fetchall_arrow raises NotImplementedError for non-JSON data."""
         # Test that NotImplementedError is raised
@@ -349,16 +346,13 @@ class TestSeaResultSet:
             result_set = SeaResultSet(
                 connection=mock_connection,
                 execute_response=execute_response,
-                sea_client=mock_sea_client,
                 result_data=ResultData(data=None, external_links=[]),
                 manifest=self._create_empty_manifest(ResultFormat.ARROW_STREAM),
                 buffer_size_bytes=1000,
                 arraysize=100,
             )
 
-    def test_is_staging_operation(
-        self, mock_connection, mock_sea_client, execute_response
-    ):
+    def test_is_staging_operation(self, mock_connection, execute_response):
         """Test the is_staging_operation property."""
         # Set is_staging_operation to True
         execute_response.is_staging_operation = True
@@ -367,7 +361,6 @@ class TestSeaResultSet:
         result_set = SeaResultSet(
             connection=mock_connection,
             execute_response=execute_response,
-            sea_client=mock_sea_client,
             result_data=ResultData(data=[]),
             manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
             buffer_size_bytes=1000,

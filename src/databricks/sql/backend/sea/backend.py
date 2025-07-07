@@ -620,7 +620,6 @@ class SeaDatabricksClient(DatabricksClient):
         return SeaResultSet(
             connection=cursor.connection,
             execute_response=execute_response,
-            sea_client=self,
             result_data=response.result,
             manifest=response.manifest,
             buffer_size_bytes=cursor.buffer_size_bytes,

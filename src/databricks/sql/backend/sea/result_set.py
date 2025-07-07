@@ -31,7 +31,6 @@ class SeaResultSet(ResultSet):
         self,
         connection: Connection,
         execute_response: ExecuteResponse,
-        sea_client: SeaDatabricksClient,
         result_data: ResultData,
         manifest: ResultManifest,
         buffer_size_bytes: int = 104857600,
@@ -43,7 +42,6 @@ class SeaResultSet(ResultSet):
         Args:
             connection: The parent connection
             execute_response: Response from the execute command
-            sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             result_data: Result data from SEA response
@@ -56,31 +54,37 @@ class SeaResultSet(ResultSet):
         if statement_id is None:
             raise ValueError("Command ID is not a SEA statement ID")
 
-        results_queue = SeaResultSetQueueFactory.build_queue(
-            result_data,
-            self.manifest,
-            statement_id,
-            description=execute_response.description,
-            max_download_threads=sea_client.max_download_threads,
-            sea_client=sea_client,
-            lz4_compressed=execute_response.lz4_compressed,
-        )
-
         # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
-            backend=sea_client,
             arraysize=arraysize,
             buffer_size_bytes=buffer_size_bytes,
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
+
+        # Assert that the backend is of the correct type
+        assert isinstance(
+            self.backend, SeaDatabricksClient
+        ), "Backend must be a SeaDatabricksClient"
+
+        results_queue = SeaResultSetQueueFactory.build_queue(
+            result_data,
+            self.manifest,
+            statement_id,
+            description=execute_response.description,
+            max_download_threads=self.backend.max_download_threads,
+            sea_client=self.backend,
+            lz4_compressed=execute_response.lz4_compressed,
+        )
+
+        # Set the results queue
+        self.results = results_queue
 
     def _convert_json_types(self, row: List[str]) -> List[Any]:
         """
@@ -160,6 +164,9 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         results = self.results.next_n_rows(size)
         self._next_row_index += len(results)
 
@@ -172,6 +179,9 @@ class SeaResultSet(ResultSet):
         Returns:
             Columnar table containing all remaining rows
         """
+
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
 
         results = self.results.remaining_rows()
         self._next_row_index += len(results)

@@ -68,12 +68,20 @@ class TestSeaBackend:
         return CommandId.from_sea_statement_id("test-statement-123")
 
     @pytest.fixture
-    def mock_cursor(self):
+    def mock_cursor(self, sea_client):
         """Create a mock cursor."""
         cursor = Mock()
         cursor.active_command_id = None
         cursor.buffer_size_bytes = 1000
         cursor.arraysize = 100
+
+        # Set up a mock connection with session.backend pointing to the sea_client
+        mock_connection = Mock()
+        mock_session = Mock()
+        mock_session.backend = sea_client
+        mock_connection.session = mock_session
+        cursor.connection = mock_connection
+
         return cursor
 
     @pytest.fixture

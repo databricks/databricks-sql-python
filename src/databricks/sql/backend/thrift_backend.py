@@ -856,7 +856,6 @@ class ThriftDatabricksClient(DatabricksClient):
         return ThriftResultSet(
             connection=cursor.connection,
             execute_response=execute_response,
-            thrift_client=self,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
@@ -987,7 +986,6 @@ class ThriftDatabricksClient(DatabricksClient):
             return ThriftResultSet(
                 connection=cursor.connection,
                 execute_response=execute_response,
-                thrift_client=self,
                 buffer_size_bytes=max_bytes,
                 arraysize=max_rows,
                 use_cloud_fetch=use_cloud_fetch,
@@ -1027,7 +1025,6 @@ class ThriftDatabricksClient(DatabricksClient):
         return ThriftResultSet(
             connection=cursor.connection,
             execute_response=execute_response,
-            thrift_client=self,
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
@@ -1071,7 +1068,6 @@ class ThriftDatabricksClient(DatabricksClient):
         return ThriftResultSet(
             connection=cursor.connection,
             execute_response=execute_response,
-            thrift_client=self,
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
@@ -1119,7 +1115,6 @@ class ThriftDatabricksClient(DatabricksClient):
         return ThriftResultSet(
             connection=cursor.connection,
             execute_response=execute_response,
-            thrift_client=self,
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
@@ -1167,7 +1162,6 @@ class ThriftDatabricksClient(DatabricksClient):
         return ThriftResultSet(
             connection=cursor.connection,
             execute_response=execute_response,
-            thrift_client=self,
             buffer_size_bytes=max_bytes,
             arraysize=max_rows,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,

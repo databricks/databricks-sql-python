@@ -12,14 +12,13 @@ from typing import (
     Optional,
     Any,
     Callable,
-    cast,
     TYPE_CHECKING,
 )
 
 if TYPE_CHECKING:
     from databricks.sql.backend.sea.result_set import SeaResultSet
 
-from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.backend.types import ExecuteResponse, CommandId, CommandState
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +44,9 @@ class ResultSetFilter:
         """
 
         # Get all remaining rows
+        if result_set.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         all_rows = result_set.results.remaining_rows()
 
         # Filter rows
@@ -79,7 +81,6 @@ class ResultSetFilter:
         filtered_result_set = SeaResultSet(
             connection=result_set.connection,
             execute_response=execute_response,
-            sea_client=cast(SeaDatabricksClient, result_set.backend),
             result_data=result_data,
             manifest=manifest,
             buffer_size_bytes=result_set.buffer_size_bytes,

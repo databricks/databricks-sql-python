@@ -118,7 +118,6 @@ class ClientTestSuite(unittest.TestCase):
                 real_result_set = ThriftResultSet(
                     connection=connection,
                     execute_response=mock_execute_response,
-                    thrift_client=mock_backend,
                 )
 
                 # Verify initial state
@@ -185,18 +184,23 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
-        mock_backend = Mock()
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+
+        mock_backend = Mock(spec=ThriftDatabricksClient)
         mock_backend.fetch_results.return_value = (Mock(), False)
+        # Ensure isinstance check passes
+        mock_backend.__class__ = ThriftDatabricksClient
+
+        # Setup session mock on the mock_connection
+        mock_session = Mock()
+        mock_session.open = False
+        mock_session.backend = mock_backend
+        type(mock_connection).session = PropertyMock(return_value=mock_session)
 
         result_set = ThriftResultSet(
             connection=mock_connection,
             execute_response=Mock(),
-            thrift_client=mock_backend,
         )
-        # Setup session mock on the mock_connection
-        mock_session = Mock()
-        mock_session.open = False
-        type(mock_connection).session = PropertyMock(return_value=mock_session)
 
         result_set.close()
 
@@ -207,15 +211,21 @@ class ClientTestSuite(unittest.TestCase):
         mock_results_response = Mock()
         mock_results_response.has_been_closed_server_side = False
         mock_connection = Mock()
-        mock_thrift_backend = Mock()
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
+        # Ensure isinstance check passes
+        mock_thrift_backend.__class__ = ThriftDatabricksClient
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = True
+        mock_session.backend = mock_thrift_backend
         type(mock_connection).session = PropertyMock(return_value=mock_session)
 
         mock_thrift_backend.fetch_results.return_value = (Mock(), False)
         result_set = ThriftResultSet(
-            mock_connection, mock_results_response, mock_thrift_backend
+            mock_connection,
+            mock_results_response,
         )
 
         result_set.close()
@@ -258,10 +268,20 @@ class ClientTestSuite(unittest.TestCase):
             self.assertIn("closed", e.msg)
 
     def test_negative_fetch_throws_exception(self):
-        mock_backend = Mock()
-        mock_backend.fetch_results.return_value = (Mock(), False)
+        mock_connection = Mock()
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 
-        result_set = ThriftResultSet(Mock(), Mock(), mock_backend)
+        mock_backend = Mock(spec=ThriftDatabricksClient)
+        mock_backend.fetch_results.return_value = (Mock(), False)
+        # Ensure isinstance check passes
+        mock_backend.__class__ = ThriftDatabricksClient
+
+        # Setup session mock on the mock_connection
+        mock_session = Mock()
+        mock_session.backend = mock_backend
+        type(mock_connection).session = PropertyMock(return_value=mock_session)
+
+        result_set = ThriftResultSet(mock_connection, Mock())
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
