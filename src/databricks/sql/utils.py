@@ -255,19 +255,12 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
-
         results = self.table.slice(0, 0)
-
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-
-            # Concatenate results if we have any
-            if results.num_rows > 0:
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
+            results = pyarrow.concat_tables([results, table_slice])
 
             self.table_row_index += table_slice.num_rows
 
@@ -275,7 +268,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             if self.table_row_index == self.table.num_rows:
                 self.table = self._create_next_table()
                 self.table_row_index = 0
-
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
@@ -288,31 +280,22 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
 
-        results = pyarrow.Table.from_pydict({})  # Empty table
+        results = self.table.slice(0, 0)
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            if results.num_rows > 0:
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
+            results = pyarrow.concat_tables([results, table_slice])
 
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
-
         return results
-
-    def _create_empty_table(self) -> "pyarrow.Table":
-        """Create a 0-row table with just the schema bytes."""
-        if not self.schema_bytes:
-            return pyarrow.Table.from_pydict({})
-        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
@@ -323,6 +306,9 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
         downloaded_file = self.download_manager.get_next_downloaded_file(offset)
         if not downloaded_file:
+            logger.debug(
+                "CloudFetchQueue: Cannot find downloaded file for row {}".format(offset)
+            )
             # None signals no more Arrow tables can be built from the remaining handlers if any remain
             return None
 
@@ -344,6 +330,12 @@ class CloudFetchQueue(ResultSetQueue, ABC):
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
         pass
+
+    def _create_empty_table(self) -> "pyarrow.Table":
+        """Create a 0-row table with just the schema bytes."""
+        if not self.schema_bytes:
+            return pyarrow.Table.from_pydict({})
+        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
 
 class ThriftCloudFetchQueue(CloudFetchQueue):
