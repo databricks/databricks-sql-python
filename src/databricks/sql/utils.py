@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Union
 
 from dateutil import parser
 import datetime
@@ -9,14 +9,10 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Dict, List, Optional, Tuple, Union, Sequence
 import re
 
-import dateutil
 import lz4.frame
-
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:
     import pyarrow
@@ -24,7 +20,6 @@ except ImportError:
     pyarrow = None
 
 from databricks.sql import OperationalError
-from databricks.sql.exc import ProgrammingError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
@@ -32,11 +27,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.sea.models.base import (
-    ResultData,
-    ExternalLink,
-    ResultManifest,
-)
+
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 import logging
