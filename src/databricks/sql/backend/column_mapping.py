@@ -18,16 +18,19 @@ class MetadataOp(Enum):
 
 
 # Mappings from column names to standard column names
-CATALOG_OP = {
+# ref: CATALOG_COLUMNS in JDBC: https://github.com/databricks/databricks-jdbc/blob/e3d0d8dad683146a3afc3d501ddf0864ba086309/src/main/java/com/databricks/jdbc/common/MetadataResultConstants.java#L219
+CATALOG_COLUMNS = {
     "catalog": "TABLE_CAT",
 }
 
-SCHEMA_OP = {
+# ref: SCHEMA_COLUMNS in JDBC: https://github.com/databricks/databricks-jdbc/blob/e3d0d8dad683146a3afc3d501ddf0864ba086309/src/main/java/com/databricks/jdbc/common/MetadataResultConstants.java#L221
+SCHEMA_COLUMNS = {
     "databaseName": "TABLE_SCHEM",
     "catalogName": "TABLE_CATALOG",
 }
 
-TABLE_OP = {
+# ref: TABLE_COLUMNS in JDBC: https://github.com/databricks/databricks-jdbc/blob/e3d0d8dad683146a3afc3d501ddf0864ba086309/src/main/java/com/databricks/jdbc/common/MetadataResultConstants.java#L224
+TABLE_COLUMNS = {
     "catalogName": "TABLE_CAT",
     "namespace": "TABLE_SCHEM",
     "tableName": "TABLE_NAME",
@@ -40,29 +43,30 @@ TABLE_OP = {
     "REF_GENERATION_COLUMN": "REF_GENERATION",
 }
 
-COLUMN_OP = {
+# ref: COLUMN_COLUMNS in JDBC: https://github.com/databricks/databricks-jdbc/blob/e3d0d8dad683146a3afc3d501ddf0864ba086309/src/main/java/com/databricks/jdbc/common/MetadataResultConstants.java#L192
+COLUMN_COLUMNS = {
     "catalogName": "TABLE_CAT",
     "namespace": "TABLE_SCHEM",
     "tableName": "TABLE_NAME",
-    "columnName": "COLUMN_NAME",
+    "col_name": "COLUMN_NAME",
     "dataType": "DATA_TYPE",
     "columnType": "TYPE_NAME",
     "columnSize": "COLUMN_SIZE",
     "bufferLength": "BUFFER_LENGTH",
     "decimalDigits": "DECIMAL_DIGITS",
     "radix": "NUM_PREC_RADIX",
-    "nullable": "NULLABLE",
+    "Nullable": "NULLABLE",
     "remarks": "REMARKS",
-    "columnDef": "COLUMN_DEF",
-    "sqlDataType": "SQL_DATA_TYPE",
-    "sqlDatetimeSub": "SQL_DATETIME_SUB",
-    "charOctetLength": "CHAR_OCTET_LENGTH",
+    "columnType": "COLUMN_DEF",
+    "SQLDataType": "SQL_DATA_TYPE",
+    "SQLDatetimeSub": "SQL_DATETIME_SUB",
+    "CharOctetLength": "CHAR_OCTET_LENGTH",
     "ordinalPosition": "ORDINAL_POSITION",
     "isNullable": "IS_NULLABLE",
-    "scopeCatalog": "SCOPE_CATALOG",
-    "scopeSchema": "SCOPE_SCHEMA",
-    "scopeTable": "SCOPE_TABLE",
-    "sourceDataType": "SOURCE_DATA_TYPE",
+    "ScopeCatalog": "SCOPE_CATALOG",
+    "ScopeSchema": "SCOPE_SCHEMA",
+    "ScopeTable": "SCOPE_TABLE",
+    "SourceDataType": "SOURCE_DATA_TYPE",
     "isAutoIncrement": "IS_AUTOINCREMENT",
     "isGenerated": "IS_GENERATEDCOLUMN",
 }
@@ -81,13 +85,13 @@ def normalise_metadata_result(result_set, operation: MetadataOp):
     # Select the appropriate mapping based on the operation
     mapping = None
     if operation == MetadataOp.CATALOGS:
-        mapping = CATALOG_OP
+        mapping = CATALOG_COLUMNS
     elif operation == MetadataOp.SCHEMAS:
-        mapping = SCHEMA_OP
+        mapping = SCHEMA_COLUMNS
     elif operation == MetadataOp.TABLES:
-        mapping = TABLE_OP
+        mapping = TABLE_COLUMNS
     elif operation == MetadataOp.COLUMNS:
-        mapping = COLUMN_OP
+        mapping = COLUMN_COLUMNS
 
     if mapping is None:
         return
