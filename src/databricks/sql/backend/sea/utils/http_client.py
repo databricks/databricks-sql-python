@@ -220,7 +220,6 @@ class SeaHttpClient:
         method: str,
         path: str,
         data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Make an HTTP request to the SEA endpoint.
@@ -229,7 +228,6 @@ class SeaHttpClient:
             method: HTTP method (GET, POST, DELETE)
             path: API endpoint path
             data: Request payload data
-            params: Query parameters
 
         Returns:
             Dict[str, Any]: Response data parsed from JSON
@@ -237,12 +235,6 @@ class SeaHttpClient:
         Raises:
             RequestError: If the request fails after retries
         """
-
-        # Build full URL
-        if path.startswith("/"):
-            url = path
-        else:
-            url = f"/{path.lstrip('/')}"
 
         # Prepare headers
         headers = {**self.headers, **self._get_auth_headers()}
@@ -257,7 +249,7 @@ class SeaHttpClient:
         self.set_retry_command_type(command_type)
         self.start_retry_timer()
 
-        logger.debug(f"Making {method} request to {url}")
+        logger.debug(f"Making {method} request to {path}")
 
         # When v3 retries are enabled, urllib3 handles retries internally via DatabricksRetryPolicy
         # When disabled, we let exceptions bubble up (similar to Thrift backend approach)
@@ -267,7 +259,7 @@ class SeaHttpClient:
         try:
             response = self._pool.request(
                 method=method.upper(),
-                url=url,
+                url=path,
                 body=body,
                 headers=headers,
                 preload_content=False,
@@ -277,89 +269,33 @@ class SeaHttpClient:
             # MaxRetryDurationError is raised directly by DatabricksRetryPolicy
             # when duration limits are exceeded (like in test_retry_exponential_backoff)
             error_message = f"Request failed due to retry duration limit: {e}"
-            # Construct RequestError with message, context, and specific error (like Thrift backend)
+            # Construct RequestError with message, context, and specific error
             raise RequestError(error_message, None, e)
         except (SessionAlreadyClosedError, CursorAlreadyClosedError) as e:
             # These exceptions are raised by DatabricksRetryPolicy when detecting
             # "already closed" scenarios (404 responses with retry history)
             error_message = f"Request failed: {e}"
-            # Construct RequestError with proper 3-argument format (message, context, error) like Thrift backend
+            # Construct RequestError with proper 3-argument format (message, context, error)
             raise RequestError(error_message, None, e)
         except MaxRetryError as e:
             # urllib3 MaxRetryError should bubble up for redirect tests to catch
-            # Don't convert to RequestError, let the test framework handle it
             logger.error(f"SEA HTTP request failed with MaxRetryError: {e}")
             raise
         except Exception as e:
-            # Broad exception handler like Thrift backend to catch any unexpected errors
-            # (including test mocking issues like StopIteration)
             logger.error(f"SEA HTTP request failed with exception: {e}")
             error_message = f"Error during request to server. {e}"
-            # Construct RequestError with proper 3-argument format (message, context, error) like Thrift backend
+            # Construct RequestError with proper 3-argument format (message, context, error)
             raise RequestError(error_message, None, e)
 
         logger.debug(f"Response status: {response.status}")
 
         # Handle successful responses
         if 200 <= response.status < 300:
-            if response.data:
-                try:
-                    result = json.loads(response.data.decode("utf-8"))
-                    logger.debug("Successfully parsed JSON response")
-                    return result
-                except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                    logger.error(f"Failed to parse JSON response: {e}")
-                    raise RequestError(f"Invalid JSON response: {e}", e)
-            return {}
+            return response.json()
 
-        # Handle error responses
         error_message = f"SEA HTTP request failed with status {response.status}"
 
-        # Try to extract additional error details from response, but don't fail if we can't
-        error_message = self._try_add_error_details_to_message(response, error_message)
-
         raise RequestError(error_message, None)
-
-    def _try_add_error_details_to_message(self, response, error_message: str) -> str:
-        """
-        Try to extract error details from response and add to error message.
-        This method is defensive and will not raise exceptions if parsing fails.
-        It handles mock objects and malformed responses gracefully.
-        """
-        try:
-            # Check if response.data exists and is accessible
-            if not hasattr(response, "data") or response.data is None:
-                return error_message
-
-            # Try to decode the response data
-            try:
-                decoded_data = response.data.decode("utf-8")
-            except (AttributeError, UnicodeDecodeError, TypeError):
-                # response.data might be a mock object or not bytes
-                return error_message
-
-            # Ensure we have a string before attempting JSON parsing
-            if not isinstance(decoded_data, str):
-                return error_message
-
-            # Try to parse as JSON
-            try:
-                error_details = json.loads(decoded_data)
-                if isinstance(error_details, dict) and "message" in error_details:
-                    enhanced_message = f"{error_message}: {error_details['message']}"
-                    logger.error(f"Request failed: {error_details}")
-                    return enhanced_message
-            except json.JSONDecodeError:
-                # Not valid JSON, log what we can
-                logger.debug(
-                    f"Request failed with non-JSON response: {decoded_data[:200]}"
-                )
-
-        except Exception:
-            # Catch-all for any unexpected issues (e.g., mock objects with unexpected behavior)
-            logger.debug("Could not parse error response data")
-
-        return error_message
 
     def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
         """
