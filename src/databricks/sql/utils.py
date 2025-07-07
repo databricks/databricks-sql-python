@@ -227,11 +227,12 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             lz4_compressed: Whether the data is LZ4 compressed
             description: Column descriptions
         """
+
+        self.schema_bytes = schema_bytes
+        self.max_download_threads = max_download_threads
         self.lz4_compressed = lz4_compressed
         self.description = description
-        self.schema_bytes = schema_bytes
         self._ssl_options = ssl_options
-        self.max_download_threads = max_download_threads
 
         # Table state
         self.table = None
@@ -239,33 +240,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
         # Initialize download manager
         self.download_manager: Optional["ResultFileDownloadManager"] = None
-
-    def remaining_rows(self) -> "pyarrow.Table":
-        """
-        Get all remaining rows of the cloud fetch Arrow dataframes.
-
-        Returns:
-            pyarrow.Table
-        """
-        if not self.table:
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
-
-        results = pyarrow.Table.from_pydict({})  # Empty table
-        while self.table:
-            table_slice = self.table.slice(
-                self.table_row_index, self.table.num_rows - self.table_row_index
-            )
-            if results.num_rows > 0:
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
-
-            self.table_row_index += table_slice.num_rows
-            self.table = self._create_next_table()
-            self.table_row_index = 0
-
-        return results
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """Get up to the next n rows of the cloud fetch Arrow dataframes."""
@@ -318,6 +292,33 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             num_rows -= table_slice.num_rows
 
         logger.info("CloudFetchQueue: Retrieved {} rows".format(results.num_rows))
+        return results
+
+    def remaining_rows(self) -> "pyarrow.Table":
+        """
+        Get all remaining rows of the cloud fetch Arrow dataframes.
+
+        Returns:
+            pyarrow.Table
+        """
+        if not self.table:
+            # Return empty pyarrow table to cause retry of fetch
+            return self._create_empty_table()
+
+        results = pyarrow.Table.from_pydict({})  # Empty table
+        while self.table:
+            table_slice = self.table.slice(
+                self.table_row_index, self.table.num_rows - self.table_row_index
+            )
+            if results.num_rows > 0:
+                results = pyarrow.concat_tables([results, table_slice])
+            else:
+                results = table_slice
+
+            self.table_row_index += table_slice.num_rows
+            self.table = self._create_next_table()
+            self.table_row_index = 0
+
         return results
 
     def _create_empty_table(self) -> "pyarrow.Table":
