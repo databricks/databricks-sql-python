@@ -338,6 +338,11 @@ class Connection:
         row_limit: Optional[int] = None,
     ) -> "Cursor":
         """
+        Args:
+            arraysize: The maximum number of rows in direct results.
+            buffer_size_bytes: The maximum number of bytes in direct results.
+            row_limit: The maximum number of rows in the result.
+
         Return a new Cursor object using the connection.
 
         Will throw an Error if the connection has been closed.
