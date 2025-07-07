@@ -242,56 +242,43 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.download_manager: Optional["ResultFileDownloadManager"] = None
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
-        """Get up to the next n rows of the cloud fetch Arrow dataframes."""
+        """
+        Get up to the next n rows of the cloud fetch Arrow dataframes.
+
+        Args:
+            num_rows (int): Number of rows to retrieve.
+        Returns:
+            pyarrow.Table
+        """
         if not self.table:
+            logger.debug("CloudFetchQueue: no more rows available")
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
+        logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
 
-        logger.info("SeaCloudFetchQueue: Retrieving up to {} rows".format(num_rows))
-        results = pyarrow.Table.from_pydict({})  # Empty table
-        rows_fetched = 0
+        results = self.table.slice(0, 0)
 
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
-            logger.info(
-                "CloudFetchQueue: Slicing table from index {} for {} rows (table has {} rows total)".format(
-                    self.table_row_index, length, self.table.num_rows
-                )
-            )
             table_slice = self.table.slice(self.table_row_index, length)
 
             # Concatenate results if we have any
             if results.num_rows > 0:
-                logger.info(
-                    "CloudFetchQueue: Concatenating {} rows to existing {} rows".format(
-                        table_slice.num_rows, results.num_rows
-                    )
-                )
                 results = pyarrow.concat_tables([results, table_slice])
             else:
                 results = table_slice
 
             self.table_row_index += table_slice.num_rows
-            rows_fetched += table_slice.num_rows
-
-            logger.info(
-                "CloudFetchQueue: After slice, table_row_index={}, rows_fetched={}".format(
-                    self.table_row_index, rows_fetched
-                )
-            )
 
             # Replace current table with the next table if we are at the end of the current table
             if self.table_row_index == self.table.num_rows:
-                logger.info(
-                    "CloudFetchQueue: Reached end of current table, fetching next"
-                )
                 self.table = self._create_next_table()
                 self.table_row_index = 0
 
             num_rows -= table_slice.num_rows
 
-        logger.info("CloudFetchQueue: Retrieved {} rows".format(results.num_rows))
+        logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
         return results
 
     def remaining_rows(self) -> "pyarrow.Table":
