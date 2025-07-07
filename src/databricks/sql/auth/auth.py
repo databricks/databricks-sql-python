@@ -80,6 +80,8 @@ def get_client_id_and_redirect_port(use_azure_auth: bool):
 
 
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
+    # TODO : unify all the auth mechanisms with the Python SDK
+
     auth_type = kwargs.get("auth_type")
     (client_id, redirect_port_range) = get_client_id_and_redirect_port(
         auth_type == AuthType.AZURE_OAUTH.value
