@@ -335,8 +335,14 @@ class Connection:
         self,
         arraysize: int = DEFAULT_ARRAY_SIZE,
         buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+        row_limit: Optional[int] = None,
     ) -> "Cursor":
         """
+        Args:
+            arraysize: The maximum number of rows in direct results.
+            buffer_size_bytes: The maximum number of bytes in direct results.
+            row_limit: The maximum number of rows in the result.
+
         Return a new Cursor object using the connection.
 
         Will throw an Error if the connection has been closed.
@@ -349,6 +355,7 @@ class Connection:
             self.session.backend,
             arraysize=arraysize,
             result_buffer_size_bytes=buffer_size_bytes,
+            row_limit=row_limit,
         )
         self._cursors.append(cursor)
         return cursor
@@ -382,6 +389,7 @@ class Cursor:
         backend: DatabricksClient,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = DEFAULT_ARRAY_SIZE,
+        row_limit: Optional[int] = None,
     ) -> None:
         """
         These objects represent a database cursor, which is used to manage the context of a fetch
@@ -391,16 +399,18 @@ class Cursor:
         visible by other cursors or connections.
         """
 
-        self.connection = connection
-        self.rowcount = -1  # Return -1 as this is not supported
-        self.buffer_size_bytes = result_buffer_size_bytes
+        self.connection: Connection = connection
+
+        self.rowcount: int = -1  # Return -1 as this is not supported
+        self.buffer_size_bytes: int = result_buffer_size_bytes
         self.active_result_set: Union[ResultSet, None] = None
-        self.arraysize = arraysize
+        self.arraysize: int = arraysize
+        self.row_limit: Optional[int] = row_limit
         # Note that Cursor closed => active result set closed, but not vice versa
-        self.open = True
-        self.executing_command_id = None
-        self.backend = backend
-        self.active_command_id = None
+        self.open: bool = True
+        self.executing_command_id: Optional[CommandId] = None
+        self.backend: DatabricksClient = backend
+        self.active_command_id: Optional[CommandId] = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
@@ -779,6 +789,7 @@ class Cursor:
             parameters=prepared_params,
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
+            row_limit=self.row_limit,
         )
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
@@ -835,6 +846,7 @@ class Cursor:
             parameters=prepared_params,
             async_op=True,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
+            row_limit=self.row_limit,
         )
 
         return self

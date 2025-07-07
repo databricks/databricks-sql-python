@@ -4,7 +4,7 @@ import logging
 import math
 import time
 import threading
-from typing import List, Union, Any, TYPE_CHECKING
+from typing import List, Optional, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -929,6 +929,7 @@ class ThriftDatabricksClient(DatabricksClient):
         parameters=[],
         async_op=False,
         enforce_embedded_schema_correctness=False,
+        row_limit: Optional[int] = None,
     ) -> Union["ResultSet", None]:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -969,6 +970,7 @@ class ThriftDatabricksClient(DatabricksClient):
             useArrowNativeTypes=spark_arrow_types,
             parameters=parameters,
             enforceEmbeddedSchemaCorrectness=enforce_embedded_schema_correctness,
+            resultRowLimit=row_limit,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 
