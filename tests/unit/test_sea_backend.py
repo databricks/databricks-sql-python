@@ -869,10 +869,10 @@ class TestSeaBackend:
             ("catalogName", "string", None, None, None, None, True),
             ("namespace", "string", None, None, None, None, True),
             ("tableName", "string", None, None, None, None, True),
-            ("columnName", "string", None, None, None, None, True),
+            ("col_name", "string", None, None, None, None, True),
             ("columnType", "string", None, None, None, None, True),
             ("dataType", "string", None, None, None, None, True),
-            ("nullable", "string", None, None, None, None, True),
+            ("Nullable", "string", None, None, None, None, True),
             ("isNullable", "string", None, None, None, None, True),
             ("ordinalPosition", "string", None, None, None, None, True),
         ]
@@ -907,7 +907,7 @@ class TestSeaBackend:
             assert result.description[1][0] == "TABLE_SCHEM"
             assert result.description[2][0] == "TABLE_NAME"
             assert result.description[3][0] == "COLUMN_NAME"
-            assert result.description[4][0] == "TYPE_NAME"
+            assert result.description[4][0] == "COLUMN_DEF"
             assert result.description[5][0] == "DATA_TYPE"
             assert result.description[6][0] == "NULLABLE"
             assert result.description[7][0] == "IS_NULLABLE"

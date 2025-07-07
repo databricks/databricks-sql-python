@@ -44,13 +44,14 @@ TABLE_COLUMNS = {
 }
 
 # ref: COLUMN_COLUMNS in JDBC: https://github.com/databricks/databricks-jdbc/blob/e3d0d8dad683146a3afc3d501ddf0864ba086309/src/main/java/com/databricks/jdbc/common/MetadataResultConstants.java#L192
+# TYPE_NAME is not included because it is a duplicate target for columnType, and COLUMN_DEF is known to be returned by Thrift. 
+# TODO: check if TYPE_NAME is to be returned / also used by Thrift. 
 COLUMN_COLUMNS = {
     "catalogName": "TABLE_CAT",
     "namespace": "TABLE_SCHEM",
     "tableName": "TABLE_NAME",
     "col_name": "COLUMN_NAME",
     "dataType": "DATA_TYPE",
-    "columnType": "TYPE_NAME",
     "columnSize": "COLUMN_SIZE",
     "bufferLength": "BUFFER_LENGTH",
     "decimalDigits": "DECIMAL_DIGITS",

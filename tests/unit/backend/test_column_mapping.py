@@ -9,10 +9,6 @@ from enum import Enum
 from databricks.sql.backend.column_mapping import (
     normalise_metadata_result,
     MetadataOp,
-    CATALOG_OP,
-    SCHEMA_OP,
-    TABLE_OP,
-    COLUMN_OP,
 )
 
 
@@ -95,25 +91,24 @@ class TestColumnMapping:
             ("catalogName", "string", None, None, None, None, True),
             ("namespace", "string", None, None, None, None, True),
             ("tableName", "string", None, None, None, None, True),
-            ("columnName", "string", None, None, None, None, True),
+            ("col_name", "string", None, None, None, None, True),
             ("dataType", "string", None, None, None, None, True),
-            ("columnType", "string", None, None, None, None, True),
             ("columnSize", "string", None, None, None, None, True),
             ("bufferLength", "string", None, None, None, None, True),
             ("decimalDigits", "string", None, None, None, None, True),
             ("radix", "string", None, None, None, None, True),
-            ("nullable", "string", None, None, None, None, True),
+            ("Nullable", "string", None, None, None, None, True),
             ("remarks", "string", None, None, None, None, True),
-            ("columnDef", "string", None, None, None, None, True),
-            ("sqlDataType", "string", None, None, None, None, True),
-            ("sqlDatetimeSub", "string", None, None, None, None, True),
-            ("charOctetLength", "string", None, None, None, None, True),
+            ("columnType", "string", None, None, None, None, True),
+            ("SQLDataType", "string", None, None, None, None, True),
+            ("SQLDatetimeSub", "string", None, None, None, None, True),
+            ("CharOctetLength", "string", None, None, None, None, True),
             ("ordinalPosition", "string", None, None, None, None, True),
             ("isNullable", "string", None, None, None, None, True),
-            ("scopeCatalog", "string", None, None, None, None, True),
-            ("scopeSchema", "string", None, None, None, None, True),
-            ("scopeTable", "string", None, None, None, None, True),
-            ("sourceDataType", "string", None, None, None, None, True),
+            ("ScopeCatalog", "string", None, None, None, None, True),
+            ("ScopeSchema", "string", None, None, None, None, True),
+            ("ScopeTable", "string", None, None, None, None, True),
+            ("SourceDataType", "string", None, None, None, None, True),
             ("isAutoIncrement", "string", None, None, None, None, True),
             ("isGenerated", "string", None, None, None, None, True),
             ("other_column", "string", None, None, None, None, True),
@@ -128,26 +123,25 @@ class TestColumnMapping:
         assert mock_result.description[2][0] == "TABLE_NAME"
         assert mock_result.description[3][0] == "COLUMN_NAME"
         assert mock_result.description[4][0] == "DATA_TYPE"
-        assert mock_result.description[5][0] == "TYPE_NAME"
-        assert mock_result.description[6][0] == "COLUMN_SIZE"
-        assert mock_result.description[7][0] == "BUFFER_LENGTH"
-        assert mock_result.description[8][0] == "DECIMAL_DIGITS"
-        assert mock_result.description[9][0] == "NUM_PREC_RADIX"
-        assert mock_result.description[10][0] == "NULLABLE"
-        assert mock_result.description[11][0] == "REMARKS"
-        assert mock_result.description[12][0] == "COLUMN_DEF"
-        assert mock_result.description[13][0] == "SQL_DATA_TYPE"
-        assert mock_result.description[14][0] == "SQL_DATETIME_SUB"
-        assert mock_result.description[15][0] == "CHAR_OCTET_LENGTH"
-        assert mock_result.description[16][0] == "ORDINAL_POSITION"
-        assert mock_result.description[17][0] == "IS_NULLABLE"
-        assert mock_result.description[18][0] == "SCOPE_CATALOG"
-        assert mock_result.description[19][0] == "SCOPE_SCHEMA"
-        assert mock_result.description[20][0] == "SCOPE_TABLE"
-        assert mock_result.description[21][0] == "SOURCE_DATA_TYPE"
-        assert mock_result.description[22][0] == "IS_AUTOINCREMENT"
-        assert mock_result.description[23][0] == "IS_GENERATEDCOLUMN"
-        assert mock_result.description[24][0] == "other_column"
+        assert mock_result.description[5][0] == "COLUMN_SIZE"
+        assert mock_result.description[6][0] == "BUFFER_LENGTH"
+        assert mock_result.description[7][0] == "DECIMAL_DIGITS"
+        assert mock_result.description[8][0] == "NUM_PREC_RADIX"
+        assert mock_result.description[9][0] == "NULLABLE"
+        assert mock_result.description[10][0] == "REMARKS"
+        assert mock_result.description[11][0] == "COLUMN_DEF"
+        assert mock_result.description[12][0] == "SQL_DATA_TYPE"
+        assert mock_result.description[13][0] == "SQL_DATETIME_SUB"
+        assert mock_result.description[14][0] == "CHAR_OCTET_LENGTH"
+        assert mock_result.description[15][0] == "ORDINAL_POSITION"
+        assert mock_result.description[16][0] == "IS_NULLABLE"
+        assert mock_result.description[17][0] == "SCOPE_CATALOG"
+        assert mock_result.description[18][0] == "SCOPE_SCHEMA"
+        assert mock_result.description[19][0] == "SCOPE_TABLE"
+        assert mock_result.description[20][0] == "SOURCE_DATA_TYPE"
+        assert mock_result.description[21][0] == "IS_AUTOINCREMENT"
+        assert mock_result.description[22][0] == "IS_GENERATEDCOLUMN"
+        assert mock_result.description[23][0] == "other_column"
 
     def test_normalize_metadata_result_unknown_operation(self):
         """Test normalizing with an unknown operation type."""
