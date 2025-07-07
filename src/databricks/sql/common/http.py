@@ -62,9 +62,11 @@ class DatabricksHttpClient:
                 if cls._instance is None:
                     cls._instance = DatabricksHttpClient()
         return cls._instance
-    
+
     @contextmanager
-    def execute(self, method: HttpMethod, url: str, **kwargs) -> Generator[requests.Response, None, None]:
+    def execute(
+        self, method: HttpMethod, url: str, **kwargs
+    ) -> Generator[requests.Response, None, None]:
         response = None
         try:
             response = self.session.request(method.value, url, **kwargs)

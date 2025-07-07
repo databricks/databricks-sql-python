@@ -311,19 +311,19 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
 
     Attributes:
         token_url (str): The URL of the token endpoint.
-        oauth_client_id (str): The client ID.
-        oauth_client_secret (str): The client secret.
+        client_id (str): The client ID.
+        client_secret (str): The client secret.
     """
 
     def __init__(
         self,
         token_url,
-        oauth_client_id,
-        oauth_client_secret,
+        client_id,
+        client_secret,
         extra_params: dict = {},
     ):
-        self.oauth_client_id = oauth_client_id
-        self.oauth_client_secret = oauth_client_secret
+        self.client_id = client_id
+        self.client_secret = client_secret
         self.token_url = token_url
         self.extra_params = extra_params
         self.token: Optional[Token] = None
@@ -341,8 +341,8 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         data = urlencode(
             {
                 "grant_type": "client_credentials",
-                "client_id": self.oauth_client_id,
-                "client_secret": self.oauth_client_secret,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
                 **self.extra_params,
             }
         )

@@ -224,8 +224,8 @@ class TestClientCredentialsTokenSource:
     def token_source(self):
         return ClientCredentialsTokenSource(
             token_url="https://token_url.com",
-            oauth_client_id="client_id",
-            oauth_client_secret="client_secret",
+            client_id="client_id",
+            client_secret="client_secret",
         )
 
     def test_no_token_refresh__when_token_is_not_expired(
@@ -271,8 +271,8 @@ class TestAzureServicePrincipalCredentialProvider:
     def credential_provider(self):
         return AzureServicePrincipalCredentialProvider(
             hostname="hostname",
-            oauth_client_id="client_id",
-            oauth_client_secret="client_secret",
+            azure_client_id="client_id",
+            azure_client_secret="client_secret",
             azure_tenant_id="tenant_id",
         )
 
