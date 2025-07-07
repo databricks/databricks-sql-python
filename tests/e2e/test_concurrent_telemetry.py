@@ -49,16 +49,23 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         num_threads = 5
         captured_telemetry = []
         captured_telemetry_lock = threading.Lock()
+        captured_responses = []
+        captured_responses_lock = threading.Lock()
 
-        def mock_send_telemetry(self, events):
-            """
-            This is our telemetry interceptor. It captures events into our list
-            instead of sending them over the network.
-            """
+        original_send_telemetry = TelemetryClient._send_telemetry
+        original_callback = TelemetryClient._telemetry_request_callback
+
+        def send_telemetry_wrapper(self_client, events):
             with captured_telemetry_lock:
                 captured_telemetry.extend(events)
+            original_send_telemetry(self_client, events)
 
-        with patch.object(TelemetryClient, '_send_telemetry', mock_send_telemetry):
+        def callback_wrapper(self_client, response):
+            with captured_responses_lock:
+                captured_responses.append(response)
+            original_callback(self_client, response)
+
+        with patch.object(TelemetryClient, "_send_telemetry", send_telemetry_wrapper), patch.object(TelemetryClient, "_telemetry_request_callback", callback_wrapper):
 
             def execute_query_worker(thread_id):
                 """Each thread creates a connection and executes a query."""
@@ -74,6 +81,16 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 TelemetryClientFactory._executor.shutdown(wait=True)
 
             # --- VERIFICATION ---
+            # print event by event in a readable format
+            for event in captured_telemetry:
+                print(event)
+                print("-"*100)
+
+            # print response by response in a readable format
+            for response in captured_responses:
+                print(response)
+                print("-"*100)
+
             assert len(captured_telemetry) == num_threads * 4 # 4 events per thread (initial_telemetry_log, 3 latency_logs (execute_command, fetchall_arrow, _convert_arrow_table))
 
             events_with_latency = [
