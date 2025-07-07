@@ -1,6 +1,6 @@
 import unittest
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, PropertyMock
 
 try:
     import pyarrow as pa
@@ -38,12 +38,19 @@ class FetchTests(unittest.TestCase):
     @staticmethod
     def make_dummy_result_set_from_initial_results(initial_results):
         # If the initial results have been set, then we should never try and fetch more
-        schema, arrow_table = FetchTests.make_arrow_table(initial_results)
-        arrow_queue = ArrowQueue(arrow_table, len(initial_results), 0)
+        arrow_queue = FetchTests.make_arrow_queue(initial_results)
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 
-        # Create a mock backend that will return the queue when _fill_results_buffer is called
         mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_thrift_backend.fetch_results.return_value = (arrow_queue, False)
+        # Ensure isinstance check passes
+        mock_thrift_backend.__class__ = ThriftDatabricksClient
+
+        # Setup mock connection with session.backend
+        mock_connection = Mock()
+        mock_session = Mock()
+        mock_session.backend = mock_thrift_backend
+        type(mock_connection).session = PropertyMock(return_value=mock_session)
 
         num_cols = len(initial_results[0]) if initial_results else 0
         description = [
@@ -52,7 +59,7 @@ class FetchTests(unittest.TestCase):
         ]
 
         rs = ThriftResultSet(
-            connection=Mock(),
+            connection=mock_connection,
             execute_response=ExecuteResponse(
                 command_id=None,
                 status=None,
@@ -61,7 +68,6 @@ class FetchTests(unittest.TestCase):
                 lz4_compressed=True,
                 is_staging_operation=False,
             ),
-            thrift_client=mock_thrift_backend,
             t_row_set=None,
         )
         return rs
@@ -86,8 +92,19 @@ class FetchTests(unittest.TestCase):
 
             return results, batch_index < len(batch_list)
 
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+
         mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_thrift_backend.fetch_results = fetch_results
+        # Ensure isinstance check passes
+        mock_thrift_backend.__class__ = ThriftDatabricksClient
+
+        # Setup mock connection with session.backend
+        mock_connection = Mock()
+        mock_session = Mock()
+        mock_session.backend = mock_thrift_backend
+        type(mock_connection).session = PropertyMock(return_value=mock_session)
+
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
 
         description = [
@@ -96,7 +113,7 @@ class FetchTests(unittest.TestCase):
         ]
 
         rs = ThriftResultSet(
-            connection=Mock(),
+            connection=mock_connection,
             execute_response=ExecuteResponse(
                 command_id=None,
                 status=None,
@@ -105,7 +122,6 @@ class FetchTests(unittest.TestCase):
                 lz4_compressed=True,
                 is_staging_operation=False,
             ),
-            thrift_client=mock_thrift_backend,
         )
         return rs
 

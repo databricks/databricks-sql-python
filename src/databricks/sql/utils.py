@@ -13,7 +13,7 @@ import re
 
 import lz4.frame
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.client import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:

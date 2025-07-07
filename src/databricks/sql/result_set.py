@@ -20,6 +20,7 @@ from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import (
     ColumnTable,
     ColumnQueue,
+    ResultSetQueue,
 )
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
@@ -36,14 +37,12 @@ class ResultSet(ABC):
     def __init__(
         self,
         connection: "Connection",
-        backend: "DatabricksClient",
         arraysize: int,
         buffer_size_bytes: int,
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
         is_direct_results: bool = False,
-        results_queue=None,
         description: List[Tuple] = [],
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
@@ -54,32 +53,30 @@ class ResultSet(ABC):
 
         Parameters:
             :param connection: The parent connection
-            :param backend: The backend client
             :param arraysize: The max number of rows to fetch at a time (PEP-249)
             :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
             :param command_id: The command ID
             :param status: The command status
             :param has_been_closed_server_side: Whether the command has been closed on the server
             :param is_direct_results: Whether the command has more rows
-            :param results_queue: The results queue
             :param description: column description of the results
             :param is_staging_operation: Whether the command is a staging operation
         """
 
-        self.connection = connection
-        self.backend = backend
-        self.arraysize = arraysize
-        self.buffer_size_bytes = buffer_size_bytes
-        self._next_row_index = 0
-        self.description = description
-        self.command_id = command_id
-        self.status = status
-        self.has_been_closed_server_side = has_been_closed_server_side
-        self.is_direct_results = is_direct_results
-        self.results = results_queue
-        self._is_staging_operation = is_staging_operation
-        self.lz4_compressed = lz4_compressed
-        self._arrow_schema_bytes = arrow_schema_bytes
+        self.connection: "Connection" = connection
+        self.backend: DatabricksClient = connection.session.backend
+        self.arraysize: int = arraysize
+        self.buffer_size_bytes: int = buffer_size_bytes
+        self._next_row_index: int = 0
+        self.description: List[Tuple] = description
+        self.command_id: CommandId = command_id
+        self.status: CommandState = status
+        self.has_been_closed_server_side: bool = has_been_closed_server_side
+        self.is_direct_results: bool = is_direct_results
+        self.results: Optional[ResultSetQueue] = None  # Children will set this
+        self._is_staging_operation: bool = is_staging_operation
+        self.lz4_compressed: bool = lz4_compressed
+        self._arrow_schema_bytes: Optional[bytes] = arrow_schema_bytes
 
     def __iter__(self):
         while True:
@@ -190,7 +187,6 @@ class ThriftResultSet(ResultSet):
         self,
         connection: "Connection",
         execute_response: "ExecuteResponse",
-        thrift_client: "ThriftDatabricksClient",
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
@@ -205,7 +201,6 @@ class ThriftResultSet(ResultSet):
         Parameters:
             :param connection: The parent connection
             :param execute_response: Response from the execute command
-            :param thrift_client: The ThriftDatabricksClient instance for direct access
             :param buffer_size_bytes: Buffer size for fetching results
             :param arraysize: Default number of rows to fetch
             :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
@@ -238,19 +233,27 @@ class ThriftResultSet(ResultSet):
         # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
-            backend=thrift_client,
             arraysize=arraysize,
             buffer_size_bytes=buffer_size_bytes,
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
             is_direct_results=is_direct_results,
-            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
+
+        # Assert that the backend is of the correct type
+        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+
+        assert isinstance(
+            self.backend, ThriftDatabricksClient
+        ), "Backend must be a ThriftDatabricksClient"
+
+        # Set the results queue
+        self.results = results_queue
 
         # Initialize results queue if not provided
         if not self.results:
@@ -307,6 +310,10 @@ class ThriftResultSet(ResultSet):
         """
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
@@ -332,6 +339,9 @@ class ThriftResultSet(ResultSet):
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
 
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
@@ -351,6 +361,9 @@ class ThriftResultSet(ResultSet):
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
@@ -377,6 +390,9 @@ class ThriftResultSet(ResultSet):
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
@@ -393,6 +409,9 @@ class ThriftResultSet(ResultSet):
         Fetch the next row of a query result set, returning a single sequence,
         or None when no more data is available.
         """
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         if isinstance(self.results, ColumnQueue):
             res = self._convert_columnar_table(self.fetchmany_columnar(1))
         else:

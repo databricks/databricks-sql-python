@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC
 from typing import List, Optional, Tuple
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.client import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError
