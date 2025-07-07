@@ -261,7 +261,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
             results = pyarrow.concat_tables([results, table_slice])
-
             self.table_row_index += table_slice.num_rows
 
             # Replace current table with the next table if we are at the end of the current table
@@ -284,21 +283,19 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
-
         results = self.table.slice(0, 0)
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
             results = pyarrow.concat_tables([results, table_slice])
-
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
         return results
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
-        """Create next table by retrieving the logical next downloaded file."""
+        """Create next table at the given row offset"""
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
         if not self.download_manager:
             logger.debug("CloudFetchQueue: No download manager available")
@@ -311,7 +308,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             )
             # None signals no more Arrow tables can be built from the remaining handlers if any remain
             return None
-
         arrow_table = create_arrow_table_from_arrow_file(
             downloaded_file.file_bytes, self.description
         )

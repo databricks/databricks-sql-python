@@ -183,6 +183,11 @@ class TestSeaResultSetQueueFactory:
             result_data=result_data,
             manifest=json_manifest,
             statement_id="test-statement",
+            ssl_options=SSLOptions(),
+            description=[],
+            max_download_threads=10,
+            sea_client=Mock(),
+            lz4_compressed=False,
         )
 
         assert isinstance(queue, JsonQueue)
@@ -222,49 +227,6 @@ class TestSeaResultSetQueueFactory:
 
         assert isinstance(queue, SeaCloudFetchQueue)
 
-    def test_build_queue_arrow_stream_missing_threads(
-        self, arrow_manifest, ssl_options, mock_sea_client
-    ):
-        """Test building an Arrow stream queue with missing max_download_threads."""
-        result_data = ResultData(data=None, external_links=[])
-
-        with pytest.raises(ValueError, match="Max download threads is required"):
-            SeaResultSetQueueFactory.build_queue(
-                result_data=result_data,
-                manifest=arrow_manifest,
-                statement_id="test-statement",
-                ssl_options=ssl_options,
-                sea_client=mock_sea_client,
-            )
-
-    def test_build_queue_arrow_stream_missing_ssl(
-        self, arrow_manifest, mock_sea_client
-    ):
-        """Test building an Arrow stream queue with missing SSL options."""
-        result_data = ResultData(data=None, external_links=[])
-
-        with pytest.raises(ValueError, match="SSL options are required"):
-            SeaResultSetQueueFactory.build_queue(
-                result_data=result_data,
-                manifest=arrow_manifest,
-                statement_id="test-statement",
-                max_download_threads=10,
-                sea_client=mock_sea_client,
-            )
-
-    def test_build_queue_arrow_stream_missing_client(self, arrow_manifest, ssl_options):
-        """Test building an Arrow stream queue with missing SEA client."""
-        result_data = ResultData(data=None, external_links=[])
-
-        with pytest.raises(ValueError, match="SEA client is required"):
-            SeaResultSetQueueFactory.build_queue(
-                result_data=result_data,
-                manifest=arrow_manifest,
-                statement_id="test-statement",
-                ssl_options=ssl_options,
-                max_download_threads=10,
-            )
-
     def test_build_queue_invalid_format(self, invalid_manifest):
         """Test building a queue with invalid format."""
         result_data = ResultData(data=[])
@@ -274,6 +236,11 @@ class TestSeaResultSetQueueFactory:
                 result_data=result_data,
                 manifest=invalid_manifest,
                 statement_id="test-statement",
+                ssl_options=SSLOptions(),
+                description=[],
+                max_download_threads=10,
+                sea_client=Mock(),
+                lz4_compressed=False,
             )
 
 
