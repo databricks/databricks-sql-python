@@ -308,7 +308,7 @@ class Connection:
             self._open_session_resp = self.thrift_backend.open_session(
                 session_configuration, catalog, schema
             )
-        except (RequestError, MaxRetryError) as e:
+        except (RequestError, MaxRetryError, MaxRetryDurationError) as e:
             raise
         except Exception as e:
             raise ConnectionError(
