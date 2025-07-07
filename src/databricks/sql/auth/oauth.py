@@ -335,6 +335,7 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         return self.token
 
     def refresh(self) -> Token:
+        logger.info("Refreshing OAuth token using client credentials flow")
         headers = {
             HttpHeader.CONTENT_TYPE.value: "application/x-www-form-urlencoded",
         }

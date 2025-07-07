@@ -67,12 +67,13 @@ class DatabricksHttpClient:
     def execute(
         self, method: HttpMethod, url: str, **kwargs
     ) -> Generator[requests.Response, None, None]:
+        logger.info("Executing HTTP request: %s with url: %s", method.value, url)
         response = None
         try:
             response = self.session.request(method.value, url, **kwargs)
             yield response
         except Exception as e:
-            logger.error(f"Error executing HTTP request in DatabricksHttpClient: {e}")
+            logger.error("Error executing HTTP request in DatabricksHttpClient: %s", e)
             raise e
         finally:
             if response is not None:
