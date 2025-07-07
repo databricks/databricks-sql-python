@@ -91,7 +91,7 @@ class DatabricksClient(ABC):
         lz4_compression: bool,
         cursor: "Cursor",
         use_cloud_fetch: bool,
-        parameters: List[ttypes.TSparkParameter],
+        parameters: List,
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
     ) -> Union["ResultSet", None]:
