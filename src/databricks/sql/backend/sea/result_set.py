@@ -4,7 +4,7 @@ from typing import Any, List, Optional, TYPE_CHECKING
 
 import logging
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.client import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.conversion import SqlTypeConverter
 

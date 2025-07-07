@@ -8,7 +8,7 @@ the Databricks SQL connector's SEA backend functionality.
 import pytest
 from unittest.mock import patch, MagicMock, Mock
 
-from databricks.sql.backend.sea.backend import (
+from databricks.sql.backend.sea.client import (
     SeaDatabricksClient,
     _filter_session_configuration,
 )
@@ -31,7 +31,7 @@ class TestSeaBackend:
     def mock_http_client(self):
         """Create a mock HTTP client."""
         with patch(
-            "databricks.sql.backend.sea.backend.SeaHttpClient"
+            "databricks.sql.backend.sea.client.SeaHttpClient"
         ) as mock_client_class:
             mock_client = mock_client_class.return_value
             yield mock_client

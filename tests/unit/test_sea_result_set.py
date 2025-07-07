@@ -26,7 +26,7 @@ class TestSeaResultSet:
 
         # Mock the session.backend to return a SeaDatabricksClient
         mock_session = Mock()
-        from databricks.sql.backend.sea.backend import SeaDatabricksClient
+        from databricks.sql.backend.sea.client import SeaDatabricksClient
 
         mock_backend = Mock(spec=SeaDatabricksClient)
         mock_backend.max_download_threads = 10

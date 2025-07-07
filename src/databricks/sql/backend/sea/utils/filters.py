@@ -71,7 +71,7 @@ class ResultSetFilter:
 
         result_data = ResultData(data=filtered_rows, external_links=None)
 
-        from databricks.sql.backend.sea.backend import SeaDatabricksClient
+        from databricks.sql.backend.sea.client import SeaDatabricksClient
         from databricks.sql.backend.sea.result_set import SeaResultSet
 
         # Create a new SeaResultSet with the filtered data
