@@ -650,6 +650,11 @@ class TestSeaBackend:
         """Test the get_catalogs method."""
         # Mock the execute_command method
         mock_result_set = Mock()
+        # Add description attribute to the mock result set
+        mock_result_set.description = [
+            ("catalog", "string", None, None, None, None, True),
+        ]
+
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
@@ -678,10 +683,19 @@ class TestSeaBackend:
             # Verify the result is correct
             assert result == mock_result_set
 
+            # Verify that column normalization was applied
+            assert result.description[0][0] == "TABLE_CAT"
+
     def test_get_schemas(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_schemas method with various parameter combinations."""
         # Mock the execute_command method
         mock_result_set = Mock()
+        # Add description attribute to the mock result set
+        mock_result_set.description = [
+            ("databaseName", "string", None, None, None, None, True),
+            ("catalogName", "string", None, None, None, None, True),
+        ]
+
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
@@ -706,6 +720,10 @@ class TestSeaBackend:
                 async_op=False,
                 enforce_embedded_schema_correctness=False,
             )
+
+            # Verify that column normalization was applied
+            assert result.description[0][0] == "TABLE_SCHEM"
+            assert result.description[1][0] == "TABLE_CATALOG"
 
             # Case 2: With catalog and schema names
             result = sea_client.get_schemas(
@@ -746,6 +764,14 @@ class TestSeaBackend:
         from databricks.sql.backend.sea.result_set import SeaResultSet
 
         mock_result_set = Mock(spec=SeaResultSet)
+        # Add description attribute to the mock result set
+        mock_result_set.description = [
+            ("catalogName", "string", None, None, None, None, True),
+            ("namespace", "string", None, None, None, None, True),
+            ("tableName", "string", None, None, None, None, True),
+            ("tableType", "string", None, None, None, None, True),
+            ("remarks", "string", None, None, None, None, True),
+        ]
 
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
@@ -777,6 +803,13 @@ class TestSeaBackend:
                     enforce_embedded_schema_correctness=False,
                 )
                 mock_filter.assert_called_with(mock_result_set, None)
+
+                # Verify that column normalization was applied
+                assert result.description[0][0] == "TABLE_CAT"
+                assert result.description[1][0] == "TABLE_SCHEM"
+                assert result.description[2][0] == "TABLE_NAME"
+                assert result.description[3][0] == "TABLE_TYPE"
+                assert result.description[4][0] == "REMARKS"
 
                 # Case 2: With all parameters
                 table_types = ["TABLE", "VIEW"]
@@ -831,6 +864,19 @@ class TestSeaBackend:
         """Test the get_columns method with various parameter combinations."""
         # Mock the execute_command method
         mock_result_set = Mock()
+        # Add description attribute to the mock result set
+        mock_result_set.description = [
+            ("catalogName", "string", None, None, None, None, True),
+            ("namespace", "string", None, None, None, None, True),
+            ("tableName", "string", None, None, None, None, True),
+            ("columnName", "string", None, None, None, None, True),
+            ("columnType", "string", None, None, None, None, True),
+            ("dataType", "string", None, None, None, None, True),
+            ("nullable", "string", None, None, None, None, True),
+            ("isNullable", "string", None, None, None, None, True),
+            ("ordinalPosition", "string", None, None, None, None, True),
+        ]
+
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
@@ -855,6 +901,17 @@ class TestSeaBackend:
                 async_op=False,
                 enforce_embedded_schema_correctness=False,
             )
+
+            # Verify that column normalization was applied
+            assert result.description[0][0] == "TABLE_CAT"
+            assert result.description[1][0] == "TABLE_SCHEM"
+            assert result.description[2][0] == "TABLE_NAME"
+            assert result.description[3][0] == "COLUMN_NAME"
+            assert result.description[4][0] == "TYPE_NAME"
+            assert result.description[5][0] == "DATA_TYPE"
+            assert result.description[6][0] == "NULLABLE"
+            assert result.description[7][0] == "IS_NULLABLE"
+            assert result.description[8][0] == "ORDINAL_POSITION"
 
             # Case 2: With all parameters
             result = sea_client.get_columns(
