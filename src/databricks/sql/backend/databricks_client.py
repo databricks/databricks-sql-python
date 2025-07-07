@@ -94,6 +94,7 @@ class DatabricksClient(ABC):
         parameters: List,
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
+        row_limit: Optional[int] = None,
     ) -> Union["ResultSet", None]:
         """
         Executes a SQL command or query within the specified session.
@@ -112,6 +113,7 @@ class DatabricksClient(ABC):
             parameters: List of parameters to bind to the query
             async_op: Whether to execute the command asynchronously
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
+            row_limit: Maximum number of rows in the operation result.
 
         Returns:
             If async_op is False, returns a ResultSet object containing the
