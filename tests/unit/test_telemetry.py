@@ -19,22 +19,6 @@ from databricks.sql.auth.authenticators import (
 
 
 @pytest.fixture
-def telemetry_system_reset():
-    """Reset telemetry system state before each test."""
-    TelemetryClientFactory._clients.clear()
-    if TelemetryClientFactory._executor:
-        TelemetryClientFactory._executor.shutdown(wait=True)
-    TelemetryClientFactory._executor = None
-    TelemetryClientFactory._initialized = False
-    yield
-    TelemetryClientFactory._clients.clear()
-    if TelemetryClientFactory._executor:
-        TelemetryClientFactory._executor.shutdown(wait=True)
-    TelemetryClientFactory._executor = None
-    TelemetryClientFactory._initialized = False
-
-
-@pytest.fixture
 def mock_telemetry_client():
     """Create a mock telemetry client for testing."""
     session_id = str(uuid.uuid4())
@@ -200,7 +184,22 @@ class TestTelemetryHelper:
 class TestTelemetryFactory:
     """Tests for TelemetryClientFactory lifecycle and management."""
 
-    def test_client_lifecycle_flow(self, telemetry_system_reset):
+    @pytest.fixture(autouse=True)
+    def telemetry_system_reset(self):
+        """Reset telemetry system state before each test."""
+        TelemetryClientFactory._clients.clear()
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)
+        TelemetryClientFactory._executor = None
+        TelemetryClientFactory._initialized = False
+        yield
+        TelemetryClientFactory._clients.clear()
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)
+        TelemetryClientFactory._executor = None
+        TelemetryClientFactory._initialized = False
+
+    def test_client_lifecycle_flow(self):
         """Test complete client lifecycle: initialize -> use -> close."""
         session_id_hex = "test-session"
         auth_provider = AccessTokenAuthProvider("token")
@@ -226,7 +225,7 @@ class TestTelemetryFactory:
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_disabled_telemetry_flow(self, telemetry_system_reset):
+    def test_disabled_telemetry_flow(self):
         """Test that disabled telemetry uses NoopTelemetryClient."""
         session_id_hex = "test-session"
         
@@ -240,7 +239,7 @@ class TestTelemetryFactory:
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_factory_error_handling(self, telemetry_system_reset):
+    def test_factory_error_handling(self):
         """Test that factory errors fall back to NoopTelemetryClient."""
         session_id = "test-session"
         
@@ -258,7 +257,7 @@ class TestTelemetryFactory:
         client = TelemetryClientFactory.get_telemetry_client(session_id)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_factory_shutdown_flow(self, telemetry_system_reset):
+    def test_factory_shutdown_flow(self):
         """Test factory shutdown when last client is removed."""
         session1 = "session-1"
         session2 = "session-2"

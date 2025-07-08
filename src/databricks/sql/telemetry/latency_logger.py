@@ -22,24 +22,9 @@ class TelemetryExtractor:
     """
 
     def __init__(self, obj):
-        """
-        Initialize the extractor with an object to wrap.
-
-        Args:
-            obj: The object to extract telemetry information from.
-        """
         self._obj = obj
 
     def __getattr__(self, name):
-        """
-        Delegate attribute access to the wrapped object.
-
-        Args:
-            name (str): The name of the attribute to access.
-
-        Returns:
-            The attribute value from the wrapped object.
-        """
         return getattr(self._obj, name)
 
     def get_session_id_hex(self):
@@ -155,7 +140,7 @@ def get_extractor(obj):
     elif obj.__class__.__name__ == "ResultSet":
         return ResultSetExtractor(obj)
     else:
-        logger.error(f"No extractor found for {obj.__class__.__name__}")
+        logger.debug("No extractor found for %s", obj.__class__.__name__)
         return None
 
 

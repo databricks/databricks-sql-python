@@ -239,8 +239,9 @@ class TelemetryClient(BaseTelemetryClient):
                 logger.debug("Telemetry request completed successfully")
             else:
                 logger.debug(
-                    "Telemetry request failed with status code: %s",
+                    "Telemetry request failed with status code: %s, response: %s",
                     response.status_code,
+                    response.text,
                 )
 
         except Exception as e:
