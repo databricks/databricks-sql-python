@@ -125,7 +125,8 @@ class SeaDatabricksClient(DatabricksClient):
 
         super().__init__(ssl_options=ssl_options, **kwargs)
 
-        self.use_hybrid_disposition = kwargs.get("use_hybrid_disposition", False)
+        self.use_hybrid_disposition = kwargs.get("use_hybrid_disposition", True)
+        logger.info(f"use_hybrid_disposition: {self.use_hybrid_disposition}")
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)

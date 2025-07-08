@@ -5,6 +5,8 @@ from typing import List, Optional, Tuple, Union
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
+import lz4.frame
+
 try:
     import pyarrow
 except ImportError:
@@ -22,7 +24,7 @@ from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
-from databricks.sql.utils import CloudFetchQueue, ResultSetQueue
+from databricks.sql.utils import ArrowQueue, CloudFetchQueue, ResultSetQueue, create_arrow_table_from_arrow_file
 
 import logging
 
@@ -61,6 +63,15 @@ class SeaResultSetQueueFactory(ABC):
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(result_data.data)
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
+            if result_data.attachment is not None: 
+                arrow_file = (
+                    lz4.frame.decompress(result_data.attachment)
+                    if lz4_compressed
+                    else result_data.attachment
+                )
+                arrow_table = create_arrow_table_from_arrow_file(arrow_file, description)
+                return ArrowQueue(arrow_table, manifest.total_row_count)
+
             # EXTERNAL_LINKS disposition
             return SeaCloudFetchQueue(
                 initial_links=result_data.external_links or [],
@@ -144,7 +155,9 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             )
         )
 
-        initial_link = next((l for l in initial_links if l.chunk_index == 0), None)
+        self._chunk_index_to_link = {link.chunk_index: link for link in initial_links}
+
+        initial_link = self._chunk_index_to_link.get(0, None)
         if not initial_link:
             return
 
@@ -174,6 +187,12 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             httpHeaders=link.http_headers or {},
         )
 
+    def _get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
+        if chunk_index not in self._chunk_index_to_link:
+            links = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
+            self._chunk_index_to_link.update({link.chunk_index: link for link in links})
+        return self._chunk_index_to_link.get(chunk_index, None)
+
     def _progress_chunk_link(self):
         """Progress to the next chunk link."""
         if not self._current_chunk_link:
@@ -185,17 +204,11 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             self._current_chunk_link = None
             return None
 
-        try:
-            self._current_chunk_link = self._sea_client.get_chunk_link(
-                self._statement_id, next_chunk_index
-            )
-        except Exception as e:
+        self._current_chunk_link = self._get_chunk_link(next_chunk_index)
+        if not self._current_chunk_link:
             logger.error(
-                "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
-                    next_chunk_index, e
-                )
+                "SeaCloudFetchQueue: unable to retrieve link for chunk {}".format(next_chunk_index)
             )
-            self._current_chunk_link = None
             return None
 
         logger.debug(
