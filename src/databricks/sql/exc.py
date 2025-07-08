@@ -1,4 +1,7 @@
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
 

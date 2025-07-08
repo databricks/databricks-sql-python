@@ -9,7 +9,7 @@ threadsafety = 1  # Threads may share the module, but not connections.
 paramstyle = "named"
 
 import re
-import logging
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
