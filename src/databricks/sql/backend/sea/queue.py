@@ -24,7 +24,12 @@ from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
-from databricks.sql.utils import ArrowQueue, CloudFetchQueue, ResultSetQueue, create_arrow_table_from_arrow_file
+from databricks.sql.utils import (
+    ArrowQueue,
+    CloudFetchQueue,
+    ResultSetQueue,
+    create_arrow_table_from_arrow_file,
+)
 
 import logging
 
@@ -63,13 +68,15 @@ class SeaResultSetQueueFactory(ABC):
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(result_data.data)
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
-            if result_data.attachment is not None: 
+            if result_data.attachment is not None:
                 arrow_file = (
                     lz4.frame.decompress(result_data.attachment)
                     if lz4_compressed
                     else result_data.attachment
                 )
-                arrow_table = create_arrow_table_from_arrow_file(arrow_file, description)
+                arrow_table = create_arrow_table_from_arrow_file(
+                    arrow_file, description
+                )
                 return ArrowQueue(arrow_table, manifest.total_row_count)
 
             # EXTERNAL_LINKS disposition
@@ -207,7 +214,9 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         self._current_chunk_link = self._get_chunk_link(next_chunk_index)
         if not self._current_chunk_link:
             logger.error(
-                "SeaCloudFetchQueue: unable to retrieve link for chunk {}".format(next_chunk_index)
+                "SeaCloudFetchQueue: unable to retrieve link for chunk {}".format(
+                    next_chunk_index
+                )
             )
             return None
 

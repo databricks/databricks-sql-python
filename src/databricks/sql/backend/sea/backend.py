@@ -636,7 +636,9 @@ class SeaDatabricksClient(DatabricksClient):
             arraysize=cursor.arraysize,
         )
 
-    def get_chunk_links(self, statement_id: str, chunk_index: int) -> List[ExternalLink]:
+    def get_chunk_links(
+        self, statement_id: str, chunk_index: int
+    ) -> List[ExternalLink]:
         """
         Get links for chunks starting from the specified index.
         Args:
