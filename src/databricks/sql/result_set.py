@@ -1,11 +1,10 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
-import time
 import pandas
-
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 try:
     import pyarrow
@@ -16,10 +15,12 @@ if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
     from databricks.sql.client import Connection
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
-from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class ResultSet(ABC):
         has_been_closed_server_side: bool = False,
         is_direct_results: bool = False,
         results_queue=None,
-        description=None,
+        description: List[Tuple] = [],
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
         arrow_schema_bytes: Optional[bytes] = None,
@@ -88,6 +89,44 @@ class ResultSet(ABC):
             else:
                 break
 
+    def _convert_arrow_table(self, table):
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+
+        if self.connection.disable_pandas is True:
+            return [
+                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
+            ]
+
+        # Need to use nullable types, as otherwise type can change when there are missing values.
+        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+        dtype_mapping = {
+            pyarrow.int8(): pandas.Int8Dtype(),
+            pyarrow.int16(): pandas.Int16Dtype(),
+            pyarrow.int32(): pandas.Int32Dtype(),
+            pyarrow.int64(): pandas.Int64Dtype(),
+            pyarrow.uint8(): pandas.UInt8Dtype(),
+            pyarrow.uint16(): pandas.UInt16Dtype(),
+            pyarrow.uint32(): pandas.UInt32Dtype(),
+            pyarrow.uint64(): pandas.UInt64Dtype(),
+            pyarrow.bool_(): pandas.BooleanDtype(),
+            pyarrow.float32(): pandas.Float32Dtype(),
+            pyarrow.float64(): pandas.Float64Dtype(),
+            pyarrow.string(): pandas.StringDtype(),
+        }
+
+        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+        df = table_renamed.to_pandas(
+            types_mapper=dtype_mapping.get,
+            date_as_object=True,
+            timestamp_as_object=True,
+        )
+
+        res = df.to_numpy(na_value=None, dtype="object")
+        return [ResultRow(*v) for v in res]
+
     @property
     def rownumber(self):
         return self._next_row_index
@@ -96,12 +135,6 @@ class ResultSet(ABC):
     def is_staging_operation(self) -> bool:
         """Whether this result set represents a staging operation."""
         return self._is_staging_operation
-
-    # Define abstract methods that concrete implementations must implement
-    @abstractmethod
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        pass
 
     @abstractmethod
     def fetchone(self) -> Optional[Row]:
@@ -189,10 +222,10 @@ class ThriftResultSet(ResultSet):
         # Build the results queue if t_row_set is provided
         results_queue = None
         if t_row_set and execute_response.result_format is not None:
-            from databricks.sql.utils import ResultSetQueueFactory
+            from databricks.sql.utils import ThriftResultSetQueueFactory
 
             # Create the results queue using the provided format
-            results_queue = ResultSetQueueFactory.build_queue(
+            results_queue = ThriftResultSetQueueFactory.build_queue(
                 row_set_type=execute_response.result_format,
                 t_row_set=t_row_set,
                 arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
@@ -248,44 +281,6 @@ class ThriftResultSet(ResultSet):
             result.append(ResultRow(*curr_row))
 
         return result
-
-    def _convert_arrow_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-
-        if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
-
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
-
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
-
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
 
     def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
@@ -444,82 +439,3 @@ class ThriftResultSet(ResultSet):
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
-
-
-class SeaResultSet(ResultSet):
-    """ResultSet implementation for SEA backend."""
-
-    def __init__(
-        self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        sea_client: "SeaDatabricksClient",
-        buffer_size_bytes: int = 104857600,
-        arraysize: int = 10000,
-        result_data=None,
-        manifest=None,
-    ):
-        """
-        Initialize a SeaResultSet with the response from a SEA query execution.
-
-        Args:
-            connection: The parent connection
-            execute_response: Response from the execute command
-            sea_client: The SeaDatabricksClient instance for direct access
-            buffer_size_bytes: Buffer size for fetching results
-            arraysize: Default number of rows to fetch
-            result_data: Result data from SEA response (optional)
-            manifest: Manifest from SEA response (optional)
-        """
-
-        super().__init__(
-            connection=connection,
-            backend=sea_client,
-            arraysize=arraysize,
-            buffer_size_bytes=buffer_size_bytes,
-            command_id=execute_response.command_id,
-            status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            description=execute_response.description,
-            is_staging_operation=execute_response.is_staging_operation,
-            lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
-        )
-
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        raise NotImplementedError(
-            "_fill_results_buffer is not implemented for SEA backend"
-        )
-
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
-        """
-
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
-
-    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
-        """
-        Fetch the next set of rows of a query result, returning a list of rows.
-
-        An empty sequence is returned when no more rows are available.
-        """
-
-        raise NotImplementedError("fetchmany is not implemented for SEA backend")
-
-    def fetchall(self) -> List[Row]:
-        """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
-        """
-
-        raise NotImplementedError("fetchall is not implemented for SEA backend")
-
-    def fetchmany_arrow(self, size: int) -> Any:
-        """Fetch the next set of rows as an Arrow table."""
-        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
-
-    def fetchall_arrow(self) -> Any:
-        """Fetch all remaining rows as an Arrow table."""
-        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")

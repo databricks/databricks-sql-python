@@ -65,7 +65,7 @@ def _parse_manifest(data: Dict[str, Any]) -> ResultManifest:
         truncated=manifest_data.get("truncated", False),
         chunks=chunks,
         result_compression=manifest_data.get("result_compression"),
-        is_volume_operation=manifest_data.get("is_volume_operation"),
+        is_volume_operation=manifest_data.get("is_volume_operation", False),
     )
 
 

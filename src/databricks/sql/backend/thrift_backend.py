@@ -4,7 +4,7 @@ import logging
 import math
 import time
 import threading
-from typing import List, Union, Any, TYPE_CHECKING
+from typing import List, Optional, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -40,11 +40,11 @@ from databricks.sql.thrift_api.TCLIService.TCLIService import (
 )
 
 from databricks.sql.utils import (
-    ResultSetQueueFactory,
+    ThriftResultSetQueueFactory,
     _bound,
     RequestErrorInfo,
     NoRetryReason,
-    ResultSetQueueFactory,
+    ThriftResultSetQueueFactory,
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
@@ -929,6 +929,7 @@ class ThriftDatabricksClient(DatabricksClient):
         parameters=[],
         async_op=False,
         enforce_embedded_schema_correctness=False,
+        row_limit: Optional[int] = None,
     ) -> Union["ResultSet", None]:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -969,6 +970,7 @@ class ThriftDatabricksClient(DatabricksClient):
             useArrowNativeTypes=spark_arrow_types,
             parameters=parameters,
             enforceEmbeddedSchemaCorrectness=enforce_embedded_schema_correctness,
+            resultRowLimit=row_limit,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 
@@ -1232,7 +1234,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 )
             )
 
-        queue = ResultSetQueueFactory.build_queue(
+        queue = ThriftResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
             t_row_set=resp.results,
             arrow_schema_bytes=arrow_schema_bytes,
