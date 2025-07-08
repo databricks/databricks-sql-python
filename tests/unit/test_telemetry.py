@@ -165,9 +165,9 @@ class TestTelemetryHelper:
         """Test authentication mechanism detection for different providers."""
         test_cases = [
             (AccessTokenAuthProvider("token"), AuthMech.PAT),
-            (MagicMock(spec=DatabricksOAuthProvider), AuthMech.DATABRICKS_OAUTH),
-            (MagicMock(spec=ExternalAuthProvider), AuthMech.EXTERNAL_AUTH),
-            (MagicMock(), AuthMech.CLIENT_CERT),  # Unknown provider
+            (MagicMock(spec=DatabricksOAuthProvider), AuthMech.OAUTH),
+            (MagicMock(spec=ExternalAuthProvider), AuthMech.OTHER),
+            (MagicMock(), AuthMech.OTHER),  # Unknown provider
             (None, None),
         ]
         
