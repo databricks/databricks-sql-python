@@ -60,12 +60,7 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 captured_telemetry.extend(events)
             original_send_telemetry(self_client, events)
 
-        def callback_wrapper(self_client, response):
-            with captured_responses_lock:
-                captured_responses.append(response)
-            original_callback(self_client, response)
-
-        with patch.object(TelemetryClient, "_send_telemetry", send_telemetry_wrapper), patch.object(TelemetryClient, "_telemetry_request_callback", callback_wrapper):
+        with patch.object(TelemetryClient, "_send_telemetry", send_telemetry_wrapper):
 
             def execute_query_worker(thread_id):
                 """Each thread creates a connection and executes a query."""
@@ -81,20 +76,10 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 TelemetryClientFactory._executor.shutdown(wait=True)
 
             # --- VERIFICATION ---
-            # print event by event in a readable format
-            for event in captured_telemetry:
-                print(event)
-                print("-"*100)
-
-            # print response by response in a readable format
-            for response in captured_responses:
-                print(response)
-                print("-"*100)
-
-            assert len(captured_telemetry) == num_threads * 4 # 4 events per thread (initial_telemetry_log, 3 latency_logs (execute_command, fetchall_arrow, _convert_arrow_table))
+            assert len(captured_telemetry) == num_threads * 3 # 4 events per thread (initial_telemetry_log, 2 latency_logs (execute, fetchall))
 
             events_with_latency = [
                 e for e in captured_telemetry
                 if e.entry.sql_driver_log.operation_latency_ms is not None and e.entry.sql_driver_log.sql_statement_id is not None
             ]
-            assert len(events_with_latency) == num_threads * 3 # 3 events per thread (execute_command, fetchall_arrow, _convert_arrow_table)
+            assert len(events_with_latency) == num_threads * 2 # 2 events per thread (execute, fetchall)
