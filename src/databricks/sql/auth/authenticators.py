@@ -26,10 +26,16 @@ class CredentialsProvider(abc.ABC):
 
     @abc.abstractmethod
     def auth_type(self) -> str:
+        """
+        Returns the authentication type for this provider
+        """
         ...
 
     @abc.abstractmethod
     def __call__(self, *args, **kwargs) -> HeaderFactory:
+        """
+        Configure and return a HeaderFactory that provides authentication headers
+        """
         ...
 
 
