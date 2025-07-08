@@ -87,6 +87,10 @@ class Connection:
         Connect to a Databricks SQL endpoint or a Databricks cluster.
 
         Parameters:
+            :param use_sea: `bool`, optional (default is False)
+                Use the SEA backend instead of the Thrift backend.
+            :param use_hybrid_disposition: `bool`, optional (default is False)
+                Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
             :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
                 or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
