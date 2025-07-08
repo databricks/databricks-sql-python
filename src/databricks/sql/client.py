@@ -816,6 +816,8 @@ class Cursor:
                 transformed_operation, normalized_parameters, param_structure
             )
 
+        print(f"Prepared operation: {prepared_operation}")
+        print(f"Prepared parameters: {prepared_params}")
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         execute_response = self.thrift_backend.execute_command(

@@ -72,6 +72,10 @@ def get_effective_azure_login_app_id(hostname) -> str:
 def get_azure_tenant_id_from_host(host: str, http_client=None) -> str:
     """
     Load the Azure tenant ID from the Azure Databricks login page.
+
+    This function retrieves the Azure tenant ID by making a request to the Databricks
+    Azure Active Directory (AAD) authentication endpoint. The endpoint redirects to
+    the Azure login page, and the tenant ID is extracted from the redirect URL.
     """
 
     if http_client is None:
