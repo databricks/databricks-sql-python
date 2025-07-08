@@ -400,7 +400,7 @@ class TelemetryClientFactory:
             if session_id_hex in TelemetryClientFactory._clients:
                 return TelemetryClientFactory._clients[session_id_hex]
             else:
-                logger.error(
+                logger.debug(
                     "Telemetry client not initialized for connection %s",
                     session_id_hex,
                 )
