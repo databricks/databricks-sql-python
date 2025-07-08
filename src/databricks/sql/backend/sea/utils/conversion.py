@@ -9,9 +9,43 @@ import datetime
 import decimal
 import logging
 from dateutil import parser
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _convert_decimal(
+    value: str, precision: Optional[int] = None, scale: Optional[int] = None
+) -> decimal.Decimal:
+    """
+    Convert a string value to a decimal with optional precision and scale.
+
+    Args:
+        value: The string value to convert
+        precision: Optional precision (total number of significant digits) for the decimal
+        scale: Optional scale (number of decimal places) for the decimal
+
+    Returns:
+        A decimal.Decimal object with appropriate precision and scale
+    """
+
+    # First create the decimal from the string value
+    result = decimal.Decimal(value)
+
+    # Apply scale (quantize to specific number of decimal places) if specified
+    quantizer = None
+    if scale is not None:
+        quantizer = decimal.Decimal(f'0.{"0" * scale}')
+
+    # Apply precision (total number of significant digits) if specified
+    context = None
+    if precision is not None:
+        context = decimal.Context(prec=precision)
+
+    if quantizer is not None:
+        result = result.quantize(quantizer, context=context)
+
+    return result
 
 
 class SqlType:
@@ -72,13 +106,7 @@ class SqlTypeConverter:
         SqlType.LONG: lambda v: int(v),
         SqlType.FLOAT: lambda v: float(v),
         SqlType.DOUBLE: lambda v: float(v),
-        SqlType.DECIMAL: lambda v, p=None, s=None: (
-            decimal.Decimal(v).quantize(
-                decimal.Decimal(f'0.{"0" * s}'), context=decimal.Context(prec=p)
-            )
-            if p is not None and s is not None
-            else decimal.Decimal(v)
-        ),
+        SqlType.DECIMAL: _convert_decimal,
         # Boolean type
         SqlType.BOOLEAN: lambda v: v.lower() in ("true", "t", "1", "yes", "y"),
         # Date/Time types
@@ -98,26 +126,21 @@ class SqlTypeConverter:
 
     @staticmethod
     def convert_value(
-        value: Any,
+        value: str,
         sql_type: str,
-        precision: Optional[int] = None,
-        scale: Optional[int] = None,
-    ) -> Any:
+        **kwargs,
+    ) -> object:
         """
         Convert a string value to the appropriate Python type based on SQL type.
 
         Args:
             value: The string value to convert
             sql_type: The SQL type (e.g., 'int', 'decimal')
-            precision: Optional precision for decimal types
-            scale: Optional scale for decimal types
+            **kwargs: Additional keyword arguments for the conversion function
 
         Returns:
             The converted value in the appropriate Python type
         """
-
-        if value is None:
-            return None
 
         sql_type = sql_type.lower().strip()
 
@@ -127,6 +150,8 @@ class SqlTypeConverter:
         converter_func = SqlTypeConverter.TYPE_MAPPING[sql_type]
         try:
             if sql_type == SqlType.DECIMAL:
+                precision = kwargs.get("precision", None)
+                scale = kwargs.get("scale", None)
                 return converter_func(value, precision, scale)
             else:
                 return converter_func(value)

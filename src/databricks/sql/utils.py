@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Union
 
 from dateutil import parser
 import datetime
@@ -9,13 +9,10 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Dict, List, Optional, Tuple, Union, Sequence
 import re
 
-import dateutil
 import lz4.frame
-
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 try:
     import pyarrow
@@ -23,7 +20,6 @@ except ImportError:
     pyarrow = None
 
 from databricks.sql import OperationalError
-from databricks.sql.exc import ProgrammingError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
@@ -31,11 +27,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.sea.models.base import (
-    ResultData,
-    ExternalLink,
-    ResultManifest,
-)
+
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 import logging
@@ -65,7 +57,7 @@ class ThriftResultSetQueueFactory(ABC):
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue for Thrift backend.
@@ -113,90 +105,6 @@ class ThriftResultSetQueueFactory(ABC):
             )
         else:
             raise AssertionError("Row set type is not valid")
-
-
-class SeaResultSetQueueFactory(ABC):
-    @staticmethod
-    def build_queue(
-        sea_result_data: ResultData,
-        manifest: Optional[ResultManifest],
-        statement_id: str,
-        ssl_options: Optional[SSLOptions] = None,
-        description: Optional[List[Tuple]] = None,
-        max_download_threads: Optional[int] = None,
-        sea_client: Optional["SeaDatabricksClient"] = None,
-        lz4_compressed: bool = False,
-    ) -> ResultSetQueue:
-        """
-        Factory method to build a result set queue for SEA backend.
-
-        Args:
-            sea_result_data (ResultData): Result data from SEA response
-            manifest (ResultManifest): Manifest from SEA response
-            statement_id (str): Statement ID for the query
-            description (List[List[Any]]): Column descriptions
-            max_download_threads (int): Maximum number of download threads
-            ssl_options (SSLOptions): SSL options for downloads
-            sea_client (SeaDatabricksClient): SEA client for fetching additional links
-            lz4_compressed (bool): Whether the data is LZ4 compressed
-
-        Returns:
-            ResultSetQueue: The appropriate queue for the result data
-        """
-        if sea_result_data.data is not None:
-            # INLINE disposition with JSON_ARRAY format
-            return JsonQueue(sea_result_data.data)
-        elif sea_result_data.external_links is not None:
-            # EXTERNAL_LINKS disposition
-            if not max_download_threads:
-                raise ValueError(
-                    "Max download threads is required for EXTERNAL_LINKS disposition"
-                )
-            if not ssl_options:
-                raise ValueError(
-                    "SSL options are required for EXTERNAL_LINKS disposition"
-                )
-            if not sea_client:
-                raise ValueError(
-                    "SEA client is required for EXTERNAL_LINKS disposition"
-                )
-            if not manifest:
-                raise ValueError("Manifest is required for EXTERNAL_LINKS disposition")
-
-            return SeaCloudFetchQueue(
-                initial_links=sea_result_data.external_links,
-                max_download_threads=max_download_threads,
-                ssl_options=ssl_options,
-                sea_client=sea_client,
-                statement_id=statement_id,
-                total_chunk_count=manifest.total_chunk_count,
-                lz4_compressed=lz4_compressed,
-                description=description,
-            )
-        raise ProgrammingError("No result data or external links found")
-
-
-class JsonQueue(ResultSetQueue):
-    """Queue implementation for JSON_ARRAY format data."""
-
-    def __init__(self, data_array):
-        """Initialize with JSON array data."""
-        self.data_array = data_array
-        self.cur_row_index = 0
-        self.n_valid_rows = len(data_array)
-
-    def next_n_rows(self, num_rows):
-        """Get the next n rows from the data array."""
-        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
-        slice = self.data_array[self.cur_row_index : self.cur_row_index + length]
-        self.cur_row_index += length
-        return slice
-
-    def remaining_rows(self):
-        """Get all remaining rows from the data array."""
-        slice = self.data_array[self.cur_row_index :]
-        self.cur_row_index += len(slice)
-        return slice
 
 
 class ColumnTable:
@@ -298,7 +206,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         ssl_options: SSLOptions,
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ):
         """
         Initialize the base CloudFetchQueue.
@@ -310,18 +218,50 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             lz4_compressed: Whether the data is LZ4 compressed
             description: Column descriptions
         """
+
+        self.schema_bytes = schema_bytes
+        self.max_download_threads = max_download_threads
         self.lz4_compressed = lz4_compressed
         self.description = description
-        self.schema_bytes = schema_bytes
         self._ssl_options = ssl_options
-        self.max_download_threads = max_download_threads
 
         # Table state
         self.table = None
         self.table_row_index = 0
 
-        # Initialize download manager - will be set by subclasses
+        # Initialize download manager
         self.download_manager: Optional["ResultFileDownloadManager"] = None
+
+    def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
+        """
+        Get up to the next n rows of the cloud fetch Arrow dataframes.
+
+        Args:
+            num_rows (int): Number of rows to retrieve.
+        Returns:
+            pyarrow.Table
+        """
+        if not self.table:
+            logger.debug("CloudFetchQueue: no more rows available")
+            # Return empty pyarrow table to cause retry of fetch
+            return self._create_empty_table()
+        logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
+        results = self.table.slice(0, 0)
+        while num_rows > 0 and self.table:
+            # Get remaining of num_rows or the rest of the current table, whichever is smaller
+            length = min(num_rows, self.table.num_rows - self.table_row_index)
+            table_slice = self.table.slice(self.table_row_index, length)
+            results = pyarrow.concat_tables([results, table_slice])
+            self.table_row_index += table_slice.num_rows
+
+            # Replace current table with the next table if we are at the end of the current table
+            if self.table_row_index == self.table.num_rows:
+                self.table = self._create_next_table()
+                self.table_row_index = 0
+            num_rows -= table_slice.num_rows
+
+        logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
+        return results
 
     def remaining_rows(self) -> "pyarrow.Table":
         """
@@ -330,97 +270,35 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
-
-        results = pyarrow.Table.from_pydict({})  # Empty table
+        results = self.table.slice(0, 0)
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            if results.num_rows > 0:
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
-
+            results = pyarrow.concat_tables([results, table_slice])
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
-
         return results
-
-    def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
-        """Get up to the next n rows of the cloud fetch Arrow dataframes."""
-        if not self.table:
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
-
-        logger.info("SeaCloudFetchQueue: Retrieving up to {} rows".format(num_rows))
-        results = pyarrow.Table.from_pydict({})  # Empty table
-        rows_fetched = 0
-
-        while num_rows > 0 and self.table:
-            # Get remaining of num_rows or the rest of the current table, whichever is smaller
-            length = min(num_rows, self.table.num_rows - self.table_row_index)
-            logger.info(
-                "SeaCloudFetchQueue: Slicing table from index {} for {} rows (table has {} rows total)".format(
-                    self.table_row_index, length, self.table.num_rows
-                )
-            )
-            table_slice = self.table.slice(self.table_row_index, length)
-
-            # Concatenate results if we have any
-            if results.num_rows > 0:
-                logger.info(
-                    "SeaCloudFetchQueue: Concatenating {} rows to existing {} rows".format(
-                        table_slice.num_rows, results.num_rows
-                    )
-                )
-                results = pyarrow.concat_tables([results, table_slice])
-            else:
-                results = table_slice
-
-            self.table_row_index += table_slice.num_rows
-            rows_fetched += table_slice.num_rows
-
-            logger.info(
-                "SeaCloudFetchQueue: After slice, table_row_index={}, rows_fetched={}".format(
-                    self.table_row_index, rows_fetched
-                )
-            )
-
-            # Replace current table with the next table if we are at the end of the current table
-            if self.table_row_index == self.table.num_rows:
-                logger.info(
-                    "SeaCloudFetchQueue: Reached end of current table, fetching next"
-                )
-                self.table = self._create_next_table()
-                self.table_row_index = 0
-
-            num_rows -= table_slice.num_rows
-
-        logger.info("SeaCloudFetchQueue: Retrieved {} rows".format(results.num_rows))
-        return results
-
-    def _create_empty_table(self) -> "pyarrow.Table":
-        """Create a 0-row table with just the schema bytes."""
-        if not self.schema_bytes:
-            return pyarrow.Table.from_pydict({})
-        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
-        """Create next table by retrieving the logical next downloaded file."""
+        """Create next table at the given row offset"""
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
         if not self.download_manager:
-            logger.debug("ThriftCloudFetchQueue: No download manager available")
+            logger.debug("CloudFetchQueue: No download manager available")
             return None
 
         downloaded_file = self.download_manager.get_next_downloaded_file(offset)
         if not downloaded_file:
+            logger.debug(
+                "CloudFetchQueue: Cannot find downloaded file for row {}".format(offset)
+            )
             # None signals no more Arrow tables can be built from the remaining handlers if any remain
             return None
-
         arrow_table = create_arrow_table_from_arrow_file(
             downloaded_file.file_bytes, self.description
         )
@@ -440,6 +318,12 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         """Create next table by retrieving the logical next downloaded file."""
         pass
 
+    def _create_empty_table(self) -> "pyarrow.Table":
+        """Create a 0-row table with just the schema bytes."""
+        if not self.schema_bytes:
+            return pyarrow.Table.from_pydict({})
+        return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
+
 
 class ThriftCloudFetchQueue(CloudFetchQueue):
     """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for Thrift backend."""
@@ -452,7 +336,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[Tuple]] = None,
+        description: List[Tuple] = [],
     ):
         """
         Initialize the Thrift CloudFetchQueue.
@@ -515,137 +399,6 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                     arrow_table.num_rows, self.start_row_index
                 )
             )
-        return arrow_table
-
-
-class SeaCloudFetchQueue(CloudFetchQueue):
-    """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for SEA backend."""
-
-    def __init__(
-        self,
-        initial_links: List["ExternalLink"],
-        max_download_threads: int,
-        ssl_options: SSLOptions,
-        sea_client: "SeaDatabricksClient",
-        statement_id: str,
-        total_chunk_count: int,
-        lz4_compressed: bool = False,
-        description: Optional[List[Tuple]] = None,
-    ):
-        """
-        Initialize the SEA CloudFetchQueue.
-
-        Args:
-            initial_links: Initial list of external links to download
-            schema_bytes: Arrow schema bytes
-            max_download_threads: Maximum number of download threads
-            ssl_options: SSL options for downloads
-            sea_client: SEA client for fetching additional links
-            statement_id: Statement ID for the query
-            total_chunk_count: Total number of chunks in the result set
-            lz4_compressed: Whether the data is LZ4 compressed
-            description: Column descriptions
-        """
-
-        super().__init__(
-            max_download_threads=max_download_threads,
-            ssl_options=ssl_options,
-            schema_bytes=None,
-            lz4_compressed=lz4_compressed,
-            description=description,
-        )
-
-        self._sea_client = sea_client
-        self._statement_id = statement_id
-
-        logger.debug(
-            "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
-                statement_id, total_chunk_count
-            )
-        )
-
-        initial_link = next((l for l in initial_links if l.chunk_index == 0), None)
-        if not initial_link:
-            raise ValueError("No initial link found for chunk index 0")
-
-        self.download_manager = ResultFileDownloadManager(
-            links=[],
-            max_download_threads=max_download_threads,
-            lz4_compressed=lz4_compressed,
-            ssl_options=ssl_options,
-        )
-
-        # Track the current chunk we're processing
-        self._current_chunk_link: Optional["ExternalLink"] = initial_link
-        self._download_current_link()
-
-        # Initialize table and position
-        self.table = self._create_next_table()
-
-    def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
-        """Convert SEA external links to Thrift format for compatibility with existing download manager."""
-        # Parse the ISO format expiration time
-        expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())
-        return TSparkArrowResultLink(
-            fileLink=link.external_link,
-            expiryTime=expiry_time,
-            rowCount=link.row_count,
-            bytesNum=link.byte_count,
-            startRowOffset=link.row_offset,
-            httpHeaders=link.http_headers or {},
-        )
-
-    def _download_current_link(self):
-        """Download the current chunk link."""
-        if not self._current_chunk_link:
-            return None
-
-        if not self.download_manager:
-            logger.debug("SeaCloudFetchQueue: No download manager, returning")
-            return None
-
-        thrift_link = self._convert_to_thrift_link(self._current_chunk_link)
-        self.download_manager.add_link(thrift_link)
-
-    def _progress_chunk_link(self):
-        """Progress to the next chunk link."""
-        if not self._current_chunk_link:
-            return None
-
-        next_chunk_index = self._current_chunk_link.next_chunk_index
-
-        if next_chunk_index is None:
-            self._current_chunk_link = None
-            return None
-
-        try:
-            self._current_chunk_link = self._sea_client.get_chunk_link(
-                self._statement_id, next_chunk_index
-            )
-        except Exception as e:
-            logger.error(
-                "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
-                    next_chunk_index, e
-                )
-            )
-            return None
-
-        logger.debug(
-            f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
-        )
-        self._download_current_link()
-
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
-        """Create next table by retrieving the logical next downloaded file."""
-        if not self._current_chunk_link:
-            logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
-            return None
-
-        row_offset = self._current_chunk_link.row_offset
-        arrow_table = self._create_table_at_offset(row_offset)
-
-        self._progress_chunk_link()
-
         return arrow_table
 
 

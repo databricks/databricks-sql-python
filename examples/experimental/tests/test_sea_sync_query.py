@@ -6,7 +6,7 @@ import sys
 import logging
 from databricks.sql.client import Connection
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 

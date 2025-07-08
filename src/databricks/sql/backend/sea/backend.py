@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 import re
-from typing import Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
+from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
@@ -17,7 +17,7 @@ from databricks.sql.backend.sea.utils.constants import (
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
-    from databricks.sql.result_set import SeaResultSet
+    from databricks.sql.backend.sea.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -27,7 +27,7 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import DatabaseError, ProgrammingError, ServerOperationError
+from databricks.sql.exc import DatabaseError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
 
@@ -150,7 +150,7 @@ class SeaDatabricksClient(DatabricksClient):
             The extracted warehouse ID
 
         Raises:
-            ProgrammingError: If the warehouse ID cannot be extracted from the path
+            ValueError: If the warehouse ID cannot be extracted from the path
         """
 
         warehouse_pattern = re.compile(r".*/warehouses/(.+)")
@@ -174,7 +174,7 @@ class SeaDatabricksClient(DatabricksClient):
             f"Note: SEA only works for warehouses."
         )
         logger.error(error_message)
-        raise ProgrammingError(error_message)
+        raise ValueError(error_message)
 
     @property
     def max_download_threads(self) -> int:
@@ -246,14 +246,14 @@ class SeaDatabricksClient(DatabricksClient):
             session_id: The session identifier returned by open_session()
 
         Raises:
-            ProgrammingError: If the session ID is invalid
+            ValueError: If the session ID is invalid
             OperationalError: If there's an error closing the session
         """
 
         logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
         if session_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA session ID")
+            raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
         request_data = DeleteSessionRequest(
@@ -292,7 +292,7 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
-    ) -> Optional[List]:
+    ) -> List[Tuple]:
         """
         Extract column description from a manifest object, in the format defined by
         the spec: https://peps.python.org/pep-0249/#description
@@ -301,14 +301,11 @@ class SeaDatabricksClient(DatabricksClient):
             manifest: The ResultManifest object containing schema information
 
         Returns:
-            Optional[List]: A list of column tuples or None if no columns are found
+            List[Tuple]: A list of column tuples
         """
 
         schema_data = manifest.schema
         columns_data = schema_data.get("columns", [])
-
-        if not columns_data:
-            return None
 
         columns = []
         for col_data in columns_data:
@@ -325,7 +322,7 @@ class SeaDatabricksClient(DatabricksClient):
                 )
             )
 
-        return columns if columns else None
+        return columns
 
     def _results_message_to_execute_response(
         self, response: GetStatementResponse
@@ -410,6 +407,7 @@ class SeaDatabricksClient(DatabricksClient):
         parameters: List[Dict[str, Any]],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
+        row_limit: Optional[int] = None,
     ) -> Union[SeaResultSet, None]:
         """
         Execute a SQL command using the SEA backend.
@@ -431,7 +429,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if session_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA session ID")
+            raise ValueError("Not a valid SEA session ID")
 
         sea_session_id = session_id.to_sea_session_id()
 
@@ -467,7 +465,7 @@ class SeaDatabricksClient(DatabricksClient):
             format=format,
             wait_timeout=(WaitTimeout.ASYNC if async_op else WaitTimeout.SYNC).value,
             on_wait_timeout="CONTINUE",
-            row_limit=max_rows,
+            row_limit=row_limit,
             parameters=sea_parameters if sea_parameters else None,
             result_compression=result_compression,
         )
@@ -506,13 +504,15 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to cancel
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ValueError("Not a valid SEA command ID")
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
         self.http_client._make_request(
@@ -529,13 +529,15 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to close
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ValueError("Not a valid SEA command ID")
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
         self.http_client._make_request(
@@ -555,13 +557,15 @@ class SeaDatabricksClient(DatabricksClient):
             CommandState: The current state of the command
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ValueError("Not a valid SEA command ID")
 
         request = GetStatementRequest(statement_id=sea_statement_id)
         response_data = self.http_client._make_request(
@@ -590,13 +594,15 @@ class SeaDatabricksClient(DatabricksClient):
             SeaResultSet: A SeaResultSet instance with the execution results
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ValueError("Not a valid SEA command ID")
 
         # Create the request model
         request = GetStatementRequest(statement_id=sea_statement_id)
@@ -610,7 +616,7 @@ class SeaDatabricksClient(DatabricksClient):
         response = GetStatementResponse.from_dict(response_data)
 
         # Create and return a SeaResultSet
-        from databricks.sql.result_set import SeaResultSet
+        from databricks.sql.backend.sea.result_set import SeaResultSet
 
         execute_response = self._results_message_to_execute_response(response)
 

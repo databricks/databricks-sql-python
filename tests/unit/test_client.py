@@ -100,6 +100,7 @@ class ClientTestSuite(unittest.TestCase):
                 )
                 mock_execute_response.has_been_closed_server_side = closed
                 mock_execute_response.is_staging_operation = False
+                mock_execute_response.description = []
 
                 # Mock the backend that will be used by the real ThriftResultSet
                 mock_backend = Mock(spec=ThriftDatabricksClient)
