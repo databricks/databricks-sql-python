@@ -60,40 +60,34 @@ class TelemetryHelper:
     def get_auth_mechanism(auth_provider):
         """Get the auth mechanism for the auth provider."""
         # AuthMech is an enum with the following values:
-        # PAT, DATABRICKS_OAUTH, EXTERNAL_AUTH, CLIENT_CERT
+        # TYPE_UNSPECIFIED, OTHER, PAT, OAUTH
 
         if not auth_provider:
             return None
         if isinstance(auth_provider, AccessTokenAuthProvider):
-            return AuthMech.PAT  # Personal Access Token authentication
+            return AuthMech.PAT
         elif isinstance(auth_provider, DatabricksOAuthProvider):
-            return AuthMech.DATABRICKS_OAUTH  # Databricks-managed OAuth flow
-        elif isinstance(auth_provider, ExternalAuthProvider):
-            return (
-                AuthMech.EXTERNAL_AUTH
-            )  # External identity provider (AWS, Azure, etc.)
-        return AuthMech.CLIENT_CERT  # Client certificate (ssl)
+            return AuthMech.OAUTH
+        else:
+            return AuthMech.OTHER
 
     @staticmethod
     def get_auth_flow(auth_provider):
         """Get the auth flow for the auth provider."""
         # AuthFlow is an enum with the following values:
-        # TOKEN_PASSTHROUGH, BROWSER_BASED_AUTHENTICATION
+        # TYPE_UNSPECIFIED, TOKEN_PASSTHROUGH, CLIENT_CREDENTIALS, BROWSER_BASED_AUTHENTICATION
 
         if not auth_provider:
             return None
-
         if isinstance(auth_provider, DatabricksOAuthProvider):
             if auth_provider._access_token and auth_provider._refresh_token:
-                return (
-                    AuthFlow.TOKEN_PASSTHROUGH
-                )  # Has existing tokens, no user interaction needed
-            if hasattr(auth_provider, "oauth_manager"):
-                return (
-                    AuthFlow.BROWSER_BASED_AUTHENTICATION
-                )  # Will initiate OAuth flow requiring browser
-
-        return None
+                return AuthFlow.TOKEN_PASSTHROUGH
+            else:
+                return AuthFlow.BROWSER_BASED_AUTHENTICATION
+        elif isinstance(auth_provider, ExternalAuthProvider):
+            return AuthFlow.CLIENT_CREDENTIALS
+        else:
+            return None
 
 
 class BaseTelemetryClient(ABC):
@@ -104,21 +98,23 @@ class BaseTelemetryClient(ABC):
 
     @abstractmethod
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
-        raise NotImplementedError(
-            "Subclasses must implement export_initial_telemetry_log"
-        )
+        logger.debug("subclass must implement export_initial_telemetry_log")
+        pass
 
     @abstractmethod
     def export_failure_log(self, error_name, error_message):
-        raise NotImplementedError("Subclasses must implement export_failure_log")
+        logger.debug("subclass must implement export_failure_log")
+        pass
 
     @abstractmethod
     def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
-        raise NotImplementedError("Subclasses must implement export_latency_log")
+        logger.debug("subclass must implement export_latency_log")
+        pass
 
     @abstractmethod
     def close(self):
-        raise NotImplementedError("Subclasses must implement close")
+        logger.debug("subclass must implement close")
+        pass
 
 
 class NoopTelemetryClient(BaseTelemetryClient):
@@ -157,6 +153,8 @@ class TelemetryClient(BaseTelemetryClient):
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
 
+    DEFAULT_BATCH_SIZE = 100
+
     def __init__(
         self,
         telemetry_enabled,
@@ -167,12 +165,12 @@ class TelemetryClient(BaseTelemetryClient):
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
-        self._batch_size = 10  # TODO: Decide on batch size
+        self._batch_size = self.DEFAULT_BATCH_SIZE
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
         self._events_batch = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor

@@ -1,9 +1,9 @@
 import json
 import logging
 
+logger = logging.getLogger(__name__)
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
-logger = logging.getLogger(__name__)
 
 ### PEP-249 Mandated ###
 # https://peps.python.org/pep-0249/#exceptions
