@@ -439,7 +439,9 @@ class SeaDatabricksClient(DatabricksClient):
                 sea_parameters.append(
                     StatementParameter(
                         name=param.name,
-                        value=param.value,
+                        value=(
+                            None if param.value is None else param.value.stringValue
+                        ),
                         type=param.type,
                     )
                 )
