@@ -35,11 +35,11 @@ class SeaResultSetQueueFactory(ABC):
         result_data: ResultData,
         manifest: ResultManifest,
         statement_id: str,
-        ssl_options: Optional[SSLOptions] = None,
-        description: List[Tuple] = [],
-        max_download_threads: Optional[int] = None,
-        sea_client: Optional[SeaDatabricksClient] = None,
-        lz4_compressed: bool = False,
+        ssl_options: SSLOptions,
+        description: List[Tuple],
+        max_download_threads: int,
+        sea_client: SeaDatabricksClient,
+        lz4_compressed: bool,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue for SEA backend.
@@ -62,19 +62,6 @@ class SeaResultSetQueueFactory(ABC):
             return JsonQueue(result_data.data)
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
             # EXTERNAL_LINKS disposition
-            if not max_download_threads:
-                raise ValueError(
-                    "Max download threads is required for EXTERNAL_LINKS disposition"
-                )
-            if not ssl_options:
-                raise ValueError(
-                    "SSL options are required for EXTERNAL_LINKS disposition"
-                )
-            if not sea_client:
-                raise ValueError(
-                    "SEA client is required for EXTERNAL_LINKS disposition"
-                )
-
             return SeaCloudFetchQueue(
                 initial_links=result_data.external_links or [],
                 max_download_threads=max_download_threads,
