@@ -4,7 +4,7 @@ import time
 import typing
 from importlib.metadata import version
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import urllib3
 
@@ -123,7 +123,7 @@ class DatabricksRetryPolicy(Retry):
             _total: int = urllib3_kwargs.pop("total")
             _attempts_remaining = _total
 
-        _urllib_kwargs_we_care_about = dict(
+        _urllib_kwargs_we_care_about: dict[str, Any] = dict(
             total=_attempts_remaining,
             respect_retry_after_header=True,
             backoff_factor=self.delay_min,
