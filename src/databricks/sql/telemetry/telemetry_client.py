@@ -124,10 +124,13 @@ class NoopTelemetryClient(BaseTelemetryClient):
     """
 
     _instance = None
+    _lock = threading.RLock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
         return cls._instance
 
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
