@@ -36,3 +36,4 @@ class TelemetryResponse(JsonSerializableMixin):
     errors: List[str]
     numSuccess: int
     numProtoSuccess: int
+    numRealtimeSuccess: int

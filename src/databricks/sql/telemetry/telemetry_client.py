@@ -207,7 +207,9 @@ class TelemetryClient(BaseTelemetryClient):
                 headers=headers,
                 timeout=900,
             )
-            future.add_done_callback(self._telemetry_request_callback, sent_count)
+            future.add_done_callback(
+                lambda fut: self._telemetry_request_callback(fut, sent_count=sent_count)
+            )
         except Exception as e:
             logger.debug("Failed to submit telemetry request: %s", e)
 
@@ -223,7 +225,7 @@ class TelemetryClient(BaseTelemetryClient):
                     response.text,
                 )
 
-            telemetry_response = TelemetryResponse.from_json(**response.json())
+            telemetry_response = TelemetryResponse(**response.json())
 
             logger.debug(
                 "Pushed Telemetry logs with success count: %s, error count: %s",
