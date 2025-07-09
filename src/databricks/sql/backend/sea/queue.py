@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC
 import threading
-import time
 from typing import Dict, List, Optional, Tuple, Union
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
@@ -307,7 +306,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
-        start_time = time.time()
         if not self.download_manager:
             logger.debug("SeaCloudFetchQueue: No download manager, returning")
             return None
@@ -318,11 +316,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         row_offset = chunk_link.row_offset
         arrow_table = self._create_table_at_offset(row_offset)
-
-        end_time = time.time()
-        logger.info(
-            f"SeaCloudFetchQueue: Created table for chunk {self.current_chunk_index} at offset {row_offset} in {end_time - start_time} seconds"
-        )
 
         self.current_chunk_index += 1
 
