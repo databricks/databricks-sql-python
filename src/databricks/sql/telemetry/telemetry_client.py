@@ -1,10 +1,9 @@
 import threading
 import time
-import json
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -30,7 +29,7 @@ import sys
 import platform
 import uuid
 import locale
-from abc import ABC, abstractmethod
+from databricks.sql.telemetry.utils import BaseTelemetryClient
 
 logger = logging.getLogger(__name__)
 
@@ -92,33 +91,6 @@ class TelemetryHelper:
             return AuthFlow.CLIENT_CREDENTIALS
         else:
             return None
-
-
-class BaseTelemetryClient(ABC):
-    """
-    Base class for telemetry clients.
-    It is used to define the interface for telemetry clients.
-    """
-
-    @abstractmethod
-    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
-        logger.debug("subclass must implement export_initial_telemetry_log")
-        pass
-
-    @abstractmethod
-    def export_failure_log(self, error_name, error_message):
-        logger.debug("subclass must implement export_failure_log")
-        pass
-
-    @abstractmethod
-    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
-        logger.debug("subclass must implement export_latency_log")
-        pass
-
-    @abstractmethod
-    def close(self):
-        logger.debug("subclass must implement close")
-        pass
 
 
 class NoopTelemetryClient(BaseTelemetryClient):
@@ -212,6 +184,8 @@ class TelemetryClient(BaseTelemetryClient):
             protoLogs=[event.to_json() for event in events],
         )
 
+        sent_count = len(events)
+
         path = (
             self.TELEMETRY_AUTHENTICATED_PATH
             if self._auth_provider
@@ -231,24 +205,45 @@ class TelemetryClient(BaseTelemetryClient):
                 url,
                 data=request.to_json(),
                 headers=headers,
-                timeout=10,
+                timeout=900,
             )
-            future.add_done_callback(self._telemetry_request_callback)
+            future.add_done_callback(self._telemetry_request_callback, sent_count)
         except Exception as e:
             logger.debug("Failed to submit telemetry request: %s", e)
 
-    def _telemetry_request_callback(self, future):
+    def _telemetry_request_callback(self, future, sent_count: int):
         """Callback function to handle telemetry request completion"""
         try:
             response = future.result()
 
-            if response.status_code == 200:
-                logger.debug("Telemetry request completed successfully")
-            else:
+            if not response.ok:
                 logger.debug(
                     "Telemetry request failed with status code: %s, response: %s",
                     response.status_code,
                     response.text,
+                )
+
+            telemetry_response = TelemetryResponse.from_json(**response.json())
+
+            logger.debug(
+                "Pushed Telemetry logs with success count: %s, error count: %s",
+                telemetry_response.numProtoSuccess,
+                len(telemetry_response.errors),
+            )
+
+            if telemetry_response.errors:
+                logger.debug(
+                    "Telemetry push failed for some events with errors: %s",
+                    telemetry_response.errors,
+                )
+
+            # Check for partial failures
+            if sent_count != telemetry_response.numProtoSuccess:
+                logger.debug(
+                    "Partial failure pushing telemetry. Sent: %s, Succeeded: %s, Errors: %s",
+                    sent_count,
+                    telemetry_response.numProtoSuccess,
+                    telemetry_response.errors,
                 )
 
         except Exception as e:
@@ -335,7 +330,7 @@ class TelemetryClientFactory:
             cls._clients = {}
             cls._executor = ThreadPoolExecutor(
                 max_workers=10
-            )  # Thread pool for async operations TODO: Decide on max workers
+            )  # Thread pool for async operations
             cls._install_exception_hook()
             cls._initialized = True
             logger.debug(

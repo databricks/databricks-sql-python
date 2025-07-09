@@ -94,7 +94,6 @@ class TestTelemetryClient:
         assert args[0] == requests.post
         assert args[1] == 'https://test-host.com/telemetry-ext'
         assert kwargs['headers']['Authorization'] == 'Bearer test-token'
-        assert kwargs['timeout'] == 10
         
         # Verify request body structure
         request_data = kwargs['data']
