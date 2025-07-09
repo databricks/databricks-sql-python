@@ -321,7 +321,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         end_time = time.time()
         logger.info(
-            f"SeaCloudFetchQueue: Created table at offset {row_offset} in {end_time - start_time} seconds"
+            f"SeaCloudFetchQueue: Created table for chunk {self.current_chunk_index} at offset {row_offset} in {end_time - start_time} seconds"
         )
 
         self.current_chunk_index += 1
