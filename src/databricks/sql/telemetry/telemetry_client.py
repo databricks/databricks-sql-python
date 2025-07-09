@@ -17,6 +17,10 @@ from databricks.sql.telemetry.models.frontend_logs import (
     FrontendLogEntry,
 )
 from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow
+from databricks.sql.telemetry.models.endpoint_models import (
+    TelemetryRequest,
+    TelemetryResponse,
+)
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     DatabricksOAuthProvider,
@@ -202,11 +206,11 @@ class TelemetryClient(BaseTelemetryClient):
     def _send_telemetry(self, events):
         """Send telemetry events to the server"""
 
-        request = {
-            "uploadTime": int(time.time() * 1000),
-            "items": [],
-            "protoLogs": [event.to_json() for event in events],
-        }
+        request = TelemetryRequest(
+            uploadTime=int(time.time() * 1000),
+            items=[],
+            protoLogs=[event.to_json() for event in events],
+        )
 
         path = (
             self.TELEMETRY_AUTHENTICATED_PATH
@@ -225,7 +229,7 @@ class TelemetryClient(BaseTelemetryClient):
             future = self._executor.submit(
                 requests.post,
                 url,
-                data=json.dumps(request),
+                data=request.to_json(),
                 headers=headers,
                 timeout=10,
             )

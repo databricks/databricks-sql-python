@@ -1,10 +1,11 @@
 import json
 from dataclasses import dataclass, asdict
 from typing import List, Optional
+from databricks.sql.telemetry.utils import JsonSerializableMixin
 
 
 @dataclass
-class TelemetryRequest:
+class TelemetryRequest(JsonSerializableMixin):
     """
     Represents a request to send telemetry data to the server side.
     Contains the telemetry items to be uploaded and optional protocol buffer logs.
@@ -19,12 +20,9 @@ class TelemetryRequest:
     items: List[str]
     protoLogs: Optional[List[str]]
 
-    def to_json(self):
-        return json.dumps(asdict(self))
-
 
 @dataclass
-class TelemetryResponse:
+class TelemetryResponse(JsonSerializableMixin):
     """
     Represents the response from the telemetry backend after processing a request.
     Contains information about the success or failure of the telemetry upload.
@@ -38,6 +36,3 @@ class TelemetryResponse:
     errors: List[str]
     numSuccess: int
     numProtoSuccess: int
-
-    def to_json(self):
-        return json.dumps(asdict(self))
