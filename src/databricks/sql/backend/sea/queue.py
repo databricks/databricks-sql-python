@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Union
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
-import lz4.frame
+from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
 
 try:
     import pyarrow
@@ -34,25 +34,6 @@ from databricks.sql.utils import (
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def decompress_multi_frame_lz4(attachment: bytes) -> bytes:
-    try:
-        decompressor = lz4.frame.LZ4FrameDecompressor()
-        arrow_file = decompressor.decompress(attachment)
-
-        # the attachment may be a concatenation of multiple LZ4 frames
-        while decompressor.unused_data:
-            remaining_data = decompressor.unused_data
-            arrow_file += decompressor.decompress(remaining_data)
-
-            logger.debug(f"LZ4 decompressed {len(arrow_file)} bytes from attachment")
-
-    except Exception as e:
-        logger.error(f"LZ4 decompression failed: {e}")
-        raise e
-
-    return arrow_file
 
 
 class SeaResultSetQueueFactory(ABC):
@@ -89,7 +70,7 @@ class SeaResultSetQueueFactory(ABC):
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
             if result_data.attachment is not None:
                 arrow_file = (
-                    decompress_multi_frame_lz4(result_data.attachment)
+                    ResultSetDownloadHandler._decompress_data(result_data.attachment)
                     if lz4_compressed
                     else result_data.attachment
                 )
