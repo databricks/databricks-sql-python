@@ -398,7 +398,7 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _wait_until_command_done(
         self, response: ExecuteStatementResponse
-    ) -> CommandState:
+    ) -> ExecuteStatementResponse:
         """
         Wait until a command is done.
         """
@@ -408,11 +408,12 @@ class SeaDatabricksClient(DatabricksClient):
 
         while state in [CommandState.PENDING, CommandState.RUNNING]:
             time.sleep(self.POLL_INTERVAL_SECONDS)
-            state = self.get_query_state(command_id)
+            response = self._poll_query(command_id)
+            state = response.status.state
 
         self._check_command_not_in_failed_or_closed_state(state, command_id)
 
-        return state
+        return response
 
     def execute_command(
         self,
@@ -516,8 +517,8 @@ class SeaDatabricksClient(DatabricksClient):
             # if the response succeeded within the wait_timeout, return the results immediately
             return self._response_to_result_set(response, cursor)
 
-        self._wait_until_command_done(response)
-        return self.get_execution_result(command_id, cursor)
+        response = self._wait_until_command_done(response)
+        return self._response_to_result_set(response, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
@@ -569,18 +570,9 @@ class SeaDatabricksClient(DatabricksClient):
             data=request.to_dict(),
         )
 
-    def get_query_state(self, command_id: CommandId) -> CommandState:
+    def _poll_query(self, command_id: CommandId) -> ExecuteStatementResponse:
         """
-        Get the state of a running query.
-
-        Args:
-            command_id: Command identifier
-
-        Returns:
-            CommandState: The current state of the command
-
-        Raises:
-            ProgrammingError: If the command ID is invalid
+        Poll for the current command info.
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -596,9 +588,25 @@ class SeaDatabricksClient(DatabricksClient):
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
-
-        # Parse the response
         response = ExecuteStatementResponse.from_dict(response_data)
+
+        return response
+
+    def get_query_state(self, command_id: CommandId) -> CommandState:
+        """
+        Get the state of a running query.
+
+        Args:
+            command_id: Command identifier
+
+        Returns:
+            CommandState: The current state of the command
+
+        Raises:
+            ProgrammingError: If the command ID is invalid
+        """
+
+        response = self._poll_query(command_id)
         return response.status.state
 
     def get_execution_result(
@@ -620,24 +628,7 @@ class SeaDatabricksClient(DatabricksClient):
             ValueError: If the command ID is invalid
         """
 
-        if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
-
-        sea_statement_id = command_id.to_sea_statement_id()
-        if sea_statement_id is None:
-            raise ValueError("Not a valid SEA command ID")
-
-        # Create the request model
-        request = GetStatementRequest(statement_id=sea_statement_id)
-
-        # Get the statement result
-        response_data = self.http_client._make_request(
-            method="GET",
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
-        )
-        response = ExecuteStatementResponse.from_dict(response_data)
-
+        response = self._poll_query(command_id)
         return self._response_to_result_set(response, cursor)
 
     # == Metadata Operations ==

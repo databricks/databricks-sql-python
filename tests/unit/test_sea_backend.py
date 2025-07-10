@@ -327,7 +327,7 @@ class TestSeaBackend:
         mock_http_client._make_request.side_effect = [initial_response, poll_response]
 
         with patch.object(
-            sea_client, "get_execution_result", return_value="mock_result_set"
+            sea_client, "_response_to_result_set", return_value="mock_result_set"
         ) as mock_get_result:
             with patch("time.sleep"):
                 result = sea_client.execute_command(
