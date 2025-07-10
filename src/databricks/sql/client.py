@@ -1,6 +1,5 @@
 import time
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
-
 import pandas
 
 try:
@@ -19,6 +18,9 @@ from databricks.sql.exc import (
     OperationalError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
+    InterfaceError,
+    NotSupportedError,
+    ProgrammingError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
@@ -54,7 +56,17 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
     TOperationState,
 )
-
+from databricks.sql.telemetry.telemetry_client import (
+    TelemetryHelper,
+    TelemetryClientFactory,
+)
+from databricks.sql.telemetry.models.enums import DatabricksClientType
+from databricks.sql.telemetry.models.event import (
+    DriverConnectionParameters,
+    HostDetails,
+)
+from databricks.sql.telemetry.latency_logger import log_latency
+from databricks.sql.telemetry.models.enums import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -230,8 +242,46 @@ class Connection:
 
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
-        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
-        self._cursors = []  # type: List[Cursor]
+
+        auth_provider = get_python_sql_connector_auth_provider(
+            server_hostname, **kwargs
+        )
+
+        self.server_telemetry_enabled = True
+        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
+        self.telemetry_enabled = (
+            self.client_telemetry_enabled and self.server_telemetry_enabled
+        )
+
+        user_agent_entry = kwargs.get("user_agent_entry")
+        if user_agent_entry is None:
+            user_agent_entry = kwargs.get("_user_agent_entry")
+            if user_agent_entry is not None:
+                logger.warning(
+                    "[WARN] Parameter '_user_agent_entry' is deprecated; use 'user_agent_entry' instead. "
+                    "This parameter will be removed in the upcoming releases."
+                )
+
+        if user_agent_entry:
+            useragent_header = "{}/{} ({})".format(
+                USER_AGENT_NAME, __version__, user_agent_entry
+            )
+        else:
+            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
+
+        base_headers = [("User-Agent", useragent_header)]
+
+        self._ssl_options = SSLOptions(
+            # Double negation is generally a bad thing, but we have to keep backward compatibility
+            tls_verify=not kwargs.get(
+                "_tls_no_verify", False
+            ),  # by default - verify cert and host
+            tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
+            tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
+            tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
+            tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
+            tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
+        )
 
         self.session = Session(
             server_hostname,
@@ -249,6 +299,31 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
         self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
+
+        TelemetryClientFactory.initialize_telemetry_client(
+            telemetry_enabled=self.telemetry_enabled,
+            session_id_hex=self.get_session_id_hex(),
+            auth_provider=auth_provider,
+            host_url=self.host,
+        )
+
+        self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
+            session_id_hex=self.get_session_id_hex()
+        )
+
+        driver_connection_params = DriverConnectionParameters(
+            http_path=http_path,
+            mode=DatabricksClientType.THRIFT,
+            host_info=HostDetails(host_url=server_hostname, port=self.port),
+            auth_mech=TelemetryHelper.get_auth_mechanism(auth_provider),
+            auth_flow=TelemetryHelper.get_auth_flow(auth_provider),
+            socket_timeout=kwargs.get("_socket_timeout", None),
+        )
+
+        self._telemetry_client.export_initial_telemetry_log(
+            driver_connection_params=driver_connection_params,
+            user_agent=useragent_header,
+        )
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -343,7 +418,10 @@ class Connection:
         Will throw an Error if the connection has been closed.
         """
         if not self.open:
-            raise Error("Cannot create cursor from closed connection")
+            raise InterfaceError(
+                "Cannot create cursor from closed connection",
+                session_id_hex=self.get_session_id_hex(),
+            )
 
         cursor = Cursor(
             self,
@@ -366,14 +444,21 @@ class Connection:
         try:
             self.session.close()
         except Exception as e:
-            logger.error(f"Attempt to close session raised an exception: {e}")
+            logger.error(f"Attempt to close session raised a local exception: {e}")
+
+        self.open = False
+
+        TelemetryClientFactory.close(self.get_session_id_hex())
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
         pass
 
     def rollback(self):
-        raise NotSupportedError("Transactions are not supported on Databricks")
+        raise NotSupportedError(
+            "Transactions are not supported on Databricks",
+            session_id_hex=self.get_session_id_hex(),
+        )
 
 
 class Cursor:
@@ -419,7 +504,10 @@ class Cursor:
             for row in self.active_result_set:
                 yield row
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def _determine_parameter_approach(
         self, params: Optional[TParameterCollection]
@@ -556,7 +644,10 @@ class Cursor:
 
     def _check_not_closed(self):
         if not self.open:
-            raise Error("Attempting operation on closed cursor")
+            raise InterfaceError(
+                "Attempting operation on closed cursor",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def _handle_staging_operation(
         self, staging_allowed_local_path: Union[None, str, List[str]]
@@ -573,8 +664,9 @@ class Cursor:
         elif isinstance(staging_allowed_local_path, type(list())):
             _staging_allowed_local_paths = staging_allowed_local_path
         else:
-            raise Error(
-                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands"
+            raise ProgrammingError(
+                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         abs_staging_allowed_local_paths = [
@@ -602,8 +694,9 @@ class Cursor:
                 else:
                     continue
             if not allow_operation:
-                raise Error(
-                    "Local file operations are restricted to paths within the configured staging_allowed_local_path"
+                raise ProgrammingError(
+                    "Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                    session_id_hex=self.connection.get_session_id_hex(),
                 )
 
         # May be real headers, or could be json string
@@ -631,11 +724,13 @@ class Cursor:
             handler_args.pop("local_file")
             return self._handle_staging_remove(**handler_args)
         else:
-            raise Error(
+            raise ProgrammingError(
                 f"Operation {row.operation} is not supported. "
-                + "Supported operations are GET, PUT, and REMOVE"
+                + "Supported operations are GET, PUT, and REMOVE",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -645,7 +740,10 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error("Cannot perform PUT without specifying a local_file")
+            raise ProgrammingError(
+                "Cannot perform PUT without specifying a local_file",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
         with open(local_file, "rb") as fh:
             r = requests.put(url=presigned_url, data=fh, headers=headers)
@@ -661,8 +759,9 @@ class Cursor:
         # fmt: on
 
         if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
-            raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            raise OperationalError(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         if r.status_code == ACCEPTED:
@@ -671,6 +770,7 @@ class Cursor:
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -680,20 +780,25 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error("Cannot perform GET without specifying a local_file")
+            raise ProgrammingError(
+                "Cannot perform GET without specifying a local_file",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
         r = requests.get(url=presigned_url, headers=headers)
 
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
         if not r.ok:
-            raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            raise OperationalError(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         with open(local_file, "wb") as fp:
             fp.write(r.content)
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_remove(
         self, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -702,10 +807,12 @@ class Cursor:
         r = requests.delete(url=presigned_url, headers=headers)
 
         if not r.ok:
-            raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            raise OperationalError(
+                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency(StatementType.QUERY)
     def execute(
         self,
         operation: str,
@@ -789,6 +896,7 @@ class Cursor:
 
         return self
 
+    @log_latency(StatementType.QUERY)
     def execute_async(
         self,
         operation: str,
@@ -886,8 +994,9 @@ class Cursor:
 
             return self
         else:
-            raise Error(
-                f"get_execution_result failed with Operation status {operation_state}"
+            raise OperationalError(
+                f"get_execution_result failed with Operation status {operation_state}",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def executemany(self, operation, seq_of_parameters):
@@ -905,6 +1014,7 @@ class Cursor:
             self.execute(operation, parameters)
         return self
 
+    @log_latency(StatementType.METADATA)
     def catalogs(self) -> "Cursor":
         """
         Get all available catalogs.
@@ -921,6 +1031,7 @@ class Cursor:
         )
         return self
 
+    @log_latency(StatementType.METADATA)
     def schemas(
         self, catalog_name: Optional[str] = None, schema_name: Optional[str] = None
     ) -> "Cursor":
@@ -942,6 +1053,7 @@ class Cursor:
         )
         return self
 
+    @log_latency(StatementType.METADATA)
     def tables(
         self,
         catalog_name: Optional[str] = None,
@@ -970,6 +1082,7 @@ class Cursor:
         )
         return self
 
+    @log_latency(StatementType.METADATA)
     def columns(
         self,
         catalog_name: Optional[str] = None,
@@ -1009,7 +1122,10 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchall()
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchone(self) -> Optional[Row]:
         """
@@ -1023,7 +1139,10 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchone()
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -1045,21 +1164,30 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchmany(size)
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchmany_arrow(self, size) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def cancel(self) -> None:
         """
