@@ -242,45 +242,13 @@ class Connection:
 
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
-
-        auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, **kwargs
-        )
+        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
+        self._cursors = []  # type: List[Cursor]
 
         self.server_telemetry_enabled = True
         self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
         self.telemetry_enabled = (
             self.client_telemetry_enabled and self.server_telemetry_enabled
-        )
-
-        user_agent_entry = kwargs.get("user_agent_entry")
-        if user_agent_entry is None:
-            user_agent_entry = kwargs.get("_user_agent_entry")
-            if user_agent_entry is not None:
-                logger.warning(
-                    "[WARN] Parameter '_user_agent_entry' is deprecated; use 'user_agent_entry' instead. "
-                    "This parameter will be removed in the upcoming releases."
-                )
-
-        if user_agent_entry:
-            useragent_header = "{}/{} ({})".format(
-                USER_AGENT_NAME, __version__, user_agent_entry
-            )
-        else:
-            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
-
-        base_headers = [("User-Agent", useragent_header)]
-
-        self._ssl_options = SSLOptions(
-            # Double negation is generally a bad thing, but we have to keep backward compatibility
-            tls_verify=not kwargs.get(
-                "_tls_no_verify", False
-            ),  # by default - verify cert and host
-            tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
-            tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
-            tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
-            tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
-            tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
         self.session = Session(
@@ -303,8 +271,8 @@ class Connection:
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             session_id_hex=self.get_session_id_hex(),
-            auth_provider=auth_provider,
-            host_url=self.host,
+            auth_provider=self.session.auth_provider,
+            host_url=self.session.host,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
@@ -314,15 +282,15 @@ class Connection:
         driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
             mode=DatabricksClientType.THRIFT,
-            host_info=HostDetails(host_url=server_hostname, port=self.port),
-            auth_mech=TelemetryHelper.get_auth_mechanism(auth_provider),
-            auth_flow=TelemetryHelper.get_auth_flow(auth_provider),
+            host_info=HostDetails(host_url=server_hostname, port=self.session.port),
+            auth_mech=TelemetryHelper.get_auth_mechanism(self.session.auth_provider),
+            auth_flow=TelemetryHelper.get_auth_flow(self.session.auth_provider),
             socket_timeout=kwargs.get("_socket_timeout", None),
         )
 
         self._telemetry_client.export_initial_telemetry_log(
             driver_connection_params=driver_connection_params,
-            user_agent=useragent_header,
+            user_agent=self.session.useragent_header,
         )
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
@@ -445,8 +413,6 @@ class Connection:
             self.session.close()
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
-
-        self.open = False
 
         TelemetryClientFactory.close(self.get_session_id_hex())
 

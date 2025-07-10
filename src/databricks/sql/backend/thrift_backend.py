@@ -592,17 +592,17 @@ class ThriftDatabricksClient(DatabricksClient):
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            self._session_id_hex = (
-                self.handle_to_hex_id(response.sessionHandle)
-                if response.sessionHandle
-                else None
-            )
+
             properties = (
                 {"serverProtocolVersion": response.serverProtocolVersion}
                 if response.serverProtocolVersion
                 else {}
             )
-            return SessionId.from_thrift_handle(response.sessionHandle, properties)
+            session_id = SessionId.from_thrift_handle(
+                response.sessionHandle, properties
+            )
+            self._session_id_hex = session_id.hex_guid
+            return session_id
         except:
             self._transport.close()
             raise

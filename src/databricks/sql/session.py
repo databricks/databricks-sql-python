@@ -40,7 +40,7 @@ class Session:
         self.catalog = catalog
         self.schema = schema
 
-        auth_provider = get_python_sql_connector_auth_provider(
+        self.auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
         )
 
@@ -54,13 +54,13 @@ class Session:
                 )
 
         if user_agent_entry:
-            useragent_header = "{}/{} ({})".format(
+            self.useragent_header = "{}/{} ({})".format(
                 USER_AGENT_NAME, __version__, user_agent_entry
             )
         else:
-            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
+            self.useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
 
-        base_headers = [("User-Agent", useragent_header)]
+        base_headers = [("User-Agent", self.useragent_header)]
 
         self._ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
@@ -79,7 +79,7 @@ class Session:
             self.port,
             http_path,
             (http_headers or []) + base_headers,
-            auth_provider,
+            self.auth_provider,
             ssl_options=self._ssl_options,
             _use_arrow_native_complex_types=_use_arrow_native_complex_types,
             **kwargs,
