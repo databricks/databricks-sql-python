@@ -153,7 +153,7 @@ class LinkFetcher:
         self._shutdown_event = threading.Event()
 
         self._link_present = threading.Condition()
-        self._error = None
+        self._error: Optional[Exception] = None
         self.chunk_index_to_link: Dict[int, "ExternalLink"] = {}
 
         for link in initial_links:
