@@ -225,7 +225,7 @@ class TestSeaBackend:
         mock_http_client._make_request.return_value = execute_response
 
         with patch.object(
-            sea_client, "get_execution_result", return_value="mock_result_set"
+            sea_client, "_response_to_result_set", return_value="mock_result_set"
         ) as mock_get_result:
             result = sea_client.execute_command(
                 operation="SELECT 1",
@@ -240,9 +240,6 @@ class TestSeaBackend:
                 enforce_embedded_schema_correctness=False,
             )
             assert result == "mock_result_set"
-            cmd_id_arg = mock_get_result.call_args[0][0]
-            assert isinstance(cmd_id_arg, CommandId)
-            assert cmd_id_arg.guid == "test-statement-123"
 
         # Test with invalid session ID
         with pytest.raises(ValueError) as excinfo:
@@ -357,7 +354,7 @@ class TestSeaBackend:
         mock_http_client._make_request.return_value = execute_response
         param = {"name": "param1", "value": "value1", "type": "STRING"}
 
-        with patch.object(sea_client, "get_execution_result"):
+        with patch.object(sea_client, "_response_to_result_set"):
             sea_client.execute_command(
                 operation="SELECT * FROM table WHERE col = :param1",
                 session_id=sea_session_id,

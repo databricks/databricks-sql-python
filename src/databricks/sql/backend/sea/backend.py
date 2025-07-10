@@ -40,7 +40,6 @@ from databricks.sql.backend.sea.models import (
     DeleteSessionRequest,
     StatementParameter,
     ExecuteStatementResponse,
-    GetStatementResponse,
     CreateSessionResponse,
 )
 
@@ -323,7 +322,7 @@ class SeaDatabricksClient(DatabricksClient):
         return columns
 
     def _results_message_to_execute_response(
-        self, response: GetStatementResponse
+        self, response: ExecuteStatementResponse
     ) -> ExecuteResponse:
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
@@ -356,6 +355,28 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         return execute_response
+
+    def _response_to_result_set(
+        self, response: ExecuteStatementResponse, cursor: Cursor
+    ) -> SeaResultSet:
+        """
+        Convert a SEA response to a SeaResultSet.
+        """
+
+        # Create and return a SeaResultSet
+        from databricks.sql.backend.sea.result_set import SeaResultSet
+
+        execute_response = self._results_message_to_execute_response(response)
+
+        return SeaResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            sea_client=self,
+            result_data=response.result,
+            manifest=response.manifest,
+            buffer_size_bytes=cursor.buffer_size_bytes,
+            arraysize=cursor.arraysize,
+        )
 
     def _check_command_not_in_failed_or_closed_state(
         self, state: CommandState, command_id: CommandId
@@ -491,6 +512,10 @@ class SeaDatabricksClient(DatabricksClient):
         if async_op:
             return None
 
+        if response.status.state == CommandState.SUCCEEDED:
+            # if the response succeeded within the wait_timeout, return the results immediately
+            return self._response_to_result_set(response, cursor)
+
         self._wait_until_command_done(response)
         return self.get_execution_result(command_id, cursor)
 
@@ -573,7 +598,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         # Parse the response
-        response = GetStatementResponse.from_dict(response_data)
+        response = ExecuteStatementResponse.from_dict(response_data)
         return response.status.state
 
     def get_execution_result(
@@ -611,22 +636,9 @@ class SeaDatabricksClient(DatabricksClient):
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
-        response = GetStatementResponse.from_dict(response_data)
+        response = ExecuteStatementResponse.from_dict(response_data)
 
-        # Create and return a SeaResultSet
-        from databricks.sql.backend.sea.result_set import SeaResultSet
-
-        execute_response = self._results_message_to_execute_response(response)
-
-        return SeaResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            sea_client=self,
-            result_data=response.result,
-            manifest=response.manifest,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-            arraysize=cursor.arraysize,
-        )
+        return self._response_to_result_set(response, cursor)
 
     # == Metadata Operations ==
 
