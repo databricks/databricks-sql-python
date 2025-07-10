@@ -233,7 +233,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise
 
         self._request_lock = threading.RLock()
-        self._session_id_hex = None 
+        self._session_id_hex = None
 
     @property
     def max_download_threads(self) -> int:
@@ -507,7 +507,9 @@ class ThriftDatabricksClient(DatabricksClient):
             if not isinstance(response_or_error_info, RequestErrorInfo):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
-                ThriftDatabricksClient._check_response_for_error(response, self._session_id_hex)
+                ThriftDatabricksClient._check_response_for_error(
+                    response, self._session_id_hex
+                )
                 return response
 
             error_info = response_or_error_info
