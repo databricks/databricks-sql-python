@@ -152,7 +152,7 @@ class LinkFetcher:
 
         self._shutdown_event = threading.Event()
 
-        self._link_present = threading.Condition()
+        self._link_data_update = threading.Condition()
         self._error: Optional[Exception] = None
         self.chunk_index_to_link: Dict[int, "ExternalLink"] = {}
 
@@ -162,7 +162,7 @@ class LinkFetcher:
         self.total_chunk_count = total_chunk_count
 
     def _get_next_chunk_index(self) -> Optional[int]:
-        with self._link_present:
+        with self._link_data_update:
             max_chunk_index = max(self.chunk_index_to_link.keys(), default=None)
             if max_chunk_index is None:
                 return 0
@@ -176,20 +176,18 @@ class LinkFetcher:
 
         try:
             links = self.backend.get_chunk_links(self._statement_id, next_chunk_index)
-            with self._link_present:
-                self.chunk_index_to_link.update(
-                    {link.chunk_index: link for link in links}
-                )
-                self._link_present.notify_all()
-            for link in links:
-                self.download_manager.add_link(self._convert_to_thrift_link(link))
+            with self._link_data_update:
+                for l in links:
+                    self.chunk_index_to_link[l.chunk_index] = l
+                    self.download_manager.add_link(self._convert_to_thrift_link(l))
+                self._link_data_update.notify_all()
         except Exception as e:
             logger.error(
                 f"LinkFetcher: Error fetching links for chunk {next_chunk_index}: {e}"
             )
-            with self._link_present:
+            with self._link_data_update:
                 self._error = e
-                self._link_present.notify_all()
+                self._link_data_update.notify_all()
             return False
 
         return True
@@ -198,11 +196,11 @@ class LinkFetcher:
         if chunk_index >= self.total_chunk_count:
             return None
 
-        with self._link_present:
+        with self._link_data_update:
             while chunk_index not in self.chunk_index_to_link:
                 if self._error:
                     raise self._error
-                self._link_present.wait()
+                self._link_data_update.wait()
 
             return self.chunk_index_to_link.get(chunk_index, None)
 
