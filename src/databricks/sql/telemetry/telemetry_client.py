@@ -402,14 +402,7 @@ class TelemetryClientFactory:
     def get_telemetry_client(session_id_hex):
         """Get the telemetry client for a specific connection"""
         try:
-            if session_id_hex in TelemetryClientFactory._clients:
-                return TelemetryClientFactory._clients[session_id_hex]
-            else:
-                logger.debug(
-                    "Telemetry client not initialized for connection %s",
-                    session_id_hex,
-                )
-                return NoopTelemetryClient()
+            return TelemetryClientFactory._clients[session_id_hex]
         except Exception as e:
             logger.debug("Failed to get telemetry client: %s", e)
             return NoopTelemetryClient()
