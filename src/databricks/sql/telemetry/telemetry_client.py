@@ -401,11 +401,9 @@ class TelemetryClientFactory:
     @staticmethod
     def get_telemetry_client(session_id_hex):
         """Get the telemetry client for a specific connection"""
-        try:
-            return TelemetryClientFactory._clients[session_id_hex]
-        except Exception as e:
-            logger.debug("Failed to get telemetry client: %s", e)
-            return NoopTelemetryClient()
+        return TelemetryClientFactory._clients.get(
+            session_id_hex, NoopTelemetryClient()
+        )
 
     @staticmethod
     def close(session_id_hex):
