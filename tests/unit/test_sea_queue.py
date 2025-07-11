@@ -213,7 +213,9 @@ class TestSeaResultSetQueueFactory:
 
         with patch(
             "databricks.sql.backend.sea.queue.ResultFileDownloadManager"
-        ), patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
+        ), patch.object(
+            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
+        ):
             queue = SeaResultSetQueueFactory.build_queue(
                 result_data=result_data,
                 manifest=arrow_manifest,
@@ -342,7 +344,9 @@ class TestSeaCloudFetchQueue:
         mock_download_manager_class.return_value = mock_download_manager
 
         # Create a queue with valid initial link
-        with patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
+        with patch.object(
+            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
+        ):
             queue = SeaCloudFetchQueue(
                 initial_links=[sample_external_link],
                 max_download_threads=5,
@@ -608,13 +612,14 @@ class TestSeaCloudFetchQueue:
         # Mock the dependencies
         mock_table = Mock()
         queue._create_table_at_offset = Mock(return_value=mock_table)
+        queue._create_table_from_link = Mock(return_value=mock_table)
         queue._progress_chunk_link = Mock()
 
         # Call the method directly
         result = SeaCloudFetchQueue._create_next_table(queue)
 
         # Verify the table was created
-        queue._create_table_at_offset.assert_called_once_with(50)
+        queue._create_table_from_link.assert_called_once_with(queue._current_chunk_link)
 
         # Verify progress was called
         queue._progress_chunk_link.assert_called_once()

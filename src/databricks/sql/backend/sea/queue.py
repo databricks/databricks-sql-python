@@ -156,10 +156,10 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
         # Track the current chunk we're processing
-        self._current_chunk_link: Optional["ExternalLink"] = initial_link
+        self._current_chunk_link = initial_link
 
         # Initialize table and position
-        self.table = self._create_next_table()
+        self.table = self._create_table_from_link(self._current_chunk_link)
 
     def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
@@ -202,22 +202,30 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
         )
 
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
-        """Create next table by retrieving the logical next downloaded file."""
-        if not self._current_chunk_link:
-            logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
-            return None
+    def _create_table_from_link(
+        self, link: "ExternalLink"
+    ) -> Union["pyarrow.Table", None]:
+        """Create a table from a link."""
 
         if not self.download_manager:
             logger.debug("SeaCloudFetchQueue: No download manager, returning")
             return None
 
-        thrift_link = self._convert_to_thrift_link(self._current_chunk_link)
+        thrift_link = self._convert_to_thrift_link(link)
         self.download_manager.add_link(thrift_link)
 
-        row_offset = self._current_chunk_link.row_offset
+        row_offset = link.row_offset
         arrow_table = self._create_table_at_offset(row_offset)
+
+        return arrow_table
+
+    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+        """Create next table by retrieving the logical next downloaded file."""
 
         self._progress_chunk_link()
 
-        return arrow_table
+        if not self._current_chunk_link:
+            logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
+            return None
+
+        return self._create_table_from_link(self._current_chunk_link)
