@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.types import SessionId, CommandId, CommandState
 
+
 class DatabricksClient(ABC):
     """
     Abstract client interface for interacting with Databricks SQL services.
