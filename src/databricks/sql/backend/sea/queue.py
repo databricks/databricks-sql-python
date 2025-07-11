@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
-import lz4.frame
+from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
 
 try:
     import pyarrow
@@ -35,25 +35,6 @@ from databricks.sql.utils import (
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def decompress_multi_frame_lz4(attachment: bytes) -> bytes:
-    try:
-        decompressor = lz4.frame.LZ4FrameDecompressor()
-        arrow_file = decompressor.decompress(attachment)
-
-        # the attachment may be a concatenation of multiple LZ4 frames
-        while decompressor.unused_data:
-            remaining_data = decompressor.unused_data
-            arrow_file += decompressor.decompress(remaining_data)
-
-            logger.debug(f"LZ4 decompressed {len(arrow_file)} bytes from attachment")
-
-    except Exception as e:
-        logger.error(f"LZ4 decompression failed: {e}")
-        raise e
-
-    return arrow_file
 
 
 class SeaResultSetQueueFactory(ABC):
@@ -90,7 +71,7 @@ class SeaResultSetQueueFactory(ABC):
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
             if result_data.attachment is not None:
                 arrow_file = (
-                    decompress_multi_frame_lz4(result_data.attachment)
+                    ResultSetDownloadHandler._decompress_data(result_data.attachment)
                     if lz4_compressed
                     else result_data.attachment
                 )
@@ -300,10 +281,57 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         self.link_fetcher.start()
 
         # Initialize table and position
-        self.table = self._create_next_table()
+        self.table = self._create_table_from_link(self._current_chunk_link)
+
+    def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
+        """Convert SEA external links to Thrift format for compatibility with existing download manager."""
+        # Parse the ISO format expiration time
+        expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())
+        return TSparkArrowResultLink(
+            fileLink=link.external_link,
+            expiryTime=expiry_time,
+            rowCount=link.row_count,
+            bytesNum=link.byte_count,
+            startRowOffset=link.row_offset,
+            httpHeaders=link.http_headers or {},
+        )
+
+    def _get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
+        if chunk_index not in self._chunk_index_to_link:
+            links = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
+            self._chunk_index_to_link.update({link.chunk_index: link for link in links})
+        return self._chunk_index_to_link.get(chunk_index, None)
+
+    def _progress_chunk_link(self):
+        """Progress to the next chunk link."""
+        if not self._current_chunk_link:
+            return None
+
+        next_chunk_index = self._current_chunk_link.next_chunk_index
+
+        if next_chunk_index is None:
+            self._current_chunk_link = None
+            return None
+
+        self._current_chunk_link = self._get_chunk_link(next_chunk_index)
+        if not self._current_chunk_link:
+            logger.error(
+                "SeaCloudFetchQueue: unable to retrieve link for chunk {}".format(
+                    next_chunk_index
+                )
+            )
+            return None
+
+        logger.debug(
+            f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
+        )
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
+        if not self._current_chunk_link:
+            logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
+            return None
+
         if not self.download_manager:
             logger.debug("SeaCloudFetchQueue: No download manager, returning")
             return None
@@ -317,4 +345,8 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         self.current_chunk_index += 1
 
-        return arrow_table
+        if not self._current_chunk_link:
+            logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
+            return None
+
+        return self._create_table_from_link(self._current_chunk_link)
