@@ -273,6 +273,7 @@ class CloudFetchQueue(ResultSetQueue):
                 self.table = self._create_next_table()
                 self.table_row_index = 0
             num_rows -= table_slice.num_rows
+        results = results.combine_chunks()
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
         return results
@@ -296,6 +297,7 @@ class CloudFetchQueue(ResultSetQueue):
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
+        results = results.combine_chunks()
         return results
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:

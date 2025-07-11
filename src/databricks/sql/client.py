@@ -1435,6 +1435,8 @@ class ResultSet:
             date_as_object=True,
             timestamp_as_object=True,
         )
+        del table
+        del table_renamed
 
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
@@ -1465,6 +1467,7 @@ class ResultSet:
             results = pyarrow.concat_tables([results, partial_results])
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
+        results = results.combine_chunks()
 
         return results
 
