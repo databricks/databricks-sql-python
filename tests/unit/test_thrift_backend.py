@@ -1231,7 +1231,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             response, cursor_mock
         )
 
-    @patch("databricks.sql.backend.thrift_backend.ThriftResultSet")
+    @patch("databricks.sql.result_set.ThriftResultSet")
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_schemas_calls_client_and_handle_execute_response(
         self, tcli_service_class, mock_result_set
@@ -1273,7 +1273,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             response, cursor_mock
         )
 
-    @patch("databricks.sql.backend.thrift_backend.ThriftResultSet")
+    @patch("databricks.sql.result_set.ThriftResultSet")
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_tables_calls_client_and_handle_execute_response(
         self, tcli_service_class, mock_result_set
@@ -1319,7 +1319,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             response, cursor_mock
         )
 
-    @patch("databricks.sql.backend.thrift_backend.ThriftResultSet")
+    @patch("databricks.sql.result_set.ThriftResultSet")
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_get_columns_calls_client_and_handle_execute_response(
         self, tcli_service_class, mock_result_set

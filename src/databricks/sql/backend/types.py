@@ -80,7 +80,6 @@ class CommandState(Enum):
             return cls.CANCELLED
         else:
             return None
-    
 
     @classmethod
     def from_sea_state(cls, state: str) -> Optional["CommandState"]:
@@ -411,6 +410,7 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
+
 
 @dataclass
 class ExecuteResponse:
