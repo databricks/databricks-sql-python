@@ -1555,6 +1555,7 @@ class ResultSet:
 
         return results
 
+    @log_latency()
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
@@ -1571,6 +1572,7 @@ class ResultSet:
         else:
             return None
 
+    @log_latency()
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
@@ -1580,6 +1582,7 @@ class ResultSet:
         else:
             return self._convert_arrow_table(self.fetchall_arrow())
 
+    @log_latency()
     def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a list of rows.

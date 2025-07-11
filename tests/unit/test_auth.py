@@ -1,26 +1,30 @@
 import unittest
 import pytest
-from typing import Optional
-from unittest.mock import patch
-
+from unittest.mock import patch, MagicMock
+import jwt
 from databricks.sql.auth.auth import (
     AccessTokenAuthProvider,
     AuthProvider,
     ExternalAuthProvider,
     AuthType,
 )
+import time
 from databricks.sql.auth.auth import (
     get_python_sql_connector_auth_provider,
     PYSQL_OAUTH_CLIENT_ID,
 )
-from databricks.sql.auth.oauth import OAuthManager
-from databricks.sql.auth.authenticators import DatabricksOAuthProvider
+from databricks.sql.auth.oauth import OAuthManager, Token, ClientCredentialsTokenSource
+from databricks.sql.auth.authenticators import (
+    DatabricksOAuthProvider,
+    AzureServicePrincipalCredentialProvider,
+)
 from databricks.sql.auth.endpoint import (
     CloudType,
     InHouseOAuthEndpointCollection,
     AzureOAuthEndpointCollection,
 )
 from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
+from databricks.sql.common.http import DatabricksHttpClient
 from databricks.sql.experimental.oauth_persistence import OAuthPersistenceCache
 
 
@@ -190,3 +194,107 @@ class Auth(unittest.TestCase):
         auth_provider = get_python_sql_connector_auth_provider(hostname)
         self.assertTrue(type(auth_provider).__name__, "DatabricksOAuthProvider")
         self.assertTrue(auth_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
+
+
+class TestClientCredentialsTokenSource:
+    @pytest.fixture
+    def indefinite_token(self):
+        secret_key = "mysecret"
+        expires_in_100_years = int(time.time()) + (100 * 365 * 24 * 60 * 60)
+
+        payload = {"sub": "user123", "role": "admin", "exp": expires_in_100_years}
+
+        access_token = jwt.encode(payload, secret_key, algorithm="HS256")
+        return Token(access_token, "Bearer", "refresh_token")
+
+    @pytest.fixture
+    def http_response(self):
+        def status_response(response_status_code):
+            mock_response = MagicMock()
+            mock_response.status_code = response_status_code
+            mock_response.json.return_value = {
+                "access_token": "abc123",
+                "token_type": "Bearer",
+                "refresh_token": None,
+            }
+            return mock_response
+
+        return status_response
+
+    @pytest.fixture
+    def token_source(self):
+        return ClientCredentialsTokenSource(
+            token_url="https://token_url.com",
+            client_id="client_id",
+            client_secret="client_secret",
+        )
+
+    def test_no_token_refresh__when_token_is_not_expired(
+        self, token_source, indefinite_token
+    ):
+        with patch.object(token_source, "refresh") as mock_get_token:
+            mock_get_token.return_value = indefinite_token
+
+            # Mulitple calls for token
+            token1 = token_source.get_token()
+            token2 = token_source.get_token()
+            token3 = token_source.get_token()
+
+            assert token1 == token2 == token3
+            assert token1.access_token == indefinite_token.access_token
+            assert token1.token_type == indefinite_token.token_type
+            assert token1.refresh_token == indefinite_token.refresh_token
+
+            # should refresh only once as token is not expired
+            assert mock_get_token.call_count == 1
+
+    def test_get_token_success(self, token_source, http_response):
+        databricks_http_client = DatabricksHttpClient.get_instance()
+        with patch.object(
+            databricks_http_client.session, "request", return_value=http_response(200)
+        ) as mock_request:
+            token = token_source.get_token()
+
+            # Assert
+            assert isinstance(token, Token)
+            assert token.access_token == "abc123"
+            assert token.token_type == "Bearer"
+            assert token.refresh_token is None
+
+    def test_get_token_failure(self, token_source, http_response):
+        databricks_http_client = DatabricksHttpClient.get_instance()
+        with patch.object(
+            databricks_http_client.session, "request", return_value=http_response(400)
+        ) as mock_request:
+            with pytest.raises(Exception) as e:
+                token_source.get_token()
+            assert "Failed to get token: 400" in str(e.value)
+
+
+class TestAzureServicePrincipalCredentialProvider:
+    @pytest.fixture
+    def credential_provider(self):
+        return AzureServicePrincipalCredentialProvider(
+            hostname="hostname",
+            azure_client_id="client_id",
+            azure_client_secret="client_secret",
+            azure_tenant_id="tenant_id",
+        )
+
+    def test_provider_credentials(self, credential_provider):
+
+        test_token = Token("access_token", "Bearer", "refresh_token")
+
+        with patch.object(
+            credential_provider, "get_token_source"
+        ) as mock_get_token_source:
+            mock_get_token_source.return_value = MagicMock()
+            mock_get_token_source.return_value.get_token.return_value = test_token
+
+            headers = credential_provider()()
+
+            assert headers["Authorization"] == f"Bearer {test_token.access_token}"
+            assert (
+                headers["X-Databricks-Azure-SP-Management-Token"]
+                == test_token.access_token
+            )
