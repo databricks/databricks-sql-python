@@ -1,6 +1,37 @@
 import json
 from enum import Enum
 from dataclasses import asdict, is_dataclass
+from abc import ABC, abstractmethod
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class BaseTelemetryClient(ABC):
+    """
+    Base class for telemetry clients.
+    It is used to define the interface for telemetry clients.
+    """
+
+    @abstractmethod
+    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
+        logger.debug("subclass must implement export_initial_telemetry_log")
+        pass
+
+    @abstractmethod
+    def export_failure_log(self, error_name, error_message):
+        logger.debug("subclass must implement export_failure_log")
+        pass
+
+    @abstractmethod
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
+        logger.debug("subclass must implement export_latency_log")
+        pass
+
+    @abstractmethod
+    def close(self):
+        logger.debug("subclass must implement close")
+        pass
 
 
 class JsonSerializableMixin:

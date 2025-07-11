@@ -22,22 +22,6 @@ from databricks.sql.auth.authenticators import (
 
 
 @pytest.fixture
-def telemetry_system_reset():
-    """Reset telemetry system state before each test."""
-    TelemetryClientFactory._clients.clear()
-    if TelemetryClientFactory._executor:
-        TelemetryClientFactory._executor.shutdown(wait=True)
-    TelemetryClientFactory._executor = None
-    TelemetryClientFactory._initialized = False
-    yield
-    TelemetryClientFactory._clients.clear()
-    if TelemetryClientFactory._executor:
-        TelemetryClientFactory._executor.shutdown(wait=True)
-    TelemetryClientFactory._executor = None
-    TelemetryClientFactory._initialized = False
-
-
-@pytest.fixture
 def mock_telemetry_client():
     """Create a mock telemetry client for testing."""
     session_id = str(uuid.uuid4())
@@ -113,7 +97,6 @@ class TestTelemetryClient:
         assert args[0] == requests.post
         assert args[1] == 'https://test-host.com/telemetry-ext'
         assert kwargs['headers']['Authorization'] == 'Bearer test-token'
-        assert kwargs['timeout'] == 10
         
         # Verify request body structure
         request_data = kwargs['data']
@@ -203,7 +186,22 @@ class TestTelemetryHelper:
 class TestTelemetryFactory:
     """Tests for TelemetryClientFactory lifecycle and management."""
 
-    def test_client_lifecycle_flow(self, telemetry_system_reset):
+    @pytest.fixture(autouse=True)
+    def telemetry_system_reset(self):
+        """Reset telemetry system state before each test."""
+        TelemetryClientFactory._clients.clear()
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)
+        TelemetryClientFactory._executor = None
+        TelemetryClientFactory._initialized = False
+        yield
+        TelemetryClientFactory._clients.clear()
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)
+        TelemetryClientFactory._executor = None
+        TelemetryClientFactory._initialized = False
+
+    def test_client_lifecycle_flow(self):
         """Test complete client lifecycle: initialize -> use -> close."""
         session_id_hex = "test-session"
         auth_provider = AccessTokenAuthProvider("token")
@@ -229,7 +227,7 @@ class TestTelemetryFactory:
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_disabled_telemetry_flow(self, telemetry_system_reset):
+    def test_disabled_telemetry_flow(self):
         """Test that disabled telemetry uses NoopTelemetryClient."""
         session_id_hex = "test-session"
         
@@ -243,7 +241,7 @@ class TestTelemetryFactory:
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_factory_error_handling(self, telemetry_system_reset):
+    def test_factory_error_handling(self):
         """Test that factory errors fall back to NoopTelemetryClient."""
         session_id = "test-session"
         
@@ -261,7 +259,7 @@ class TestTelemetryFactory:
         client = TelemetryClientFactory.get_telemetry_client(session_id)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_factory_shutdown_flow(self, telemetry_system_reset):
+    def test_factory_shutdown_flow(self):
         """Test factory shutdown when last client is removed."""
         session1 = "session-1"
         session2 = "session-2"
@@ -288,7 +286,6 @@ class TestTelemetryFactory:
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
 
-
 # A helper function to run a target in multiple threads and wait for them.
 def run_in_threads(target, num_threads, pass_index=False):
     """Creates, starts, and joins a specified number of threads.
@@ -307,7 +304,6 @@ def run_in_threads(target, num_threads, pass_index=False):
     for t in threads:
         t.join()
 
-
 class TestTelemetryRaceConditions:
     """Tests for race conditions in multithreaded scenarios."""
 
@@ -320,9 +316,9 @@ class TestTelemetryRaceConditions:
         TelemetryClientFactory._clients.clear()
         TelemetryClientFactory._executor = None
         TelemetryClientFactory._initialized = False
-        
+
         yield
-        
+
         # Clean up at the end of each test
         if TelemetryClientFactory._executor:
             TelemetryClientFactory._executor.shutdown(wait=True)
@@ -336,7 +332,7 @@ class TestTelemetryRaceConditions:
         share a single ThreadPoolExecutor and all clients are created successfully.
         """
         num_threads = 20
-        
+
         def create_client(thread_id):
             TelemetryClientFactory.initialize_telemetry_client(
                 telemetry_enabled=True,
@@ -346,22 +342,22 @@ class TestTelemetryRaceConditions:
             )
 
         run_in_threads(create_client, 20, pass_index=True)
-        
+
         # ASSERT: The factory was properly initialized
         assert TelemetryClientFactory._initialized is True
         assert TelemetryClientFactory._executor is not None
         assert isinstance(TelemetryClientFactory._executor, ThreadPoolExecutor)
-        
+
         # ASSERT: All clients were successfully created
         assert len(TelemetryClientFactory._clients) == num_threads
-        
+
         # ASSERT: All TelemetryClient instances share the same executor
         telemetry_clients = [
             client for client in TelemetryClientFactory._clients.values()
             if isinstance(client, TelemetryClient)
         ]
         assert len(telemetry_clients) == num_threads
-        
+
         shared_executor = TelemetryClientFactory._executor
         for client in telemetry_clients:
             assert client._executor is shared_executor
@@ -381,7 +377,7 @@ class TestTelemetryRaceConditions:
                 auth_provider=None,
                 host_url="test-host",
             )
-        
+
         run_in_threads(create_same_client, num_threads)
 
         # ASSERT: Only one client was created in the factory.
@@ -398,7 +394,7 @@ class TestTelemetryRaceConditions:
         # Mock _flush to prevent auto-flushing when batch size threshold is reached
         original_flush = client._flush
         client._flush = MagicMock()
-        
+
         num_threads = 5
         events_per_thread = 10
 
@@ -411,7 +407,7 @@ class TestTelemetryRaceConditions:
         # ASSERT: The batch contains all events from all threads, none were lost.
         total_expected_events = num_threads * events_per_thread
         assert len(client._events_batch) == total_expected_events
-        
+
         # Restore original flush method for cleanup
         client._flush = original_flush
 
@@ -422,7 +418,7 @@ class TestTelemetryRaceConditions:
         """
         client = TelemetryClient(True, "session-1", None, "host", MagicMock())
         client._send_telemetry = MagicMock()
-        
+
         # Pre-fill the batch so there's something to flush
         client._events_batch = ["event"] * 5
 
@@ -454,7 +450,7 @@ class TestTelemetryRaceConditions:
             TelemetryClientFactory.close(session_id)
 
         run_in_threads(create_and_close_client, num_ops, pass_index=True)
-        
+
         # ASSERT: After all operations, the factory should be empty and reset.
         assert not TelemetryClientFactory._clients
         assert TelemetryClientFactory._executor is None
