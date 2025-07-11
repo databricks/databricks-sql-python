@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Union, TYPE_CHECKING
 
+from databricks.sql.types import SSLOptions
+
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
@@ -21,6 +23,13 @@ class DatabricksClient(ABC):
     - Retrieving query results
     - Fetching metadata about catalogs, schemas, tables, and columns
     """
+
+    def __init__(self, ssl_options: SSLOptions, **kwargs):
+        self._use_arrow_native_complex_types = kwargs.get(
+            "_use_arrow_native_complex_types", True
+        )
+        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        self._ssl_options = ssl_options
 
     # == Connection and Session Management ==
     @abstractmethod
@@ -82,6 +91,7 @@ class DatabricksClient(ABC):
         parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
+        row_limit: Optional[int] = None,
     ) -> Union[ResultSet, None]:
         """
         Executes a SQL command or query within the specified session.
