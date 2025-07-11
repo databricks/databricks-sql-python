@@ -131,7 +131,7 @@ class Session:
 
     @staticmethod
     def get_protocol_version(session_id: SessionId):
-        return session_id.get_protocol_version()
+        return session_id.protocol_version
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
