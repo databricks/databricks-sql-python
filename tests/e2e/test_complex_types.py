@@ -54,10 +54,19 @@ class TestComplexTypes(PySQLPytestTestCase):
             ("map_array_col", list),
         ],
     )
-    def test_read_complex_types_as_arrow(self, field, expected_type, table_fixture):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {"use_sea": True},
+        ],
+    )
+    def test_read_complex_types_as_arrow(
+        self, field, expected_type, table_fixture, extra_params
+    ):
         """Confirms the return types of a complex type field when reading as arrow"""
 
-        with self.cursor() as cursor:
+        with self.cursor(extra_params=extra_params) as cursor:
             result = cursor.execute(
                 "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
             ).fetchone()
@@ -75,10 +84,18 @@ class TestComplexTypes(PySQLPytestTestCase):
             ("map_array_col"),
         ],
     )
-    def test_read_complex_types_as_string(self, field, table_fixture):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {"use_sea": True},
+        ],
+    )
+    def test_read_complex_types_as_string(self, field, table_fixture, extra_params):
         """Confirms the return type of a complex type that is returned as a string"""
+        extra_params = {**extra_params, "_use_arrow_native_complex_types": False}
         with self.cursor(
-            extra_params={"_use_arrow_native_complex_types": False}
+            extra_params=extra_params,
         ) as cursor:
             result = cursor.execute(
                 "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
