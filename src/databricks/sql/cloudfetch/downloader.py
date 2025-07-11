@@ -95,6 +95,10 @@ class ResultSetDownloadHandler:
         session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
 
         try:
+            print_text = [
+
+            ]
+            start_time = time.time()
             # Get the file via HTTP request
             response = session.get(
                 self.link.fileLink,
@@ -104,7 +108,8 @@ class ResultSetDownloadHandler:
                 # TODO: Pass cert from `self._ssl_options`
             )
             response.raise_for_status()
-
+            end_time = time.time()
+            print_text.append(f"Downloaded file in {end_time - start_time} seconds")
             # Save (and decompress if needed) the downloaded file
             compressed_data = response.content
             decompressed_data = (
@@ -126,6 +131,13 @@ class ResultSetDownloadHandler:
                     self.link.startRowOffset, self.link.rowCount
                 )
             )
+
+            print_text.append(
+                f"Downloaded file startRowOffset - {self.link.startRowOffset} - rowCount - {self.link.rowCount}"
+            )
+
+            for text in print_text:
+                print(text)
 
             return DownloadedFile(
                 decompressed_data,

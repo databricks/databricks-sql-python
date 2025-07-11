@@ -1515,7 +1515,10 @@ class ResultSet:
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
+        print("Server side has more rows", self.has_more_rows)
+        
         while not self.has_been_closed_server_side and self.has_more_rows:
+            print(f"RESULT SIZE TOTAL {results.num_rows}")
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(

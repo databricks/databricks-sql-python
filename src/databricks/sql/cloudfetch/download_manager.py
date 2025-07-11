@@ -78,13 +78,13 @@ class ResultFileDownloadManager:
                     next_row_offset, file.start_row_offset, file.row_count
                 )
             )
-
         return file
 
     def _schedule_downloads(self):
         """
         While download queue has a capacity, peek pending links and submit them to thread pool.
         """
+        print("Schedule_downloads")
         logger.debug("ResultFileDownloadManager: schedule downloads")
         while (len(self._download_tasks) < self._max_download_threads) and (
             len(self._pending_links) > 0

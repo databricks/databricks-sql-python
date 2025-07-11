@@ -235,6 +235,8 @@ class CloudFetchQueue(ResultSetQueue):
                         result_link.startRowOffset, result_link.rowCount
                     )
                 )
+        print("Initial Setup Cloudfetch Queue")
+        print(f"No of result links - {len(result_links)}")
         self.download_manager = ResultFileDownloadManager(
             links=result_links or [],
             max_download_threads=self.max_download_threads,
@@ -288,6 +290,9 @@ class CloudFetchQueue(ResultSetQueue):
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         results = self.table.slice(0, 0)
+        
+        print("remaining_rows call")
+        print(f"self.table.num_rows - {self.table.num_rows}")
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
@@ -296,6 +301,7 @@ class CloudFetchQueue(ResultSetQueue):
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
+        print(f"results.num_rows - {results.num_rows}")
         return results
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
@@ -334,7 +340,9 @@ class CloudFetchQueue(ResultSetQueue):
                 arrow_table.num_rows, self.start_row_index
             )
         )
-
+        
+        print("_create_next_table")
+        print(f"arrow_table.num_rows - {arrow_table.num_rows}")
         return arrow_table
 
     def _create_empty_table(self) -> "pyarrow.Table":
