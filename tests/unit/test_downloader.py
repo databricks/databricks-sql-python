@@ -23,6 +23,8 @@ class DownloaderTests(unittest.TestCase):
     @patch("time.time", return_value=1000)
     def test_run_link_expired(self, mock_time):
         settings = Mock()
+        settings.link_expiry_buffer_secs = 0
+        settings.expired_link_callback = Mock(side_effect=Error("CloudFetch link has expired"))
         result_link = Mock()
         # Already expired
         result_link.expiryTime = 999
@@ -39,6 +41,7 @@ class DownloaderTests(unittest.TestCase):
     @patch("time.time", return_value=1000)
     def test_run_link_past_expiry_buffer(self, mock_time):
         settings = Mock(link_expiry_buffer_secs=5)
+        settings.expired_link_callback = Mock(side_effect=Error("CloudFetch link has expired"))
         result_link = Mock()
         # Within the expiry buffer time
         result_link.expiryTime = 1004
@@ -60,6 +63,7 @@ class DownloaderTests(unittest.TestCase):
         settings = Mock(link_expiry_buffer_secs=0, download_timeout=0)
         settings.download_timeout = 0
         settings.use_proxy = False
+        settings.expired_link_callback = Mock()
         result_link = Mock(expiryTime=1001)
 
         d = downloader.ResultSetDownloadHandler(
@@ -79,6 +83,7 @@ class DownloaderTests(unittest.TestCase):
 
         settings = Mock(link_expiry_buffer_secs=0, download_timeout=0, use_proxy=False)
         settings.is_lz4_compressed = False
+        settings.expired_link_callback = Mock()
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
         d = downloader.ResultSetDownloadHandler(
@@ -102,6 +107,7 @@ class DownloaderTests(unittest.TestCase):
 
         settings = Mock(link_expiry_buffer_secs=0, download_timeout=0, use_proxy=False)
         settings.is_lz4_compressed = True
+        settings.expired_link_callback = Mock()
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
         d = downloader.ResultSetDownloadHandler(
@@ -117,6 +123,7 @@ class DownloaderTests(unittest.TestCase):
         settings = Mock(
             link_expiry_buffer_secs=0, use_proxy=False, is_lz4_compressed=True
         )
+        settings.expired_link_callback = Mock()
         result_link = Mock(bytesNum=100, expiryTime=1001)
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
@@ -132,6 +139,7 @@ class DownloaderTests(unittest.TestCase):
         settings = Mock(
             link_expiry_buffer_secs=0, use_proxy=False, is_lz4_compressed=True
         )
+        settings.expired_link_callback = Mock()
         result_link = Mock(bytesNum=100, expiryTime=1001)
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
