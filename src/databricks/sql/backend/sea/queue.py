@@ -283,18 +283,8 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         # Initialize table and position
         self.table = self._create_next_table()
 
-    def _get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
-        if chunk_index not in self._chunk_index_to_link:
-            links = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
-            self._chunk_index_to_link.update({link.chunk_index: link for link in links})
-        return self._chunk_index_to_link.get(chunk_index, None)
-
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
-        if not self._current_chunk_link:
-            logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
-            return None
-
         if not self.download_manager:
             logger.debug("SeaCloudFetchQueue: No download manager, returning")
             return None
