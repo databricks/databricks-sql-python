@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Any, Tuple
 import logging
 
-from databricks.sql.backend.utils import guid_to_hex_id
+from databricks.sql.backend.utils.guid_utils import guid_to_hex_id
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,7 @@ class CommandState(Enum):
             return cls.CANCELLED
         else:
             return None
+    
 
     @classmethod
     def from_sea_state(cls, state: str) -> Optional["CommandState"]:
@@ -160,7 +161,7 @@ class SessionId:
                 if isinstance(self.secret, bytes)
                 else str(self.secret)
             )
-            return f"{self.get_hex_guid()}|{secret_hex}"
+            return f"{self.hex_guid}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
@@ -238,14 +239,8 @@ class SessionId:
 
         return self.guid
 
-    def get_guid(self) -> Any:
-        """
-        Get the ID of the session.
-        """
-
-        return self.guid
-
-    def get_hex_guid(self) -> str:
+    @property
+    def hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the session ID.
 
@@ -258,7 +253,8 @@ class SessionId:
         else:
             return str(self.guid)
 
-    def get_protocol_version(self):
+    @property
+    def protocol_version(self):
         """
         Get the server protocol version for this session.
 
@@ -369,7 +365,7 @@ class CommandId:
 
         return cls(BackendType.SEA, statement_id)
 
-    def to_thrift_handle(self) -> Optional[ttypes.TOperationHandle]:
+    def to_thrift_handle(self):
         """
         Convert this CommandId to a Thrift TOperationHandle.
 
@@ -390,7 +386,7 @@ class CommandId:
             modifiedRowCount=self.modified_row_count,
         )
 
-    def to_sea_statement_id(self) -> Optional[str]:
+    def to_sea_statement_id(self):
         """
         Get the SEA statement ID string.
 
@@ -401,7 +397,7 @@ class CommandId:
         if self.backend_type != BackendType.SEA:
             return None
 
-        return str(self.guid)
+        return self.guid
 
     def to_hex_guid(self) -> str:
         """
@@ -415,7 +411,6 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
-
 
 @dataclass
 class ExecuteResponse:
