@@ -1389,7 +1389,6 @@ class ResultSet:
         self.results = results
         self.has_more_rows = has_more_rows
 
-    @log_latency()
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1402,7 +1401,6 @@ class ResultSet:
 
         return result
 
-    @log_latency()
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1445,7 +1443,6 @@ class ResultSet:
     def rownumber(self):
         return self._next_row_index
 
-    @log_latency()
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
@@ -1488,7 +1485,6 @@ class ResultSet:
         ]
         return ColumnTable(merged_result, result1.column_names)
 
-    @log_latency()
     def fetchmany_columnar(self, size: int):
         """
         Fetch the next set of rows of a query result, returning a Columnar Table.
@@ -1514,7 +1510,6 @@ class ResultSet:
 
         return results
 
-    @log_latency()
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
@@ -1541,7 +1536,6 @@ class ResultSet:
             return pyarrow.Table.from_pydict(data)
         return results
 
-    @log_latency()
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
         results = self.results.remaining_rows()
