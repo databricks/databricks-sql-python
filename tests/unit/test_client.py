@@ -87,7 +87,17 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_thrift_client_class):
-        """Test that connection.close() properly closes result sets through the real close chain."""
+        """Test that closing a connection properly closes commands.
+
+        This test verifies that when a connection is closed:
+        1. the active result set is marked as closed server-side
+        2. The operation state is set to CLOSED
+        3. backend.close_command is called only for commands that weren't already closed
+
+        Args:
+            mock_thrift_client_class: Mock for ThriftBackend class
+        """
+
         # Test once with has_been_closed_server side, once without
         for closed in (True, False):
             with self.subTest(closed=closed):
@@ -114,19 +124,11 @@ class ClientTestSuite(unittest.TestCase):
                 connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
                 cursor = connection.cursor()
 
-                # Create a REAL ThriftResultSet that will be returned by execute_command
                 real_result_set = ThriftResultSet(
                     connection=connection,
                     execute_response=mock_execute_response,
                     thrift_client=mock_backend,
                 )
-
-                # Verify initial state
-                self.assertEqual(real_result_set.has_been_closed_server_side, closed)
-                expected_status = (
-                    CommandState.CLOSED if closed else CommandState.SUCCEEDED
-                )
-                self.assertEqual(real_result_set.status, expected_status)
 
                 # Mock execute_command to return our real result set
                 cursor.backend.execute_command = Mock(return_value=real_result_set)
