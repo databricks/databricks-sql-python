@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 from typing import Generator
 import logging
-
+import time
 logger = logging.getLogger(__name__)
 
 
@@ -70,7 +70,10 @@ class DatabricksHttpClient:
         logger.info("Executing HTTP request: %s with url: %s", method.value, url)
         response = None
         try:
+            start_time = time.time()
             response = self.session.request(method.value, url, **kwargs)
+            end_time = time.time()
+            print(f"Downloaded file in {end_time - start_time} seconds")
             yield response
         except Exception as e:
             logger.error("Error executing HTTP request in DatabricksHttpClient: %s", e)

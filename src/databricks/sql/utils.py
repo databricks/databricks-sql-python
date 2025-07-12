@@ -137,6 +137,11 @@ class ColumnTable:
         )
 
 
+class ArrowStreamTable:
+    def __init__(self, arrow_stream, num_rows):
+        self.arrow_stream = arrow_stream
+        self.num_rows = num_rows
+
 class ColumnQueue(ResultSetQueue):
     def __init__(self, column_table: ColumnTable):
         self.column_table = column_table
@@ -263,11 +268,12 @@ class CloudFetchQueue(ResultSetQueue):
             return self._create_empty_table()
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
 
             # Replace current table with the next table if we are at the end of the current table
@@ -277,7 +283,7 @@ class CloudFetchQueue(ResultSetQueue):
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
-        return results
+        return concat_chunked_tables(partial_result_chunks)
 
     def remaining_rows(self) -> "pyarrow.Table":
         """
@@ -290,19 +296,19 @@ class CloudFetchQueue(ResultSetQueue):
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         results = self.table.slice(0, 0)
-        
+        partial_result_chunks = [results]
         print("remaining_rows call")
         print(f"self.table.num_rows - {self.table.num_rows}")
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
         print(f"results.num_rows - {results.num_rows}")
-        return results
+        return concat_chunked_tables(partial_result_chunks)
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         logger.debug(
@@ -771,3 +777,30 @@ def _create_python_tuple(t_col_value_wrapper):
             result[i] = None
 
     return tuple(result)
+
+
+def concat_chunked_tables(tables: List[Union["pyarrow.Table", ColumnTable]]) -> Union["pyarrow.Table", ColumnTable]:
+        if isinstance(tables[0], ColumnTable):
+            base_table = tables[0]
+            for table in tables[1:]:
+                base_table = merge_columnar(base_table, table)
+            return base_table
+        else:
+            return pyarrow.concat_tables(tables)
+        
+def merge_columnar(result1: ColumnTable, result2: ColumnTable) -> ColumnTable:
+    """
+    Function to merge / combining the columnar results into a single result
+    :param result1:
+    :param result2:
+    :return:
+    """
+
+    if result1.column_names != result2.column_names:
+        raise ValueError("The columns in the results don't match")
+
+    merged_result = [
+        result1.column_table[i] + result2.column_table[i]
+        for i in range(result1.num_columns)
+    ]
+    return ColumnTable(merged_result, result1.column_names)

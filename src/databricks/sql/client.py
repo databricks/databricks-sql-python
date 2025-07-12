@@ -31,6 +31,8 @@ from databricks.sql.utils import (
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
+    concat_chunked_tables,
+    merge_columnar,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -1454,36 +1456,25 @@ class ResultSet:
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
+        partial_result_chunks = [results]
 
+        TOTAL_SIZE = results.num_rows
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
             and self.has_more_rows
         ):
+            print(f"TOTAL DATA ROWS {TOTAL_SIZE}")
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results])
+            partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
+            TOTAL_SIZE += partial_results.num_rows
 
-        return results
-
-    def merge_columnar(self, result1, result2):
-        """
-        Function to merge / combining the columnar results into a single result
-        :param result1:
-        :param result2:
-        :return:
-        """
-
-        if result1.column_names != result2.column_names:
-            raise ValueError("The columns in the results don't match")
-
-        merged_result = [
-            result1.column_table[i] + result2.column_table[i]
-            for i in range(result1.num_columns)
-        ]
-        return ColumnTable(merged_result, result1.column_names)
+        return concat_chunked_tables(partial_result_chunks)
+    
+    
 
     def fetchmany_columnar(self, size: int):
         """
@@ -1504,7 +1495,7 @@ class ResultSet:
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = self.merge_columnar(results, partial_results)
+            results = merge_columnar(results, partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
@@ -1514,20 +1505,20 @@ class ResultSet:
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
-
-        print("Server side has more rows", self.has_more_rows)
         
+        partial_result_chunks = [results]
+        print("Server side has more rows", self.has_more_rows)
+        TOTAL_SIZE = results.num_rows
+
         while not self.has_been_closed_server_side and self.has_more_rows:
-            print(f"RESULT SIZE TOTAL {results.num_rows}")
+            print(f"TOTAL DATA ROWS {TOTAL_SIZE}")
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            if isinstance(results, ColumnTable) and isinstance(
-                partial_results, ColumnTable
-            ):
-                results = self.merge_columnar(results, partial_results)
-            else:
-                results = pyarrow.concat_tables([results, partial_results])
+            partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
+            TOTAL_SIZE += partial_results.num_rows
+        
+        results = concat_chunked_tables(partial_result_chunks)
 
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
         # Valid only for metadata commands result set
@@ -1547,7 +1538,7 @@ class ResultSet:
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results = self.merge_columnar(results, partial_results)
+            results = merge_columnar(results, partial_results)
             self._next_row_index += partial_results.num_rows
 
         return results
