@@ -1408,8 +1408,12 @@ class ResultSet:
         ResultRow = Row(*column_names)
 
         if self.connection.disable_pandas is True:
+            start_time = time.time()
             columns_as_lists = [col.to_pylist() for col in table.itercolumns()]
-            return [ResultRow(*row) for row in zip(*columns_as_lists)]
+            res = [ResultRow(*row) for row in zip(*columns_as_lists)]
+            end_time = time.time()
+            print(f"Time taken to convert arrow table to list: {end_time - start_time} seconds")
+            return res
 
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
