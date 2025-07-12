@@ -1,13 +1,18 @@
-import unittest
-from unittest.mock import patch, Mock
+import pytest
+from unittest.mock import patch, MagicMock, Mock, PropertyMock
 import gc
 
+from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TOpenSessionResp,
+    TSessionHandle,
+    THandleIdentifier,
+)
 from databricks.sql.backend.types import SessionId, BackendType
 
 import databricks.sql
 
 
-class SessionTestSuite(unittest.TestCase):
+class TestSession:
     """
     Unit tests for Session functionality
     """
@@ -32,8 +37,8 @@ class SessionTestSuite(unittest.TestCase):
 
         # Check that close_session was called with the correct SessionId
         close_session_call_args = instance.close_session.call_args[0][0]
-        self.assertEqual(close_session_call_args.guid, b"\x22")
-        self.assertEqual(close_session_call_args.secret, b"\x33")
+        assert close_session_call_args.guid == b"\x22"
+        assert close_session_call_args.secret == b"\x33"
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_auth_args(self, mock_client_class):
@@ -58,8 +63,8 @@ class SessionTestSuite(unittest.TestCase):
         for args in connection_args:
             connection = databricks.sql.connect(**args)
             call_kwargs = mock_client_class.call_args[1]
-            self.assertEqual(args["server_hostname"], call_kwargs["server_hostname"])
-            self.assertEqual(args["http_path"], call_kwargs["http_path"])
+            assert args["server_hostname"] == call_kwargs["server_hostname"]
+            assert args["http_path"] == call_kwargs["http_path"]
             connection.close()
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
@@ -68,7 +73,7 @@ class SessionTestSuite(unittest.TestCase):
         databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, http_headers=http_headers)
 
         call_kwargs = mock_client_class.call_args[1]
-        self.assertIn(("foo", "bar"), call_kwargs["http_headers"])
+        assert ("foo", "bar") in call_kwargs["http_headers"]
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_tls_arg_passthrough(self, mock_client_class):
@@ -81,10 +86,10 @@ class SessionTestSuite(unittest.TestCase):
         )
 
         kwargs = mock_client_class.call_args[1]
-        self.assertEqual(kwargs["_tls_verify_hostname"], "hostname")
-        self.assertEqual(kwargs["_tls_trusted_ca_file"], "trusted ca file")
-        self.assertEqual(kwargs["_tls_client_cert_key_file"], "trusted client cert")
-        self.assertEqual(kwargs["_tls_client_cert_key_password"], "key password")
+        assert kwargs["_tls_verify_hostname"] == "hostname"
+        assert kwargs["_tls_trusted_ca_file"] == "trusted ca file"
+        assert kwargs["_tls_client_cert_key_file"] == "trusted client cert"
+        assert kwargs["_tls_client_cert_key_password"] == "key password"
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_useragent_header(self, mock_client_class):
@@ -96,7 +101,7 @@ class SessionTestSuite(unittest.TestCase):
             "User-Agent",
             "{}/{}".format(databricks.sql.USER_AGENT_NAME, databricks.sql.__version__),
         )
-        self.assertIn(user_agent_header, http_headers)
+        assert user_agent_header in http_headers
 
         databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, user_agent_entry="foobar")
         user_agent_header_with_entry = (
@@ -107,7 +112,7 @@ class SessionTestSuite(unittest.TestCase):
         )
         call_kwargs = mock_client_class.call_args[1]
         http_headers = call_kwargs["http_headers"]
-        self.assertIn(user_agent_header_with_entry, http_headers)
+        assert user_agent_header_with_entry in http_headers
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_context_manager_closes_connection(self, mock_client_class):
@@ -122,8 +127,17 @@ class SessionTestSuite(unittest.TestCase):
 
         # Check that close_session was called with the correct SessionId
         close_session_call_args = instance.close_session.call_args[0][0]
-        self.assertEqual(close_session_call_args.guid, b"\x22")
-        self.assertEqual(close_session_call_args.secret, b"\x33")
+        assert close_session_call_args.guid == b"\x22"
+        assert close_session_call_args.secret == b"\x33"
+
+        connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
+        connection.close = Mock()
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                with connection:
+                    raise KeyboardInterrupt("Simulated interrupt")
+        finally:
+            connection.close.assert_called()
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_max_number_of_retries_passthrough(self, mock_client_class):
@@ -131,54 +145,39 @@ class SessionTestSuite(unittest.TestCase):
             _retry_stop_after_attempts_count=54, **self.DUMMY_CONNECTION_ARGS
         )
 
-        self.assertEqual(
-            mock_client_class.call_args[1]["_retry_stop_after_attempts_count"], 54
-        )
+        assert mock_client_class.call_args[1]["_retry_stop_after_attempts_count"] == 54
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_socket_timeout_passthrough(self, mock_client_class):
         databricks.sql.connect(_socket_timeout=234, **self.DUMMY_CONNECTION_ARGS)
-        self.assertEqual(mock_client_class.call_args[1]["_socket_timeout"], 234)
+        assert mock_client_class.call_args[1]["_socket_timeout"] == 234
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_configuration_passthrough(self, mock_client_class):
         mock_session_config = Mock()
-
-        # Create a mock SessionId that will be returned by open_session
-        mock_session_id = SessionId(BackendType.THRIFT, b"\x22", b"\x33")
-        mock_client_class.return_value.open_session.return_value = mock_session_id
-
         databricks.sql.connect(
             session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
         )
 
-        # Check that open_session was called with the correct session_configuration as keyword argument
         call_kwargs = mock_client_class.return_value.open_session.call_args[1]
-        self.assertEqual(call_kwargs["session_configuration"], mock_session_config)
+        assert call_kwargs["session_configuration"] == mock_session_config
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_initial_namespace_passthrough(self, mock_client_class):
         mock_cat = Mock()
         mock_schem = Mock()
-
-        # Create a mock SessionId that will be returned by open_session
-        mock_session_id = SessionId(BackendType.THRIFT, b"\x22", b"\x33")
-        mock_client_class.return_value.open_session.return_value = mock_session_id
-
         databricks.sql.connect(
             **self.DUMMY_CONNECTION_ARGS, catalog=mock_cat, schema=mock_schem
         )
 
-        # Check that open_session was called with the correct catalog and schema as keyword arguments
         call_kwargs = mock_client_class.return_value.open_session.call_args[1]
-        self.assertEqual(call_kwargs["catalog"], mock_cat)
-        self.assertEqual(call_kwargs["schema"], mock_schem)
+        assert call_kwargs["catalog"] == mock_cat
+        assert call_kwargs["schema"] == mock_schem
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_finalizer_closes_abandoned_connection(self, mock_client_class):
         instance = mock_client_class.return_value
 
-        # Create a mock SessionId that will be returned by open_session
         mock_session_id = SessionId(BackendType.THRIFT, b"\x22", b"\x33")
         instance.open_session.return_value = mock_session_id
 
@@ -189,9 +188,5 @@ class SessionTestSuite(unittest.TestCase):
 
         # Check that close_session was called with the correct SessionId
         close_session_call_args = instance.close_session.call_args[0][0]
-        self.assertEqual(close_session_call_args.guid, b"\x22")
-        self.assertEqual(close_session_call_args.secret, b"\x33")
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert close_session_call_args.guid == b"\x22"
+        assert close_session_call_args.secret == b"\x33"
