@@ -56,11 +56,11 @@ class DownloadableResultSettings:
         expired_link_callback (Callable): Callback function to handle expired links. Must return a new link.
     """
 
+    expired_link_callback: Callable[[TSparkArrowResultLink], TSparkArrowResultLink]
     is_lz4_compressed: bool
     link_expiry_buffer_secs: int = 0
     download_timeout: int = 60
     max_consecutive_file_download_retries: int = 0
-    expired_link_callback: Callable[[TSparkArrowResultLink], TSparkArrowResultLink] = None
 
 
 class ResultSetDownloadHandler:
@@ -90,7 +90,10 @@ class ResultSetDownloadHandler:
 
         # Check if link is already expired or is expiring
         ResultSetDownloadHandler._validate_link(
-            self.link, self.settings.link_expiry_buffer_secs, self.settings.expired_link_callback, self
+            self.link,
+            self.settings.link_expiry_buffer_secs,
+            self.settings.expired_link_callback,
+            self,
         )
 
         session = requests.Session()
@@ -158,7 +161,12 @@ class ResultSetDownloadHandler:
         )
 
     @staticmethod
-    def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int, expired_link_callback: Callable, handler_instance):
+    def _validate_link(
+        link: TSparkArrowResultLink,
+        expiry_buffer_secs: int,
+        expired_link_callback: Callable,
+        handler_instance,
+    ):
         """
         Check if a link has expired or will expire, and handle expired links via callback.
 

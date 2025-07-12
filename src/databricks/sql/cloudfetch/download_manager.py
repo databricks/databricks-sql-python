@@ -41,7 +41,7 @@ class ResultFileDownloadManager:
 
         self._downloadable_result_settings = DownloadableResultSettings(
             is_lz4_compressed=lz4_compressed,
-            expired_link_callback=expired_link_callback
+            expired_link_callback=expired_link_callback,
         )
         self._ssl_options = ssl_options
 
@@ -126,22 +126,22 @@ class ResultFileDownloadManager:
     def cancel_all_downloads(self):
         """
         Cancel all pending downloads and clear the download queue.
-        
+
         This method is typically called when links have expired and we need to
         cancel all pending downloads before fetching new links.
         """
         logger.debug("ResultFileDownloadManager: cancelling all downloads")
-        
+
         # Cancel all pending download tasks
         cancelled_count = 0
         for task in self._download_tasks:
             if task.cancel():
                 cancelled_count += 1
-        
+
         logger.debug(
             f"ResultFileDownloadManager: cancelled {cancelled_count} out of {len(self._download_tasks)} downloads"
         )
-        
+
         # Clear the download tasks and pending links
         self._download_tasks.clear()
         self._pending_links.clear()

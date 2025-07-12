@@ -24,7 +24,9 @@ class DownloaderTests(unittest.TestCase):
     def test_run_link_expired(self, mock_time):
         settings = Mock()
         settings.link_expiry_buffer_secs = 0
-        settings.expired_link_callback = Mock(side_effect=Error("CloudFetch link has expired"))
+        settings.expired_link_callback = Mock(
+            side_effect=Error("CloudFetch link has expired")
+        )
         result_link = Mock()
         # Already expired
         result_link.expiryTime = 999
@@ -41,7 +43,9 @@ class DownloaderTests(unittest.TestCase):
     @patch("time.time", return_value=1000)
     def test_run_link_past_expiry_buffer(self, mock_time):
         settings = Mock(link_expiry_buffer_secs=5)
-        settings.expired_link_callback = Mock(side_effect=Error("CloudFetch link has expired"))
+        settings.expired_link_callback = Mock(
+            side_effect=Error("CloudFetch link has expired")
+        )
         result_link = Mock()
         # Within the expiry buffer time
         result_link.expiryTime = 1004

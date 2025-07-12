@@ -387,16 +387,18 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         # Initialize table and position
         self.table = self._create_next_table()
 
-    def _handle_expired_link(self, expired_link: TSparkArrowResultLink) -> TSparkArrowResultLink:
+    def _handle_expired_link(
+        self, expired_link: TSparkArrowResultLink
+    ) -> TSparkArrowResultLink:
         """
         Handle expired link for Thrift backend.
-        
+
         For Thrift backend, we cannot fetch new links, so we raise an error.
         This maintains the existing behavior for Thrift.
-        
+
         Args:
             expired_link: The expired link
-            
+
         Raises:
             Error: Always raises an error indicating the link has expired
         """
