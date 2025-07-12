@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass
-from typing import Callable
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -53,7 +52,6 @@ class DownloadableResultSettings:
         link_expiry_buffer_secs (int): Time in seconds to prevent download of a link before it expires. Default 0 secs.
         download_timeout (int): Timeout for download requests. Default 60 secs.
         max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
-        expired_link_callback (Callable): Callback function to handle expired links. Must return a new link.
     """
 
     expired_link_callback: Callable[[TSparkArrowResultLink], TSparkArrowResultLink]
@@ -90,10 +88,7 @@ class ResultSetDownloadHandler:
 
         # Check if link is already expired or is expiring
         ResultSetDownloadHandler._validate_link(
-            self.link,
-            self.settings.link_expiry_buffer_secs,
-            self.settings.expired_link_callback,
-            self,
+            self.link, self.settings.link_expiry_buffer_secs
         )
 
         session = requests.Session()
@@ -143,46 +138,19 @@ class ResultSetDownloadHandler:
                 session.close()
 
     @staticmethod
-    def _is_link_expired(link: TSparkArrowResultLink, expiry_buffer_secs: int) -> bool:
+    def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int):
         """
         Check if a link has expired or will expire.
-
-        Args:
-            link: The link to check
-            expiry_buffer_secs: Time buffer in seconds
-
-        Returns:
-            True if the link is expired or will expire within the buffer
-        """
-        current_time = int(time.time())
-        return (
-            link.expiryTime <= current_time
-            or link.expiryTime - current_time <= expiry_buffer_secs
-        )
-
-    @staticmethod
-    def _validate_link(
-        link: TSparkArrowResultLink,
-        expiry_buffer_secs: int,
-        expired_link_callback: Callable,
-        handler_instance,
-    ):
-        """
-        Check if a link has expired or will expire, and handle expired links via callback.
 
         Expiry buffer can be set to avoid downloading files that has not expired yet when the function is called,
         but may expire before the file has fully downloaded.
         """
-        if ResultSetDownloadHandler._is_link_expired(link, expiry_buffer_secs):
-            logger.debug(
-                "ResultSetDownloadHandler: link expired, attempting to get new link via callback"
-            )
-            new_link = expired_link_callback(link)
-            logger.debug(
-                "ResultSetDownloadHandler: successfully got new link via callback"
-            )
-            # Update the handler's link to the new one
-            handler_instance.link = new_link
+        current_time = int(time.time())
+        if (
+            link.expiryTime <= current_time
+            or link.expiryTime - current_time <= expiry_buffer_secs
+        ):
+            raise Error("CloudFetch link has expired")
 
     @staticmethod
     def _decompress_data(compressed_data: bytes) -> bytes:

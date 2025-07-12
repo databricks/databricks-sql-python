@@ -20,7 +20,6 @@ except ImportError:
     pyarrow = None
 
 from databricks.sql import OperationalError
-from databricks.sql.exc import Error
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
@@ -381,33 +380,10 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             max_download_threads=self.max_download_threads,
             lz4_compressed=self.lz4_compressed,
             ssl_options=self._ssl_options,
-            expired_link_callback=self._handle_expired_link,
         )
 
         # Initialize table and position
         self.table = self._create_next_table()
-
-    def _handle_expired_link(
-        self, expired_link: TSparkArrowResultLink
-    ) -> TSparkArrowResultLink:
-        """
-        Handle expired link for Thrift backend.
-
-        For Thrift backend, we cannot fetch new links, so we raise an error.
-        This maintains the existing behavior for Thrift.
-
-        Args:
-            expired_link: The expired link
-
-        Raises:
-            Error: Always raises an error indicating the link has expired
-        """
-        logger.error(
-            "ThriftCloudFetchQueue: Link expired for offset {}, row count {}. Thrift backend cannot fetch new links.".format(
-                expired_link.startRowOffset, expired_link.rowCount
-            )
-        )
-        raise Error("CloudFetch link has expired")
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         logger.debug(
