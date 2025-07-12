@@ -1407,42 +1407,42 @@ class ResultSet:
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
 
-        if self.connection.disable_pandas is True:
-            start_time = time.time()
-            columns_as_lists = [col.to_pylist() for col in table.itercolumns()]
-            res = [ResultRow(*row) for row in zip(*columns_as_lists)]
-            end_time = time.time()
-            print(f"Time taken to convert arrow table to list: {end_time - start_time} seconds")
-            return res
+        # if self.connection.disable_pandas is True:
+        start_time = time.time()
+        columns_as_lists = [col.to_pylist() for col in table.itercolumns()]
+        res = [ResultRow(*row) for row in zip(*columns_as_lists)]
+        end_time = time.time()
+        print(f"Time taken to convert arrow table to list: {end_time - start_time} seconds")
+        return res
 
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
+        # # Need to use nullable types, as otherwise type can change when there are missing values.
+        # # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
+        # # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
+        # dtype_mapping = {
+        #     pyarrow.int8(): pandas.Int8Dtype(),
+        #     pyarrow.int16(): pandas.Int16Dtype(),
+        #     pyarrow.int32(): pandas.Int32Dtype(),
+        #     pyarrow.int64(): pandas.Int64Dtype(),
+        #     pyarrow.uint8(): pandas.UInt8Dtype(),
+        #     pyarrow.uint16(): pandas.UInt16Dtype(),
+        #     pyarrow.uint32(): pandas.UInt32Dtype(),
+        #     pyarrow.uint64(): pandas.UInt64Dtype(),
+        #     pyarrow.bool_(): pandas.BooleanDtype(),
+        #     pyarrow.float32(): pandas.Float32Dtype(),
+        #     pyarrow.float64(): pandas.Float64Dtype(),
+        #     pyarrow.string(): pandas.StringDtype(),
+        # }
 
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
+        # # Need to rename columns, as the to_pandas function cannot handle duplicate column names
+        # table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
+        # df = table_renamed.to_pandas(
+        #     types_mapper=dtype_mapping.get,
+        #     date_as_object=True,
+        #     timestamp_as_object=True,
+        # )
 
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
+        # res = df.to_numpy(na_value=None, dtype="object")
+        # return [ResultRow(*v) for v in res]
 
     @property
     def rownumber(self):
