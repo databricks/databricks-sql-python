@@ -28,7 +28,7 @@ class ResultFormat(Enum):
 class ResultDisposition(Enum):
     """Enum for result disposition values."""
 
-    # TODO: add support for hybrid disposition
+    HYBRID = "INLINE_OR_EXTERNAL_LINKS"
     EXTERNAL_LINKS = "EXTERNAL_LINKS"
     INLINE = "INLINE"
 
