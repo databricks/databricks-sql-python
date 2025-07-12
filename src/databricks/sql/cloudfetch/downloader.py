@@ -54,7 +54,6 @@ class DownloadableResultSettings:
         max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
     """
 
-    expired_link_callback: Callable[[TSparkArrowResultLink], TSparkArrowResultLink]
     is_lz4_compressed: bool
     link_expiry_buffer_secs: int = 0
     download_timeout: int = 60
