@@ -1456,7 +1456,7 @@ class ResultSet:
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
-        partial_result_chunks = [results]
+        # partial_result_chunks = [results]
 
         TOTAL_SIZE = results.num_rows
         while (
@@ -1467,12 +1467,13 @@ class ResultSet:
             print(f"TOTAL DATA ROWS {TOTAL_SIZE}")
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            partial_result_chunks.append(partial_results)
+            results.append(partial_results)
+            # partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
             TOTAL_SIZE += partial_results.num_rows
 
-        return concat_chunked_tables(partial_result_chunks)
+        return results.to_arrow_table()
     
     
 
@@ -1506,7 +1507,7 @@ class ResultSet:
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
         
-        partial_result_chunks = [results]
+        # partial_result_chunks = [results]
         print("Server side has more rows", self.has_more_rows)
         TOTAL_SIZE = results.num_rows
 
@@ -1514,21 +1515,21 @@ class ResultSet:
             print(f"TOTAL DATA ROWS {TOTAL_SIZE}")
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            partial_result_chunks.append(partial_results)
+            results.append(partial_results)
             self._next_row_index += partial_results.num_rows
             TOTAL_SIZE += partial_results.num_rows
         
-        results = concat_chunked_tables(partial_result_chunks)
+        # results = concat_chunked_tables(partial_result_chunks)
 
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
         # Valid only for metadata commands result set
-        if isinstance(results, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(results.column_names, results.column_table)
-            }
-            return pyarrow.Table.from_pydict(data)
-        return results
+        # if isinstance(results, ColumnTable) and pyarrow:
+        #     data = {
+        #         name: col
+        #         for name, col in zip(results.column_names, results.column_table)
+        #     }
+        #     return pyarrow.Table.from_pydict(data)
+        return results.to_arrow_table()
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
