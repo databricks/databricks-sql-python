@@ -1403,14 +1403,13 @@ class ResultSet:
 
         return result
 
-    def _convert_arrow_table(self, table):
+    def _convert_arrow_table(self, table: "pyarrow.Table"):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
 
         if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
+            columns_as_lists = [col.to_pylist() for col in table.itercolumns()]
+            return [ResultRow(*row) for row in zip(*columns_as_lists)]
 
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
