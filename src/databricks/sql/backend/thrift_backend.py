@@ -1,4 +1,5 @@
-from decimal import Decimal
+from __future__ import annotations
+
 import errno
 import logging
 import math
@@ -6,8 +7,12 @@ import time
 import threading
 from typing import List, Optional, Union, Any, TYPE_CHECKING
 
+from databricks.sql.result_set import ThriftResultSet
+
+
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
+    from databricks.sql.result_set import ResultSet
 
 from databricks.sql.backend.types import (
     CommandState,
@@ -16,7 +21,6 @@ from databricks.sql.backend.types import (
     ExecuteResponse,
 )
 from databricks.sql.backend.utils import guid_to_hex_id
-
 
 try:
     import pyarrow
@@ -34,7 +38,6 @@ from databricks.sql.auth.thrift_http_client import CommandType
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
-from databricks.sql.exc import MaxRetryDurationError
 from databricks.sql.thrift_api.TCLIService.TCLIService import (
     Client as TCLIServiceClient,
 )
@@ -44,14 +47,12 @@ from databricks.sql.utils import (
     _bound,
     RequestErrorInfo,
     NoRetryReason,
-    ThriftResultSetQueueFactory,
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
 )
 from databricks.sql.types import SSLOptions
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.result_set import ResultSet, ThriftResultSet
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise
 
         self._request_lock = threading.RLock()
+        self._session_id_hex = None
 
     @property
     def max_download_threads(self) -> int:
@@ -264,12 +266,15 @@ class ThriftDatabricksClient(DatabricksClient):
             )
 
     @staticmethod
-    def _check_response_for_error(response):
+    def _check_response_for_error(response, session_id_hex=None):
         if response.status and response.status.statusCode in [
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
         ]:
-            raise DatabaseError(response.status.errorMessage)
+            raise DatabaseError(
+                response.status.errorMessage,
+                session_id_hex=session_id_hex,
+            )
 
     @staticmethod
     def _extract_error_message_from_headers(headers):
@@ -320,7 +325,10 @@ class ThriftDatabricksClient(DatabricksClient):
                 no_retry_reason, attempt, elapsed
             )
             network_request_error = RequestError(
-                user_friendly_error_message, full_error_info_context, error_info.error
+                user_friendly_error_message,
+                full_error_info_context,
+                self._session_id_hex,
+                error_info.error,
             )
             logger.info(network_request_error.message_with_context())
 
@@ -495,7 +503,9 @@ class ThriftDatabricksClient(DatabricksClient):
             if not isinstance(response_or_error_info, RequestErrorInfo):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
-                ThriftDatabricksClient._check_response_for_error(response)
+                ThriftDatabricksClient._check_response_for_error(
+                    response, self._session_id_hex
+                )
                 return response
 
             error_info = response_or_error_info
@@ -509,7 +519,8 @@ class ThriftDatabricksClient(DatabricksClient):
             raise OperationalError(
                 "Error: expected server to use a protocol version >= "
                 "SPARK_CLI_SERVICE_PROTOCOL_V2, "
-                "instead got: {}".format(protocol_version)
+                "instead got: {}".format(protocol_version),
+                session_id_hex=self._session_id_hex,
             )
 
     def _check_initial_namespace(self, catalog, schema, response):
@@ -522,14 +533,16 @@ class ThriftDatabricksClient(DatabricksClient):
         ):
             raise InvalidServerResponseError(
                 "Setting initial namespace not supported by the DBR version, "
-                "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0."
+                "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0.",
+                session_id_hex=self._session_id_hex,
             )
 
         if catalog:
             if not response.canUseMultipleCatalogs:
                 raise InvalidServerResponseError(
                     "Unexpected response from server: Trying to set initial catalog to {}, "
-                    + "but server does not support multiple catalogs.".format(catalog)  # type: ignore
+                    + "but server does not support multiple catalogs.".format(catalog),  # type: ignore
+                    session_id_hex=self._session_id_hex,
                 )
 
     def _check_session_configuration(self, session_configuration):
@@ -543,7 +556,8 @@ class ThriftDatabricksClient(DatabricksClient):
                 "while using the Databricks SQL connector, it must be false not {}".format(
                     TIMESTAMP_AS_STRING_CONFIG,
                     session_configuration[TIMESTAMP_AS_STRING_CONFIG],
-                )
+                ),
+                session_id_hex=self._session_id_hex,
             )
 
     def open_session(self, session_configuration, catalog, schema) -> SessionId:
@@ -574,12 +588,17 @@ class ThriftDatabricksClient(DatabricksClient):
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
+
             properties = (
                 {"serverProtocolVersion": response.serverProtocolVersion}
                 if response.serverProtocolVersion
                 else {}
             )
-            return SessionId.from_thrift_handle(response.sessionHandle, properties)
+            session_id = SessionId.from_thrift_handle(
+                response.sessionHandle, properties
+            )
+            self._session_id_hex = session_id.guid_hex
+            return session_id
         except:
             self._transport.close()
             raise
@@ -607,6 +626,7 @@ class ThriftDatabricksClient(DatabricksClient):
                         and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
+                    session_id_hex=self._session_id_hex,
                 )
             else:
                 raise ServerOperationError(
@@ -616,6 +636,7 @@ class ThriftDatabricksClient(DatabricksClient):
                         and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
+                    session_id_hex=self._session_id_hex,
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
@@ -626,6 +647,7 @@ class ThriftDatabricksClient(DatabricksClient):
                     "operation-id": op_handle
                     and guid_to_hex_id(op_handle.operationId.guid)
                 },
+                session_id_hex=self._session_id_hex,
             )
 
     def _poll_for_status(self, op_handle):
@@ -646,7 +668,10 @@ class ThriftDatabricksClient(DatabricksClient):
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
-            raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
+            raise OperationalError(
+                "Unsupported TRowSet instance {}".format(t_row_set),
+                session_id_hex=self._session_id_hex,
+            )
         return convert_decimals_in_arrow_table(arrow_table, description), num_rows
 
     def _get_metadata_resp(self, op_handle):
@@ -654,7 +679,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return self.make_request(self._client.GetResultSetMetadata, req)
 
     @staticmethod
-    def _hive_schema_to_arrow_schema(t_table_schema):
+    def _hive_schema_to_arrow_schema(t_table_schema, session_id_hex=None):
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -685,7 +710,8 @@ class ThriftDatabricksClient(DatabricksClient):
                 # Current thriftserver implementation should always return a primitiveEntry,
                 # even for complex types
                 raise OperationalError(
-                    "Thrift protocol error: t_type_entry not a primitiveEntry"
+                    "Thrift protocol error: t_type_entry not a primitiveEntry",
+                    session_id_hex=session_id_hex,
                 )
 
         def convert_col(t_column_desc):
@@ -696,7 +722,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return pyarrow.schema([convert_col(col) for col in t_table_schema.columns])
 
     @staticmethod
-    def _col_to_description(col):
+    def _col_to_description(col, session_id_hex=None):
         type_entry = col.typeDesc.types[0]
 
         if type_entry.primitiveEntry:
@@ -705,7 +731,8 @@ class ThriftDatabricksClient(DatabricksClient):
             cleaned_type = (name[:-5] if name.endswith("_TYPE") else name).lower()
         else:
             raise OperationalError(
-                "Thrift protocol error: t_type_entry not a primitiveEntry"
+                "Thrift protocol error: t_type_entry not a primitiveEntry",
+                session_id_hex=session_id_hex,
             )
 
         if type_entry.primitiveEntry.type == ttypes.TTypeId.DECIMAL_TYPE:
@@ -718,7 +745,8 @@ class ThriftDatabricksClient(DatabricksClient):
             else:
                 raise OperationalError(
                     "Decimal type did not provide typeQualifier precision, scale in "
-                    "primitiveEntry {}".format(type_entry.primitiveEntry)
+                    "primitiveEntry {}".format(type_entry.primitiveEntry),
+                    session_id_hex=session_id_hex,
                 )
         else:
             precision, scale = None, None
@@ -726,9 +754,9 @@ class ThriftDatabricksClient(DatabricksClient):
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
-    def _hive_schema_to_description(t_table_schema):
+    def _hive_schema_to_description(t_table_schema, session_id_hex=None):
         return [
-            ThriftDatabricksClient._col_to_description(col)
+            ThriftDatabricksClient._col_to_description(col, session_id_hex)
             for col in t_table_schema.columns
         ]
 
@@ -749,7 +777,8 @@ class ThriftDatabricksClient(DatabricksClient):
                     ttypes.TSparkRowSetType._VALUES_TO_NAMES[
                         t_result_set_metadata_resp.resultFormat
                     ]
-                )
+                ),
+                session_id_hex=self._session_id_hex,
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
@@ -761,13 +790,16 @@ class ThriftDatabricksClient(DatabricksClient):
         )
 
         description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema
+            t_result_set_metadata_resp.schema,
+            self._session_id_hex,
         )
 
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                or self._hive_schema_to_arrow_schema(
+                    t_result_set_metadata_resp.schema, self._session_id_hex
+                )
                 .serialize()
                 .to_pybytes()
             )
@@ -819,13 +851,16 @@ class ThriftDatabricksClient(DatabricksClient):
         t_result_set_metadata_resp = resp.resultSetMetadata
 
         description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema
+            t_result_set_metadata_resp.schema,
+            self._session_id_hex,
         )
 
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                or self._hive_schema_to_arrow_schema(
+                    t_result_set_metadata_resp.schema, self._session_id_hex
+                )
                 .serialize()
                 .to_pybytes()
             )
@@ -894,23 +929,27 @@ class ThriftDatabricksClient(DatabricksClient):
         return state
 
     @staticmethod
-    def _check_direct_results_for_error(t_spark_direct_results):
+    def _check_direct_results_for_error(t_spark_direct_results, session_id_hex=None):
         if t_spark_direct_results:
             if t_spark_direct_results.operationStatus:
                 ThriftDatabricksClient._check_response_for_error(
-                    t_spark_direct_results.operationStatus
+                    t_spark_direct_results.operationStatus,
+                    session_id_hex,
                 )
             if t_spark_direct_results.resultSetMetadata:
                 ThriftDatabricksClient._check_response_for_error(
-                    t_spark_direct_results.resultSetMetadata
+                    t_spark_direct_results.resultSetMetadata,
+                    session_id_hex,
                 )
             if t_spark_direct_results.resultSet:
                 ThriftDatabricksClient._check_response_for_error(
-                    t_spark_direct_results.resultSet
+                    t_spark_direct_results.resultSet,
+                    session_id_hex,
                 )
             if t_spark_direct_results.closeOperation:
                 ThriftDatabricksClient._check_response_for_error(
-                    t_spark_direct_results.closeOperation
+                    t_spark_direct_results.closeOperation,
+                    session_id_hex,
                 )
 
     def execute_command(
@@ -920,7 +959,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         lz4_compression: bool,
-        cursor: "Cursor",
+        cursor: Cursor,
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
@@ -1040,10 +1079,12 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1084,12 +1125,14 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         table_types=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1132,12 +1175,14 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         column_name=None,
     ) -> "ResultSet":
+        from databricks.sql.result_set import ThriftResultSet
+
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1177,9 +1222,11 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def _handle_execute_response(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        if command_id is None:
+            raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
 
         cursor.active_command_id = command_id
-        self._check_direct_results_for_error(resp.directResults)
+        self._check_direct_results_for_error(resp.directResults, self._session_id_hex)
 
         final_operation_state = self._wait_until_command_done(
             resp.operationHandle,
@@ -1190,8 +1237,11 @@ class ThriftDatabricksClient(DatabricksClient):
 
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        if command_id is None:
+            raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
+
         cursor.active_command_id = command_id
-        self._check_direct_results_for_error(resp.directResults)
+        self._check_direct_results_for_error(resp.directResults, self._session_id_hex)
 
     def fetch_results(
         self,
@@ -1227,7 +1277,8 @@ class ThriftDatabricksClient(DatabricksClient):
             raise DataError(
                 "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
                     expected_row_start_offset, resp.results.startRowOffset
-                )
+                ),
+                session_id_hex=self._session_id_hex,
             )
 
         queue = ThriftResultSetQueueFactory.build_queue(
@@ -1247,7 +1298,7 @@ class ThriftDatabricksClient(DatabricksClient):
         if not thrift_handle:
             raise ValueError("Not a valid Thrift command ID")
 
-        logger.debug("Cancelling command {}".format(guid_to_hex_id(command_id.guid)))
+        logger.debug("Cancelling command %s", command_id.to_hex_guid())
         req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 
