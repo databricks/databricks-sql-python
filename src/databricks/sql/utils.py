@@ -62,6 +62,8 @@ class ThriftResultSetQueueFactory(ABC):
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
+        session_id_hex: Optional[str] = None,
+        statement_id: Optional[str] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -106,6 +108,8 @@ class ThriftResultSetQueueFactory(ABC):
                 description=description,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
+                session_id_hex=session_id_hex,
+                statement_id=statement_id,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -211,6 +215,8 @@ class CloudFetchQueue(ResultSetQueue):
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
+        session_id_hex: Optional[str] = None,
+        statement_id: Optional[str] = None,
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.
@@ -231,7 +237,9 @@ class CloudFetchQueue(ResultSetQueue):
         self.lz4_compressed = lz4_compressed
         self.description = description
         self._ssl_options = ssl_options
-
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
+        
         logger.debug(
             "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
                 start_row_offset
@@ -249,6 +257,8 @@ class CloudFetchQueue(ResultSetQueue):
             max_download_threads=self.max_download_threads,
             lz4_compressed=self.lz4_compressed,
             ssl_options=self._ssl_options,
+            session_id_hex=self.session_id_hex,
+            statement_id=self.statement_id,
         )
 
         self.table = self._create_next_table()

@@ -6,6 +6,7 @@ import math
 import time
 import threading
 from typing import List, Optional, Union, Any, TYPE_CHECKING
+from uuid import UUID
 
 from databricks.sql.result_set import ThriftResultSet
 
@@ -1021,7 +1022,7 @@ class ThriftDatabricksClient(DatabricksClient):
             self._handle_execute_response_async(resp, cursor)
             return None
         else:
-            execute_response, is_direct_results = self._handle_execute_response(
+            execute_response, is_direct_results, statement_id = self._handle_execute_response(
                 resp, cursor
             )
 
@@ -1040,6 +1041,8 @@ class ThriftDatabricksClient(DatabricksClient):
                 max_download_threads=self.max_download_threads,
                 ssl_options=self._ssl_options,
                 is_direct_results=is_direct_results,
+                session_id_hex=self._session_id_hex,
+                statement_id=statement_id,
             )
 
     def get_catalogs(
@@ -1061,7 +1064,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetCatalogs, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
+        execute_response, is_direct_results, _ = self._handle_execute_response(
             resp, cursor
         )
 
@@ -1107,7 +1110,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetSchemas, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
+        execute_response, is_direct_results, _ = self._handle_execute_response(
             resp, cursor
         )
 
@@ -1157,7 +1160,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetTables, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
+        execute_response, is_direct_results, _ = self._handle_execute_response(
             resp, cursor
         )
 
@@ -1207,7 +1210,7 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetColumns, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
+        execute_response, is_direct_results, _ = self._handle_execute_response(
             resp, cursor
         )
 
@@ -1241,7 +1244,11 @@ class ThriftDatabricksClient(DatabricksClient):
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        return self._results_message_to_execute_response(resp, final_operation_state)
+        execute_response, is_direct_results = self._results_message_to_execute_response(
+            resp, final_operation_state
+        )
+
+        return execute_response, is_direct_results, cursor.active_command_id.to_hex_guid()
 
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
@@ -1261,6 +1268,7 @@ class ThriftDatabricksClient(DatabricksClient):
         arrow_schema_bytes,
         description,
         use_cloud_fetch=True,
+        statement_id=None,
     ):
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -1297,6 +1305,8 @@ class ThriftDatabricksClient(DatabricksClient):
             lz4_compressed=lz4_compressed,
             description=description,
             ssl_options=self._ssl_options,
+            session_id_hex=self._session_id_hex,
+            statement_id=statement_id
         )
 
         return queue, resp.hasMoreRows

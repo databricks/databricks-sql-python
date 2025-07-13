@@ -7,7 +7,6 @@ from databricks.sql.telemetry.models.event import (
     SqlExecutionEvent,
 )
 from databricks.sql.telemetry.models.enums import ExecutionResultFormat, StatementType
-from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -42,6 +41,9 @@ class TelemetryExtractor:
     def get_retry_count(self):
         pass
 
+    def get_chunk_id(self):
+        pass
+
 
 class CursorExtractor(TelemetryExtractor):
     """
@@ -63,7 +65,8 @@ class CursorExtractor(TelemetryExtractor):
     def get_execution_result(self) -> ExecutionResultFormat:
         if self.active_result_set is None:
             return ExecutionResultFormat.FORMAT_UNSPECIFIED
-
+        
+        from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
         if isinstance(self.active_result_set.results, ColumnQueue):
             return ExecutionResultFormat.COLUMNAR_INLINE
         elif isinstance(self.active_result_set.results, CloudFetchQueue):
@@ -74,11 +77,14 @@ class CursorExtractor(TelemetryExtractor):
 
     def get_retry_count(self) -> int:
         if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
+            hasattr(self.backend, "retry_policy")
+            and self.backend.retry_policy
         ):
-            return len(self.thrift_backend.retry_policy.history)
+            return len(self.backend.retry_policy.history)
         return 0
+    
+    def get_chunk_id(self):
+        return None
 
 
 class ResultSetExtractor(TelemetryExtractor):
@@ -101,6 +107,7 @@ class ResultSetExtractor(TelemetryExtractor):
         return self.lz4_compressed
 
     def get_execution_result(self) -> ExecutionResultFormat:
+        from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
         if isinstance(self.results, ColumnQueue):
             return ExecutionResultFormat.COLUMNAR_INLINE
         elif isinstance(self.results, CloudFetchQueue):
@@ -116,7 +123,34 @@ class ResultSetExtractor(TelemetryExtractor):
         ):
             return len(self.thrift_backend.retry_policy.history)
         return 0
+    
+    def get_chunk_id(self):
+        return None
 
+
+class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
+    """
+    Telemetry extractor specialized for ResultSetDownloadHandler objects.
+    """
+    def get_session_id_hex(self) -> Optional[str]:
+        return self._obj.session_id_hex
+
+    def get_statement_id(self) -> Optional[str]:
+        return self._obj.statement_id
+
+    def get_is_compressed(self) -> bool:
+        return self._obj.settings.is_lz4_compressed
+
+    def get_execution_result(self) -> ExecutionResultFormat:
+        return ExecutionResultFormat.EXTERNAL_LINKS
+
+    def get_retry_count(self) -> Optional[int]:
+        # standard requests and urllib3 libraries don't expose retry count
+        return None
+
+    def get_chunk_id(self) -> Optional[int]:
+        return self._obj.chunk_id
+    
 
 def get_extractor(obj):
     """
@@ -133,12 +167,15 @@ def get_extractor(obj):
         TelemetryExtractor: A specialized extractor instance:
             - CursorExtractor for Cursor objects
             - ResultSetExtractor for ResultSet objects
+            - ResultSetDownloadHandlerExtractor for ResultSetDownloadHandler objects
             - None for all other objects
     """
     if obj.__class__.__name__ == "Cursor":
         return CursorExtractor(obj)
     elif obj.__class__.__name__ == "ResultSet":
         return ResultSetExtractor(obj)
+    elif obj.__class__.__name__=="ResultSetDownloadHandler":
+        return ResultSetDownloadHandlerExtractor(obj)
     else:
         logger.debug("No extractor found for %s", obj.__class__.__name__)
         return None
@@ -196,6 +233,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 duration_ms = int((end_time - start_time) * 1000)
 
                 extractor = get_extractor(self)
+                print("function name", func.__name__, "latency", duration_ms, "session_id_hex", extractor.get_session_id_hex(), "statement_id", extractor.get_statement_id(), flush=True)
 
                 if extractor is not None:
                     session_id_hex = _safe_call(extractor.get_session_id_hex)
@@ -205,7 +243,8 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                         statement_type=statement_type,
                         is_compressed=_safe_call(extractor.get_is_compressed),
                         execution_result=_safe_call(extractor.get_execution_result),
-                        retry_count=_safe_call(extractor.get_retry_count),
+                        retry_count=extractor.get_retry_count(),
+                        chunk_id=_safe_call(extractor.get_chunk_id),
                     )
 
                     telemetry_client = TelemetryClientFactory.get_telemetry_client(

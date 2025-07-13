@@ -198,6 +198,8 @@ class ThriftResultSet(ResultSet):
         max_download_threads: int = 10,
         ssl_options=None,
         is_direct_results: bool = True,
+        session_id_hex: Optional[str] = None,
+        statement_id: Optional[str] = None,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -233,6 +235,8 @@ class ThriftResultSet(ResultSet):
                 lz4_compressed=execute_response.lz4_compressed,
                 description=execute_response.description,
                 ssl_options=ssl_options,
+                session_id_hex=session_id_hex,
+                statement_id=statement_id,
             )
 
         # Call parent constructor with common attributes
