@@ -27,7 +27,7 @@ class DownloaderTests(unittest.TestCase):
         # Already expired
         result_link.expiryTime = 999
         d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
+            settings, result_link, ssl_options=SSLOptions(), chunk_id=0
         )
 
         with self.assertRaises(Error) as context:
@@ -43,7 +43,7 @@ class DownloaderTests(unittest.TestCase):
         # Within the expiry buffer time
         result_link.expiryTime = 1004
         d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
+            settings, result_link, ssl_options=SSLOptions(), chunk_id=0
         )
 
         with self.assertRaises(Error) as context:
@@ -63,7 +63,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock(expiryTime=1001)
 
         d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
+            settings, result_link, ssl_options=SSLOptions(), chunk_id=0
         )
         with self.assertRaises(requests.exceptions.HTTPError) as context:
             d.run()
@@ -82,7 +82,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
         d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
+            settings, result_link, ssl_options=SSLOptions(), chunk_id=0
         )
         file = d.run()
 
@@ -105,7 +105,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
         d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
+            settings, result_link, ssl_options=SSLOptions(), chunk_id=0
         )
         file = d.run()
 
@@ -121,7 +121,7 @@ class DownloaderTests(unittest.TestCase):
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
         d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
+            settings, result_link, ssl_options=SSLOptions(), chunk_id=0
         )
         with self.assertRaises(ConnectionError):
             d.run()
@@ -136,7 +136,7 @@ class DownloaderTests(unittest.TestCase):
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
         d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
+            settings, result_link, ssl_options=SSLOptions(), chunk_id=0
         )
         with self.assertRaises(TimeoutError):
             d.run()

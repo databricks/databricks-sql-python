@@ -253,7 +253,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                         statement_type=statement_type,
                         is_compressed=_safe_call(extractor.get_is_compressed),
                         execution_result=_safe_call(extractor.get_execution_result),
-                        retry_count=extractor.get_retry_count(),
+                        retry_count=_safe_call(extractor.get_retry_count),
                         chunk_id=_safe_call(extractor.get_chunk_id),
                     )
 
