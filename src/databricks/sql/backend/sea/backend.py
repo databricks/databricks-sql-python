@@ -14,6 +14,7 @@ from databricks.sql.backend.sea.utils.constants import (
     WaitTimeout,
     MetadataCommands,
 )
+from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -402,7 +403,7 @@ class SeaDatabricksClient(DatabricksClient):
         lz4_compression: bool,
         cursor: Cursor,
         use_cloud_fetch: bool,
-        parameters: List[Dict[str, Any]],
+        parameters: Union[List[Dict[str, Any]], List["ttypes.TSparkParameter"]],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
         row_limit: Optional[int] = None,
