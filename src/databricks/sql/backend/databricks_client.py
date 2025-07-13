@@ -79,9 +79,10 @@ class DatabricksClient(ABC):
         lz4_compression: bool,
         cursor: Cursor,
         use_cloud_fetch: bool,
-        parameters: List[ttypes.TSparkParameter],
+        parameters: Union[List[ttypes.TSparkParameter], List[Dict[str, Any]]],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
+        row_limit: Optional[int] = None,
     ) -> Union[ResultSet, None]:
         """
         Executes a SQL command or query within the specified session.

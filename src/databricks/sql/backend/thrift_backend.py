@@ -240,10 +240,6 @@ class ThriftDatabricksClient(DatabricksClient):
     def max_download_threads(self) -> int:
         return self._max_download_threads
 
-    @property
-    def max_download_threads(self) -> int:
-        return self._max_download_threads
-
     # TODO: Move this bounding logic into DatabricksRetryPolicy for v3 (PECO-918)
     def _initialize_retry_args(self, kwargs):
         # Configure retries & timing: use user-settings or defaults, and bound
