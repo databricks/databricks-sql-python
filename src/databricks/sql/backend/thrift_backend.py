@@ -1022,9 +1022,11 @@ class ThriftDatabricksClient(DatabricksClient):
             self._handle_execute_response_async(resp, cursor)
             return None
         else:
-            execute_response, is_direct_results, statement_id = self._handle_execute_response(
-                resp, cursor
-            )
+            (
+                execute_response,
+                is_direct_results,
+                statement_id,
+            ) = self._handle_execute_response(resp, cursor)
 
             t_row_set = None
             if resp.directResults and resp.directResults.resultSet:
@@ -1248,7 +1250,11 @@ class ThriftDatabricksClient(DatabricksClient):
             resp, final_operation_state
         )
 
-        return execute_response, is_direct_results, cursor.active_command_id.to_hex_guid()
+        return (
+            execute_response,
+            is_direct_results,
+            cursor.active_command_id.to_hex_guid(),
+        )
 
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
@@ -1306,7 +1312,7 @@ class ThriftDatabricksClient(DatabricksClient):
             description=description,
             ssl_options=self._ssl_options,
             session_id_hex=self._session_id_hex,
-            statement_id=statement_id
+            statement_id=statement_id,
         )
 
         return queue, resp.hasMoreRows

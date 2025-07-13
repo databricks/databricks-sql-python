@@ -131,6 +131,7 @@ class SqlExecutionEvent(JsonSerializableMixin):
     retry_count: Optional[int]
     chunk_id: Optional[int]
 
+
 @dataclass
 class TelemetryEvent(JsonSerializableMixin):
     """

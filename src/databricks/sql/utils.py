@@ -239,7 +239,7 @@ class CloudFetchQueue(ResultSetQueue):
         self._ssl_options = ssl_options
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
-        
+
         logger.debug(
             "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
                 start_row_offset

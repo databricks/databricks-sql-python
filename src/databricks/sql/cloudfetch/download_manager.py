@@ -95,7 +95,9 @@ class ResultFileDownloadManager:
         ):
             chunk_id, link = self._pending_links.pop(0)
             logger.debug(
-                "- chunk: {}, start: {}, row count: {}".format(chunk_id, link.startRowOffset, link.rowCount)
+                "- chunk: {}, start: {}, row count: {}".format(
+                    chunk_id, link.startRowOffset, link.rowCount
+                )
             )
             handler = ResultSetDownloadHandler(
                 settings=self._downloadable_result_settings,
@@ -103,7 +105,7 @@ class ResultFileDownloadManager:
                 ssl_options=self._ssl_options,
                 chunk_id=chunk_id,
                 session_id_hex=self.session_id_hex,
-                statement_id=self.statement_id
+                statement_id=self.statement_id,
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
