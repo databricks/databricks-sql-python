@@ -74,13 +74,14 @@ class ResultSetQueueFactory(ABC):
             ResultSetQueue
         """
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
-            arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
+            arrow_record_batches, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
             )
-            converted_arrow_table = convert_decimals_in_arrow_table(
-                arrow_table, description
-            )
-            return ArrowQueue(converted_arrow_table, n_valid_rows)
+            # converted_arrow_table = convert_decimals_in_arrow_table(
+            #     arrow_table, description
+            # )
+            arrow_stream_table = ArrowStreamTable(arrow_record_batches, n_valid_rows, description)
+            return ArrowQueue(arrow_stream_table, n_valid_rows, description)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
             column_table, column_names = convert_column_based_set_to_column_table(
                 t_row_set.columns, description
@@ -159,7 +160,6 @@ class ArrowStreamTable:
         self.record_batches = record_batches
         self.num_rows = num_rows
         self.column_description = column_description
-        self.curr_batch_index = 0
     
     def append(self, other: ArrowStreamTable):
         if self.column_description != other.column_description:
@@ -187,7 +187,9 @@ class ArrowStreamTable:
                 req_num_rows = 0
             
         return ArrowStreamTable(consumed_batches, consumed_num_rows, self.column_description)
-
+    
+    def remaining_rows(self):
+        return self
 
     def convert_decimals_in_record_batch(self,batch: "pyarrow.RecordBatch") -> "pyarrow.RecordBatch":
         new_columns = []
@@ -258,9 +260,9 @@ class ColumnQueue(ResultSetQueue):
 class ArrowQueue(ResultSetQueue):
     def __init__(
         self,
-        arrow_table: "pyarrow.Table",
+        arrow_stream_table: ArrowStreamTable,
         n_valid_rows: int,
-        start_row_index: int = 0,
+        column_description,
     ):
         """
         A queue-like wrapper over an Arrow table
@@ -269,25 +271,27 @@ class ArrowQueue(ResultSetQueue):
         :param n_valid_rows: The index of the last valid row in the table
         :param start_row_index: The first row in the table we should start fetching from
         """
-        self.cur_row_index = start_row_index
-        self.arrow_table = arrow_table
+        self.arrow_stream_table = arrow_stream_table
         self.n_valid_rows = n_valid_rows
+        self.column_description = column_description        
 
-    def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
+    def next_n_rows(self, num_rows: int):
         """Get upto the next n rows of the Arrow dataframe"""
-        length = min(num_rows, self.n_valid_rows - self.cur_row_index)
-        # Note that the table.slice API is not the same as Python's slice
-        # The second argument should be length, not end index
-        slice = self.arrow_table.slice(self.cur_row_index, length)
-        self.cur_row_index += slice.num_rows
-        return slice
+        return self.arrow_stream_table.next_n_rows(num_rows)
+        # length = min(num_rows, self.n_valid_rows - self.cur_row_index)
+        # # Note that the table.slice API is not the same as Python's slice
+        # # The second argument should be length, not end index
+        # slice = self.arrow_table.slice(self.cur_row_index, length)
+        # self.cur_row_index += slice.num_rows
+        # return slice
 
-    def remaining_rows(self) -> "pyarrow.Table":
-        slice = self.arrow_table.slice(
-            self.cur_row_index, self.n_valid_rows - self.cur_row_index
-        )
-        self.cur_row_index += slice.num_rows
-        return slice
+    def remaining_rows(self):
+        return self.arrow_stream_table.remaining_rows()
+        # slice = self.arrow_table.slice(
+        #     self.cur_row_index, self.n_valid_rows - self.cur_row_index
+        # )
+        # self.cur_row_index += slice.num_rows
+        # return slice
 
 
 class CloudFetchQueue(ResultSetQueue):
@@ -740,8 +744,8 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
             if lz4_compressed
             else arrow_batch.batch
         )
-    arrow_table = pyarrow.ipc.open_stream(ba).read_all()
-    return arrow_table, n_rows
+    arrow_record_batches = list(pyarrow.ipc.open_stream(ba))
+    return arrow_record_batches, n_rows
 
 
 def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
