@@ -1049,8 +1049,6 @@ class ThriftDatabricksClient(DatabricksClient):
         max_bytes: int,
         cursor: Cursor,
     ) -> "ResultSet":
-        from databricks.sql.result_set import ThriftResultSet
-
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1083,8 +1081,6 @@ class ThriftDatabricksClient(DatabricksClient):
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
-        from databricks.sql.result_set import ThriftResultSet
-
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1121,8 +1117,6 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         table_types=None,
     ) -> "ResultSet":
-        from databricks.sql.result_set import ThriftResultSet
-
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1161,8 +1155,6 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         column_name=None,
     ) -> "ResultSet":
-        from databricks.sql.result_set import ThriftResultSet
-
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
