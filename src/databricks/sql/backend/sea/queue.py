@@ -63,7 +63,7 @@ class SeaResultSetQueueFactory(ABC):
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
             # EXTERNAL_LINKS disposition
             return SeaCloudFetchQueue(
-                initial_links=result_data.external_links or [],
+                result_data=result_data,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
                 sea_client=sea_client,
@@ -103,7 +103,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def __init__(
         self,
-        initial_links: List["ExternalLink"],
+        result_data: ResultData,
         max_download_threads: int,
         ssl_options: SSLOptions,
         sea_client: "SeaDatabricksClient",
@@ -144,8 +144,9 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             )
         )
 
-        initial_link = next((l for l in initial_links if l.chunk_index == 0), None)
-        if not initial_link:
+        initial_links = result_data.external_links or []
+        first_link = next((l for l in initial_links if l.chunk_index == 0), None)
+        if not first_link:
             return
 
         self.download_manager = ResultFileDownloadManager(
@@ -156,7 +157,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
         # Track the current chunk we're processing
-        self._current_chunk_link = initial_link
+        self._current_chunk_link = first_link
 
         # Initialize table and position
         self.table = self._create_table_from_link(self._current_chunk_link)
