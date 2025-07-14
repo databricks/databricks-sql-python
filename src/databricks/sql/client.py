@@ -61,7 +61,8 @@ from databricks.sql.telemetry.models.event import (
     DriverConnectionParameters,
     HostDetails,
 )
-
+from databricks.sql.telemetry.latency_logger import log_latency
+from databricks.sql.telemetry.models.enums import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -747,6 +748,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -786,6 +788,7 @@ class Cursor:
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -813,6 +816,7 @@ class Cursor:
         with open(local_file, "wb") as fp:
             fp.write(r.content)
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_remove(
         self, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -826,6 +830,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency(StatementType.QUERY)
     def execute(
         self,
         operation: str,
@@ -916,6 +921,7 @@ class Cursor:
 
         return self
 
+    @log_latency(StatementType.QUERY)
     def execute_async(
         self,
         operation: str,
@@ -1041,6 +1047,7 @@ class Cursor:
             self.execute(operation, parameters)
         return self
 
+    @log_latency(StatementType.METADATA)
     def catalogs(self) -> "Cursor":
         """
         Get all available catalogs.
@@ -1064,6 +1071,7 @@ class Cursor:
         )
         return self
 
+    @log_latency(StatementType.METADATA)
     def schemas(
         self, catalog_name: Optional[str] = None, schema_name: Optional[str] = None
     ) -> "Cursor":
@@ -1092,6 +1100,7 @@ class Cursor:
         )
         return self
 
+    @log_latency(StatementType.METADATA)
     def tables(
         self,
         catalog_name: Optional[str] = None,
@@ -1127,6 +1136,7 @@ class Cursor:
         )
         return self
 
+    @log_latency(StatementType.METADATA)
     def columns(
         self,
         catalog_name: Optional[str] = None,
@@ -1541,6 +1551,7 @@ class ResultSet:
 
         return results
 
+    @log_latency()
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
@@ -1557,6 +1568,7 @@ class ResultSet:
         else:
             return None
 
+    @log_latency()
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
@@ -1566,6 +1578,7 @@ class ResultSet:
         else:
             return self._convert_arrow_table(self.fetchall_arrow())
 
+    @log_latency()
     def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a list of rows.
@@ -1585,6 +1598,7 @@ class ResultSet:
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
+            self.results.close()
             if (
                 self.op_state != self.thrift_backend.CLOSED_OP_STATE
                 and not self.has_been_closed_server_side

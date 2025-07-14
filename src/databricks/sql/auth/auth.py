@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import Optional, List
 
 from databricks.sql.auth.authenticators import (
@@ -6,46 +5,25 @@ from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     ExternalAuthProvider,
     DatabricksOAuthProvider,
+    AzureServicePrincipalCredentialProvider,
 )
-
-
-class AuthType(Enum):
-    DATABRICKS_OAUTH = "databricks-oauth"
-    AZURE_OAUTH = "azure-oauth"
-    # other supported types (access_token) can be inferred
-    # we can add more types as needed later
-
-
-class ClientContext:
-    def __init__(
-        self,
-        hostname: str,
-        access_token: Optional[str] = None,
-        auth_type: Optional[str] = None,
-        oauth_scopes: Optional[List[str]] = None,
-        oauth_client_id: Optional[str] = None,
-        oauth_redirect_port_range: Optional[List[int]] = None,
-        use_cert_as_auth: Optional[str] = None,
-        tls_client_cert_file: Optional[str] = None,
-        oauth_persistence=None,
-        credentials_provider=None,
-    ):
-        self.hostname = hostname
-        self.access_token = access_token
-        self.auth_type = auth_type
-        self.oauth_scopes = oauth_scopes
-        self.oauth_client_id = oauth_client_id
-        self.oauth_redirect_port_range = oauth_redirect_port_range
-        self.use_cert_as_auth = use_cert_as_auth
-        self.tls_client_cert_file = tls_client_cert_file
-        self.oauth_persistence = oauth_persistence
-        self.credentials_provider = credentials_provider
+from databricks.sql.auth.common import AuthType, ClientContext
 
 
 def get_auth_provider(cfg: ClientContext):
     if cfg.credentials_provider:
         return ExternalAuthProvider(cfg.credentials_provider)
-    if cfg.auth_type in [AuthType.DATABRICKS_OAUTH.value, AuthType.AZURE_OAUTH.value]:
+    elif cfg.auth_type == AuthType.AZURE_SP_M2M.value:
+        return ExternalAuthProvider(
+            AzureServicePrincipalCredentialProvider(
+                cfg.hostname,
+                cfg.azure_client_id,
+                cfg.azure_client_secret,
+                cfg.azure_tenant_id,
+                cfg.azure_workspace_resource_id,
+            )
+        )
+    elif cfg.auth_type in [AuthType.DATABRICKS_OAUTH.value, AuthType.AZURE_OAUTH.value]:
         assert cfg.oauth_redirect_port_range is not None
         assert cfg.oauth_client_id is not None
         assert cfg.oauth_scopes is not None
@@ -102,10 +80,13 @@ def get_client_id_and_redirect_port(use_azure_auth: bool):
 
 
 def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
+    # TODO : unify all the auth mechanisms with the Python SDK
+
     auth_type = kwargs.get("auth_type")
     (client_id, redirect_port_range) = get_client_id_and_redirect_port(
         auth_type == AuthType.AZURE_OAUTH.value
     )
+
     if kwargs.get("username") or kwargs.get("password"):
         raise ValueError(
             "Username/password authentication is no longer supported. "
@@ -120,6 +101,10 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
         oauth_scopes=PYSQL_OAUTH_SCOPES,
         oauth_client_id=kwargs.get("oauth_client_id") or client_id,
+        azure_client_id=kwargs.get("azure_client_id"),
+        azure_client_secret=kwargs.get("azure_client_secret"),
+        azure_tenant_id=kwargs.get("azure_tenant_id"),
+        azure_workspace_resource_id=kwargs.get("azure_workspace_resource_id"),
         oauth_redirect_port_range=[kwargs["oauth_redirect_port"]]
         if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
         else redirect_port_range,

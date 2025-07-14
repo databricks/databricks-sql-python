@@ -2,15 +2,17 @@ from enum import Enum
 
 
 class AuthFlow(Enum):
-    TOKEN_PASSTHROUGH = "token_passthrough"
-    BROWSER_BASED_AUTHENTICATION = "browser_based_authentication"
+    TYPE_UNSPECIFIED = "TYPE_UNSPECIFIED"
+    TOKEN_PASSTHROUGH = "TOKEN_PASSTHROUGH"
+    CLIENT_CREDENTIALS = "CLIENT_CREDENTIALS"
+    BROWSER_BASED_AUTHENTICATION = "BROWSER_BASED_AUTHENTICATION"
 
 
 class AuthMech(Enum):
-    CLIENT_CERT = "CLIENT_CERT"  # ssl certificate authentication
-    PAT = "PAT"  # Personal Access Token authentication
-    DATABRICKS_OAUTH = "DATABRICKS_OAUTH"  # Databricks-managed OAuth flow
-    EXTERNAL_AUTH = "EXTERNAL_AUTH"  # External identity provider (AWS, Azure, etc.)
+    TYPE_UNSPECIFIED = "TYPE_UNSPECIFIED"
+    OTHER = "OTHER"
+    PAT = "PAT"
+    OAUTH = "OAUTH"
 
 
 class DatabricksClientType(Enum):
@@ -19,24 +21,24 @@ class DatabricksClientType(Enum):
 
 
 class DriverVolumeOperationType(Enum):
-    TYPE_UNSPECIFIED = "type_unspecified"
-    PUT = "put"
-    GET = "get"
-    DELETE = "delete"
-    LIST = "list"
-    QUERY = "query"
+    TYPE_UNSPECIFIED = "TYPE_UNSPECIFIED"
+    PUT = "PUT"
+    GET = "GET"
+    DELETE = "DELETE"
+    LIST = "LIST"
+    QUERY = "QUERY"
 
 
 class ExecutionResultFormat(Enum):
-    FORMAT_UNSPECIFIED = "format_unspecified"
-    INLINE_ARROW = "inline_arrow"
-    EXTERNAL_LINKS = "external_links"
-    COLUMNAR_INLINE = "columnar_inline"
+    FORMAT_UNSPECIFIED = "FORMAT_UNSPECIFIED"
+    INLINE_ARROW = "INLINE_ARROW"
+    EXTERNAL_LINKS = "EXTERNAL_LINKS"
+    COLUMNAR_INLINE = "COLUMNAR_INLINE"
 
 
 class StatementType(Enum):
-    NONE = "none"
-    QUERY = "query"
-    SQL = "sql"
-    UPDATE = "update"
-    METADATA = "metadata"
+    NONE = "NONE"
+    QUERY = "QUERY"
+    SQL = "SQL"
+    UPDATE = "UPDATE"
+    METADATA = "METADATA"
