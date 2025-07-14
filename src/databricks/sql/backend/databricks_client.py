@@ -24,13 +24,6 @@ class DatabricksClient(ABC):
     - Fetching metadata about catalogs, schemas, tables, and columns
     """
 
-    def __init__(self, ssl_options: SSLOptions, **kwargs):
-        self._use_arrow_native_complex_types = kwargs.get(
-            "_use_arrow_native_complex_types", True
-        )
-        self._max_download_threads = kwargs.get("max_download_threads", 10)
-        self._ssl_options = ssl_options
-
     # == Connection and Session Management ==
     @abstractmethod
     def open_session(
