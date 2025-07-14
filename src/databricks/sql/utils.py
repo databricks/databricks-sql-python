@@ -219,7 +219,12 @@ class ArrowStreamTable:
                 yield self.convert_decimals_in_record_batch(batch)
 
         return pyarrow.Table.from_batches(batch_generator())
-
+    
+    def remove_extraneous_rows(self):
+        num_rows_in_data = sum(batch.num_rows for batch in self.record_batches)
+        if num_rows_in_data > self.num_rows:
+            self.record_batches = self.record_batches[:self.num_rows]
+            self.num_rows = self.num_rows
     
 class ColumnQueue(ResultSetQueue):
     def __init__(self, column_table: ColumnTable):
@@ -319,8 +324,8 @@ class CloudFetchQueue(ResultSetQueue):
                         result_link.startRowOffset, result_link.rowCount
                     )
                 )
-        print("Initial Setup Cloudfetch Queue")
-        print(f"No of result links - {len(result_links)}")
+        # print("Initial Setup Cloudfetch Queue")
+        # print(f"No of result links - {len(result_links)}")
         self.download_manager = ResultFileDownloadManager(
             links=result_links or [],
             max_download_threads=self.max_download_threads,
@@ -383,8 +388,8 @@ class CloudFetchQueue(ResultSetQueue):
         # results = self.table.slice(0, 0)
         # result = self._create_empty_table()
 
-        print("remaining_rows call")
-        print(f"self.table.num_rows - {self.table.num_rows}")
+        # print("remaining_rows call")
+        # print(f"self.table.num_rows - {self.table.num_rows}")
         while self.table:
             # table_slice = self.table.slice(
             #     self.table_row_index, self.table.num_rows - self.table_row_index
@@ -393,7 +398,7 @@ class CloudFetchQueue(ResultSetQueue):
             # self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             # self.table_row_index = 0
-        print(f"result.num_rows - {result.num_rows}")
+        # print(f"result.num_rows - {result.num_rows}")
         return result
 
     def _create_next_table(self) -> ArrowStreamTable:
@@ -419,6 +424,8 @@ class CloudFetchQueue(ResultSetQueue):
             list(pyarrow.ipc.open_stream(downloaded_file.file_bytes)), 
             downloaded_file.row_count, 
             self.description)
+        
+        arrow_stream_table.remove_extraneous_rows()
         # arrow_table = create_arrow_table_from_arrow_file(
         #     downloaded_file.file_bytes, self.description
         # )
@@ -439,8 +446,8 @@ class CloudFetchQueue(ResultSetQueue):
             )
         )
         
-        print("_create_next_table")
-        print(f"arrow_stream_table.num_rows - {arrow_stream_table.num_rows}")
+        # print("_create_next_table")
+        # print(f"arrow_stream_table.num_rows - {arrow_stream_table.num_rows}")
         return arrow_stream_table
 
     def _create_empty_table(self) -> ArrowStreamTable:

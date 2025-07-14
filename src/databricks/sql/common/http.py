@@ -73,7 +73,7 @@ class DatabricksHttpClient:
             start_time = time.time()
             response = self.session.request(method.value, url, **kwargs)
             end_time = time.time()
-            print(f"Downloaded file in {end_time - start_time} seconds")
+            # print(f"Downloaded file in {end_time - start_time} seconds")
             yield response
         except Exception as e:
             logger.error("Error executing HTTP request in DatabricksHttpClient: %s", e)

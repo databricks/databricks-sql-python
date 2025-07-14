@@ -84,8 +84,8 @@ class ResultFileDownloadManager:
         """
         While download queue has a capacity, peek pending links and submit them to thread pool.
         """
-        print("Schedule_downloads")
-        logger.debug("ResultFileDownloadManager: schedule downloads")
+        # print("Schedule_downloads")
+        # logger.debug("ResultFileDownloadManager: schedule downloads")
         while (len(self._download_tasks) < self._max_download_threads) and (
             len(self._pending_links) > 0
         ):

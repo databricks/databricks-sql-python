@@ -99,9 +99,9 @@ class ResultSetDownloadHandler:
             verify=self._ssl_options.tls_verify,
             headers=self.link.httpHeaders
         ) as response:
-            print_text = [
+            # print_text = [
 
-            ]
+            # ]
             
             response.raise_for_status()
             
@@ -127,12 +127,12 @@ class ResultSetDownloadHandler:
                 )
             )
 
-            print_text.append(
-                f"Downloaded file startRowOffset - {self.link.startRowOffset} - rowCount - {self.link.rowCount}"
-            )
+            # print_text.append(
+            #     f"Downloaded file startRowOffset - {self.link.startRowOffset} - rowCount - {self.link.rowCount}"
+            # )
 
-            for text in print_text:
-                print(text)
+            # for text in print_text:
+            #     print(text)
 
             return DownloadedFile(
                 decompressed_data,
