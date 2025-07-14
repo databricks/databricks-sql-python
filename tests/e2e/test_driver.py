@@ -30,7 +30,6 @@ from databricks.sql import (
     OperationalError,
     RequestError,
 )
-from databricks.sql.backend.types import CommandState
 from tests.e2e.common.predicates import (
     pysql_has_version,
     pysql_supports_arrow,
