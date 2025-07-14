@@ -14,11 +14,15 @@ class DownloadManagerTests(unittest.TestCase):
     def create_download_manager(
         self, links, max_download_threads=10, lz4_compressed=True
     ):
+        def expiry_callback(link: TSparkArrowResultLink):
+            return None
+
         return download_manager.ResultFileDownloadManager(
             links,
             max_download_threads,
             lz4_compressed,
             ssl_options=SSLOptions(),
+            expiry_callback=expiry_callback,
         )
 
     def create_result_link(

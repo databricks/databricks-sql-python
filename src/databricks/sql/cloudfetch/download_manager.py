@@ -91,7 +91,9 @@ class ResultFileDownloadManager:
         def to_cancel(link: TSparkArrowResultLink) -> bool:
             return link.startRowOffset < start_row_offset
 
-        tasks_to_cancel = [task for task in self._download_tasks if to_cancel(task.link)]
+        tasks_to_cancel = [
+            task for task in self._download_tasks if to_cancel(task.link)
+        ]
         for task in tasks_to_cancel:
             task.cancel()
         logger.info(
@@ -99,7 +101,9 @@ class ResultFileDownloadManager:
         )
 
         # Remove cancelled tasks from the download queue
-        tasks_to_keep = [task for task in self._download_tasks if not to_cancel(task.link)]
+        tasks_to_keep = [
+            task for task in self._download_tasks if not to_cancel(task.link)
+        ]
         self._download_tasks = tasks_to_keep
 
         pending_links_to_keep = [

@@ -89,9 +89,7 @@ class ResultSetDownloadHandler:
         )
 
         # Check if link is already expired or is expiring
-        self._validate_link(
-            self.link, self.settings.link_expiry_buffer_secs
-        )
+        self._validate_link(self.link, self.settings.link_expiry_buffer_secs)
 
         session = requests.Session()
         session.mount("http://", HTTPAdapter(max_retries=retryPolicy))

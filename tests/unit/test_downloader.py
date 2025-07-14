@@ -5,6 +5,7 @@ import requests
 
 import databricks.sql.cloudfetch.downloader as downloader
 from databricks.sql.exc import Error
+from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
 
 
@@ -20,15 +21,26 @@ class DownloaderTests(unittest.TestCase):
     Unit tests for checking downloader logic.
     """
 
+    def create_download_handler(
+        self, settings: Mock, result_link: Mock
+    ) -> downloader.ResultSetDownloadHandler:
+        def expiry_callback(link: TSparkArrowResultLink):
+            raise Error("Cloudfetch link has expired")
+
+        return downloader.ResultSetDownloadHandler(
+            settings,
+            result_link,
+            ssl_options=SSLOptions(),
+            expiry_callback=expiry_callback,
+        )
+
     @patch("time.time", return_value=1000)
     def test_run_link_expired(self, mock_time):
         settings = Mock()
         result_link = Mock()
         # Already expired
         result_link.expiryTime = 999
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = self.create_download_handler(settings, result_link)
 
         with self.assertRaises(Error) as context:
             d.run()
@@ -42,9 +54,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock()
         # Within the expiry buffer time
         result_link.expiryTime = 1004
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = self.create_download_handler(settings, result_link)
 
         with self.assertRaises(Error) as context:
             d.run()
@@ -62,9 +72,7 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         result_link = Mock(expiryTime=1001)
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = self.create_download_handler(settings, result_link)
         with self.assertRaises(requests.exceptions.HTTPError) as context:
             d.run()
         self.assertTrue("404" in str(context.exception))
@@ -81,9 +89,7 @@ class DownloaderTests(unittest.TestCase):
         settings.is_lz4_compressed = False
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = self.create_download_handler(settings, result_link)
         file = d.run()
 
         assert file.file_bytes == b"1234567890" * 10
@@ -104,9 +110,7 @@ class DownloaderTests(unittest.TestCase):
         settings.is_lz4_compressed = True
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = self.create_download_handler(settings, result_link)
         file = d.run()
 
         assert file.file_bytes == b"1234567890" * 10
@@ -120,9 +124,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock(bytesNum=100, expiryTime=1001)
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = self.create_download_handler(settings, result_link)
         with self.assertRaises(ConnectionError):
             d.run()
 
@@ -135,8 +137,6 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock(bytesNum=100, expiryTime=1001)
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = self.create_download_handler(settings, result_link)
         with self.assertRaises(TimeoutError):
             d.run()
