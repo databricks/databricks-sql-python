@@ -1,9 +1,9 @@
 import json
 import logging
 
+logger = logging.getLogger(__name__)
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
-logger = logging.getLogger(__name__)
 
 ### PEP-249 Mandated ###
 # https://peps.python.org/pep-0249/#exceptions
@@ -22,29 +22,10 @@ class Error(Exception):
 
         error_name = self.__class__.__name__
         if session_id_hex:
-            # Normal case: we have a session, send to regular telemetry client
             telemetry_client = TelemetryClientFactory.get_telemetry_client(
                 session_id_hex
             )
             telemetry_client.export_failure_log(error_name, self.message)
-        elif (
-            isinstance(self, (ConnectionError, AuthenticationError))
-            and "host_url" in self.context
-        ):
-            # Connection error case: no session but we should still send telemetry
-            self._send_connection_error_telemetry(error_name)
-
-    def _send_connection_error_telemetry(self, error_name):
-        """Send connection error telemetry to unauthenticated endpoint"""
-
-        TelemetryClientFactory.send_connection_error_telemetry(
-            error_name=error_name,
-            error_message=self.message or str(self),
-            host_url=self.context["host_url"],
-            http_path=self.context.get("http_path", ""),
-            port=self.context.get("port", 443),
-            user_agent=self.context.get("user_agent"),
-        )
 
     def __str__(self):
         return self.message

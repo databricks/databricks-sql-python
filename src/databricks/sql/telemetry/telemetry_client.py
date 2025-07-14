@@ -440,74 +440,33 @@ class TelemetryClientFactory:
                 TelemetryClientFactory._initialized = False
 
     @staticmethod
-    def send_connection_error_telemetry(
+    def connection_failure_log(
         error_name: str,
         error_message: str,
         host_url: str,
         http_path: str,
-        port: int = 443,
+        port: int,
         user_agent: Optional[str] = None,
     ):
         """Send error telemetry when connection creation fails, without requiring a session"""
-        try:
-            logger.debug("Sending connection error telemetry for host: %s", host_url)
 
-            # Initialize factory if needed (with proper locking)
-            with TelemetryClientFactory._lock:
-                TelemetryClientFactory._initialize()
+        UNAUTH_SESSION_ID = "Unauth_session_id"
 
-            # Create driver connection params for the failed connection
-            driver_connection_params = DriverConnectionParameters(
-                http_path=http_path,
-                mode=DatabricksClientType.THRIFT,
-                host_info=HostDetails(host_url=host_url, port=port),
-            )
+        TelemetryClientFactory.initialize_telemetry_client(
+            telemetry_enabled=True,
+            session_id_hex=UNAUTH_SESSION_ID,
+            auth_provider=None,
+            host_url=host_url,
+        )
 
-            error_info = DriverErrorInfo(
-                error_name=error_name, stack_trace=error_message
-            )
+        telemetry_client = TelemetryClientFactory.get_telemetry_client(
+            UNAUTH_SESSION_ID
+        )
+        telemetry_client._driver_connection_params = DriverConnectionParameters(
+            http_path=http_path,
+            mode=DatabricksClientType.THRIFT,
+            host_info=HostDetails(host_url=host_url, port=port),
+        )
+        telemetry_client._user_agent = user_agent
 
-            telemetry_frontend_log = TelemetryFrontendLog(
-                frontend_log_event_id=str(uuid.uuid4()),
-                context=FrontendLogContext(
-                    client_context=TelemetryClientContext(
-                        timestamp_millis=int(time.time() * 1000),
-                        user_agent=user_agent or "PyDatabricksSqlConnector",
-                    )
-                ),
-                entry=FrontendLogEntry(
-                    sql_driver_log=TelemetryEvent(
-                        system_configuration=TelemetryHelper.get_driver_system_configuration(),
-                        driver_connection_params=driver_connection_params,
-                        error_info=error_info,
-                    )
-                ),
-            )
-
-            # Send to unauthenticated endpoint since we don't have working auth
-            request = {
-                "uploadTime": int(time.time() * 1000),
-                "items": [],
-                "protoLogs": [telemetry_frontend_log.to_json()],
-            }
-
-            url = f"https://{host_url}/telemetry-unauth"
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
-
-            # Send synchronously for connection errors since we're probably about to exit
-            response = requests.post(
-                url,
-                data=json.dumps(request),
-                headers=headers,
-                timeout=5,
-            )
-            if response.status_code == 200:
-                logger.debug("Connection error telemetry sent successfully")
-            else:
-                logger.debug(
-                    "Connection error telemetry failed with status: %s",
-                    response.status_code,
-                )
-
-        except Exception as e:
-            logger.debug("Failed to send connection error telemetry: %s", e)
+        telemetry_client.export_failure_log(error_name, error_message)

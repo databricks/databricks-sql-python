@@ -250,13 +250,14 @@ class Connection:
                 server_hostname, **kwargs
             )
         except Exception as e:
-            raise AuthenticationError(
-                message=f"Failed to create authentication provider: {str(e)}",
-                host_url=server_hostname,
+            TelemetryClientFactory.connection_failure_log(
+                error_name=e.__class__.__name__,
+                error_message=str(e),
+                host_url=self.host,
                 http_path=http_path,
                 port=self.port,
-                original_exception=e,
-            ) from e
+            )
+            raise e
 
         self.server_telemetry_enabled = True
         self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
@@ -316,14 +317,15 @@ class Connection:
                 session_configuration, catalog, schema
             )
         except Exception as e:
-            raise ConnectionError(
-                message=f"Failed to establish connection: {str(e)}",
+            TelemetryClientFactory.connection_failure_log(
+                error_name=e.__class__.__name__,
+                error_message=str(e),
                 host_url=self.host,
                 http_path=http_path,
                 port=self.port,
                 user_agent=useragent_header,
-                original_exception=e,
-            ) from e
+            )
+            raise e
 
         self._session_handle = self._open_session_resp.sessionHandle
         self.protocol_version = self.get_protocol_version(self._open_session_resp)
@@ -1418,7 +1420,6 @@ class ResultSet:
         self.results = results
         self.has_more_rows = has_more_rows
 
-    @log_latency()
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1431,7 +1432,6 @@ class ResultSet:
 
         return result
 
-    @log_latency()
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
@@ -1474,7 +1474,6 @@ class ResultSet:
     def rownumber(self):
         return self._next_row_index
 
-    @log_latency()
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
@@ -1517,7 +1516,6 @@ class ResultSet:
         ]
         return ColumnTable(merged_result, result1.column_names)
 
-    @log_latency()
     def fetchmany_columnar(self, size: int):
         """
         Fetch the next set of rows of a query result, returning a Columnar Table.
@@ -1543,7 +1541,6 @@ class ResultSet:
 
         return results
 
-    @log_latency()
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
@@ -1570,7 +1567,6 @@ class ResultSet:
             return pyarrow.Table.from_pydict(data)
         return results
 
-    @log_latency()
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
         results = self.results.remaining_rows()
