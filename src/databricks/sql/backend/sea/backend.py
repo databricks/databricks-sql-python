@@ -15,7 +15,6 @@ from databricks.sql.backend.sea.utils.constants import (
     MetadataCommands,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
