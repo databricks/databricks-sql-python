@@ -204,7 +204,24 @@ class LinkFetcher:
             if not links_downloaded:
                 break
 
+    def _restart_from_expired_link(self, link: TSparkArrowResultLink):
+        self.stop()
+
+        with self._link_data_update:
+            self.download_manager.cancel_tasks_from_offset(link.startRowOffset)
+
+            chunks_to_restart = []
+            for chunk_index, l in self.chunk_index_to_link.items():
+                if l.row_offset < link.startRowOffset:
+                    continue
+                chunks_to_restart.append(chunk_index)
+            for chunk_index in chunks_to_restart:
+                self.chunk_index_to_link.pop(chunk_index)
+
+        self.start()
+
     def start(self):
+        self._shutdown_event.clear()
         self._worker_thread = threading.Thread(target=self._worker_loop)
         self._worker_thread.start()
 
@@ -269,6 +286,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             max_download_threads=max_download_threads,
             lz4_compressed=lz4_compressed,
             ssl_options=ssl_options,
+            expiry_callback=self._expiry_callback,
         )
 
         self.link_fetcher = LinkFetcher(
@@ -282,6 +300,12 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Initialize table and position
         self.table = self._create_next_table()
+
+    def _expiry_callback(self, link: TSparkArrowResultLink):
+        logger.info(
+            f"SeaCloudFetchQueue: Link expired, restarting from offset {link.startRowOffset}"
+        )
+        self.link_fetcher._restart_from_expired_link(link)
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
