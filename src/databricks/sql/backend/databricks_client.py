@@ -79,7 +79,7 @@ class DatabricksClient(ABC):
         lz4_compression: bool,
         cursor: Cursor,
         use_cloud_fetch: bool,
-        parameters: Union[List[ttypes.TSparkParameter], List[Dict[str, Any]]],
+        parameters: List[ttypes.TSparkParameter],
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
         row_limit: Optional[int] = None,
