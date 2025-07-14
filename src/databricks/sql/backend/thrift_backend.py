@@ -1062,9 +1062,11 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetCatalogs, req)
 
-        execute_response, is_direct_results, _ = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            statement_id,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1081,6 +1083,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
+            statement_id=statement_id,
         )
 
     def get_schemas(
@@ -1108,9 +1112,11 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetSchemas, req)
 
-        execute_response, is_direct_results, _ = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            statement_id,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1127,6 +1133,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
+            statement_id=statement_id,
         )
 
     def get_tables(
@@ -1158,9 +1166,11 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetTables, req)
 
-        execute_response, is_direct_results, _ = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            statement_id,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1177,6 +1187,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
+            statement_id=statement_id,
         )
 
     def get_columns(
@@ -1208,9 +1220,11 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetColumns, req)
 
-        execute_response, is_direct_results, _ = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            statement_id,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1227,6 +1241,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
+            statement_id=statement_id,
         )
 
     def _handle_execute_response(self, resp, cursor):
