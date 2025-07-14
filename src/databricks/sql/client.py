@@ -264,6 +264,12 @@ class Connection:
             self.client_telemetry_enabled and self.server_telemetry_enabled
         )
 
+        self.server_telemetry_enabled = True
+        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
+        self.telemetry_enabled = (
+            self.client_telemetry_enabled and self.server_telemetry_enabled
+        )
+
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
             user_agent_entry = kwargs.get("_user_agent_entry")
@@ -1580,6 +1586,7 @@ class ResultSet:
 
         return results
 
+    @log_latency()
     def fetchone(self) -> Optional[Row]:
         """
         Fetch the next row of a query result set, returning a single sequence,
@@ -1596,6 +1603,7 @@ class ResultSet:
         else:
             return None
 
+    @log_latency()
     def fetchall(self) -> List[Row]:
         """
         Fetch all (remaining) rows of a query result, returning them as a list of rows.
@@ -1605,6 +1613,7 @@ class ResultSet:
         else:
             return self._convert_arrow_table(self.fetchall_arrow())
 
+    @log_latency()
     def fetchmany(self, size: int) -> List[Row]:
         """
         Fetch the next set of rows of a query result, returning a list of rows.
@@ -1624,6 +1633,7 @@ class ResultSet:
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
+            self.results.close()
             if (
                 self.op_state != self.thrift_backend.CLOSED_OP_STATE
                 and not self.has_been_closed_server_side

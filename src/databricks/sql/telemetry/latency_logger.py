@@ -1,6 +1,7 @@
 import time
 import functools
 from typing import Optional
+import logging
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 from databricks.sql.telemetry.models.event import (
     SqlExecutionEvent,
@@ -8,6 +9,8 @@ from databricks.sql.telemetry.models.event import (
 from databricks.sql.telemetry.models.enums import ExecutionResultFormat, StatementType
 from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 
 class TelemetryExtractor:
@@ -19,24 +22,9 @@ class TelemetryExtractor:
     """
 
     def __init__(self, obj):
-        """
-        Initialize the extractor with an object to wrap.
-
-        Args:
-            obj: The object to extract telemetry information from.
-        """
         self._obj = obj
 
     def __getattr__(self, name):
-        """
-        Delegate attribute access to the wrapped object.
-
-        Args:
-            name (str): The name of the attribute to access.
-
-        Returns:
-            The attribute value from the wrapped object.
-        """
         return getattr(self._obj, name)
 
     def get_session_id_hex(self):
@@ -145,14 +133,15 @@ def get_extractor(obj):
         TelemetryExtractor: A specialized extractor instance:
             - CursorExtractor for Cursor objects
             - ResultSetExtractor for ResultSet objects
-            - Throws an NotImplementedError for all other objects
+            - None for all other objects
     """
     if obj.__class__.__name__ == "Cursor":
         return CursorExtractor(obj)
     elif obj.__class__.__name__ == "ResultSet":
         return ResultSetExtractor(obj)
     else:
-        raise NotImplementedError(f"No extractor found for {obj.__class__.__name__}")
+        logger.debug("No extractor found for %s", obj.__class__.__name__)
+        return None
 
 
 def log_latency(statement_type: StatementType = StatementType.NONE):
@@ -207,24 +196,26 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 duration_ms = int((end_time - start_time) * 1000)
 
                 extractor = get_extractor(self)
-                session_id_hex = _safe_call(extractor.get_session_id_hex)
-                statement_id = _safe_call(extractor.get_statement_id)
 
-                sql_exec_event = SqlExecutionEvent(
-                    statement_type=statement_type,
-                    is_compressed=_safe_call(extractor.get_is_compressed),
-                    execution_result=_safe_call(extractor.get_execution_result),
-                    retry_count=_safe_call(extractor.get_retry_count),
-                )
+                if extractor is not None:
+                    session_id_hex = _safe_call(extractor.get_session_id_hex)
+                    statement_id = _safe_call(extractor.get_statement_id)
 
-                telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                    session_id_hex
-                )
-                telemetry_client.export_latency_log(
-                    latency_ms=duration_ms,
-                    sql_execution_event=sql_exec_event,
-                    sql_statement_id=statement_id,
-                )
+                    sql_exec_event = SqlExecutionEvent(
+                        statement_type=statement_type,
+                        is_compressed=_safe_call(extractor.get_is_compressed),
+                        execution_result=_safe_call(extractor.get_execution_result),
+                        retry_count=_safe_call(extractor.get_retry_count),
+                    )
+
+                    telemetry_client = TelemetryClientFactory.get_telemetry_client(
+                        session_id_hex
+                    )
+                    telemetry_client.export_latency_log(
+                        latency_ms=duration_ms,
+                        sql_execution_event=sql_exec_event,
+                        sql_statement_id=statement_id,
+                    )
 
         return wrapper
 

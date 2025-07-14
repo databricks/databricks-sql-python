@@ -1,10 +1,9 @@
 import threading
 import time
-import json
 import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -23,6 +22,10 @@ from databricks.sql.telemetry.models.enums import (
     AuthFlow,
     DatabricksClientType,
 )
+from databricks.sql.telemetry.models.endpoint_models import (
+    TelemetryRequest,
+    TelemetryResponse,
+)
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     DatabricksOAuthProvider,
@@ -32,7 +35,7 @@ import sys
 import platform
 import uuid
 import locale
-from abc import ABC, abstractmethod
+from databricks.sql.telemetry.utils import BaseTelemetryClient
 
 logger = logging.getLogger(__name__)
 
@@ -66,65 +69,34 @@ class TelemetryHelper:
     def get_auth_mechanism(auth_provider):
         """Get the auth mechanism for the auth provider."""
         # AuthMech is an enum with the following values:
-        # PAT, DATABRICKS_OAUTH, EXTERNAL_AUTH, CLIENT_CERT
+        # TYPE_UNSPECIFIED, OTHER, PAT, OAUTH
 
         if not auth_provider:
             return None
         if isinstance(auth_provider, AccessTokenAuthProvider):
-            return AuthMech.PAT  # Personal Access Token authentication
+            return AuthMech.PAT
         elif isinstance(auth_provider, DatabricksOAuthProvider):
-            return AuthMech.DATABRICKS_OAUTH  # Databricks-managed OAuth flow
-        elif isinstance(auth_provider, ExternalAuthProvider):
-            return (
-                AuthMech.EXTERNAL_AUTH
-            )  # External identity provider (AWS, Azure, etc.)
-        return AuthMech.CLIENT_CERT  # Client certificate (ssl)
+            return AuthMech.OAUTH
+        else:
+            return AuthMech.OTHER
 
     @staticmethod
     def get_auth_flow(auth_provider):
         """Get the auth flow for the auth provider."""
         # AuthFlow is an enum with the following values:
-        # TOKEN_PASSTHROUGH, BROWSER_BASED_AUTHENTICATION
+        # TYPE_UNSPECIFIED, TOKEN_PASSTHROUGH, CLIENT_CREDENTIALS, BROWSER_BASED_AUTHENTICATION
 
         if not auth_provider:
             return None
-
         if isinstance(auth_provider, DatabricksOAuthProvider):
             if auth_provider._access_token and auth_provider._refresh_token:
-                return (
-                    AuthFlow.TOKEN_PASSTHROUGH
-                )  # Has existing tokens, no user interaction needed
-            if hasattr(auth_provider, "oauth_manager"):
-                return (
-                    AuthFlow.BROWSER_BASED_AUTHENTICATION
-                )  # Will initiate OAuth flow requiring browser
-
-        return None
-
-
-class BaseTelemetryClient(ABC):
-    """
-    Base class for telemetry clients.
-    It is used to define the interface for telemetry clients.
-    """
-
-    @abstractmethod
-    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
-        raise NotImplementedError(
-            "Subclasses must implement export_initial_telemetry_log"
-        )
-
-    @abstractmethod
-    def export_failure_log(self, error_name, error_message):
-        raise NotImplementedError("Subclasses must implement export_failure_log")
-
-    @abstractmethod
-    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
-        raise NotImplementedError("Subclasses must implement export_latency_log")
-
-    @abstractmethod
-    def close(self):
-        raise NotImplementedError("Subclasses must implement close")
+                return AuthFlow.TOKEN_PASSTHROUGH
+            else:
+                return AuthFlow.BROWSER_BASED_AUTHENTICATION
+        elif isinstance(auth_provider, ExternalAuthProvider):
+            return AuthFlow.CLIENT_CREDENTIALS
+        else:
+            return None
 
 
 class NoopTelemetryClient(BaseTelemetryClient):
@@ -134,10 +106,13 @@ class NoopTelemetryClient(BaseTelemetryClient):
     """
 
     _instance = None
+    _lock = threading.RLock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
         return cls._instance
 
     def export_initial_telemetry_log(self, driver_connection_params, user_agent):
@@ -163,6 +138,8 @@ class TelemetryClient(BaseTelemetryClient):
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
 
+    DEFAULT_BATCH_SIZE = 100
+
     def __init__(
         self,
         telemetry_enabled,
@@ -173,12 +150,12 @@ class TelemetryClient(BaseTelemetryClient):
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
-        self._batch_size = 10  # TODO: Decide on batch size
+        self._batch_size = self.DEFAULT_BATCH_SIZE
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
         self._events_batch = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
@@ -207,11 +184,13 @@ class TelemetryClient(BaseTelemetryClient):
     def _send_telemetry(self, events):
         """Send telemetry events to the server"""
 
-        request = {
-            "uploadTime": int(time.time() * 1000),
-            "items": [],
-            "protoLogs": [event.to_json() for event in events],
-        }
+        request = TelemetryRequest(
+            uploadTime=int(time.time() * 1000),
+            items=[],
+            protoLogs=[event.to_json() for event in events],
+        )
+
+        sent_count = len(events)
 
         path = (
             self.TELEMETRY_AUTHENTICATED_PATH
@@ -230,25 +209,49 @@ class TelemetryClient(BaseTelemetryClient):
             future = self._executor.submit(
                 requests.post,
                 url,
-                data=json.dumps(request),
+                data=request.to_json(),
                 headers=headers,
-                timeout=10,
+                timeout=900,
             )
-            future.add_done_callback(self._telemetry_request_callback)
+            future.add_done_callback(
+                lambda fut: self._telemetry_request_callback(fut, sent_count=sent_count)
+            )
         except Exception as e:
             logger.debug("Failed to submit telemetry request: %s", e)
 
-    def _telemetry_request_callback(self, future):
+    def _telemetry_request_callback(self, future, sent_count: int):
         """Callback function to handle telemetry request completion"""
         try:
             response = future.result()
 
-            if response.status_code == 200:
-                logger.debug("Telemetry request completed successfully")
-            else:
+            if not response.ok:
                 logger.debug(
-                    "Telemetry request failed with status code: %s",
+                    "Telemetry request failed with status code: %s, response: %s",
                     response.status_code,
+                    response.text,
+                )
+
+            telemetry_response = TelemetryResponse(**response.json())
+
+            logger.debug(
+                "Pushed Telemetry logs with success count: %s, error count: %s",
+                telemetry_response.numProtoSuccess,
+                len(telemetry_response.errors),
+            )
+
+            if telemetry_response.errors:
+                logger.debug(
+                    "Telemetry push failed for some events with errors: %s",
+                    telemetry_response.errors,
+                )
+
+            # Check for partial failures
+            if sent_count != telemetry_response.numProtoSuccess:
+                logger.debug(
+                    "Partial failure pushing telemetry. Sent: %s, Succeeded: %s, Errors: %s",
+                    sent_count,
+                    telemetry_response.numProtoSuccess,
+                    telemetry_response.errors,
                 )
 
         except Exception as e:
@@ -335,7 +338,7 @@ class TelemetryClientFactory:
             cls._clients = {}
             cls._executor = ThreadPoolExecutor(
                 max_workers=10
-            )  # Thread pool for async operations TODO: Decide on max workers
+            )  # Thread pool for async operations
             cls._install_exception_hook()
             cls._initialized = True
             logger.debug(
@@ -404,18 +407,9 @@ class TelemetryClientFactory:
     @staticmethod
     def get_telemetry_client(session_id_hex):
         """Get the telemetry client for a specific connection"""
-        try:
-            if session_id_hex in TelemetryClientFactory._clients:
-                return TelemetryClientFactory._clients[session_id_hex]
-            else:
-                logger.error(
-                    "Telemetry client not initialized for connection %s",
-                    session_id_hex,
-                )
-                return NoopTelemetryClient()
-        except Exception as e:
-            logger.debug("Failed to get telemetry client: %s", e)
-            return NoopTelemetryClient()
+        return TelemetryClientFactory._clients.get(
+            session_id_hex, NoopTelemetryClient()
+        )
 
     @staticmethod
     def close(session_id_hex):
@@ -498,7 +492,7 @@ class TelemetryClientFactory:
 
             url = f"https://{host_url}/telemetry-unauth"
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
-
+        
             # Send synchronously for connection errors since we're probably about to exit
             response = requests.post(
                 url,
