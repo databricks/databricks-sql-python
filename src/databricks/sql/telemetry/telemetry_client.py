@@ -492,7 +492,7 @@ class TelemetryClientFactory:
 
             url = f"https://{host_url}/telemetry-unauth"
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        
+
             # Send synchronously for connection errors since we're probably about to exit
             response = requests.post(
                 url,
