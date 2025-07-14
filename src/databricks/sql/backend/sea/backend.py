@@ -134,7 +134,7 @@ class SeaDatabricksClient(DatabricksClient):
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
         # Initialize HTTP client
-        self.http_client = SeaHttpClient(
+        self._http_client = SeaHttpClient(
             server_hostname=server_hostname,
             port=port,
             http_path=http_path,
@@ -226,7 +226,7 @@ class SeaDatabricksClient(DatabricksClient):
             schema=schema,
         )
 
-        response = self.http_client._make_request(
+        response = self._http_client._make_request(
             method="POST", path=self.SESSION_PATH, data=request_data.to_dict()
         )
 
@@ -266,7 +266,7 @@ class SeaDatabricksClient(DatabricksClient):
             session_id=sea_session_id,
         )
 
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             data=request_data.to_dict(),
@@ -477,7 +477,7 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
         )
         response = ExecuteStatementResponse.from_dict(response_data)
@@ -522,7 +522,7 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="POST",
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -547,7 +547,7 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -575,7 +575,7 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = GetStatementRequest(statement_id=sea_statement_id)
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -615,7 +615,7 @@ class SeaDatabricksClient(DatabricksClient):
         request = GetStatementRequest(statement_id=sea_statement_id)
 
         # Get the statement result
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -647,7 +647,7 @@ class SeaDatabricksClient(DatabricksClient):
             ExternalLink: External link for the chunk
         """
 
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="GET",
             path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
         )
