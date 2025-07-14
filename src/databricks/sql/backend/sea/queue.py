@@ -19,7 +19,7 @@ from databricks.sql.backend.sea.models.base import (
     ResultManifest,
 )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
-from databricks.sql.exc import ProgrammingError
+from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
 from databricks.sql.utils import CloudFetchQueue, ResultSetQueue
@@ -149,13 +149,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         if not first_link:
             return
 
-        self.download_manager = ResultFileDownloadManager(
-            links=[],
-            max_download_threads=max_download_threads,
-            lz4_compressed=lz4_compressed,
-            ssl_options=ssl_options,
-        )
-
         # Track the current chunk we're processing
         self._current_chunk_link = first_link
 
@@ -191,13 +184,13 @@ class SeaCloudFetchQueue(CloudFetchQueue):
                 self._statement_id, next_chunk_index
             )
         except Exception as e:
-            logger.error(
-                "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
-                    next_chunk_index, e
-                )
+            raise ServerOperationError(
+                f"Error fetching link for chunk {next_chunk_index}: {e}",
+                {
+                    "operation-id": self._statement_id,
+                    "diagnostic-info": None,
+                },
             )
-            self._current_chunk_link = None
-            return None
 
         logger.debug(
             f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
@@ -207,10 +200,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         self, link: "ExternalLink"
     ) -> Union["pyarrow.Table", None]:
         """Create a table from a link."""
-
-        if not self.download_manager:
-            logger.debug("SeaCloudFetchQueue: No download manager, returning")
-            return None
 
         thrift_link = self._convert_to_thrift_link(link)
         self.download_manager.add_link(thrift_link)

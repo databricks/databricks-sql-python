@@ -230,7 +230,12 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.table_row_index = 0
 
         # Initialize download manager
-        self.download_manager: Optional["ResultFileDownloadManager"] = None
+        self.download_manager = ResultFileDownloadManager(
+            links=[],
+            max_download_threads=max_download_threads,
+            lz4_compressed=lz4_compressed,
+            ssl_options=ssl_options,
+        )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """
@@ -287,11 +292,8 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
         """Create next table at the given row offset"""
-        # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
-        if not self.download_manager:
-            logger.debug("CloudFetchQueue: No download manager available")
-            return None
 
+        # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
         downloaded_file = self.download_manager.get_next_downloaded_file(offset)
         if not downloaded_file:
             logger.debug(
@@ -373,14 +375,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                         result_link.startRowOffset, result_link.rowCount
                     )
                 )
-
-        # Initialize download manager
-        self.download_manager = ResultFileDownloadManager(
-            links=self.result_links,
-            max_download_threads=self.max_download_threads,
-            lz4_compressed=self.lz4_compressed,
-            ssl_options=self._ssl_options,
-        )
+                self.download_manager.add_link(result_link)
 
         # Initialize table and position
         self.table = self._create_next_table()

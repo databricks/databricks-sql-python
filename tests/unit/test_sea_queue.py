@@ -18,7 +18,7 @@ from databricks.sql.backend.sea.models.base import (
     ExternalLink,
 )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
-from databricks.sql.exc import ProgrammingError
+from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.types import SSLOptions
 
 
@@ -340,9 +340,6 @@ class TestSeaCloudFetchQueue:
         sample_external_link,
     ):
         """Test initialization with valid initial link."""
-        mock_download_manager = Mock()
-        mock_download_manager_class.return_value = mock_download_manager
-
         # Create a queue with valid initial link
         with patch.object(
             SeaCloudFetchQueue, "_create_table_from_link", return_value=None
@@ -365,13 +362,9 @@ class TestSeaCloudFetchQueue:
             )
         )
 
-        # Verify download manager was created
-        mock_download_manager_class.assert_called_once()
-
         # Verify attributes
         assert queue._statement_id == "test-statement-123"
         assert queue._current_chunk_link == sample_external_link
-        assert queue.download_manager == mock_download_manager
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
@@ -514,20 +507,11 @@ class TestSeaCloudFetchQueue:
         mock_sea_client.get_chunk_link.side_effect = Exception(error_message)
 
         # Call the method directly
-        result = SeaCloudFetchQueue._progress_chunk_link(queue)
+        with pytest.raises(ServerOperationError, match=error_message):
+            SeaCloudFetchQueue._progress_chunk_link(queue)
 
         # Verify the client was called
         mock_sea_client.get_chunk_link.assert_called_once_with("test-statement-123", 1)
-
-        # Verify error message was logged
-        mock_logger.error.assert_called_with(
-            "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
-                1, error_message
-            )
-        )
-
-        # Verify the result is None
-        assert result is None
 
     @patch("databricks.sql.backend.sea.queue.logger")
     def test_create_next_table_no_current_link(self, mock_logger):
