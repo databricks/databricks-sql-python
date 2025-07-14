@@ -91,17 +91,17 @@ class ResultSetDownloadHandler:
         ResultSetDownloadHandler._validate_link(
             self.link, self.settings.link_expiry_buffer_secs
         )
-        
+
         with self._http_client.execute(
             method=HttpMethod.GET,
             url=self.link.fileLink,
             timeout=self.settings.download_timeout,
             verify=self._ssl_options.tls_verify,
             headers=self.link.httpHeaders
+            # TODO: Pass cert from `self._ssl_options`
         ) as response:
-
             response.raise_for_status()
-            
+
             # Save (and decompress if needed) the downloaded file
             compressed_data = response.content
             decompressed_data = (

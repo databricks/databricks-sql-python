@@ -1468,10 +1468,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ttypes.TSparkArrowBatch(batch=bytearray("Testing", "utf-8"), rowCount=1)
             for _ in range(10)
         ]
-        utils.convert_arrow_based_set_to_arrow_table(arrow_batches, False, schema)
+        utils.convert_bytes_to_record_batches(arrow_batches, False, schema)
         lz4_decompress_mock.assert_not_called()
 
-        utils.convert_arrow_based_set_to_arrow_table(arrow_batches, True, schema)
+        utils.convert_bytes_to_record_batches(arrow_batches, True, schema)
         lz4_decompress_mock.assert_called()
 
     def test_convert_column_based_set_to_arrow_table_without_nulls(self):

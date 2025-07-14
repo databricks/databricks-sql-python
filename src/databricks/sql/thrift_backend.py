@@ -36,9 +36,6 @@ from databricks.sql.utils import (
     RequestErrorInfo,
     NoRetryReason,
     ResultSetQueueFactory,
-    convert_arrow_based_set_to_arrow_table,
-    convert_decimals_in_arrow_table,
-    convert_column_based_set_to_arrow_table,
 )
 from databricks.sql.types import SSLOptions
 
@@ -632,23 +629,6 @@ class ThriftBackend:
             getProgressUpdate=False,
         )
         return self.make_request(self._client.GetOperationStatus, req)
-
-    def _create_arrow_table(self, t_row_set, lz4_compressed, schema_bytes, description):
-        if t_row_set.columns is not None:
-            (
-                arrow_table,
-                num_rows,
-            ) = convert_column_based_set_to_arrow_table(t_row_set.columns, description)
-        elif t_row_set.arrowBatches is not None:
-            (arrow_table, num_rows,) = convert_arrow_based_set_to_arrow_table(
-                t_row_set.arrowBatches, lz4_compressed, schema_bytes
-            )
-        else:
-            raise OperationalError(
-                "Unsupported TRowSet instance {}".format(t_row_set),
-                session_id_hex=self._session_id_hex,
-            )
-        return convert_decimals_in_arrow_table(arrow_table, description), num_rows
 
     def _get_metadata_resp(self, op_handle):
         req = ttypes.TGetResultSetMetadataReq(operationHandle=op_handle)

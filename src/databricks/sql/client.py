@@ -9,7 +9,6 @@ except ImportError:
 import requests
 import json
 import os
-import decimal
 from uuid import UUID
 
 from databricks.sql import __version__
@@ -31,8 +30,6 @@ from databricks.sql.utils import (
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
-    concat_chunked_tables,
-    merge_columnar,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -1402,7 +1399,7 @@ class ResultSet:
             result.append(ResultRow(*curr_row))
 
         return result
-   
+
     def _convert_arrow_table(self, table: "pyarrow.Table"):
 
         column_names = [c[0] for c in self.description]
@@ -1411,7 +1408,7 @@ class ResultSet:
         if self.connection.disable_pandas is True:
             columns_as_lists = [col.to_pylist() for col in table.itercolumns()]
             return [ResultRow(*row) for row in zip(*columns_as_lists)]
-        
+
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
         # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
@@ -1445,7 +1442,7 @@ class ResultSet:
     @property
     def rownumber(self):
         return self._next_row_index
-    
+
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
@@ -1494,18 +1491,18 @@ class ResultSet:
             self._next_row_index += partial_results.num_rows
 
         return results
-    
+
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
-        
+
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results.append(partial_results)
             self._next_row_index += partial_results.num_rows
-            
+
         return results.to_arrow_table()
 
     def fetchall_columnar(self):
@@ -1516,7 +1513,7 @@ class ResultSet:
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results = merge_columnar(results, partial_results)
+            results.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
         return results

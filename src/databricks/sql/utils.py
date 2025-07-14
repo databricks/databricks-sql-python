@@ -8,7 +8,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union, Sequence
+from typing import Any, Dict, List, Optional, Union, Sequence, Tuple
 import re
 
 import lz4.frame
@@ -74,10 +74,12 @@ class ResultSetQueueFactory(ABC):
             ResultSetQueue
         """
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
-            arrow_record_batches, n_valid_rows = convert_arrow_based_set_to_arrow_table(
+            arrow_record_batches, n_valid_rows = convert_bytes_to_record_batches(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
             )
-            arrow_stream_table = ArrowStreamTable(arrow_record_batches, n_valid_rows, description)
+            arrow_stream_table = ArrowStreamTable(
+                arrow_record_batches, n_valid_rows, description
+            )
             return ArrowQueue(arrow_stream_table)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
             column_table, column_names = convert_column_based_set_to_column_table(
@@ -104,11 +106,10 @@ class ResultSetQueueFactory(ABC):
 
 
 class ResultTable(ABC):
-    
     @abstractmethod
     def next_n_rows(self, num_rows: int):
         pass
-    
+
     @abstractmethod
     def remaining_rows(self):
         pass
@@ -116,7 +117,7 @@ class ResultTable(ABC):
     @abstractmethod
     def append(self, other: ResultTable):
         pass
-    
+
     @abstractmethod
     def to_arrow_table(self) -> "pyarrow.Table":
         pass
@@ -125,12 +126,13 @@ class ResultTable(ABC):
     def remove_extraneous_rows(self):
         pass
 
+
 class ColumnTable(ResultTable):
     def __init__(self, column_table, column_names):
         self.column_table = column_table
         self.column_names = column_names
         self.curr_row_index = 0
-    
+
     @property
     def num_rows(self):
         if len(self.column_table) == 0:
@@ -141,14 +143,15 @@ class ColumnTable(ResultTable):
     @property
     def num_columns(self):
         return len(self.column_names)
-    
+
     def next_n_rows(self, num_rows: int):
         sliced_column_table = [
-            column[self.curr_row_index : self.curr_row_index + num_rows] for column in self.column_table
+            column[self.curr_row_index : self.curr_row_index + num_rows]
+            for column in self.column_table
         ]
         self.curr_row_index += num_rows
         return ColumnTable(sliced_column_table, self.column_names)
-    
+
     def append(self, other: ColumnTable):
         if self.column_names != other.column_names:
             raise ValueError("The columns in the results don't match")
@@ -161,37 +164,42 @@ class ColumnTable(ResultTable):
 
     def remaining_rows(self):
         sliced_column_table = [
-            column[self.curr_row_index : ] for column in self.column_table
+            column[self.curr_row_index :] for column in self.column_table
         ]
         self.curr_row_index = self.num_rows
         return ColumnTable(sliced_column_table, self.column_names)
-    
+
     def get_item(self, col_index, row_index):
         return self.column_table[col_index][row_index]
-    
+
     def to_arrow_table(self):
-        data = {
-            name: col
-            for name, col in zip(self.column_names, self.column_table)
-        }
+        data = {name: col for name, col in zip(self.column_names, self.column_table)}
         return pyarrow.Table.from_pydict(data)
 
     def remove_extraneous_rows(self):
         pass
 
+
 class ArrowStreamTable(ResultTable):
-    def __init__(self, record_batches: List["pyarrow.RecordBatch"], num_rows: int, column_description):
+    def __init__(
+        self,
+        record_batches: List["pyarrow.RecordBatch"],
+        num_rows: int,
+        column_description,
+    ):
         self.record_batches = record_batches
         self.num_rows = num_rows
         self.column_description = column_description
-    
+
     def append(self, other: ArrowStreamTable):
         if self.column_description != other.column_description:
-            raise ValueError("ArrowStreamTable: Column descriptions do not match for the tables to be appended")
-        
+            raise ValueError(
+                "ArrowStreamTable: Column descriptions do not match for the tables to be appended"
+            )
+
         self.record_batches.extend(other.record_batches)
         self.num_rows += other.num_rows
-    
+
     def next_n_rows(self, req_num_rows: int):
         consumed_batches = []
         consumed_num_rows = 0
@@ -202,20 +210,24 @@ class ArrowStreamTable(ResultTable):
                 req_num_rows -= current.num_rows
                 consumed_num_rows += current.num_rows
                 self.num_rows -= current.num_rows
-                self.record_batches.pop(0) 
+                self.record_batches.pop(0)
             else:
                 consumed_batches.append(current.slice(0, req_num_rows))
-                self.record_batches[0] = current.slice(req_num_rows) 
+                self.record_batches[0] = current.slice(req_num_rows)
                 self.num_rows -= req_num_rows
                 consumed_num_rows += req_num_rows
                 req_num_rows = 0
-            
-        return ArrowStreamTable(consumed_batches, consumed_num_rows, self.column_description)
-    
+
+        return ArrowStreamTable(
+            consumed_batches, consumed_num_rows, self.column_description
+        )
+
     def remaining_rows(self):
         return self
 
-    def convert_decimals_in_record_batch(self,batch: "pyarrow.RecordBatch") -> "pyarrow.RecordBatch":
+    def convert_decimals_in_record_batch(
+        self, batch: "pyarrow.RecordBatch"
+    ) -> "pyarrow.RecordBatch":
         new_columns = []
         new_fields = []
 
@@ -223,7 +235,10 @@ class ArrowStreamTable(ResultTable):
             field = batch.schema.field(i)
 
             if self.column_description[i][1] == "decimal":
-                precision, scale = self.column_description[i][4], self.column_description[i][5]
+                precision, scale = (
+                    self.column_description[i][4],
+                    self.column_description[i][5],
+                )
                 assert scale is not None and precision is not None
                 dtype = pyarrow.decimal128(precision, scale)
 
@@ -245,7 +260,7 @@ class ArrowStreamTable(ResultTable):
                 yield self.convert_decimals_in_record_batch(batch)
 
         return pyarrow.Table.from_batches(batch_generator())
-    
+
     def remove_extraneous_rows(self):
         num_rows_in_data = sum(batch.num_rows for batch in self.record_batches)
         rows_to_delete = num_rows_in_data - self.num_rows
@@ -259,22 +274,22 @@ class ArrowStreamTable(ResultTable):
                 self.record_batches[-1] = last_batch.slice(0, keep_rows)
                 rows_to_delete = 0
 
-    
+
 class ColumnQueue(ResultSetQueue):
-    def __init__(self, column_table: ColumnTable):
-        self.column_table = column_table
+    def __init__(self, table: ColumnTable):
+        self.table = table
 
     def next_n_rows(self, num_rows):
-        return self.column_table.next_n_rows(num_rows)
+        return self.table.next_n_rows(num_rows)
 
     def remaining_rows(self):
-        return self.column_table.remaining_rows()
+        return self.table.remaining_rows()
 
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
         self,
-        arrow_stream_table: ArrowStreamTable,
+        table: ArrowStreamTable,
     ):
         """
         A queue-like wrapper over an Arrow table
@@ -283,14 +298,14 @@ class ArrowQueue(ResultSetQueue):
         :param n_valid_rows: The index of the last valid row in the table
         :param start_row_index: The first row in the table we should start fetching from
         """
-        self.arrow_stream_table = arrow_stream_table     
+        self.table = table
 
     def next_n_rows(self, num_rows: int):
         """Get upto the next n rows of the Arrow dataframe"""
-        return self.arrow_stream_table.next_n_rows(num_rows)
+        return self.table.next_n_rows(num_rows)
 
     def remaining_rows(self):
-        return self.arrow_stream_table.remaining_rows()
+        return self.table.remaining_rows()
 
 
 class CloudFetchQueue(ResultSetQueue):
@@ -345,7 +360,7 @@ class CloudFetchQueue(ResultSetQueue):
 
         self.table = self._create_next_table()
 
-    def next_n_rows(self, num_rows: int):
+    def next_n_rows(self, num_rows: int) -> ResultTable:
         """
         Get up to the next n rows of the cloud fetch Arrow dataframes.
 
@@ -360,7 +375,7 @@ class CloudFetchQueue(ResultSetQueue):
             logger.debug("CloudFetchQueue: no more rows available")
             return results
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
-        
+
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows)
@@ -375,7 +390,7 @@ class CloudFetchQueue(ResultSetQueue):
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
         return results
 
-    def remaining_rows(self):
+    def remaining_rows(self) -> ResultTable:
         """
         Get all remaining rows of the cloud fetch Arrow dataframes.
 
@@ -386,7 +401,7 @@ class CloudFetchQueue(ResultSetQueue):
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
             return result
-       
+
         while self.table:
             result.append(self.table)
             self.table = self._create_next_table()
@@ -410,13 +425,13 @@ class CloudFetchQueue(ResultSetQueue):
             )
             # None signals no more Arrow tables can be built from the remaining handlers if any remain
             return None
-        
+
         result_table = ArrowStreamTable(
-            list(pyarrow.ipc.open_stream(downloaded_file.file_bytes)), 
-            downloaded_file.row_count, 
-            self.description)
-        
-       
+            list(pyarrow.ipc.open_stream(downloaded_file.file_bytes)),
+            downloaded_file.row_count,
+            self.description,
+        )
+
         # The server rarely prepares the exact number of rows requested by the client in cloud fetch.
         # Subsequently, we drop the extraneous rows in the last file if more rows are retrieved than requested
         result_table.remove_extraneous_rows()
@@ -434,9 +449,8 @@ class CloudFetchQueue(ResultSetQueue):
     def _create_empty_table(self) -> ResultTable:
         # Create a 0-row table with just the schema bytes
         return ArrowStreamTable(
-            list(pyarrow.ipc.open_stream(self.schema_bytes)), 
-            0, 
-            self.description)
+            list(pyarrow.ipc.open_stream(self.schema_bytes)), 0, self.description
+        )
 
 
 ExecuteResponse = namedtuple(
@@ -695,6 +709,7 @@ def create_arrow_table_from_arrow_file(
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
+
 def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
     try:
         return pyarrow.ipc.open_stream(file_bytes).read_all()
@@ -702,7 +717,9 @@ def convert_arrow_based_file_to_arrow_table(file_bytes: bytes):
         raise RuntimeError("Failure to convert arrow based file to arrow table", e)
 
 
-def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema_bytes):
+def convert_bytes_to_record_batches(
+    arrow_batches, lz4_compressed, schema_bytes
+) -> Tuple[List["pyarrow.RecordBatch"], int]:
     ba = bytearray()
     ba += schema_bytes
     n_rows = 0
@@ -859,35 +876,3 @@ def _create_python_tuple(t_col_value_wrapper):
             result[i] = None
 
     return tuple(result)
-
-
-def concat_chunked_tables(tables: List[Union["pyarrow.Table", ColumnTable, ArrowStreamTable]]) -> Union["pyarrow.Table", ColumnTable, ArrowStreamTable]:
-        if isinstance(tables[0], ColumnTable):
-            base_table = tables[0]
-            for table in tables[1:]:
-                base_table = merge_columnar(base_table, table)
-            return base_table
-        elif isinstance(tables[0], ArrowStreamTable):
-            base_table = tables[0]
-            for table in tables[1:]:
-                base_table = base_table.append(table)
-            return base_table
-        else:
-            return pyarrow.concat_tables(tables)
-        
-def merge_columnar(result1: ColumnTable, result2: ColumnTable) -> ColumnTable:
-    """
-    Function to merge / combining the columnar results into a single result
-    :param result1:
-    :param result2:
-    :return:
-    """
-
-    if result1.column_names != result2.column_names:
-        raise ValueError("The columns in the results don't match")
-
-    merged_result = [
-        result1.column_table[i] + result2.column_table[i]
-        for i in range(result1.num_columns)
-    ]
-    return ColumnTable(merged_result, result1.column_names)
