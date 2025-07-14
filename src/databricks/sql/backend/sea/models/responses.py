@@ -158,7 +158,12 @@ class CreateSessionResponse:
 
 @dataclass
 class GetChunksResponse:
-    """Response from getting chunks for a statement."""
+    """
+    Response from getting chunks for a statement.
+
+    The response model can be found in the docs, here:
+    https://docs.databricks.com/api/workspace/statementexecution/getstatementresultchunkn
+    """
 
     data: Optional[List[List[Any]]] = None
     external_links: Optional[List[ExternalLink]] = None
