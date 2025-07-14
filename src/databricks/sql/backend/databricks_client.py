@@ -280,7 +280,9 @@ class DatabricksClient(ABC):
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
             catalog_name: Optional catalog name pattern to filter by
+                if catalog_name is None, we fetch across all catalogs
             schema_name: Optional schema name pattern to filter by
+                if schema_name is None, we fetch across all schemas
             table_name: Optional table name pattern to filter by
             table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
 
