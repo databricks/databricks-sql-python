@@ -1391,7 +1391,7 @@ class ResultSet:
         self.results = results
         self.has_more_rows = has_more_rows
 
-    def _convert_columnar_table(self, table):
+    def _convert_columnar_table(self, table: ColumnTable):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
         result = []
@@ -1402,45 +1402,16 @@ class ResultSet:
             result.append(ResultRow(*curr_row))
 
         return result
-    
-    def print_mem(self):
-        import os
-        import psutil
-
-        process = psutil.Process(os.getpid())
-        mem_info = process.memory_info()
-        total_mem_mb = mem_info.rss / 1024 / 1024
-        cpu_percent = process.cpu_percent(interval=0.1)
-        print(f"Total memory usage: {total_mem_mb:.2f} MB")
-        print(f"CPU percent: {cpu_percent:.2f}%")
-        # total_size_bytes = table.get_total_buffer_size()
-        # total_size_mb = total_size_bytes / (1024 * 1024)
-
-        # print(f"Total PyArrow table size: {total_size_bytes} bytes ({total_size_mb:.2f} MB)")
-
+   
     def _convert_arrow_table(self, table: "pyarrow.Table"):
-        import sys
-        from pympler import asizeof
-        
-        self.print_mem()
-        print(f"Memory size table: {table.nbytes / (1024 ** 2):.2f} MB")
-        # Convert to MB for easier reading
+
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
 
         if self.connection.disable_pandas is True:
-            start_time = time.time()
             columns_as_lists = [col.to_pylist() for col in table.itercolumns()]
-            self.print_mem()
-            print(f"Memory size columns_as_lists: {sum(sys.getsizeof(col) for col in columns_as_lists) / (1024 ** 2):.2f} MB")
-            res = [ResultRow(*row) for row in zip(*columns_as_lists)]
-            self.print_mem()
-            end_time = time.time()
-            print(f"Time taken to convert arrow table to list: {end_time - start_time} seconds")
-            print(f"Memory size res: {sum(sys.getsizeof(row) for row in res) / (1024 ** 2):.2f} MB")
-            return res
+            return [ResultRow(*row) for row in zip(*columns_as_lists)]
         
-        start_time = time.time()
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
         # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
@@ -1461,31 +1432,20 @@ class ResultSet:
 
         # Need to rename columns, as the to_pandas function cannot handle duplicate column names
         table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        print(f"Memory size table_renamed: {table_renamed.nbytes / (1024 ** 2):.2f} MB")
         df = table_renamed.to_pandas(
             types_mapper=dtype_mapping.get,
             date_as_object=True,
             timestamp_as_object=True,
             self_destruct=True,
         )
-        print(f"Memory size df: {df.memory_usage(deep=True).sum() / (1024 ** 2):.2f} MB")
-        self.print_mem()
-        # del table_renamed
 
         res = df.to_numpy(na_value=None, dtype="object")
-        print(f"Memory size res: {res.nbytes / (1024 ** 2):.2f} MB")
-        self.print_mem()
-        # del df
-        tmp_res = [ResultRow(*v) for v in res]
-        self.print_mem()
-        end_time = time.time()
-        print(f"Time taken to convert arrow table to list: {end_time - start_time} seconds")
-        return tmp_res
+        return [ResultRow(*v) for v in res]
 
     @property
     def rownumber(self):
         return self._next_row_index
-
+    
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
@@ -1497,26 +1457,18 @@ class ResultSet:
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
-        # partial_result_chunks = [results]
-
-        TOTAL_SIZE = results.num_rows
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
             and self.has_more_rows
         ):
-            # print(f"TOTAL DATA ROWS {TOTAL_SIZE}")
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
             results.append(partial_results)
-            # partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
-            TOTAL_SIZE += partial_results.num_rows
 
         return results.to_arrow_table()
-    
-    
 
     def fetchmany_columnar(self, size: int):
         """
@@ -1537,39 +1489,23 @@ class ResultSet:
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = merge_columnar(results, partial_results)
+            results.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
         return results
-
+    
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
         
-        # partial_result_chunks = [results]
-        # print("Server side has more rows", self.has_more_rows)
-        TOTAL_SIZE = results.num_rows
-
         while not self.has_been_closed_server_side and self.has_more_rows:
-            # print(f"TOTAL DATA ROWS {TOTAL_SIZE}")
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results.append(partial_results)
             self._next_row_index += partial_results.num_rows
-            TOTAL_SIZE += partial_results.num_rows
-        
-        # results = concat_chunked_tables(partial_result_chunks)
-
-        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
-        # Valid only for metadata commands result set
-        # if isinstance(results, ColumnTable) and pyarrow:
-        #     data = {
-        #         name: col
-        #         for name, col in zip(results.column_names, results.column_table)
-        #     }
-        #     return pyarrow.Table.from_pydict(data)
+            
         return results.to_arrow_table()
 
     def fetchall_columnar(self):

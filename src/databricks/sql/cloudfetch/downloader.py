@@ -99,10 +99,7 @@ class ResultSetDownloadHandler:
             verify=self._ssl_options.tls_verify,
             headers=self.link.httpHeaders
         ) as response:
-            # print_text = [
 
-            # ]
-            
             response.raise_for_status()
             
             # Save (and decompress if needed) the downloaded file
@@ -127,75 +124,11 @@ class ResultSetDownloadHandler:
                 )
             )
 
-            # print_text.append(
-            #     f"Downloaded file startRowOffset - {self.link.startRowOffset} - rowCount - {self.link.rowCount}"
-            # )
-
-            # for text in print_text:
-            #     print(text)
-
             return DownloadedFile(
                 decompressed_data,
                 self.link.startRowOffset,
                 self.link.rowCount,
             )
-        # session = requests.Session()
-        # session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
-        # session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
-
-        # try:
-        #     print_text = [
-
-        #     ]
-        #     start_time = time.time()
-        #     # Get the file via HTTP request
-        #     response = session.get(
-        #         self.link.fileLink,
-        #         timeout=self.settings.download_timeout,
-        #         verify=self._ssl_options.tls_verify,
-        #         headers=self.link.httpHeaders
-        #         # TODO: Pass cert from `self._ssl_options`
-        #     )
-        #     response.raise_for_status()
-        #     end_time = time.time()
-        #     print_text.append(f"Downloaded file in {end_time - start_time} seconds")
-        #     # Save (and decompress if needed) the downloaded file
-        #     compressed_data = response.content
-        #     decompressed_data = (
-        #         ResultSetDownloadHandler._decompress_data(compressed_data)
-        #         if self.settings.is_lz4_compressed
-        #         else compressed_data
-        #     )
-
-        #     # The size of the downloaded file should match the size specified from TSparkArrowResultLink
-        #     if len(decompressed_data) != self.link.bytesNum:
-        #         logger.debug(
-        #             "ResultSetDownloadHandler: downloaded file size {} does not match the expected value {}".format(
-        #                 len(decompressed_data), self.link.bytesNum
-        #             )
-        #         )
-
-        #     logger.debug(
-        #         "ResultSetDownloadHandler: successfully downloaded file, offset {}, row count {}".format(
-        #             self.link.startRowOffset, self.link.rowCount
-        #         )
-        #     )
-
-        #     print_text.append(
-        #         f"Downloaded file startRowOffset - {self.link.startRowOffset} - rowCount - {self.link.rowCount}"
-        #     )
-
-        #     for text in print_text:
-        #         print(text)
-
-        #     return DownloadedFile(
-        #         decompressed_data,
-        #         self.link.startRowOffset,
-        #         self.link.rowCount,
-        #     )
-        # finally:
-        #     if session:
-        #         session.close()
 
     @staticmethod
     def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int):
