@@ -78,7 +78,6 @@ class ResultFileDownloadManager:
                     next_row_offset, file.start_row_offset, file.row_count
                 )
             )
-
         return file
 
     def _schedule_downloads(self):

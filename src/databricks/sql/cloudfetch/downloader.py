@@ -9,6 +9,7 @@ import time
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
+from databricks.sql.common.http import DatabricksHttpClient, HttpMethod
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,7 @@ class ResultSetDownloadHandler:
         self.settings = settings
         self.link = link
         self._ssl_options = ssl_options
+        self._http_client = DatabricksHttpClient.get_instance()
 
     def run(self) -> DownloadedFile:
         """
@@ -90,19 +92,14 @@ class ResultSetDownloadHandler:
             self.link, self.settings.link_expiry_buffer_secs
         )
 
-        session = requests.Session()
-        session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
-        session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
-
-        try:
-            # Get the file via HTTP request
-            response = session.get(
-                self.link.fileLink,
-                timeout=self.settings.download_timeout,
-                verify=self._ssl_options.tls_verify,
-                headers=self.link.httpHeaders
-                # TODO: Pass cert from `self._ssl_options`
-            )
+        with self._http_client.execute(
+            method=HttpMethod.GET,
+            url=self.link.fileLink,
+            timeout=self.settings.download_timeout,
+            verify=self._ssl_options.tls_verify,
+            headers=self.link.httpHeaders
+            # TODO: Pass cert from `self._ssl_options`
+        ) as response:
             response.raise_for_status()
 
             # Save (and decompress if needed) the downloaded file
@@ -132,9 +129,6 @@ class ResultSetDownloadHandler:
                 self.link.startRowOffset,
                 self.link.rowCount,
             )
-        finally:
-            if session:
-                session.close()
 
     @staticmethod
     def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int):

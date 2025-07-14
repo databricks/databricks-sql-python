@@ -9,7 +9,6 @@ except ImportError:
 import requests
 import json
 import os
-import decimal
 from uuid import UUID
 
 from databricks.sql import __version__
@@ -1389,7 +1388,7 @@ class ResultSet:
         self.results = results
         self.has_more_rows = has_more_rows
 
-    def _convert_columnar_table(self, table):
+    def _convert_columnar_table(self, table: ColumnTable):
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
         result = []
@@ -1401,14 +1400,14 @@ class ResultSet:
 
         return result
 
-    def _convert_arrow_table(self, table):
+    def _convert_arrow_table(self, table: "pyarrow.Table"):
+
         column_names = [c[0] for c in self.description]
         ResultRow = Row(*column_names)
 
         if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
+            columns_as_lists = [col.to_pylist() for col in table.itercolumns()]
+            return [ResultRow(*row) for row in zip(*columns_as_lists)]
 
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
@@ -1434,6 +1433,7 @@ class ResultSet:
             types_mapper=dtype_mapping.get,
             date_as_object=True,
             timestamp_as_object=True,
+            self_destruct=True,
         )
 
         res = df.to_numpy(na_value=None, dtype="object")
@@ -1454,7 +1454,6 @@ class ResultSet:
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
-
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
@@ -1462,28 +1461,11 @@ class ResultSet:
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results])
+            results.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
-        return results
-
-    def merge_columnar(self, result1, result2):
-        """
-        Function to merge / combining the columnar results into a single result
-        :param result1:
-        :param result2:
-        :return:
-        """
-
-        if result1.column_names != result2.column_names:
-            raise ValueError("The columns in the results don't match")
-
-        merged_result = [
-            result1.column_table[i] + result2.column_table[i]
-            for i in range(result1.num_columns)
-        ]
-        return ColumnTable(merged_result, result1.column_names)
+        return results.to_arrow_table()
 
     def fetchmany_columnar(self, size: int):
         """
@@ -1504,7 +1486,7 @@ class ResultSet:
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = self.merge_columnar(results, partial_results)
+            results.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
@@ -1518,23 +1500,10 @@ class ResultSet:
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            if isinstance(results, ColumnTable) and isinstance(
-                partial_results, ColumnTable
-            ):
-                results = self.merge_columnar(results, partial_results)
-            else:
-                results = pyarrow.concat_tables([results, partial_results])
+            results.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
-        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
-        # Valid only for metadata commands result set
-        if isinstance(results, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(results.column_names, results.column_table)
-            }
-            return pyarrow.Table.from_pydict(data)
-        return results
+        return results.to_arrow_table()
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
@@ -1544,7 +1513,7 @@ class ResultSet:
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results = self.merge_columnar(results, partial_results)
+            results.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
         return results
