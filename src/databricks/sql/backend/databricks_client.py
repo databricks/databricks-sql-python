@@ -321,6 +321,7 @@ class DatabricksClient(ABC):
             catalog_name: Optional catalog name pattern to filter by
             schema_name: Optional schema name pattern to filter by
             table_name: Optional table name pattern to filter by
+                if table_name is None, we fetch across all tables
             column_name: Optional column name pattern to filter by
 
         Returns:
