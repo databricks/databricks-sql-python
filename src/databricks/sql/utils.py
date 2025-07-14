@@ -155,7 +155,7 @@ class ColumnTable:
 
 
 class ArrowStreamTable:
-    def __init__(self, record_batches, num_rows, column_description):
+    def __init__(self, record_batches: List["pyarrow.RecordBatch"], num_rows: int, column_description):
         self.record_batches = record_batches
         self.num_rows = num_rows
         self.column_description = column_description
@@ -222,9 +222,17 @@ class ArrowStreamTable:
     
     def remove_extraneous_rows(self):
         num_rows_in_data = sum(batch.num_rows for batch in self.record_batches)
-        if num_rows_in_data > self.num_rows:
-            self.record_batches = self.record_batches[:self.num_rows]
-            self.num_rows = self.num_rows
+        rows_to_delete = num_rows_in_data - self.num_rows
+        while rows_to_delete > 0 and self.record_batches:
+            last_batch = self.record_batches[-1]
+            if last_batch.num_rows <= rows_to_delete:
+                self.record_batches.pop()
+                rows_to_delete -= last_batch.num_rows
+            else:
+                keep_rows = last_batch.num_rows - rows_to_delete
+                self.record_batches[-1] = last_batch.slice(0, keep_rows)
+                rows_to_delete = 0
+
     
 class ColumnQueue(ResultSetQueue):
     def __init__(self, column_table: ColumnTable):
