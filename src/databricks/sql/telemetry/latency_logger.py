@@ -85,48 +85,6 @@ class CursorExtractor(TelemetryExtractor):
         return None
 
 
-class ResultSetExtractor(TelemetryExtractor):
-    """
-    Telemetry extractor specialized for ResultSet objects.
-
-    Extracts telemetry information from database result set objects, including
-    operation IDs, session information, compression settings, and result formats.
-    """
-
-    def get_statement_id(self) -> Optional[str]:
-        if self.command_id:
-            return str(UUID(bytes=self.command_id.operationId.guid))
-        return None
-
-    def get_session_id_hex(self) -> Optional[str]:
-        return self.connection.get_session_id_hex()
-
-    def get_is_compressed(self) -> bool:
-        return self.lz4_compressed
-
-    def get_execution_result(self) -> ExecutionResultFormat:
-        from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
-
-        if isinstance(self.results, ColumnQueue):
-            return ExecutionResultFormat.COLUMNAR_INLINE
-        elif isinstance(self.results, CloudFetchQueue):
-            return ExecutionResultFormat.EXTERNAL_LINKS
-        elif isinstance(self.results, ArrowQueue):
-            return ExecutionResultFormat.INLINE_ARROW
-        return ExecutionResultFormat.FORMAT_UNSPECIFIED
-
-    def get_retry_count(self) -> int:
-        if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
-        ):
-            return len(self.thrift_backend.retry_policy.history)
-        return 0
-
-    def get_chunk_id(self):
-        return None
-
-
 class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
     """
     Telemetry extractor specialized for ResultSetDownloadHandler objects.
@@ -160,20 +118,17 @@ def get_extractor(obj):
     that can extract telemetry information from that object type.
 
     Args:
-        obj: The object to create an extractor for. Can be a Cursor, ResultSet,
-             or any other object.
+        obj: The object to create an extractor for. Can be a Cursor,
+             ResultSetDownloadHandler, or any other object.
 
     Returns:
         TelemetryExtractor: A specialized extractor instance:
             - CursorExtractor for Cursor objects
-            - ResultSetExtractor for ResultSet objects
             - ResultSetDownloadHandlerExtractor for ResultSetDownloadHandler objects
             - None for all other objects
     """
     if obj.__class__.__name__ == "Cursor":
         return CursorExtractor(obj)
-    elif obj.__class__.__name__ == "ResultSet":
-        return ResultSetExtractor(obj)
     elif obj.__class__.__name__ == "ResultSetDownloadHandler":
         return ResultSetDownloadHandlerExtractor(obj)
     else:
@@ -233,17 +188,6 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 duration_ms = int((end_time - start_time) * 1000)
 
                 extractor = get_extractor(self)
-                print(
-                    "function name",
-                    func.__name__,
-                    "latency",
-                    duration_ms,
-                    "session_id_hex",
-                    extractor.get_session_id_hex(),
-                    "statement_id",
-                    extractor.get_statement_id(),
-                    flush=True,
-                )
 
                 if extractor is not None:
                     session_id_hex = _safe_call(extractor.get_session_id_hex)
