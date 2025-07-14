@@ -653,7 +653,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
         response = GetChunksResponse.from_dict(response_data)
 
-        links = response.external_links
+        links = response.external_links or []
         link = next((l for l in links if l.chunk_index == chunk_index), None)
         if not link:
             raise ServerOperationError(
