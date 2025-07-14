@@ -36,6 +36,7 @@ import platform
 import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
+import json
 
 logger = logging.getLogger(__name__)
 
