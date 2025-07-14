@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from typing import Callable
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -66,10 +67,12 @@ class ResultSetDownloadHandler:
         settings: DownloadableResultSettings,
         link: TSparkArrowResultLink,
         ssl_options: SSLOptions,
+        expiry_callback: Callable[[TSparkArrowResultLink], None],
     ):
         self.settings = settings
         self.link = link
         self._ssl_options = ssl_options
+        self._expiry_callback = expiry_callback
 
     def run(self) -> DownloadedFile:
         """
@@ -86,7 +89,7 @@ class ResultSetDownloadHandler:
         )
 
         # Check if link is already expired or is expiring
-        ResultSetDownloadHandler._validate_link(
+        self._validate_link(
             self.link, self.settings.link_expiry_buffer_secs
         )
 
@@ -136,8 +139,7 @@ class ResultSetDownloadHandler:
             if session:
                 session.close()
 
-    @staticmethod
-    def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int):
+    def _validate_link(self, link: TSparkArrowResultLink, expiry_buffer_secs: int):
         """
         Check if a link has expired or will expire.
 
@@ -149,7 +151,7 @@ class ResultSetDownloadHandler:
             link.expiryTime <= current_time
             or link.expiryTime - current_time <= expiry_buffer_secs
         ):
-            raise Error("CloudFetch link has expired")
+            self._expiry_callback(link)
 
     @staticmethod
     def _decompress_data(compressed_data: bytes) -> bytes:

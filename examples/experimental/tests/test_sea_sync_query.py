@@ -4,9 +4,10 @@ Test for SEA synchronous query execution functionality.
 import os
 import sys
 import logging
+import time
 from databricks.sql.client import Connection
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -51,13 +52,10 @@ def test_sea_sync_query_with_cloud_fetch():
         )
 
         # Execute a query that generates large rows to force multiple chunks
-        requested_row_count = 10000
+        requested_row_count = 100000000
         cursor = connection.cursor()
         query = f"""
-        SELECT 
-            id, 
-            concat('value_', repeat('a', 10000)) as test_value
-        FROM range(1, {requested_row_count} + 1) AS t(id)
+        SELECT * FROM samples.tpch.lineitem LIMIT {requested_row_count}
         """
 
         logger.info(
@@ -65,6 +63,8 @@ def test_sea_sync_query_with_cloud_fetch():
         )
         cursor.execute(query)
         results = [cursor.fetchone()]
+        logger.info("SLEEPING FOR 1000 SECONDS TO EXPIRE LINKS")
+        time.sleep(1000)
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
         actual_row_count = len(results)

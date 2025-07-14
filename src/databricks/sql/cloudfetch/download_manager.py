@@ -1,7 +1,7 @@
 import logging
 
 from concurrent.futures import ThreadPoolExecutor, Future
-from typing import List, Union
+from typing import Callable, List, Optional, Union
 
 from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
@@ -22,6 +22,7 @@ class ResultFileDownloadManager:
         max_download_threads: int,
         lz4_compressed: bool,
         ssl_options: SSLOptions,
+        expiry_callback: Callable[[TSparkArrowResultLink], None],
     ):
         self._pending_links: List[TSparkArrowResultLink] = []
         for link in links:
@@ -40,6 +41,7 @@ class ResultFileDownloadManager:
 
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
         self._ssl_options = ssl_options
+        self._expiry_callback = expiry_callback
 
     def get_next_downloaded_file(
         self, next_row_offset: int
@@ -62,7 +64,6 @@ class ResultFileDownloadManager:
 
         # No more files to download from this batch of links
         if len(self._download_tasks) == 0:
-            self._shutdown_manager()
             return None
 
         task = self._download_tasks.pop(0)
@@ -81,6 +82,34 @@ class ResultFileDownloadManager:
 
         return file
 
+    def cancel_tasks_from_offset(self, start_row_offset: int):
+        """
+        Cancel all download tasks starting from a specific row offset.
+        This is used when links expire and we need to restart from a certain point.
+        """
+
+        def to_cancel(link: TSparkArrowResultLink) -> bool:
+            return link.startRowOffset < start_row_offset
+
+        tasks_to_cancel = [task for task in self._download_tasks if to_cancel(task.link)]
+        for task in tasks_to_cancel:
+            task.cancel()
+        logger.info(
+            f"ResultFileDownloadManager: cancelled {len(tasks_to_cancel)} tasks from offset {start_row_offset}"
+        )
+
+        # Remove cancelled tasks from the download queue
+        tasks_to_keep = [task for task in self._download_tasks if not to_cancel(task.link)]
+        self._download_tasks = tasks_to_keep
+
+        pending_links_to_keep = [
+            link for link in self._pending_links if not to_cancel(link)
+        ]
+        self._pending_links = pending_links_to_keep
+        logger.info(
+            f"ResultFileDownloadManager: removed {len(self._pending_links) - len(pending_links_to_keep)} links from pending links"
+        )
+
     def _schedule_downloads(self):
         """
         While download queue has a capacity, peek pending links and submit them to thread pool.
@@ -97,8 +126,10 @@ class ResultFileDownloadManager:
                 settings=self._downloadable_result_settings,
                 link=link,
                 ssl_options=self._ssl_options,
+                expiry_callback=self._expiry_callback,
             )
             task = self._thread_pool.submit(handler.run)
+            task.link = link
             self._download_tasks.append(task)
 
     def add_link(self, link: TSparkArrowResultLink):

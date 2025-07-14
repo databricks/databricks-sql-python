@@ -14,6 +14,8 @@ import re
 
 import lz4.frame
 
+from databricks.sql.exc import Error
+
 try:
     import pyarrow
 except ImportError:
@@ -374,12 +376,16 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                     )
                 )
 
+        def expiry_callback(link: TSparkArrowResultLink):
+            raise Error("Cloudfetch link has expired")
+
         # Initialize download manager
         self.download_manager = ResultFileDownloadManager(
             links=self.result_links,
             max_download_threads=self.max_download_threads,
             lz4_compressed=self.lz4_compressed,
             ssl_options=self._ssl_options,
+            expiry_callback=expiry_callback,
         )
 
         # Initialize table and position
