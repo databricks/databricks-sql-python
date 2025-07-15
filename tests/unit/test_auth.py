@@ -114,9 +114,7 @@ class Auth(unittest.TestCase):
                 )
                 self.assertEqual(auth_provider.oauth_manager.port_range, [8020])
                 self.assertEqual(auth_provider.oauth_manager.client_id, client_id)
-                self.assertEqual(
-                    oauth_persistence.read(host).refresh_token, refresh_token
-                )
+                self.assertEqual(oauth_persistence.read(host).refresh_token, refresh_token)
                 mock_get_tokens.assert_called_with(hostname=host, scope=expected_scopes)
 
                 headers = {}
@@ -184,9 +182,7 @@ class Auth(unittest.TestCase):
         }
         with self.assertRaises(ValueError) as e:
             get_python_sql_connector_auth_provider("foo.cloud.databricks.com", **kwargs)
-        self.assertIn(
-            "Username/password authentication is no longer supported", str(e.exception)
-        )
+        self.assertIn("Username/password authentication is no longer supported", str(e.exception))
 
     @patch.object(DatabricksOAuthProvider, "_initial_get_token")
     def test_get_python_sql_connector_default_auth(self, mock__initial_get_token):
@@ -229,9 +225,7 @@ class TestClientCredentialsTokenSource:
             client_secret="client_secret",
         )
 
-    def test_no_token_refresh__when_token_is_not_expired(
-        self, token_source, indefinite_token
-    ):
+    def test_no_token_refresh__when_token_is_not_expired(self, token_source, indefinite_token):
         with patch.object(token_source, "refresh") as mock_get_token:
             mock_get_token.return_value = indefinite_token
 
@@ -285,16 +279,11 @@ class TestAzureServicePrincipalCredentialProvider:
 
         test_token = Token("access_token", "Bearer", "refresh_token")
 
-        with patch.object(
-            credential_provider, "get_token_source"
-        ) as mock_get_token_source:
+        with patch.object(credential_provider, "get_token_source") as mock_get_token_source:
             mock_get_token_source.return_value = MagicMock()
             mock_get_token_source.return_value.get_token.return_value = test_token
 
             headers = credential_provider()()
 
             assert headers["Authorization"] == f"Bearer {test_token.access_token}"
-            assert (
-                headers["X-Databricks-Azure-SP-Management-Token"]
-                == test_token.access_token
-            )
+            assert headers["X-Databricks-Azure-SP-Management-Token"] == test_token.access_token

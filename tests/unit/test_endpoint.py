@@ -29,16 +29,12 @@ class EndpointTest(unittest.TestCase):
         for expected_type, host in param_list:
             with self.subTest(expected_type or "None", expected_type=expected_type):
                 self.assertEqual(infer_cloud_from_host(host), expected_type)
-                self.assertEqual(
-                    infer_cloud_from_host(f"https://{host}/to/path"), expected_type
-                )
+                self.assertEqual(infer_cloud_from_host(f"https://{host}/to/path"), expected_type)
 
     def test_oauth_endpoint(self):
         scopes = ["offline_access", "sql", "admin"]
         scopes2 = ["sql", "admin"]
-        azure_scope = (
-            f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_APP}/user_impersonation"
-        )
+        azure_scope = f"{AzureOAuthEndpointCollection.DATATRICKS_AZURE_APP}/user_impersonation"
 
         param_list = [
             (
@@ -99,12 +95,8 @@ class EndpointTest(unittest.TestCase):
         ) in param_list:
             with self.subTest(cloud_type):
                 endpoint = get_oauth_endpoints(host, use_azure_auth)
-                self.assertEqual(
-                    endpoint.get_authorization_url(host), expected_auth_url
-                )
-                self.assertEqual(
-                    endpoint.get_openid_config_url(host), expected_config_url
-                )
+                self.assertEqual(endpoint.get_authorization_url(host), expected_auth_url)
+                self.assertEqual(endpoint.get_openid_config_url(host), expected_config_url)
                 self.assertEqual(endpoint.get_scopes_mapping(scopes), expected_scopes)
                 self.assertEqual(endpoint.get_scopes_mapping(scopes2), expected_scope2)
 

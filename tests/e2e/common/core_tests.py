@@ -4,18 +4,15 @@ from collections import namedtuple
 
 TypeFailure = namedtuple(
     "TypeFailure",
-    "query,columnType,resultType,resultValue,"
-    "actualValue,actualType,description,conf",
+    "query,columnType,resultType,resultValue," "actualValue,actualType,description,conf",
 )
 ResultFailure = namedtuple(
     "ResultFailure",
-    "query,columnType,resultType,resultValue,"
-    "actualValue,actualType,description,conf",
+    "query,columnType,resultType,resultValue," "actualValue,actualType,description,conf",
 )
 ExecFailure = namedtuple(
     "ExecFailure",
-    "query,columnType,resultType,resultValue,"
-    "actualValue,actualType,description,conf,error",
+    "query,columnType,resultType,resultValue," "actualValue,actualType,description,conf,error",
 )
 
 
@@ -61,9 +58,7 @@ class CoreTestMixin:
         for query, columnType, rowValueType, answer in self.range_queries:
             with self.cursor(default_conf) as cursor:
                 failures.extend(
-                    self.run_query(
-                        cursor, query, columnType, rowValueType, answer, default_conf
-                    )
+                    self.run_query(cursor, query, columnType, rowValueType, answer, default_conf)
                 )
                 failures.extend(
                     self.run_range_query(
@@ -74,9 +69,7 @@ class CoreTestMixin:
         for query, columnType, rowValueType, answer in self.queries:
             with self.cursor(default_conf) as cursor:
                 failures.extend(
-                    self.run_query(
-                        cursor, query, columnType, rowValueType, answer, default_conf
-                    )
+                    self.run_query(cursor, query, columnType, rowValueType, answer, default_conf)
                 )
 
         if failures:
@@ -91,9 +84,7 @@ class CoreTestMixin:
         try:
             cursor.execute(full_query)
             (result,) = cursor.fetchone()
-            if not all(
-                cursor.description[0][1] == type for type in expected_column_types
-            ):
+            if not all(cursor.description[0][1] == type for type in expected_column_types):
                 return [
                     TypeFailure(
                         full_query,
@@ -159,10 +150,7 @@ class CoreTestMixin:
                 if len(rows) <= 0:
                     break
                 for index, (result, id) in enumerate(rows):
-                    if not all(
-                        cursor.description[0][1] == type
-                        for type in expected_column_types
-                    ):
+                    if not all(cursor.description[0][1] == type for type in expected_column_types):
                         return [
                             TypeFailure(
                                 full_query,
@@ -175,10 +163,7 @@ class CoreTestMixin:
                                 conf,
                             )
                         ]
-                    if (
-                        self.validate_row_value_type
-                        and type(result) is not rowValueType
-                    ):
+                    if self.validate_row_value_type and type(result) is not rowValueType:
                         return [
                             TypeFailure(
                                 full_query,

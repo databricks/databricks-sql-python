@@ -35,9 +35,7 @@ class TestRetry:
         retry_policy.sleep(HTTPResponse(status=503))
 
         expected_backoff_time = max(
-            self.calculate_backoff_time(
-                0, retry_policy.delay_min, retry_policy.delay_max
-            ),
+            self.calculate_backoff_time(0, retry_policy.delay_min, retry_policy.delay_max),
             retry_policy.delay_max,
         )
         t_mock.assert_called_with(expected_backoff_time)
@@ -66,9 +64,7 @@ class TestRetry:
             )
 
         # Asserts if the sleep value was called in the expected order
-        t_mock.assert_has_calls(
-            [call(expected_time) for expected_time in expected_backoff_times]
-        )
+        t_mock.assert_has_calls([call(expected_time) for expected_time in expected_backoff_times])
 
     @patch("time.sleep")
     def test_excessive_retry_attempts_error(self, t_mock, retry_policy):

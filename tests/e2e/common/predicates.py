@@ -97,9 +97,7 @@ def compare_module_version(module, compare, version):
     def validate_version(version):
         v = parse_version(str(version))
         # assert that we get a PEP-440 Version back -- LegacyVersion doesn't have major/minor.
-        assert hasattr(v, "major"), (
-            'Module has incompatible "Legacy" version: ' + version
-        )
+        assert hasattr(v, "major"), 'Module has incompatible "Legacy" version: ' + version
         return (v.major, v.minor, v.micro)
 
     mod_version = validate_version(module.__version__)

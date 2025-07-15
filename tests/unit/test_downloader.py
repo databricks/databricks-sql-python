@@ -26,9 +26,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock()
         # Already expired
         result_link.expiryTime = 999
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = downloader.ResultSetDownloadHandler(settings, result_link, ssl_options=SSLOptions())
 
         with self.assertRaises(Error) as context:
             d.run()
@@ -42,9 +40,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock()
         # Within the expiry buffer time
         result_link.expiryTime = 1004
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = downloader.ResultSetDownloadHandler(settings, result_link, ssl_options=SSLOptions())
 
         with self.assertRaises(Error) as context:
             d.run()
@@ -62,9 +58,7 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         result_link = Mock(expiryTime=1001)
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = downloader.ResultSetDownloadHandler(settings, result_link, ssl_options=SSLOptions())
         with self.assertRaises(requests.exceptions.HTTPError) as context:
             d.run()
         self.assertTrue("404" in str(context.exception))
@@ -81,9 +75,7 @@ class DownloaderTests(unittest.TestCase):
         settings.is_lz4_compressed = False
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = downloader.ResultSetDownloadHandler(settings, result_link, ssl_options=SSLOptions())
         file = d.run()
 
         assert file.file_bytes == b"1234567890" * 10
@@ -104,9 +96,7 @@ class DownloaderTests(unittest.TestCase):
         settings.is_lz4_compressed = True
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = downloader.ResultSetDownloadHandler(settings, result_link, ssl_options=SSLOptions())
         file = d.run()
 
         assert file.file_bytes == b"1234567890" * 10
@@ -114,29 +104,21 @@ class DownloaderTests(unittest.TestCase):
     @patch("requests.Session.get", side_effect=ConnectionError("foo"))
     @patch("time.time", return_value=1000)
     def test_download_connection_error(self, mock_time, mock_session):
-        settings = Mock(
-            link_expiry_buffer_secs=0, use_proxy=False, is_lz4_compressed=True
-        )
+        settings = Mock(link_expiry_buffer_secs=0, use_proxy=False, is_lz4_compressed=True)
         result_link = Mock(bytesNum=100, expiryTime=1001)
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = downloader.ResultSetDownloadHandler(settings, result_link, ssl_options=SSLOptions())
         with self.assertRaises(ConnectionError):
             d.run()
 
     @patch("requests.Session.get", side_effect=TimeoutError("foo"))
     @patch("time.time", return_value=1000)
     def test_download_timeout(self, mock_time, mock_session):
-        settings = Mock(
-            link_expiry_buffer_secs=0, use_proxy=False, is_lz4_compressed=True
-        )
+        settings = Mock(link_expiry_buffer_secs=0, use_proxy=False, is_lz4_compressed=True)
         result_link = Mock(bytesNum=100, expiryTime=1001)
         mock_session.return_value.get.return_value.content = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
-        d = downloader.ResultSetDownloadHandler(
-            settings, result_link, ssl_options=SSLOptions()
-        )
+        d = downloader.ResultSetDownloadHandler(settings, result_link, ssl_options=SSLOptions())
         with self.assertRaises(TimeoutError):
             d.run()

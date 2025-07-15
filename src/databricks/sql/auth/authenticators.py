@@ -68,9 +68,7 @@ class DatabricksOAuthProvider(AuthProvider):
         try:
             idp_endpoint = get_oauth_endpoints(hostname, auth_type == "azure-oauth")
             if not idp_endpoint:
-                raise NotImplementedError(
-                    f"OAuth is not supported for host ${hostname}"
-                )
+                raise NotImplementedError(f"OAuth is not supported for host ${hostname}")
 
             # Convert to the corresponding scopes in the corresponding IdP
             cloud_scopes = idp_endpoint.get_scopes_mapping(scopes)
@@ -179,9 +177,7 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
     AZURE_MANAGED_RESOURCE = "https://management.core.windows.net/"
 
     DATABRICKS_AZURE_SP_TOKEN_HEADER = "X-Databricks-Azure-SP-Management-Token"
-    DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER = (
-        "X-Databricks-Azure-Workspace-Resource-Id"
-    )
+    DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER = "X-Databricks-Azure-Workspace-Resource-Id"
 
     def __init__(
         self,
@@ -195,9 +191,7 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         self.azure_client_id = azure_client_id
         self.azure_client_secret = azure_client_secret
         self.azure_workspace_resource_id = azure_workspace_resource_id
-        self.azure_tenant_id = azure_tenant_id or get_azure_tenant_id_from_host(
-            hostname
-        )
+        self.azure_tenant_id = azure_tenant_id or get_azure_tenant_id_from_host(hostname)
 
     def auth_type(self) -> str:
         return AuthType.AZURE_SP_M2M.value
@@ -211,9 +205,7 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         )
 
     def __call__(self, *args, **kwargs) -> HeaderFactory:
-        inner = self.get_token_source(
-            resource=get_effective_azure_login_app_id(self.hostname)
-        )
+        inner = self.get_token_source(resource=get_effective_azure_login_app_id(self.hostname))
         cloud = self.get_token_source(resource=self.AZURE_MANAGED_RESOURCE)
 
         def header_factory() -> Dict[str, str]:

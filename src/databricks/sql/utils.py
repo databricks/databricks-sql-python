@@ -81,9 +81,7 @@ class ResultSetQueueFactory(ABC):
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
             )
-            converted_arrow_table = convert_decimals_in_arrow_table(
-                arrow_table, description
-            )
+            converted_arrow_table = convert_decimals_in_arrow_table(arrow_table, description)
             return ArrowQueue(converted_arrow_table, n_valid_rows)
         elif row_set_type == TSparkRowSetType.COLUMN_BASED_SET:
             column_table, column_names = convert_column_based_set_to_column_table(
@@ -135,10 +133,7 @@ class ColumnTable:
         return ColumnTable(sliced_column_table, self.column_names)
 
     def __eq__(self, other):
-        return (
-            self.column_table == other.column_table
-            and self.column_names == other.column_names
-        )
+        return self.column_table == other.column_table and self.column_names == other.column_names
 
 
 class ColumnQueue(ResultSetQueue):
@@ -155,9 +150,7 @@ class ColumnQueue(ResultSetQueue):
         return slice
 
     def remaining_rows(self):
-        slice = self.column_table.slice(
-            self.cur_row_index, self.n_valid_rows - self.cur_row_index
-        )
+        slice = self.column_table.slice(self.cur_row_index, self.n_valid_rows - self.cur_row_index)
         self.cur_row_index += slice.num_rows
         return slice
 
@@ -193,9 +186,7 @@ class ArrowQueue(ResultSetQueue):
         return slice
 
     def remaining_rows(self) -> "pyarrow.Table":
-        slice = self.arrow_table.slice(
-            self.cur_row_index, self.n_valid_rows - self.cur_row_index
-        )
+        slice = self.arrow_table.slice(self.cur_row_index, self.n_valid_rows - self.cur_row_index)
         self.cur_row_index += slice.num_rows
         return slice
 
@@ -310,14 +301,10 @@ class CloudFetchQueue(ResultSetQueue):
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         logger.debug(
-            "CloudFetchQueue: Trying to get downloaded file for row {}".format(
-                self.start_row_index
-            )
+            "CloudFetchQueue: Trying to get downloaded file for row {}".format(self.start_row_index)
         )
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
-        downloaded_file = self.download_manager.get_next_downloaded_file(
-            self.start_row_index
-        )
+        downloaded_file = self.download_manager.get_next_downloaded_file(self.start_row_index)
         if not downloaded_file:
             logger.debug(
                 "CloudFetchQueue: Cannot find downloaded file for row {}".format(
@@ -383,9 +370,7 @@ class NoRetryReason(Enum):
 
 
 class RequestErrorInfo(
-    namedtuple(
-        "RequestErrorInfo_", "error error_message retry_delay http_code method request"
-    )
+    namedtuple("RequestErrorInfo_", "error error_message retry_delay http_code method request")
 ):
     @property
     def request_session_id(self):
@@ -415,9 +400,7 @@ class RequestErrorInfo(
             ]
         )
 
-        log_base_data_dict["no-retry-reason"] = (
-            no_retry_reason and no_retry_reason.value
-        )
+        log_base_data_dict["no-retry-reason"] = no_retry_reason and no_retry_reason.value
         log_base_data_dict["bounded-retry-delay"] = self.retry_delay
         log_base_data_dict["attempt"] = "{}/{}".format(attempt, max_attempts)
         log_base_data_dict["elapsed-seconds"] = "{}/{}".format(elapsed, max_duration)
@@ -451,9 +434,7 @@ class ParamEscaper:
         elif isinstance(parameters, (list, tuple)):
             return tuple(self.escape_item(x) for x in parameters)
         else:
-            raise exc.ProgrammingError(
-                "Unsupported param format: {}".format(parameters)
-            )
+            raise exc.ProgrammingError("Unsupported param format: {}".format(parameters))
 
     def escape_number(self, item):
         return item
@@ -537,9 +518,7 @@ def _may_contain_inline_positional_markers(operation: str) -> bool:
     return interpolated != operation
 
 
-def _interpolate_named_markers(
-    operation: str, parameters: List[TDbsqlParameter]
-) -> str:
+def _interpolate_named_markers(operation: str, parameters: List[TDbsqlParameter]) -> str:
     """Replace all instances of `%(param)s` in `operation` with `:param`.
 
     If `operation` contains no instances of `%(param)s` then the input string is returned unchanged.
@@ -590,9 +569,8 @@ def transform_paramstyle(
         str
     """
     output = operation
-    if (
-        param_structure == ParameterStructure.POSITIONAL
-        and _may_contain_inline_positional_markers(operation)
+    if param_structure == ParameterStructure.POSITIONAL and _may_contain_inline_positional_markers(
+        operation
     ):
         logger.warning(
             "It looks like this query may contain un-named query markers like `%s`"
@@ -605,9 +583,7 @@ def transform_paramstyle(
     return output
 
 
-def create_arrow_table_from_arrow_file(
-    file_bytes: bytes, description
-) -> "pyarrow.Table":
+def create_arrow_table_from_arrow_file(file_bytes: bytes, description) -> "pyarrow.Table":
     arrow_table = convert_arrow_based_file_to_arrow_table(file_bytes)
     return convert_decimals_in_arrow_table(arrow_table, description)
 
@@ -625,11 +601,7 @@ def convert_arrow_based_set_to_arrow_table(arrow_batches, lz4_compressed, schema
     n_rows = 0
     for arrow_batch in arrow_batches:
         n_rows += arrow_batch.rowCount
-        ba += (
-            lz4.frame.decompress(arrow_batch.batch)
-            if lz4_compressed
-            else arrow_batch.batch
-        )
+        ba += lz4.frame.decompress(arrow_batch.batch) if lz4_compressed else arrow_batch.batch
     arrow_table = pyarrow.ipc.open_stream(ba).read_all()
     return arrow_table, n_rows
 
@@ -667,17 +639,13 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
     converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":
-            converted_column_table.append(
-                tuple(v if v is None else Decimal(v) for v in col)
-            )
+            converted_column_table.append(tuple(v if v is None else Decimal(v) for v in col))
         elif description[i][1] == "date":
             converted_column_table.append(
                 tuple(v if v is None else datetime.date.fromisoformat(v) for v in col)
             )
         elif description[i][1] == "timestamp":
-            converted_column_table.append(
-                tuple((v if v is None else parser.parse(v)) for v in col)
-            )
+            converted_column_table.append(tuple((v if v is None else parser.parse(v)) for v in col))
         else:
             converted_column_table.append(col)
 

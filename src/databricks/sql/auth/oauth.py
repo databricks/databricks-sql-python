@@ -41,9 +41,7 @@ class Token:
 
     def is_expired(self) -> bool:
         try:
-            decoded_token = jwt.decode(
-                self.access_token, options={"verify_signature": False}
-            )
+            decoded_token = jwt.decode(self.access_token, options={"verify_signature": False})
             exp_time = decoded_token.get("exp")
             current_time = time.time()
             buffer_time = 30  # 30 seconds buffer
@@ -134,9 +132,7 @@ class OAuthManager:
     def __get_challenge():
         verifier_string = OAuthManager.__token_urlsafe(32)
         digest = hashlib.sha256(verifier_string.encode("UTF-8")).digest()
-        challenge_string = (
-            base64.urlsafe_b64encode(digest).decode("UTF-8").replace("=", "")
-        )
+        challenge_string = base64.urlsafe_b64encode(digest).decode("UTF-8").replace("=", "")
         return verifier_string, challenge_string
 
     def __get_authorization_code(self, client, auth_url, scope, state, challenge):
@@ -158,9 +154,7 @@ class OAuthManager:
                     logger.info(f"Opening {auth_req_uri}")
 
                     webbrowser.open_new(auth_req_uri)
-                    logger.info(
-                        f"Listening for OAuth authorization callback at {redirect_url}"
-                    )
+                    logger.info(f"Listening for OAuth authorization callback at {redirect_url}")
                     httpd.handle_request()
                 self.redirect_port = port
                 break
@@ -182,9 +176,7 @@ class OAuthManager:
             raise RuntimeError(msg)
         # This is a kludge because the parsing library expects https callbacks
         # We should probably set it up using https
-        full_redirect_url = (
-            f"https://localhost:{self.redirect_port}/{handler.request_path}"
-        )
+        full_redirect_url = f"https://localhost:{self.redirect_port}/{handler.request_path}"
         try:
             authorization_code_response = client.parse_request_uri_response(
                 full_redirect_url, state=state
@@ -197,9 +189,7 @@ class OAuthManager:
     def __send_auth_code_token_request(
         self, client, token_request_url, redirect_url, code, verifier
     ):
-        token_request_body = client.prepare_request_body(
-            code=code, redirect_uri=redirect_url
-        )
+        token_request_body = client.prepare_request_body(code=code, redirect_uri=redirect_url)
         data = f"{token_request_body}&code_verifier={verifier}"
         return self.__send_token_request(token_request_url, data)
 
@@ -227,15 +217,11 @@ class OAuthManager:
     def __get_tokens_from_response(oauth_response):
         access_token = oauth_response["access_token"]
         refresh_token = (
-            oauth_response["refresh_token"]
-            if "refresh_token" in oauth_response
-            else None
+            oauth_response["refresh_token"] if "refresh_token" in oauth_response else None
         )
         return access_token, refresh_token
 
-    def check_and_refresh_access_token(
-        self, hostname: str, access_token: str, refresh_token: str
-    ):
+    def check_and_refresh_access_token(self, hostname: str, access_token: str, refresh_token: str):
         now = datetime.now(tz=timezone.utc)
         # If we can't decode an expiration time, this will be expired by default.
         expiration_time = now
@@ -246,9 +232,7 @@ class OAuthManager:
             # an unnecessary signature verification.
             access_token_payload = access_token.split(".")[1]
             # add padding
-            access_token_payload = access_token_payload + "=" * (
-                -len(access_token_payload) % 4
-            )
+            access_token_payload = access_token_payload + "=" * (-len(access_token_payload) % 4)
             decoded = json.loads(base64.standard_b64decode(access_token_payload))
             expiration_time = datetime.fromtimestamp(decoded["exp"], tz=timezone.utc)
         except Exception as e:
@@ -265,13 +249,9 @@ class OAuthManager:
             raise RuntimeError(msg)
 
         # Try to refresh using the refresh token
-        logger.debug(
-            f"Attempting to refresh OAuth access token that expired on {expiration_time}"
-        )
+        logger.debug(f"Attempting to refresh OAuth access token that expired on {expiration_time}")
         oauth_response = self.__send_refresh_token_request(hostname, refresh_token)
-        fresh_access_token, fresh_refresh_token = self.__get_tokens_from_response(
-            oauth_response
-        )
+        fresh_access_token, fresh_refresh_token = self.__get_tokens_from_response(oauth_response)
         return fresh_access_token, fresh_refresh_token, True
 
     def get_tokens(self, hostname: str, scope=None):
@@ -285,9 +265,7 @@ class OAuthManager:
         client = oauthlib.oauth2.WebApplicationClient(self.client_id)
 
         try:
-            auth_response = self.__get_authorization_code(
-                client, auth_url, scope, state, challenge
-            )
+            auth_response = self.__get_authorization_code(client, auth_url, scope, state, challenge)
         except OAuth2Error as e:
             msg = f"OAuth Authorization Error: {e.description}"
             logger.error(msg)
@@ -359,6 +337,4 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
                     oauth_response.refresh_token,
                 )
             else:
-                raise Exception(
-                    f"Failed to get token: {response.status_code} {response.text}"
-                )
+                raise Exception(f"Failed to get token: {response.status_code} {response.text}")

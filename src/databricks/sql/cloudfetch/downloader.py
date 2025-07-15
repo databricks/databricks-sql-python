@@ -86,9 +86,7 @@ class ResultSetDownloadHandler:
         )
 
         # Check if link is already expired or is expiring
-        ResultSetDownloadHandler._validate_link(
-            self.link, self.settings.link_expiry_buffer_secs
-        )
+        ResultSetDownloadHandler._validate_link(self.link, self.settings.link_expiry_buffer_secs)
 
         session = requests.Session()
         session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
@@ -145,10 +143,7 @@ class ResultSetDownloadHandler:
         but may expire before the file has fully downloaded.
         """
         current_time = int(time.time())
-        if (
-            link.expiryTime <= current_time
-            or link.expiryTime - current_time <= expiry_buffer_secs
-        ):
+        if link.expiryTime <= current_time or link.expiryTime - current_time <= expiry_buffer_secs:
             raise Error("CloudFetch link has expired")
 
     @staticmethod

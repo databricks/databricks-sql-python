@@ -141,9 +141,7 @@ class TestDbsqlParameter:
             (ArrayParameter, Primitive.ARRAY, "ARRAY"),
         ),
     )
-    def test_cast_expression(
-        self, _type: TDbsqlParameter, prim: Primitive, expect_cast_expr: str
-    ):
+    def test_cast_expression(self, _type: TDbsqlParameter, prim: Primitive, expect_cast_expr: str):
         p = _type(prim.value)
         assert p._cast_expr() == expect_cast_expr
 
@@ -201,13 +199,9 @@ class TestDbsqlParameter:
                     type="MAP",
                     value=None,
                     arguments=[
-                        TSparkParameterValueArg(
-                            type="STRING", value="a", arguments=None
-                        ),
+                        TSparkParameterValueArg(type="STRING", value="a", arguments=None),
                         TSparkParameterValueArg(type="INT", value="1", arguments=None),
-                        TSparkParameterValueArg(
-                            type="STRING", value="b", arguments=None
-                        ),
+                        TSparkParameterValueArg(type="STRING", value="b", arguments=None),
                         TSparkParameterValueArg(type="INT", value="2", arguments=None),
                     ],
                 ),
@@ -225,36 +219,20 @@ class TestDbsqlParameter:
                             type="MAP",
                             value=None,
                             arguments=[
-                                TSparkParameterValueArg(
-                                    type="STRING", value="a", arguments=None
-                                ),
-                                TSparkParameterValueArg(
-                                    type="INT", value="1", arguments=None
-                                ),
-                                TSparkParameterValueArg(
-                                    type="STRING", value="b", arguments=None
-                                ),
-                                TSparkParameterValueArg(
-                                    type="INT", value="2", arguments=None
-                                ),
+                                TSparkParameterValueArg(type="STRING", value="a", arguments=None),
+                                TSparkParameterValueArg(type="INT", value="1", arguments=None),
+                                TSparkParameterValueArg(type="STRING", value="b", arguments=None),
+                                TSparkParameterValueArg(type="INT", value="2", arguments=None),
                             ],
                         ),
                         TSparkParameterValueArg(
                             type="MAP",
                             value=None,
                             arguments=[
-                                TSparkParameterValueArg(
-                                    type="STRING", value="c", arguments=None
-                                ),
-                                TSparkParameterValueArg(
-                                    type="INT", value="3", arguments=None
-                                ),
-                                TSparkParameterValueArg(
-                                    type="STRING", value="d", arguments=None
-                                ),
-                                TSparkParameterValueArg(
-                                    type="INT", value="4", arguments=None
-                                ),
+                                TSparkParameterValueArg(type="STRING", value="c", arguments=None),
+                                TSparkParameterValueArg(type="INT", value="3", arguments=None),
+                                TSparkParameterValueArg(type="STRING", value="d", arguments=None),
+                                TSparkParameterValueArg(type="INT", value="4", arguments=None),
                             ],
                         ),
                     ],

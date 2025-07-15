@@ -38,9 +38,7 @@ class DecimalTestsMixin:
         ),
     ]
 
-    @pytest.mark.parametrize(
-        "decimal, expected_value, expected_type", decimal_and_expected_results
-    )
+    @pytest.mark.parametrize("decimal, expected_value, expected_type", decimal_and_expected_results)
     def test_decimals(self, decimal, expected_value, expected_type):
         with self.cursor({}) as cursor:
             query = "SELECT CAST ({})".format(decimal)
@@ -54,9 +52,7 @@ class DecimalTestsMixin:
     )
     def test_multi_decimals(self, decimals, expected_values, expected_type):
         with self.cursor({}) as cursor:
-            union_str = " UNION ".join(
-                ["(SELECT CAST ({}))".format(dec) for dec in decimals]
-            )
+            union_str = " UNION ".join(["(SELECT CAST ({}))".format(dec) for dec in decimals])
             query = "SELECT * FROM ({}) ORDER BY 1 NULLS LAST".format(union_str)
 
             cursor.execute(query)
