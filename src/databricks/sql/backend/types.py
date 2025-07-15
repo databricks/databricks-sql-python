@@ -282,7 +282,6 @@ class CommandId:
         operation_type: Optional[int] = None,
         has_result_set: bool = False,
         modified_row_count: Optional[int] = None,
-        statement_type: Optional[StatementType] = None,
     ):
         """
         Initialize a CommandId.
@@ -302,7 +301,7 @@ class CommandId:
         self.operation_type = operation_type
         self.has_result_set = has_result_set
         self.modified_row_count = modified_row_count
-        self._statement_type = statement_type
+        self._statement_type = StatementType.NONE
 
     def __str__(self) -> str:
         """
@@ -421,7 +420,7 @@ class CommandId:
         self._statement_type = statement_type
 
     @property
-    def statement_type(self) -> Optional[StatementType]:
+    def statement_type(self) -> StatementType:
         """
         Get the statement type for this command.
         """

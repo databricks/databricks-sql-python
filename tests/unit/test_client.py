@@ -189,6 +189,7 @@ class ClientTestSuite(unittest.TestCase):
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
         mock_backend = Mock()
+        mock_results = Mock()
         mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
         result_set = ThriftResultSet(
@@ -223,7 +224,9 @@ class ClientTestSuite(unittest.TestCase):
 
         mock_thrift_backend.fetch_results.return_value = (Mock(), False, 0)
         result_set = ThriftResultSet(
-            mock_connection, mock_results_response, mock_thrift_backend, session_id_hex=Mock())
+            mock_connection, mock_results_response, mock_thrift_backend, session_id_hex=Mock()
+        )
+        result_set.results = mock_results
 
         result_set.close()
 
