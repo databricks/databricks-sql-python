@@ -378,19 +378,17 @@ class TestSeaCloudFetchQueue:
     ):
         """Test initialization with no initial links."""
         # Create a queue with empty initial links
-        with pytest.raises(
-            ServerOperationError, match="No initial link found for chunk 0"
-        ):
-            queue = SeaCloudFetchQueue(
-                result_data=ResultData(external_links=[]),
-                max_download_threads=5,
-                ssl_options=ssl_options,
-                sea_client=mock_sea_client,
-                statement_id="test-statement-123",
-                total_chunk_count=0,
-                lz4_compressed=False,
-                description=description,
-            )
+        queue = SeaCloudFetchQueue(
+            result_data=ResultData(external_links=[]),
+            max_download_threads=5,
+            ssl_options=ssl_options,
+            sea_client=mock_sea_client,
+            statement_id="test-statement-123",
+            total_chunk_count=0,
+            lz4_compressed=False,
+            description=description,
+        )
+        assert queue.table is None
 
     @patch("databricks.sql.backend.sea.queue.logger")
     def test_progress_chunk_link_no_current_link(self, mock_logger):

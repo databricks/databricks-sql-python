@@ -150,13 +150,8 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         initial_links = result_data.external_links or []
         first_link = next((l for l in initial_links if l.chunk_index == 0), None)
         if not first_link:
-            raise ServerOperationError(
-                "No initial link found for chunk 0",
-                {
-                    "operation-id": statement_id,
-                    "diagnostic-info": None,
-                },
-            )
+            # possibly an empty response
+            return None
 
         # Track the current chunk we're processing
         self._current_chunk_link = first_link
