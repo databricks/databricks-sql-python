@@ -31,13 +31,13 @@ class FetchBenchmarkTests(unittest.TestCase):
         arrow_queue = ArrowQueue(arrow_table, arrow_table.num_rows, 0)
         rs = client.ResultSet(
             connection=None,
-            thrift_backend=None,
+            backend=None,
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=True,
                 has_more_rows=False,
                 description=Mock(),
-                command_handle=None,
+                command_id=None,
                 arrow_queue=arrow_queue,
                 arrow_schema=arrow_table.schema,
             ),
