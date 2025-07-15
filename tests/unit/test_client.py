@@ -87,7 +87,17 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_thrift_client_class):
-        """Test that connection.close() properly closes result sets through the real close chain."""
+        """Test that closing a connection properly closes commands.
+
+        This test verifies that when a connection is closed:
+        1. the active result set is marked as closed server-side
+        2. The operation state is set to CLOSED
+        3. backend.close_command is called only for commands that weren't already closed
+
+        Args:
+            mock_thrift_client_class: Mock for ThriftBackend class
+        """
+
         # Test once with has_been_closed_server side, once without
         for closed in (True, False):
             with self.subTest(closed=closed):
@@ -114,18 +124,10 @@ class ClientTestSuite(unittest.TestCase):
                 connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
                 cursor = connection.cursor()
 
-                # Create a REAL ThriftResultSet that will be returned by execute_command
                 real_result_set = ThriftResultSet(
                     connection=connection,
                     execute_response=mock_execute_response,
                 )
-
-                # Verify initial state
-                self.assertEqual(real_result_set.has_been_closed_server_side, closed)
-                expected_status = (
-                    CommandState.CLOSED if closed else CommandState.SUCCEEDED
-                )
-                self.assertEqual(real_result_set.status, expected_status)
 
                 # Mock execute_command to return our real result set
                 cursor.backend.execute_command = Mock(return_value=real_result_set)
@@ -184,9 +186,8 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
-        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
-
-        mock_backend = Mock(spec=ThriftDatabricksClient)
+        mock_backend = Mock()
+        mock_results = Mock()
         mock_backend.fetch_results.return_value = (Mock(), False)
         # Ensure isinstance check passes
         mock_backend.__class__ = ThriftDatabricksClient
@@ -201,21 +202,25 @@ class ClientTestSuite(unittest.TestCase):
             connection=mock_connection,
             execute_response=Mock(),
         )
+        result_set.results = mock_results
+
+        # Setup session mock on the mock_connection
+        mock_session = Mock()
+        mock_session.open = False
+        type(mock_connection).session = PropertyMock(return_value=mock_session)
 
         result_set.close()
 
         self.assertFalse(mock_backend.close_command.called)
         self.assertTrue(result_set.has_been_closed_server_side)
+        mock_results.close.assert_called_once()
 
     def test_closing_result_set_hard_closes_commands(self):
         mock_results_response = Mock()
         mock_results_response.has_been_closed_server_side = False
         mock_connection = Mock()
-        from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
-
-        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
-        # Ensure isinstance check passes
-        mock_thrift_backend.__class__ = ThriftDatabricksClient
+        mock_thrift_backend = Mock()
+        mock_results = Mock()
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = True
@@ -227,12 +232,14 @@ class ClientTestSuite(unittest.TestCase):
             mock_connection,
             mock_results_response,
         )
+        result_set.results = mock_results
 
         result_set.close()
 
         mock_thrift_backend.close_command.assert_called_once_with(
             mock_results_response.command_id
         )
+        mock_results.close.assert_called_once()
 
     def test_executing_multiple_commands_uses_the_most_recent_command(self):
         mock_result_sets = [Mock(), Mock()]

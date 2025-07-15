@@ -13,6 +13,8 @@ from databricks.sql.backend.sea.client import (
     _filter_session_configuration,
 )
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
+from databricks.sql.parameters.native import IntegerParameter, TDbsqlParameter
+from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.exc import (
@@ -363,7 +365,8 @@ class TestSeaBackend:
             "status": {"state": "SUCCEEDED"},
         }
         mock_http_client._make_request.return_value = execute_response
-        param = {"name": "param1", "value": "value1", "type": "STRING"}
+        dbsql_param = IntegerParameter(name="param1", value=1)
+        param = dbsql_param.as_tspark_param(named=True)
 
         with patch.object(sea_client, "get_execution_result"):
             sea_client.execute_command(
@@ -382,8 +385,8 @@ class TestSeaBackend:
             assert "parameters" in kwargs["data"]
             assert len(kwargs["data"]["parameters"]) == 1
             assert kwargs["data"]["parameters"][0]["name"] == "param1"
-            assert kwargs["data"]["parameters"][0]["value"] == "value1"
-            assert kwargs["data"]["parameters"][0]["type"] == "STRING"
+            assert kwargs["data"]["parameters"][0]["value"] == "1"
+            assert kwargs["data"]["parameters"][0]["type"] == "INT"
 
         # Test execution failure
         mock_http_client.reset_mock()
