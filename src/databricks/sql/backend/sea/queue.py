@@ -69,3 +69,6 @@ class JsonQueue(ResultSetQueue):
         slice = self.data_array[self.cur_row_index :]
         self.cur_row_index += len(slice)
         return slice
+
+    def close(self):
+        return

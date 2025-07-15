@@ -199,6 +199,8 @@ class ClientTestSuite(unittest.TestCase):
             session_id_hex=Mock(),
             statement_type=Mock(),
         )
+        result_set.results = mock_results
+
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = False
@@ -208,12 +210,14 @@ class ClientTestSuite(unittest.TestCase):
 
         self.assertFalse(mock_backend.close_command.called)
         self.assertTrue(result_set.has_been_closed_server_side)
+        mock_results.close.assert_called_once()
 
     def test_closing_result_set_hard_closes_commands(self):
         mock_results_response = Mock()
         mock_results_response.has_been_closed_server_side = False
         mock_connection = Mock()
         mock_thrift_backend = Mock()
+        mock_results = Mock()
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = True
@@ -228,6 +232,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_thrift_backend.close_command.assert_called_once_with(
             mock_results_response.command_id
         )
+        mock_results.close.assert_called_once()
 
     def test_executing_multiple_commands_uses_the_most_recent_command(self):
         mock_result_sets = [Mock(), Mock()]
