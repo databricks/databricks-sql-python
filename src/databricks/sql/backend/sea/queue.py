@@ -19,7 +19,7 @@ from databricks.sql.backend.sea.models.base import (
     ResultManifest,
 )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
-from databricks.sql.exc import ProgrammingError
+from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
 from databricks.sql.utils import CloudFetchQueue, ResultSetQueue
@@ -63,7 +63,7 @@ class SeaResultSetQueueFactory(ABC):
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
             # EXTERNAL_LINKS disposition
             return SeaCloudFetchQueue(
-                initial_links=result_data.external_links or [],
+                result_data=result_data,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
                 sea_client=sea_client,
@@ -97,13 +97,16 @@ class JsonQueue(ResultSetQueue):
         self.cur_row_index += len(slice)
         return slice
 
+    def close(self):
+        return
+
 
 class SeaCloudFetchQueue(CloudFetchQueue):
     """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for SEA backend."""
 
     def __init__(
         self,
-        initial_links: List["ExternalLink"],
+        result_data: ResultData,
         max_download_threads: int,
         ssl_options: SSLOptions,
         sea_client: "SeaDatabricksClient",
@@ -144,22 +147,22 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             )
         )
 
-        initial_link = next((l for l in initial_links if l.chunk_index == 0), None)
-        if not initial_link:
-            return
-
-        self.download_manager = ResultFileDownloadManager(
-            links=[],
-            max_download_threads=max_download_threads,
-            lz4_compressed=lz4_compressed,
-            ssl_options=ssl_options,
-        )
+        initial_links = result_data.external_links or []
+        first_link = next((l for l in initial_links if l.chunk_index == 0), None)
+        if not first_link:
+            raise ServerOperationError(
+                "No initial link found for chunk 0",
+                {
+                    "operation-id": statement_id,
+                    "diagnostic-info": None,
+                },
+            )
 
         # Track the current chunk we're processing
-        self._current_chunk_link: Optional["ExternalLink"] = initial_link
+        self._current_chunk_link = first_link
 
         # Initialize table and position
-        self.table = self._create_next_table()
+        self.table = self._create_table_from_link(self._current_chunk_link)
 
     def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
@@ -190,34 +193,38 @@ class SeaCloudFetchQueue(CloudFetchQueue):
                 self._statement_id, next_chunk_index
             )
         except Exception as e:
-            logger.error(
-                "SeaCloudFetchQueue: Error fetching link for chunk {}: {}".format(
-                    next_chunk_index, e
-                )
+            raise ServerOperationError(
+                f"Error fetching link for chunk {next_chunk_index}: {e}",
+                {
+                    "operation-id": self._statement_id,
+                    "diagnostic-info": None,
+                },
             )
-            self._current_chunk_link = None
-            return None
 
         logger.debug(
             f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
         )
 
+    def _create_table_from_link(
+        self, link: "ExternalLink"
+    ) -> Union["pyarrow.Table", None]:
+        """Create a table from a link."""
+
+        thrift_link = self._convert_to_thrift_link(link)
+        self.download_manager.add_link(thrift_link)
+
+        row_offset = link.row_offset
+        arrow_table = self._create_table_at_offset(row_offset)
+
+        return arrow_table
+
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
+
+        self._progress_chunk_link()
+
         if not self._current_chunk_link:
             logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
             return None
 
-        if not self.download_manager:
-            logger.debug("SeaCloudFetchQueue: No download manager, returning")
-            return None
-
-        thrift_link = self._convert_to_thrift_link(self._current_chunk_link)
-        self.download_manager.add_link(thrift_link)
-
-        row_offset = self._current_chunk_link.row_offset
-        arrow_table = self._create_table_at_offset(row_offset)
-
-        self._progress_chunk_link()
-
-        return arrow_table
+        return self._create_table_from_link(self._current_chunk_link)
