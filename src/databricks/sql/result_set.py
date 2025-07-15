@@ -41,12 +41,10 @@ class ResultSet(ABC):
         buffer_size_bytes: int,
         command_id: CommandId,
         status: CommandState,
-        has_been_closed_server_side: bool = False,
         is_direct_results: bool = False,
         description: List[Tuple] = [],
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
-        arrow_schema_bytes: Optional[bytes] = None,
     ):
         """
         A ResultSet manages the results of a single command.
@@ -57,7 +55,6 @@ class ResultSet(ABC):
             :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
             :param command_id: The command ID
             :param status: The command status
-            :param has_been_closed_server_side: Whether the command has been closed on the server
             :param is_direct_results: Whether the command has more rows
             :param description: column description of the results
             :param is_staging_operation: Whether the command is a staging operation
@@ -71,12 +68,10 @@ class ResultSet(ABC):
         self.description: List[Tuple] = description
         self.command_id: CommandId = command_id
         self.status: CommandState = status
-        self.has_been_closed_server_side: bool = has_been_closed_server_side
         self.is_direct_results: bool = is_direct_results
         self.results: Optional[ResultSetQueue] = None
         self._is_staging_operation: bool = is_staging_operation
         self.lz4_compressed: bool = lz4_compressed
-        self._arrow_schema_bytes: Optional[bytes] = arrow_schema_bytes
 
     def __iter__(self):
         while True:
@@ -158,28 +153,12 @@ class ResultSet(ABC):
         """Fetch all remaining rows as an Arrow table."""
         pass
 
+    @abstractmethod
     def close(self) -> None:
         """
         Close the result set.
-
-        If the connection has not been closed, and the result set has not already
-        been closed on the server for some other reason, issue a request to the server to close it.
         """
-        try:
-            if self.results:
-                self.results.close()
-            if (
-                self.status != CommandState.CLOSED
-                and not self.has_been_closed_server_side
-                and self.connection.open
-            ):
-                self.backend.close_command(self.command_id)
-        except RequestError as e:
-            if isinstance(e.args[1], CursorAlreadyClosedError):
-                logger.info("Operation was canceled by a prior request")
-        finally:
-            self.has_been_closed_server_side = True
-            self.status = CommandState.CLOSED
+        pass
 
 
 class ThriftResultSet(ResultSet):
@@ -196,6 +175,8 @@ class ThriftResultSet(ResultSet):
         max_download_threads: int = 10,
         ssl_options=None,
         is_direct_results: bool = True,
+        has_been_closed_server_side: bool = False,
+        arrow_schema_bytes: Optional[bytes] = None,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -210,11 +191,15 @@ class ThriftResultSet(ResultSet):
             :param max_download_threads: Maximum number of download threads for cloud fetch
             :param ssl_options: SSL options for cloud fetch
             :param is_direct_results: Whether there are more rows to fetch
+            :param has_been_closed_server_side: Whether the command has been closed on the server
+            :param arrow_schema_bytes: The schema of the result set
         """
 
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
         self.is_direct_results = is_direct_results
+        self.has_been_closed_server_side = has_been_closed_server_side
+        self._arrow_schema_bytes = arrow_schema_bytes
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -225,7 +210,7 @@ class ThriftResultSet(ResultSet):
             results_queue = ThriftResultSetQueueFactory.build_queue(
                 row_set_type=execute_response.result_format,
                 t_row_set=t_row_set,
-                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                arrow_schema_bytes=self._arrow_schema_bytes or b"",
                 max_download_threads=max_download_threads,
                 lz4_compressed=execute_response.lz4_compressed,
                 description=execute_response.description,
@@ -239,12 +224,10 @@ class ThriftResultSet(ResultSet):
             buffer_size_bytes=buffer_size_bytes,
             command_id=execute_response.command_id,
             status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
             is_direct_results=is_direct_results,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Assert that the backend is of the correct type
@@ -460,3 +443,29 @@ class ThriftResultSet(ResultSet):
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
+
+    def close(self) -> None:
+        """
+        Close the result set.
+
+        If the connection has not been closed, and the result set has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
+        try:
+            if self.results:
+                self.results.close()
+            print(f"has_been_closed_server_side: {self.has_been_closed_server_side}")
+            print(f"status: {self.status}")
+            print(f"connection.open: {self.connection.open}")
+            if (
+                self.status != CommandState.CLOSED
+                and not self.has_been_closed_server_side
+                and self.connection.open
+            ):
+                self.backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
+        finally:
+            self.has_been_closed_server_side = True
+            self.status = CommandState.CLOSED

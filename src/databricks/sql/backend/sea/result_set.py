@@ -15,10 +15,10 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
-from databricks.sql.exc import ProgrammingError
+from databricks.sql.exc import CursorAlreadyClosedError, ProgrammingError, RequestError
 from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
-from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.backend.types import CommandState, ExecuteResponse
 from databricks.sql.result_set import ResultSet
 
 logger = logging.getLogger(__name__)
@@ -61,11 +61,9 @@ class SeaResultSet(ResultSet):
             buffer_size_bytes=buffer_size_bytes,
             command_id=execute_response.command_id,
             status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
         # Assert that the backend is of the correct type
@@ -274,3 +272,21 @@ class SeaResultSet(ResultSet):
             return self._create_json_table(self.fetchall_json())
         else:
             raise NotImplementedError("fetchall only supported for JSON data")
+
+    def close(self) -> None:
+        """
+        Close the result set.
+
+        If the connection has not been closed, and the result set has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
+        try:
+            if self.results is not None:
+                self.results.close()
+            if self.status != CommandState.CLOSED and self.connection.open:
+                self.backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
+        finally:
+            self.status = CommandState.CLOSED

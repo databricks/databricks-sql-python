@@ -60,9 +60,7 @@ class ResultSetFilter:
             command_id=command_id,
             status=result_set.status,
             description=result_set.description,
-            has_been_closed_server_side=result_set.has_been_closed_server_side,
             lz4_compressed=result_set.lz4_compressed,
-            arrow_schema_bytes=result_set._arrow_schema_bytes,
             is_staging_operation=False,
         )
 

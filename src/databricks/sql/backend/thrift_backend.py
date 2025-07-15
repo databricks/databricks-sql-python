@@ -821,14 +821,17 @@ class ThriftDatabricksClient(DatabricksClient):
             command_id=command_id,
             status=status,
             description=description,
-            has_been_closed_server_side=has_been_closed_server_side,
             lz4_compressed=lz4_compressed,
             is_staging_operation=t_result_set_metadata_resp.isStagingOperation,
-            arrow_schema_bytes=schema_bytes,
             result_format=t_result_set_metadata_resp.resultFormat,
         )
 
-        return execute_response, is_direct_results
+        return (
+            execute_response,
+            is_direct_results,
+            has_been_closed_server_side,
+            schema_bytes,
+        )
 
     def get_execution_result(
         self, command_id: CommandId, cursor: "Cursor"
@@ -881,10 +884,8 @@ class ThriftDatabricksClient(DatabricksClient):
             command_id=command_id,
             status=status,
             description=description,
-            has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=is_staging_operation,
-            arrow_schema_bytes=schema_bytes,
             result_format=t_result_set_metadata_resp.resultFormat,
         )
 
@@ -898,6 +899,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            arrow_schema_bytes=schema_bytes,
+            has_been_closed_server_side=False,
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -1016,9 +1019,12 @@ class ThriftDatabricksClient(DatabricksClient):
             self._handle_execute_response_async(resp, cursor)
             return None
         else:
-            execute_response, is_direct_results = self._handle_execute_response(
-                resp, cursor
-            )
+            (
+                execute_response,
+                is_direct_results,
+                has_been_closed_server_side,
+                schema_bytes,
+            ) = self._handle_execute_response(resp, cursor)
 
             t_row_set = None
             if resp.directResults and resp.directResults.resultSet:
@@ -1034,6 +1040,8 @@ class ThriftDatabricksClient(DatabricksClient):
                 max_download_threads=self.max_download_threads,
                 ssl_options=self._ssl_options,
                 is_direct_results=is_direct_results,
+                has_been_closed_server_side=has_been_closed_server_side,
+                arrow_schema_bytes=schema_bytes,
             )
 
     def get_catalogs(
@@ -1055,9 +1063,12 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetCatalogs, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            has_been_closed_server_side,
+            schema_bytes,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1073,6 +1084,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            has_been_closed_server_side=has_been_closed_server_side,
+            arrow_schema_bytes=schema_bytes,
         )
 
     def get_schemas(
@@ -1100,9 +1113,12 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetSchemas, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            has_been_closed_server_side,
+            schema_bytes,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1118,6 +1134,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            has_been_closed_server_side=has_been_closed_server_side,
+            arrow_schema_bytes=schema_bytes,
         )
 
     def get_tables(
@@ -1149,9 +1167,12 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetTables, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            has_been_closed_server_side,
+            schema_bytes,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1167,6 +1188,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            has_been_closed_server_side=has_been_closed_server_side,
+            arrow_schema_bytes=schema_bytes,
         )
 
     def get_columns(
@@ -1198,9 +1221,12 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetColumns, req)
 
-        execute_response, is_direct_results = self._handle_execute_response(
-            resp, cursor
-        )
+        (
+            execute_response,
+            is_direct_results,
+            has_been_closed_server_side,
+            schema_bytes,
+        ) = self._handle_execute_response(resp, cursor)
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1216,6 +1242,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            has_been_closed_server_side=has_been_closed_server_side,
+            arrow_schema_bytes=schema_bytes,
         )
 
     def _handle_execute_response(self, resp, cursor):

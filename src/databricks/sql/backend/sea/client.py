@@ -349,10 +349,8 @@ class SeaDatabricksClient(DatabricksClient):
             command_id=CommandId.from_sea_statement_id(response.statement_id),
             status=response.status.state,
             description=description,
-            has_been_closed_server_side=False,
             lz4_compressed=lz4_compressed,
             is_staging_operation=response.manifest.is_volume_operation,
-            arrow_schema_bytes=None,
             result_format=response.manifest.format,
         )
 
