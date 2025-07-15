@@ -889,12 +889,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
                 )
-                (
-                    execute_response,
-                    _,
-                    _, 
-                    _
-                ) = thrift_backend._handle_execute_response(execute_resp, Mock())
+                (execute_response, _, _, _) = thrift_backend._handle_execute_response(
+                    execute_resp, Mock()
+                )
                 self.assertEqual(
                     execute_response.status,
                     CommandState.SUCCEEDED,
@@ -967,9 +964,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
             )
         )
         thrift_backend = self._make_fake_thrift_backend()
-        execute_response, _, _, arrow_schema_bytes  = thrift_backend._handle_execute_response(
-            t_execute_resp, Mock()
-        )
+        (
+            execute_response,
+            _,
+            _,
+            arrow_schema_bytes,
+        ) = thrift_backend._handle_execute_response(t_execute_resp, Mock())
 
         self.assertEqual(arrow_schema_bytes, arrow_schema_mock)
 
@@ -1048,8 +1048,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 (
                     execute_response,
                     has_more_rows_result,
-                    _, 
-                    _
+                    _,
+                    _,
                 ) = thrift_backend._handle_execute_response(execute_resp, Mock())
 
                 self.assertEqual(is_direct_results, has_more_rows_result)
@@ -1183,7 +1183,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
         )
         thrift_backend._handle_execute_response = Mock()
-        thrift_backend._handle_execute_response.return_value = (Mock(), Mock(), Mock(), Mock())
+        thrift_backend._handle_execute_response.return_value = (
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+        )
         cursor_mock = Mock()
 
         result = thrift_backend.execute_command(
@@ -1219,7 +1224,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
         )
         thrift_backend._handle_execute_response = Mock()
-        thrift_backend._handle_execute_response.return_value = (Mock(), Mock(), Mock(), Mock())
+        thrift_backend._handle_execute_response.return_value = (
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+        )
         cursor_mock = Mock()
 
         result = thrift_backend.get_catalogs(Mock(), 100, 200, cursor_mock)
@@ -1252,7 +1262,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
         )
         thrift_backend._handle_execute_response = Mock()
-        thrift_backend._handle_execute_response.return_value = (Mock(), Mock(), Mock(), Mock())
+        thrift_backend._handle_execute_response.return_value = (
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+        )
         cursor_mock = Mock()
 
         result = thrift_backend.get_schemas(
@@ -1294,7 +1309,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
         )
         thrift_backend._handle_execute_response = Mock()
-        thrift_backend._handle_execute_response.return_value = (Mock(), Mock(), Mock(), Mock())
+        thrift_backend._handle_execute_response.return_value = (
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+        )
         cursor_mock = Mock()
 
         result = thrift_backend.get_tables(
@@ -1340,7 +1360,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
         )
         thrift_backend._handle_execute_response = Mock()
-        thrift_backend._handle_execute_response.return_value = (Mock(), Mock(), Mock(), Mock())
+        thrift_backend._handle_execute_response.return_value = (
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+        )
         cursor_mock = Mock()
 
         result = thrift_backend.get_columns(
@@ -2258,8 +2283,8 @@ class ThriftBackendTestSuite(unittest.TestCase):
         mock_handle_execute_response.return_value = (
             mock_execute_response,
             mock_arrow_schema,
-            Mock(), 
-            Mock()
+            Mock(),
+            Mock(),
         )
 
         # Iterate through each possible combination of native types (True, False and unset)

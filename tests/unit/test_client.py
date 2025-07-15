@@ -186,15 +186,17 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
-        mock_backend = Mock()
+        mock_backend = Mock(spec=ThriftDatabricksClient)
         mock_results = Mock()
         mock_backend.fetch_results.return_value = (Mock(), False)
-        # Ensure isinstance check passes
+
+        # Ensure connection appears closed
+        type(mock_connection).open = PropertyMock(return_value=False)
+        # Ensure isinstance check passes if needed
         mock_backend.__class__ = ThriftDatabricksClient
 
         # Setup session mock on the mock_connection
         mock_session = Mock()
-        mock_session.open = False
         mock_session.backend = mock_backend
         type(mock_connection).session = PropertyMock(return_value=mock_session)
 
@@ -203,11 +205,6 @@ class ClientTestSuite(unittest.TestCase):
             execute_response=Mock(),
         )
         result_set.results = mock_results
-
-        # Setup session mock on the mock_connection
-        mock_session = Mock()
-        mock_session.open = False
-        type(mock_connection).session = PropertyMock(return_value=mock_session)
 
         result_set.close()
 
