@@ -870,7 +870,6 @@ class Cursor:
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
             row_limit=self.row_limit,
-            statement_type=self.statement_type,
         )
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
@@ -930,7 +929,6 @@ class Cursor:
             async_op=True,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
             row_limit=self.row_limit,
-            statement_type=self.statement_type,
         )
 
         return self
@@ -971,7 +969,7 @@ class Cursor:
         operation_state = self.get_query_state()
         if operation_state == CommandState.SUCCEEDED:
             self.active_result_set = self.backend.get_execution_result(
-                self.active_command_id, cursor=self, statement_type=self.statement_type
+                self.active_command_id, self
             )
 
             if self.active_result_set and self.active_result_set.is_staging_operation:
@@ -1016,7 +1014,6 @@ class Cursor:
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
-            statement_type=self.statement_type,
         )
         return self
 
@@ -1040,7 +1037,6 @@ class Cursor:
             cursor=self,
             catalog_name=catalog_name,
             schema_name=schema_name,
-            statement_type=self.statement_type,
         )
         return self
 
@@ -1071,7 +1067,6 @@ class Cursor:
             schema_name=schema_name,
             table_name=table_name,
             table_types=table_types,
-            statement_type=self.statement_type,
         )
         return self
 
@@ -1102,7 +1097,6 @@ class Cursor:
             schema_name=schema_name,
             table_name=table_name,
             column_name=column_name,
-            statement_type=self.statement_type,
         )
         return self
 

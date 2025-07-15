@@ -144,7 +144,7 @@ def get_extractor(obj):
         return None
 
 
-def log_latency(statement_type: StatementType = StatementType.NONE):
+def log_latency():
     """
     Decorator for logging execution latency and telemetry information.
 
@@ -158,11 +158,8 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
     - Creates a SqlExecutionEvent with execution details
     - Sends the telemetry data asynchronously via TelemetryClient
 
-    Args:
-        statement_type (StatementType): The type of SQL statement being executed.
-
     Usage:
-        @log_latency(StatementType.SQL)
+        @log_latency()
         def execute(self, query):
             # Method implementation
             pass

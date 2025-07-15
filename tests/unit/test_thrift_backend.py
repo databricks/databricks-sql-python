@@ -1105,7 +1105,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     lz4_compressed=False,
                     arrow_schema_bytes=Mock(),
                     description=Mock(),
-                    statement_type=Mock(),
                     chunk_id=0,
                 )
 
@@ -1160,7 +1159,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             lz4_compressed=False,
             arrow_schema_bytes=schema,
             description=MagicMock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
 
@@ -1222,7 +1220,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         thrift_backend._handle_execute_response.return_value = (Mock(), Mock())
         cursor_mock = Mock()
 
-        result = thrift_backend.get_catalogs(Mock(), 100, 200, cursor_mock, Mock())
+        result = thrift_backend.get_catalogs(Mock(), 100, 200, cursor_mock)
         # Verify the result is a ResultSet
         self.assertEqual(result, mock_result_set.return_value)
 
@@ -1260,7 +1258,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             100,
             200,
             cursor_mock,
-            Mock(),
             catalog_name="catalog_pattern",
             schema_name="schema_pattern",
         )
@@ -1303,7 +1300,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             100,
             200,
             cursor_mock,
-            Mock(),
             catalog_name="catalog_pattern",
             schema_name="schema_pattern",
             table_name="table_pattern",
@@ -1350,7 +1346,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             100,
             200,
             cursor_mock,
-            Mock(),
             catalog_name="catalog_pattern",
             schema_name="schema_pattern",
             table_name="table_pattern",

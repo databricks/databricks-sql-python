@@ -54,7 +54,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=None,
+                command_id=Mock(),
                 status=None,
                 has_been_closed_server_side=True,
                 description=description,
@@ -64,7 +64,6 @@ class FetchTests(unittest.TestCase):
             thrift_client=mock_thrift_backend,
             t_row_set=None,
             session_id_hex=Mock(),
-            statement_type=Mock(),
         )
         return rs
 
@@ -81,7 +80,6 @@ class FetchTests(unittest.TestCase):
             arrow_schema_bytes,
             description,
             use_cloud_fetch=True,
-            statement_type=Mock(),
             chunk_id=0,
         ):
             nonlocal batch_index
@@ -102,7 +100,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=None,
+                command_id=Mock(),
                 status=None,
                 has_been_closed_server_side=False,
                 description=description,
@@ -111,7 +109,6 @@ class FetchTests(unittest.TestCase):
             ),
             thrift_client=mock_thrift_backend,
             session_id_hex=Mock(),
-            statement_type=Mock(),
         )
         return rs
 

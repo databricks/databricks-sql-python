@@ -194,7 +194,6 @@ class ThriftResultSet(ResultSet):
         execute_response: "ExecuteResponse",
         thrift_client: "ThriftDatabricksClient",
         session_id_hex: Optional[str],
-        statement_type: StatementType,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
@@ -218,7 +217,7 @@ class ThriftResultSet(ResultSet):
             :param ssl_options: SSL options for cloud fetch
             :param is_direct_results: Whether there are more rows to fetch
         """
-        self.statement_type = statement_type
+        self.statement_type = execute_response.command_id.statement_type
         self.chunk_id = 0
 
         # Initialize ThriftResultSet-specific attributes
@@ -241,7 +240,7 @@ class ThriftResultSet(ResultSet):
                 ssl_options=ssl_options,
                 session_id_hex=session_id_hex,
                 statement_id=execute_response.command_id.to_hex_guid(),
-                statement_type=statement_type,
+                statement_type=self.statement_type,
                 chunk_id=self.chunk_id,
             )
             if t_row_set and t_row_set.resultLinks:
@@ -278,7 +277,6 @@ class ThriftResultSet(ResultSet):
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
             use_cloud_fetch=self._use_cloud_fetch,
-            statement_type=self.statement_type,
             chunk_id=self.chunk_id,
         )
         self.results = results
