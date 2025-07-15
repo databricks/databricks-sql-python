@@ -46,7 +46,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         ) as conn:
 
             cursor = conn.cursor()
-            query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+            query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
             cursor.execute(query)
 
         # GET should succeed
@@ -57,7 +57,7 @@ class PySQLStagingIngestionTestSuiteMixin:
             extra_params={"staging_allowed_local_path": new_temp_path}
         ) as conn:
             cursor = conn.cursor()
-            query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+            query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
 
         with open(new_fh, "rb") as fp:
@@ -67,7 +67,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         # REMOVE should succeed
 
-        remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv'"
+        remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv'"
 
         with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
             cursor = conn.cursor()
@@ -79,7 +79,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 Error, match="Staging operation over HTTP was unsuccessful: 404"
             ):
                 cursor = conn.cursor()
-                query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+                query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' TO '{new_temp_path}'"
                 cursor.execute(query)
 
         os.remove(temp_path)
