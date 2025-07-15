@@ -172,15 +172,15 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             httpHeaders=link.http_headers or {},
         )
 
-    def _get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
+    def _get_chunk_link(self, chunk_index: int) -> "ExternalLink":
         """Progress to the next chunk link."""
         if chunk_index >= self._total_chunk_count:
-            return None
+            raise ValueError(
+                f"Chunk index {chunk_index} is out of bounds, total chunks: {self._total_chunk_count}"
+            )
 
         try:
-            return self._sea_client.get_chunk_link(
-                self._statement_id, chunk_index
-            )
+            return self._sea_client.get_chunk_link(self._statement_id, chunk_index)
         except Exception as e:
             raise ServerOperationError(
                 f"Error fetching link for chunk {chunk_index}: {e}",
@@ -205,12 +205,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
-
-        print(self._current_chunk_index)
         self._current_chunk_index += 1
         next_chunk_link = self._get_chunk_link(self._current_chunk_index)
-
-        if not next_chunk_link:
-            logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
-            return None
         return self._create_table_from_link(next_chunk_link)
