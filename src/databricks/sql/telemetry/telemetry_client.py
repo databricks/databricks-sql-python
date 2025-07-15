@@ -160,9 +160,7 @@ class TelemetryClient(BaseTelemetryClient):
         with self._lock:
             self._events_batch.append(event)
         if len(self._events_batch) >= self._batch_size:
-            logger.debug(
-                "Batch size limit reached (%s), flushing events", self._batch_size
-            )
+            logger.debug("Batch size limit reached (%s), flushing events", self._batch_size)
             self._flush()
 
     def _flush(self):
@@ -314,9 +312,7 @@ class TelemetryClientFactory:
     It uses a thread pool to handle asynchronous operations.
     """
 
-    _clients: Dict[
-        str, BaseTelemetryClient
-    ] = {}  # Map of session_id_hex -> BaseTelemetryClient
+    _clients: Dict[str, BaseTelemetryClient] = {}  # Map of session_id_hex -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.RLock()  # Thread safety for factory operations
@@ -330,14 +326,10 @@ class TelemetryClientFactory:
 
         if not cls._initialized:
             cls._clients = {}
-            cls._executor = ThreadPoolExecutor(
-                max_workers=10
-            )  # Thread pool for async operations
+            cls._executor = ThreadPoolExecutor(max_workers=10)  # Thread pool for async operations
             cls._install_exception_hook()
             cls._initialized = True
-            logger.debug(
-                "TelemetryClientFactory initialized with thread pool (max_workers=10)"
-            )
+            logger.debug("TelemetryClientFactory initialized with thread pool (max_workers=10)")
 
     @classmethod
     def _install_exception_hook(cls):
@@ -380,9 +372,7 @@ class TelemetryClientFactory:
                         session_id_hex,
                     )
                     if telemetry_enabled:
-                        TelemetryClientFactory._clients[
-                            session_id_hex
-                        ] = TelemetryClient(
+                        TelemetryClientFactory._clients[session_id_hex] = TelemetryClient(
                             telemetry_enabled=telemetry_enabled,
                             session_id_hex=session_id_hex,
                             auth_provider=auth_provider,
@@ -390,9 +380,7 @@ class TelemetryClientFactory:
                             executor=TelemetryClientFactory._executor,
                         )
                     else:
-                        TelemetryClientFactory._clients[
-                            session_id_hex
-                        ] = NoopTelemetryClient()
+                        TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
@@ -401,9 +389,7 @@ class TelemetryClientFactory:
     @staticmethod
     def get_telemetry_client(session_id_hex):
         """Get the telemetry client for a specific connection"""
-        return TelemetryClientFactory._clients.get(
-            session_id_hex, NoopTelemetryClient()
-        )
+        return TelemetryClientFactory._clients.get(session_id_hex, NoopTelemetryClient())
 
     @staticmethod
     def close(session_id_hex):
@@ -411,20 +397,14 @@ class TelemetryClientFactory:
 
         with TelemetryClientFactory._lock:
             if (
-                telemetry_client := TelemetryClientFactory._clients.pop(
-                    session_id_hex, None
-                )
+                telemetry_client := TelemetryClientFactory._clients.pop(session_id_hex, None)
             ) is not None:
-                logger.debug(
-                    "Removing telemetry client for connection %s", session_id_hex
-                )
+                logger.debug("Removing telemetry client for connection %s", session_id_hex)
                 telemetry_client.close()
 
             # Shutdown executor if no more clients
             if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
-                logger.debug(
-                    "No more telemetry clients, shutting down thread pool executor"
-                )
+                logger.debug("No more telemetry clients, shutting down thread pool executor")
                 try:
                     TelemetryClientFactory._executor.shutdown(wait=True)
                 except Exception as e:

@@ -47,29 +47,23 @@ class TestIndividualFormatters(object):
         # Testing for the presence of these characters: '"/\😂
 
         assert (
-            pe.escape_string("his name was 'robert palmer'")
-            == r"'his name was \'robert palmer\''"
+            pe.escape_string("his name was 'robert palmer'") == r"'his name was \'robert palmer\''"
         )
 
         # These tests represent the same user input in the several ways it can be written in Python
         # Each argument to `escape_string` evaluates to the same bytes. But Python lets us write it differently.
         assert (
-            pe.escape_string('his name was "robert palmer"')
-            == "'his name was \"robert palmer\"'"
+            pe.escape_string('his name was "robert palmer"') == "'his name was \"robert palmer\"'"
         )
         assert (
-            pe.escape_string('his name was "robert palmer"')
-            == "'his name was \"robert palmer\"'"
+            pe.escape_string('his name was "robert palmer"') == "'his name was \"robert palmer\"'"
         )
         assert (
             pe.escape_string("his name was {}".format('"robert palmer"'))
             == "'his name was \"robert palmer\"'"
         )
 
-        assert (
-            pe.escape_string("his name was robert / palmer")
-            == r"'his name was robert / palmer'"
-        )
+        assert pe.escape_string("his name was robert / palmer") == r"'his name was robert / palmer'"
 
         # If you need to include a single backslash, use an r-string to prevent Python from raising a
         # DeprecationWarning for an invalid escape sequence
@@ -78,18 +72,14 @@ class TestIndividualFormatters(object):
             == r"'his name was robert \\/ palmer'"
         )
         assert (
-            pe.escape_string("his name was robert \\ palmer")
-            == r"'his name was robert \\ palmer'"
+            pe.escape_string("his name was robert \\ palmer") == r"'his name was robert \\ palmer'"
         )
         assert (
             pe.escape_string("his name was robert \\\\ palmer")
             == r"'his name was robert \\\\ palmer'"
         )
 
-        assert (
-            pe.escape_string("his name was robert palmer 😂")
-            == r"'his name was robert palmer 😂'"
-        )
+        assert pe.escape_string("his name was robert palmer 😂") == r"'his name was robert palmer 😂'"
 
         # Adding the test from PR #56 to prove escape behaviour
 
@@ -235,15 +225,10 @@ class TestInlineToNativeTransformer(object):
             ),
         ),
     )
-    def test_transformer(
-        self, label: str, query: str, params: Dict[str, Any], expected: str
-    ):
+    def test_transformer(self, label: str, query: str, params: Dict[str, Any], expected: str):
 
         _params = [
-            dbsql_parameter_from_primitive(value=value, name=name)
-            for name, value in params.items()
+            dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()
         ]
-        output = transform_paramstyle(
-            query, _params, param_structure=ParameterStructure.NAMED
-        )
+        output = transform_paramstyle(query, _params, param_structure=ParameterStructure.NAMED)
         assert output == expected

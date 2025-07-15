@@ -20,9 +20,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         row_count: int = 8000,
         bytes_num: int = 20971520,
     ):
-        return TSparkArrowResultLink(
-            file_link, None, start_row_offset, row_count, bytes_num
-        )
+        return TSparkArrowResultLink(file_link, None, start_row_offset, row_count, bytes_num)
 
     def create_result_links(self, num_files: int, start_row_offset: int = 0):
         result_links = []
@@ -188,10 +186,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert result.num_rows == 7
         assert queue.table_row_index == 3
         assert (
-            result
-            == pyarrow.concat_tables(
-                [self.make_arrow_table(), self.make_arrow_table()]
-            )[:7]
+            result == pyarrow.concat_tables([self.make_arrow_table(), self.make_arrow_table()])[:7]
         )
 
     @patch("databricks.sql.utils.CloudFetchQueue._create_next_table")
@@ -288,9 +283,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert result == self.make_arrow_table()
 
     @patch("databricks.sql.utils.CloudFetchQueue._create_next_table")
-    def test_remaining_rows_multiple_tables_fully_returned(
-        self, mock_create_next_table
-    ):
+    def test_remaining_rows_multiple_tables_fully_returned(self, mock_create_next_table):
         mock_create_next_table.side_effect = [
             self.make_arrow_table(),
             self.make_arrow_table(),
@@ -312,10 +305,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert mock_create_next_table.call_count == 3
         assert result.num_rows == 5
         assert (
-            result
-            == pyarrow.concat_tables(
-                [self.make_arrow_table(), self.make_arrow_table()]
-            )[3:]
+            result == pyarrow.concat_tables([self.make_arrow_table(), self.make_arrow_table()])[3:]
         )
 
     @patch("databricks.sql.utils.CloudFetchQueue._create_next_table", return_value=None)

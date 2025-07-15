@@ -58,9 +58,7 @@ def infer_cloud_from_host(hostname: str) -> Optional[CloudType]:
 
 def is_supported_databricks_oauth_host(hostname: str) -> bool:
     host = hostname.lower().replace("https://", "").split("/")[0]
-    domains = (
-        DATABRICKS_AWS_DOMAINS + DATABRICKS_GCP_DOMAINS + DATABRICKS_OAUTH_AZURE_DOMAINS
-    )
+    domains = DATABRICKS_AWS_DOMAINS + DATABRICKS_GCP_DOMAINS + DATABRICKS_OAUTH_AZURE_DOMAINS
     return any(e for e in domains if host.endswith(e))
 
 
@@ -106,7 +104,9 @@ class AzureOAuthEndpointCollection(OAuthEndpointCollection):
         return f"{get_databricks_oidc_url(hostname)}/oauth2/v2.0/authorize"
 
     def get_openid_config_url(self, hostname: str):
-        return "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
+        return (
+            "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
+        )
 
 
 class InHouseOAuthEndpointCollection(OAuthEndpointCollection):
@@ -123,9 +123,7 @@ class InHouseOAuthEndpointCollection(OAuthEndpointCollection):
         return f"{idp_url}/.well-known/oauth-authorization-server"
 
 
-def get_oauth_endpoints(
-    hostname: str, use_azure_auth: bool
-) -> Optional[OAuthEndpointCollection]:
+def get_oauth_endpoints(hostname: str, use_azure_auth: bool) -> Optional[OAuthEndpointCollection]:
     cloud = infer_cloud_from_host(hostname)
 
     if cloud in [CloudType.AWS, CloudType.GCP]:

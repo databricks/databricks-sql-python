@@ -48,9 +48,7 @@ class FetchBenchmarkTests(unittest.TestCase):
         ]
         return rs
 
-    @pytest.mark.skip(
-        reason="Test has not been updated for latest connector API (June 2022)"
-    )
+    @pytest.mark.skip(reason="Test has not been updated for latest connector API (June 2022)")
     def test_benchmark_fetchall(self):
         print("preparing dummy arrow table")
         arrow_table = FetchBenchmarkTests.make_arrow_table(10, 25000)
@@ -60,9 +58,7 @@ class FetchBenchmarkTests(unittest.TestCase):
         start_time = time.time()
         count = 0
         while time.time() < start_time + benchmark_seconds:
-            dummy_result_set = self.make_dummy_result_set_from_initial_results(
-                arrow_table
-            )
+            dummy_result_set = self.make_dummy_result_set_from_initial_results(arrow_table)
             res = dummy_result_set.fetchall()
             for _ in res:
                 pass

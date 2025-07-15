@@ -179,8 +179,12 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         :paramstyle:
             This is a no-op but is included to make the test-code easier to read.
         """
-        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
+        INSERT_QUERY = (
+            f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
+        )
+        SELECT_QUERY = (
+            f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
+        )
         DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
@@ -278,9 +282,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         """
         if value is None:
             return None
-        elif isinstance(value, (Sequence, np.ndarray)) and not isinstance(
-            value, (str, bytes)
-        ):
+        elif isinstance(value, (Sequence, np.ndarray)) and not isinstance(value, (str, bytes)):
             return tuple(value)
         elif isinstance(value, dict):
             return tuple(value.items())
@@ -307,8 +309,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             if len(actual_parsed) != len(expected_parsed):
                 return False
             return all(
-                self._recursive_compare(o1, o2)
-                for o1, o2 in zip(actual_parsed, expected_parsed)
+                self._recursive_compare(o1, o2) for o1, o2 in zip(actual_parsed, expected_parsed)
             )
 
         return actual_parsed == expected_parsed
@@ -385,15 +386,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         If a user explicitly sets use_inline_params, don't warn them about it.
         """
 
-        extra_args = (
-            {"use_inline_params": use_inline_params} if use_inline_params else {}
-        )
+        extra_args = {"use_inline_params": use_inline_params} if use_inline_params else {}
 
         with self.connection(extra_params=extra_args) as conn:
             with conn.cursor() as cursor:
-                with self.patch_server_supports_native_params(
-                    supports_native_params=True
-                ):
+                with self.patch_server_supports_native_params(supports_native_params=True):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
                     if use_inline_params is True:
                         assert (
@@ -535,9 +532,7 @@ class TestInlineParameterSyntax(PySQLPytestTestCase):
         query = "SELECT 'samsonite', %s WHERE 'samsonite' LIKE '%sonite'"
         params = ["luggage"]
         with self.cursor(extra_params={"use_inline_params": True}) as cursor:
-            with pytest.raises(
-                TypeError, match="not enough arguments for format string"
-            ):
+            with pytest.raises(TypeError, match="not enough arguments for format string"):
                 cursor.execute(query, parameters=params)
 
     def test_inline_named_dont_break_sql(self):

@@ -242,15 +242,11 @@ class Connection:
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
 
-        auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, **kwargs
-        )
+        auth_provider = get_python_sql_connector_auth_provider(server_hostname, **kwargs)
 
         self.server_telemetry_enabled = True
         self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
-        self.telemetry_enabled = (
-            self.client_telemetry_enabled and self.server_telemetry_enabled
-        )
+        self.telemetry_enabled = self.client_telemetry_enabled and self.server_telemetry_enabled
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
@@ -262,9 +258,7 @@ class Connection:
                 )
 
         if user_agent_entry:
-            useragent_header = "{}/{} ({})".format(
-                USER_AGENT_NAME, __version__, user_agent_entry
-            )
+            useragent_header = "{}/{} ({})".format(USER_AGENT_NAME, __version__, user_agent_entry)
         else:
             useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
 
@@ -272,9 +266,7 @@ class Connection:
 
         self._ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
-            tls_verify=not kwargs.get(
-                "_tls_no_verify", False
-            ),  # by default - verify cert and host
+            tls_verify=not kwargs.get("_tls_no_verify", False),  # by default - verify cert and host
             tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
             tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
             tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
@@ -369,8 +361,7 @@ class Connection:
     def __del__(self):
         if self.open:
             logger.debug(
-                "Closing unclosed connection for session "
-                "{}".format(self.get_session_id_hex())
+                "Closing unclosed connection for session " "{}".format(self.get_session_id_hex())
             )
             try:
                 self._close(close_cursors=False)
@@ -453,13 +444,9 @@ class Connection:
                 logger.info("Session was closed by a prior request")
         except DatabaseError as e:
             if "Invalid SessionHandle" in str(e):
-                logger.warning(
-                    f"Attempted to close session that was already closed: {e}"
-                )
+                logger.warning(f"Attempted to close session that was already closed: {e}")
             else:
-                logger.warning(
-                    f"Attempt to close session raised an exception at the server: {e}"
-                )
+                logger.warning(f"Attempt to close session raised an exception at the server: {e}")
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
@@ -553,9 +540,7 @@ class Cursor:
         """Return True if all members of the list have a non-null .name attribute"""
         return all([i.name is not None for i in params])
 
-    def _normalize_tparametersequence(
-        self, params: TParameterSequence
-    ) -> List[TDbsqlParameter]:
+    def _normalize_tparametersequence(self, params: TParameterSequence) -> List[TDbsqlParameter]:
         """Retains the same order as the input list."""
 
         output: List[TDbsqlParameter] = []
@@ -567,12 +552,9 @@ class Cursor:
 
         return output
 
-    def _normalize_tparameterdict(
-        self, params: TParameterDict
-    ) -> List[TDbsqlParameter]:
+    def _normalize_tparameterdict(self, params: TParameterDict) -> List[TDbsqlParameter]:
         return [
-            dbsql_parameter_from_primitive(value=value, name=name)
-            for name, value in params.items()
+            dbsql_parameter_from_primitive(value=value, name=name) for name, value in params.items()
         ]
 
     def _normalize_tparametercollection(
@@ -645,8 +627,7 @@ class Cursor:
 
         stmt = stmt
         output = [
-            p.as_tspark_param(named=param_structure == ParameterStructure.NAMED)
-            for p in params
+            p.as_tspark_param(named=param_structure == ParameterStructure.NAMED) for p in params
         ]
 
         return stmt, output
@@ -665,9 +646,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    def _handle_staging_operation(
-        self, staging_allowed_local_path: Union[None, str, List[str]]
-    ):
+    def _handle_staging_operation(self, staging_allowed_local_path: Union[None, str, List[str]]):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler.
 
@@ -685,9 +664,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        abs_staging_allowed_local_paths = [
-            os.path.abspath(i) for i in _staging_allowed_local_paths
-        ]
+        abs_staging_allowed_local_paths = [os.path.abspath(i) for i in _staging_allowed_local_paths]
 
         assert self.active_result_set is not None
         row = self.active_result_set.fetchone()
@@ -716,9 +693,7 @@ class Cursor:
                 )
 
         # May be real headers, or could be json string
-        headers = (
-            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
-        )
+        headers = json.loads(row.headers) if isinstance(row.headers, str) else row.headers
 
         handler_args = {
             "presigned_url": row.presignedUrl,
@@ -815,9 +790,7 @@ class Cursor:
             fp.write(r.content)
 
     @log_latency(StatementType.SQL)
-    def _handle_staging_remove(
-        self, presigned_url: str, headers: Optional[dict] = None
-    ):
+    def _handle_staging_remove(self, presigned_url: str, headers: Optional[dict] = None):
         """Make an HTTP DELETE request to the presigned_url"""
 
         r = requests.delete(url=presigned_url, headers=headers)
@@ -866,9 +839,7 @@ class Cursor:
 
         :returns self
         """
-        logger.debug(
-            "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
-        )
+        logger.debug("Cursor.execute(operation=%s, parameters=%s)", operation, parameters)
 
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
@@ -1007,9 +978,7 @@ class Cursor:
 
         operation_state = self.get_query_state()
         if operation_state == ttypes.TOperationState.FINISHED_STATE:
-            execute_response = self.thrift_backend.get_execution_result(
-                self.active_op_handle, self
-            )
+            execute_response = self.thrift_backend.get_execution_result(self.active_op_handle, self)
             self.active_result_set = ResultSet(
                 self.connection,
                 execute_response,
@@ -1259,8 +1228,7 @@ class Cursor:
             self.thrift_backend.cancel_command(self.active_op_handle)
         else:
             logger.warning(
-                "Attempting to cancel a command, but there is no "
-                "currently executing command"
+                "Attempting to cancel a command, but there is no " "currently executing command"
             )
 
     def close(self) -> None:
@@ -1406,9 +1374,7 @@ class ResultSet:
         ResultRow = Row(*column_names)
 
         if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
+            return [ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())]
 
         # Need to use nullable types, as otherwise type can change when there are missing values.
         # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
@@ -1455,11 +1421,7 @@ class ResultSet:
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
 
-        while (
-            n_remaining_rows > 0
-            and not self.has_been_closed_server_side
-            and self.has_more_rows
-        ):
+        while n_remaining_rows > 0 and not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
             results = pyarrow.concat_tables([results, partial_results])
@@ -1480,8 +1442,7 @@ class ResultSet:
             raise ValueError("The columns in the results don't match")
 
         merged_result = [
-            result1.column_table[i] + result2.column_table[i]
-            for i in range(result1.num_columns)
+            result1.column_table[i] + result2.column_table[i] for i in range(result1.num_columns)
         ]
         return ColumnTable(merged_result, result1.column_names)
 
@@ -1497,11 +1458,7 @@ class ResultSet:
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
 
-        while (
-            n_remaining_rows > 0
-            and not self.has_been_closed_server_side
-            and self.has_more_rows
-        ):
+        while n_remaining_rows > 0 and not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
             results = self.merge_columnar(results, partial_results)
@@ -1518,9 +1475,7 @@ class ResultSet:
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            if isinstance(results, ColumnTable) and isinstance(
-                partial_results, ColumnTable
-            ):
+            if isinstance(results, ColumnTable) and isinstance(partial_results, ColumnTable):
                 results = self.merge_columnar(results, partial_results)
             else:
                 results = pyarrow.concat_tables([results, partial_results])
@@ -1529,10 +1484,7 @@ class ResultSet:
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
         # Valid only for metadata commands result set
         if isinstance(results, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(results.column_names, results.column_table)
-            }
+            data = {name: col for name, col in zip(results.column_names, results.column_table)}
             return pyarrow.Table.from_pydict(data)
         return results
 

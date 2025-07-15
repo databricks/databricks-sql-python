@@ -41,9 +41,7 @@ class ResultFileDownloadManager:
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
         self._ssl_options = ssl_options
 
-    def get_next_downloaded_file(
-        self, next_row_offset: int
-    ) -> Union[DownloadedFile, None]:
+    def get_next_downloaded_file(self, next_row_offset: int) -> Union[DownloadedFile, None]:
         """
         Get next file that starts at given offset.
 
@@ -90,9 +88,7 @@ class ResultFileDownloadManager:
             len(self._pending_links) > 0
         ):
             link = self._pending_links.pop(0)
-            logger.debug(
-                "- start: {}, row count: {}".format(link.startRowOffset, link.rowCount)
-            )
+            logger.debug("- start: {}, row count: {}".format(link.startRowOffset, link.rowCount))
             handler = ResultSetDownloadHandler(
                 settings=self._downloadable_result_settings,
                 link=link,

@@ -199,9 +199,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.headers = self.__resp.headers
 
         logger.info(
-            "HTTP Response with status code {}, message: {}".format(
-                self.code, self.message
-            )
+            "HTTP Response with status code {}, message: {}".format(self.code, self.message)
         )
 
     @staticmethod

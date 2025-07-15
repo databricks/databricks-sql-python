@@ -74,8 +74,6 @@ class DevOnlyFilePersistence(OAuthPersistence):
                     )
                     logger.error(msg)
                     raise Exception(msg)
-                return OAuthToken(
-                    token_as_json["access_token"], token_as_json["refresh_token"]
-                )
+                return OAuthToken(token_as_json["access_token"], token_as_json["refresh_token"])
         except Exception as e:
             return None

@@ -73,10 +73,7 @@ class CursorExtractor(TelemetryExtractor):
         return ExecutionResultFormat.FORMAT_UNSPECIFIED
 
     def get_retry_count(self) -> int:
-        if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
-        ):
+        if hasattr(self.thrift_backend, "retry_policy") and self.thrift_backend.retry_policy:
             return len(self.thrift_backend.retry_policy.history)
         return 0
 
@@ -110,10 +107,7 @@ class ResultSetExtractor(TelemetryExtractor):
         return ExecutionResultFormat.FORMAT_UNSPECIFIED
 
     def get_retry_count(self) -> int:
-        if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
-        ):
+        if hasattr(self.thrift_backend, "retry_policy") and self.thrift_backend.retry_policy:
             return len(self.thrift_backend.retry_policy.history)
         return 0
 
@@ -208,9 +202,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                         retry_count=_safe_call(extractor.get_retry_count),
                     )
 
-                    telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                        session_id_hex
-                    )
+                    telemetry_client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
                     telemetry_client.export_latency_log(
                         latency_ms=duration_ms,
                         sql_execution_event=sql_exec_event,
