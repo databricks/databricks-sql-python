@@ -97,6 +97,9 @@ class JsonQueue(ResultSetQueue):
         self.cur_row_index += len(slice)
         return slice
 
+    def close(self):
+        return
+
 
 class SeaCloudFetchQueue(CloudFetchQueue):
     """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for SEA backend."""
