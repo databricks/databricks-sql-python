@@ -115,7 +115,7 @@ class ClientTestSuite(unittest.TestCase):
                 # Mock the backend that will be used by the real ThriftResultSet
                 mock_backend = Mock(spec=ThriftDatabricksClient)
                 mock_backend.staging_allowed_local_path = None
-                mock_backend.fetch_results.return_value = (Mock(), False)
+                mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
                 # Configure the decorator's mock to return our specific mock_backend
                 mock_thrift_client_class.return_value = mock_backend
@@ -128,6 +128,8 @@ class ClientTestSuite(unittest.TestCase):
                     connection=connection,
                     execute_response=mock_execute_response,
                     thrift_client=mock_backend,
+                    session_id_hex=Mock(),
+                    statement_type=Mock(),
                 )
 
                 # Mock execute_command to return our real result set
@@ -188,12 +190,14 @@ class ClientTestSuite(unittest.TestCase):
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
         mock_backend = Mock()
-        mock_backend.fetch_results.return_value = (Mock(), False)
+        mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
         result_set = ThriftResultSet(
             connection=mock_connection,
             execute_response=Mock(),
             thrift_client=mock_backend,
+            session_id_hex=Mock(),
+            statement_type=Mock(),
         )
         # Setup session mock on the mock_connection
         mock_session = Mock()
@@ -215,10 +219,9 @@ class ClientTestSuite(unittest.TestCase):
         mock_session.open = True
         type(mock_connection).session = PropertyMock(return_value=mock_session)
 
-        mock_thrift_backend.fetch_results.return_value = (Mock(), False)
+        mock_thrift_backend.fetch_results.return_value = (Mock(), False, 0)
         result_set = ThriftResultSet(
-            mock_connection, mock_results_response, mock_thrift_backend
-        )
+            mock_connection, mock_results_response, mock_thrift_backend, session_id_hex=Mock(), statement_type=Mock(),)
 
         result_set.close()
 
@@ -261,9 +264,9 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_negative_fetch_throws_exception(self):
         mock_backend = Mock()
-        mock_backend.fetch_results.return_value = (Mock(), False)
+        mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
-        result_set = ThriftResultSet(Mock(), Mock(), mock_backend)
+        result_set = ThriftResultSet(Mock(), Mock(), mock_backend, session_id_hex=Mock(), statement_type=Mock())
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)

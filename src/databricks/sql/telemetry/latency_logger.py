@@ -7,7 +7,6 @@ from databricks.sql.telemetry.models.event import (
     SqlExecutionEvent,
 )
 from databricks.sql.telemetry.models.enums import ExecutionResultFormat, StatementType
-from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +34,16 @@ class TelemetryExtractor:
     def get_is_compressed(self):
         pass
 
-    def get_execution_result(self):
+    def get_execution_result_format(self):
         pass
 
     def get_retry_count(self):
         pass
 
     def get_chunk_id(self):
+        pass
+
+    def get_statement_type(self):
         pass
 
 
@@ -62,7 +64,7 @@ class CursorExtractor(TelemetryExtractor):
     def get_is_compressed(self) -> bool:
         return self.connection.lz4_compression
 
-    def get_execution_result(self) -> ExecutionResultFormat:
+    def get_execution_result_format(self) -> ExecutionResultFormat:
         if self.active_result_set is None:
             return ExecutionResultFormat.FORMAT_UNSPECIFIED
 
@@ -84,6 +86,9 @@ class CursorExtractor(TelemetryExtractor):
     def get_chunk_id(self):
         return None
 
+    def get_statement_type(self):
+        return self.statement_type
+
 
 class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
     """
@@ -99,7 +104,7 @@ class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
     def get_is_compressed(self) -> bool:
         return self._obj.settings.is_lz4_compressed
 
-    def get_execution_result(self) -> ExecutionResultFormat:
+    def get_execution_result_format(self) -> ExecutionResultFormat:
         return ExecutionResultFormat.EXTERNAL_LINKS
 
     def get_retry_count(self) -> Optional[int]:
@@ -108,6 +113,9 @@ class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
 
     def get_chunk_id(self) -> Optional[int]:
         return self._obj.chunk_id
+
+    def get_statement_type(self):
+        return self.statement_type
 
 
 def get_extractor(obj):
@@ -194,9 +202,11 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                     statement_id = _safe_call(extractor.get_statement_id)
 
                     sql_exec_event = SqlExecutionEvent(
-                        statement_type=statement_type,
+                        statement_type=_safe_call(extractor.get_statement_type),
                         is_compressed=_safe_call(extractor.get_is_compressed),
-                        execution_result=_safe_call(extractor.get_execution_result),
+                        execution_result=_safe_call(
+                            extractor.get_execution_result_format
+                        ),
                         retry_count=_safe_call(extractor.get_retry_count),
                         chunk_id=_safe_call(extractor.get_chunk_id),
                     )

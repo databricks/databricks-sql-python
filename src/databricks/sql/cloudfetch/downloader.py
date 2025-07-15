@@ -11,6 +11,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 from databricks.sql.telemetry.latency_logger import log_latency
+from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +70,9 @@ class ResultSetDownloadHandler:
         link: TSparkArrowResultLink,
         ssl_options: SSLOptions,
         chunk_id: int,
-        session_id_hex: Optional[str] = None,
-        statement_id: Optional[str] = None,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        statement_type: StatementType,
     ):
         self.settings = settings
         self.link = link
@@ -78,6 +80,7 @@ class ResultSetDownloadHandler:
         self.chunk_id = chunk_id
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
+        self.statement_type = statement_type
 
     @log_latency()
     def run(self) -> DownloadedFile:

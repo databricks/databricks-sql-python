@@ -14,6 +14,7 @@ from databricks.sql.result_set import ThriftResultSet
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
+    from databricks.sql.telemetry.models.event import StatementType
 
 from databricks.sql.backend.types import (
     CommandState,
@@ -832,7 +833,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return execute_response, is_direct_results
 
     def get_execution_result(
-        self, command_id: CommandId, cursor: "Cursor"
+        self, command_id: CommandId, cursor: "Cursor", statement_type: StatementType
     ) -> "ResultSet":
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -900,6 +901,8 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
+            statement_type=statement_type,
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -965,6 +968,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_bytes: int,
         lz4_compression: bool,
         cursor: Cursor,
+        statement_type: StatementType,
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
@@ -1018,11 +1022,9 @@ class ThriftDatabricksClient(DatabricksClient):
             self._handle_execute_response_async(resp, cursor)
             return None
         else:
-            (
-                execute_response,
-                is_direct_results,
-                statement_id,
-            ) = self._handle_execute_response(resp, cursor)
+            execute_response, is_direct_results = self._handle_execute_response(
+                resp, cursor
+            )
 
             t_row_set = None
             if resp.directResults and resp.directResults.resultSet:
@@ -1040,7 +1042,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 ssl_options=self._ssl_options,
                 is_direct_results=is_direct_results,
                 session_id_hex=self._session_id_hex,
-                statement_id=statement_id,
+                statement_type=statement_type,
             )
 
     def get_catalogs(
@@ -1049,6 +1051,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: "Cursor",
+        statement_type: StatementType,
     ) -> "ResultSet":
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -1062,11 +1065,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetCatalogs, req)
 
-        (
-            execute_response,
-            is_direct_results,
-            statement_id,
-        ) = self._handle_execute_response(resp, cursor)
+        execute_response, is_direct_results = self._handle_execute_response(
+            resp, cursor
+        )
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1084,7 +1085,7 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
             session_id_hex=self._session_id_hex,
-            statement_id=statement_id,
+            statement_id=statement_type,
         )
 
     def get_schemas(
@@ -1093,6 +1094,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: Cursor,
+        statement_type: StatementType,
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
@@ -1112,11 +1114,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetSchemas, req)
 
-        (
-            execute_response,
-            is_direct_results,
-            statement_id,
-        ) = self._handle_execute_response(resp, cursor)
+        execute_response, is_direct_results = self._handle_execute_response(
+            resp, cursor
+        )
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1134,7 +1134,7 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
             session_id_hex=self._session_id_hex,
-            statement_id=statement_id,
+            statement_type=statement_type,
         )
 
     def get_tables(
@@ -1143,6 +1143,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: Cursor,
+        statement_type: StatementType,
         catalog_name=None,
         schema_name=None,
         table_name=None,
@@ -1166,11 +1167,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetTables, req)
 
-        (
-            execute_response,
-            is_direct_results,
-            statement_id,
-        ) = self._handle_execute_response(resp, cursor)
+        execute_response, is_direct_results = self._handle_execute_response(
+            resp, cursor
+        )
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1188,7 +1187,7 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
             session_id_hex=self._session_id_hex,
-            statement_id=statement_id,
+            statement_type=statement_type,
         )
 
     def get_columns(
@@ -1197,6 +1196,7 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: Cursor,
+        statement_type: StatementType,
         catalog_name=None,
         schema_name=None,
         table_name=None,
@@ -1220,11 +1220,9 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetColumns, req)
 
-        (
-            execute_response,
-            is_direct_results,
-            statement_id,
-        ) = self._handle_execute_response(resp, cursor)
+        execute_response, is_direct_results = self._handle_execute_response(
+            resp, cursor
+        )
 
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
@@ -1242,7 +1240,7 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
             session_id_hex=self._session_id_hex,
-            statement_id=statement_id,
+            statement_type=statement_type,
         )
 
     def _handle_execute_response(self, resp, cursor):
@@ -1258,15 +1256,7 @@ class ThriftDatabricksClient(DatabricksClient):
             resp.directResults and resp.directResults.operationStatus,
         )
 
-        execute_response, is_direct_results = self._results_message_to_execute_response(
-            resp, final_operation_state
-        )
-
-        return (
-            execute_response,
-            is_direct_results,
-            cursor.active_command_id.to_hex_guid(),
-        )
+        return self._results_message_to_execute_response(resp, final_operation_state)
 
     def _handle_execute_response_async(self, resp, cursor):
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
@@ -1285,8 +1275,9 @@ class ThriftDatabricksClient(DatabricksClient):
         lz4_compressed: bool,
         arrow_schema_bytes,
         description,
+        statement_type,
+        chunk_id: int,
         use_cloud_fetch=True,
-        statement_id=None,
     ):
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -1324,10 +1315,16 @@ class ThriftDatabricksClient(DatabricksClient):
             description=description,
             ssl_options=self._ssl_options,
             session_id_hex=self._session_id_hex,
-            statement_id=statement_id,
+            statement_id=command_id.to_hex_guid(),
+            statement_type=statement_type,
+            chunk_id=chunk_id,
         )
 
-        return queue, resp.hasMoreRows
+        return (
+            queue,
+            resp.hasMoreRows,
+            len(resp.results.resultLinks) if resp.results.resultLinks else 0,
+        )
 
     def cancel_command(self, command_id: CommandId) -> None:
         thrift_handle = command_id.to_thrift_handle()

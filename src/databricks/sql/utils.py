@@ -31,7 +31,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 )
 from databricks.sql.types import SSLOptions
 from databricks.sql.backend.types import CommandId
-
+from databricks.sql.telemetry.models.event import StatementType
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 import logging
@@ -60,10 +60,12 @@ class ThriftResultSetQueueFactory(ABC):
         arrow_schema_bytes: bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        statement_type: StatementType,
+        chunk_id: int,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
-        session_id_hex: Optional[str] = None,
-        statement_id: Optional[str] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -110,6 +112,8 @@ class ThriftResultSetQueueFactory(ABC):
                 ssl_options=ssl_options,
                 session_id_hex=session_id_hex,
                 statement_id=statement_id,
+                statement_type=statement_type,
+                chunk_id=chunk_id,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -211,12 +215,14 @@ class CloudFetchQueue(ResultSetQueue):
         schema_bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        statement_type: StatementType,
+        chunk_id: int,
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
-        session_id_hex: Optional[str] = None,
-        statement_id: Optional[str] = None,
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.
@@ -239,6 +245,8 @@ class CloudFetchQueue(ResultSetQueue):
         self._ssl_options = ssl_options
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
+        self.statement_type = statement_type
+        self.chunk_id = chunk_id
 
         logger.debug(
             "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
@@ -259,6 +267,8 @@ class CloudFetchQueue(ResultSetQueue):
             ssl_options=self._ssl_options,
             session_id_hex=self.session_id_hex,
             statement_id=self.statement_id,
+            statement_type=self.statement_type,
+            chunk_id=self.chunk_id,
         )
 
         self.table = self._create_next_table()

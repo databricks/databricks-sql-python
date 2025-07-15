@@ -1,7 +1,7 @@
 import logging
 
 from concurrent.futures import ThreadPoolExecutor, Future
-from typing import List, Union, Optional, Tuple
+from typing import List, Union, Tuple, Optional
 
 from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
@@ -9,7 +9,7 @@ from databricks.sql.cloudfetch.downloader import (
     DownloadedFile,
 )
 from databricks.sql.types import SSLOptions
-
+from databricks.sql.telemetry.models.event import StatementType
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
@@ -22,11 +22,13 @@ class ResultFileDownloadManager:
         max_download_threads: int,
         lz4_compressed: bool,
         ssl_options: SSLOptions,
-        session_id_hex: Optional[str] = None,
-        statement_id: Optional[str] = None,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        statement_type: StatementType,
+        chunk_id: int,
     ):
         self._pending_links: List[Tuple[int, TSparkArrowResultLink]] = []
-        for i, link in enumerate(links):
+        for i, link in enumerate(links, start=chunk_id):
             if link.rowCount <= 0:
                 continue
             logger.debug(
@@ -44,6 +46,7 @@ class ResultFileDownloadManager:
         self._ssl_options = ssl_options
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
+        self.statement_type = statement_type
 
     def get_next_downloaded_file(
         self, next_row_offset: int
@@ -106,6 +109,7 @@ class ResultFileDownloadManager:
                 chunk_id=chunk_id,
                 session_id_hex=self.session_id_hex,
                 statement_id=self.statement_id,
+                statement_type=self.statement_type,
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
