@@ -189,6 +189,7 @@ class SeaHttpClient:
 
         logger.debug(f"Making {method} request to {path}")
 
+        response = None
         try:
             response = self.session.request(
                 method=method.upper(),
@@ -196,10 +197,8 @@ class SeaHttpClient:
                 json=data,  # requests handles JSON encoding automatically
                 headers=headers,
             )
-
-            response.raise_for_status()  # This will raise an HTTPError for non-2xx responses
+            response.raise_for_status() 
             return response.json()
-
         except MaxRetryDurationError as e:
             # MaxRetryDurationError is raised directly by DatabricksRetryPolicy
             # when duration limits are exceeded
@@ -218,6 +217,9 @@ class SeaHttpClient:
             logger.error(f"SEA HTTP request failed with exception: {e}")
             error_message = f"Error during request to server. {e}"
             raise RequestError(error_message, None, e)
+        finally:
+            if response is not None:
+                response.close()
 
     def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
         """
