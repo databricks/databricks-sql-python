@@ -454,9 +454,6 @@ class ThriftResultSet(ResultSet):
         try:
             if self.results:
                 self.results.close()
-            print(f"has_been_closed_server_side: {self.has_been_closed_server_side}")
-            print(f"status: {self.status}")
-            print(f"connection.open: {self.connection.open}")
             if (
                 self.status != CommandState.CLOSED
                 and not self.has_been_closed_server_side
