@@ -63,12 +63,12 @@ class FetchTests(unittest.TestCase):
             execute_response=ExecuteResponse(
                 command_id=None,
                 status=None,
-                has_been_closed_server_side=True,
                 description=description,
                 lz4_compressed=True,
                 is_staging_operation=False,
             ),
             t_row_set=None,
+            has_been_closed_server_side=True,
         )
         return rs
 
@@ -117,11 +117,11 @@ class FetchTests(unittest.TestCase):
             execute_response=ExecuteResponse(
                 command_id=None,
                 status=None,
-                has_been_closed_server_side=False,
                 description=description,
                 lz4_compressed=True,
                 is_staging_operation=False,
             ),
+            has_been_closed_server_side=False,
         )
         return rs
 

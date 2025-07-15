@@ -108,7 +108,6 @@ class ClientTestSuite(unittest.TestCase):
                 mock_execute_response.status = (
                     CommandState.SUCCEEDED if not closed else CommandState.CLOSED
                 )
-                mock_execute_response.has_been_closed_server_side = closed
                 mock_execute_response.is_staging_operation = False
                 mock_execute_response.description = []
 
@@ -127,6 +126,7 @@ class ClientTestSuite(unittest.TestCase):
                 real_result_set = ThriftResultSet(
                     connection=connection,
                     execute_response=mock_execute_response,
+                    has_been_closed_server_side=closed,
                 )
 
                 # Mock execute_command to return our real result set

@@ -141,29 +141,6 @@ class TestSeaResultSet:
         mock_connection.session.backend.close_command.assert_called_once_with(
             result_set.command_id
         )
-        assert result_set.has_been_closed_server_side is True
-        assert result_set.status == CommandState.CLOSED
-
-    def test_close_when_already_closed_server_side(
-        self, mock_connection, execute_response
-    ):
-        """Test closing a result set that has already been closed server-side."""
-        result_set = SeaResultSet(
-            connection=mock_connection,
-            execute_response=execute_response,
-            result_data=ResultData(data=[]),
-            manifest=self._create_empty_manifest(ResultFormat.JSON_ARRAY),
-            buffer_size_bytes=1000,
-            arraysize=100,
-        )
-        result_set.has_been_closed_server_side = True
-
-        # Close the result set
-        result_set.close()
-
-        # Verify the backend's close_command was NOT called
-        mock_connection.session.backend.close_command.assert_not_called()
-        assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
     def test_close_when_connection_closed(self, mock_connection, execute_response):
@@ -183,7 +160,6 @@ class TestSeaResultSet:
 
         # Verify the backend's close_command was NOT called
         mock_connection.session.backend.close_command.assert_not_called()
-        assert result_set.has_been_closed_server_side is True
         assert result_set.status == CommandState.CLOSED
 
     def test_init_with_result_data(self, result_set_with_data, sample_data):
