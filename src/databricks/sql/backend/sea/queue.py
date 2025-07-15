@@ -159,6 +159,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         self._sea_client = sea_client
         self._statement_id = statement_id
+        self._total_chunk_count = total_chunk_count
 
         logger.debug(
             "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
@@ -169,8 +170,8 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         initial_links = result_data.external_links
         self._chunk_index_to_link = {link.chunk_index: link for link in initial_links}
 
-        initial_link = self._chunk_index_to_link.get(0, None)
-        if not initial_link:
+        first_link = self._chunk_index_to_link.get(0, None)
+        if not first_link:
             # possibly an empty response
             return
 
@@ -201,6 +202,11 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
     def _get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
+        if chunk_index >= self._total_chunk_count:
+            raise ValueError(
+                f"Chunk index {chunk_index} is greater than total chunk count {self._total_chunk_count}"
+            )
+
         if chunk_index not in self._chunk_index_to_link:
             links = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
             self._chunk_index_to_link.update({link.chunk_index: link for link in links})

@@ -5,7 +5,7 @@ These models define the structures used in SEA API responses.
 """
 
 import base64
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from databricks.sql.backend.types import CommandState
