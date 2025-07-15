@@ -51,6 +51,10 @@ class ResultSetQueue(ABC):
     def remaining_rows(self):
         pass
 
+    @abstractmethod
+    def close(self):
+        pass
+
 
 class ThriftResultSetQueueFactory(ABC):
     @staticmethod
@@ -163,6 +167,9 @@ class ColumnQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
+    def close(self):
+        return
+
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
@@ -199,6 +206,9 @@ class ArrowQueue(ResultSetQueue):
         )
         self.cur_row_index += slice.num_rows
         return slice
+
+    def close(self):
+        return
 
 
 class CloudFetchQueue(ResultSetQueue):
@@ -351,6 +361,9 @@ class CloudFetchQueue(ResultSetQueue):
     def _create_empty_table(self) -> "pyarrow.Table":
         # Create a 0-row table with just the schema bytes
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
+
+    def close(self):
+        self.download_manager._shutdown_manager()
 
 
 def _bound(min_x, max_x, x):
