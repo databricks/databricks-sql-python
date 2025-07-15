@@ -36,7 +36,6 @@ import platform
 import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -450,21 +449,21 @@ class TelemetryClientFactory:
     ):
         """Send error telemetry when connection creation fails, without requiring a session"""
 
-        UNAUTH_SESSION_ID = "Unauth_session_id"
+        UNAUTH_DUMMY_SESSION_ID = "unauth_session_id"
 
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=True,
-            session_id_hex=UNAUTH_SESSION_ID,
+            session_id_hex=UNAUTH_DUMMY_SESSION_ID,
             auth_provider=None,
             host_url=host_url,
         )
 
         telemetry_client = TelemetryClientFactory.get_telemetry_client(
-            UNAUTH_SESSION_ID
+            UNAUTH_DUMMY_SESSION_ID
         )
         telemetry_client._driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
-            mode=DatabricksClientType.THRIFT,
+            mode=DatabricksClientType.THRIFT,  # TODO: Add SEA mode
             host_info=HostDetails(host_url=host_url, port=port),
         )
         telemetry_client._user_agent = user_agent

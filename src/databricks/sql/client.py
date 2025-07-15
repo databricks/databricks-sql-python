@@ -21,10 +21,8 @@ from databricks.sql.exc import (
     InterfaceError,
     NotSupportedError,
     ProgrammingError,
-    AuthenticationError,
-    ConnectionError,
 )
-from urllib3.exceptions import MaxRetryError
+
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.thrift_backend import ThriftBackend
 from databricks.sql.utils import (
