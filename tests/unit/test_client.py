@@ -219,7 +219,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_results_response = Mock()
         mock_results_response.has_been_closed_server_side = False
         mock_connection = Mock()
-        mock_thrift_backend = Mock()
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_results = Mock()
         # Setup session mock on the mock_connection
         mock_session = Mock()

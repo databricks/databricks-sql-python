@@ -73,7 +73,7 @@ class ResultSet(ABC):
         self.status: CommandState = status
         self.has_been_closed_server_side: bool = has_been_closed_server_side
         self.is_direct_results: bool = is_direct_results
-        self.results: Optional[ResultSetQueue] = None  # Children will set this
+        self.results: Optional[ResultSetQueue] = None
         self._is_staging_operation: bool = is_staging_operation
         self.lz4_compressed: bool = lz4_compressed
         self._arrow_schema_bytes: Optional[bytes] = arrow_schema_bytes
@@ -166,7 +166,8 @@ class ResultSet(ABC):
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            self.results.close()
+            if self.results:
+                self.results.close()
             if (
                 self.status != CommandState.CLOSED
                 and not self.has_been_closed_server_side
