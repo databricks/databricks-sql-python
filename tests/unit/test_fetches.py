@@ -9,6 +9,8 @@ except ImportError:
 
 import databricks.sql.client as client
 from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.result_set import ThriftResultSet
 
 
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
@@ -37,20 +39,20 @@ class FetchTests(unittest.TestCase):
         # If the initial results have been set, then we should never try and fetch more
         schema, arrow_table = FetchTests.make_arrow_table(initial_results)
         arrow_queue = ArrowQueue(arrow_table, len(initial_results), 0)
-        rs = client.ResultSet(
+        rs = ThriftResultSet(
             connection=Mock(),
-            thrift_backend=None,
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=True,
                 has_more_rows=False,
                 description=Mock(),
                 lz4_compressed=Mock(),
-                command_handle=None,
+                command_id=None,
                 arrow_queue=arrow_queue,
                 arrow_schema_bytes=schema.serialize().to_pybytes(),
                 is_staging_operation=False,
             ),
+            thrift_client=None,
         )
         num_cols = len(initial_results[0]) if initial_results else 0
         rs.description = [
@@ -64,7 +66,7 @@ class FetchTests(unittest.TestCase):
         batch_index = 0
 
         def fetch_results(
-            op_handle,
+            command_id,
             max_rows,
             max_bytes,
             expected_row_start_offset,
@@ -79,13 +81,12 @@ class FetchTests(unittest.TestCase):
 
             return results, batch_index < len(batch_list)
 
-        mock_thrift_backend = Mock()
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_thrift_backend.fetch_results = fetch_results
         num_cols = len(batch_list[0][0]) if batch_list and batch_list[0] else 0
 
-        rs = client.ResultSet(
+        rs = ThriftResultSet(
             connection=Mock(),
-            thrift_backend=mock_thrift_backend,
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=False,
@@ -95,11 +96,12 @@ class FetchTests(unittest.TestCase):
                     for col_id in range(num_cols)
                 ],
                 lz4_compressed=Mock(),
-                command_handle=None,
+                command_id=None,
                 arrow_queue=None,
                 arrow_schema_bytes=None,
                 is_staging_operation=False,
             ),
+            thrift_client=mock_thrift_backend,
         )
         return rs
 

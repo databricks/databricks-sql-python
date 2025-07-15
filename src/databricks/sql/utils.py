@@ -26,6 +26,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
+from databricks.sql.backend.types import CommandId
 
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
@@ -77,6 +78,7 @@ class ResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue
         """
+
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
@@ -179,6 +181,7 @@ class ArrowQueue(ResultSetQueue):
         :param n_valid_rows: The index of the last valid row in the table
         :param start_row_index: The first row in the table we should start fetching from
         """
+
         self.cur_row_index = start_row_index
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
@@ -225,6 +228,7 @@ class CloudFetchQueue(ResultSetQueue):
             lz4_compressed (bool): Whether the files are lz4 compressed.
             description (List[List[Any]]): Hive table schema description.
         """
+
         self.schema_bytes = schema_bytes
         self.max_download_threads = max_download_threads
         self.start_row_index = start_row_offset
@@ -265,6 +269,7 @@ class CloudFetchQueue(ResultSetQueue):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             logger.debug("CloudFetchQueue: no more rows available")
             # Return empty pyarrow table to cause retry of fetch
@@ -294,6 +299,7 @@ class CloudFetchQueue(ResultSetQueue):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
@@ -358,7 +364,7 @@ class CloudFetchQueue(ResultSetQueue):
 ExecuteResponse = namedtuple(
     "ExecuteResponse",
     "status has_been_closed_server_side has_more_rows description lz4_compressed is_staging_operation "
-    "command_handle arrow_queue arrow_schema_bytes",
+    "command_id arrow_queue arrow_schema_bytes",
 )
 
 
@@ -589,6 +595,7 @@ def transform_paramstyle(
     Returns:
         str
     """
+
     output = operation
     if (
         param_structure == ParameterStructure.POSITIONAL

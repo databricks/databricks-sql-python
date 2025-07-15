@@ -158,6 +158,7 @@ class Row(tuple):
         >>> row.asDict(True) == {'key': 1, 'value': {'name': 'a', 'age': 2}}
         True
         """
+
         if not hasattr(self, "__fields__"):
             raise TypeError("Cannot convert a Row class into dict")
 
