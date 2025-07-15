@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
+from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
+
 try:
     import pyarrow
 except ImportError:
