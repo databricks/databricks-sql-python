@@ -48,9 +48,7 @@ class LargeQueriesMixin:
         "extra_params",
         [
             {},
-            {
-                "use_sea": True,
-            },
+            {"use_sea": True},
         ],
     )
     def test_query_with_large_wide_result_set(self, extra_params):
@@ -83,9 +81,7 @@ class LargeQueriesMixin:
         "extra_params",
         [
             {},
-            {
-                "use_sea": True,
-            },
+            {"use_sea": True},
         ],
     )
     def test_query_with_large_narrow_result_set(self, extra_params):
@@ -106,9 +102,7 @@ class LargeQueriesMixin:
         "extra_params",
         [
             {},
-            {
-                "use_sea": True,
-            },
+            {"use_sea": True},
         ],
     )
     def test_long_running_query(self, extra_params):

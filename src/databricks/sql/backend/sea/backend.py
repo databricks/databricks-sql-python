@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 def _filter_session_configuration(
-    session_configuration: Optional[Dict[str, Any]]
+    session_configuration: Optional[Dict[str, str]]
 ) -> Optional[Dict[str, str]]:
     if not session_configuration:
         return None
@@ -60,7 +60,7 @@ def _filter_session_configuration(
 
     for key, value in session_configuration.items():
         if key.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP:
-            filtered_session_configuration[key.lower()] = str(value)
+            filtered_session_configuration[key.lower()] = value
         else:
             ignored_configs.add(key)
 
@@ -188,7 +188,7 @@ class SeaDatabricksClient(DatabricksClient):
 
     def open_session(
         self,
-        session_configuration: Optional[Dict[str, Any]],
+        session_configuration: Optional[Dict[str, str]],
         catalog: Optional[str],
         schema: Optional[str],
     ) -> SessionId:
