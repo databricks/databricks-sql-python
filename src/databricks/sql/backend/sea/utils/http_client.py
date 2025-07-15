@@ -197,7 +197,7 @@ class SeaHttpClient:
                 json=data,  # requests handles JSON encoding automatically
                 headers=headers,
             )
-            response.raise_for_status() 
+            response.raise_for_status()
             return response.json()
         except MaxRetryDurationError as e:
             # MaxRetryDurationError is raised directly by DatabricksRetryPolicy
