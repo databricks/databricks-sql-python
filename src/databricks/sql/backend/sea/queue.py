@@ -140,6 +140,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         self._sea_client = sea_client
         self._statement_id = statement_id
+        self._total_chunk_count = total_chunk_count
 
         logger.debug(
             "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
@@ -154,10 +155,9 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             return None
 
         # Track the current chunk we're processing
-        self._current_chunk_link = first_link
-
+        self._current_chunk_index = 0
         # Initialize table and position
-        self.table = self._create_table_from_link(self._current_chunk_link)
+        self.table = self._create_table_from_link(first_link)
 
     def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
@@ -172,33 +172,23 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             httpHeaders=link.http_headers or {},
         )
 
-    def _progress_chunk_link(self):
+    def _get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
         """Progress to the next chunk link."""
-        if not self._current_chunk_link:
-            return None
-
-        next_chunk_index = self._current_chunk_link.next_chunk_index
-
-        if next_chunk_index is None:
-            self._current_chunk_link = None
+        if chunk_index >= self._total_chunk_count:
             return None
 
         try:
-            self._current_chunk_link = self._sea_client.get_chunk_link(
-                self._statement_id, next_chunk_index
+            return self._sea_client.get_chunk_link(
+                self._statement_id, chunk_index
             )
         except Exception as e:
             raise ServerOperationError(
-                f"Error fetching link for chunk {next_chunk_index}: {e}",
+                f"Error fetching link for chunk {chunk_index}: {e}",
                 {
                     "operation-id": self._statement_id,
                     "diagnostic-info": None,
                 },
             )
-
-        logger.debug(
-            f"SeaCloudFetchQueue: Progressed to link for chunk {next_chunk_index}: {self._current_chunk_link}"
-        )
 
     def _create_table_from_link(
         self, link: "ExternalLink"
@@ -216,10 +206,11 @@ class SeaCloudFetchQueue(CloudFetchQueue):
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
 
-        self._progress_chunk_link()
+        print(self._current_chunk_index)
+        self._current_chunk_index += 1
+        next_chunk_link = self._get_chunk_link(self._current_chunk_index)
 
-        if not self._current_chunk_link:
+        if not next_chunk_link:
             logger.debug("SeaCloudFetchQueue: No current chunk link, returning")
             return None
-
-        return self._create_table_from_link(self._current_chunk_link)
+        return self._create_table_from_link(next_chunk_link)
