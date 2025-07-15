@@ -89,7 +89,7 @@ class ResultSetDownloadHandler:
         ResultSetDownloadHandler._validate_link(
             self.link, self.settings.link_expiry_buffer_secs
         )
-        
+
         with self._http_client.execute(
             method=HttpMethod.GET,
             url=self.link.fileLink,

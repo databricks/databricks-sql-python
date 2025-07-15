@@ -1514,7 +1514,7 @@ class ResultSet:
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
-        
+
         partial_result_chunks = [results]
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
