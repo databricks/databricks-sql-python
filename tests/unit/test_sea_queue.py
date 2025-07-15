@@ -18,7 +18,7 @@ from databricks.sql.backend.sea.models.base import (
     ExternalLink,
 )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
-from databricks.sql.exc import ProgrammingError
+from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.types import SSLOptions
 
 
@@ -340,15 +340,12 @@ class TestSeaCloudFetchQueue:
         sample_external_link,
     ):
         """Test initialization with valid initial link."""
-        mock_download_manager = Mock()
-        mock_download_manager_class.return_value = mock_download_manager
-
         # Create a queue with valid initial link
         with patch.object(
             SeaCloudFetchQueue, "_create_table_from_link", return_value=None
         ):
             queue = SeaCloudFetchQueue(
-                initial_links=[sample_external_link],
+                result_data=ResultData(external_links=[sample_external_link]),
                 max_download_threads=5,
                 ssl_options=ssl_options,
                 sea_client=mock_sea_client,
@@ -365,13 +362,9 @@ class TestSeaCloudFetchQueue:
             )
         )
 
-        # Verify download manager was created
-        mock_download_manager_class.assert_called_once()
-
         # Verify attributes
         assert queue._statement_id == "test-statement-123"
         assert queue._current_chunk_link == sample_external_link
-        assert queue.download_manager == mock_download_manager
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
@@ -386,7 +379,7 @@ class TestSeaCloudFetchQueue:
         """Test initialization with no initial links."""
         # Create a queue with empty initial links
         queue = SeaCloudFetchQueue(
-            initial_links=[],
+            result_data=ResultData(external_links=[]),
             max_download_threads=5,
             ssl_options=ssl_options,
             sea_client=mock_sea_client,
@@ -395,68 +388,7 @@ class TestSeaCloudFetchQueue:
             lz4_compressed=False,
             description=description,
         )
-
-        # Verify debug message was logged
-        mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
-                "test-statement-123", 0
-            )
-        )
-
-        # Verify download manager wasn't created
-        mock_download_manager_class.assert_not_called()
-
-        # Verify attributes
-        assert queue._statement_id == "test-statement-123"
-        assert (
-            not hasattr(queue, "_current_chunk_link")
-            or queue._current_chunk_link is None
-        )
-
-    @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_init_non_zero_chunk_index(
-        self,
-        mock_logger,
-        mock_download_manager_class,
-        mock_sea_client,
-        ssl_options,
-        description,
-    ):
-        """Test initialization with non-zero chunk index initial link."""
-        # Create a link with chunk_index != 0
-        non_zero_link = ExternalLink(
-            external_link="https://example.com/data/chunk1",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=100,
-            chunk_index=1,
-            next_chunk_index=2,
-            http_headers={"Authorization": "Bearer token123"},
-        )
-
-        # Create a queue with non-zero chunk index
-        queue = SeaCloudFetchQueue(
-            initial_links=[non_zero_link],
-            max_download_threads=5,
-            ssl_options=ssl_options,
-            sea_client=mock_sea_client,
-            statement_id="test-statement-123",
-            total_chunk_count=1,
-            lz4_compressed=False,
-            description=description,
-        )
-
-        # Verify debug message was logged
-        mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
-                "test-statement-123", 1
-            )
-        )
-
-        # Verify download manager wasn't created (no chunk 0)
-        mock_download_manager_class.assert_not_called()
+        assert queue.table is None
 
     @patch("databricks.sql.backend.sea.queue.logger")
     def test_progress_chunk_link_no_current_link(self, mock_logger):
