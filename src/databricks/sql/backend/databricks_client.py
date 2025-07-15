@@ -95,7 +95,7 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single fetch batch
             max_bytes: Maximum number of bytes to fetch in a single fetch batch
             lz4_compression: Whether to use LZ4 compression for result data
-            cursor: The cursor object that will handle the results
+            cursor: The cursor object that will handle the results. The command id is set in this cursor.
             use_cloud_fetch: Whether to use cloud fetch for retrieving large result sets
             parameters: List of parameters to bind to the query
             async_op: Whether to execute the command asynchronously
