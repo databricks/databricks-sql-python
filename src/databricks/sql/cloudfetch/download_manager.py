@@ -28,6 +28,7 @@ class ResultFileDownloadManager:
         chunk_id: int,
     ):
         self._pending_links: List[Tuple[int, TSparkArrowResultLink]] = []
+        self.chunk_id = chunk_id
         for i, link in enumerate(links, start=chunk_id):
             if link.rowCount <= 0:
                 continue
@@ -37,6 +38,7 @@ class ResultFileDownloadManager:
                 )
             )
             self._pending_links.append((i, link))
+        self.chunk_id += len(links)
 
         self._download_tasks: List[Future[DownloadedFile]] = []
         self._max_download_threads: int = max_download_threads
@@ -113,6 +115,25 @@ class ResultFileDownloadManager:
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
+
+    def add_link(self, link: TSparkArrowResultLink):
+        """
+        Add more links to the download manager.
+
+        Args:
+            link: Link to add
+        """
+
+        if link.rowCount <= 0:
+            return
+
+        logger.debug(
+            "ResultFileDownloadManager: adding file link, start offset {}, row count: {}".format(
+                link.startRowOffset, link.rowCount
+            )
+        )
+        self._pending_links.append((self.chunk_id, link))
+        self.chunk_id += 1
 
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool

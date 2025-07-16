@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Dict, List, Optional, Union
 
 from dateutil import parser
 import datetime
@@ -8,13 +9,10 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
+from typing import Dict, List, Optional, Tuple, Union, Sequence
 import re
 
 import lz4.frame
-
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 
 try:
     import pyarrow
@@ -22,7 +20,6 @@ except ImportError:
     pyarrow = None
 
 from databricks.sql import OperationalError
-from databricks.sql.exc import ProgrammingError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
@@ -72,7 +69,7 @@ class ThriftResultSetQueueFactory(ABC):
         description: List[Tuple] = [],
     ) -> ResultSetQueue:
         """
-        Factory method to build a result set queue.
+        Factory method to build a result set queue for Thrift backend.
 
         Args:
             row_set_type (enum): Row set type (Arrow, Column, or URL).
@@ -106,7 +103,7 @@ class ThriftResultSetQueueFactory(ABC):
 
             return ColumnQueue(ColumnTable(converted_column_table, column_names))
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
-            return CloudFetchQueue(
+            return ThriftCloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
                 result_links=t_row_set.resultLinks,
@@ -219,37 +216,34 @@ class ArrowQueue(ResultSetQueue):
         return
 
 
-class CloudFetchQueue(ResultSetQueue):
+class CloudFetchQueue(ResultSetQueue, ABC):
+    """Base class for cloud fetch queues that handle EXTERNAL_LINKS disposition with ARROW format."""
+
     def __init__(
         self,
-        schema_bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
         session_id_hex: Optional[str],
         statement_id: str,
         statement_type: StatementType,
         chunk_id: int,
-        start_row_offset: int = 0,
-        result_links: Optional[List[TSparkArrowResultLink]] = None,
+        schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
     ):
         """
-        A queue-like wrapper over CloudFetch arrow batches.
+        Initialize the base CloudFetchQueue.
 
-        Attributes:
-            schema_bytes (bytes): Table schema in bytes.
-            max_download_threads (int): Maximum number of downloader thread pool threads.
-            start_row_offset (int): The offset of the first row of the cloud fetch links.
-            result_links (List[TSparkArrowResultLink]): Links containing the downloadable URL and metadata.
-            lz4_compressed (bool): Whether the files are lz4 compressed.
-            description (List[List[Any]]): Hive table schema description.
+        Args:
+            max_download_threads: Maximum number of download threads
+            ssl_options: SSL options for downloads
+            schema_bytes: Arrow schema bytes
+            lz4_compressed: Whether the data is LZ4 compressed
+            description: Column descriptions
         """
 
         self.schema_bytes = schema_bytes
         self.max_download_threads = max_download_threads
-        self.start_row_index = start_row_offset
-        self.result_links = result_links
         self.lz4_compressed = lz4_compressed
         self.description = description
         self._ssl_options = ssl_options
@@ -258,31 +252,21 @@ class CloudFetchQueue(ResultSetQueue):
         self.statement_type = statement_type
         self.chunk_id = chunk_id
 
-        logger.debug(
-            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
-                start_row_offset
-            )
-        )
-        if result_links is not None:
-            for result_link in result_links:
-                logger.debug(
-                    "- start row offset: {}, row count: {}".format(
-                        result_link.startRowOffset, result_link.rowCount
-                    )
-                )
-        self.download_manager = ResultFileDownloadManager(
-            links=result_links or [],
-            max_download_threads=self.max_download_threads,
-            lz4_compressed=self.lz4_compressed,
-            ssl_options=self._ssl_options,
-            session_id_hex=self.session_id_hex,
-            statement_id=self.statement_id,
-            statement_type=self.statement_type,
-            chunk_id=self.chunk_id,
-        )
-
-        self.table = self._create_next_table()
+        # Table state
+        self.table = None
         self.table_row_index = 0
+
+        # Initialize download manager
+        self.download_manager = ResultFileDownloadManager(
+            links=[],
+            max_download_threads=max_download_threads,
+            lz4_compressed=lz4_compressed,
+            ssl_options=ssl_options,
+            session_id_hex=session_id_hex,
+            statement_id=statement_id,
+            statement_type=statement_type,
+            chunk_id=chunk_id,
+        )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """
@@ -290,11 +274,9 @@ class CloudFetchQueue(ResultSetQueue):
 
         Args:
             num_rows (int): Number of rows to retrieve.
-
         Returns:
             pyarrow.Table
         """
-
         if not self.table:
             logger.debug("CloudFetchQueue: no more rows available")
             # Return empty pyarrow table to cause retry of fetch
@@ -339,21 +321,14 @@ class CloudFetchQueue(ResultSetQueue):
             self.table_row_index = 0
         return results
 
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
-        logger.debug(
-            "CloudFetchQueue: Trying to get downloaded file for row {}".format(
-                self.start_row_index
-            )
-        )
+    def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
+        """Create next table at the given row offset"""
+
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
-        downloaded_file = self.download_manager.get_next_downloaded_file(
-            self.start_row_index
-        )
+        downloaded_file = self.download_manager.get_next_downloaded_file(offset)
         if not downloaded_file:
             logger.debug(
-                "CloudFetchQueue: Cannot find downloaded file for row {}".format(
-                    self.start_row_index
-                )
+                "CloudFetchQueue: Cannot find downloaded file for row {}".format(offset)
             )
             # None signals no more Arrow tables can be built from the remaining handlers if any remain
             return None
@@ -368,22 +343,104 @@ class CloudFetchQueue(ResultSetQueue):
 
         # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
         assert downloaded_file.row_count == arrow_table.num_rows
-        self.start_row_index += arrow_table.num_rows
-
-        logger.debug(
-            "CloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
-                arrow_table.num_rows, self.start_row_index
-            )
-        )
 
         return arrow_table
 
+    @abstractmethod
+    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+        """Create next table by retrieving the logical next downloaded file."""
+        pass
+
     def _create_empty_table(self) -> "pyarrow.Table":
-        # Create a 0-row table with just the schema bytes
+        """Create a 0-row table with just the schema bytes."""
+        if not self.schema_bytes:
+            return pyarrow.Table.from_pydict({})
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
     def close(self):
         self.download_manager._shutdown_manager()
+
+
+class ThriftCloudFetchQueue(CloudFetchQueue):
+    """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for Thrift backend."""
+
+    def __init__(
+        self,
+        schema_bytes,
+        max_download_threads: int,
+        ssl_options: SSLOptions,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        statement_type: StatementType,
+        chunk_id: int,
+        start_row_offset: int = 0,
+        result_links: Optional[List[TSparkArrowResultLink]] = None,
+        lz4_compressed: bool = True,
+        description: List[Tuple] = [],
+    ):
+        """
+        Initialize the Thrift CloudFetchQueue.
+
+        Args:
+            schema_bytes: Table schema in bytes
+            max_download_threads: Maximum number of downloader thread pool threads
+            ssl_options: SSL options for downloads
+            start_row_offset: The offset of the first row of the cloud fetch links
+            result_links: Links containing the downloadable URL and metadata
+            lz4_compressed: Whether the files are lz4 compressed
+            description: Hive table schema description
+        """
+        super().__init__(
+            max_download_threads=max_download_threads,
+            ssl_options=ssl_options,
+            schema_bytes=schema_bytes,
+            lz4_compressed=lz4_compressed,
+            description=description,
+            session_id_hex=session_id_hex,
+            statement_id=statement_id,
+            statement_type=statement_type,
+            chunk_id=chunk_id,
+        )
+
+        self.start_row_index = start_row_offset
+        self.result_links = result_links or []
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
+        self.statement_type = statement_type
+        self.chunk_id = chunk_id
+
+        logger.debug(
+            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
+                start_row_offset
+            )
+        )
+        if self.result_links:
+            for result_link in self.result_links:
+                logger.debug(
+                    "- start row offset: {}, row count: {}".format(
+                        result_link.startRowOffset, result_link.rowCount
+                    )
+                )
+                self.download_manager.add_link(result_link)
+
+        # Initialize table and position
+        self.table = self._create_next_table()
+
+    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+        logger.debug(
+            "ThriftCloudFetchQueue: Trying to get downloaded file for row {}".format(
+                self.start_row_index
+            )
+        )
+        arrow_table = self._create_table_at_offset(self.start_row_index)
+        if arrow_table:
+            self.start_row_index += arrow_table.num_rows
+            logger.debug(
+                "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
+                    arrow_table.num_rows, self.start_row_index
+                )
+            )
+        return arrow_table
 
 
 def _bound(min_x, max_x, x):
@@ -688,7 +745,6 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
 
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
-
     converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":

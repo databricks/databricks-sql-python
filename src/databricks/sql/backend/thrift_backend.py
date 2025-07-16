@@ -166,6 +166,7 @@ class ThriftDatabricksClient(DatabricksClient):
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
         )
+
         self._use_arrow_native_decimals = kwargs.get("_use_arrow_native_decimals", True)
         self._use_arrow_native_timestamps = kwargs.get(
             "_use_arrow_native_timestamps", True
