@@ -132,7 +132,7 @@ class TestSeaBackend:
         assert client3.max_download_threads == 5
 
         # Test with invalid HTTP path
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             SeaDatabricksClient(
                 server_hostname="test-server.databricks.com",
                 port=443,
@@ -893,3 +893,76 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_columns" in str(excinfo.value)
+
+    def test_get_chunk_link(self, sea_client, mock_http_client, sea_command_id):
+        """Test get_chunk_link method."""
+        # Setup mock response
+        mock_response = {
+            "external_links": [
+                {
+                    "external_link": "https://example.com/data/chunk0",
+                    "expiration": "2025-07-03T05:51:18.118009",
+                    "row_count": 100,
+                    "byte_count": 1024,
+                    "row_offset": 0,
+                    "chunk_index": 0,
+                    "next_chunk_index": 1,
+                    "http_headers": {"Authorization": "Bearer token123"},
+                }
+            ]
+        }
+        mock_http_client._make_request.return_value = mock_response
+
+        # Call the method
+        result = sea_client.get_chunk_link("test-statement-123", 0)
+
+        # Verify the HTTP client was called correctly
+        mock_http_client._make_request.assert_called_once_with(
+            method="GET",
+            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
+                "test-statement-123", 0
+            ),
+        )
+
+        # Verify the result
+        assert result.external_link == "https://example.com/data/chunk0"
+        assert result.expiration == "2025-07-03T05:51:18.118009"
+        assert result.row_count == 100
+        assert result.byte_count == 1024
+        assert result.row_offset == 0
+        assert result.chunk_index == 0
+        assert result.next_chunk_index == 1
+        assert result.http_headers == {"Authorization": "Bearer token123"}
+
+    def test_get_chunk_link_not_found(self, sea_client, mock_http_client):
+        """Test get_chunk_link when the requested chunk is not found."""
+        # Setup mock response with no matching chunk
+        mock_response = {
+            "external_links": [
+                {
+                    "external_link": "https://example.com/data/chunk1",
+                    "expiration": "2025-07-03T05:51:18.118009",
+                    "row_count": 100,
+                    "byte_count": 1024,
+                    "row_offset": 100,
+                    "chunk_index": 1,  # Different chunk index
+                    "next_chunk_index": 2,
+                    "http_headers": {"Authorization": "Bearer token123"},
+                }
+            ]
+        }
+        mock_http_client._make_request.return_value = mock_response
+
+        # Call the method and expect an exception
+        with pytest.raises(
+            ServerOperationError, match="No link found for chunk index 0"
+        ):
+            sea_client.get_chunk_link("test-statement-123", 0)
+
+        # Verify the HTTP client was called correctly
+        mock_http_client._make_request.assert_called_once_with(
+            method="GET",
+            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
+                "test-statement-123", 0
+            ),
+        )

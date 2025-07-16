@@ -5,7 +5,7 @@ import time
 import re
 from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.models.base import ResultManifest
+from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -28,7 +28,7 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import DatabaseError, ProgrammingError, ServerOperationError
+from databricks.sql.exc import DatabaseError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
 
@@ -44,6 +44,7 @@ from databricks.sql.backend.sea.models import (
     GetStatementResponse,
     CreateSessionResponse,
 )
+from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
+    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     # SEA constants
     POLL_INTERVAL_SECONDS = 0.2
@@ -123,18 +125,22 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         self._max_download_threads = kwargs.get("max_download_threads", 10)
+        self._ssl_options = ssl_options
+        self._use_arrow_native_complex_types = kwargs.get(
+            "_use_arrow_native_complex_types", True
+        )
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
         # Initialize HTTP client
-        self.http_client = SeaHttpClient(
+        self._http_client = SeaHttpClient(
             server_hostname=server_hostname,
             port=port,
             http_path=http_path,
             http_headers=http_headers,
             auth_provider=auth_provider,
-            ssl_options=ssl_options,
+            ssl_options=self._ssl_options,
             **kwargs,
         )
 
@@ -173,7 +179,7 @@ class SeaDatabricksClient(DatabricksClient):
             f"Note: SEA only works for warehouses."
         )
         logger.error(error_message)
-        raise ProgrammingError(error_message)
+        raise ValueError(error_message)
 
     @property
     def max_download_threads(self) -> int:
@@ -220,7 +226,7 @@ class SeaDatabricksClient(DatabricksClient):
             schema=schema,
         )
 
-        response = self.http_client._make_request(
+        response = self._http_client._make_request(
             method="POST", path=self.SESSION_PATH, data=request_data.to_dict()
         )
 
@@ -245,7 +251,7 @@ class SeaDatabricksClient(DatabricksClient):
             session_id: The session identifier returned by open_session()
 
         Raises:
-            ProgrammingError: If the session ID is invalid
+            ValueError: If the session ID is invalid
             OperationalError: If there's an error closing the session
         """
 
@@ -260,7 +266,7 @@ class SeaDatabricksClient(DatabricksClient):
             session_id=sea_session_id,
         )
 
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             data=request_data.to_dict(),
@@ -342,7 +348,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Check for compression
         lz4_compressed = (
-            response.manifest.result_compression == ResultCompression.LZ4_FRAME
+            response.manifest.result_compression == ResultCompression.LZ4_FRAME.value
         )
 
         execute_response = ExecuteResponse(
@@ -424,7 +430,7 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
 
         Returns:
-            ResultSet: A SeaResultSet instance for the executed command
+            SeaResultSet: A SeaResultSet instance for the executed command
         """
 
         if session_id.backend_type != BackendType.SEA:
@@ -471,7 +477,7 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
         )
         response = ExecuteStatementResponse.from_dict(response_data)
@@ -505,7 +511,7 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to cancel
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -516,7 +522,7 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="POST",
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -530,7 +536,7 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to close
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -541,7 +547,7 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -558,7 +564,7 @@ class SeaDatabricksClient(DatabricksClient):
             CommandState: The current state of the command
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
@@ -569,7 +575,7 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = GetStatementRequest(statement_id=sea_statement_id)
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -609,7 +615,7 @@ class SeaDatabricksClient(DatabricksClient):
         request = GetStatementRequest(statement_id=sea_statement_id)
 
         # Get the statement result
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -630,6 +636,35 @@ class SeaDatabricksClient(DatabricksClient):
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
         )
+
+    def get_chunk_link(self, statement_id: str, chunk_index: int) -> ExternalLink:
+        """
+        Get links for chunks starting from the specified index.
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+        Returns:
+            ExternalLink: External link for the chunk
+        """
+
+        response_data = self._http_client._make_request(
+            method="GET",
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+        )
+        response = GetChunksResponse.from_dict(response_data)
+
+        links = response.external_links or []
+        link = next((l for l in links if l.chunk_index == chunk_index), None)
+        if not link:
+            raise ServerOperationError(
+                f"No link found for chunk index {chunk_index}",
+                {
+                    "operation-id": statement_id,
+                    "diagnostic-info": None,
+                },
+            )
+
+        return link
 
     # == Metadata Operations ==
 

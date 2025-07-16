@@ -182,10 +182,19 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
 
 
 class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
-    def test_execute_async__long_running(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_execute_async__long_running(self, extra_params):
 
         long_running_query = "SELECT COUNT(*) FROM RANGE(10000 * 16) x JOIN RANGE(10000) y ON FROM_UNIXTIME(x.id * y.id, 'yyyy-MM-dd') LIKE '%not%a%date%'"
-        with self.cursor() as cursor:
+        with self.cursor(extra_params) as cursor:
             cursor.execute_async(long_running_query)
 
             ## Polling after every POLLING_INTERVAL seconds
@@ -228,7 +237,16 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
             assert result[0].asDict() == {"1": 1}
 
-    def test_execute_async__large_result(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_execute_async__large_result(self, extra_params):
         x_dimension = 1000
         y_dimension = 1000
         large_result_query = f"""
@@ -242,7 +260,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
                     RANGE({y_dimension}) y
             """
 
-        with self.cursor() as cursor:
+        with self.cursor(extra_params) as cursor:
             cursor.execute_async(large_result_query)
 
             ## Fake sleep for 5 secs
@@ -349,6 +367,9 @@ class TestPySQLCoreSuite(
                 "use_sea": True,
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
             },
         ],
     )
@@ -560,6 +581,9 @@ class TestPySQLCoreSuite(
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
             },
+            {
+                "use_sea": True,
+            },
         ],
     )
     def test_get_arrow(self, extra_params):
@@ -633,6 +657,9 @@ class TestPySQLCoreSuite(
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
             },
+            {
+                "use_sea": True,
+            },
         ],
     )
     def test_can_execute_command_after_failure(self, extra_params):
@@ -654,6 +681,9 @@ class TestPySQLCoreSuite(
                 "use_sea": True,
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
             },
         ],
     )
@@ -678,6 +708,9 @@ class TestPySQLCoreSuite(
                 "use_sea": True,
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
             },
         ],
     )
@@ -723,6 +756,9 @@ class TestPySQLCoreSuite(
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
             },
+            {
+                "use_sea": True,
+            },
         ],
     )
     def test_fetchmany_when_stride_fits(self, extra_params):
@@ -743,6 +779,9 @@ class TestPySQLCoreSuite(
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
             },
+            {
+                "use_sea": True,
+            },
         ],
     )
     def test_fetchmany_in_excess(self, extra_params):
@@ -762,6 +801,9 @@ class TestPySQLCoreSuite(
                 "use_sea": True,
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
             },
         ],
     )
@@ -847,6 +889,9 @@ class TestPySQLCoreSuite(
                 "use_sea": True,
                 "use_cloud_fetch": False,
                 "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
             },
         ],
     )
