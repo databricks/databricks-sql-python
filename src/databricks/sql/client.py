@@ -270,7 +270,10 @@ class Connection:
                 error_message=str(e),
                 host_url=server_hostname,
                 http_path=http_path,
-                port=self.session.port,
+                port=kwargs.get("_port", 443),
+                user_agent=self.session.useragent_header
+                if hasattr(self, "session")
+                else None,
             )
             raise e
 
