@@ -270,8 +270,10 @@ class Connection:
                 error_message=str(e),
                 host_url=server_hostname,
                 http_path=http_path,
-                port=self.session.port,
-                user_agent=self.session.useragent_header if self.session else None,
+                port=self.session.port if hasattr(self, "session") else None,
+                user_agent=self.session.useragent_header
+                if hasattr(self, "session")
+                else None,
             )
             raise e
 
