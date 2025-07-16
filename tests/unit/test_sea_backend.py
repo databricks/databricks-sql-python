@@ -624,6 +624,71 @@ class TestSeaBackend:
         assert description[1][1] == "INT"  # type_code
         assert description[1][6] is False  # null_ok
 
+    def test_filter_session_configuration(self):
+        """Test that _filter_session_configuration converts all values to strings."""
+        session_config = {
+            "ANSI_MODE": True,
+            "statement_timeout": 3600,
+            "TIMEZONE": "UTC",
+            "enable_photon": False,
+            "MAX_FILE_PARTITION_BYTES": 128.5,
+            "unsupported_param": "value",
+            "ANOTHER_UNSUPPORTED": 42,
+        }
+
+        result = _filter_session_configuration(session_config)
+
+        # Verify result is not None
+        assert result is not None
+
+        # Verify all returned values are strings
+        for key, value in result.items():
+            assert isinstance(
+                value, str
+            ), f"Value for key '{key}' is not a string: {type(value)}"
+
+        # Verify specific conversions
+        expected_result = {
+            "ansi_mode": "True",  # boolean True -> "True", key lowercased
+            "statement_timeout": "3600",  # int -> "3600", key lowercased
+            "timezone": "UTC",  # string -> "UTC", key lowercased
+            "enable_photon": "False",  # boolean False -> "False", key lowercased
+            "max_file_partition_bytes": "128.5",  # float -> "128.5", key lowercased
+        }
+
+        assert result == expected_result
+
+        # Test with None input
+        assert _filter_session_configuration(None) == {}
+
+        # Test with only unsupported parameters
+        unsupported_config = {
+            "unsupported_param1": "value1",
+            "unsupported_param2": 123,
+        }
+        result = _filter_session_configuration(unsupported_config)
+        assert result == {}
+
+        # Test case insensitivity for keys
+        case_insensitive_config = {
+            "ansi_mode": "false",  # lowercase key
+            "STATEMENT_TIMEOUT": 7200,  # uppercase key
+            "TiMeZoNe": "America/New_York",  # mixed case key
+        }
+        result = _filter_session_configuration(case_insensitive_config)
+        expected_case_result = {
+            "ansi_mode": "false",
+            "statement_timeout": "7200",
+            "timezone": "America/New_York",
+        }
+        assert result == expected_case_result
+
+        # Verify all values are strings in case insensitive test
+        for key, value in result.items():
+            assert isinstance(
+                value, str
+            ), f"Value for key '{key}' is not a string: {type(value)}"
+
     def test_results_message_to_execute_response_is_staging_operation(self, sea_client):
         """Test that is_staging_operation is correctly set from manifest.is_volume_operation."""
         # Test when is_volume_operation is True
