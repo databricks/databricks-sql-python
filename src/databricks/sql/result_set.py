@@ -218,7 +218,7 @@ class ThriftResultSet(ResultSet):
             :param is_direct_results: Whether there are more rows to fetch
         """
         self.statement_type = execute_response.command_id.statement_type
-        self.chunk_id = 0
+        self.num_downloaded_chunks = 0
 
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
@@ -241,10 +241,10 @@ class ThriftResultSet(ResultSet):
                 session_id_hex=session_id_hex,
                 statement_id=execute_response.command_id.to_hex_guid(),
                 statement_type=self.statement_type,
-                chunk_id=self.chunk_id,
+                chunk_id=self.num_downloaded_chunks,
             )
             if t_row_set and t_row_set.resultLinks:
-                self.chunk_id = len(t_row_set.resultLinks)
+                self.num_downloaded_chunks += len(t_row_set.resultLinks)
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -277,11 +277,11 @@ class ThriftResultSet(ResultSet):
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
             use_cloud_fetch=self._use_cloud_fetch,
-            chunk_id=self.chunk_id,
+            chunk_id=self.num_downloaded_chunks,
         )
         self.results = results
         self.is_direct_results = is_direct_results
-        self.chunk_id += result_links_count
+        self.num_downloaded_chunks += result_links_count
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
