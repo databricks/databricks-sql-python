@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
@@ -14,12 +14,13 @@ except ImportError:
 
 import dateutil
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import (
-    ExternalLink,
-    ResultData,
-    ResultManifest,
-)
+if TYPE_CHECKING:
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
+    from databricks.sql.backend.sea.models.base import (
+        ExternalLink,
+        ResultData,
+        ResultManifest,
+    )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
@@ -128,7 +129,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         result_data: ResultData,
         max_download_threads: int,
         ssl_options: SSLOptions,
-        sea_client: "SeaDatabricksClient",
+        sea_client: SeaDatabricksClient,
         statement_id: str,
         total_chunk_count: int,
         lz4_compressed: bool = False,
@@ -160,6 +161,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         self._sea_client = sea_client
         self._statement_id = statement_id
         self._total_chunk_count = total_chunk_count
+        self._total_chunk_count = total_chunk_count
 
         logger.debug(
             "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
@@ -175,19 +177,14 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         first_link = self._chunk_index_to_link.get(self._current_chunk_index, None)
         if not first_link:
             # possibly an empty response
-            return
+            return None
 
-        self.download_manager = ResultFileDownloadManager(
-            links=[],
-            max_download_threads=max_download_threads,
-            lz4_compressed=lz4_compressed,
-            ssl_options=ssl_options,
-        )
-
+        # Track the current chunk we're processing
+        self._current_chunk_index = 0
         # Initialize table and position
         self.table = self._create_table_from_link(first_link)
 
-    def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
+    def _convert_to_thrift_link(self, link: ExternalLink) -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
         # Parse the ISO format expiration time
         expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())
@@ -220,7 +217,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         return link
 
     def _create_table_from_link(
-        self, link: "ExternalLink"
+        self, link: ExternalLink
     ) -> Union["pyarrow.Table", None]:
         """Create a table from a link."""
 

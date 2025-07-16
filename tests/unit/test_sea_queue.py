@@ -364,7 +364,7 @@ class TestSeaCloudFetchQueue:
 
         # Verify attributes
         assert queue._statement_id == "test-statement-123"
-        assert queue._current_chunk_link == sample_external_link
+        assert queue._current_chunk_index == 0
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
@@ -391,90 +391,30 @@ class TestSeaCloudFetchQueue:
         assert queue.table is None
 
     @patch("databricks.sql.backend.sea.queue.logger")
-    def test_progress_chunk_link_no_current_link(self, mock_logger):
-        """Test _progress_chunk_link with no current link."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = None
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._progress_chunk_link(queue)
-
-        # Verify the result is None
-        assert result is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_progress_chunk_link_no_next_chunk(self, mock_logger):
-        """Test _progress_chunk_link with no next chunk index."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=0,
-            chunk_index=0,
-            next_chunk_index=None,
-            http_headers={"Authorization": "Bearer token123"},
-        )
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._progress_chunk_link(queue)
-
-        # Verify the result is None
-        assert result is None
-        assert queue._current_chunk_link is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_create_next_table_no_current_link(self, mock_logger):
-        """Test _create_next_table with no current link."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = None
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._create_next_table(queue)
-
-        # Verify debug message was logged
-        mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: No current chunk link, returning"
-        )
-
-        # Verify the result is None
-        assert result is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
     def test_create_next_table_success(self, mock_logger):
         """Test _create_next_table with successful table creation."""
         # Create a queue instance without initializing
         queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=50,
-            chunk_index=0,
-            next_chunk_index=1,
-            http_headers={"Authorization": "Bearer token123"},
-        )
+        queue._current_chunk_index = 0
         queue.download_manager = Mock()
 
         # Mock the dependencies
         mock_table = Mock()
-        queue._create_table_at_offset = Mock(return_value=mock_table)
+        mock_chunk_link = Mock()
+        queue._get_chunk_link = Mock(return_value=mock_chunk_link)
         queue._create_table_from_link = Mock(return_value=mock_table)
-        queue._progress_chunk_link = Mock()
 
         # Call the method directly
         result = SeaCloudFetchQueue._create_next_table(queue)
 
-        # Verify the table was created
-        queue._create_table_from_link.assert_called_once_with(queue._current_chunk_link)
+        # Verify the chunk index was incremented
+        assert queue._current_chunk_index == 1
 
-        # Verify progress was called
-        queue._progress_chunk_link.assert_called_once()
+        # Verify the chunk link was retrieved
+        queue._get_chunk_link.assert_called_once_with(1)
+
+        # Verify the table was created from the link
+        queue._create_table_from_link.assert_called_once_with(mock_chunk_link)
 
         # Verify the result is the table
         assert result == mock_table
