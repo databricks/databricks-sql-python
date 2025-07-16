@@ -40,6 +40,7 @@ class Session:
         self.session_configuration = session_configuration
         self.catalog = catalog
         self.schema = schema
+        self.http_path = http_path
 
         try:
             self.auth_provider = get_python_sql_connector_auth_provider(
@@ -108,11 +109,23 @@ class Session:
         self.protocol_version = None
 
     def open(self):
-        self._session_id = self.backend.open_session(
-            session_configuration=self.session_configuration,
-            catalog=self.catalog,
-            schema=self.schema,
-        )
+        try:
+            self._session_id = self.backend.open_session(
+                session_configuration=self.session_configuration,
+                catalog=self.catalog,
+                schema=self.schema,
+            )
+        except Exception as e:
+            TelemetryClientFactory.connection_failure_log(
+                error_name="Exception",
+                error_message=str(e),
+                host_url=self.host,
+                http_path=self.http_path,
+                port=self.port,
+                user_agent=self.useragent_header,
+            )
+            raise e
+
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True
         logger.info("Successfully opened session %s", str(self.guid_hex))
