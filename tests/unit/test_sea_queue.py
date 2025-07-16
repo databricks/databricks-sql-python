@@ -18,7 +18,7 @@ from databricks.sql.backend.sea.models.base import (
     ExternalLink,
 )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
-from databricks.sql.exc import ProgrammingError
+from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.types import SSLOptions
 
 
@@ -296,6 +296,74 @@ class TestSeaCloudFetchQueue:
             http_headers=None,
         )
 
+    def test_convert_to_thrift_link(self, sample_external_link):
+        """Test conversion of ExternalLink to TSparkArrowResultLink."""
+        queue = Mock(spec=SeaCloudFetchQueue)
+
+        # Call the method directly
+        result = SeaCloudFetchQueue._convert_to_thrift_link(queue, sample_external_link)
+
+        # Verify the conversion
+        assert result.fileLink == sample_external_link.external_link
+        assert result.rowCount == sample_external_link.row_count
+        assert result.bytesNum == sample_external_link.byte_count
+        assert result.startRowOffset == sample_external_link.row_offset
+        assert result.httpHeaders == sample_external_link.http_headers
+
+    def test_convert_to_thrift_link_no_headers(self, sample_external_link_no_headers):
+        """Test conversion of ExternalLink with no headers to TSparkArrowResultLink."""
+        queue = Mock(spec=SeaCloudFetchQueue)
+
+        # Call the method directly
+        result = SeaCloudFetchQueue._convert_to_thrift_link(
+            queue, sample_external_link_no_headers
+        )
+
+        # Verify the conversion
+        assert result.fileLink == sample_external_link_no_headers.external_link
+        assert result.rowCount == sample_external_link_no_headers.row_count
+        assert result.bytesNum == sample_external_link_no_headers.byte_count
+        assert result.startRowOffset == sample_external_link_no_headers.row_offset
+        assert result.httpHeaders == {}
+
+    @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
+    @patch("databricks.sql.backend.sea.queue.logger")
+    def test_init_with_valid_initial_link(
+        self,
+        mock_logger,
+        mock_download_manager_class,
+        mock_sea_client,
+        ssl_options,
+        description,
+        sample_external_link,
+    ):
+        """Test initialization with valid initial link."""
+        # Create a queue with valid initial link
+        with patch.object(
+            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
+        ):
+            queue = SeaCloudFetchQueue(
+                result_data=ResultData(external_links=[sample_external_link]),
+                max_download_threads=5,
+                ssl_options=ssl_options,
+                sea_client=mock_sea_client,
+                statement_id="test-statement-123",
+                total_chunk_count=1,
+                lz4_compressed=False,
+                description=description,
+            )
+
+        # Verify debug message was logged
+        mock_logger.debug.assert_called_with(
+            "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
+                "test-statement-123", 1
+            )
+        )
+
+        # Verify attributes
+        assert queue._statement_id == "test-statement-123"
+        assert queue._current_chunk_link == sample_external_link
+
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
     def test_init_no_initial_links(
@@ -309,7 +377,7 @@ class TestSeaCloudFetchQueue:
         """Test initialization with no initial links."""
         # Create a queue with empty initial links
         queue = SeaCloudFetchQueue(
-            initial_links=[],
+            result_data=ResultData(external_links=[]),
             max_download_threads=5,
             ssl_options=ssl_options,
             sea_client=mock_sea_client,
@@ -318,20 +386,93 @@ class TestSeaCloudFetchQueue:
             lz4_compressed=False,
             description=description,
         )
+        assert queue.table is None
+
+    @patch("databricks.sql.backend.sea.queue.logger")
+    def test_progress_chunk_link_no_current_link(self, mock_logger):
+        """Test _progress_chunk_link with no current link."""
+        # Create a queue instance without initializing
+        queue = Mock(spec=SeaCloudFetchQueue)
+        queue._current_chunk_link = None
+
+        # Call the method directly
+        result = SeaCloudFetchQueue._progress_chunk_link(queue)
+
+        # Verify the result is None
+        assert result is None
+
+    @patch("databricks.sql.backend.sea.queue.logger")
+    def test_progress_chunk_link_no_next_chunk(self, mock_logger):
+        """Test _progress_chunk_link with no next chunk index."""
+        # Create a queue instance without initializing
+        queue = Mock(spec=SeaCloudFetchQueue)
+        queue._current_chunk_link = ExternalLink(
+            external_link="https://example.com/data/chunk0",
+            expiration="2025-07-03T05:51:18.118009",
+            row_count=100,
+            byte_count=1024,
+            row_offset=0,
+            chunk_index=0,
+            next_chunk_index=None,
+            http_headers={"Authorization": "Bearer token123"},
+        )
+
+        # Call the method directly
+        result = SeaCloudFetchQueue._progress_chunk_link(queue)
+
+        # Verify the result is None
+        assert result is None
+        assert queue._current_chunk_link is None
+
+    @patch("databricks.sql.backend.sea.queue.logger")
+    def test_create_next_table_no_current_link(self, mock_logger):
+        """Test _create_next_table with no current link."""
+        # Create a queue instance without initializing
+        queue = Mock(spec=SeaCloudFetchQueue)
+        queue._current_chunk_link = None
+
+        # Call the method directly
+        result = SeaCloudFetchQueue._create_next_table(queue)
 
         # Verify debug message was logged
         mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
-                "test-statement-123", 0
-            )
+            "SeaCloudFetchQueue: No current chunk link, returning"
         )
 
-        # Verify download manager wasn't created
-        mock_download_manager_class.assert_not_called()
+        # Verify the result is None
+        assert result is None
 
-        # Verify attributes
-        assert queue._statement_id == "test-statement-123"
-        assert (
-            not hasattr(queue, "_current_chunk_link")
-            or queue._current_chunk_link is None
+    @patch("databricks.sql.backend.sea.queue.logger")
+    def test_create_next_table_success(self, mock_logger):
+        """Test _create_next_table with successful table creation."""
+        # Create a queue instance without initializing
+        queue = Mock(spec=SeaCloudFetchQueue)
+        queue._current_chunk_link = ExternalLink(
+            external_link="https://example.com/data/chunk0",
+            expiration="2025-07-03T05:51:18.118009",
+            row_count=100,
+            byte_count=1024,
+            row_offset=50,
+            chunk_index=0,
+            next_chunk_index=1,
+            http_headers={"Authorization": "Bearer token123"},
         )
+        queue.download_manager = Mock()
+
+        # Mock the dependencies
+        mock_table = Mock()
+        queue._create_table_at_offset = Mock(return_value=mock_table)
+        queue._create_table_from_link = Mock(return_value=mock_table)
+        queue._progress_chunk_link = Mock()
+
+        # Call the method directly
+        result = SeaCloudFetchQueue._create_next_table(queue)
+
+        # Verify the table was created
+        queue._create_table_from_link.assert_called_once_with(queue._current_chunk_link)
+
+        # Verify progress was called
+        queue._progress_chunk_link.assert_called_once()
+
+        # Verify the result is the table
+        assert result == mock_table

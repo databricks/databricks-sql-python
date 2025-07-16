@@ -5,7 +5,7 @@ These models define the structures used in SEA API responses.
 """
 
 import base64
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from databricks.sql.backend.types import CommandState
@@ -165,34 +165,33 @@ class CreateSessionResponse:
 
 @dataclass
 class GetChunksResponse:
-    """Response from getting chunks for a statement."""
+    """
+    Response from getting chunks for a statement.
 
-    statement_id: str
-    external_links: List[ExternalLink]
+    The response model can be found in the docs, here:
+    https://docs.databricks.com/api/workspace/statementexecution/getstatementresultchunkn
+    """
+
+    data: Optional[List[List[Any]]] = None
+    external_links: Optional[List[ExternalLink]] = None
+    byte_count: Optional[int] = None
+    chunk_index: Optional[int] = None
+    next_chunk_index: Optional[int] = None
+    next_chunk_internal_link: Optional[str] = None
+    row_count: Optional[int] = None
+    row_offset: Optional[int] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GetChunksResponse":
         """Create a GetChunksResponse from a dictionary."""
-        external_links = []
-        if "external_links" in data:
-            for link_data in data["external_links"]:
-                external_links.append(
-                    ExternalLink(
-                        external_link=link_data.get("external_link", ""),
-                        expiration=link_data.get("expiration", ""),
-                        chunk_index=link_data.get("chunk_index", 0),
-                        byte_count=link_data.get("byte_count", 0),
-                        row_count=link_data.get("row_count", 0),
-                        row_offset=link_data.get("row_offset", 0),
-                        next_chunk_index=link_data.get("next_chunk_index"),
-                        next_chunk_internal_link=link_data.get(
-                            "next_chunk_internal_link"
-                        ),
-                        http_headers=link_data.get("http_headers"),
-                    )
-                )
-
+        result = _parse_result({"result": data})
         return cls(
-            statement_id=data.get("statement_id", ""),
-            external_links=external_links,
+            data=result.data,
+            external_links=result.external_links,
+            byte_count=result.byte_count,
+            chunk_index=result.chunk_index,
+            next_chunk_index=result.next_chunk_index,
+            next_chunk_internal_link=result.next_chunk_internal_link,
+            row_count=result.row_count,
+            row_offset=result.row_offset,
         )

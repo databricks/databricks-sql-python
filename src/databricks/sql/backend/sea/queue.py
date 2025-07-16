@@ -22,7 +22,7 @@ from databricks.sql.backend.sea.models.base import (
     ResultManifest,
 )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
-from databricks.sql.exc import ProgrammingError
+from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
 from databricks.sql.utils import (
@@ -83,7 +83,7 @@ class SeaResultSetQueueFactory(ABC):
 
             # EXTERNAL_LINKS disposition
             return SeaCloudFetchQueue(
-                initial_links=result_data.external_links or [],
+                result_data=result_data,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
                 sea_client=sea_client,
@@ -116,6 +116,9 @@ class JsonQueue(ResultSetQueue):
         slice = self.data_array[self.cur_row_index :]
         self.cur_row_index += len(slice)
         return slice
+
+    def close(self):
+        return
 
 
 class LinkFetcher:
@@ -218,7 +221,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def __init__(
         self,
-        initial_links: List["ExternalLink"],
+        result_data: ResultData,
         max_download_threads: int,
         ssl_options: SSLOptions,
         sea_client: "SeaDatabricksClient",
@@ -252,6 +255,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         self._sea_client = sea_client
         self._statement_id = statement_id
+        self._total_chunk_count = total_chunk_count
 
         logger.debug(
             "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
@@ -259,7 +263,14 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             )
         )
 
-        if total_chunk_count < 1:
+        initial_links = result_data.external_links or []
+        self._chunk_index_to_link = {link.chunk_index: link for link in initial_links}
+
+        # Track the current chunk we're processing
+        self._current_chunk_index = 0
+        first_link = self._chunk_index_to_link.get(self._current_chunk_index, None)
+        if not first_link:
+            # possibly an empty response
             return
 
         self.current_chunk_index = 0
