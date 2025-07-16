@@ -25,7 +25,16 @@ class PySQLStagingIngestionTestSuiteMixin:
     In addition to connection credentials (host, path, token) this suite requires an env var
     named staging_ingestion_user"""
 
-    def test_staging_ingestion_life_cycle(self, ingestion_user):
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_staging_ingestion_life_cycle(self, ingestion_user, backend_params):
         """PUT a file into the staging location
         GET the file from the staging location
         REMOVE the file from the staging location
@@ -42,7 +51,7 @@ class PySQLStagingIngestionTestSuiteMixin:
             fp.write(original_text)
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": temp_path}
+            extra_params={"staging_allowed_local_path": temp_path, **backend_params}
         ) as conn:
 
             cursor = conn.cursor()
@@ -54,7 +63,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         new_fh, new_temp_path = tempfile.mkstemp()
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": new_temp_path}
+            extra_params={"staging_allowed_local_path": new_temp_path, **backend_params}
         ) as conn:
             cursor = conn.cursor()
             query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' TO '{new_temp_path}'"
@@ -69,7 +78,9 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv'"
 
-        with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
+        with self.connection(
+            extra_params={"staging_allowed_local_path": "/", **backend_params}
+        ) as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
 
@@ -85,8 +96,17 @@ class PySQLStagingIngestionTestSuiteMixin:
         os.remove(temp_path)
         os.remove(new_temp_path)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_staging_ingestion_put_fails_without_staging_allowed_local_path(
-        self, ingestion_user
+        self, ingestion_user, backend_params
     ):
         """PUT operations are not supported unless the connection was built with
         a parameter called staging_allowed_local_path
@@ -102,13 +122,22 @@ class PySQLStagingIngestionTestSuiteMixin:
         with pytest.raises(
             Error, match="You must provide at least one staging_allowed_local_path"
         ):
-            with self.connection() as conn:
+            with self.connection(extra_params=backend_params) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_staging_ingestion_put_fails_if_localFile_not_in_staging_allowed_local_path(
-        self, ingestion_user
+        self, ingestion_user, backend_params
     ):
 
         fh, temp_path = tempfile.mkstemp()
@@ -128,14 +157,23 @@ class PySQLStagingIngestionTestSuiteMixin:
             match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(
-                extra_params={"staging_allowed_local_path": base_path}
+                extra_params={"staging_allowed_local_path": base_path, **backend_params}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_staging_ingestion_put_fails_if_file_exists_and_overwrite_not_set(
-        self, ingestion_user
+        self, ingestion_user, backend_params
     ):
         """PUT a file into the staging location twice. First command should succeed. Second should fail."""
 
@@ -148,7 +186,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         def perform_put():
             with self.connection(
-                extra_params={"staging_allowed_local_path": temp_path}
+                extra_params={"staging_allowed_local_path": temp_path, **backend_params}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/12/15/file1.csv'"
@@ -161,7 +199,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 )
 
                 with self.connection(
-                    extra_params={"staging_allowed_local_path": "/"}
+                    extra_params={"staging_allowed_local_path": "/", **backend_params}
                 ) as conn:
                     cursor = conn.cursor()
                     cursor.execute(remove_query)
@@ -183,7 +221,18 @@ class PySQLStagingIngestionTestSuiteMixin:
         # Clean up after ourselves
         perform_remove()
 
-    def test_staging_ingestion_fails_to_modify_another_staging_user(self):
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_staging_ingestion_fails_to_modify_another_staging_user(
+        self, backend_params
+    ):
         """The server should only allow modification of the staging_ingestion_user's files"""
 
         some_other_user = "mary.poppins@databricks.com"
@@ -197,7 +246,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         def perform_put():
             with self.connection(
-                extra_params={"staging_allowed_local_path": temp_path}
+                extra_params={"staging_allowed_local_path": temp_path, **backend_params}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv' OVERWRITE"
@@ -207,14 +256,14 @@ class PySQLStagingIngestionTestSuiteMixin:
             remove_query = f"REMOVE 'stage://tmp/{some_other_user}/tmp/12/15/file1.csv'"
 
             with self.connection(
-                extra_params={"staging_allowed_local_path": "/"}
+                extra_params={"staging_allowed_local_path": "/", **backend_params}
             ) as conn:
                 cursor = conn.cursor()
                 cursor.execute(remove_query)
 
         def perform_get():
             with self.connection(
-                extra_params={"staging_allowed_local_path": temp_path}
+                extra_params={"staging_allowed_local_path": temp_path, **backend_params}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"GET 'stage://tmp/{some_other_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
@@ -232,8 +281,17 @@ class PySQLStagingIngestionTestSuiteMixin:
         with pytest.raises(sql.exc.ServerOperationError, match="PERMISSION_DENIED"):
             perform_get()
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_staging_ingestion_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(
-        self, ingestion_user
+        self, ingestion_user, backend_params
     ):
         """
         This test confirms that staging_allowed_local_path and target_file are resolved into absolute paths.
@@ -250,42 +308,78 @@ class PySQLStagingIngestionTestSuiteMixin:
             match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                extra_params={
+                    "staging_allowed_local_path": staging_allowed_local_path,
+                    **backend_params,
+                }
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(
-        self, ingestion_user
+        self, ingestion_user, backend_params
     ):
         staging_allowed_local_path = "/var/www/html"
         target_file = ""
 
         with pytest.raises(Error, match="EMPTY_LOCAL_FILE_IN_STAGING_ACCESS_QUERY"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                extra_params={
+                    "staging_allowed_local_path": staging_allowed_local_path,
+                    **backend_params,
+                }
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_staging_ingestion_invalid_staging_path_fails_at_server(
-        self, ingestion_user
+        self, ingestion_user, backend_params
     ):
         staging_allowed_local_path = "/var/www/html"
         target_file = "index.html"
 
         with pytest.raises(Error, match="INVALID_STAGING_PATH_IN_STAGING_ACCESS_QUERY"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                extra_params={
+                    "staging_allowed_local_path": staging_allowed_local_path,
+                    **backend_params,
+                }
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_staging_ingestion_supports_multiple_staging_allowed_local_path_values(
-        self, ingestion_user
+        self, ingestion_user, backend_params
     ):
         """staging_allowed_local_path may be either a path-like object or a list of path-like objects.
 
@@ -331,7 +425,10 @@ class PySQLStagingIngestionTestSuiteMixin:
         ) = generate_file_and_path_and_queries()
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}
+            extra_params={
+                "staging_allowed_local_path": [temp_path1, temp_path2],
+                **backend_params,
+            }
         ) as conn:
             cursor = conn.cursor()
 

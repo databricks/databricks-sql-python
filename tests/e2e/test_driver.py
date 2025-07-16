@@ -1008,9 +1008,18 @@ class TestPySQLRetrySuite:
 
     class HTTP503Suite(Client503ResponseMixin, PySQLPytestTestCase):
         # 503Response suite gets custom error here vs PyODBC
-        def test_retry_disabled(self):
+        @pytest.mark.parametrize(
+            "backend_params",
+            [
+                {},
+                {
+                    "use_sea": True,
+                },
+            ],
+        )
+        def test_retry_disabled(self, backend_params):
             self._test_retry_disabled_with_message(
-                "TEMPORARILY_UNAVAILABLE", OperationalError
+                "TEMPORARILY_UNAVAILABLE", OperationalError, backend_params
             )
 
 

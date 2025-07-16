@@ -17,17 +17,37 @@ from databricks.sql.exc import (
 
 
 class Client429ResponseMixin:
-    def test_client_should_retry_automatically_when_getting_429(self):
-        with self.cursor() as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_client_should_retry_automatically_when_getting_429(self, backend_params):
+        with self.cursor(backend_params) as cursor:
             for _ in range(10):
                 cursor.execute("SELECT 1")
                 rows = cursor.fetchall()
                 self.assertEqual(len(rows), 1)
                 self.assertEqual(rows[0][0], 1)
 
-    def test_client_should_not_retry_429_if_RateLimitRetry_is_0(self):
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_client_should_not_retry_429_if_RateLimitRetry_is_0(self, backend_params):
         with pytest.raises(self.error_type) as cm:
-            with self.cursor(self.conf_to_disable_rate_limit_retries) as cursor:
+            with self.cursor(
+                {**self.conf_to_disable_rate_limit_retries, **backend_params}
+            ) as cursor:
                 for _ in range(10):
                     cursor.execute("SELECT 1")
                     rows = cursor.fetchall()
@@ -46,14 +66,39 @@ class Client429ResponseMixin:
 
 
 class Client503ResponseMixin:
-    def test_wait_cluster_startup(self):
-        with self.cursor() as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_wait_cluster_startup(self, backend_params):
+        with self.cursor(backend_params) as cursor:
             cursor.execute("SELECT 1")
             cursor.fetchall()
 
-    def _test_retry_disabled_with_message(self, error_msg_substring, exception_type):
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def _test_retry_disabled_with_message(
+        self, error_msg_substring, exception_type, backend_params
+    ):
         with pytest.raises(exception_type) as cm:
-            with self.connection(self.conf_to_disable_temporarily_unavailable_retries):
+            with self.connection(
+                {
+                    **self.conf_to_disable_temporarily_unavailable_retries,
+                    **backend_params,
+                }
+            ):
                 pass
         assert error_msg_substring in str(cm.exception)
 
