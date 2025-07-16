@@ -661,7 +661,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
         response = GetChunksResponse.from_dict(response_data)
 
-        links = response.external_links
+        links = response.external_links or []
         return links
 
     # == Metadata Operations ==
