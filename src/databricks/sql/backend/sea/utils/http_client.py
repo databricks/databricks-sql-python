@@ -1,8 +1,13 @@
+import json
 import logging
+import ssl
+import urllib.parse
+import urllib.request
 from typing import Dict, Any, Optional, List, Tuple, Union
+from urllib.parse import urljoin
 
-import requests
-from requests.adapters import HTTPAdapter
+from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
+from urllib3.util import make_headers
 from urllib3.exceptions import MaxRetryError
 
 from databricks.sql.auth.authenticators import AuthProvider
@@ -22,12 +27,16 @@ class SeaHttpClient:
     """
     HTTP client for Statement Execution API (SEA).
 
-    This client uses requests.Session for HTTP communication with retry policies
-    and connection pooling.
+    This client uses urllib3 for robust HTTP communication with retry policies
+    and connection pooling, similar to the Thrift HTTP client but simplified.
     """
 
     retry_policy: Union[DatabricksRetryPolicy, int]
-    session: requests.Session
+    _pool: Optional[Union[HTTPConnectionPool, HTTPSConnectionPool]]
+    proxy_uri: Optional[str]
+    realhost: Optional[str]
+    realport: Optional[int]
+    proxy_auth: Optional[Dict[str, str]]
 
     def __init__(
         self,
@@ -55,12 +64,21 @@ class SeaHttpClient:
         self.server_hostname = server_hostname
         self.port = port or 443
         self.http_path = http_path
-        self.http_headers = http_headers
         self.auth_provider = auth_provider
         self.ssl_options = ssl_options
 
         # Build base URL
         self.base_url = f"https://{server_hostname}:{self.port}"
+
+        # Parse URL for proxy handling
+        parsed_url = urllib.parse.urlparse(self.base_url)
+        self.scheme = parsed_url.scheme
+        self.host = parsed_url.hostname
+        self.port = parsed_url.port or (443 if self.scheme == "https" else 80)
+
+        # Setup headers
+        self.headers: Dict[str, str] = dict(http_headers)
+        self.headers.update({"Content-Type": "application/json"})
 
         # Extract retry policy settings
         self._retry_delay_min = kwargs.get("_retry_delay_min", 1.0)
@@ -103,44 +121,83 @@ class SeaHttpClient:
             # Legacy behavior - no automatic retries
             self.retry_policy = 0
 
-        # Create session and configure it
-        self.session = requests.Session()
-        self._configure_session()
+        # Handle proxy settings
+        try:
+            proxy = urllib.request.getproxies().get(self.scheme)
+        except (KeyError, AttributeError):
+            proxy = None
+        else:
+            if self.host and urllib.request.proxy_bypass(self.host):
+                proxy = None
 
-    def _configure_session(self):
-        """Configure the requests session with headers, SSL, and retry policy."""
-        # Setup headers
-        self.session.headers.update(dict(self.http_headers))
-        self.session.headers.update({"Content-Type": "application/json"})
+        if proxy:
+            parsed_proxy = urllib.parse.urlparse(proxy)
+            self.realhost = self.host
+            self.realport = self.port
+            self.proxy_uri = proxy
+            self.host = parsed_proxy.hostname
+            self.port = parsed_proxy.port or (443 if self.scheme == "https" else 80)
+            self.proxy_auth = self._basic_proxy_auth_headers(parsed_proxy)
+        else:
+            self.realhost = None
+            self.realport = None
+            self.proxy_auth = None
+            self.proxy_uri = None
 
-        # Configure SSL
-        if not self.ssl_options.tls_verify:
-            self.session.verify = False
-        elif self.ssl_options.tls_trusted_ca_file:
-            self.session.verify = self.ssl_options.tls_trusted_ca_file
+        # Initialize connection pool
+        self._pool = None
+        self._open()
 
-        if self.ssl_options.tls_client_cert_file:
-            if self.ssl_options.tls_client_cert_key_file:
-                self.session.cert = (
-                    self.ssl_options.tls_client_cert_file,
-                    self.ssl_options.tls_client_cert_key_file,
-                )
-            else:
-                self.session.cert = self.ssl_options.tls_client_cert_file
+    def _basic_proxy_auth_headers(self, proxy_parsed) -> Optional[Dict[str, str]]:
+        """Create basic auth headers for proxy if credentials are provided."""
+        if proxy_parsed is None or not proxy_parsed.username:
+            return None
+        ap = f"{urllib.parse.unquote(proxy_parsed.username)}:{urllib.parse.unquote(proxy_parsed.password)}"
+        return make_headers(proxy_basic_auth=ap)
 
-        # Configure retry adapter
-        adapter = HTTPAdapter(
-            pool_connections=self.max_connections,
-            pool_maxsize=self.max_connections,
-            max_retries=self.retry_policy,
-        )
+    def _open(self):
+        """Initialize the connection pool."""
+        pool_kwargs = {"maxsize": self.max_connections}
 
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
+        if self.scheme == "http":
+            pool_class = HTTPConnectionPool
+        else:  # https
+            pool_class = HTTPSConnectionPool
+            pool_kwargs.update(
+                {
+                    "cert_reqs": ssl.CERT_REQUIRED
+                    if self.ssl_options.tls_verify
+                    else ssl.CERT_NONE,
+                    "ca_certs": self.ssl_options.tls_trusted_ca_file,
+                    "cert_file": self.ssl_options.tls_client_cert_file,
+                    "key_file": self.ssl_options.tls_client_cert_key_file,
+                    "key_password": self.ssl_options.tls_client_cert_key_password,
+                }
+            )
+
+        if self.using_proxy():
+            proxy_manager = ProxyManager(
+                self.proxy_uri,
+                num_pools=1,
+                proxy_headers=self.proxy_auth,
+            )
+            self._pool = proxy_manager.connection_from_host(
+                host=self.realhost,
+                port=self.realport,
+                scheme=self.scheme,
+                pool_kwargs=pool_kwargs,
+            )
+        else:
+            self._pool = pool_class(self.host, self.port, **pool_kwargs)
 
     def close(self):
-        """Close the session."""
-        self.session.close()
+        """Close the connection pool."""
+        if self._pool:
+            self._pool.clear()
+
+    def using_proxy(self) -> bool:
+        """Check if proxy is being used (for compatibility with Thrift client)."""
+        return self.realhost is not None
 
     def set_retry_command_type(self, command_type: CommandType):
         """Set the command type for retry policy decision making."""
@@ -179,36 +236,46 @@ class SeaHttpClient:
             RequestError: If the request fails after retries
         """
 
+        # Prepare headers
+        headers = {**self.headers, **self._get_auth_headers()}
+
+        # Prepare request body
+        body = json.dumps(data).encode("utf-8") if data else b""
+        if body:
+            headers["Content-Length"] = str(len(body))
+
         # Set command type for retry policy
         command_type = self._get_command_type_from_path(path, method)
         self.set_retry_command_type(command_type)
         self.start_retry_timer()
 
-        # Prepare headers
-        headers = self._get_auth_headers()
-
         logger.debug(f"Making {method} request to {path}")
 
+        # When v3 retries are enabled, urllib3 handles retries internally via DatabricksRetryPolicy
+        # When disabled, we let exceptions bubble up (similar to Thrift backend approach)
+        if self._pool is None:
+            raise RequestError("Connection pool not initialized", None)
+
         try:
-            response = self.session.request(
+            response = self._pool.request(
                 method=method.upper(),
-                url=f"{self.base_url}{path}",
-                json=data,  # requests handles JSON encoding automatically
+                url=path,
+                body=body,
                 headers=headers,
+                preload_content=False,
+                retries=self.retry_policy,
             )
-
-            response.raise_for_status()  # This will raise an HTTPError for non-2xx responses
-            return response.json()
-
         except MaxRetryDurationError as e:
             # MaxRetryDurationError is raised directly by DatabricksRetryPolicy
-            # when duration limits are exceeded
+            # when duration limits are exceeded (like in test_retry_exponential_backoff)
             error_message = f"Request failed due to retry duration limit: {e}"
+            # Construct RequestError with message, context, and specific error
             raise RequestError(error_message, None, e)
         except (SessionAlreadyClosedError, CursorAlreadyClosedError) as e:
             # These exceptions are raised by DatabricksRetryPolicy when detecting
             # "already closed" scenarios (404 responses with retry history)
             error_message = f"Request failed: {e}"
+            # Construct RequestError with proper 3-argument format (message, context, error)
             raise RequestError(error_message, None, e)
         except MaxRetryError as e:
             # urllib3 MaxRetryError should bubble up for redirect tests to catch
@@ -217,7 +284,18 @@ class SeaHttpClient:
         except Exception as e:
             logger.error(f"SEA HTTP request failed with exception: {e}")
             error_message = f"Error during request to server. {e}"
+            # Construct RequestError with proper 3-argument format (message, context, error)
             raise RequestError(error_message, None, e)
+
+        logger.debug(f"Response status: {response.status}")
+
+        # Handle successful responses
+        if 200 <= response.status < 300:
+            return response.json()
+
+        error_message = f"SEA HTTP request failed with status {response.status}"
+
+        raise RequestError(error_message, None)
 
     def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
         """
