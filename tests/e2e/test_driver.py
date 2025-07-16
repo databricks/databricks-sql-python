@@ -365,8 +365,15 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
-    def test_get_tables(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {"use_sea": True},
+        ],
+    )
+    def test_get_tables(self, backend_params):
+        with self.cursor(extra_params=backend_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             table_names = [table_name + "_1", table_name + "_2"]
 
