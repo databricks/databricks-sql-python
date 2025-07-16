@@ -94,8 +94,7 @@ def _parse_result(data: Dict[str, Any]) -> ResultData:
 
     # Handle attachment field - decode from base64 if present
     attachment = result_data.get("attachment")
-    if attachment is not None and isinstance(attachment, str):
-        # Decode base64 string to bytes
+    if attachment is not None:
         attachment = base64.b64decode(attachment)
 
     return ResultData(
