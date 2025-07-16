@@ -2,6 +2,8 @@ import logging
 import math
 import time
 
+import pytest
+
 log = logging.getLogger(__name__)
 
 
