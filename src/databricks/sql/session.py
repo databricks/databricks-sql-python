@@ -10,7 +10,6 @@ from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId
-from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
 logger = logging.getLogger(__name__)
 
@@ -42,18 +41,9 @@ class Session:
         self.schema = schema
         self.http_path = http_path
 
-        try:
-            self.auth_provider = get_python_sql_connector_auth_provider(
-                server_hostname, **kwargs
-            )
-        except Exception as e:
-            TelemetryClientFactory.connection_failure_log(
-                error_name="Exception",
-                error_message=str(e),
-                host_url=server_hostname,
-                http_path=http_path,
-                port=self.port,
-            )
+        self.auth_provider = get_python_sql_connector_auth_provider(
+            server_hostname, **kwargs
+        )
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
@@ -85,46 +75,25 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        try:
-            self.backend: DatabricksClient = ThriftDatabricksClient(
-                self.host,
-                self.port,
-                http_path,
-                (http_headers or []) + base_headers,
-                self.auth_provider,
-                ssl_options=self._ssl_options,
-                _use_arrow_native_complex_types=_use_arrow_native_complex_types,
-                **kwargs,
-            )
-        except Exception as e:
-            TelemetryClientFactory.connection_failure_log(
-                error_name="Exception",
-                error_message=str(e),
-                host_url=server_hostname,
-                http_path=http_path,
-                port=self.port,
-                user_agent=self.useragent_header,
-            )
+        self.backend: DatabricksClient = ThriftDatabricksClient(
+            self.host,
+            self.port,
+            http_path,
+            (http_headers or []) + base_headers,
+            self.auth_provider,
+            ssl_options=self._ssl_options,
+            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
+            **kwargs,
+        )
 
         self.protocol_version = None
 
     def open(self):
-        try:
-            self._session_id = self.backend.open_session(
-                session_configuration=self.session_configuration,
-                catalog=self.catalog,
-                schema=self.schema,
-            )
-        except Exception as e:
-            TelemetryClientFactory.connection_failure_log(
-                error_name="Exception",
-                error_message=str(e),
-                host_url=self.host,
-                http_path=self.http_path,
-                port=self.port,
-                user_agent=self.useragent_header,
-            )
-            raise e
+        self._session_id = self.backend.open_session(
+            session_configuration=self.session_configuration,
+            catalog=self.catalog,
+            schema=self.schema,
+        )
 
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True

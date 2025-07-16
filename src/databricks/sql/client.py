@@ -252,17 +252,28 @@ class Connection:
             self.client_telemetry_enabled and self.server_telemetry_enabled
         )
 
-        self.session = Session(
-            server_hostname,
-            http_path,
-            http_headers,
-            session_configuration,
-            catalog,
-            schema,
-            _use_arrow_native_complex_types,
-            **kwargs,
-        )
-        self.session.open()
+        try:
+            self.session = Session(
+                server_hostname,
+                http_path,
+                http_headers,
+                session_configuration,
+                catalog,
+                schema,
+                _use_arrow_native_complex_types,
+                **kwargs,
+            )
+            self.session.open()
+        except Exception as e:
+            TelemetryClientFactory.connection_failure_log(
+                error_name="Exception",
+                error_message=str(e),
+                host_url=server_hostname,
+                http_path=http_path,
+                port=self.session.port,
+                user_agent=self.session.useragent_header if self.session else None,
+            )
+            raise e
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
