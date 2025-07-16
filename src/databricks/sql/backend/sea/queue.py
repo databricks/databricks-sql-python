@@ -208,7 +208,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         link = self._chunk_index_to_link.get(chunk_index, None)
         if not link:
             raise ServerOperationError(
-                f"Unable to retrieve link for chunk {chunk_index}",
+                f"Error fetching link for chunk {chunk_index}",
                 {
                     "operation-id": self._statement_id,
                     "diagnostic-info": None,
