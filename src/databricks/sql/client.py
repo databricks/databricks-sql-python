@@ -708,7 +708,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    @log_latency()
+    @log_latency(StatementType.SQL)
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -717,7 +717,6 @@ class Cursor:
         Raise an exception if request fails. Returns no data.
         """
 
-        self.statement_type = StatementType.SQL
         if local_file is None:
             raise ProgrammingError(
                 "Cannot perform PUT without specifying a local_file",
@@ -749,7 +748,7 @@ class Cursor:
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
 
-    @log_latency()
+    @log_latency(StatementType.SQL)
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -758,7 +757,6 @@ class Cursor:
         Raise an exception if request fails. Returns no data.
         """
 
-        self.statement_type = StatementType.SQL
         if local_file is None:
             raise ProgrammingError(
                 "Cannot perform GET without specifying a local_file",
@@ -778,13 +776,12 @@ class Cursor:
         with open(local_file, "wb") as fp:
             fp.write(r.content)
 
-    @log_latency()
+    @log_latency(StatementType.SQL)
     def _handle_staging_remove(
         self, presigned_url: str, headers: Optional[dict] = None
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        self.statement_type = StatementType.SQL
         r = requests.delete(url=presigned_url, headers=headers)
 
         if not r.ok:
@@ -793,7 +790,7 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    @log_latency()
+    @log_latency(StatementType.QUERY)
     def execute(
         self,
         operation: str,
@@ -832,7 +829,6 @@ class Cursor:
         :returns self
         """
 
-        self.statement_type = StatementType.QUERY
         logger.debug(
             "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
         )
@@ -879,7 +875,7 @@ class Cursor:
 
         return self
 
-    @log_latency()
+    @log_latency(StatementType.QUERY)
     def execute_async(
         self,
         operation: str,
@@ -895,7 +891,6 @@ class Cursor:
         :return:
         """
 
-        self.statement_type = StatementType.QUERY
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
@@ -999,14 +994,13 @@ class Cursor:
             self.execute(operation, parameters)
         return self
 
-    @log_latency()
+    @log_latency(StatementType.METADATA)
     def catalogs(self) -> "Cursor":
         """
         Get all available catalogs.
 
         :returns self
         """
-        self.statement_type = StatementType.METADATA
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         self.active_result_set = self.backend.get_catalogs(
@@ -1017,7 +1011,7 @@ class Cursor:
         )
         return self
 
-    @log_latency()
+    @log_latency(StatementType.METADATA)
     def schemas(
         self, catalog_name: Optional[str] = None, schema_name: Optional[str] = None
     ) -> "Cursor":
@@ -1027,7 +1021,6 @@ class Cursor:
         Names can contain % wildcards.
         :returns self
         """
-        self.statement_type = StatementType.METADATA
         self._check_not_closed()
         self._close_and_clear_active_result_set()
         self.active_result_set = self.backend.get_schemas(
@@ -1040,7 +1033,7 @@ class Cursor:
         )
         return self
 
-    @log_latency()
+    @log_latency(StatementType.METADATA)
     def tables(
         self,
         catalog_name: Optional[str] = None,
@@ -1054,7 +1047,6 @@ class Cursor:
         Names can contain % wildcards.
         :returns self
         """
-        self.statement_type = StatementType.METADATA
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
@@ -1070,7 +1062,7 @@ class Cursor:
         )
         return self
 
-    @log_latency()
+    @log_latency(StatementType.METADATA)
     def columns(
         self,
         catalog_name: Optional[str] = None,
@@ -1084,7 +1076,6 @@ class Cursor:
         Names can contain % wildcards.
         :returns self
         """
-        self.statement_type = StatementType.METADATA
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 

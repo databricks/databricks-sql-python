@@ -65,7 +65,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
 
@@ -83,7 +82,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
 
@@ -103,7 +101,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
 
@@ -128,7 +125,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         expected_result = self.make_arrow_table()
@@ -157,7 +153,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -182,7 +177,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -206,7 +200,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -235,7 +228,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -261,7 +253,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table is None
@@ -282,7 +273,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -305,7 +295,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -328,7 +317,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -357,7 +345,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
@@ -389,7 +376,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
         assert queue.table is None

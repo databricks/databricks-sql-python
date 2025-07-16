@@ -43,9 +43,6 @@ class TelemetryExtractor:
     def get_chunk_id(self):
         pass
 
-    def get_statement_type(self):
-        pass
-
 
 class CursorExtractor(TelemetryExtractor):
     """
@@ -86,9 +83,6 @@ class CursorExtractor(TelemetryExtractor):
     def get_chunk_id(self):
         return None
 
-    def get_statement_type(self):
-        return self.statement_type
-
 
 class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
     """
@@ -113,9 +107,6 @@ class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
 
     def get_chunk_id(self) -> Optional[int]:
         return self._obj.chunk_id
-
-    def get_statement_type(self):
-        return self.statement_type
 
 
 def get_extractor(obj):
@@ -144,7 +135,7 @@ def get_extractor(obj):
         return None
 
 
-def log_latency():
+def log_latency(statement_type: StatementType = StatementType.NONE):
     """
     Decorator for logging execution latency and telemetry information.
 
@@ -159,7 +150,7 @@ def log_latency():
     - Sends the telemetry data asynchronously via TelemetryClient
 
     Usage:
-        @log_latency()
+        @log_latency(StatementType.QUERY)
         def execute(self, query):
             # Method implementation
             pass
@@ -199,7 +190,7 @@ def log_latency():
                     statement_id = _safe_call(extractor.get_statement_id)
 
                     sql_exec_event = SqlExecutionEvent(
-                        statement_type=_safe_call(extractor.get_statement_type),
+                        statement_type=statement_type,
                         is_compressed=_safe_call(extractor.get_is_compressed),
                         execution_result=_safe_call(
                             extractor.get_execution_result_format

@@ -135,14 +135,12 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         super().__init__(
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
-            # TODO: fix these arguments when telemetry is implemented in SEA
-            session_id_hex=None,
             statement_id=statement_id,
-            statement_type=StatementType.NONE,
             chunk_id=0,
             schema_bytes=None,
             lz4_compressed=lz4_compressed,
             description=description,
+            session_id_hex=None,  # TODO: fix this argument when telemetry is implemented in SEA
         )
 
         self._sea_client = sea_client

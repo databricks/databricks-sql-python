@@ -301,7 +301,6 @@ class CommandId:
         self.operation_type = operation_type
         self.has_result_set = has_result_set
         self.modified_row_count = modified_row_count
-        self._statement_type = StatementType.NONE
 
     def __str__(self) -> str:
         """
@@ -412,19 +411,6 @@ class CommandId:
             return guid_to_hex_id(self.guid)
         else:
             return str(self.guid)
-
-    def set_statement_type(self, statement_type: StatementType):
-        """
-        Set the statement type for this command.
-        """
-        self._statement_type = statement_type
-
-    @property
-    def statement_type(self) -> StatementType:
-        """
-        Get the statement type for this command.
-        """
-        return self._statement_type
 
 
 @dataclass

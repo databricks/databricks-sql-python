@@ -889,7 +889,6 @@ class ThriftDatabricksClient(DatabricksClient):
             arrow_schema_bytes=schema_bytes,
             result_format=t_result_set_metadata_resp.resultFormat,
         )
-        execute_response.command_id.set_statement_type(StatementType.QUERY)
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1029,8 +1028,6 @@ class ThriftDatabricksClient(DatabricksClient):
             if resp.directResults and resp.directResults.resultSet:
                 t_row_set = resp.directResults.resultSet.results
 
-            execute_response.command_id.set_statement_type(StatementType.QUERY)
-
             return ThriftResultSet(
                 connection=cursor.connection,
                 execute_response=execute_response,
@@ -1071,8 +1068,6 @@ class ThriftDatabricksClient(DatabricksClient):
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
             t_row_set = resp.directResults.resultSet.results
-
-        execute_response.command_id.set_statement_type(StatementType.METADATA)
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1120,8 +1115,6 @@ class ThriftDatabricksClient(DatabricksClient):
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
             t_row_set = resp.directResults.resultSet.results
-
-        execute_response.command_id.set_statement_type(StatementType.METADATA)
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1174,8 +1167,6 @@ class ThriftDatabricksClient(DatabricksClient):
         if resp.directResults and resp.directResults.resultSet:
             t_row_set = resp.directResults.resultSet.results
 
-        execute_response.command_id.set_statement_type(StatementType.METADATA)
-
         return ThriftResultSet(
             connection=cursor.connection,
             execute_response=execute_response,
@@ -1226,8 +1217,6 @@ class ThriftDatabricksClient(DatabricksClient):
         t_row_set = None
         if resp.directResults and resp.directResults.resultSet:
             t_row_set = resp.directResults.resultSet.results
-
-        execute_response.command_id.set_statement_type(StatementType.METADATA)
 
         return ThriftResultSet(
             connection=cursor.connection,
@@ -1315,7 +1304,6 @@ class ThriftDatabricksClient(DatabricksClient):
             ssl_options=self._ssl_options,
             session_id_hex=self._session_id_hex,
             statement_id=command_id.to_hex_guid(),
-            statement_type=command_id.statement_type,
             chunk_id=chunk_id,
         )
 

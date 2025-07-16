@@ -217,7 +217,6 @@ class ThriftResultSet(ResultSet):
             :param ssl_options: SSL options for cloud fetch
             :param is_direct_results: Whether there are more rows to fetch
         """
-        self.statement_type = execute_response.command_id.statement_type
         self.num_downloaded_chunks = 0
 
         # Initialize ThriftResultSet-specific attributes
@@ -240,7 +239,6 @@ class ThriftResultSet(ResultSet):
                 ssl_options=ssl_options,
                 session_id_hex=session_id_hex,
                 statement_id=execute_response.command_id.to_hex_guid(),
-                statement_type=self.statement_type,
                 chunk_id=self.num_downloaded_chunks,
             )
             if t_row_set and t_row_set.resultLinks:

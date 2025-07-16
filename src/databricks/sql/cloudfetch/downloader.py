@@ -72,7 +72,6 @@ class ResultSetDownloadHandler:
         chunk_id: int,
         session_id_hex: Optional[str],
         statement_id: str,
-        statement_type: StatementType,
     ):
         self.settings = settings
         self.link = link
@@ -80,9 +79,8 @@ class ResultSetDownloadHandler:
         self.chunk_id = chunk_id
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
-        self.statement_type = statement_type
 
-    @log_latency()
+    @log_latency(StatementType.QUERY)
     def run(self) -> DownloadedFile:
         """
         Download the file described in the cloud fetch link.

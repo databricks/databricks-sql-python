@@ -24,7 +24,6 @@ class ResultFileDownloadManager:
         ssl_options: SSLOptions,
         session_id_hex: Optional[str],
         statement_id: str,
-        statement_type: StatementType,
         chunk_id: int,
     ):
         self._pending_links: List[Tuple[int, TSparkArrowResultLink]] = []
@@ -48,7 +47,6 @@ class ResultFileDownloadManager:
         self._ssl_options = ssl_options
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
-        self.statement_type = statement_type
 
     def get_next_downloaded_file(
         self, next_row_offset: int
@@ -111,7 +109,6 @@ class ResultFileDownloadManager:
                 chunk_id=chunk_id,
                 session_id_hex=self.session_id_hex,
                 statement_id=self.statement_id,
-                statement_type=self.statement_type,
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)

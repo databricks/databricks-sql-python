@@ -63,7 +63,6 @@ class ThriftResultSetQueueFactory(ABC):
         ssl_options: SSLOptions,
         session_id_hex: Optional[str],
         statement_id: str,
-        statement_type: StatementType,
         chunk_id: int,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
@@ -113,7 +112,6 @@ class ThriftResultSetQueueFactory(ABC):
                 ssl_options=ssl_options,
                 session_id_hex=session_id_hex,
                 statement_id=statement_id,
-                statement_type=statement_type,
                 chunk_id=chunk_id,
             )
         else:
@@ -225,7 +223,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         ssl_options: SSLOptions,
         session_id_hex: Optional[str],
         statement_id: str,
-        statement_type: StatementType,
         chunk_id: int,
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
@@ -249,7 +246,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self._ssl_options = ssl_options
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
-        self.statement_type = statement_type
         self.chunk_id = chunk_id
 
         # Table state
@@ -264,7 +260,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             ssl_options=ssl_options,
             session_id_hex=session_id_hex,
             statement_id=statement_id,
-            statement_type=statement_type,
             chunk_id=chunk_id,
         )
 
@@ -371,7 +366,6 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         ssl_options: SSLOptions,
         session_id_hex: Optional[str],
         statement_id: str,
-        statement_type: StatementType,
         chunk_id: int,
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
@@ -398,7 +392,6 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             description=description,
             session_id_hex=session_id_hex,
             statement_id=statement_id,
-            statement_type=statement_type,
             chunk_id=chunk_id,
         )
 
@@ -406,7 +399,6 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         self.result_links = result_links or []
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
-        self.statement_type = statement_type
         self.chunk_id = chunk_id
 
         logger.debug(

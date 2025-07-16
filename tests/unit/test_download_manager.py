@@ -21,7 +21,6 @@ class DownloadManagerTests(unittest.TestCase):
             ssl_options=SSLOptions(),
             session_id_hex=Mock(),
             statement_id=Mock(),
-            statement_type=Mock(),
             chunk_id=0,
         )
 
