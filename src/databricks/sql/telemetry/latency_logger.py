@@ -149,6 +149,9 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
     - Creates a SqlExecutionEvent with execution details
     - Sends the telemetry data asynchronously via TelemetryClient
 
+    Args:
+        statement_type (StatementType): The type of SQL statement being executed.
+
     Usage:
         @log_latency(StatementType.QUERY)
         def execute(self, query):
