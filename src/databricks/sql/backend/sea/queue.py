@@ -208,7 +208,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         link = self._chunk_index_to_link.get(chunk_index, None)
         if not link:
             raise ServerOperationError(
-                f"Chunk index {chunk_index} is not in the chunk index to link map",
+                f"Unable to retrieve link for chunk {chunk_index}",
                 {
                     "operation-id": self._statement_id,
                     "diagnostic-info": None,
