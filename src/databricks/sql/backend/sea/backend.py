@@ -130,6 +130,8 @@ class SeaDatabricksClient(DatabricksClient):
             "_use_arrow_native_complex_types", True
         )
 
+        self.use_hybrid_disposition = kwargs.get("use_hybrid_disposition", True)
+
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
@@ -456,7 +458,11 @@ class SeaDatabricksClient(DatabricksClient):
             ResultFormat.ARROW_STREAM if use_cloud_fetch else ResultFormat.JSON_ARRAY
         ).value
         disposition = (
-            ResultDisposition.EXTERNAL_LINKS
+            (
+                ResultDisposition.HYBRID
+                if self.use_hybrid_disposition
+                else ResultDisposition.EXTERNAL_LINKS
+            )
             if use_cloud_fetch
             else ResultDisposition.INLINE
         ).value
@@ -637,7 +643,9 @@ class SeaDatabricksClient(DatabricksClient):
             arraysize=cursor.arraysize,
         )
 
-    def get_chunk_link(self, statement_id: str, chunk_index: int) -> ExternalLink:
+    def get_chunk_links(
+        self, statement_id: str, chunk_index: int
+    ) -> List[ExternalLink]:
         """
         Get links for chunks starting from the specified index.
         Args:
@@ -654,17 +662,7 @@ class SeaDatabricksClient(DatabricksClient):
         response = GetChunksResponse.from_dict(response_data)
 
         links = response.external_links or []
-        link = next((l for l in links if l.chunk_index == chunk_index), None)
-        if not link:
-            raise ServerOperationError(
-                f"No link found for chunk index {chunk_index}",
-                {
-                    "operation-id": statement_id,
-                    "diagnostic-info": None,
-                },
-            )
-
-        return link
+        return links
 
     # == Metadata Operations ==
 
