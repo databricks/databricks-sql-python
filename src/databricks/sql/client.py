@@ -47,7 +47,7 @@ from databricks.sql.parameters.native import (
 from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
-from databricks.sql.volume.volume_client import VolumeClient
+from databricks.sql.volume.uc_volume_client import UCVolumeClient
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameter,
@@ -434,18 +434,14 @@ class Connection:
         self._cursors.append(cursor)
         return cursor
 
-    def get_volume_client(self) -> VolumeClient:
+    def get_uc_volume_client(self) -> UCVolumeClient:
         if not self.open:
             raise InterfaceError(
-                "Cannot create volume client from closed connection",
+                "Cannot create UC volume client from closed connection",
                 session_id_hex=self.get_session_id_hex(),
             )
         
-        return VolumeClient(
-            auth_provider=self.thrift_backend._auth_provider,
-            host_url=self.host,
-            session_id_hex=self.get_session_id_hex()
-        )
+        return UCVolumeClient(connection=self)
 
     def close(self) -> None:
         """Close the underlying session and mark all associated cursors as closed."""

@@ -1,3 +1,3 @@
-from .volume_client import VolumeClient
+from .uc_volume_client import UCVolumeClient
 
-__all__ = ['VolumeClient'] 
+__all__ = ['UCVolumeClient'] 
