@@ -269,18 +269,6 @@ class SeaHttpClient:
                 preload_content=False,
                 retries=self.retry_policy,
             )
-        except MaxRetryDurationError as e:
-            # MaxRetryDurationError is raised directly by DatabricksRetryPolicy
-            # when duration limits are exceeded (like in test_retry_exponential_backoff)
-            error_message = f"Request failed due to retry duration limit: {e}"
-            # Construct RequestError with message, context, and specific error
-            raise RequestError(error_message, None, None, e)
-        except (SessionAlreadyClosedError, CursorAlreadyClosedError) as e:
-            # These exceptions are raised by DatabricksRetryPolicy when detecting
-            # "already closed" scenarios (404 responses with retry history)
-            error_message = f"Request failed: {e}"
-            # Construct RequestError with proper 3-argument format (message, context, error)
-            raise RequestError(error_message, None, None, e)
         except MaxRetryError as e:
             # urllib3 MaxRetryError should bubble up for redirect tests to catch
             logger.error(f"SEA HTTP request failed with MaxRetryError: {e}")
