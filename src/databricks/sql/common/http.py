@@ -98,7 +98,7 @@ class TelemetryHTTPAdapter(HTTPAdapter):
         return super().send(request, **kwargs)
 
 
-class TelemetryHttpClient: # TODO: Unify all the http clients in the PySQL Connector
+class TelemetryHttpClient:  # TODO: Unify all the http clients in the PySQL Connector
     """Singleton HTTP client for sending telemetry data."""
 
     _instance: Optional["TelemetryHttpClient"] = None
