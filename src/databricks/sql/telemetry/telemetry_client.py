@@ -469,4 +469,3 @@ class TelemetryClientFactory:
         telemetry_client._user_agent = user_agent
 
         telemetry_client.export_failure_log(error_name, error_message)
-        TelemetryClientFactory.close(UNAUTH_DUMMY_SESSION_ID)

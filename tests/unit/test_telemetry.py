@@ -290,10 +290,10 @@ class TestTelemetryFactory:
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
 
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log")
     @patch("databricks.sql.client.Session")
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_connection_failure_sends_correct_telemetry_payload(
-        self, mock_send_telemetry, mock_session
+        self, mock_session, mock_export_failure_log
     ):
         """
         Verify that a connection failure constructs and sends the correct
@@ -309,17 +309,7 @@ class TestTelemetryFactory:
         except Exception as e:
             assert str(e) == error_message
 
-        mock_send_telemetry.assert_called_once()
-        
-        call_arguments = mock_send_telemetry.call_args.args
-        sent_events = call_arguments[0]
-        
-        assert len(sent_events) == 1
-        telemetry_log = sent_events[0]
-        
-        assert telemetry_log.entry.sql_driver_log is not None
-        
-        error_info = telemetry_log.entry.sql_driver_log.error_info
-        assert error_info is not None
-        assert error_info.error_name == "Exception"
-        assert error_info.stack_trace == error_message
+        mock_export_failure_log.assert_called_once()
+        call_arguments = mock_export_failure_log.call_args
+        assert call_arguments[0][0] == "Exception"
+        assert call_arguments[0][1] == error_message
