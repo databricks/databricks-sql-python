@@ -4,6 +4,7 @@ import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
+from databricks.sql.common.http import TelemetryHttpClient
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -25,8 +26,6 @@ from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
     ExternalAuthProvider,
 )
-from requests.adapters import HTTPAdapter
-from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
 import sys
 import platform
 import uuid
@@ -34,19 +33,6 @@ import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
 
 logger = logging.getLogger(__name__)
-
-
-class TelemetryHTTPAdapter(HTTPAdapter):
-    """
-    Custom HTTP adapter to prepare our DatabricksRetryPolicy before each request.
-    This ensures the retry timer is started and the command type is set correctly,
-    allowing the policy to manage its state for the duration of the request retries.
-    """
-
-    def send(self, request, **kwargs):
-        self.max_retries.command_type = CommandType.OTHER
-        self.max_retries.start_retry_timer()
-        return super().send(request, **kwargs)
 
 
 class TelemetryHelper:
@@ -143,11 +129,6 @@ class TelemetryClient(BaseTelemetryClient):
     It uses a thread pool to handle asynchronous operations, that it gets from the TelemetryClientFactory.
     """
 
-    TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_COUNT = 3
-    TELEMETRY_RETRY_DELAY_MIN = 1.0
-    TELEMETRY_RETRY_DELAY_MAX = 10.0
-    TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_DURATION = 30.0
-
     # Telemetry endpoint paths
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
@@ -173,21 +154,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
-
-        self._telemetry_retry_policy = DatabricksRetryPolicy(
-            delay_min=self.TELEMETRY_RETRY_DELAY_MIN,
-            delay_max=self.TELEMETRY_RETRY_DELAY_MAX,
-            stop_after_attempts_count=self.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_COUNT,
-            stop_after_attempts_duration=self.TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_DURATION,
-            delay_default=1.0,
-            force_dangerous_codes=[],
-        )
-        self._session = (
-            requests.Session()
-        )  # TODO: Use DatabricksHttpClient instead (unify all http clients)
-        adapter = TelemetryHTTPAdapter(max_retries=self._telemetry_retry_policy)
-        self._session.mount("https://", adapter)
-        self._session.mount("http://", adapter)
+        self._http_client = TelemetryHttpClient.get_instance()
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -236,7 +203,7 @@ class TelemetryClient(BaseTelemetryClient):
         try:
             logger.debug("Submitting telemetry request to thread pool")
             future = self._executor.submit(
-                self._session.post,
+                self._http_client.post,
                 url,
                 data=request.to_json(),
                 headers=headers,
@@ -341,7 +308,6 @@ class TelemetryClient(BaseTelemetryClient):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._flush()
-        self._session.close()
 
 
 class TelemetryClientFactory:
@@ -463,6 +429,7 @@ class TelemetryClientFactory:
                 )
                 try:
                     TelemetryClientFactory._executor.shutdown(wait=True)
+                    TelemetryHttpClient.get_instance().close()
                 except Exception as e:
                     logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
