@@ -215,6 +215,7 @@ class LinkFetcher:
             links_downloaded = self._trigger_next_batch_download()
             if not links_downloaded:
                 break
+        self._link_data_update.notify_all()
 
     def start(self):
         self._worker_thread = threading.Thread(target=self._worker_loop)

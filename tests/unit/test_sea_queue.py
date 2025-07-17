@@ -24,6 +24,8 @@ from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.types import SSLOptions
 from databricks.sql.utils import ArrowQueue
+import threading
+import time
 
 
 class TestJsonQueue:
@@ -570,3 +572,156 @@ class TestHybridDisposition:
         assert isinstance(queue, ArrowQueue)
         mock_decompress.assert_called_once_with(compressed_data)
         mock_create_table.assert_called_once_with(decompressed_data, description)
+
+
+class TestLinkFetcher:
+    """Unit tests for the LinkFetcher helper class."""
+
+    @pytest.fixture
+    def sample_links(self):
+        """Provide a pair of ExternalLink objects forming two sequential chunks."""
+        link0 = ExternalLink(
+            external_link="https://example.com/data/chunk0",
+            expiration="2030-01-01T00:00:00.000000",
+            row_count=100,
+            byte_count=1024,
+            row_offset=0,
+            chunk_index=0,
+            next_chunk_index=1,
+            http_headers={"Authorization": "Bearer token0"},
+        )
+
+        link1 = ExternalLink(
+            external_link="https://example.com/data/chunk1",
+            expiration="2030-01-01T00:00:00.000000",
+            row_count=100,
+            byte_count=1024,
+            row_offset=100,
+            chunk_index=1,
+            next_chunk_index=None,
+            http_headers={"Authorization": "Bearer token1"},
+        )
+
+        return link0, link1
+
+    def _create_fetcher(
+        self,
+        initial_links,
+        backend_mock=None,
+        download_manager_mock=None,
+        total_chunk_count=10,
+    ):
+        """Helper to create a LinkFetcher instance with supplied mocks."""
+        if backend_mock is None:
+            backend_mock = Mock()
+        if download_manager_mock is None:
+            download_manager_mock = Mock()
+
+        return (
+            LinkFetcher(
+                download_manager=download_manager_mock,
+                backend=backend_mock,
+                statement_id="statement-123",
+                initial_links=list(initial_links),
+                total_chunk_count=total_chunk_count,
+            ),
+            backend_mock,
+            download_manager_mock,
+        )
+
+    def test_add_links_and_get_next_chunk_index(self, sample_links):
+        """Verify that initial links are stored and next chunk index is computed correctly."""
+        link0, link1 = sample_links
+
+        fetcher, _backend, download_manager = self._create_fetcher([link0])
+
+        # add_link should have been called for the initial link
+        download_manager.add_link.assert_called_once()
+
+        # Internal mapping should contain the link
+        assert fetcher.chunk_index_to_link[0] == link0
+
+        # The next chunk index should be 1 (from link0.next_chunk_index)
+        assert fetcher._get_next_chunk_index() == 1
+
+        # Add second link and validate it is present
+        fetcher._add_links([link1])
+        assert fetcher.chunk_index_to_link[1] == link1
+
+    def test_trigger_next_batch_download_success(self, sample_links):
+        """Check that _trigger_next_batch_download fetches and stores new links."""
+        link0, link1 = sample_links
+
+        backend_mock = Mock()
+        backend_mock.get_chunk_links = Mock(return_value=[link1])
+
+        fetcher, backend, download_manager = self._create_fetcher(
+            [link0], backend_mock=backend_mock
+        )
+
+        # Trigger download of the next chunk (index 1)
+        success = fetcher._trigger_next_batch_download()
+
+        assert success is True
+        backend.get_chunk_links.assert_called_once_with("statement-123", 1)
+        assert fetcher.chunk_index_to_link[1] == link1
+        # Two calls to add_link: one for initial link, one for new link
+        assert download_manager.add_link.call_count == 2
+
+    def test_trigger_next_batch_download_error(self, sample_links):
+        """Ensure that errors from backend are captured and surfaced."""
+        link0, _link1 = sample_links
+
+        backend_mock = Mock()
+        backend_mock.get_chunk_links.side_effect = ServerOperationError(
+            "Backend failure"
+        )
+
+        fetcher, backend, download_manager = self._create_fetcher(
+            [link0], backend_mock=backend_mock
+        )
+
+        success = fetcher._trigger_next_batch_download()
+
+        assert success is False
+        assert fetcher._error is not None
+
+    def test_get_chunk_link_waits_until_available(self, sample_links):
+        """Validate that get_chunk_link blocks until the requested link is available and then returns it."""
+        link0, link1 = sample_links
+
+        backend_mock = Mock()
+        # Configure backend to return link1 when requested for chunk index 1
+        backend_mock.get_chunk_links = Mock(return_value=[link1])
+
+        fetcher, backend, download_manager = self._create_fetcher(
+            [link0], backend_mock=backend_mock, total_chunk_count=2
+        )
+
+        # Holder to capture the link returned from the background thread
+        result_container = {}
+
+        def _worker():
+            result_container["link"] = fetcher.get_chunk_link(1)
+
+        thread = threading.Thread(target=_worker)
+        thread.start()
+
+        # Give the thread a brief moment to start and attempt to fetch (and therefore block)
+        time.sleep(0.1)
+
+        # Trigger the backend fetch which will add link1 and notify waiting threads
+        fetcher._trigger_next_batch_download()
+
+        thread.join(timeout=2)
+
+        # The thread should have finished and captured link1
+        assert result_container.get("link") == link1
+
+    def test_get_chunk_link_out_of_range_returns_none(self, sample_links):
+        """Requesting a chunk index >= total_chunk_count should immediately return None."""
+        link0, _ = sample_links
+
+        fetcher, _backend, _dm = self._create_fetcher([link0], total_chunk_count=1)
+
+        assert fetcher.get_chunk_link(10) is None
