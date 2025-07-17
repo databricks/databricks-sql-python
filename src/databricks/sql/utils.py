@@ -26,6 +26,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
+from databricks.sql.backend.types import CommandId
 
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
@@ -44,6 +45,10 @@ class ResultSetQueue(ABC):
 
     @abstractmethod
     def remaining_rows(self):
+        pass
+
+    @abstractmethod
+    def close(self):
         pass
 
 
@@ -73,6 +78,7 @@ class ResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue
         """
+
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
@@ -157,6 +163,9 @@ class ColumnQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
+    def close(self):
+        return
+
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
@@ -172,6 +181,7 @@ class ArrowQueue(ResultSetQueue):
         :param n_valid_rows: The index of the last valid row in the table
         :param start_row_index: The first row in the table we should start fetching from
         """
+
         self.cur_row_index = start_row_index
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
@@ -191,6 +201,9 @@ class ArrowQueue(ResultSetQueue):
         )
         self.cur_row_index += slice.num_rows
         return slice
+
+    def close(self):
+        return
 
 
 class CloudFetchQueue(ResultSetQueue):
@@ -215,6 +228,7 @@ class CloudFetchQueue(ResultSetQueue):
             lz4_compressed (bool): Whether the files are lz4 compressed.
             description (List[List[Any]]): Hive table schema description.
         """
+
         self.schema_bytes = schema_bytes
         self.max_download_threads = max_download_threads
         self.start_row_index = start_row_offset
@@ -255,17 +269,19 @@ class CloudFetchQueue(ResultSetQueue):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             logger.debug("CloudFetchQueue: no more rows available")
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
 
             # Replace current table with the next table if we are at the end of the current table
@@ -275,7 +291,7 @@ class CloudFetchQueue(ResultSetQueue):
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def remaining_rows(self) -> "pyarrow.Table":
         """
@@ -284,19 +300,21 @@ class CloudFetchQueue(ResultSetQueue):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         logger.debug(
@@ -341,11 +359,14 @@ class CloudFetchQueue(ResultSetQueue):
         # Create a 0-row table with just the schema bytes
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
+    def close(self):
+        self.download_manager._shutdown_manager()
+
 
 ExecuteResponse = namedtuple(
     "ExecuteResponse",
     "status has_been_closed_server_side has_more_rows description lz4_compressed is_staging_operation "
-    "command_handle arrow_queue arrow_schema_bytes",
+    "command_id arrow_queue arrow_schema_bytes",
 )
 
 
@@ -576,6 +597,7 @@ def transform_paramstyle(
     Returns:
         str
     """
+
     output = operation
     if (
         param_structure == ParameterStructure.POSITIONAL
