@@ -285,13 +285,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         self.current_chunk_index = 0
 
-        self.download_manager = ResultFileDownloadManager(
-            links=[],
-            max_download_threads=max_download_threads,
-            lz4_compressed=lz4_compressed,
-            ssl_options=ssl_options,
-        )
-
         self.link_fetcher = LinkFetcher(
             download_manager=self.download_manager,
             backend=self._sea_client,
