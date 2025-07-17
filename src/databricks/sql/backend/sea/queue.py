@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import List, Optional, Tuple, Union, TYPE_CHECKING
+import threading
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
@@ -142,7 +143,7 @@ class LinkFetcher:
 
         for link in initial_links:
             self.chunk_index_to_link[link.chunk_index] = link
-            self.download_manager.add_link(self._convert_to_thrift_link(link))
+            self.download_manager.add_link(LinkFetcher._convert_to_thrift_link(link))
         self.total_chunk_count = total_chunk_count
 
     def _get_next_chunk_index(self) -> Optional[int]:
@@ -188,7 +189,8 @@ class LinkFetcher:
 
             return self.chunk_index_to_link.get(chunk_index, None)
 
-    def _convert_to_thrift_link(self, link: "ExternalLink") -> TSparkArrowResultLink:
+    @staticmethod
+    def _convert_to_thrift_link(link: "ExternalLink") -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
         # Parse the ISO format expiration time
         expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())

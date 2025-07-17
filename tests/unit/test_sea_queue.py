@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from databricks.sql.backend.sea.queue import (
     JsonQueue,
+    LinkFetcher,
     SeaResultSetQueueFactory,
     SeaCloudFetchQueue,
 )
@@ -216,9 +217,7 @@ class TestSeaResultSetQueueFactory:
 
         with patch(
             "databricks.sql.backend.sea.queue.ResultFileDownloadManager"
-        ), patch.object(
-            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
-        ):
+        ), patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
             queue = SeaResultSetQueueFactory.build_queue(
                 result_data=result_data,
                 manifest=arrow_manifest,
@@ -303,10 +302,8 @@ class TestSeaCloudFetchQueue:
 
     def test_convert_to_thrift_link(self, sample_external_link):
         """Test conversion of ExternalLink to TSparkArrowResultLink."""
-        queue = Mock(spec=SeaCloudFetchQueue)
-
         # Call the method directly
-        result = SeaCloudFetchQueue._convert_to_thrift_link(queue, sample_external_link)
+        result = LinkFetcher._convert_to_thrift_link(sample_external_link)
 
         # Verify the conversion
         assert result.fileLink == sample_external_link.external_link
@@ -317,12 +314,8 @@ class TestSeaCloudFetchQueue:
 
     def test_convert_to_thrift_link_no_headers(self, sample_external_link_no_headers):
         """Test conversion of ExternalLink with no headers to TSparkArrowResultLink."""
-        queue = Mock(spec=SeaCloudFetchQueue)
-
         # Call the method directly
-        result = SeaCloudFetchQueue._convert_to_thrift_link(
-            queue, sample_external_link_no_headers
-        )
+        result = LinkFetcher._convert_to_thrift_link(sample_external_link_no_headers)
 
         # Verify the conversion
         assert result.fileLink == sample_external_link_no_headers.external_link
@@ -344,9 +337,7 @@ class TestSeaCloudFetchQueue:
     ):
         """Test initialization with valid initial link."""
         # Create a queue with valid initial link
-        with patch.object(
-            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
-        ):
+        with patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
             queue = SeaCloudFetchQueue(
                 result_data=ResultData(external_links=[sample_external_link]),
                 max_download_threads=5,
@@ -398,29 +389,29 @@ class TestSeaCloudFetchQueue:
         """Test _create_next_table with successful table creation."""
         # Create a queue instance without initializing
         queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_index = 0
+        queue.current_chunk_index = 0
         queue.download_manager = Mock()
+        queue.link_fetcher = Mock()
 
         # Mock the dependencies
         mock_table = Mock()
         mock_chunk_link = Mock()
-        queue._get_chunk_link = Mock(return_value=mock_chunk_link)
-        queue._create_table_from_link = Mock(return_value=mock_table)
+        queue.link_fetcher.get_chunk_link = Mock(return_value=mock_chunk_link)
+        queue._create_table_at_offset = Mock(return_value=mock_table)
 
         # Call the method directly
-        result = SeaCloudFetchQueue._create_next_table(queue)
+        SeaCloudFetchQueue._create_next_table(queue)
 
         # Verify the chunk index was incremented
-        assert queue._current_chunk_index == 1
+        assert queue.current_chunk_index == 1
 
         # Verify the chunk link was retrieved
-        queue._get_chunk_link.assert_called_once_with(1)
+        queue.link_fetcher.get_chunk_link.assert_called_once_with(0)
 
         # Verify the table was created from the link
-        queue._create_table_from_link.assert_called_once_with(mock_chunk_link)
-
-        # Verify the result is the table
-        assert result == mock_table
+        queue._create_table_at_offset.assert_called_once_with(
+            mock_chunk_link.row_offset
+        )
 
 
 class TestHybridDisposition:
@@ -494,7 +485,7 @@ class TestHybridDisposition:
         mock_create_table.assert_called_once_with(attachment_data, description)
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
-    @patch.object(SeaCloudFetchQueue, "_create_table_from_link", return_value=None)
+    @patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None)
     def test_hybrid_disposition_with_external_links(
         self,
         mock_create_table,
