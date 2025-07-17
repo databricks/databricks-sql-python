@@ -141,10 +141,13 @@ class LinkFetcher:
         self._error: Optional[Exception] = None
         self.chunk_index_to_link: Dict[int, "ExternalLink"] = {}
 
-        for link in initial_links:
+        self._add_links(initial_links)
+        self.total_chunk_count = total_chunk_count
+
+    def _add_links(self, links: List["ExternalLink"]):
+        for link in links:
             self.chunk_index_to_link[link.chunk_index] = link
             self.download_manager.add_link(LinkFetcher._convert_to_thrift_link(link))
-        self.total_chunk_count = total_chunk_count
 
     def _get_next_chunk_index(self) -> Optional[int]:
         with self._link_data_update:
@@ -162,9 +165,7 @@ class LinkFetcher:
         try:
             links = self.backend.get_chunk_links(self._statement_id, next_chunk_index)
             with self._link_data_update:
-                for l in links:
-                    self.chunk_index_to_link[l.chunk_index] = l
-                    self.download_manager.add_link(self._convert_to_thrift_link(l))
+                self._add_links(links)
                 self._link_data_update.notify_all()
         except Exception as e:
             logger.error(
@@ -185,6 +186,12 @@ class LinkFetcher:
             while chunk_index not in self.chunk_index_to_link:
                 if self._error:
                     raise self._error
+                if self._shutdown_event.is_set():
+                    raise ProgrammingError(
+                        "LinkFetcher is shutting down without providing link for chunk index {}".format(
+                            chunk_index
+                        )
+                    )
                 self._link_data_update.wait()
 
             return self.chunk_index_to_link.get(chunk_index, None)
