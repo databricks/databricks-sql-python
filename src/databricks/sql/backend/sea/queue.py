@@ -126,9 +126,9 @@ class LinkFetcher:
     def __init__(
         self,
         download_manager: ResultFileDownloadManager,
-        backend: "SeaDatabricksClient",
+        backend: SeaDatabricksClient,
         statement_id: str,
-        initial_links: List["ExternalLink"],
+        initial_links: List[ExternalLink],
         total_chunk_count: int,
     ):
         self.download_manager = download_manager
@@ -139,12 +139,12 @@ class LinkFetcher:
 
         self._link_data_update = threading.Condition()
         self._error: Optional[Exception] = None
-        self.chunk_index_to_link: Dict[int, "ExternalLink"] = {}
+        self.chunk_index_to_link: Dict[int, ExternalLink] = {}
 
         self._add_links(initial_links)
         self.total_chunk_count = total_chunk_count
 
-    def _add_links(self, links: List["ExternalLink"]):
+    def _add_links(self, links: List[ExternalLink]):
         for link in links:
             self.chunk_index_to_link[link.chunk_index] = link
             self.download_manager.add_link(LinkFetcher._convert_to_thrift_link(link))
@@ -178,7 +178,7 @@ class LinkFetcher:
 
         return True
 
-    def get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
+    def get_chunk_link(self, chunk_index: int) -> Optional[ExternalLink]:
         if chunk_index >= self.total_chunk_count:
             return None
 
@@ -197,7 +197,7 @@ class LinkFetcher:
             return self.chunk_index_to_link.get(chunk_index, None)
 
     @staticmethod
-    def _convert_to_thrift_link(link: "ExternalLink") -> TSparkArrowResultLink:
+    def _convert_to_thrift_link(link: ExternalLink) -> TSparkArrowResultLink:
         """Convert SEA external links to Thrift format for compatibility with existing download manager."""
         # Parse the ISO format expiration time
         expiry_time = int(dateutil.parser.parse(link.expiration).timestamp())
@@ -306,10 +306,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
-        if not self.download_manager:
-            logger.debug("SeaCloudFetchQueue: No download manager, returning")
-            return None
-
         chunk_link = self.link_fetcher.get_chunk_link(self.current_chunk_index)
         if not chunk_link:
             return None
@@ -320,3 +316,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         self.current_chunk_index += 1
 
         return arrow_table
+
+    def close(self):
+        super().close()
+        self.link_fetcher.stop()
