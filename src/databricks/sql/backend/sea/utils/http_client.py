@@ -261,14 +261,20 @@ class SeaHttpClient:
             raise RequestError("Connection pool not initialized", None)
 
         try:
-            response = self._pool.request(
+            with self._pool.request(
                 method=method.upper(),
                 url=path,
                 body=body,
                 headers=headers,
                 preload_content=False,
                 retries=self.retry_policy,
-            )
+            ) as response:
+                # Handle successful responses
+                if 200 <= response.status < 300:
+                    return response.json()
+
+                error_message = f"SEA HTTP request failed with status {response.status}"
+                raise Exception(error_message)
         except MaxRetryError as e:
             # urllib3 MaxRetryError should bubble up for redirect tests to catch
             logger.error(f"SEA HTTP request failed with MaxRetryError: {e}")
@@ -276,18 +282,7 @@ class SeaHttpClient:
         except Exception as e:
             logger.error(f"SEA HTTP request failed with exception: {e}")
             error_message = f"Error during request to server. {e}"
-            # Construct RequestError with proper 3-argument format (message, context, error)
             raise RequestError(error_message, None, None, e)
-
-        logger.debug(f"Response status: {response.status}")
-
-        # Handle successful responses
-        if 200 <= response.status < 300:
-            return response.json()
-
-        error_message = f"SEA HTTP request failed with status {response.status}"
-
-        raise RequestError(error_message, None)
 
     def _get_command_type_from_path(self, path: str, method: str) -> CommandType:
         """
