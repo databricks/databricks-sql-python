@@ -161,7 +161,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         self._sea_client = sea_client
         self._statement_id = statement_id
         self._total_chunk_count = total_chunk_count
-        self._total_chunk_count = total_chunk_count
 
         logger.debug(
             "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
