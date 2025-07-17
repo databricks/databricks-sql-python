@@ -182,9 +182,10 @@ class TelemetryClient(BaseTelemetryClient):
             delay_default=1.0,
             force_dangerous_codes=[],
         )
-        self._session = requests.Session()
+        self._session = requests.Session() # TODO: Use DatabricksHttpClient instead (unify all http clients)
         adapter = TelemetryHTTPAdapter(max_retries=self._telemetry_retry_policy)
         self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
