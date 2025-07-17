@@ -234,7 +234,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         result_data: ResultData,
         max_download_threads: int,
         ssl_options: SSLOptions,
-        sea_client: "SeaDatabricksClient",
+        sea_client: SeaDatabricksClient,
         statement_id: str,
         total_chunk_count: int,
         lz4_compressed: bool = False,
