@@ -119,6 +119,10 @@ class SeaHttpClient:
             )
         else:
             # Legacy behavior - no automatic retries
+            logger.warning(
+                "Legacy retry behavior is enabled for this connection."
+                " This behaviour is not supported for the SEA backend."
+            )
             self.retry_policy = 0
 
         # Handle proxy settings
