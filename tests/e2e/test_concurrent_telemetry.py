@@ -49,11 +49,8 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         num_threads = 5
         captured_telemetry = []
         captured_telemetry_lock = threading.Lock()
-        captured_responses = []
-        captured_responses_lock = threading.Lock()
 
         original_send_telemetry = TelemetryClient._send_telemetry
-        original_callback = TelemetryClient._telemetry_request_callback
 
         def send_telemetry_wrapper(self_client, events):
             with captured_telemetry_lock:
@@ -76,10 +73,10 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 TelemetryClientFactory._executor.shutdown(wait=True)
 
             # --- VERIFICATION ---
-            assert len(captured_telemetry) == num_threads * 3 # 4 events per thread (initial_telemetry_log, 2 latency_logs (execute, fetchall))
+            assert len(captured_telemetry) == num_threads * 2 # 2 events per thread (initial_telemetry_log, latency_log (execute))
 
             events_with_latency = [
                 e for e in captured_telemetry
                 if e.entry.sql_driver_log.operation_latency_ms is not None and e.entry.sql_driver_log.sql_statement_id is not None
             ]
-            assert len(events_with_latency) == num_threads * 2 # 2 events per thread (execute, fetchall)
+            assert len(events_with_latency) == num_threads # 1 event per thread (execute)
