@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-import threading
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
@@ -15,12 +14,13 @@ except ImportError:
 
 import dateutil
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import (
-    ExternalLink,
-    ResultData,
-    ResultManifest,
-)
+if TYPE_CHECKING:
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
+    from databricks.sql.backend.sea.models.base import (
+        ExternalLink,
+        ResultData,
+        ResultManifest,
+    )
 from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink

@@ -2,6 +2,8 @@
 Tests for SEA-related queue classes.
 
 This module contains tests for the JsonQueue, SeaResultSetQueueFactory, and SeaCloudFetchQueue classes.
+It also tests the Hybrid disposition which can create either ArrowQueue or SeaCloudFetchQueue based on
+whether attachment is set.
 """
 
 import pytest
@@ -20,6 +22,7 @@ from databricks.sql.backend.sea.models.base import (
 from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.types import SSLOptions
+from databricks.sql.utils import ArrowQueue
 
 
 class TestJsonQueue:
@@ -213,7 +216,9 @@ class TestSeaResultSetQueueFactory:
 
         with patch(
             "databricks.sql.backend.sea.queue.ResultFileDownloadManager"
-        ), patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
+        ), patch.object(
+            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
+        ):
             queue = SeaResultSetQueueFactory.build_queue(
                 result_data=result_data,
                 manifest=arrow_manifest,
@@ -362,7 +367,7 @@ class TestSeaCloudFetchQueue:
 
         # Verify attributes
         assert queue._statement_id == "test-statement-123"
-        assert queue._current_chunk_link == sample_external_link
+        assert queue._current_chunk_index == 0
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
@@ -389,90 +394,188 @@ class TestSeaCloudFetchQueue:
         assert queue.table is None
 
     @patch("databricks.sql.backend.sea.queue.logger")
-    def test_progress_chunk_link_no_current_link(self, mock_logger):
-        """Test _progress_chunk_link with no current link."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = None
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._progress_chunk_link(queue)
-
-        # Verify the result is None
-        assert result is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_progress_chunk_link_no_next_chunk(self, mock_logger):
-        """Test _progress_chunk_link with no next chunk index."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=0,
-            chunk_index=0,
-            next_chunk_index=None,
-            http_headers={"Authorization": "Bearer token123"},
-        )
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._progress_chunk_link(queue)
-
-        # Verify the result is None
-        assert result is None
-        assert queue._current_chunk_link is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_create_next_table_no_current_link(self, mock_logger):
-        """Test _create_next_table with no current link."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = None
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._create_next_table(queue)
-
-        # Verify debug message was logged
-        mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: No current chunk link, returning"
-        )
-
-        # Verify the result is None
-        assert result is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
     def test_create_next_table_success(self, mock_logger):
         """Test _create_next_table with successful table creation."""
         # Create a queue instance without initializing
         queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_link = ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=50,
-            chunk_index=0,
-            next_chunk_index=1,
-            http_headers={"Authorization": "Bearer token123"},
-        )
+        queue._current_chunk_index = 0
         queue.download_manager = Mock()
 
         # Mock the dependencies
         mock_table = Mock()
-        queue._create_table_at_offset = Mock(return_value=mock_table)
+        mock_chunk_link = Mock()
+        queue._get_chunk_link = Mock(return_value=mock_chunk_link)
         queue._create_table_from_link = Mock(return_value=mock_table)
-        queue._progress_chunk_link = Mock()
 
         # Call the method directly
         result = SeaCloudFetchQueue._create_next_table(queue)
 
-        # Verify the table was created
-        queue._create_table_from_link.assert_called_once_with(queue._current_chunk_link)
+        # Verify the chunk index was incremented
+        assert queue._current_chunk_index == 1
 
-        # Verify progress was called
-        queue._progress_chunk_link.assert_called_once()
+        # Verify the chunk link was retrieved
+        queue._get_chunk_link.assert_called_once_with(1)
+
+        # Verify the table was created from the link
+        queue._create_table_from_link.assert_called_once_with(mock_chunk_link)
 
         # Verify the result is the table
         assert result == mock_table
+
+
+class TestHybridDisposition:
+    """Test suite for the Hybrid disposition handling in SeaResultSetQueueFactory."""
+
+    @pytest.fixture
+    def arrow_manifest(self):
+        """Create an Arrow manifest for testing."""
+        return ResultManifest(
+            format=ResultFormat.ARROW_STREAM.value,
+            schema={},
+            total_row_count=5,
+            total_byte_count=1000,
+            total_chunk_count=1,
+        )
+
+    @pytest.fixture
+    def description(self):
+        """Create column descriptions."""
+        return [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+            ("col3", "boolean", None, None, None, None, None),
+        ]
+
+    @pytest.fixture
+    def ssl_options(self):
+        """Create SSL options for testing."""
+        return SSLOptions(tls_verify=True)
+
+    @pytest.fixture
+    def mock_sea_client(self):
+        """Create a mock SEA client."""
+        client = Mock()
+        client.max_download_threads = 10
+        return client
+
+    @patch("databricks.sql.backend.sea.queue.create_arrow_table_from_arrow_file")
+    def test_hybrid_disposition_with_attachment(
+        self,
+        mock_create_table,
+        arrow_manifest,
+        description,
+        ssl_options,
+        mock_sea_client,
+    ):
+        """Test that ArrowQueue is created when attachment is present."""
+        # Create mock arrow table
+        mock_arrow_table = Mock()
+        mock_arrow_table.num_rows = 5
+        mock_create_table.return_value = mock_arrow_table
+
+        # Create result data with attachment
+        attachment_data = b"mock_arrow_data"
+        result_data = ResultData(attachment=attachment_data)
+
+        # Build queue
+        queue = SeaResultSetQueueFactory.build_queue(
+            result_data=result_data,
+            manifest=arrow_manifest,
+            statement_id="test-statement",
+            ssl_options=ssl_options,
+            description=description,
+            max_download_threads=10,
+            sea_client=mock_sea_client,
+            lz4_compressed=False,
+        )
+
+        # Verify ArrowQueue was created
+        assert isinstance(queue, ArrowQueue)
+        mock_create_table.assert_called_once_with(attachment_data, description)
+
+    @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
+    @patch.object(SeaCloudFetchQueue, "_create_table_from_link", return_value=None)
+    def test_hybrid_disposition_with_external_links(
+        self,
+        mock_create_table,
+        mock_download_manager,
+        arrow_manifest,
+        description,
+        ssl_options,
+        mock_sea_client,
+    ):
+        """Test that SeaCloudFetchQueue is created when attachment is None but external links are present."""
+        # Create external links
+        external_links = [
+            ExternalLink(
+                external_link="https://example.com/data/chunk0",
+                expiration="2025-07-03T05:51:18.118009",
+                row_count=100,
+                byte_count=1024,
+                row_offset=0,
+                chunk_index=0,
+                next_chunk_index=1,
+                http_headers={"Authorization": "Bearer token123"},
+            )
+        ]
+
+        # Create result data with external links but no attachment
+        result_data = ResultData(external_links=external_links, attachment=None)
+
+        # Build queue
+        queue = SeaResultSetQueueFactory.build_queue(
+            result_data=result_data,
+            manifest=arrow_manifest,
+            statement_id="test-statement",
+            ssl_options=ssl_options,
+            description=description,
+            max_download_threads=10,
+            sea_client=mock_sea_client,
+            lz4_compressed=False,
+        )
+
+        # Verify SeaCloudFetchQueue was created
+        assert isinstance(queue, SeaCloudFetchQueue)
+        mock_create_table.assert_called_once()
+
+    @patch("databricks.sql.backend.sea.queue.ResultSetDownloadHandler._decompress_data")
+    @patch("databricks.sql.backend.sea.queue.create_arrow_table_from_arrow_file")
+    def test_hybrid_disposition_with_compressed_attachment(
+        self,
+        mock_create_table,
+        mock_decompress,
+        arrow_manifest,
+        description,
+        ssl_options,
+        mock_sea_client,
+    ):
+        """Test that ArrowQueue is created with decompressed data when attachment is present and lz4_compressed is True."""
+        # Create mock arrow table
+        mock_arrow_table = Mock()
+        mock_arrow_table.num_rows = 5
+        mock_create_table.return_value = mock_arrow_table
+
+        # Setup decompression mock
+        compressed_data = b"compressed_data"
+        decompressed_data = b"decompressed_data"
+        mock_decompress.return_value = decompressed_data
+
+        # Create result data with attachment
+        result_data = ResultData(attachment=compressed_data)
+
+        # Build queue with lz4_compressed=True
+        queue = SeaResultSetQueueFactory.build_queue(
+            result_data=result_data,
+            manifest=arrow_manifest,
+            statement_id="test-statement",
+            ssl_options=ssl_options,
+            description=description,
+            max_download_threads=10,
+            sea_client=mock_sea_client,
+            lz4_compressed=True,
+        )
+
+        # Verify ArrowQueue was created with decompressed data
+        assert isinstance(queue, ArrowQueue)
+        mock_decompress.assert_called_once_with(compressed_data)
+        mock_create_table.assert_called_once_with(decompressed_data, description)
