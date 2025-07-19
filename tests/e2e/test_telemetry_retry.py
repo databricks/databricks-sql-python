@@ -59,7 +59,7 @@ class TestTelemetryClientRetries:
             force_dangerous_codes=[],
             urllib3_kwargs={'total': num_retries}
         )
-        adapter = client._session.adapters.get("https://")
+        adapter = client._http_client.session.adapters.get("https://")
         adapter.max_retries = retry_policy
         return client, adapter
 
