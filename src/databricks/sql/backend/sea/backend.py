@@ -19,7 +19,8 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
-    from databricks.sql.backend.sea.result_set import SeaResultSet
+
+from databricks.sql.backend.sea.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -374,9 +375,6 @@ class SeaDatabricksClient(DatabricksClient):
         """
         Convert a SEA response to a SeaResultSet.
         """
-
-        # Create and return a SeaResultSet
-        from databricks.sql.backend.sea.result_set import SeaResultSet
 
         execute_response = self._results_message_to_execute_response(response)
 
