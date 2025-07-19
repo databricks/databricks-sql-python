@@ -4,6 +4,7 @@ from abc import ABC
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
+from databricks.sql.telemetry.models.enums import StatementType
 
 from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
 
@@ -153,9 +154,13 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         super().__init__(
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
+            statement_id=statement_id,
             schema_bytes=None,
             lz4_compressed=lz4_compressed,
             description=description,
+            # TODO: fix these arguments when telemetry is implemented in SEA
+            session_id_hex=None,
+            chunk_id=0,
         )
 
         self._sea_client = sea_client
