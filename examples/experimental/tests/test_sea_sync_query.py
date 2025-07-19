@@ -43,7 +43,6 @@ def test_sea_sync_query_with_cloud_fetch():
             use_sea=True,
             user_agent_entry="SEA-Test-Client",
             use_cloud_fetch=True,
-            enable_query_result_lz4_compression=False,
         )
 
         logger.info(

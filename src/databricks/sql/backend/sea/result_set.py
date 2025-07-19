@@ -4,6 +4,7 @@ from typing import Any, List, Optional, TYPE_CHECKING
 
 import logging
 
+from databricks.sql.backend.sea.client import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.conversion import SqlTypeConverter
 
@@ -14,10 +15,10 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
-    from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.exc import CursorAlreadyClosedError, ProgrammingError, RequestError
 from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
-from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.backend.types import CommandState, ExecuteResponse
 from databricks.sql.result_set import ResultSet
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,6 @@ class SeaResultSet(ResultSet):
         self,
         connection: Connection,
         execute_response: ExecuteResponse,
-        sea_client: SeaDatabricksClient,
         result_data: ResultData,
         manifest: ResultManifest,
         buffer_size_bytes: int = 104857600,
@@ -42,7 +42,6 @@ class SeaResultSet(ResultSet):
         Args:
             connection: The parent connection
             execute_response: Response from the execute command
-            sea_client: The SeaDatabricksClient instance for direct access
             buffer_size_bytes: Buffer size for fetching results
             arraysize: Default number of rows to fetch
             result_data: Result data from SEA response
@@ -55,32 +54,35 @@ class SeaResultSet(ResultSet):
         if statement_id is None:
             raise ValueError("Command ID is not a SEA statement ID")
 
-        results_queue = SeaResultSetQueueFactory.build_queue(
-            result_data,
-            self.manifest,
-            statement_id,
-            ssl_options=connection.session.ssl_options,
-            description=execute_response.description,
-            max_download_threads=sea_client.max_download_threads,
-            sea_client=sea_client,
-            lz4_compressed=execute_response.lz4_compressed,
-        )
-
         # Call parent constructor with common attributes
         super().__init__(
             connection=connection,
-            backend=sea_client,
             arraysize=arraysize,
             buffer_size_bytes=buffer_size_bytes,
             command_id=execute_response.command_id,
             status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
             lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
+
+        # Assert that the backend is of the correct type
+        assert isinstance(
+            self.backend, SeaDatabricksClient
+        ), "Backend must be a SeaDatabricksClient"
+
+        results_queue = SeaResultSetQueueFactory.build_queue(
+            result_data,
+            self.manifest,
+            statement_id,
+            description=execute_response.description,
+            max_download_threads=self.backend.max_download_threads,
+            sea_client=self.backend,
+            lz4_compressed=execute_response.lz4_compressed,
+        )
+
+        # Set the results queue
+        self.results = results_queue
 
     def _convert_json_types(self, row: List[str]) -> List[Any]:
         """
@@ -160,6 +162,9 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
+
         results = self.results.next_n_rows(size)
         self._next_row_index += len(results)
 
@@ -172,6 +177,9 @@ class SeaResultSet(ResultSet):
         Returns:
             Columnar table containing all remaining rows
         """
+
+        if self.results is None:
+            raise RuntimeError("Results queue is not initialized")
 
         results = self.results.remaining_rows()
         self._next_row_index += len(results)
@@ -196,10 +204,10 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        results = self.results.next_n_rows(size)
-        if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchmany_arrow only supported for JSON data")
 
+        results = self._convert_json_to_arrow_table(self.results.next_n_rows(size))
         self._next_row_index += results.num_rows
 
         return results
@@ -209,10 +217,10 @@ class SeaResultSet(ResultSet):
         Fetch all remaining rows as an Arrow table.
         """
 
-        results = self.results.remaining_rows()
-        if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchall_arrow only supported for JSON data")
 
+        results = self._convert_json_to_arrow_table(self.results.remaining_rows())
         self._next_row_index += results.num_rows
 
         return results
@@ -229,7 +237,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             res = self._create_json_table(self.fetchmany_json(1))
         else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
+            raise NotImplementedError("fetchone only supported for JSON data")
 
         return res[0] if res else None
 
@@ -250,7 +258,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchmany_json(size))
         else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+            raise NotImplementedError("fetchmany only supported for JSON data")
 
     def fetchall(self) -> List[Row]:
         """
@@ -263,4 +271,22 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchall_json())
         else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+            raise NotImplementedError("fetchall only supported for JSON data")
+
+    def close(self) -> None:
+        """
+        Close the result set.
+
+        If the connection has not been closed, and the result set has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
+        try:
+            if self.results is not None:
+                self.results.close()
+            if self.status != CommandState.CLOSED and self.connection.open:
+                self.backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
+        finally:
+            self.status = CommandState.CLOSED

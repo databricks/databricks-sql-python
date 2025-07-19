@@ -1,28 +1,15 @@
 """
-Tests for SEA-related queue classes.
+Tests for SEA-related queue classes in utils.py.
 
-This module contains tests for the JsonQueue, SeaResultSetQueueFactory, and SeaCloudFetchQueue classes.
-It also tests the Hybrid disposition which can create either ArrowQueue or SeaCloudFetchQueue based on
-whether attachment is set.
+This module contains tests for the JsonQueue and SeaResultSetQueueFactory classes.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 
-from databricks.sql.backend.sea.queue import (
-    JsonQueue,
-    SeaResultSetQueueFactory,
-    SeaCloudFetchQueue,
-)
-from databricks.sql.backend.sea.models.base import (
-    ResultData,
-    ResultManifest,
-    ExternalLink,
-)
+from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
+from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.constants import ResultFormat
-from databricks.sql.exc import ProgrammingError, ServerOperationError
-from databricks.sql.types import SSLOptions
-from databricks.sql.utils import ArrowQueue
 
 
 class TestJsonQueue:
@@ -46,13 +33,6 @@ class TestJsonQueue:
         assert queue.cur_row_index == 0
         assert queue.num_rows == len(sample_data)
 
-    def test_init_with_none(self):
-        """Test initialization with None data."""
-        queue = JsonQueue(None)
-        assert queue.data_array == []
-        assert queue.cur_row_index == 0
-        assert queue.num_rows == 0
-
     def test_next_n_rows_partial(self, sample_data):
         """Test fetching a subset of rows."""
         queue = JsonQueue(sample_data)
@@ -74,508 +54,129 @@ class TestJsonQueue:
         assert result == sample_data
         assert queue.cur_row_index == len(sample_data)
 
-    def test_next_n_rows_zero(self, sample_data):
-        """Test fetching zero rows."""
+    def test_next_n_rows_after_partial(self, sample_data):
+        """Test fetching rows after a partial fetch."""
         queue = JsonQueue(sample_data)
-        result = queue.next_n_rows(0)
-        assert result == []
-        assert queue.cur_row_index == 0
-
-    def test_remaining_rows(self, sample_data):
-        """Test fetching all remaining rows."""
-        queue = JsonQueue(sample_data)
-
-        # Fetch some rows first
-        queue.next_n_rows(2)
-
-        # Now fetch remaining
-        result = queue.remaining_rows()
-        assert result == sample_data[2:]
-        assert queue.cur_row_index == len(sample_data)
+        queue.next_n_rows(2)  # Fetch first 2 rows
+        result = queue.next_n_rows(2)  # Fetch next 2 rows
+        assert result == sample_data[2:4]
+        assert queue.cur_row_index == 4
 
     def test_remaining_rows_all(self, sample_data):
-        """Test fetching all remaining rows from the start."""
+        """Test fetching all remaining rows at once."""
         queue = JsonQueue(sample_data)
         result = queue.remaining_rows()
         assert result == sample_data
         assert queue.cur_row_index == len(sample_data)
 
-    def test_remaining_rows_empty(self, sample_data):
-        """Test fetching remaining rows when none are left."""
+    def test_remaining_rows_after_partial(self, sample_data):
+        """Test fetching remaining rows after a partial fetch."""
         queue = JsonQueue(sample_data)
-
-        # Fetch all rows first
-        queue.next_n_rows(len(sample_data))
-
-        # Now fetch remaining (should be empty)
-        result = queue.remaining_rows()
-        assert result == []
+        queue.next_n_rows(2)  # Fetch first 2 rows
+        result = queue.remaining_rows()  # Fetch remaining rows
+        assert result == sample_data[2:]
         assert queue.cur_row_index == len(sample_data)
+
+    def test_empty_data(self):
+        """Test with empty data array."""
+        queue = JsonQueue([])
+        assert queue.next_n_rows(10) == []
+        assert queue.remaining_rows() == []
+        assert queue.cur_row_index == 0
+        assert queue.num_rows == 0
 
 
 class TestSeaResultSetQueueFactory:
     """Test suite for the SeaResultSetQueueFactory class."""
 
     @pytest.fixture
-    def json_manifest(self):
-        """Create a JSON manifest for testing."""
-        return ResultManifest(
-            format=ResultFormat.JSON_ARRAY.value,
-            schema={},
-            total_row_count=5,
-            total_byte_count=1000,
-            total_chunk_count=1,
-        )
+    def mock_sea_client(self):
+        """Create a mock SEA client."""
+        client = Mock()
+        client.max_download_threads = 10
+        return client
 
     @pytest.fixture
-    def arrow_manifest(self):
-        """Create an Arrow manifest for testing."""
-        return ResultManifest(
-            format=ResultFormat.ARROW_STREAM.value,
-            schema={},
-            total_row_count=5,
-            total_byte_count=1000,
-            total_chunk_count=1,
-        )
-
-    @pytest.fixture
-    def invalid_manifest(self):
-        """Create an invalid manifest for testing."""
-        return ResultManifest(
-            format="INVALID_FORMAT",
-            schema={},
-            total_row_count=5,
-            total_byte_count=1000,
-            total_chunk_count=1,
-        )
-
-    @pytest.fixture
-    def sample_data(self):
-        """Create sample result data."""
+    def mock_description(self):
+        """Create a mock column description."""
         return [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+            ("col3", "boolean", None, None, None, None, None),
+        ]
+
+    def _create_empty_manifest(self, format: ResultFormat):
+        return ResultManifest(
+            format=format.value,
+            schema={},
+            total_row_count=-1,
+            total_byte_count=-1,
+            total_chunk_count=-1,
+        )
+
+    def test_build_queue_with_inline_data(self, mock_sea_client, mock_description):
+        """Test building a queue with inline JSON data."""
+        # Create sample data for inline JSON result
+        data = [
             ["value1", "1", "true"],
             ["value2", "2", "false"],
         ]
 
-    @pytest.fixture
-    def ssl_options(self):
-        """Create SSL options for testing."""
-        return SSLOptions(tls_verify=True)
+        # Create a ResultData object with inline data
+        result_data = ResultData(data=data, external_links=None, row_count=len(data))
 
-    @pytest.fixture
-    def mock_sea_client(self):
-        """Create a mock SEA client."""
-        client = Mock()
-        client.max_download_threads = 10
-        return client
+        # Create a manifest (not used for inline data)
+        manifest = self._create_empty_manifest(ResultFormat.JSON_ARRAY)
 
-    @pytest.fixture
-    def description(self):
-        """Create column descriptions."""
-        return [
-            ("col1", "string", None, None, None, None, None),
-            ("col2", "int", None, None, None, None, None),
-            ("col3", "boolean", None, None, None, None, None),
-        ]
-
-    def test_build_queue_json_array(self, json_manifest, sample_data):
-        """Test building a JSON array queue."""
-        result_data = ResultData(data=sample_data)
-
+        # Build the queue
         queue = SeaResultSetQueueFactory.build_queue(
-            result_data=result_data,
-            manifest=json_manifest,
-            statement_id="test-statement",
-            ssl_options=SSLOptions(),
-            description=[],
-            max_download_threads=10,
-            sea_client=Mock(),
-            lz4_compressed=False,
+            result_data,
+            manifest,
+            "test-statement-123",
+            description=mock_description,
+            sea_client=mock_sea_client,
         )
 
+        # Verify the queue is a JsonQueue with the correct data
         assert isinstance(queue, JsonQueue)
-        assert queue.data_array == sample_data
+        assert queue.data_array == data
+        assert queue.num_rows == len(data)
 
-    def test_build_queue_arrow_stream(
-        self, arrow_manifest, ssl_options, mock_sea_client, description
-    ):
-        """Test building an Arrow stream queue."""
-        external_links = [
-            ExternalLink(
-                external_link="https://example.com/data/chunk0",
-                expiration="2025-07-03T05:51:18.118009",
-                row_count=100,
-                byte_count=1024,
-                row_offset=0,
-                chunk_index=0,
-                next_chunk_index=1,
-                http_headers={"Authorization": "Bearer token123"},
-            )
-        ]
-        result_data = ResultData(data=None, external_links=external_links)
+    def test_build_queue_with_empty_data(self, mock_sea_client, mock_description):
+        """Test building a queue with empty data."""
+        # Create a ResultData object with no data
+        result_data = ResultData(data=[], external_links=None, row_count=0)
 
-        with patch(
-            "databricks.sql.backend.sea.queue.ResultFileDownloadManager"
-        ), patch.object(
-            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
+        # Build the queue
+        queue = SeaResultSetQueueFactory.build_queue(
+            result_data,
+            self._create_empty_manifest(ResultFormat.JSON_ARRAY),
+            "test-statement-123",
+            description=mock_description,
+            sea_client=mock_sea_client,
+        )
+
+        # Verify the queue is a JsonQueue with empty data
+        assert isinstance(queue, JsonQueue)
+        assert queue.data_array == []
+        assert queue.num_rows == 0
+
+    def test_build_queue_with_external_links(self, mock_sea_client, mock_description):
+        """Test building a queue with external links raises NotImplementedError."""
+        # Create a ResultData object with external links
+        result_data = ResultData(
+            data=None, external_links=["link1", "link2"], row_count=10
+        )
+
+        # Verify that NotImplementedError is raised
+        with pytest.raises(
+            NotImplementedError,
+            match="EXTERNAL_LINKS disposition is not implemented for SEA backend",
         ):
-            queue = SeaResultSetQueueFactory.build_queue(
-                result_data=result_data,
-                manifest=arrow_manifest,
-                statement_id="test-statement",
-                ssl_options=ssl_options,
-                description=description,
-                max_download_threads=10,
-                sea_client=mock_sea_client,
-                lz4_compressed=False,
-            )
-
-        assert isinstance(queue, SeaCloudFetchQueue)
-
-    def test_build_queue_invalid_format(self, invalid_manifest):
-        """Test building a queue with invalid format."""
-        result_data = ResultData(data=[])
-
-        with pytest.raises(ProgrammingError, match="Invalid result format"):
             SeaResultSetQueueFactory.build_queue(
-                result_data=result_data,
-                manifest=invalid_manifest,
-                statement_id="test-statement",
-                ssl_options=SSLOptions(),
-                description=[],
-                max_download_threads=10,
-                sea_client=Mock(),
-                lz4_compressed=False,
-            )
-
-
-class TestSeaCloudFetchQueue:
-    """Test suite for the SeaCloudFetchQueue class."""
-
-    @pytest.fixture
-    def ssl_options(self):
-        """Create SSL options for testing."""
-        return SSLOptions(tls_verify=True)
-
-    @pytest.fixture
-    def mock_sea_client(self):
-        """Create a mock SEA client."""
-        client = Mock()
-        client.max_download_threads = 10
-        return client
-
-    @pytest.fixture
-    def description(self):
-        """Create column descriptions."""
-        return [
-            ("col1", "string", None, None, None, None, None),
-            ("col2", "int", None, None, None, None, None),
-            ("col3", "boolean", None, None, None, None, None),
-        ]
-
-    @pytest.fixture
-    def sample_external_link(self):
-        """Create a sample external link."""
-        return ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=0,
-            chunk_index=0,
-            next_chunk_index=1,
-            http_headers={"Authorization": "Bearer token123"},
-        )
-
-    @pytest.fixture
-    def sample_external_link_no_headers(self):
-        """Create a sample external link without headers."""
-        return ExternalLink(
-            external_link="https://example.com/data/chunk0",
-            expiration="2025-07-03T05:51:18.118009",
-            row_count=100,
-            byte_count=1024,
-            row_offset=0,
-            chunk_index=0,
-            next_chunk_index=1,
-            http_headers=None,
-        )
-
-    def test_convert_to_thrift_link(self, sample_external_link):
-        """Test conversion of ExternalLink to TSparkArrowResultLink."""
-        queue = Mock(spec=SeaCloudFetchQueue)
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._convert_to_thrift_link(queue, sample_external_link)
-
-        # Verify the conversion
-        assert result.fileLink == sample_external_link.external_link
-        assert result.rowCount == sample_external_link.row_count
-        assert result.bytesNum == sample_external_link.byte_count
-        assert result.startRowOffset == sample_external_link.row_offset
-        assert result.httpHeaders == sample_external_link.http_headers
-
-    def test_convert_to_thrift_link_no_headers(self, sample_external_link_no_headers):
-        """Test conversion of ExternalLink with no headers to TSparkArrowResultLink."""
-        queue = Mock(spec=SeaCloudFetchQueue)
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._convert_to_thrift_link(
-            queue, sample_external_link_no_headers
-        )
-
-        # Verify the conversion
-        assert result.fileLink == sample_external_link_no_headers.external_link
-        assert result.rowCount == sample_external_link_no_headers.row_count
-        assert result.bytesNum == sample_external_link_no_headers.byte_count
-        assert result.startRowOffset == sample_external_link_no_headers.row_offset
-        assert result.httpHeaders == {}
-
-    @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_init_with_valid_initial_link(
-        self,
-        mock_logger,
-        mock_download_manager_class,
-        mock_sea_client,
-        ssl_options,
-        description,
-        sample_external_link,
-    ):
-        """Test initialization with valid initial link."""
-        # Create a queue with valid initial link
-        with patch.object(
-            SeaCloudFetchQueue, "_create_table_from_link", return_value=None
-        ):
-            queue = SeaCloudFetchQueue(
-                result_data=ResultData(external_links=[sample_external_link]),
-                max_download_threads=5,
-                ssl_options=ssl_options,
+                result_data,
+                self._create_empty_manifest(ResultFormat.ARROW_STREAM),
+                "test-statement-123",
+                description=mock_description,
                 sea_client=mock_sea_client,
-                statement_id="test-statement-123",
-                total_chunk_count=1,
-                lz4_compressed=False,
-                description=description,
             )
-
-        # Verify debug message was logged
-        mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
-                "test-statement-123", 1
-            )
-        )
-
-        # Verify attributes
-        assert queue._statement_id == "test-statement-123"
-        assert queue._current_chunk_index == 0
-
-    @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_init_no_initial_links(
-        self,
-        mock_logger,
-        mock_download_manager_class,
-        mock_sea_client,
-        ssl_options,
-        description,
-    ):
-        """Test initialization with no initial links."""
-        # Create a queue with empty initial links
-        queue = SeaCloudFetchQueue(
-            result_data=ResultData(external_links=[]),
-            max_download_threads=5,
-            ssl_options=ssl_options,
-            sea_client=mock_sea_client,
-            statement_id="test-statement-123",
-            total_chunk_count=0,
-            lz4_compressed=False,
-            description=description,
-        )
-        assert queue.table is None
-
-    @patch("databricks.sql.backend.sea.queue.logger")
-    def test_create_next_table_success(self, mock_logger):
-        """Test _create_next_table with successful table creation."""
-        # Create a queue instance without initializing
-        queue = Mock(spec=SeaCloudFetchQueue)
-        queue._current_chunk_index = 0
-        queue.download_manager = Mock()
-
-        # Mock the dependencies
-        mock_table = Mock()
-        mock_chunk_link = Mock()
-        queue._get_chunk_link = Mock(return_value=mock_chunk_link)
-        queue._create_table_from_link = Mock(return_value=mock_table)
-
-        # Call the method directly
-        result = SeaCloudFetchQueue._create_next_table(queue)
-
-        # Verify the chunk index was incremented
-        assert queue._current_chunk_index == 1
-
-        # Verify the chunk link was retrieved
-        queue._get_chunk_link.assert_called_once_with(1)
-
-        # Verify the table was created from the link
-        queue._create_table_from_link.assert_called_once_with(mock_chunk_link)
-
-        # Verify the result is the table
-        assert result == mock_table
-
-
-class TestHybridDisposition:
-    """Test suite for the Hybrid disposition handling in SeaResultSetQueueFactory."""
-
-    @pytest.fixture
-    def arrow_manifest(self):
-        """Create an Arrow manifest for testing."""
-        return ResultManifest(
-            format=ResultFormat.ARROW_STREAM.value,
-            schema={},
-            total_row_count=5,
-            total_byte_count=1000,
-            total_chunk_count=1,
-        )
-
-    @pytest.fixture
-    def description(self):
-        """Create column descriptions."""
-        return [
-            ("col1", "string", None, None, None, None, None),
-            ("col2", "int", None, None, None, None, None),
-            ("col3", "boolean", None, None, None, None, None),
-        ]
-
-    @pytest.fixture
-    def ssl_options(self):
-        """Create SSL options for testing."""
-        return SSLOptions(tls_verify=True)
-
-    @pytest.fixture
-    def mock_sea_client(self):
-        """Create a mock SEA client."""
-        client = Mock()
-        client.max_download_threads = 10
-        return client
-
-    @patch("databricks.sql.backend.sea.queue.create_arrow_table_from_arrow_file")
-    def test_hybrid_disposition_with_attachment(
-        self,
-        mock_create_table,
-        arrow_manifest,
-        description,
-        ssl_options,
-        mock_sea_client,
-    ):
-        """Test that ArrowQueue is created when attachment is present."""
-        # Create mock arrow table
-        mock_arrow_table = Mock()
-        mock_arrow_table.num_rows = 5
-        mock_create_table.return_value = mock_arrow_table
-
-        # Create result data with attachment
-        attachment_data = b"mock_arrow_data"
-        result_data = ResultData(attachment=attachment_data)
-
-        # Build queue
-        queue = SeaResultSetQueueFactory.build_queue(
-            result_data=result_data,
-            manifest=arrow_manifest,
-            statement_id="test-statement",
-            ssl_options=ssl_options,
-            description=description,
-            max_download_threads=10,
-            sea_client=mock_sea_client,
-            lz4_compressed=False,
-        )
-
-        # Verify ArrowQueue was created
-        assert isinstance(queue, ArrowQueue)
-        mock_create_table.assert_called_once_with(attachment_data, description)
-
-    @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
-    @patch.object(SeaCloudFetchQueue, "_create_table_from_link", return_value=None)
-    def test_hybrid_disposition_with_external_links(
-        self,
-        mock_create_table,
-        mock_download_manager,
-        arrow_manifest,
-        description,
-        ssl_options,
-        mock_sea_client,
-    ):
-        """Test that SeaCloudFetchQueue is created when attachment is None but external links are present."""
-        # Create external links
-        external_links = [
-            ExternalLink(
-                external_link="https://example.com/data/chunk0",
-                expiration="2025-07-03T05:51:18.118009",
-                row_count=100,
-                byte_count=1024,
-                row_offset=0,
-                chunk_index=0,
-                next_chunk_index=1,
-                http_headers={"Authorization": "Bearer token123"},
-            )
-        ]
-
-        # Create result data with external links but no attachment
-        result_data = ResultData(external_links=external_links, attachment=None)
-
-        # Build queue
-        queue = SeaResultSetQueueFactory.build_queue(
-            result_data=result_data,
-            manifest=arrow_manifest,
-            statement_id="test-statement",
-            ssl_options=ssl_options,
-            description=description,
-            max_download_threads=10,
-            sea_client=mock_sea_client,
-            lz4_compressed=False,
-        )
-
-        # Verify SeaCloudFetchQueue was created
-        assert isinstance(queue, SeaCloudFetchQueue)
-        mock_create_table.assert_called_once()
-
-    @patch("databricks.sql.backend.sea.queue.ResultSetDownloadHandler._decompress_data")
-    @patch("databricks.sql.backend.sea.queue.create_arrow_table_from_arrow_file")
-    def test_hybrid_disposition_with_compressed_attachment(
-        self,
-        mock_create_table,
-        mock_decompress,
-        arrow_manifest,
-        description,
-        ssl_options,
-        mock_sea_client,
-    ):
-        """Test that ArrowQueue is created with decompressed data when attachment is present and lz4_compressed is True."""
-        # Create mock arrow table
-        mock_arrow_table = Mock()
-        mock_arrow_table.num_rows = 5
-        mock_create_table.return_value = mock_arrow_table
-
-        # Setup decompression mock
-        compressed_data = b"compressed_data"
-        decompressed_data = b"decompressed_data"
-        mock_decompress.return_value = decompressed_data
-
-        # Create result data with attachment
-        result_data = ResultData(attachment=compressed_data)
-
-        # Build queue with lz4_compressed=True
-        queue = SeaResultSetQueueFactory.build_queue(
-            result_data=result_data,
-            manifest=arrow_manifest,
-            statement_id="test-statement",
-            ssl_options=ssl_options,
-            description=description,
-            max_download_threads=10,
-            sea_client=mock_sea_client,
-            lz4_compressed=True,
-        )
-
-        # Verify ArrowQueue was created with decompressed data
-        assert isinstance(queue, ArrowQueue)
-        mock_decompress.assert_called_once_with(compressed_data)
-        mock_create_table.assert_called_once_with(decompressed_data, description)

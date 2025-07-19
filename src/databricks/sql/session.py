@@ -8,7 +8,7 @@ from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, Request
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.sea.client import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 
@@ -64,7 +64,7 @@ class Session:
         base_headers = [("User-Agent", self.useragent_header)]
         all_headers = (http_headers or []) + base_headers
 
-        self.ssl_options = SSLOptions(
+        self._ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
             tls_verify=not kwargs.get(
                 "_tls_no_verify", False
@@ -113,7 +113,7 @@ class Session:
             "http_path": http_path,
             "http_headers": all_headers,
             "auth_provider": auth_provider,
-            "ssl_options": self.ssl_options,
+            "ssl_options": self._ssl_options,
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }
