@@ -125,6 +125,26 @@ class ExecuteStatementResponse:
 
 
 @dataclass
+class GetStatementResponse:
+    """Representation of the response from getting information about a statement."""
+
+    statement_id: str
+    status: StatementStatus
+    manifest: ResultManifest
+    result: ResultData
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GetStatementResponse":
+        """Create a GetStatementResponse from a dictionary."""
+        return cls(
+            statement_id=data.get("statement_id", ""),
+            status=_parse_status(data),
+            manifest=_parse_manifest(data),
+            result=_parse_result(data),
+        )
+
+
+@dataclass
 class CreateSessionResponse:
     """Representation of the response from creating a new session."""
 

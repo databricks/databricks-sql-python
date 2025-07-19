@@ -25,6 +25,7 @@ from databricks.sql.backend.sea.models.requests import (
 
 from databricks.sql.backend.sea.models.responses import (
     ExecuteStatementResponse,
+    GetStatementResponse,
     CreateSessionResponse,
 )
 
@@ -46,5 +47,6 @@ __all__ = [
     "DeleteSessionRequest",
     # Response models
     "ExecuteStatementResponse",
+    "GetStatementResponse",
     "CreateSessionResponse",
 ]

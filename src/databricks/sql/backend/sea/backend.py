@@ -6,6 +6,7 @@ import re
 from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.models.base import ResultManifest
+from databricks.sql.backend.sea.models.responses import GetStatementResponse
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -323,7 +324,7 @@ class SeaDatabricksClient(DatabricksClient):
         return columns
 
     def _results_message_to_execute_response(
-        self, response: ExecuteStatementResponse
+        self, response: Union[ExecuteStatementResponse, GetStatementResponse]
     ) -> ExecuteResponse:
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
@@ -358,7 +359,9 @@ class SeaDatabricksClient(DatabricksClient):
         return execute_response
 
     def _response_to_result_set(
-        self, response: ExecuteStatementResponse, cursor: Cursor
+        self,
+        response: Union[ExecuteStatementResponse, GetStatementResponse],
+        cursor: Cursor,
     ) -> SeaResultSet:
         """
         Convert a SEA response to a SeaResultSet.
@@ -399,22 +402,24 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _wait_until_command_done(
         self, response: ExecuteStatementResponse
-    ) -> ExecuteStatementResponse:
+    ) -> Union[ExecuteStatementResponse, GetStatementResponse]:
         """
         Wait until a command is done.
         """
 
-        state = response.status.state
-        command_id = CommandId.from_sea_statement_id(response.statement_id)
+        final_response: Union[ExecuteStatementResponse, GetStatementResponse] = response
+
+        state = final_response.status.state
+        command_id = CommandId.from_sea_statement_id(final_response.statement_id)
 
         while state in [CommandState.PENDING, CommandState.RUNNING]:
             time.sleep(self.POLL_INTERVAL_SECONDS)
-            response = self._poll_query(command_id)
-            state = response.status.state
+            final_response = self._poll_query(command_id)
+            state = final_response.status.state
 
         self._check_command_not_in_failed_or_closed_state(state, command_id)
 
-        return response
+        return final_response
 
     def execute_command(
         self,
@@ -516,12 +521,11 @@ class SeaDatabricksClient(DatabricksClient):
         if async_op:
             return None
 
-        if response.status.state == CommandState.SUCCEEDED:
-            # if the response succeeded within the wait_timeout, return the results immediately
-            return self._response_to_result_set(response, cursor)
+        final_response: Union[ExecuteStatementResponse, GetStatementResponse] = response
+        if response.status.state != CommandState.SUCCEEDED:
+            final_response = self._wait_until_command_done(response)
 
-        response = self._wait_until_command_done(response)
-        return self._response_to_result_set(response, cursor)
+        return self._response_to_result_set(final_response, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
@@ -573,7 +577,7 @@ class SeaDatabricksClient(DatabricksClient):
             data=request.to_dict(),
         )
 
-    def _poll_query(self, command_id: CommandId) -> ExecuteStatementResponse:
+    def _poll_query(self, command_id: CommandId) -> GetStatementResponse:
         """
         Poll for the current command info.
         """
@@ -591,7 +595,7 @@ class SeaDatabricksClient(DatabricksClient):
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
-        response = ExecuteStatementResponse.from_dict(response_data)
+        response = GetStatementResponse.from_dict(response_data)
 
         return response
 
