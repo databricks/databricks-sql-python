@@ -31,6 +31,7 @@ def mock_telemetry_client():
         auth_provider=auth_provider,
         host_url="test-host.com",
         executor=executor,
+        batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
     )
 
 
@@ -215,6 +216,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -239,6 +241,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=None,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -258,6 +261,7 @@ class TestTelemetryFactory:
                 session_id_hex=session_id,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
             )
 
         # Should fall back to NoopTelemetryClient
@@ -276,6 +280,7 @@ class TestTelemetryFactory:
                 session_id_hex=session,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
             )
 
         # Factory should be initialized
