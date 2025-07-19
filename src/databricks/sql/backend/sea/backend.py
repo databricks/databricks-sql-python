@@ -5,7 +5,11 @@ import time
 import re
 from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
+from databricks.sql.backend.sea.models.base import (
+    ExternalLink,
+    ResultManifest,
+    StatementStatus,
+)
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -389,8 +393,9 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
     def _check_command_not_in_failed_or_closed_state(
-        self, state: CommandState, command_id: CommandId
+        self, status: StatementStatus, command_id: CommandId
     ) -> None:
+        state = status.state
         if state == CommandState.CLOSED:
             raise DatabaseError(
                 "Command {} unexpectedly closed server side".format(command_id),
@@ -399,8 +404,9 @@ class SeaDatabricksClient(DatabricksClient):
                 },
             )
         if state == CommandState.FAILED:
+            error = status.error
             raise ServerOperationError(
-                "Command {} failed".format(command_id),
+                "Command failed - {}: {}".format(error.error_code, error.message),
                 {
                     "operation-id": command_id,
                 },
@@ -414,16 +420,18 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         final_response: Union[ExecuteStatementResponse, GetStatementResponse] = response
-
-        state = final_response.status.state
         command_id = CommandId.from_sea_statement_id(final_response.statement_id)
 
-        while state in [CommandState.PENDING, CommandState.RUNNING]:
+        while final_response.status.state in [
+            CommandState.PENDING,
+            CommandState.RUNNING,
+        ]:
             time.sleep(self.POLL_INTERVAL_SECONDS)
             final_response = self._poll_query(command_id)
-            state = final_response.status.state
 
-        self._check_command_not_in_failed_or_closed_state(state, command_id)
+        self._check_command_not_in_failed_or_closed_state(
+            final_response.status, command_id
+        )
 
         return final_response
 

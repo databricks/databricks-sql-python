@@ -12,6 +12,7 @@ from databricks.sql.backend.sea.backend import (
     SeaDatabricksClient,
     _filter_session_configuration,
 )
+from databricks.sql.backend.sea.models.base import ServiceError, StatementStatus
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.parameters.native import IntegerParameter, TDbsqlParameter
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -408,7 +409,7 @@ class TestSeaBackend:
                         async_op=False,
                         enforce_embedded_schema_correctness=False,
                     )
-                assert "Command test-statement-123 failed" in str(excinfo.value)
+                assert "Command failed" in str(excinfo.value)
 
         # Test missing statement ID
         mock_http_client.reset_mock()
@@ -529,30 +530,35 @@ class TestSeaBackend:
     def test_check_command_state(self, sea_client, sea_command_id):
         """Test _check_command_not_in_failed_or_closed_state method."""
         # Test with RUNNING state (should not raise)
-        sea_client._check_command_not_in_failed_or_closed_state(
-            CommandState.RUNNING, sea_command_id
-        )
+        status = StatementStatus(state=CommandState.RUNNING)
+        sea_client._check_command_not_in_failed_or_closed_state(status, sea_command_id)
 
         # Test with SUCCEEDED state (should not raise)
-        sea_client._check_command_not_in_failed_or_closed_state(
-            CommandState.SUCCEEDED, sea_command_id
-        )
+        status = StatementStatus(state=CommandState.SUCCEEDED)
+        sea_client._check_command_not_in_failed_or_closed_state(status, sea_command_id)
 
         # Test with CLOSED state (should raise DatabaseError)
+        status = StatementStatus(state=CommandState.CLOSED)
         with pytest.raises(DatabaseError) as excinfo:
             sea_client._check_command_not_in_failed_or_closed_state(
-                CommandState.CLOSED, sea_command_id
+                status, sea_command_id
             )
         assert "Command test-statement-123 unexpectedly closed server side" in str(
             excinfo.value
         )
 
         # Test with FAILED state (should raise ServerOperationError)
+        status = StatementStatus(
+            state=CommandState.FAILED,
+            error=ServiceError(
+                message="Syntax error in SQL", error_code="SYNTAX_ERROR"
+            ),
+        )
         with pytest.raises(ServerOperationError) as excinfo:
             sea_client._check_command_not_in_failed_or_closed_state(
-                CommandState.FAILED, sea_command_id
+                status, sea_command_id
             )
-        assert "Command test-statement-123 failed" in str(excinfo.value)
+        assert "Command failed" in str(excinfo.value)
 
     def test_utility_methods(self, sea_client):
         """Test utility methods."""
