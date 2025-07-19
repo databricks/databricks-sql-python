@@ -4,6 +4,7 @@ from typing import Any, List, Optional, TYPE_CHECKING
 
 import logging
 
+from databricks.sql.backend.sea.client import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.conversion import SqlTypeConverter
 
@@ -14,7 +15,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
-    from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.exc import CursorAlreadyClosedError, ProgrammingError, RequestError
 from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import CommandState, ExecuteResponse
@@ -74,7 +75,6 @@ class SeaResultSet(ResultSet):
             result_data,
             self.manifest,
             statement_id,
-            ssl_options=connection.session.ssl_options,
             description=execute_response.description,
             max_download_threads=self.backend.max_download_threads,
             sea_client=self.backend,
@@ -204,10 +204,10 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        results = self.results.next_n_rows(size)
-        if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchmany_arrow only supported for JSON data")
 
+        results = self._convert_json_to_arrow_table(self.results.next_n_rows(size))
         self._next_row_index += results.num_rows
 
         return results
@@ -217,10 +217,10 @@ class SeaResultSet(ResultSet):
         Fetch all remaining rows as an Arrow table.
         """
 
-        results = self.results.remaining_rows()
-        if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+        if not isinstance(self.results, JsonQueue):
+            raise NotImplementedError("fetchall_arrow only supported for JSON data")
 
+        results = self._convert_json_to_arrow_table(self.results.remaining_rows())
         self._next_row_index += results.num_rows
 
         return results
@@ -237,7 +237,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             res = self._create_json_table(self.fetchmany_json(1))
         else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
+            raise NotImplementedError("fetchone only supported for JSON data")
 
         return res[0] if res else None
 
@@ -258,7 +258,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchmany_json(size))
         else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
+            raise NotImplementedError("fetchmany only supported for JSON data")
 
     def fetchall(self) -> List[Row]:
         """
@@ -271,4 +271,22 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchall_json())
         else:
-            return self._convert_arrow_table(self.fetchall_arrow())
+            raise NotImplementedError("fetchall only supported for JSON data")
+
+    def close(self) -> None:
+        """
+        Close the result set.
+
+        If the connection has not been closed, and the result set has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
+        try:
+            if self.results is not None:
+                self.results.close()
+            if self.status != CommandState.CLOSED and self.connection.open:
+                self.backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
+        finally:
+            self.status = CommandState.CLOSED

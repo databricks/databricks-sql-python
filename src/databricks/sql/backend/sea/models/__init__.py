@@ -27,7 +27,6 @@ from databricks.sql.backend.sea.models.responses import (
     ExecuteStatementResponse,
     GetStatementResponse,
     CreateSessionResponse,
-    GetChunksResponse,
 )
 
 __all__ = [
@@ -50,5 +49,4 @@ __all__ = [
     "ExecuteStatementResponse",
     "GetStatementResponse",
     "CreateSessionResponse",
-    "GetChunksResponse",
 ]
