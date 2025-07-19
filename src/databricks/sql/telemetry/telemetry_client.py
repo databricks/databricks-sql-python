@@ -4,6 +4,7 @@ import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
+from databricks.sql.common.http import TelemetryHttpClient
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -153,6 +154,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
+        self._http_client = TelemetryHttpClient.get_instance()
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -201,7 +203,7 @@ class TelemetryClient(BaseTelemetryClient):
         try:
             logger.debug("Submitting telemetry request to thread pool")
             future = self._executor.submit(
-                requests.post,
+                self._http_client.post,
                 url,
                 data=request.to_json(),
                 headers=headers,
@@ -427,6 +429,7 @@ class TelemetryClientFactory:
                 )
                 try:
                     TelemetryClientFactory._executor.shutdown(wait=True)
+                    TelemetryHttpClient.get_instance().close()
                 except Exception as e:
                     logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
