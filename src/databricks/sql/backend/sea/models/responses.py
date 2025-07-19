@@ -4,6 +4,7 @@ Response models for the SEA (Statement Execution API) backend.
 These models define the structures used in SEA API responses.
 """
 
+import base64
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
@@ -91,6 +92,11 @@ def _parse_result(data: Dict[str, Any]) -> ResultData:
                 )
             )
 
+    # Handle attachment field - decode from base64 if present
+    attachment = result_data.get("attachment")
+    if attachment is not None:
+        attachment = base64.b64decode(attachment)
+
     return ResultData(
         data=result_data.get("data_array"),
         external_links=external_links,
@@ -100,7 +106,7 @@ def _parse_result(data: Dict[str, Any]) -> ResultData:
         next_chunk_internal_link=result_data.get("next_chunk_internal_link"),
         row_count=result_data.get("row_count"),
         row_offset=result_data.get("row_offset"),
-        attachment=result_data.get("attachment"),
+        attachment=attachment,
     )
 
 

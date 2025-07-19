@@ -5,6 +5,8 @@ from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 
+from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
+
 try:
     import pyarrow
 except ImportError:
@@ -23,7 +25,12 @@ from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.types import SSLOptions
-from databricks.sql.utils import CloudFetchQueue, ResultSetQueue
+from databricks.sql.utils import (
+    ArrowQueue,
+    CloudFetchQueue,
+    ResultSetQueue,
+    create_arrow_table_from_arrow_file,
+)
 
 import logging
 
@@ -62,6 +69,18 @@ class SeaResultSetQueueFactory(ABC):
             # INLINE disposition with JSON_ARRAY format
             return JsonQueue(result_data.data)
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
+            if result_data.attachment is not None:
+                arrow_file = (
+                    ResultSetDownloadHandler._decompress_data(result_data.attachment)
+                    if lz4_compressed
+                    else result_data.attachment
+                )
+                arrow_table = create_arrow_table_from_arrow_file(
+                    arrow_file, description
+                )
+                logger.debug(f"Created arrow table with {arrow_table.num_rows} rows")
+                return ArrowQueue(arrow_table, manifest.total_row_count)
+
             # EXTERNAL_LINKS disposition
             return SeaCloudFetchQueue(
                 result_data=result_data,
@@ -150,7 +169,11 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
         initial_links = result_data.external_links or []
-        first_link = next((l for l in initial_links if l.chunk_index == 0), None)
+        self._chunk_index_to_link = {link.chunk_index: link for link in initial_links}
+
+        # Track the current chunk we're processing
+        self._current_chunk_index = 0
+        first_link = self._chunk_index_to_link.get(self._current_chunk_index, None)
         if not first_link:
             # possibly an empty response
             return None
@@ -173,21 +196,24 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             httpHeaders=link.http_headers or {},
         )
 
-    def _get_chunk_link(self, chunk_index: int) -> Optional[ExternalLink]:
-        """Progress to the next chunk link."""
+    def _get_chunk_link(self, chunk_index: int) -> Optional["ExternalLink"]:
         if chunk_index >= self._total_chunk_count:
             return None
 
-        try:
-            return self._sea_client.get_chunk_link(self._statement_id, chunk_index)
-        except Exception as e:
+        if chunk_index not in self._chunk_index_to_link:
+            links = self._sea_client.get_chunk_links(self._statement_id, chunk_index)
+            self._chunk_index_to_link.update({l.chunk_index: l for l in links})
+
+        link = self._chunk_index_to_link.get(chunk_index, None)
+        if not link:
             raise ServerOperationError(
-                f"Error fetching link for chunk {chunk_index}: {e}",
+                f"Error fetching link for chunk {chunk_index}",
                 {
                     "operation-id": self._statement_id,
                     "diagnostic-info": None,
                 },
             )
+        return link
 
     def _create_table_from_link(
         self, link: ExternalLink

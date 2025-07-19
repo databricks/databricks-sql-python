@@ -2,6 +2,8 @@
 Tests for SEA-related queue classes.
 
 This module contains tests for the JsonQueue, SeaResultSetQueueFactory, and SeaCloudFetchQueue classes.
+It also tests the Hybrid disposition which can create either ArrowQueue or SeaCloudFetchQueue based on
+whether attachment is set.
 """
 
 import pytest
@@ -20,6 +22,7 @@ from databricks.sql.backend.sea.models.base import (
 from databricks.sql.backend.sea.utils.constants import ResultFormat
 from databricks.sql.exc import ProgrammingError, ServerOperationError
 from databricks.sql.types import SSLOptions
+from databricks.sql.utils import ArrowQueue
 
 
 class TestJsonQueue:
@@ -418,3 +421,161 @@ class TestSeaCloudFetchQueue:
 
         # Verify the result is the table
         assert result == mock_table
+
+
+class TestHybridDisposition:
+    """Test suite for the Hybrid disposition handling in SeaResultSetQueueFactory."""
+
+    @pytest.fixture
+    def arrow_manifest(self):
+        """Create an Arrow manifest for testing."""
+        return ResultManifest(
+            format=ResultFormat.ARROW_STREAM.value,
+            schema={},
+            total_row_count=5,
+            total_byte_count=1000,
+            total_chunk_count=1,
+        )
+
+    @pytest.fixture
+    def description(self):
+        """Create column descriptions."""
+        return [
+            ("col1", "string", None, None, None, None, None),
+            ("col2", "int", None, None, None, None, None),
+            ("col3", "boolean", None, None, None, None, None),
+        ]
+
+    @pytest.fixture
+    def ssl_options(self):
+        """Create SSL options for testing."""
+        return SSLOptions(tls_verify=True)
+
+    @pytest.fixture
+    def mock_sea_client(self):
+        """Create a mock SEA client."""
+        client = Mock()
+        client.max_download_threads = 10
+        return client
+
+    @patch("databricks.sql.backend.sea.queue.create_arrow_table_from_arrow_file")
+    def test_hybrid_disposition_with_attachment(
+        self,
+        mock_create_table,
+        arrow_manifest,
+        description,
+        ssl_options,
+        mock_sea_client,
+    ):
+        """Test that ArrowQueue is created when attachment is present."""
+        # Create mock arrow table
+        mock_arrow_table = Mock()
+        mock_arrow_table.num_rows = 5
+        mock_create_table.return_value = mock_arrow_table
+
+        # Create result data with attachment
+        attachment_data = b"mock_arrow_data"
+        result_data = ResultData(attachment=attachment_data)
+
+        # Build queue
+        queue = SeaResultSetQueueFactory.build_queue(
+            result_data=result_data,
+            manifest=arrow_manifest,
+            statement_id="test-statement",
+            ssl_options=ssl_options,
+            description=description,
+            max_download_threads=10,
+            sea_client=mock_sea_client,
+            lz4_compressed=False,
+        )
+
+        # Verify ArrowQueue was created
+        assert isinstance(queue, ArrowQueue)
+        mock_create_table.assert_called_once_with(attachment_data, description)
+
+    @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
+    @patch.object(SeaCloudFetchQueue, "_create_table_from_link", return_value=None)
+    def test_hybrid_disposition_with_external_links(
+        self,
+        mock_create_table,
+        mock_download_manager,
+        arrow_manifest,
+        description,
+        ssl_options,
+        mock_sea_client,
+    ):
+        """Test that SeaCloudFetchQueue is created when attachment is None but external links are present."""
+        # Create external links
+        external_links = [
+            ExternalLink(
+                external_link="https://example.com/data/chunk0",
+                expiration="2025-07-03T05:51:18.118009",
+                row_count=100,
+                byte_count=1024,
+                row_offset=0,
+                chunk_index=0,
+                next_chunk_index=1,
+                http_headers={"Authorization": "Bearer token123"},
+            )
+        ]
+
+        # Create result data with external links but no attachment
+        result_data = ResultData(external_links=external_links, attachment=None)
+
+        # Build queue
+        queue = SeaResultSetQueueFactory.build_queue(
+            result_data=result_data,
+            manifest=arrow_manifest,
+            statement_id="test-statement",
+            ssl_options=ssl_options,
+            description=description,
+            max_download_threads=10,
+            sea_client=mock_sea_client,
+            lz4_compressed=False,
+        )
+
+        # Verify SeaCloudFetchQueue was created
+        assert isinstance(queue, SeaCloudFetchQueue)
+        mock_create_table.assert_called_once()
+
+    @patch("databricks.sql.backend.sea.queue.ResultSetDownloadHandler._decompress_data")
+    @patch("databricks.sql.backend.sea.queue.create_arrow_table_from_arrow_file")
+    def test_hybrid_disposition_with_compressed_attachment(
+        self,
+        mock_create_table,
+        mock_decompress,
+        arrow_manifest,
+        description,
+        ssl_options,
+        mock_sea_client,
+    ):
+        """Test that ArrowQueue is created with decompressed data when attachment is present and lz4_compressed is True."""
+        # Create mock arrow table
+        mock_arrow_table = Mock()
+        mock_arrow_table.num_rows = 5
+        mock_create_table.return_value = mock_arrow_table
+
+        # Setup decompression mock
+        compressed_data = b"compressed_data"
+        decompressed_data = b"decompressed_data"
+        mock_decompress.return_value = decompressed_data
+
+        # Create result data with attachment
+        result_data = ResultData(attachment=compressed_data)
+
+        # Build queue with lz4_compressed=True
+        queue = SeaResultSetQueueFactory.build_queue(
+            result_data=result_data,
+            manifest=arrow_manifest,
+            statement_id="test-statement",
+            ssl_options=ssl_options,
+            description=description,
+            max_download_threads=10,
+            sea_client=mock_sea_client,
+            lz4_compressed=True,
+        )
+
+        # Verify ArrowQueue was created with decompressed data
+        assert isinstance(queue, ArrowQueue)
+        mock_decompress.assert_called_once_with(compressed_data)
+        mock_create_table.assert_called_once_with(decompressed_data, description)

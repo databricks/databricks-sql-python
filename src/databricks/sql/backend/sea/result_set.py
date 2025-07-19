@@ -4,7 +4,6 @@ from typing import Any, List, Optional, TYPE_CHECKING
 
 import logging
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.conversion import SqlTypeConverter
 
@@ -15,6 +14,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse
