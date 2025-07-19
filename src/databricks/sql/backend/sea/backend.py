@@ -6,7 +6,6 @@ import re
 from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
 from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
-from databricks.sql.backend.sea.models.responses import GetStatementResponse
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -43,6 +42,7 @@ from databricks.sql.backend.sea.models import (
     DeleteSessionRequest,
     StatementParameter,
     ExecuteStatementResponse,
+    GetStatementResponse,
     CreateSessionResponse,
 )
 from databricks.sql.backend.sea.models.responses import GetChunksResponse
