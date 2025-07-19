@@ -188,6 +188,7 @@ class ClientTestSuite(unittest.TestCase):
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
         mock_backend = Mock()
+        mock_results = Mock()
         mock_backend.fetch_results.return_value = (Mock(), False)
 
         result_set = ThriftResultSet(
@@ -195,6 +196,8 @@ class ClientTestSuite(unittest.TestCase):
             execute_response=Mock(),
             thrift_client=mock_backend,
         )
+        result_set.results = mock_results
+
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = False
@@ -204,12 +207,14 @@ class ClientTestSuite(unittest.TestCase):
 
         self.assertFalse(mock_backend.close_command.called)
         self.assertTrue(result_set.has_been_closed_server_side)
+        mock_results.close.assert_called_once()
 
     def test_closing_result_set_hard_closes_commands(self):
         mock_results_response = Mock()
         mock_results_response.has_been_closed_server_side = False
         mock_connection = Mock()
         mock_thrift_backend = Mock()
+        mock_results = Mock()
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = True
@@ -219,12 +224,14 @@ class ClientTestSuite(unittest.TestCase):
         result_set = ThriftResultSet(
             mock_connection, mock_results_response, mock_thrift_backend
         )
+        result_set.results = mock_results
 
         result_set.close()
 
         mock_thrift_backend.close_command.assert_called_once_with(
             mock_results_response.command_id
         )
+        mock_results.close.assert_called_once()
 
     def test_executing_multiple_commands_uses_the_most_recent_command(self):
         mock_result_sets = [Mock(), Mock()]
@@ -558,7 +565,10 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.Cursor._handle_staging_operation" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_staging_operation_response_is_handled(
-        self, mock_client_class, mock_handle_staging_operation, mock_execute_response
+        self,
+        mock_client_class,
+        mock_handle_staging_operation,
+        mock_execute_response,
     ):
         # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
 
