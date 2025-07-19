@@ -41,7 +41,7 @@ class Session:
         self.catalog = catalog
         self.schema = schema
 
-        auth_provider = get_python_sql_connector_auth_provider(
+        self.auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
         )
 
@@ -55,16 +55,16 @@ class Session:
                 )
 
         if user_agent_entry:
-            useragent_header = "{}/{} ({})".format(
+            self.useragent_header = "{}/{} ({})".format(
                 USER_AGENT_NAME, __version__, user_agent_entry
             )
         else:
-            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
+            self.useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
 
-        base_headers = [("User-Agent", useragent_header)]
+        base_headers = [("User-Agent", self.useragent_header)]
         all_headers = (http_headers or []) + base_headers
 
-        self._ssl_options = SSLOptions(
+        self.ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
             tls_verify=not kwargs.get(
                 "_tls_no_verify", False
@@ -80,7 +80,7 @@ class Session:
             server_hostname,
             http_path,
             all_headers,
-            auth_provider,
+            self.auth_provider,
             _use_arrow_native_complex_types,
             kwargs,
         )
@@ -113,7 +113,7 @@ class Session:
             "http_path": http_path,
             "http_headers": all_headers,
             "auth_provider": auth_provider,
-            "ssl_options": self._ssl_options,
+            "ssl_options": self.ssl_options,
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }
@@ -127,11 +127,11 @@ class Session:
         )
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True
-        logger.info("Successfully opened session " + str(self.get_id_hex()))
+        logger.info("Successfully opened session " + str(self.guid_hex))
 
     @staticmethod
     def get_protocol_version(session_id: SessionId):
-        return session_id.get_protocol_version()
+        return session_id.protocol_version
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
@@ -143,21 +143,24 @@ class Session:
         else:
             return False
 
-    def get_session_id(self) -> SessionId:
+    @property
+    def session_id(self) -> SessionId:
         """Get the normalized session ID"""
         return self._session_id
 
-    def get_id(self):
+    @property
+    def guid(self):
         """Get the raw session ID (backend-specific)"""
-        return self._session_id.get_guid()
+        return self._session_id.guid
 
-    def get_id_hex(self) -> str:
+    @property
+    def guid_hex(self) -> str:
         """Get the session ID in hex format"""
-        return self._session_id.get_hex_guid()
+        return self._session_id.guid_hex
 
     def close(self) -> None:
         """Close the underlying session."""
-        logger.info(f"Closing session {self.get_id_hex()}")
+        logger.info(f"Closing session {self.guid_hex}")
         if not self.is_open:
             logger.debug("Session appears to have been closed already")
             return

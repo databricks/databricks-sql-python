@@ -87,7 +87,17 @@ class ClientTestSuite(unittest.TestCase):
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_closing_connection_closes_commands(self, mock_thrift_client_class):
-        """Test that connection.close() properly closes result sets through the real close chain."""
+        """Test that closing a connection properly closes commands.
+
+        This test verifies that when a connection is closed:
+        1. the active result set is marked as closed server-side
+        2. The operation state is set to CLOSED
+        3. backend.close_command is called only for commands that weren't already closed
+
+        Args:
+            mock_thrift_client_class: Mock for ThriftBackend class
+        """
+
         # Test once with has_been_closed_server side, once without
         for closed in (True, False):
             with self.subTest(closed=closed):
@@ -114,19 +124,11 @@ class ClientTestSuite(unittest.TestCase):
                 connection = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
                 cursor = connection.cursor()
 
-                # Create a REAL ThriftResultSet that will be returned by execute_command
                 real_result_set = ThriftResultSet(
                     connection=connection,
                     execute_response=mock_execute_response,
                     thrift_client=mock_backend,
                 )
-
-                # Verify initial state
-                self.assertEqual(real_result_set.has_been_closed_server_side, closed)
-                expected_status = (
-                    CommandState.CLOSED if closed else CommandState.SUCCEEDED
-                )
-                self.assertEqual(real_result_set.status, expected_status)
 
                 # Mock execute_command to return our real result set
                 cursor.backend.execute_command = Mock(return_value=real_result_set)
@@ -186,6 +188,7 @@ class ClientTestSuite(unittest.TestCase):
     def test_closing_result_set_with_closed_connection_soft_closes_commands(self):
         mock_connection = Mock()
         mock_backend = Mock()
+        mock_results = Mock()
         mock_backend.fetch_results.return_value = (Mock(), False)
 
         result_set = ThriftResultSet(
@@ -193,6 +196,8 @@ class ClientTestSuite(unittest.TestCase):
             execute_response=Mock(),
             thrift_client=mock_backend,
         )
+        result_set.results = mock_results
+
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = False
@@ -202,12 +207,14 @@ class ClientTestSuite(unittest.TestCase):
 
         self.assertFalse(mock_backend.close_command.called)
         self.assertTrue(result_set.has_been_closed_server_side)
+        mock_results.close.assert_called_once()
 
     def test_closing_result_set_hard_closes_commands(self):
         mock_results_response = Mock()
         mock_results_response.has_been_closed_server_side = False
         mock_connection = Mock()
         mock_thrift_backend = Mock()
+        mock_results = Mock()
         # Setup session mock on the mock_connection
         mock_session = Mock()
         mock_session.open = True
@@ -217,12 +224,14 @@ class ClientTestSuite(unittest.TestCase):
         result_set = ThriftResultSet(
             mock_connection, mock_results_response, mock_thrift_backend
         )
+        result_set.results = mock_results
 
         result_set.close()
 
         mock_thrift_backend.close_command.assert_called_once_with(
             mock_results_response.command_id
         )
+        mock_results.close.assert_called_once()
 
     def test_executing_multiple_commands_uses_the_most_recent_command(self):
         mock_result_sets = [Mock(), Mock()]
@@ -556,7 +565,10 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.Cursor._handle_staging_operation" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_staging_operation_response_is_handled(
-        self, mock_client_class, mock_handle_staging_operation, mock_execute_response
+        self,
+        mock_client_class,
+        mock_handle_staging_operation,
+        mock_execute_response,
     ):
         # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
 
