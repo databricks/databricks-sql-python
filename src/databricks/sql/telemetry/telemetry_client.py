@@ -132,8 +132,6 @@ class TelemetryClient(BaseTelemetryClient):
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
 
-    DEFAULT_BATCH_SIZE = 100
-
     def __init__(
         self,
         telemetry_enabled,
@@ -141,13 +139,11 @@ class TelemetryClient(BaseTelemetryClient):
         auth_provider,
         host_url,
         executor,
-        batch_size=None,
+        batch_size,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
-        self._batch_size = (
-            batch_size if batch_size is not None else self.DEFAULT_BATCH_SIZE
-        )
+        self._batch_size = batch_size
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
@@ -332,6 +328,8 @@ class TelemetryClientFactory:
     _flush_event = threading.Event()
     _flush_interval_seconds = 90
 
+    DEFAULT_BATCH_SIZE = 100
+
     @classmethod
     def _initialize(cls):
         """Initialize the factory if not already initialized"""
@@ -403,7 +401,7 @@ class TelemetryClientFactory:
         session_id_hex,
         auth_provider,
         host_url,
-        batch_size=None,
+        batch_size,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
