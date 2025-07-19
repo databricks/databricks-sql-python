@@ -4,7 +4,6 @@ import ssl
 import urllib.parse
 import urllib.request
 from typing import Dict, Any, Optional, List, Tuple, Union
-from urllib.parse import urljoin
 
 from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
@@ -15,9 +14,6 @@ from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
 from databricks.sql.exc import (
     RequestError,
-    MaxRetryDurationError,
-    SessionAlreadyClosedError,
-    CursorAlreadyClosedError,
 )
 
 logger = logging.getLogger(__name__)
@@ -200,7 +196,7 @@ class SeaHttpClient:
             self._pool.clear()
 
     def using_proxy(self) -> bool:
-        """Check if proxy is being used (for compatibility with Thrift client)."""
+        """Check if proxy is being used."""
         return self.realhost is not None
 
     def set_retry_command_type(self, command_type: CommandType):
@@ -255,8 +251,6 @@ class SeaHttpClient:
 
         logger.debug(f"Making {method} request to {path}")
 
-        # When v3 retries are enabled, urllib3 handles retries internally via DatabricksRetryPolicy
-        # When disabled, we let exceptions bubble up (similar to Thrift backend approach)
         if self._pool is None:
             raise RequestError("Connection pool not initialized", None)
 
@@ -276,7 +270,6 @@ class SeaHttpClient:
                 error_message = f"SEA HTTP request failed with status {response.status}"
                 raise Exception(error_message)
         except MaxRetryError as e:
-            # urllib3 MaxRetryError should bubble up for redirect tests to catch
             logger.error(f"SEA HTTP request failed with MaxRetryError: {e}")
             raise
         except Exception as e:
@@ -291,6 +284,7 @@ class SeaHttpClient:
         This helps the retry policy make appropriate decisions for different
         types of SEA operations.
         """
+
         path = path.lower()
         method = method.upper()
 
