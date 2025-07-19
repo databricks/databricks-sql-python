@@ -4,7 +4,6 @@ from typing import Any, List, Optional, TYPE_CHECKING
 
 import logging
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.conversion import SqlTypeConverter
 
@@ -15,7 +14,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
-from databricks.sql.exc import ProgrammingError
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.types import Row
 from databricks.sql.backend.sea.queue import JsonQueue, SeaResultSetQueueFactory
 from databricks.sql.backend.types import ExecuteResponse
@@ -60,6 +59,7 @@ class SeaResultSet(ResultSet):
             result_data,
             self.manifest,
             statement_id,
+            ssl_options=connection.session.ssl_options,
             description=execute_response.description,
             max_download_threads=sea_client.max_download_threads,
             sea_client=sea_client,
@@ -196,10 +196,10 @@ class SeaResultSet(ResultSet):
         if size < 0:
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
-        if not isinstance(self.results, JsonQueue):
-            raise NotImplementedError("fetchmany_arrow only supported for JSON data")
+        results = self.results.next_n_rows(size)
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_to_arrow_table(results)
 
-        results = self._convert_json_to_arrow_table(self.results.next_n_rows(size))
         self._next_row_index += results.num_rows
 
         return results
@@ -209,10 +209,10 @@ class SeaResultSet(ResultSet):
         Fetch all remaining rows as an Arrow table.
         """
 
-        if not isinstance(self.results, JsonQueue):
-            raise NotImplementedError("fetchall_arrow only supported for JSON data")
+        results = self.results.remaining_rows()
+        if isinstance(self.results, JsonQueue):
+            results = self._convert_json_to_arrow_table(results)
 
-        results = self._convert_json_to_arrow_table(self.results.remaining_rows())
         self._next_row_index += results.num_rows
 
         return results
@@ -229,7 +229,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             res = self._create_json_table(self.fetchmany_json(1))
         else:
-            raise NotImplementedError("fetchone only supported for JSON data")
+            res = self._convert_arrow_table(self.fetchmany_arrow(1))
 
         return res[0] if res else None
 
@@ -250,7 +250,7 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchmany_json(size))
         else:
-            raise NotImplementedError("fetchmany only supported for JSON data")
+            return self._convert_arrow_table(self.fetchmany_arrow(size))
 
     def fetchall(self) -> List[Row]:
         """
@@ -263,4 +263,4 @@ class SeaResultSet(ResultSet):
         if isinstance(self.results, JsonQueue):
             return self._create_json_table(self.fetchall_json())
         else:
-            raise NotImplementedError("fetchall only supported for JSON data")
+            return self._convert_arrow_table(self.fetchall_arrow())
