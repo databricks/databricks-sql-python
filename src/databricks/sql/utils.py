@@ -247,9 +247,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             ssl_options=ssl_options,
         )
 
-        # Initialize download manager
-        self.download_manager: Optional["ResultFileDownloadManager"] = None
-
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """
         Get up to the next n rows of the cloud fetch Arrow dataframes.

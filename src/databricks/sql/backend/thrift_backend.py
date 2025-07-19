@@ -149,8 +149,6 @@ class ThriftDatabricksClient(DatabricksClient):
             http_path,
         )
 
-        super().__init__(ssl_options, **kwargs)
-
         port = port or 443
         if kwargs.get("_connection_uri"):
             uri = kwargs.get("_connection_uri")
@@ -174,6 +172,10 @@ class ThriftDatabricksClient(DatabricksClient):
         )
 
         # Cloud fetch
+        self._max_download_threads = kwargs.get("max_download_threads", 10)
+
+        self._ssl_options = ssl_options
+
         self._auth_provider = auth_provider
 
         # Connector version 3 retry approach
