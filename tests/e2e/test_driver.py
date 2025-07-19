@@ -562,8 +562,17 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP DATABASE IF EXISTS {}".format(database_name))
 
-    def test_get_catalogs(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_get_catalogs(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             cursor.catalogs()
             cursor.fetchall()
             catalogs_desc = cursor.description

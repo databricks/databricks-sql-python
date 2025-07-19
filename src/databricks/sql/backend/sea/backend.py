@@ -33,6 +33,9 @@ from databricks.sql.exc import DatabaseError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
 
+# Import the column mapping module
+from databricks.sql.backend.column_mapping import normalise_metadata_result, MetadataOp
+
 from databricks.sql.backend.sea.models import (
     ExecuteStatementRequest,
     GetStatementRequest,
@@ -692,6 +695,9 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+
+        normalise_metadata_result(result, MetadataOp.CATALOGS)
+
         return result
 
     def get_schemas(
@@ -725,6 +731,9 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+
+        normalise_metadata_result(result, MetadataOp.SCHEMAS)
+
         return result
 
     def get_tables(
@@ -772,6 +781,8 @@ class SeaDatabricksClient(DatabricksClient):
 
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
 
+        normalise_metadata_result(result, MetadataOp.TABLES)
+
         return result
 
     def get_columns(
@@ -813,4 +824,7 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+
+        normalise_metadata_result(result, MetadataOp.COLUMNS)
+
         return result
