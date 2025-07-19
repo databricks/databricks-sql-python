@@ -24,7 +24,16 @@ class PySQLUCVolumeTestSuiteMixin:
     In addition to connection credentials (host, path, token) this suite requires env vars
     named catalog and schema"""
 
-    def test_uc_volume_life_cycle(self, catalog, schema):
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_uc_volume_life_cycle(self, catalog, schema, backend_params):
         """PUT a file into the UC Volume
         GET the file from the UC Volume
         REMOVE the file from the UC Volume
@@ -41,7 +50,7 @@ class PySQLUCVolumeTestSuiteMixin:
             fp.write(original_text)
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": temp_path}
+            extra_params={"staging_allowed_local_path": temp_path, **backend_params}
         ) as conn:
 
             cursor = conn.cursor()
@@ -53,7 +62,7 @@ class PySQLUCVolumeTestSuiteMixin:
         new_fh, new_temp_path = tempfile.mkstemp()
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": new_temp_path}
+            extra_params={"staging_allowed_local_path": new_temp_path, **backend_params}
         ) as conn:
             cursor = conn.cursor()
             query = f"GET '/Volumes/{catalog}/{schema}/e2etests/file1.csv' TO '{new_temp_path}'"
@@ -68,7 +77,9 @@ class PySQLUCVolumeTestSuiteMixin:
 
         remove_query = f"REMOVE '/Volumes/{catalog}/{schema}/e2etests/file1.csv'"
 
-        with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
+        with self.connection(
+            extra_params={"staging_allowed_local_path": "/", **backend_params}
+        ) as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
 
@@ -84,8 +95,17 @@ class PySQLUCVolumeTestSuiteMixin:
         os.remove(temp_path)
         os.remove(new_temp_path)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_uc_volume_put_fails_without_staging_allowed_local_path(
-        self, catalog, schema
+        self, catalog, schema, backend_params
     ):
         """PUT operations are not supported unless the connection was built with
         a parameter called staging_allowed_local_path
@@ -101,13 +121,22 @@ class PySQLUCVolumeTestSuiteMixin:
         with pytest.raises(
             Error, match="You must provide at least one staging_allowed_local_path"
         ):
-            with self.connection() as conn:
+            with self.connection(extra_params=backend_params) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_uc_volume_put_fails_if_localFile_not_in_staging_allowed_local_path(
-        self, catalog, schema
+        self, catalog, schema, backend_params
     ):
 
         fh, temp_path = tempfile.mkstemp()
@@ -127,14 +156,23 @@ class PySQLUCVolumeTestSuiteMixin:
             match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(
-                extra_params={"staging_allowed_local_path": base_path}
+                extra_params={"staging_allowed_local_path": base_path, **backend_params}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_uc_volume_put_fails_if_file_exists_and_overwrite_not_set(
-        self, catalog, schema
+        self, catalog, schema, backend_params
     ):
         """PUT a file into the staging location twice. First command should succeed. Second should fail."""
 
@@ -147,7 +185,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
         def perform_put():
             with self.connection(
-                extra_params={"staging_allowed_local_path": temp_path}
+                extra_params={"staging_allowed_local_path": temp_path, **backend_params}
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{temp_path}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv'"
@@ -160,7 +198,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 )
 
                 with self.connection(
-                    extra_params={"staging_allowed_local_path": "/"}
+                    extra_params={"staging_allowed_local_path": "/", **backend_params}
                 ) as conn:
                     cursor = conn.cursor()
                     cursor.execute(remove_query)
@@ -182,8 +220,17 @@ class PySQLUCVolumeTestSuiteMixin:
         # Clean up after ourselves
         perform_remove()
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_uc_volume_put_fails_if_absolute_localFile_not_in_staging_allowed_local_path(
-        self, catalog, schema
+        self, catalog, schema, backend_params
     ):
         """
         This test confirms that staging_allowed_local_path and target_file are resolved into absolute paths.
@@ -200,38 +247,78 @@ class PySQLUCVolumeTestSuiteMixin:
             match="Local file operations are restricted to paths within the configured staging_allowed_local_path",
         ):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                extra_params={
+                    "staging_allowed_local_path": staging_allowed_local_path,
+                    **backend_params,
+                }
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_uc_volume_empty_local_path_fails_to_parse_at_server(self, catalog, schema):
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_uc_volume_empty_local_path_fails_to_parse_at_server(
+        self, catalog, schema, backend_params
+    ):
         staging_allowed_local_path = "/var/www/html"
         target_file = ""
 
         with pytest.raises(Error, match="EMPTY_LOCAL_FILE_IN_STAGING_ACCESS_QUERY"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                extra_params={
+                    "staging_allowed_local_path": staging_allowed_local_path,
+                    **backend_params,
+                }
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
-    def test_uc_volume_invalid_volume_path_fails_at_server(self, catalog, schema):
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_uc_volume_invalid_volume_path_fails_at_server(
+        self, catalog, schema, backend_params
+    ):
         staging_allowed_local_path = "/var/www/html"
         target_file = "index.html"
 
         with pytest.raises(Error, match="NOT_FOUND: Catalog"):
             with self.connection(
-                extra_params={"staging_allowed_local_path": staging_allowed_local_path}
+                extra_params={
+                    "staging_allowed_local_path": staging_allowed_local_path,
+                    **backend_params,
+                }
             ) as conn:
                 cursor = conn.cursor()
                 query = f"PUT '{target_file}' INTO '/Volumes/RANDOMSTRINGOFCHARACTERS/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
     def test_uc_volume_supports_multiple_staging_allowed_local_path_values(
-        self, catalog, schema
+        self, catalog, schema, backend_params
     ):
         """staging_allowed_local_path may be either a path-like object or a list of path-like objects.
 
@@ -277,7 +364,10 @@ class PySQLUCVolumeTestSuiteMixin:
         ) = generate_file_and_path_and_queries()
 
         with self.connection(
-            extra_params={"staging_allowed_local_path": [temp_path1, temp_path2]}
+            extra_params={
+                "staging_allowed_local_path": [temp_path1, temp_path2],
+                **backend_params,
+            }
         ) as conn:
             cursor = conn.cursor()
 
