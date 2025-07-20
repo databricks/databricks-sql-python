@@ -359,7 +359,6 @@ class TestSeaCloudFetchQueue:
         )
 
         # Verify attributes
-        assert queue._statement_id == "test-statement-123"
         assert queue._current_chunk_index == 0
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
@@ -391,7 +390,7 @@ class TestSeaCloudFetchQueue:
         """Test _create_next_table with successful table creation."""
         # Create a queue instance without initializing
         queue = Mock(spec=SeaCloudFetchQueue)
-        queue.current_chunk_index = 0
+        queue._current_chunk_index = 0
         queue.download_manager = Mock()
         queue.link_fetcher = Mock()
 
@@ -405,7 +404,7 @@ class TestSeaCloudFetchQueue:
         SeaCloudFetchQueue._create_next_table(queue)
 
         # Verify the chunk index was incremented
-        assert queue.current_chunk_index == 1
+        assert queue._current_chunk_index == 1
 
         # Verify the chunk link was retrieved
         queue.link_fetcher.get_chunk_link.assert_called_once_with(0)

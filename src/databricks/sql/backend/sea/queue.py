@@ -263,10 +263,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             description=description,
         )
 
-        self._sea_client = sea_client
-        self._statement_id = statement_id
-        self._total_chunk_count = total_chunk_count
-
         logger.debug(
             "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
                 statement_id, total_chunk_count
@@ -274,42 +270,43 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         )
 
         initial_links = result_data.external_links or []
-        self._chunk_index_to_link = {link.chunk_index: link for link in initial_links}
 
         # Track the current chunk we're processing
         self._current_chunk_index = 0
-        first_link = self._chunk_index_to_link.get(self._current_chunk_index, None)
-        if not first_link:
-            # possibly an empty response
-            return
 
-        self.current_chunk_index = 0
-
-        self.link_fetcher = LinkFetcher(
-            download_manager=self.download_manager,
-            backend=self._sea_client,
-            statement_id=self._statement_id,
-            initial_links=initial_links,
-            total_chunk_count=total_chunk_count,
-        )
-        self.link_fetcher.start()
+        if total_chunk_count < 1:
+            # an empty response
+            self.link_fetcher = None
+        else:
+            self.link_fetcher = LinkFetcher(
+                download_manager=self.download_manager,
+                backend=sea_client,
+                statement_id=statement_id,
+                initial_links=initial_links,
+                total_chunk_count=total_chunk_count,
+            )
+            self.link_fetcher.start()
 
         # Initialize table and position
         self.table = self._create_next_table()
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         """Create next table by retrieving the logical next downloaded file."""
-        chunk_link = self.link_fetcher.get_chunk_link(self.current_chunk_index)
+        if self.link_fetcher is None:
+            return None
+
+        chunk_link = self.link_fetcher.get_chunk_link(self._current_chunk_index)
         if not chunk_link:
             return None
 
         row_offset = chunk_link.row_offset
         arrow_table = self._create_table_at_offset(row_offset)
 
-        self.current_chunk_index += 1
+        self._current_chunk_index += 1
 
         return arrow_table
 
     def close(self):
         super().close()
-        self.link_fetcher.stop()
+        if self.link_fetcher:
+            self.link_fetcher.stop()
