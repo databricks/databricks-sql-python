@@ -717,10 +717,14 @@ class TestLinkFetcher:
         # The thread should have finished and captured link1
         assert result_container.get("link") == link1
 
-    def test_get_chunk_link_out_of_range_returns_none(self, sample_links):
+    def test_get_chunk_link_out_of_range_raises_value_error(self, sample_links):
         """Requesting a chunk index >= total_chunk_count should immediately return None."""
         link0, _ = sample_links
 
         fetcher, _backend, _dm = self._create_fetcher([link0], total_chunk_count=1)
 
-        assert fetcher.get_chunk_link(10) is None
+        with pytest.raises(
+            ValueError,
+            match="Chunk index 10 is out of range for total chunk count 1",
+        ):
+            fetcher.get_chunk_link(10)

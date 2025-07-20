@@ -178,9 +178,11 @@ class LinkFetcher:
 
         return True
 
-    def get_chunk_link(self, chunk_index: int) -> Optional[ExternalLink]:
+    def get_chunk_link(self, chunk_index: int) -> ExternalLink:
         if chunk_index >= self.total_chunk_count:
-            return None
+            raise ValueError(
+                f"Chunk index {chunk_index} is out of range for total chunk count {self.total_chunk_count}"
+            )
 
         with self._link_data_update:
             while chunk_index not in self.chunk_index_to_link:
@@ -194,7 +196,7 @@ class LinkFetcher:
                     )
                 self._link_data_update.wait()
 
-            return self.chunk_index_to_link.get(chunk_index, None)
+            return self.chunk_index_to_link[chunk_index]
 
     @staticmethod
     def _convert_to_thrift_link(link: ExternalLink) -> TSparkArrowResultLink:
@@ -296,8 +298,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             return None
 
         chunk_link = self.link_fetcher.get_chunk_link(self._current_chunk_index)
-        if not chunk_link:
-            return None
 
         row_offset = chunk_link.row_offset
         arrow_table = self._create_table_at_offset(row_offset)
