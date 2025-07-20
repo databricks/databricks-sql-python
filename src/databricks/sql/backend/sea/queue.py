@@ -216,7 +216,7 @@ class LinkFetcher:
         while not self._shutdown_event.is_set():
             links_downloaded = self._trigger_next_batch_download()
             if not links_downloaded:
-                break
+                self._shutdown_event.set()
         self._link_data_update.notify_all()
 
     def start(self):
