@@ -131,4 +131,5 @@ class ResultFileDownloadManager:
         self._pending_links = []
         self._download_tasks = []
         self._thread_pool.shutdown(wait=False)
-        self._download_condition.notify_all()
+        with self._download_condition:
+            self._download_condition.notify_all()
