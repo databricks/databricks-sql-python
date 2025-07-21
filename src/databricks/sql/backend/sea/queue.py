@@ -343,6 +343,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         # Track the current chunk we're processing
         self._current_chunk_index = 0
 
+        self.link_fetcher = None  # for empty responses, we do not need a link fetcher
         if total_chunk_count > 0:
             self.link_fetcher = LinkFetcher(
                 download_manager=self.download_manager,
@@ -352,9 +353,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
                 total_chunk_count=total_chunk_count,
             )
             self.link_fetcher.start()
-        else:
-            # an empty response
-            self.link_fetcher = None
 
         # Initialize table and position
         self.table = self._create_next_table()
