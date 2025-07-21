@@ -48,7 +48,7 @@ class ResultFileDownloadManager:
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
-        expiry_callback: Optional[Callable[[TSparkArrowResultLink], None]] = None,
+        expiry_callback: Callable[[TSparkArrowResultLink], None],
     ):
         self._pending_links: List[Tuple[int, TSparkArrowResultLink]] = []
         self.chunk_id = chunk_id
@@ -141,7 +141,7 @@ class ResultFileDownloadManager:
         self._download_tasks = tasks_to_keep
 
         pending_links_to_keep = [
-            link for link in self._pending_links if not to_cancel(link)
+            link for link in self._pending_links if not to_cancel(link[1])
         ]
         self._pending_links = pending_links_to_keep
         logger.info(
