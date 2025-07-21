@@ -30,7 +30,7 @@ import time
 try:
     import pyarrow as pa
 except ImportError:
-    pyarrow = None
+    pa = None
 
 
 class TestJsonQueue:
