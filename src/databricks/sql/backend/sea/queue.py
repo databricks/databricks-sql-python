@@ -5,6 +5,7 @@ import threading
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
+from databricks.sql.telemetry.models.enums import StatementType
 
 from databricks.sql.cloudfetch.downloader import ResultSetDownloadHandler
 
@@ -279,7 +280,8 @@ class LinkFetcher:
             if not links_downloaded:
                 self._shutdown_event.set()
         logger.debug("LinkFetcher[%s]: worker thread exiting", self._statement_id)
-        self._link_data_update.notify_all()
+        with self._link_data_update:
+            self._link_data_update.notify_all()
 
     def _restart_from_expired_link(self, link: TSparkArrowResultLink):
         """Restart the link fetcher from the expired link."""
@@ -347,10 +349,14 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         super().__init__(
             max_download_threads=max_download_threads,
             ssl_options=ssl_options,
+            statement_id=statement_id,
             schema_bytes=None,
             lz4_compressed=lz4_compressed,
             description=description,
             expiry_callback=self._expiry_callback,
+            # TODO: fix these arguments when telemetry is implemented in SEA
+            session_id_hex=None,
+            chunk_id=0,
         )
 
         logger.debug(

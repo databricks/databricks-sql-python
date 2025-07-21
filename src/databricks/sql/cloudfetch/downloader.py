@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from typing import Callable
+from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -10,6 +11,8 @@ import time
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
+from databricks.sql.telemetry.latency_logger import log_latency
+from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +71,19 @@ class ResultSetDownloadHandler:
         link: TSparkArrowResultLink,
         ssl_options: SSLOptions,
         expiry_callback: Callable[[TSparkArrowResultLink], None],
+        chunk_id: int,
+        session_id_hex: Optional[str],
+        statement_id: str,
     ):
         self.settings = settings
         self.link = link
         self._ssl_options = ssl_options
         self._expiry_callback = expiry_callback
+        self.chunk_id = chunk_id
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
 
+    @log_latency(StatementType.QUERY)
     def run(self) -> DownloadedFile:
         """
         Download the file described in the cloud fetch link.
@@ -83,8 +93,8 @@ class ResultSetDownloadHandler:
         """
 
         logger.debug(
-            "ResultSetDownloadHandler: starting file download, offset {}, row count {}".format(
-                self.link.startRowOffset, self.link.rowCount
+            "ResultSetDownloadHandler: starting file download, chunk id {}, offset {}, row count {}".format(
+                self.chunk_id, self.link.startRowOffset, self.link.rowCount
             )
         )
 

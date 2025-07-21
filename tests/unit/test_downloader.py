@@ -32,6 +32,9 @@ class DownloaderTests(unittest.TestCase):
             result_link,
             ssl_options=SSLOptions(),
             expiry_callback=expiry_callback,
+            chunk_id=0,
+            session_id_hex=Mock(),
+            statement_id=Mock(),
         )
 
     @patch("time.time", return_value=1000)
