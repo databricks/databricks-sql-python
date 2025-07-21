@@ -1,6 +1,7 @@
 import logging
 
 from concurrent.futures import ThreadPoolExecutor, Future
+import threading
 from typing import List, Union, Tuple, Optional
 
 from databricks.sql.cloudfetch.downloader import (
@@ -8,6 +9,7 @@ from databricks.sql.cloudfetch.downloader import (
     DownloadableResultSettings,
     DownloadedFile,
 )
+from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 from databricks.sql.telemetry.models.event import StatementType
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
@@ -39,8 +41,10 @@ class ResultFileDownloadManager:
             self._pending_links.append((i, link))
         self.chunk_id += len(links)
 
-        self._download_tasks: List[Future[DownloadedFile]] = []
         self._max_download_threads: int = max_download_threads
+
+        self._download_condition = threading.Condition()
+        self._download_tasks: List[Future[DownloadedFile]] = []
         self._thread_pool = ThreadPoolExecutor(max_workers=self._max_download_threads)
 
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
@@ -48,17 +52,13 @@ class ResultFileDownloadManager:
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
 
-    def get_next_downloaded_file(
-        self, next_row_offset: int
-    ) -> Union[DownloadedFile, None]:
+    def get_next_downloaded_file(self, next_row_offset: int) -> DownloadedFile:
         """
         Get next file that starts at given offset.
 
         This function gets the next downloaded file in which its rows start at the specified next_row_offset
         in relation to the full result. File downloads are scheduled if not already, and once the correct
         download handler is located, the function waits for the download status and returns the resulting file.
-        If there are no more downloads, a download was not successful, or the correct file could not be located,
-        this function shuts down the thread pool and returns None.
 
         Args:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
@@ -67,10 +67,11 @@ class ResultFileDownloadManager:
         # Make sure the download queue is always full
         self._schedule_downloads()
 
-        # No more files to download from this batch of links
-        if len(self._download_tasks) == 0:
-            self._shutdown_manager()
-            return None
+        while len(self._download_tasks) == 0:
+            if self._thread_pool._shutdown:
+                raise Error("download manager shut down before file was ready")
+            with self._download_condition:
+                self._download_condition.wait()
 
         task = self._download_tasks.pop(0)
         # Future's `result()` method will wait for the call to complete, and return
@@ -113,6 +114,9 @@ class ResultFileDownloadManager:
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
 
+        with self._download_condition:
+            self._download_condition.notify_all()
+
     def add_link(self, link: TSparkArrowResultLink):
         """
         Add more links to the download manager.
@@ -132,8 +136,12 @@ class ResultFileDownloadManager:
         self._pending_links.append((self.chunk_id, link))
         self.chunk_id += 1
 
+        self._schedule_downloads()
+
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool
         self._pending_links = []
         self._download_tasks = []
         self._thread_pool.shutdown(wait=False)
+        with self._download_condition:
+            self._download_condition.notify_all()
