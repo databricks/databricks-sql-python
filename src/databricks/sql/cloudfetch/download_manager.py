@@ -1,6 +1,7 @@
 import logging
 
 from concurrent.futures import ThreadPoolExecutor, Future
+import threading
 from typing import List, Union
 
 from databricks.sql.cloudfetch.downloader import (
@@ -8,6 +9,7 @@ from databricks.sql.cloudfetch.downloader import (
     DownloadableResultSettings,
     DownloadedFile,
 )
+from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
@@ -34,16 +36,16 @@ class ResultFileDownloadManager:
             )
             self._pending_links.append(link)
 
-        self._download_tasks: List[Future[DownloadedFile]] = []
         self._max_download_threads: int = max_download_threads
+
+        self._download_condition = threading.Condition()
+        self._download_tasks: List[Future[DownloadedFile]] = []
         self._thread_pool = ThreadPoolExecutor(max_workers=self._max_download_threads)
 
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
         self._ssl_options = ssl_options
 
-    def get_next_downloaded_file(
-        self, next_row_offset: int
-    ) -> Union[DownloadedFile, None]:
+    def get_next_downloaded_file(self, next_row_offset: int) -> DownloadedFile:
         """
         Get next file that starts at given offset.
 
@@ -62,8 +64,10 @@ class ResultFileDownloadManager:
 
         # No more files to download from this batch of links
         if len(self._download_tasks) == 0:
-            self._shutdown_manager()
-            return None
+            if self._thread_pool._shutdown:
+                raise Error("download manager shut down before file was ready")
+            with self._download_condition:
+                self._download_condition.wait()
 
         task = self._download_tasks.pop(0)
         # Future's `result()` method will wait for the call to complete, and return
@@ -124,3 +128,4 @@ class ResultFileDownloadManager:
         self._pending_links = []
         self._download_tasks = []
         self._thread_pool.shutdown(wait=False)
+        self._download_condition.notify_all()

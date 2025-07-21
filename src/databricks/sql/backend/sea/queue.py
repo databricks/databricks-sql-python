@@ -357,14 +357,14 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         # Initialize table and position
         self.table = self._create_next_table()
 
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+    def _create_next_table(self) -> "pyarrow.Table":
         """Create next table by retrieving the logical next downloaded file."""
         if self.link_fetcher is None:
-            return None
+            return self._create_empty_table()
 
         chunk_link = self.link_fetcher.get_chunk_link(self._current_chunk_index)
         if chunk_link is None:
-            return None
+            return self._create_empty_table()
 
         row_offset = chunk_link.row_offset
         # NOTE: link has already been submitted to download manager at this point

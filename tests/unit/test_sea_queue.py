@@ -27,6 +27,11 @@ from databricks.sql.utils import ArrowQueue
 import threading
 import time
 
+try:
+    import pyarrow as pa
+except ImportError:
+    pyarrow = None
+
 
 class TestJsonQueue:
     """Test suite for the JsonQueue class."""
@@ -357,6 +362,7 @@ class TestSeaCloudFetchQueue:
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_init_no_initial_links(
         self,
         mock_logger,
@@ -377,7 +383,7 @@ class TestSeaCloudFetchQueue:
             lz4_compressed=False,
             description=description,
         )
-        assert queue.table is None
+        assert queue.table == pa.Table.from_pydict({})
 
     @patch("databricks.sql.backend.sea.queue.logger")
     def test_create_next_table_success(self, mock_logger):
