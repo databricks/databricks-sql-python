@@ -67,7 +67,6 @@ class ResultFileDownloadManager:
         # Make sure the download queue is always full
         self._schedule_downloads()
 
-        # No more files to download from this batch of links
         while len(self._download_tasks) == 0:
             if self._thread_pool._shutdown:
                 raise Error("download manager shut down before file was ready")
