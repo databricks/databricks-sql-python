@@ -369,6 +369,9 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                 start_row_offset
             )
         )
+
+        self.num_links_downloaded = 0
+
         if self.result_links:
             for result_link in self.result_links:
                 logger.debug(
@@ -378,18 +381,20 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                 )
                 self.download_manager.add_link(result_link)
 
-            # Initialize table and position
-            self.table = self._create_next_table()
-        else:
-            self.table = self._create_empty_table()
+        # Initialize table and position
+        self.table = self._create_next_table()
 
     def _create_next_table(self) -> "pyarrow.Table":
+        if self.num_links_downloaded >= len(self.result_links):
+            return self._create_empty_table()
+
         logger.debug(
             "ThriftCloudFetchQueue: Trying to get downloaded file for row {}".format(
                 self.start_row_index
             )
         )
         arrow_table = self._create_table_at_offset(self.start_row_index)
+        self.num_links_downloaded += 1
         self.start_row_index += arrow_table.num_rows
         logger.debug(
             "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
