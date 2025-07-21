@@ -27,6 +27,11 @@ from databricks.sql.utils import ArrowQueue
 import threading
 import time
 
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
+
 
 class TestJsonQueue:
     """Test suite for the JsonQueue class."""
@@ -199,6 +204,7 @@ class TestSeaResultSetQueueFactory:
         assert isinstance(queue, JsonQueue)
         assert queue.data_array == sample_data
 
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_build_queue_arrow_stream(
         self, arrow_manifest, ssl_options, mock_sea_client, description
     ):
@@ -328,6 +334,7 @@ class TestSeaCloudFetchQueue:
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_init_with_valid_initial_link(
         self,
         mock_logger,
@@ -357,6 +364,7 @@ class TestSeaCloudFetchQueue:
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_init_no_initial_links(
         self,
         mock_logger,
@@ -377,7 +385,7 @@ class TestSeaCloudFetchQueue:
             lz4_compressed=False,
             description=description,
         )
-        assert queue.table is None
+        assert queue.table == pa.Table.from_pydict({})
 
     @patch("databricks.sql.backend.sea.queue.logger")
     def test_create_next_table_success(self, mock_logger):
@@ -481,6 +489,7 @@ class TestHybridDisposition:
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None)
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_hybrid_disposition_with_external_links(
         self,
         mock_create_table,
