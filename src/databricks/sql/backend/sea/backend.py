@@ -18,7 +18,8 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
-    from databricks.sql.backend.sea.result_set import SeaResultSet
+
+from databricks.sql.backend.sea.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -50,17 +51,17 @@ logger = logging.getLogger(__name__)
 
 
 def _filter_session_configuration(
-    session_configuration: Optional[Dict[str, str]]
-) -> Optional[Dict[str, str]]:
+    session_configuration: Optional[Dict[str, Any]],
+) -> Dict[str, str]:
     if not session_configuration:
-        return None
+        return {}
 
     filtered_session_configuration = {}
     ignored_configs: Set[str] = set()
 
     for key, value in session_configuration.items():
         if key.upper() in ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP:
-            filtered_session_configuration[key.lower()] = value
+            filtered_session_configuration[key.lower()] = str(value)
         else:
             ignored_configs.add(key)
 
@@ -124,7 +125,11 @@ class SeaDatabricksClient(DatabricksClient):
             http_path,
         )
 
-        super().__init__(ssl_options=ssl_options, **kwargs)
+        self._max_download_threads = kwargs.get("max_download_threads", 10)
+        self._ssl_options = ssl_options
+        self._use_arrow_native_complex_types = kwargs.get(
+            "_use_arrow_native_complex_types", True
+        )
 
         self.use_hybrid_disposition = kwargs.get("use_hybrid_disposition", True)
 
@@ -132,7 +137,7 @@ class SeaDatabricksClient(DatabricksClient):
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
         # Initialize HTTP client
-        self.http_client = SeaHttpClient(
+        self._http_client = SeaHttpClient(
             server_hostname=server_hostname,
             port=port,
             http_path=http_path,
@@ -186,7 +191,7 @@ class SeaDatabricksClient(DatabricksClient):
 
     def open_session(
         self,
-        session_configuration: Optional[Dict[str, str]],
+        session_configuration: Optional[Dict[str, Any]],
         catalog: Optional[str],
         schema: Optional[str],
     ) -> SessionId:
@@ -224,7 +229,7 @@ class SeaDatabricksClient(DatabricksClient):
             schema=schema,
         )
 
-        response = self.http_client._make_request(
+        response = self._http_client._make_request(
             method="POST", path=self.SESSION_PATH, data=request_data.to_dict()
         )
 
@@ -264,7 +269,7 @@ class SeaDatabricksClient(DatabricksClient):
             session_id=sea_session_id,
         )
 
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             data=request_data.to_dict(),
@@ -328,7 +333,7 @@ class SeaDatabricksClient(DatabricksClient):
         return columns
 
     def _results_message_to_execute_response(
-        self, response: GetStatementResponse
+        self, response: Union[ExecuteStatementResponse, GetStatementResponse]
     ) -> ExecuteResponse:
         """
         Convert a SEA response to an ExecuteResponse and extract result data.
@@ -362,6 +367,27 @@ class SeaDatabricksClient(DatabricksClient):
 
         return execute_response
 
+    def _response_to_result_set(
+        self,
+        response: Union[ExecuteStatementResponse, GetStatementResponse],
+        cursor: Cursor,
+    ) -> SeaResultSet:
+        """
+        Convert a SEA response to a SeaResultSet.
+        """
+
+        execute_response = self._results_message_to_execute_response(response)
+
+        return SeaResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            sea_client=self,
+            result_data=response.result,
+            manifest=response.manifest,
+            buffer_size_bytes=cursor.buffer_size_bytes,
+            arraysize=cursor.arraysize,
+        )
+
     def _check_command_not_in_failed_or_closed_state(
         self, state: CommandState, command_id: CommandId
     ) -> None:
@@ -382,21 +408,24 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _wait_until_command_done(
         self, response: ExecuteStatementResponse
-    ) -> CommandState:
+    ) -> Union[ExecuteStatementResponse, GetStatementResponse]:
         """
         Wait until a command is done.
         """
 
-        state = response.status.state
-        command_id = CommandId.from_sea_statement_id(response.statement_id)
+        final_response: Union[ExecuteStatementResponse, GetStatementResponse] = response
+
+        state = final_response.status.state
+        command_id = CommandId.from_sea_statement_id(final_response.statement_id)
 
         while state in [CommandState.PENDING, CommandState.RUNNING]:
             time.sleep(self.POLL_INTERVAL_SECONDS)
-            state = self.get_query_state(command_id)
+            final_response = self._poll_query(command_id)
+            state = final_response.status.state
 
         self._check_command_not_in_failed_or_closed_state(state, command_id)
 
-        return state
+        return final_response
 
     def execute_command(
         self,
@@ -443,7 +472,9 @@ class SeaDatabricksClient(DatabricksClient):
                 sea_parameters.append(
                     StatementParameter(
                         name=param.name,
-                        value=param.value,
+                        value=(
+                            param.value.stringValue if param.value is not None else None
+                        ),
                         type=param.type,
                     )
                 )
@@ -477,7 +508,7 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
         )
         response = ExecuteStatementResponse.from_dict(response_data)
@@ -500,8 +531,11 @@ class SeaDatabricksClient(DatabricksClient):
         if async_op:
             return None
 
-        self._wait_until_command_done(response)
-        return self.get_execution_result(command_id, cursor)
+        final_response: Union[ExecuteStatementResponse, GetStatementResponse] = response
+        if response.status.state != CommandState.SUCCEEDED:
+            final_response = self._wait_until_command_done(response)
+
+        return self._response_to_result_set(final_response, cursor)
 
     def cancel_command(self, command_id: CommandId) -> None:
         """
@@ -522,7 +556,7 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="POST",
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -547,11 +581,33 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
         )
+
+    def _poll_query(self, command_id: CommandId) -> GetStatementResponse:
+        """
+        Poll for the current command info.
+        """
+
+        if command_id.backend_type != BackendType.SEA:
+            raise ValueError("Not a valid SEA command ID")
+
+        sea_statement_id = command_id.to_sea_statement_id()
+        if sea_statement_id is None:
+            raise ValueError("Not a valid SEA command ID")
+
+        request = GetStatementRequest(statement_id=sea_statement_id)
+        response_data = self._http_client._make_request(
+            method="GET",
+            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
+            data=request.to_dict(),
+        )
+        response = GetStatementResponse.from_dict(response_data)
+
+        return response
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         """
@@ -564,25 +620,10 @@ class SeaDatabricksClient(DatabricksClient):
             CommandState: The current state of the command
 
         Raises:
-            ValueError: If the command ID is invalid
+            ProgrammingError: If the command ID is invalid
         """
 
-        if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
-
-        sea_statement_id = command_id.to_sea_statement_id()
-        if sea_statement_id is None:
-            raise ValueError("Not a valid SEA command ID")
-
-        request = GetStatementRequest(statement_id=sea_statement_id)
-        response_data = self.http_client._make_request(
-            method="GET",
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
-        )
-
-        # Parse the response
-        response = GetStatementResponse.from_dict(response_data)
+        response = self._poll_query(command_id)
         return response.status.state
 
     def get_execution_result(
@@ -604,38 +645,8 @@ class SeaDatabricksClient(DatabricksClient):
             ValueError: If the command ID is invalid
         """
 
-        if command_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA command ID")
-
-        sea_statement_id = command_id.to_sea_statement_id()
-        if sea_statement_id is None:
-            raise ValueError("Not a valid SEA command ID")
-
-        # Create the request model
-        request = GetStatementRequest(statement_id=sea_statement_id)
-
-        # Get the statement result
-        response_data = self.http_client._make_request(
-            method="GET",
-            path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
-            data=request.to_dict(),
-        )
-        response = GetStatementResponse.from_dict(response_data)
-
-        # Create and return a SeaResultSet
-        from databricks.sql.backend.sea.result_set import SeaResultSet
-
-        execute_response = self._results_message_to_execute_response(response)
-
-        return SeaResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            sea_client=self,
-            result_data=response.result,
-            manifest=response.manifest,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-            arraysize=cursor.arraysize,
-        )
+        response = self._poll_query(command_id)
+        return self._response_to_result_set(response, cursor)
 
     def get_chunk_links(
         self, statement_id: str, chunk_index: int
@@ -649,13 +660,13 @@ class SeaDatabricksClient(DatabricksClient):
             ExternalLink: External link for the chunk
         """
 
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="GET",
             path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
         )
         response = GetChunksResponse.from_dict(response_data)
 
-        links = response.external_links
+        links = response.external_links or []
         return links
 
     # == Metadata Operations ==

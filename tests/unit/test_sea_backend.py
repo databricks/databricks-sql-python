@@ -13,6 +13,7 @@ from databricks.sql.backend.sea.backend import (
     _filter_session_configuration,
 )
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
+from databricks.sql.parameters.native import IntegerParameter, TDbsqlParameter
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.authenticators import AuthProvider
@@ -226,7 +227,7 @@ class TestSeaBackend:
         mock_http_client._make_request.return_value = execute_response
 
         with patch.object(
-            sea_client, "get_execution_result", return_value="mock_result_set"
+            sea_client, "_response_to_result_set", return_value="mock_result_set"
         ) as mock_get_result:
             result = sea_client.execute_command(
                 operation="SELECT 1",
@@ -241,9 +242,6 @@ class TestSeaBackend:
                 enforce_embedded_schema_correctness=False,
             )
             assert result == "mock_result_set"
-            cmd_id_arg = mock_get_result.call_args[0][0]
-            assert isinstance(cmd_id_arg, CommandId)
-            assert cmd_id_arg.guid == "test-statement-123"
 
         # Test with invalid session ID
         with pytest.raises(ValueError) as excinfo:
@@ -331,7 +329,7 @@ class TestSeaBackend:
         mock_http_client._make_request.side_effect = [initial_response, poll_response]
 
         with patch.object(
-            sea_client, "get_execution_result", return_value="mock_result_set"
+            sea_client, "_response_to_result_set", return_value="mock_result_set"
         ) as mock_get_result:
             with patch("time.sleep"):
                 result = sea_client.execute_command(
@@ -356,9 +354,10 @@ class TestSeaBackend:
             "status": {"state": "SUCCEEDED"},
         }
         mock_http_client._make_request.return_value = execute_response
-        param = ttypes.TSparkParameter(name="param1", value="value1", type="STRING")
+        dbsql_param = IntegerParameter(name="param1", value=1)
+        param = dbsql_param.as_tspark_param(named=True)
 
-        with patch.object(sea_client, "get_execution_result"):
+        with patch.object(sea_client, "_response_to_result_set"):
             sea_client.execute_command(
                 operation="SELECT * FROM table WHERE col = :param1",
                 session_id=sea_session_id,
@@ -375,8 +374,8 @@ class TestSeaBackend:
             assert "parameters" in kwargs["data"]
             assert len(kwargs["data"]["parameters"]) == 1
             assert kwargs["data"]["parameters"][0]["name"] == "param1"
-            assert kwargs["data"]["parameters"][0]["value"] == "value1"
-            assert kwargs["data"]["parameters"][0]["type"] == "STRING"
+            assert kwargs["data"]["parameters"][0]["value"] == "1"
+            assert kwargs["data"]["parameters"][0]["type"] == "INT"
 
         # Test execution failure
         mock_http_client.reset_mock()
@@ -621,6 +620,71 @@ class TestSeaBackend:
         assert description[1][0] == "col2"  # name
         assert description[1][1] == "INT"  # type_code
         assert description[1][6] is False  # null_ok
+
+    def test_filter_session_configuration(self):
+        """Test that _filter_session_configuration converts all values to strings."""
+        session_config = {
+            "ANSI_MODE": True,
+            "statement_timeout": 3600,
+            "TIMEZONE": "UTC",
+            "enable_photon": False,
+            "MAX_FILE_PARTITION_BYTES": 128.5,
+            "unsupported_param": "value",
+            "ANOTHER_UNSUPPORTED": 42,
+        }
+
+        result = _filter_session_configuration(session_config)
+
+        # Verify result is not None
+        assert result is not None
+
+        # Verify all returned values are strings
+        for key, value in result.items():
+            assert isinstance(
+                value, str
+            ), f"Value for key '{key}' is not a string: {type(value)}"
+
+        # Verify specific conversions
+        expected_result = {
+            "ansi_mode": "True",  # boolean True -> "True", key lowercased
+            "statement_timeout": "3600",  # int -> "3600", key lowercased
+            "timezone": "UTC",  # string -> "UTC", key lowercased
+            "enable_photon": "False",  # boolean False -> "False", key lowercased
+            "max_file_partition_bytes": "128.5",  # float -> "128.5", key lowercased
+        }
+
+        assert result == expected_result
+
+        # Test with None input
+        assert _filter_session_configuration(None) == {}
+
+        # Test with only unsupported parameters
+        unsupported_config = {
+            "unsupported_param1": "value1",
+            "unsupported_param2": 123,
+        }
+        result = _filter_session_configuration(unsupported_config)
+        assert result == {}
+
+        # Test case insensitivity for keys
+        case_insensitive_config = {
+            "ansi_mode": "false",  # lowercase key
+            "STATEMENT_TIMEOUT": 7200,  # uppercase key
+            "TiMeZoNe": "America/New_York",  # mixed case key
+        }
+        result = _filter_session_configuration(case_insensitive_config)
+        expected_case_result = {
+            "ansi_mode": "false",
+            "statement_timeout": "7200",
+            "timezone": "America/New_York",
+        }
+        assert result == expected_case_result
+
+        # Verify all values are strings in case insensitive test
+        for key, value in result.items():
+            assert isinstance(
+                value, str
+            ), f"Value for key '{key}' is not a string: {type(value)}"
 
     def test_results_message_to_execute_response_is_staging_operation(self, sea_client):
         """Test that is_staging_operation is correctly set from manifest.is_volume_operation."""
@@ -891,3 +955,67 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_columns" in str(excinfo.value)
+
+    def test_get_chunk_links(self, sea_client, mock_http_client, sea_command_id):
+        """Test get_chunk_links method when links are available."""
+        # Setup mock response
+        mock_response = {
+            "external_links": [
+                {
+                    "external_link": "https://example.com/data/chunk0",
+                    "expiration": "2025-07-03T05:51:18.118009",
+                    "row_count": 100,
+                    "byte_count": 1024,
+                    "row_offset": 0,
+                    "chunk_index": 0,
+                    "next_chunk_index": 1,
+                    "http_headers": {"Authorization": "Bearer token123"},
+                }
+            ]
+        }
+        mock_http_client._make_request.return_value = mock_response
+
+        # Call the method
+        results = sea_client.get_chunk_links("test-statement-123", 0)
+
+        # Verify the HTTP client was called correctly
+        mock_http_client._make_request.assert_called_once_with(
+            method="GET",
+            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
+                "test-statement-123", 0
+            ),
+        )
+
+        # Verify the results
+        assert isinstance(results, list)
+        assert len(results) == 1
+        result = results[0]
+        assert result.external_link == "https://example.com/data/chunk0"
+        assert result.expiration == "2025-07-03T05:51:18.118009"
+        assert result.row_count == 100
+        assert result.byte_count == 1024
+        assert result.row_offset == 0
+        assert result.chunk_index == 0
+        assert result.next_chunk_index == 1
+        assert result.http_headers == {"Authorization": "Bearer token123"}
+
+    def test_get_chunk_links_empty(self, sea_client, mock_http_client):
+        """Test get_chunk_links when no links are returned (empty list)."""
+        # Setup mock response with no matching chunk
+        mock_response = {"external_links": []}
+        mock_http_client._make_request.return_value = mock_response
+
+        # Call the method
+        results = sea_client.get_chunk_links("test-statement-123", 0)
+
+        # Verify the HTTP client was called correctly
+        mock_http_client._make_request.assert_called_once_with(
+            method="GET",
+            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
+                "test-statement-123", 0
+            ),
+        )
+
+        # Verify the results are empty
+        assert isinstance(results, list)
+        assert results == []

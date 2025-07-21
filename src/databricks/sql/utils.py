@@ -49,6 +49,10 @@ class ResultSetQueue(ABC):
     def remaining_rows(self):
         pass
 
+    @abstractmethod
+    def close(self):
+        pass
+
 
 class ThriftResultSetQueueFactory(ABC):
     @staticmethod
@@ -161,6 +165,9 @@ class ColumnQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
+    def close(self):
+        return
+
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
@@ -198,6 +205,9 @@ class ArrowQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
+    def close(self):
+        return
+
 
 class CloudFetchQueue(ResultSetQueue, ABC):
     """Base class for cloud fetch queues that handle EXTERNAL_LINKS disposition with ARROW format."""
@@ -232,7 +242,12 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.table_row_index = 0
 
         # Initialize download manager
-        self.download_manager: Optional["ResultFileDownloadManager"] = None
+        self.download_manager = ResultFileDownloadManager(
+            links=[],
+            max_download_threads=max_download_threads,
+            lz4_compressed=lz4_compressed,
+            ssl_options=ssl_options,
+        )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """
@@ -289,11 +304,8 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
         """Create next table at the given row offset"""
-        # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
-        if not self.download_manager:
-            logger.debug("CloudFetchQueue: No download manager available")
-            return None
 
+        # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
         downloaded_file = self.download_manager.get_next_downloaded_file(offset)
         if not downloaded_file:
             logger.debug(
@@ -325,6 +337,9 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         if not self.schema_bytes:
             return pyarrow.Table.from_pydict({})
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
+
+    def close(self):
+        self.download_manager._shutdown_manager()
 
 
 class ThriftCloudFetchQueue(CloudFetchQueue):
@@ -375,6 +390,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                         result_link.startRowOffset, result_link.rowCount
                     )
                 )
+                self.download_manager.add_link(result_link)
 
         def expiry_callback(link: TSparkArrowResultLink):
             raise Error("Cloudfetch link has expired")
