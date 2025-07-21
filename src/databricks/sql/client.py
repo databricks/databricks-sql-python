@@ -276,7 +276,7 @@ class Connection:
             session_id_hex=self.get_session_id_hex(),
             auth_provider=self.session.auth_provider,
             host_url=self.session.host,
-            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+            batch_size=self.telemetry_batch_size,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
