@@ -31,6 +31,7 @@ def mock_telemetry_client():
         auth_provider=auth_provider,
         host_url="test-host.com",
         executor=executor,
+        batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
     )
 
 
@@ -215,6 +216,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -239,6 +241,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=None,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -258,6 +261,7 @@ class TestTelemetryFactory:
                 session_id_hex=session_id,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
             )
 
         # Should fall back to NoopTelemetryClient
@@ -276,6 +280,7 @@ class TestTelemetryFactory:
                 session_id_hex=session,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
             )
 
         # Factory should be initialized
@@ -290,3 +295,37 @@ class TestTelemetryFactory:
         TelemetryClientFactory.close(session2)
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
+
+
+@patch("databricks.sql.client.Session")
+def test_connection_with_custom_batch_size(MockSession):
+    """
+    Verifies that creating a Connection with `telemetry_batch_size` results
+    in a TelemetryClient instance with the correct batch size attribute.
+    """
+    
+    custom_batch_size = 50
+    session_id = "session-with-custom-batch-size"
+
+    # Mock the Session object created inside Connection to avoid network calls
+    mock_session_instance = MockSession.return_value
+    mock_session_instance.guid_hex = session_id
+    mock_session_instance.auth_provider = MagicMock()
+    mock_session_instance.host = "mock-host"
+    mock_session_instance.port = 443
+    mock_session_instance.useragent_header = "mock-agent"
+    mock_session_instance.is_open = True
+
+    from databricks.sql.client import Connection
+    conn = Connection(
+        server_hostname="test-host",
+        http_path="/test-path",
+        access_token="test-token",
+        enable_telemetry=True, 
+        telemetry_batch_size=custom_batch_size
+    )
+
+    client = TelemetryClientFactory.get_telemetry_client(session_id)
+    assert isinstance(client, TelemetryClient)
+    assert client._batch_size == custom_batch_size
+    conn.close()
