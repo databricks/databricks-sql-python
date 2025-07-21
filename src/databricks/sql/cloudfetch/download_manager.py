@@ -52,8 +52,6 @@ class ResultFileDownloadManager:
         This function gets the next downloaded file in which its rows start at the specified next_row_offset
         in relation to the full result. File downloads are scheduled if not already, and once the correct
         download handler is located, the function waits for the download status and returns the resulting file.
-        If there are no more downloads, a download was not successful, or the correct file could not be located,
-        this function shuts down the thread pool and returns None.
 
         Args:
             next_row_offset (int): The offset of the starting row of the next file we want data from.
@@ -63,7 +61,7 @@ class ResultFileDownloadManager:
         self._schedule_downloads()
 
         # No more files to download from this batch of links
-        if len(self._download_tasks) == 0:
+        while len(self._download_tasks) == 0:
             if self._thread_pool._shutdown:
                 raise Error("download manager shut down before file was ready")
             with self._download_condition:
@@ -105,6 +103,9 @@ class ResultFileDownloadManager:
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
 
+        with self._download_condition:
+            self._download_condition.notify_all()
+
     def add_link(self, link: TSparkArrowResultLink):
         """
         Add more links to the download manager.
@@ -122,6 +123,8 @@ class ResultFileDownloadManager:
             )
         )
         self._pending_links.append(link)
+
+        self._schedule_downloads()
 
     def _shutdown_manager(self):
         # Clear download handlers and shutdown the thread pool
