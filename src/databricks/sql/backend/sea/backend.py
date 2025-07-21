@@ -318,15 +318,23 @@ class SeaDatabricksClient(DatabricksClient):
         columns = []
         for col_data in columns_data:
             # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
+            name = col_data.get("name", "")
+            type_name = col_data.get("type_name", "")
+            type_name = (
+                type_name[:-5] if type_name.endswith("_TYPE") else type_name
+            ).lower()
+            precision = col_data.get("type_precision")
+            scale = col_data.get("type_scale")
+
             columns.append(
                 (
-                    col_data.get("name", ""),  # name
-                    col_data.get("type_name", ""),  # type_code
+                    name,  # name
+                    type_name,  # type_code
                     None,  # display_size (not provided by SEA)
                     None,  # internal_size (not provided by SEA)
-                    col_data.get("precision"),  # precision
-                    col_data.get("scale"),  # scale
-                    col_data.get("nullable", True),  # null_ok
+                    precision,  # precision
+                    scale,  # scale
+                    None,  # null_ok
                 )
             )
 
