@@ -14,7 +14,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class TaskWithMetadata(Generic[T]):
@@ -22,19 +22,18 @@ class TaskWithMetadata(Generic[T]):
     Wrapper around Future that stores additional metadata (the link).
     Provides type-safe access to both the Future result and the associated link.
     """
-    
+
     def __init__(self, future: Future[T], link: TSparkArrowResultLink):
         self.future = future
         self.link = link
-    
+
     def result(self, timeout: Optional[float] = None) -> T:
         """Get the result of the Future, blocking if necessary."""
         return self.future.result(timeout)
-    
+
     def cancel(self) -> bool:
         """Cancel the Future if possible."""
         return self.future.cancel()
-
 
 
 class ResultFileDownloadManager:

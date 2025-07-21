@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from dateutil import parser
 import datetime
@@ -219,6 +219,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
+        expiry_callback: Callable[[TSparkArrowResultLink], None] = lambda _: None,
     ):
         """
         Initialize the base CloudFetchQueue.
@@ -247,6 +248,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             max_download_threads=max_download_threads,
             lz4_compressed=lz4_compressed,
             ssl_options=ssl_options,
+            expiry_callback=expiry_callback,
         )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
@@ -373,6 +375,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             schema_bytes=schema_bytes,
             lz4_compressed=lz4_compressed,
             description=description,
+            expiry_callback=self._expiry_callback,
         )
 
         self.start_row_index = start_row_offset
@@ -392,20 +395,11 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                 )
                 self.download_manager.add_link(result_link)
 
-        def expiry_callback(link: TSparkArrowResultLink):
-            raise Error("Cloudfetch link has expired")
-
-        # Initialize download manager
-        self.download_manager = ResultFileDownloadManager(
-            links=self.result_links,
-            max_download_threads=self.max_download_threads,
-            lz4_compressed=self.lz4_compressed,
-            ssl_options=self._ssl_options,
-            expiry_callback=expiry_callback,
-        )
-
         # Initialize table and position
         self.table = self._create_next_table()
+
+    def _expiry_callback(self, link: TSparkArrowResultLink):
+        raise Error("Cloudfetch link has expired")
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
         logger.debug(

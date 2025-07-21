@@ -280,22 +280,7 @@ class LinkFetcher:
         self._link_data_update.notify_all()
 
     def _restart_from_expired_link(self, link: TSparkArrowResultLink):
-        self.stop()
-
-        with self._link_data_update:
-            self.download_manager.cancel_tasks_from_offset(link.startRowOffset)
-
-            chunks_to_restart = []
-            for chunk_index, l in self.chunk_index_to_link.items():
-                if l.row_offset < link.startRowOffset:
-                    continue
-                chunks_to_restart.append(chunk_index)
-            for chunk_index in chunks_to_restart:
-                self.chunk_index_to_link.pop(chunk_index)
-
-        self.start()
-
-    def _restart_from_expired_link(self, link: TSparkArrowResultLink):
+        """Restart the link fetcher from the expired link."""
         self.stop()
 
         with self._link_data_update:
@@ -363,6 +348,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             schema_bytes=None,
             lz4_compressed=lz4_compressed,
             description=description,
+            expiry_callback=self._expiry_callback,
         )
 
         logger.debug(
@@ -375,14 +361,6 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Track the current chunk we're processing
         self._current_chunk_index = 0
-
-        self.download_manager = ResultFileDownloadManager(
-            links=[],
-            max_download_threads=max_download_threads,
-            lz4_compressed=lz4_compressed,
-            ssl_options=ssl_options,
-            expiry_callback=self._expiry_callback,
-        )
 
         self.link_fetcher = None
         if total_chunk_count > 0:
@@ -402,6 +380,8 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         logger.info(
             f"SeaCloudFetchQueue: Link expired, restarting from offset {link.startRowOffset}"
         )
+        if not self.link_fetcher:
+            return
         self.link_fetcher._restart_from_expired_link(link)
 
     def _create_next_table(self) -> Union["pyarrow.Table", None]:
