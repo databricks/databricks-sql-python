@@ -1,0 +1,60 @@
+Python Connector Comparison Report
+=================================
+
+Date: 2025-07-21 16:21:27
+Server: benchmarking-staging-aws-us-west-2.staging.cloud.databricks.com
+HTTP Path: /sql/1.0/warehouses/17661fca65a0e4fc
+
+Summary: 0/5 tests passed
+
+Total execution time - Thrift: 2.3825s, SEA: 3.0076s
+SEA is 26.24% slower than Thrift
+
+Test Details
+------------
+
+Test 1: TPC-DS query - fetchall
+FAILED
+Query: SELECT * FROM main.tpcds_sf100_delta.catalog_sales LIMIT 5
+Thrift time: 0.4903s, SEA time: 0.6477s
+Differences:
+  - Column 17 (cs_order_number) type_code mismatch
+    Thrift: bigint
+    SEA: long
+
+Test 2: TPC-DS query - fetchmany
+FAILED
+Query: SELECT * FROM main.tpcds_sf100_delta.catalog_sales LIMIT 5
+Thrift time: 0.4870s, SEA time: 0.5810s
+Differences:
+  - Column 17 (cs_order_number) type_code mismatch
+    Thrift: bigint
+    SEA: long
+
+Test 3: TPC-DS query - fetchone
+FAILED
+Query: SELECT * FROM main.tpcds_sf100_delta.catalog_sales LIMIT 5
+Thrift time: 0.4784s, SEA time: 0.5651s
+Differences:
+  - Column 17 (cs_order_number) type_code mismatch
+    Thrift: bigint
+    SEA: long
+
+Test 4: TPC-DS query - fetchall_arrow
+FAILED
+Query: SELECT * FROM main.tpcds_sf100_delta.catalog_sales LIMIT 5
+Thrift time: 0.4549s, SEA time: 0.6195s
+Differences:
+  - Column 17 (cs_order_number) type_code mismatch
+    Thrift: bigint
+    SEA: long
+
+Test 5: TPC-DS query - fetchmany_arrow
+FAILED
+Query: SELECT * FROM main.tpcds_sf100_delta.catalog_sales LIMIT 5
+Thrift time: 0.4720s, SEA time: 0.5943s
+Differences:
+  - Column 17 (cs_order_number) type_code mismatch
+    Thrift: bigint
+    SEA: long
+
