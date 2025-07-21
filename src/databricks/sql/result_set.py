@@ -241,7 +241,7 @@ class ThriftResultSet(ResultSet):
                 statement_id=execute_response.command_id.to_hex_guid(),
                 chunk_id=self.num_downloaded_chunks,
             )
-            if t_row_set and t_row_set.resultLinks:
+            if t_row_set.resultLinks:
                 self.num_downloaded_chunks += len(t_row_set.resultLinks)
 
         # Call parent constructor with common attributes
