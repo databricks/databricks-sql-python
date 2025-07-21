@@ -114,7 +114,13 @@ class CloudFetchQueueSuite(unittest.TestCase):
                     startRowOffset=0,
                     rowCount=4,
                     bytesNum=10,
-                )
+                ),
+                TSparkArrowResultLink(
+                    fileLink="fileLink",
+                    startRowOffset=4,
+                    rowCount=4,
+                    bytesNum=10,
+                ),
             ],
             description=description,
             max_download_threads=10,
