@@ -231,7 +231,7 @@ class LinkFetcher:
         )
         return True
 
-    def get_chunk_link(self, chunk_index: int) -> ExternalLink:
+    def get_chunk_link(self, chunk_index: int) -> Optional[ExternalLink]:
         """Return (blocking) the :class:`ExternalLink` associated with *chunk_index*."""
         logger.debug(
             "LinkFetcher[%s]: waiting for link of chunk %d",
@@ -239,9 +239,7 @@ class LinkFetcher:
             chunk_index,
         )
         if chunk_index >= self.total_chunk_count:
-            raise ValueError(
-                f"Chunk index {chunk_index} is out of range for total chunk count {self.total_chunk_count}"
-            )
+            return None
 
         with self._link_data_update:
             while chunk_index not in self.chunk_index_to_link:
@@ -367,6 +365,8 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             return None
 
         chunk_link = self.link_fetcher.get_chunk_link(self._current_chunk_index)
+        if chunk_link is None:
+            return None
 
         row_offset = chunk_link.row_offset
         # NOTE: link has already been submitted to download manager at this point

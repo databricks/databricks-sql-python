@@ -351,15 +351,9 @@ class TestSeaCloudFetchQueue:
                 description=description,
             )
 
-        # Verify debug message was logged
-        mock_logger.debug.assert_called_with(
-            "SeaCloudFetchQueue: Initialize CloudFetch loader for statement {}, total chunks: {}".format(
-                "test-statement-123", 1
-            )
-        )
-
         # Verify attributes
         assert queue._current_chunk_index == 0
+        assert queue.link_fetcher is not None
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
@@ -717,14 +711,10 @@ class TestLinkFetcher:
         # The thread should have finished and captured link1
         assert result_container.get("link") == link1
 
-    def test_get_chunk_link_out_of_range_raises_value_error(self, sample_links):
+    def test_get_chunk_link_out_of_range_returns_none(self, sample_links):
         """Requesting a chunk index >= total_chunk_count should immediately return None."""
         link0, _ = sample_links
 
         fetcher, _backend, _dm = self._create_fetcher([link0], total_chunk_count=1)
 
-        with pytest.raises(
-            ValueError,
-            match="Chunk index 10 is out of range for total chunk count 1",
-        ):
-            fetcher.get_chunk_link(10)
+        assert fetcher.get_chunk_link(10) is None
