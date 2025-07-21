@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
+from typing import Dict, Tuple, List, Optional, Any, Union, Sequence, BinaryIO
 import pandas
 
 try:
@@ -455,6 +455,7 @@ class Cursor:
         self.active_command_id = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
+        self._input_stream_data = None
 
         self.ASYNC_DEFAULT_POLLING_INTERVAL = 2
 
@@ -625,6 +626,33 @@ class Cursor:
         is not descended from staging_allowed_local_path.
         """
 
+        assert self.active_result_set is not None
+        row = self.active_result_set.fetchone()
+        assert row is not None
+
+        # Parse headers
+        headers = (
+            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
+        )
+        headers = dict(headers) if headers else {}
+
+        # Handle __input_stream__ token for PUT operations
+        if (
+            row.operation == "PUT" and 
+            getattr(row, "localFile", None) == "__input_stream__"
+        ):
+            if not self._input_stream_data:
+                raise ProgrammingError(
+                    "No input stream provided for streaming operation",
+                    session_id_hex=self.connection.get_session_id_hex()
+                )
+            return self._handle_staging_put_stream(
+                presigned_url=row.presignedUrl,
+                stream=self._input_stream_data,
+                headers=headers
+            )
+
+        # For non-streaming operations, validate staging_allowed_local_path
         if isinstance(staging_allowed_local_path, type(str())):
             _staging_allowed_local_paths = [staging_allowed_local_path]
         elif isinstance(staging_allowed_local_path, type(list())):
@@ -638,10 +666,6 @@ class Cursor:
         abs_staging_allowed_local_paths = [
             os.path.abspath(i) for i in _staging_allowed_local_paths
         ]
-
-        assert self.active_result_set is not None
-        row = self.active_result_set.fetchone()
-        assert row is not None
 
         # Must set to None in cases where server response does not include localFile
         abs_localFile = None
@@ -665,15 +689,10 @@ class Cursor:
                     session_id_hex=self.connection.get_session_id_hex(),
                 )
 
-        # May be real headers, or could be json string
-        headers = (
-            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
-        )
-
         handler_args = {
             "presigned_url": row.presignedUrl,
             "local_file": abs_localFile,
-            "headers": dict(headers) or {},
+            "headers": headers,
         }
 
         logger.debug(
@@ -695,6 +714,60 @@ class Cursor:
                 + "Supported operations are GET, PUT, and REMOVE",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
+
+    @log_latency(StatementType.SQL)
+    def _handle_staging_put_stream(
+        self,
+        presigned_url: str,
+        stream: BinaryIO,
+        headers: Optional[dict] = None,
+    ) -> None:
+        """Handle PUT operation with streaming data.
+        
+        Args:
+            presigned_url: The presigned URL for upload
+            stream: Binary stream to upload
+            headers: Optional HTTP headers
+            
+        Raises:
+            OperationalError: If the upload fails
+        """
+        
+        # Prepare headers
+        http_headers = dict(headers) if headers else {}
+        
+        try:
+            # Stream directly to presigned URL
+            response = requests.put(
+                url=presigned_url,
+                data=stream,
+                headers=http_headers,
+                timeout=300  # 5 minute timeout
+            )
+            
+            # Check response codes
+            OK = requests.codes.ok          # 200
+            CREATED = requests.codes.created # 201
+            ACCEPTED = requests.codes.accepted # 202
+            NO_CONTENT = requests.codes.no_content # 204
+            
+            if response.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+                raise OperationalError(
+                    f"Staging operation over HTTP was unsuccessful: {response.status_code}-{response.text}",
+                    session_id_hex=self.connection.get_session_id_hex()
+                )
+                
+            if response.status_code == ACCEPTED:
+                logger.debug(
+                    f"Response code {ACCEPTED} from server indicates upload was accepted "
+                    "but not yet applied on the server. It's possible this command may fail later."
+                )
+                
+        except requests.exceptions.RequestException as e:
+            raise OperationalError(
+                f"HTTP request failed during stream upload: {str(e)}",
+                session_id_hex=self.connection.get_session_id_hex()
+            ) from e
 
     @log_latency(StatementType.SQL)
     def _handle_staging_put(
@@ -783,6 +856,7 @@ class Cursor:
         self,
         operation: str,
         parameters: Optional[TParameterCollection] = None,
+        input_stream: Optional[BinaryIO] = None,
         enforce_embedded_schema_correctness=False,
     ) -> "Cursor":
         """
@@ -820,47 +894,60 @@ class Cursor:
         logger.debug(
             "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
         )
+        try:
+            # Store stream data if provided
+            self._input_stream_data = None
+            if input_stream is not None:
+                # Validate stream has required methods
+                if not hasattr(input_stream, 'read'):
+                    raise TypeError(
+                        "input_stream must be a binary stream with read() method"
+                    )
+                self._input_stream_data = input_stream
 
-        param_approach = self._determine_parameter_approach(parameters)
-        if param_approach == ParameterApproach.NONE:
-            prepared_params = NO_NATIVE_PARAMS
-            prepared_operation = operation
+            param_approach = self._determine_parameter_approach(parameters)
+            if param_approach == ParameterApproach.NONE:
+                prepared_params = NO_NATIVE_PARAMS
+                prepared_operation = operation
 
-        elif param_approach == ParameterApproach.INLINE:
-            prepared_operation, prepared_params = self._prepare_inline_parameters(
-                operation, parameters
+            elif param_approach == ParameterApproach.INLINE:
+                prepared_operation, prepared_params = self._prepare_inline_parameters(
+                    operation, parameters
+                )
+            elif param_approach == ParameterApproach.NATIVE:
+                normalized_parameters = self._normalize_tparametercollection(parameters)
+                param_structure = self._determine_parameter_structure(normalized_parameters)
+                transformed_operation = transform_paramstyle(
+                    operation, normalized_parameters, param_structure
+                )
+                prepared_operation, prepared_params = self._prepare_native_parameters(
+                    transformed_operation, normalized_parameters, param_structure
+                )
+
+            self._check_not_closed()
+            self._close_and_clear_active_result_set()
+            self.active_result_set = self.backend.execute_command(
+                operation=prepared_operation,
+                session_id=self.connection.session.session_id,
+                max_rows=self.arraysize,
+                max_bytes=self.buffer_size_bytes,
+                lz4_compression=self.connection.lz4_compression,
+                cursor=self,
+                use_cloud_fetch=self.connection.use_cloud_fetch,
+                parameters=prepared_params,
+                async_op=False,
+                enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
             )
-        elif param_approach == ParameterApproach.NATIVE:
-            normalized_parameters = self._normalize_tparametercollection(parameters)
-            param_structure = self._determine_parameter_structure(normalized_parameters)
-            transformed_operation = transform_paramstyle(
-                operation, normalized_parameters, param_structure
-            )
-            prepared_operation, prepared_params = self._prepare_native_parameters(
-                transformed_operation, normalized_parameters, param_structure
-            )
 
-        self._check_not_closed()
-        self._close_and_clear_active_result_set()
-        self.active_result_set = self.backend.execute_command(
-            operation=prepared_operation,
-            session_id=self.connection.session.session_id,
-            max_rows=self.arraysize,
-            max_bytes=self.buffer_size_bytes,
-            lz4_compression=self.connection.lz4_compression,
-            cursor=self,
-            use_cloud_fetch=self.connection.use_cloud_fetch,
-            parameters=prepared_params,
-            async_op=False,
-            enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
-        )
+            if self.active_result_set and self.active_result_set.is_staging_operation:
+                self._handle_staging_operation(
+                    staging_allowed_local_path=self.connection.staging_allowed_local_path
+                )
 
-        if self.active_result_set and self.active_result_set.is_staging_operation:
-            self._handle_staging_operation(
-                staging_allowed_local_path=self.connection.staging_allowed_local_path
-            )
-
-        return self
+            return self
+        finally:
+            # Clean up stream data
+            self._input_stream_data = None
 
     @log_latency(StatementType.QUERY)
     def execute_async(
