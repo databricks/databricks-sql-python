@@ -6,9 +6,10 @@ import math
 import time
 import threading
 from typing import List, Optional, Union, Any, TYPE_CHECKING
+from uuid import UUID
 
 from databricks.sql.result_set import ThriftResultSet
-
+from databricks.sql.telemetry.models.event import StatementType
 
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
@@ -900,6 +901,7 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -1037,6 +1039,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 max_download_threads=self.max_download_threads,
                 ssl_options=self._ssl_options,
                 is_direct_results=is_direct_results,
+                session_id_hex=self._session_id_hex,
             )
 
     def get_catalogs(
@@ -1077,6 +1080,7 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
         )
 
     def get_schemas(
@@ -1123,6 +1127,7 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
         )
 
     def get_tables(
@@ -1173,6 +1178,7 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
         )
 
     def get_columns(
@@ -1223,6 +1229,7 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
+            session_id_hex=self._session_id_hex,
         )
 
     def _handle_execute_response(self, resp, cursor):
@@ -1257,6 +1264,7 @@ class ThriftDatabricksClient(DatabricksClient):
         lz4_compressed: bool,
         arrow_schema_bytes,
         description,
+        chunk_id: int,
         use_cloud_fetch=True,
     ):
         thrift_handle = command_id.to_thrift_handle()
@@ -1294,9 +1302,16 @@ class ThriftDatabricksClient(DatabricksClient):
             lz4_compressed=lz4_compressed,
             description=description,
             ssl_options=self._ssl_options,
+            session_id_hex=self._session_id_hex,
+            statement_id=command_id.to_hex_guid(),
+            chunk_id=chunk_id,
         )
 
-        return queue, resp.hasMoreRows
+        return (
+            queue,
+            resp.hasMoreRows,
+            len(resp.results.resultLinks) if resp.results.resultLinks else 0,
+        )
 
     def cancel_command(self, command_id: CommandId) -> None:
         thrift_handle = command_id.to_thrift_handle()

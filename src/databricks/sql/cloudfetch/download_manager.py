@@ -2,7 +2,7 @@ import logging
 
 from concurrent.futures import ThreadPoolExecutor, Future
 import threading
-from typing import List, Union
+from typing import List, Union, Tuple, Optional
 
 from databricks.sql.cloudfetch.downloader import (
     ResultSetDownloadHandler,
@@ -11,7 +11,7 @@ from databricks.sql.cloudfetch.downloader import (
 )
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
-
+from databricks.sql.telemetry.models.event import StatementType
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 
 logger = logging.getLogger(__name__)
@@ -24,17 +24,22 @@ class ResultFileDownloadManager:
         max_download_threads: int,
         lz4_compressed: bool,
         ssl_options: SSLOptions,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        chunk_id: int,
     ):
-        self._pending_links: List[TSparkArrowResultLink] = []
-        for link in links:
+        self._pending_links: List[Tuple[int, TSparkArrowResultLink]] = []
+        self.chunk_id = chunk_id
+        for i, link in enumerate(links, start=chunk_id):
             if link.rowCount <= 0:
                 continue
             logger.debug(
-                "ResultFileDownloadManager: adding file link, start offset {}, row count: {}".format(
-                    link.startRowOffset, link.rowCount
+                "ResultFileDownloadManager: adding file link, chunk id {}, start offset {}, row count: {}".format(
+                    i, link.startRowOffset, link.rowCount
                 )
             )
-            self._pending_links.append(link)
+            self._pending_links.append((i, link))
+        self.chunk_id += len(links)
 
         self._max_download_threads: int = max_download_threads
 
@@ -44,6 +49,8 @@ class ResultFileDownloadManager:
 
         self._downloadable_result_settings = DownloadableResultSettings(lz4_compressed)
         self._ssl_options = ssl_options
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
 
     def get_next_downloaded_file(self, next_row_offset: int) -> DownloadedFile:
         """
@@ -91,14 +98,19 @@ class ResultFileDownloadManager:
         while (len(self._download_tasks) < self._max_download_threads) and (
             len(self._pending_links) > 0
         ):
-            link = self._pending_links.pop(0)
+            chunk_id, link = self._pending_links.pop(0)
             logger.debug(
-                "- start: {}, row count: {}".format(link.startRowOffset, link.rowCount)
+                "- chunk: {}, start: {}, row count: {}".format(
+                    chunk_id, link.startRowOffset, link.rowCount
+                )
             )
             handler = ResultSetDownloadHandler(
                 settings=self._downloadable_result_settings,
                 link=link,
                 ssl_options=self._ssl_options,
+                chunk_id=chunk_id,
+                session_id_hex=self.session_id_hex,
+                statement_id=self.statement_id,
             )
             task = self._thread_pool.submit(handler.run)
             self._download_tasks.append(task)
@@ -122,7 +134,8 @@ class ResultFileDownloadManager:
                 link.startRowOffset, link.rowCount
             )
         )
-        self._pending_links.append(link)
+        self._pending_links.append((self.chunk_id, link))
+        self.chunk_id += 1
 
         self._schedule_downloads()
 

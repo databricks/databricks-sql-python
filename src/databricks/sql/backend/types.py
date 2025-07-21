@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Any, Tuple
 import logging
 
 from databricks.sql.backend.utils.guid_utils import guid_to_hex_id
+from databricks.sql.telemetry.models.enums import StatementType
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
