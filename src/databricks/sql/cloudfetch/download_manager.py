@@ -45,10 +45,10 @@ class ResultFileDownloadManager:
         max_download_threads: int,
         lz4_compressed: bool,
         ssl_options: SSLOptions,
-        expiry_callback: Optional[Callable[[TSparkArrowResultLink], None]] = None,
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
+        expiry_callback: Optional[Callable[[TSparkArrowResultLink], None]] = None,
     ):
         self._pending_links: List[Tuple[int, TSparkArrowResultLink]] = []
         self.chunk_id = chunk_id
