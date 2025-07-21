@@ -123,6 +123,34 @@ class JsonQueue(ResultSetQueue):
 
 
 class LinkFetcher:
+    """
+    Background helper that incrementally retrieves *external links* for a
+    result set produced by the SEA backend and feeds them to a
+    :class:`databricks.sql.cloudfetch.download_manager.ResultFileDownloadManager`.
+
+    The SEA backend splits large result sets into *chunks*.  Each chunk is
+    stored remotely (e.g., in object storage) and exposed via a signed URL
+    encapsulated by an :class:`ExternalLink`.  Only the first batch of links is
+    returned with the initial query response.  The remaining links must be
+    pulled on demand using the *next-chunk* token embedded in each
+    :pyattr:`ExternalLink.next_chunk_index`.
+
+    LinkFetcher takes care of this choreography so callers (primarily
+    ``SeaCloudFetchQueue``) can simply ask for the link of a specific
+    ``chunk_index`` and block until it becomes available.
+
+    Key responsibilities:
+
+    • Maintain an in-memory mapping from ``chunk_index`` → ``ExternalLink``.
+    • Launch a background worker thread that continuously requests the next
+      batch of links from the backend until all chunks have been discovered or
+      an unrecoverable error occurs.
+    • Bridge SEA link objects to the Thrift representation expected by the
+      existing download manager.
+    • Provide a synchronous API (`get_chunk_link`) that blocks until the desired
+      link is present in the cache.
+    """
+
     def __init__(
         self,
         download_manager: ResultFileDownloadManager,
@@ -144,12 +172,28 @@ class LinkFetcher:
         self._add_links(initial_links)
         self.total_chunk_count = total_chunk_count
 
+        # DEBUG: capture initial state for observability
+        logger.debug(
+            "LinkFetcher[%s]: initialized with %d initial link(s); expecting %d total chunk(s)",
+            statement_id,
+            len(initial_links),
+            total_chunk_count,
+        )
+
     def _add_links(self, links: List[ExternalLink]):
+        """Cache *links* locally and enqueue them with the download manager."""
+        logger.debug(
+            "LinkFetcher[%s]: caching %d link(s) – chunks %s",
+            self._statement_id,
+            len(links),
+            ", ".join(str(l.chunk_index) for l in links) if links else "<none>",
+        )
         for link in links:
             self.chunk_index_to_link[link.chunk_index] = link
             self.download_manager.add_link(LinkFetcher._convert_to_thrift_link(link))
 
     def _get_next_chunk_index(self) -> Optional[int]:
+        """Return the next *chunk_index* that should be requested from the backend, or ``None`` if we have them all."""
         with self._link_data_update:
             max_chunk_index = max(self.chunk_index_to_link.keys(), default=None)
             if max_chunk_index is None:
@@ -158,6 +202,10 @@ class LinkFetcher:
             return max_link.next_chunk_index
 
     def _trigger_next_batch_download(self) -> bool:
+        """Fetch the next batch of links from the backend and return *True* on success."""
+        logger.debug(
+            "LinkFetcher[%s]: requesting next batch of links", self._statement_id
+        )
         next_chunk_index = self._get_next_chunk_index()
         if next_chunk_index is None:
             return False
@@ -176,9 +224,20 @@ class LinkFetcher:
                 self._link_data_update.notify_all()
             return False
 
+        logger.debug(
+            "LinkFetcher[%s]: received %d new link(s)",
+            self._statement_id,
+            len(links),
+        )
         return True
 
     def get_chunk_link(self, chunk_index: int) -> ExternalLink:
+        """Return (blocking) the :class:`ExternalLink` associated with *chunk_index*."""
+        logger.debug(
+            "LinkFetcher[%s]: waiting for link of chunk %d",
+            self._statement_id,
+            chunk_index,
+        )
         if chunk_index >= self.total_chunk_count:
             raise ValueError(
                 f"Chunk index {chunk_index} is out of range for total chunk count {self.total_chunk_count}"
@@ -213,19 +272,29 @@ class LinkFetcher:
         )
 
     def _worker_loop(self):
+        """Entry point for the background thread."""
+        logger.debug("LinkFetcher[%s]: worker thread started", self._statement_id)
         while not self._shutdown_event.is_set():
             links_downloaded = self._trigger_next_batch_download()
             if not links_downloaded:
                 self._shutdown_event.set()
+        logger.debug("LinkFetcher[%s]: worker thread exiting", self._statement_id)
         self._link_data_update.notify_all()
 
     def start(self):
-        self._worker_thread = threading.Thread(target=self._worker_loop)
+        """Spawn the worker thread."""
+        logger.debug("LinkFetcher[%s]: starting worker thread", self._statement_id)
+        self._worker_thread = threading.Thread(
+            target=self._worker_loop, name=f"LinkFetcher-{self._statement_id}"
+        )
         self._worker_thread.start()
 
     def stop(self):
+        """Signal the worker thread to stop and wait for its termination."""
+        logger.debug("LinkFetcher[%s]: stopping worker thread", self._statement_id)
         self._shutdown_event.set()
         self._worker_thread.join()
+        logger.debug("LinkFetcher[%s]: worker thread stopped", self._statement_id)
 
 
 class SeaCloudFetchQueue(CloudFetchQueue):
