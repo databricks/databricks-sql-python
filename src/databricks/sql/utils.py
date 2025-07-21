@@ -381,7 +381,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                         result_link.startRowOffset, result_link.rowCount
                     )
                 )
-                self.download_manager.add_link(result_link)
+            self.download_manager.add_links(self.result_links)
 
             # Initialize table and position
             self.table = self._create_next_table()

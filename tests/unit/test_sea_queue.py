@@ -638,7 +638,7 @@ class TestLinkFetcher:
         fetcher, _backend, download_manager = self._create_fetcher([link0])
 
         # add_link should have been called for the initial link
-        download_manager.add_link.assert_called_once()
+        download_manager.add_links.assert_called_once()
 
         # Internal mapping should contain the link
         assert fetcher.chunk_index_to_link[0] == link0
@@ -668,7 +668,7 @@ class TestLinkFetcher:
         backend.get_chunk_links.assert_called_once_with("statement-123", 1)
         assert fetcher.chunk_index_to_link[1] == link1
         # Two calls to add_link: one for initial link, one for new link
-        assert download_manager.add_link.call_count == 2
+        assert download_manager.add_links.call_count == 2
 
     def test_trigger_next_batch_download_error(self, sample_links):
         """Ensure that errors from backend are captured and surfaced."""

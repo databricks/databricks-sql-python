@@ -188,9 +188,11 @@ class LinkFetcher:
             len(links),
             ", ".join(str(l.chunk_index) for l in links) if links else "<none>",
         )
-        for link in links:
-            self.chunk_index_to_link[link.chunk_index] = link
-            self.download_manager.add_link(LinkFetcher._convert_to_thrift_link(link))
+
+        self.chunk_index_to_link.update({link.chunk_index: link for link in links})
+        self.download_manager.add_links(
+            [LinkFetcher._convert_to_thrift_link(link) for link in links]
+        )
 
     def _get_next_chunk_index(self) -> Optional[int]:
         """Return the next *chunk_index* that should be requested from the backend, or ``None`` if we have them all."""

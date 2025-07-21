@@ -166,21 +166,22 @@ class ResultFileDownloadManager:
         with self._download_condition:
             self._download_condition.notify_all()
 
-    def add_link(self, link: TSparkArrowResultLink):
+    def add_links(self, links: List[TSparkArrowResultLink]):
         """
         Add more links to the download manager.
 
         Args:
             link (TSparkArrowResultLink): The link to add to the download manager.
         """
-        if link.rowCount <= 0:
-            return
-        logger.debug(
-            "ResultFileDownloadManager: adding file link, start offset {}, row count: {}".format(
-                link.startRowOffset, link.rowCount
+        for link in links:
+            if link.rowCount <= 0:
+                continue
+            logger.debug(
+                "ResultFileDownloadManager: adding file link, start offset {}, row count: {}".format(
+                    link.startRowOffset, link.rowCount
+                )
             )
-        )
-        self._pending_links.append(link)
+            self._pending_links.append(link)
 
         self._schedule_downloads()
 
