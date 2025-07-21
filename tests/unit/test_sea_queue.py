@@ -204,6 +204,7 @@ class TestSeaResultSetQueueFactory:
         assert isinstance(queue, JsonQueue)
         assert queue.data_array == sample_data
 
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_build_queue_arrow_stream(
         self, arrow_manifest, ssl_options, mock_sea_client, description
     ):
@@ -333,6 +334,7 @@ class TestSeaCloudFetchQueue:
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch("databricks.sql.backend.sea.queue.logger")
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_init_with_valid_initial_link(
         self,
         mock_logger,
@@ -487,6 +489,7 @@ class TestHybridDisposition:
 
     @patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager")
     @patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None)
+    @pytest.mark.skipif(pa is None, reason="pyarrow not installed")
     def test_hybrid_disposition_with_external_links(
         self,
         mock_create_table,
