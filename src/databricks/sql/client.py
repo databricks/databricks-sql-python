@@ -638,18 +638,18 @@ class Cursor:
 
         # Handle __input_stream__ token for PUT operations
         if (
-            row.operation == "PUT" and 
-            getattr(row, "localFile", None) == "__input_stream__"
+            row.operation == "PUT"
+            and getattr(row, "localFile", None) == "__input_stream__"
         ):
             if not self._input_stream_data:
                 raise ProgrammingError(
                     "No input stream provided for streaming operation",
-                    session_id_hex=self.connection.get_session_id_hex()
+                    session_id_hex=self.connection.get_session_id_hex(),
                 )
             return self._handle_staging_put_stream(
                 presigned_url=row.presignedUrl,
                 stream=self._input_stream_data,
-                headers=headers
+                headers=headers,
             )
 
         # For non-streaming operations, validate staging_allowed_local_path
@@ -723,50 +723,50 @@ class Cursor:
         headers: Optional[dict] = None,
     ) -> None:
         """Handle PUT operation with streaming data.
-        
+
         Args:
             presigned_url: The presigned URL for upload
             stream: Binary stream to upload
             headers: Optional HTTP headers
-            
+
         Raises:
             OperationalError: If the upload fails
         """
-        
+
         # Prepare headers
         http_headers = dict(headers) if headers else {}
-        
+
         try:
             # Stream directly to presigned URL
             response = requests.put(
                 url=presigned_url,
                 data=stream,
                 headers=http_headers,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
             )
-            
+
             # Check response codes
-            OK = requests.codes.ok          # 200
-            CREATED = requests.codes.created # 201
-            ACCEPTED = requests.codes.accepted # 202
-            NO_CONTENT = requests.codes.no_content # 204
-            
+            OK = requests.codes.ok  # 200
+            CREATED = requests.codes.created  # 201
+            ACCEPTED = requests.codes.accepted  # 202
+            NO_CONTENT = requests.codes.no_content  # 204
+
             if response.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
                 raise OperationalError(
                     f"Staging operation over HTTP was unsuccessful: {response.status_code}-{response.text}",
-                    session_id_hex=self.connection.get_session_id_hex()
+                    session_id_hex=self.connection.get_session_id_hex(),
                 )
-                
+
             if response.status_code == ACCEPTED:
                 logger.debug(
                     f"Response code {ACCEPTED} from server indicates upload was accepted "
                     "but not yet applied on the server. It's possible this command may fail later."
                 )
-                
+
         except requests.exceptions.RequestException as e:
             raise OperationalError(
                 f"HTTP request failed during stream upload: {str(e)}",
-                session_id_hex=self.connection.get_session_id_hex()
+                session_id_hex=self.connection.get_session_id_hex(),
             ) from e
 
     @log_latency(StatementType.SQL)
@@ -899,7 +899,7 @@ class Cursor:
             self._input_stream_data = None
             if input_stream is not None:
                 # Validate stream has required methods
-                if not hasattr(input_stream, 'read'):
+                if not hasattr(input_stream, "read"):
                     raise TypeError(
                         "input_stream must be a binary stream with read() method"
                     )
@@ -916,7 +916,9 @@ class Cursor:
                 )
             elif param_approach == ParameterApproach.NATIVE:
                 normalized_parameters = self._normalize_tparametercollection(parameters)
-                param_structure = self._determine_parameter_structure(normalized_parameters)
+                param_structure = self._determine_parameter_structure(
+                    normalized_parameters
+                )
                 transformed_operation = transform_paramstyle(
                     operation, normalized_parameters, param_structure
                 )
