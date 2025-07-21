@@ -369,6 +369,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         chunk_link = self.link_fetcher.get_chunk_link(self._current_chunk_index)
 
         row_offset = chunk_link.row_offset
+        # NOTE: link has already been submitted to download manager at this point
         arrow_table = self._create_table_at_offset(row_offset)
 
         self._current_chunk_index += 1
