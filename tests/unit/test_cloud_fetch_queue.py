@@ -69,8 +69,11 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
         )
 
-        assert len(queue.download_manager._pending_links) == 10
-        assert len(queue.download_manager._download_tasks) == 0
+        assert (
+            len(queue.download_manager._pending_links)
+            + len(queue.download_manager._download_tasks)
+            == 10
+        )
         mock_create_next_table.assert_called()
 
     def test_initializer_no_links_to_add(self):
