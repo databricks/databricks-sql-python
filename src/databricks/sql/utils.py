@@ -800,7 +800,7 @@ def concat_table_chunks(
         ):
             raise ValueError("The columns in the results don't match")
 
-        result_table = [[] for _ in range(table_chunks[0].num_columns)]
+        result_table: List[List[Any]] = [[] for _ in range(table_chunks[0].num_columns)]
         for i in range(0, len(table_chunks)):
             for j in range(table_chunks[i].num_columns):
                 result_table[j].extend(table_chunks[i].column_table[j])
