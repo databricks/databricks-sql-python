@@ -353,7 +353,7 @@ class Connection:
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
-        """Delegate to Session class static method"""
+        """Check if parameterized queries are enabled for the given protocol version"""
         return Session.server_parameterized_queries_enabled(protocolVersion)
 
     @property
@@ -363,7 +363,7 @@ class Connection:
 
     @staticmethod
     def get_protocol_version(openSessionResp: TOpenSessionResp):
-        """Delegate to Session class static method"""
+        """Get the protocol version from the OpenSessionResp object"""
         properties = (
             {"serverProtocolVersion": openSessionResp.serverProtocolVersion}
             if openSessionResp.serverProtocolVersion
