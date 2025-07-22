@@ -9,7 +9,6 @@ from databricks.sql.backend.sea.models.base import (
     StatementStatus,
     ExternalLink,
     ResultData,
-    ColumnInfo,
     ResultManifest,
 )
 
@@ -35,7 +34,6 @@ __all__ = [
     "StatementStatus",
     "ExternalLink",
     "ResultData",
-    "ColumnInfo",
     "ResultManifest",
     # Request models
     "StatementParameter",
