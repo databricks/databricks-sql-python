@@ -20,7 +20,12 @@ if TYPE_CHECKING:
 
 from databricks.sql.types import Row
 from databricks.sql.exc import RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ExecuteResponse, ColumnTable, ColumnQueue
+from databricks.sql.utils import (
+    ExecuteResponse,
+    ColumnTable,
+    ColumnQueue,
+    concat_table_chunks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -251,23 +256,6 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
-    def merge_columnar(self, result1, result2) -> "ColumnTable":
-        """
-        Function to merge / combining the columnar results into a single result
-        :param result1:
-        :param result2:
-        :return:
-        """
-
-        if result1.column_names != result2.column_names:
-            raise ValueError("The columns in the results don't match")
-
-        merged_result = [
-            result1.column_table[i] + result2.column_table[i]
-            for i in range(result1.num_columns)
-        ]
-        return ColumnTable(merged_result, result1.column_names)
-
     def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
         """
         Fetch the next set of rows of a query result, returning a PyArrow table.
@@ -292,7 +280,7 @@ class ThriftResultSet(ResultSet):
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
-        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
+        return concat_table_chunks(partial_result_chunks)
 
     def fetchmany_columnar(self, size: int):
         """
@@ -305,7 +293,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.next_n_rows(size)
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
-
+        partial_result_chunks = [results]
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
@@ -313,11 +301,11 @@ class ThriftResultSet(ResultSet):
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = self.merge_columnar(results, partial_results)
+            partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
-        return results
+        return concat_table_chunks(partial_result_chunks)
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
@@ -327,36 +315,34 @@ class ThriftResultSet(ResultSet):
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            if isinstance(results, ColumnTable) and isinstance(
-                partial_results, ColumnTable
-            ):
-                results = self.merge_columnar(results, partial_results)
-            else:
-                partial_result_chunks.append(partial_results)
+            partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
+        result_table = concat_table_chunks(partial_result_chunks)
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
         # Valid only for metadata commands result set
-        if isinstance(results, ColumnTable) and pyarrow:
+        if isinstance(result_table, ColumnTable) and pyarrow:
             data = {
                 name: col
-                for name, col in zip(results.column_names, results.column_table)
+                for name, col in zip(
+                    result_table.column_names, result_table.column_table
+                )
             }
             return pyarrow.Table.from_pydict(data)
-        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
+        return result_table
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
-
+        partial_result_chunks = [results]
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results = self.merge_columnar(results, partial_results)
+            partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
-        return results
+        return concat_table_chunks(partial_result_chunks)
 
     def fetchone(self) -> Optional[Row]:
         """
