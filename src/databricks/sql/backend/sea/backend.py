@@ -52,6 +52,27 @@ logger = logging.getLogger(__name__)
 def _filter_session_configuration(
     session_configuration: Optional[Dict[str, Any]],
 ) -> Dict[str, str]:
+    """
+    Filter and normalise the provided session configuration parameters.
+
+    The Statement Execution API supports only a subset of SQL session
+    configuration options.  This helper validates the supplied
+    ``session_configuration`` dictionary against the allow-list defined in
+    ``ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP`` and returns a new
+    dictionary that contains **only** the supported parameters.
+
+    Args:
+        session_configuration: Optional mapping of session configuration
+            names to their desired values.  Key comparison is
+            case-insensitive.
+
+    Returns:
+        Dict[str, str]: A dictionary containing only the supported
+        configuration parameters with lower-case keys and string values.  If
+        *session_configuration* is ``None`` or empty, an empty dictionary is
+        returned.
+    """
+
     if not session_configuration:
         return {}
 
