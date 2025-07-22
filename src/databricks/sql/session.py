@@ -156,7 +156,7 @@ class Session:
     @property
     def guid_hex(self) -> str:
         """Get the session ID in hex format"""
-        return self._session_id.guid_hex
+        return self._session_id.hex_guid
 
     def close(self) -> None:
         """Close the underlying session."""
