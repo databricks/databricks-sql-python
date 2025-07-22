@@ -50,27 +50,13 @@ def test_sea_sync_query_with_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a query that generates large rows to force multiple chunks
-        requested_row_count = 10000
+        # Execute a simple query
         cursor = connection.cursor()
-        query = f"""
-        SELECT 
-            id, 
-            concat('value_', repeat('a', 10000)) as test_value
-        FROM range(1, {requested_row_count} + 1) AS t(id)
-        """
-
         logger.info(
-            f"Executing synchronous query with cloud fetch to generate {requested_row_count} rows"
+            "Executing synchronous query with cloud fetch: SELECT 1 as test_value"
         )
-        cursor.execute(query)
-        results = [cursor.fetchone()]
-        results.extend(cursor.fetchmany(10))
-        results.extend(cursor.fetchall())
-        actual_row_count = len(results)
-        logger.info(
-            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
-        )
+        cursor.execute("SELECT 1 as test_value")
+        logger.info("Query executed successfully with cloud fetch enabled")
 
         # Close resources
         cursor.close()
@@ -129,18 +115,13 @@ def test_sea_sync_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # For non-cloud fetch, use a smaller row count to avoid exceeding inline limits
-        requested_row_count = 100
+        # Execute a simple query
         cursor = connection.cursor()
-        logger.info("Executing synchronous query without cloud fetch: SELECT 100 rows")
-        cursor.execute(
-            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
+        logger.info(
+            "Executing synchronous query without cloud fetch: SELECT 1 as test_value"
         )
-
-        results = [cursor.fetchone()]
-        results.extend(cursor.fetchmany(10))
-        results.extend(cursor.fetchall())
-        logger.info(f"{len(results)} rows retrieved against 100 requested")
+        cursor.execute("SELECT 1 as test_value")
+        logger.info("Query executed successfully with cloud fetch disabled")
 
         # Close resources
         cursor.close()

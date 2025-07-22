@@ -611,8 +611,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 self.assertIn("some information about the error", str(cm.exception))
 
     @patch(
-        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue",
-        return_value=Mock(),
+        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
     )
     def test_handle_execute_response_sets_compression_in_direct_results(
         self, build_queue
@@ -1005,8 +1004,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
     @patch(
-        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue",
-        return_value=Mock(),
+        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
     )
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_handle_execute_response_reads_has_more_rows_in_direct_results(
@@ -1051,8 +1049,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 self.assertEqual(is_direct_results, has_more_rows_result)
 
     @patch(
-        "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue",
-        return_value=Mock(),
+        "databricks.sql.utils.ResultSetQueueFactory.build_queue", return_value=Mock()
     )
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_handle_execute_response_reads_has_more_rows_in_result_response(

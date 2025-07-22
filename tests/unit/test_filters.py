@@ -77,7 +77,7 @@ class TestResultSetFilter(unittest.TestCase):
             "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
         ):
             with patch(
-                "databricks.sql.backend.sea.result_set.SeaResultSet"
+                "databricks.sql.result_set.SeaResultSet"
             ) as mock_sea_result_set_class:
                 mock_instance = MagicMock()
                 mock_sea_result_set_class.return_value = mock_instance
@@ -104,7 +104,7 @@ class TestResultSetFilter(unittest.TestCase):
             "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
         ):
             with patch(
-                "databricks.sql.backend.sea.result_set.SeaResultSet"
+                "databricks.sql.result_set.SeaResultSet"
             ) as mock_sea_result_set_class:
                 mock_instance = MagicMock()
                 mock_sea_result_set_class.return_value = mock_instance

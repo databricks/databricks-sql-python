@@ -418,7 +418,7 @@ class ExecuteResponse:
 
     command_id: CommandId
     status: CommandState
-    description: List[Tuple]
+    description: Optional[List[Tuple]] = None
     has_been_closed_server_side: bool = False
     lz4_compressed: bool = True
     is_staging_operation: bool = False

@@ -13,16 +13,12 @@ import re
 
 import lz4.frame
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
-from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
-
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
-from databricks.sql import OperationalError
-from databricks.sql.exc import ProgrammingError
+from databricks.sql import OperationalError, exc
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
@@ -56,7 +52,7 @@ class ResultSetQueue(ABC):
         pass
 
 
-class ThriftResultSetQueueFactory(ABC):
+class ResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
         row_set_type: TSparkRowSetType,
@@ -65,7 +61,7 @@ class ThriftResultSetQueueFactory(ABC):
         max_download_threads: int,
         ssl_options: SSLOptions,
         lz4_compressed: bool = True,
-        description: List[Tuple] = [],
+        description: Optional[List[Tuple]] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue.
@@ -220,7 +216,7 @@ class CloudFetchQueue(ResultSetQueue):
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
-        description: List[Tuple] = [],
+        description: Optional[List[Tuple]] = None,
     ):
         """
         A queue-like wrapper over CloudFetch arrow batches.

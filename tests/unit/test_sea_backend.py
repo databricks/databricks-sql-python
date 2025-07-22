@@ -198,7 +198,7 @@ class TestSeaBackend:
         )
 
         # Test close_session with invalid ID type
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.close_session(thrift_session_id)
         assert "Not a valid SEA session ID" in str(excinfo.value)
 
@@ -244,7 +244,7 @@ class TestSeaBackend:
             assert result == "mock_result_set"
 
         # Test with invalid session ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             mock_thrift_handle = MagicMock()
             mock_thrift_handle.sessionId.guid = b"guid"
             mock_thrift_handle.sessionId.secret = b"secret"
@@ -449,7 +449,7 @@ class TestSeaBackend:
         )
 
         # Test cancel_command with invalid ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.cancel_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -463,7 +463,7 @@ class TestSeaBackend:
         )
 
         # Test close_command with invalid ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.close_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -522,7 +522,7 @@ class TestSeaBackend:
         assert result.status == CommandState.SUCCEEDED
 
         # Test get_execution_result with invalid ID
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             sea_client.get_execution_result(thrift_command_id, mock_cursor)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -808,7 +808,7 @@ class TestSeaBackend:
     def test_get_tables(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_tables method with various parameter combinations."""
         # Mock the execute_command method
-        from databricks.sql.backend.sea.result_set import SeaResultSet
+        from databricks.sql.result_set import SeaResultSet
 
         mock_result_set = Mock(spec=SeaResultSet)
 
