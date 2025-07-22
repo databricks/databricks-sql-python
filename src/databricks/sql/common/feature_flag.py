@@ -159,6 +159,8 @@ class FeatureFlagsContextFactory:
         """Gets or creates a FeatureFlagsContext for the given connection."""
         with cls._lock:
             cls._initialize()
+            assert cls._executor is not None
+
             # Use the unique session ID as the key
             key = connection.get_session_id_hex()
             if key not in cls._context_map:
