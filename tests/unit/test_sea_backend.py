@@ -292,26 +292,6 @@ class TestSeaBackend:
         assert isinstance(mock_cursor.active_command_id, CommandId)
         assert mock_cursor.active_command_id.guid == "test-statement-456"
 
-        # Test async with missing statement ID
-        mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {"status": {"state": "PENDING"}}
-        with pytest.raises(ServerOperationError) as excinfo:
-            sea_client.execute_command(
-                operation="SELECT 1",
-                session_id=sea_session_id,
-                max_rows=100,
-                max_bytes=1000,
-                lz4_compression=False,
-                cursor=mock_cursor,
-                use_cloud_fetch=False,
-                parameters=[],
-                async_op=True,
-                enforce_embedded_schema_correctness=False,
-            )
-        assert "Failed to execute command: No statement ID returned" in str(
-            excinfo.value
-        )
-
     def test_command_execution_advanced(
         self, sea_client, mock_http_client, mock_cursor, sea_session_id
     ):
@@ -410,26 +390,6 @@ class TestSeaBackend:
                         enforce_embedded_schema_correctness=False,
                     )
                 assert "Command failed" in str(excinfo.value)
-
-        # Test missing statement ID
-        mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {"status": {"state": "SUCCEEDED"}}
-        with pytest.raises(ServerOperationError) as excinfo:
-            sea_client.execute_command(
-                operation="SELECT 1",
-                session_id=sea_session_id,
-                max_rows=100,
-                max_bytes=1000,
-                lz4_compression=False,
-                cursor=mock_cursor,
-                use_cloud_fetch=False,
-                parameters=[],
-                async_op=False,
-                enforce_embedded_schema_correctness=False,
-            )
-        assert "Failed to execute command: No statement ID returned" in str(
-            excinfo.value
-        )
 
     def test_command_management(
         self,

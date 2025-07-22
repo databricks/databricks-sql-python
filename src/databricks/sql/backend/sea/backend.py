@@ -528,14 +528,6 @@ class SeaDatabricksClient(DatabricksClient):
         )
         response = ExecuteStatementResponse.from_dict(response_data)
         statement_id = response.statement_id
-        if not statement_id:
-            raise ServerOperationError(
-                "Failed to execute command: No statement ID returned",
-                {
-                    "operation-id": None,
-                    "diagnostic-info": None,
-                },
-            )
 
         command_id = CommandId.from_sea_statement_id(statement_id)
 
