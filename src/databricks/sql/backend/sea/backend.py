@@ -410,8 +410,10 @@ class SeaDatabricksClient(DatabricksClient):
             )
         if state == CommandState.FAILED:
             error = status.error
+            error_code = error.error_code if error else "UNKNOWN_ERROR_CODE"
+            error_message = error.message if error else "UNKNOWN_ERROR_MESSAGE"
             raise ServerOperationError(
-                "Command failed: {} {}".format(error.error_code, error.message),
+                "Command failed: {} {}".format(error_code, error_message),
                 {
                     "operation-id": command_id,
                 },
