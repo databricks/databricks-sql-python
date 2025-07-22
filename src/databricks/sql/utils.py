@@ -785,3 +785,25 @@ def _create_python_tuple(t_col_value_wrapper):
             result[i] = None
 
     return tuple(result)
+
+
+def concat_table_chunks(
+    table_chunks: List[Union["pyarrow.Table", ColumnTable]]
+) -> Union["pyarrow.Table", ColumnTable]:
+    if len(table_chunks) == 0:
+        return table_chunks
+
+    if isinstance(table_chunks[0], ColumnTable):
+        ## Check if all have the same column names
+        if not all(
+            table.column_names == table_chunks[0].column_names for table in table_chunks
+        ):
+            raise ValueError("The columns in the results don't match")
+
+        result_table = table_chunks[0].column_table
+        for i in range(1, len(table_chunks)):
+            for j in range(table_chunks[i].num_columns):
+                result_table[j].extend(table_chunks[i].column_table[j])
+        return ColumnTable(result_table, table_chunks[0].column_names)
+    else:
+        return pyarrow.concat_tables(table_chunks, use_threads=True)

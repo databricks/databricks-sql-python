@@ -1,8 +1,17 @@
 import decimal
 import datetime
 from datetime import timezone, timedelta
+import pytest
+from databricks.sql.utils import (
+    convert_to_assigned_datatypes_in_column_table,
+    ColumnTable,
+    concat_table_chunks,
+)
 
-from databricks.sql.utils import convert_to_assigned_datatypes_in_column_table
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 
 class TestUtils:
@@ -122,3 +131,33 @@ class TestUtils:
         for index, entry in enumerate(converted_column_table):
             assert entry[0] == expected_convertion[index][0]
             assert isinstance(entry[0], expected_convertion[index][1])
+
+    def test_concat_table_chunks_column_table(self):
+        column_table1 = ColumnTable([[1, 2], [5, 6]], ["col1", "col2"])
+        column_table2 = ColumnTable([[3, 4], [7, 8]], ["col1", "col2"])
+
+        result_table = concat_table_chunks([column_table1, column_table2])
+
+        assert result_table.column_table == [[1, 2, 3, 4], [5, 6, 7, 8]]
+        assert result_table.column_names == ["col1", "col2"]
+
+    @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
+    def test_concat_table_chunks_arrow_table(self):
+        arrow_table1 = pyarrow.Table.from_pydict({"col1": [1, 2], "col2": [5, 6]})
+        arrow_table2 = pyarrow.Table.from_pydict({"col1": [3, 4], "col2": [7, 8]})
+
+        result_table = concat_table_chunks([arrow_table1, arrow_table2])
+        assert result_table.column_names == ["col1", "col2"]
+        assert result_table.column("col1").to_pylist() == [1, 2, 3, 4]
+        assert result_table.column("col2").to_pylist() == [5, 6, 7, 8]
+
+    def test_concat_table_chunks_empty(self):
+        result_table = concat_table_chunks([])
+        assert result_table == []
+
+    def test_concat_table_chunks__incorrect_column_names_error(self):
+        column_table1 = ColumnTable([[1, 2], [5, 6]], ["col1", "col2"])
+        column_table2 = ColumnTable([[3, 4], [7, 8]], ["col1", "col3"])
+
+        with pytest.raises(ValueError):
+            concat_table_chunks([column_table1, column_table2])
