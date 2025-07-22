@@ -969,13 +969,7 @@ class ThriftDatabricksClient(DatabricksClient):
         parameters=[],
         async_op=False,
         enforce_embedded_schema_correctness=False,
-<<<<<<< HEAD
         row_limit: Optional[int] = None,
-||||||| 576eafc
-    ):
-        assert session_handle is not None
-=======
->>>>>>> main
     ) -> Union["ResultSet", None]:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -1024,17 +1018,10 @@ class ThriftDatabricksClient(DatabricksClient):
             self._handle_execute_response_async(resp, cursor)
             return None
         else:
-<<<<<<< HEAD
             execute_response, is_direct_results = self._handle_execute_response(
                 resp, cursor
             )
-||||||| 576eafc
-            return self._handle_execute_response(resp, cursor)
-=======
-            execute_response = self._handle_execute_response(resp, cursor)
->>>>>>> main
 
-<<<<<<< HEAD
             t_row_set = None
             if resp.directResults and resp.directResults.resultSet:
                 t_row_set = resp.directResults.resultSet.results
@@ -1058,26 +1045,6 @@ class ThriftDatabricksClient(DatabricksClient):
         max_rows: int,
         max_bytes: int,
         cursor: "Cursor",
-||||||| 576eafc
-    def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
-        assert session_handle is not None
-=======
-            return ThriftResultSet(
-                connection=cursor.connection,
-                execute_response=execute_response,
-                thrift_client=self,
-                buffer_size_bytes=max_bytes,
-                arraysize=max_rows,
-                use_cloud_fetch=use_cloud_fetch,
-            )
-
-    def get_catalogs(
-        self,
-        session_id: SessionId,
-        max_rows: int,
-        max_bytes: int,
-        cursor: Cursor,
->>>>>>> main
     ) -> "ResultSet":
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -1091,7 +1058,6 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetCatalogs, req)
 
-<<<<<<< HEAD
         execute_response, is_direct_results = self._handle_execute_response(
             resp, cursor
         )
@@ -1111,19 +1077,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
-||||||| 576eafc
-        return self._handle_execute_response(resp, cursor)
-=======
-        execute_response = self._handle_execute_response(resp, cursor)
-
-        return ThriftResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            thrift_client=self,
-            buffer_size_bytes=max_bytes,
-            arraysize=max_rows,
-            use_cloud_fetch=cursor.connection.use_cloud_fetch,
->>>>>>> main
         )
 
     def get_schemas(
@@ -1135,14 +1088,8 @@ class ThriftDatabricksClient(DatabricksClient):
         catalog_name=None,
         schema_name=None,
     ) -> "ResultSet":
-<<<<<<< HEAD
         from databricks.sql.result_set import ThriftResultSet
 
-||||||| 576eafc
-    ):
-        assert session_handle is not None
-=======
->>>>>>> main
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1157,7 +1104,6 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetSchemas, req)
 
-<<<<<<< HEAD
         execute_response, is_direct_results = self._handle_execute_response(
             resp, cursor
         )
@@ -1177,19 +1123,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
-||||||| 576eafc
-        return self._handle_execute_response(resp, cursor)
-=======
-        execute_response = self._handle_execute_response(resp, cursor)
-
-        return ThriftResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            thrift_client=self,
-            buffer_size_bytes=max_bytes,
-            arraysize=max_rows,
-            use_cloud_fetch=cursor.connection.use_cloud_fetch,
->>>>>>> main
         )
 
     def get_tables(
@@ -1203,14 +1136,8 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         table_types=None,
     ) -> "ResultSet":
-<<<<<<< HEAD
         from databricks.sql.result_set import ThriftResultSet
 
-||||||| 576eafc
-    ):
-        assert session_handle is not None
-=======
->>>>>>> main
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1227,7 +1154,6 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetTables, req)
 
-<<<<<<< HEAD
         execute_response, is_direct_results = self._handle_execute_response(
             resp, cursor
         )
@@ -1247,19 +1173,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
-||||||| 576eafc
-        return self._handle_execute_response(resp, cursor)
-=======
-        execute_response = self._handle_execute_response(resp, cursor)
-
-        return ThriftResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            thrift_client=self,
-            buffer_size_bytes=max_bytes,
-            arraysize=max_rows,
-            use_cloud_fetch=cursor.connection.use_cloud_fetch,
->>>>>>> main
         )
 
     def get_columns(
@@ -1273,14 +1186,8 @@ class ThriftDatabricksClient(DatabricksClient):
         table_name=None,
         column_name=None,
     ) -> "ResultSet":
-<<<<<<< HEAD
         from databricks.sql.result_set import ThriftResultSet
 
-||||||| 576eafc
-    ):
-        assert session_handle is not None
-=======
->>>>>>> main
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1297,7 +1204,6 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         resp = self.make_request(self._client.GetColumns, req)
 
-<<<<<<< HEAD
         execute_response, is_direct_results = self._handle_execute_response(
             resp, cursor
         )
@@ -1317,19 +1223,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
-||||||| 576eafc
-        return self._handle_execute_response(resp, cursor)
-=======
-        execute_response = self._handle_execute_response(resp, cursor)
-
-        return ThriftResultSet(
-            connection=cursor.connection,
-            execute_response=execute_response,
-            thrift_client=self,
-            buffer_size_bytes=max_bytes,
-            arraysize=max_rows,
-            use_cloud_fetch=cursor.connection.use_cloud_fetch,
->>>>>>> main
         )
 
     def _handle_execute_response(self, resp, cursor):

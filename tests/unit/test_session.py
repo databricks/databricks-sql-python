@@ -62,7 +62,6 @@ class TestSession:
 
         for args in connection_args:
             connection = databricks.sql.connect(**args)
-<<<<<<< HEAD
             call_kwargs = mock_client_class.call_args[1]
             assert args["server_hostname"] == call_kwargs["server_hostname"]
             assert args["http_path"] == call_kwargs["http_path"]
@@ -113,57 +112,6 @@ class TestSession:
         )
         call_kwargs = mock_client_class.call_args[1]
         http_headers = call_kwargs["http_headers"]
-||||||| 576eafc
-=======
-            host, port, http_path, *_ = mock_client_class.call_args[0]
-            assert args["server_hostname"] == host
-            assert args["http_path"] == http_path
-            connection.close()
-
-    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_http_header_passthrough(self, mock_client_class):
-        http_headers = [("foo", "bar")]
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, http_headers=http_headers)
-
-        call_args = mock_client_class.call_args[0][3]
-        assert ("foo", "bar") in call_args
-
-    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_tls_arg_passthrough(self, mock_client_class):
-        databricks.sql.connect(
-            **self.DUMMY_CONNECTION_ARGS,
-            _tls_verify_hostname="hostname",
-            _tls_trusted_ca_file="trusted ca file",
-            _tls_client_cert_key_file="trusted client cert",
-            _tls_client_cert_key_password="key password",
-        )
-
-        kwargs = mock_client_class.call_args[1]
-        assert kwargs["_tls_verify_hostname"] == "hostname"
-        assert kwargs["_tls_trusted_ca_file"] == "trusted ca file"
-        assert kwargs["_tls_client_cert_key_file"] == "trusted client cert"
-        assert kwargs["_tls_client_cert_key_password"] == "key password"
-
-    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_useragent_header(self, mock_client_class):
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
-
-        http_headers = mock_client_class.call_args[0][3]
-        user_agent_header = (
-            "User-Agent",
-            "{}/{}".format(databricks.sql.USER_AGENT_NAME, databricks.sql.__version__),
-        )
-        assert user_agent_header in http_headers
-
-        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, user_agent_entry="foobar")
-        user_agent_header_with_entry = (
-            "User-Agent",
-            "{}/{} ({})".format(
-                databricks.sql.USER_AGENT_NAME, databricks.sql.__version__, "foobar"
-            ),
-        )
-        http_headers = mock_client_class.call_args[0][3]
->>>>>>> main
         assert user_agent_header_with_entry in http_headers
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)

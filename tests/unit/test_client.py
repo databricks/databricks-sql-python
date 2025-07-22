@@ -34,23 +34,16 @@ from tests.unit.test_arrow_queue import ArrowQueueSuite
 
 
 class ThriftDatabricksClientMockFactory:
-class ThriftDatabricksClientMockFactory:
     @classmethod
     def new(cls):
         ThriftBackendMock = Mock(spec=ThriftDatabricksClient)
-        ThriftBackendMock = Mock(spec=ThriftDatabricksClient)
         ThriftBackendMock.return_value = ThriftBackendMock
 
-        cls.apply_property_to_mock(ThriftBackendMock, staging_allowed_local_path=None)
-
-        mock_result_set = Mock(spec=ThriftResultSet)
         mock_result_set = Mock(spec=ThriftResultSet)
         cls.apply_property_to_mock(
             mock_result_set,
-            mock_result_set,
             description=None,
             is_staging_operation=False,
-            command_id=None,
             command_id=None,
             has_been_closed_server_side=True,
             is_direct_results=True,
@@ -154,7 +147,7 @@ class ClientTestSuite(unittest.TestCase):
                 assert real_result_set.has_been_closed_server_side is True
 
                 # 2. op_state should always be CLOSED after close()
-                assert real_result_set.op_state == CommandState.CLOSED
+                assert real_result_set.status == CommandState.CLOSED
 
                 # 3. Backend close_command should be called appropriately
                 if not closed:
@@ -224,8 +217,11 @@ class ClientTestSuite(unittest.TestCase):
 
         mock_thrift_backend.fetch_results.return_value = (Mock(), False)
         result_set = ThriftResultSet(
-            mock_connection, mock_results_response, mock_thrift_backend
+            mock_connection,
+            mock_results_response,
+            mock_thrift_backend,
         )
+        result_set.results = mock_results
 
         result_set.close()
 
