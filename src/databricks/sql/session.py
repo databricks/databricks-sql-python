@@ -97,10 +97,10 @@ class Session:
         kwargs: dict,
     ) -> DatabricksClient:
         """Create and return the appropriate backend client."""
-        self.use_sea = kwargs.get("use_sea", False)
+        use_sea = kwargs.get("use_sea", False)
 
         databricks_client_class: Type[DatabricksClient]
-        if self.use_sea:
+        if use_sea:
             logger.debug("Creating SEA backend client")
             databricks_client_class = SeaDatabricksClient
         else:

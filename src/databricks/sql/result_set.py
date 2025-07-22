@@ -22,7 +22,6 @@ from databricks.sql.utils import (
     ColumnQueue,
 )
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
-from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +192,6 @@ class ThriftResultSet(ResultSet):
         connection: "Connection",
         execute_response: "ExecuteResponse",
         thrift_client: "ThriftDatabricksClient",
-        session_id_hex: Optional[str],
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
@@ -217,7 +215,6 @@ class ThriftResultSet(ResultSet):
             :param ssl_options: SSL options for cloud fetch
             :param is_direct_results: Whether there are more rows to fetch
         """
-        self.num_downloaded_chunks = 0
 
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
@@ -237,12 +234,7 @@ class ThriftResultSet(ResultSet):
                 lz4_compressed=execute_response.lz4_compressed,
                 description=execute_response.description,
                 ssl_options=ssl_options,
-                session_id_hex=session_id_hex,
-                statement_id=execute_response.command_id.to_hex_guid(),
-                chunk_id=self.num_downloaded_chunks,
             )
-            if t_row_set.resultLinks:
-                self.num_downloaded_chunks += len(t_row_set.resultLinks)
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -266,7 +258,7 @@ class ThriftResultSet(ResultSet):
             self._fill_results_buffer()
 
     def _fill_results_buffer(self):
-        results, is_direct_results, result_links_count = self.backend.fetch_results(
+        results, is_direct_results = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -275,11 +267,9 @@ class ThriftResultSet(ResultSet):
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
             use_cloud_fetch=self._use_cloud_fetch,
-            chunk_id=self.num_downloaded_chunks,
         )
         self.results = results
         self.is_direct_results = is_direct_results
-        self.num_downloaded_chunks += result_links_count
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]

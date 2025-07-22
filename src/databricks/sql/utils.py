@@ -27,8 +27,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-from databricks.sql.backend.types import CommandId
-from databricks.sql.telemetry.models.event import StatementType
+
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 import logging
@@ -61,9 +60,6 @@ class ThriftResultSetQueueFactory(ABC):
         arrow_schema_bytes: bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
-        session_id_hex: Optional[str],
-        statement_id: str,
-        chunk_id: int,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
     ) -> ResultSetQueue:
@@ -110,9 +106,6 @@ class ThriftResultSetQueueFactory(ABC):
                 description=description,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
-                session_id_hex=session_id_hex,
-                statement_id=statement_id,
-                chunk_id=chunk_id,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -221,9 +214,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self,
         max_download_threads: int,
         ssl_options: SSLOptions,
-        session_id_hex: Optional[str],
-        statement_id: str,
-        chunk_id: int,
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
@@ -244,9 +234,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.lz4_compressed = lz4_compressed
         self.description = description
         self._ssl_options = ssl_options
-        self.session_id_hex = session_id_hex
-        self.statement_id = statement_id
-        self.chunk_id = chunk_id
 
         # Table state
         self.table = None
@@ -258,9 +245,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             max_download_threads=max_download_threads,
             lz4_compressed=lz4_compressed,
             ssl_options=ssl_options,
-            session_id_hex=session_id_hex,
-            statement_id=statement_id,
-            chunk_id=chunk_id,
         )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
@@ -364,9 +348,6 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         schema_bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
-        session_id_hex: Optional[str],
-        statement_id: str,
-        chunk_id: int,
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
@@ -390,16 +371,10 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             schema_bytes=schema_bytes,
             lz4_compressed=lz4_compressed,
             description=description,
-            session_id_hex=session_id_hex,
-            statement_id=statement_id,
-            chunk_id=chunk_id,
         )
 
         self.start_row_index = start_row_offset
         self.result_links = result_links or []
-        self.session_id_hex = session_id_hex
-        self.statement_id = statement_id
-        self.chunk_id = chunk_id
 
         logger.debug(
             "Initialize CloudFetch loader, row set start offset: {}, file list:".format(

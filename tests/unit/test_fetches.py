@@ -43,7 +43,7 @@ class FetchTests(unittest.TestCase):
 
         # Create a mock backend that will return the queue when _fill_results_buffer is called
         mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
-        mock_thrift_backend.fetch_results.return_value = (arrow_queue, False, 0)
+        mock_thrift_backend.fetch_results.return_value = (arrow_queue, False)
 
         num_cols = len(initial_results[0]) if initial_results else 0
         description = [
@@ -54,7 +54,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=Mock(),
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=True,
                 description=description,
@@ -63,7 +63,6 @@ class FetchTests(unittest.TestCase):
             ),
             thrift_client=mock_thrift_backend,
             t_row_set=None,
-            session_id_hex=Mock(),
         )
         return rs
 
@@ -80,13 +79,12 @@ class FetchTests(unittest.TestCase):
             arrow_schema_bytes,
             description,
             use_cloud_fetch=True,
-            chunk_id=0,
         ):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1
 
-            return results, batch_index < len(batch_list), 0
+            return results, batch_index < len(batch_list)
 
         mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_thrift_backend.fetch_results = fetch_results
@@ -100,7 +98,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=Mock(),
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=False,
                 description=description,
@@ -108,7 +106,6 @@ class FetchTests(unittest.TestCase):
                 is_staging_operation=False,
             ),
             thrift_client=mock_thrift_backend,
-            session_id_hex=Mock(),
         )
         return rs
 

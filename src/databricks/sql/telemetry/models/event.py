@@ -122,14 +122,12 @@ class SqlExecutionEvent(JsonSerializableMixin):
         is_compressed (bool): Whether the result is compressed
         execution_result (ExecutionResultFormat): Format of the execution result
         retry_count (int): Number of retry attempts made
-        chunk_id (int): ID of the chunk if applicable
     """
 
     statement_type: StatementType
     is_compressed: bool
     execution_result: ExecutionResultFormat
-    retry_count: Optional[int]
-    chunk_id: Optional[int]
+    retry_count: int
 
 
 @dataclass

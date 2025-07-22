@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, MagicMock
 
 import databricks.sql.cloudfetch.download_manager as download_manager
 from databricks.sql.types import SSLOptions
@@ -19,9 +19,6 @@ class DownloadManagerTests(unittest.TestCase):
             max_download_threads,
             lz4_compressed,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
 
     def create_result_link(

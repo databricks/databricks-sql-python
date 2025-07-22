@@ -4,7 +4,7 @@ except ImportError:
     pyarrow = None
 import unittest
 import pytest
-from unittest.mock import MagicMock, patch, Mock
+from unittest.mock import MagicMock, patch
 
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 import databricks.sql.utils as utils
@@ -63,9 +63,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=result_links,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
 
         assert len(queue.download_manager._pending_links) == 10
@@ -80,9 +77,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=result_links,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
 
         assert len(queue.download_manager._pending_links) == 0
@@ -99,9 +93,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             result_links=[],
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
 
         assert queue._create_next_table() is None
@@ -123,9 +114,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         expected_result = self.make_arrow_table()
 
@@ -151,9 +139,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -175,9 +160,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -198,9 +180,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -226,9 +205,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -251,9 +227,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table is None
 
@@ -271,9 +244,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -293,9 +263,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -315,9 +282,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -343,9 +307,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table == self.make_arrow_table()
         assert queue.table.num_rows == 4
@@ -374,9 +335,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
             description=description,
             max_download_threads=10,
             ssl_options=SSLOptions(),
-            session_id_hex=Mock(),
-            statement_id=Mock(),
-            chunk_id=0,
         )
         assert queue.table is None
 
