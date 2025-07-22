@@ -278,8 +278,7 @@ class LinkFetcher:
             if not links_downloaded:
                 self._shutdown_event.set()
         logger.debug("LinkFetcher[%s]: worker thread exiting", self._statement_id)
-        with self._link_data_update:
-            self._link_data_update.notify_all()
+        self._link_data_update.notify_all()
 
     def start(self):
         """Spawn the worker thread."""
