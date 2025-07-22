@@ -565,10 +565,7 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.Cursor._handle_staging_operation" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_staging_operation_response_is_handled(
-        self,
-        mock_client_class,
-        mock_handle_staging_operation,
-        mock_execute_response,
+        self, mock_client_class, mock_handle_staging_operation, mock_execute_response
     ):
         # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
 

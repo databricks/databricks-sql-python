@@ -2,8 +2,6 @@ import logging
 import math
 import time
 
-import pytest
-
 log = logging.getLogger(__name__)
 
 
@@ -44,14 +42,7 @@ class LargeQueriesMixin:
             + "assuming 10K fetch size."
         )
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_query_with_large_wide_result_set(self, extra_params):
+    def test_query_with_large_wide_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
         width = 8192  # B
         rows = resultSize // width
@@ -61,7 +52,7 @@ class LargeQueriesMixin:
         fetchmany_size = 10 * 1024 * 1024 // width
         # This is used by PyHive tests to determine the buffer size
         self.arraysize = 1000
-        with self.cursor(extra_params) as cursor:
+        with self.cursor() as cursor:
             for lz4_compression in [False, True]:
                 cursor.connection.lz4_compression = lz4_compression
                 uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
@@ -77,14 +68,7 @@ class LargeQueriesMixin:
                     assert row[0] == row_id  # Verify no rows are dropped in the middle.
                     assert len(row[1]) == 36
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_query_with_large_narrow_result_set(self, extra_params):
+    def test_query_with_large_narrow_result_set(self):
         resultSize = 300 * 1000 * 1000  # 300 MB
         width = 8  # sizeof(long)
         rows = resultSize / width
@@ -93,19 +77,12 @@ class LargeQueriesMixin:
         fetchmany_size = 10 * 1024 * 1024 // width
         # This is used by PyHive tests to determine the buffer size
         self.arraysize = 10000000
-        with self.cursor(extra_params) as cursor:
+        with self.cursor() as cursor:
             cursor.execute("SELECT * FROM RANGE({rows})".format(rows=rows))
             for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
                 assert row[0] == row_id
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
-    def test_long_running_query(self, extra_params):
+    def test_long_running_query(self):
         """Incrementally increase query size until it takes at least 3 minutes,
         and asserts that the query completes successfully.
         """
@@ -115,7 +92,7 @@ class LargeQueriesMixin:
         duration = -1
         scale0 = 10000
         scale_factor = 1
-        with self.cursor(extra_params) as cursor:
+        with self.cursor() as cursor:
             while duration < min_duration:
                 assert scale_factor < 1024, "Detected infinite loop"
                 start = time.time()

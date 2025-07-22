@@ -132,7 +132,7 @@ class TestSeaBackend:
         assert client3.max_download_threads == 5
 
         # Test with invalid HTTP path
-        with pytest.raises(ValueError) as excinfo:
+        with pytest.raises(ProgrammingError) as excinfo:
             SeaDatabricksClient(
                 server_hostname="test-server.databricks.com",
                 port=443,
