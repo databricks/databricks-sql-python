@@ -241,7 +241,6 @@ class ClientTestSuite(unittest.TestCase):
         mock_backend.execute_command.side_effect = mock_result_sets
 
         cursor = client.Cursor(connection=Mock(), backend=mock_backend)
-        cursor = client.Cursor(connection=Mock(), backend=mock_backend)
         cursor.execute("SELECT 1;")
         cursor.execute("SELECT 1;")
 
