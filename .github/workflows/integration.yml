@@ -4,6 +4,12 @@ on:
   push:            
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to checkout'
+        required: false
+        default: 'main'
   pull_request:   
 
 jobs:
