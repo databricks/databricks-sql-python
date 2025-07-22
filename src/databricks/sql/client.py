@@ -245,12 +245,6 @@ class Connection:
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._cursors = []  # type: List[Cursor]
 
-        self.server_telemetry_enabled = True
-        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
-        self.telemetry_enabled = (
-            self.client_telemetry_enabled and self.server_telemetry_enabled
-        )
-
         self.session = Session(
             server_hostname,
             http_path,
@@ -267,6 +261,17 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
         self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
+
+        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
+        if self.client_telemetry_enabled:
+            self.server_telemetry_enabled = TelemetryHelper.is_server_telemetry_enabled(
+                self
+            )
+            self.telemetry_enabled = (
+                self.client_telemetry_enabled and self.server_telemetry_enabled
+            )
+        else:
+            self.telemetry_enabled = False
 
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
