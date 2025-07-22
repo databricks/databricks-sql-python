@@ -304,8 +304,8 @@ class TestTelemetryFactory:
         mock_session.side_effect = Exception(error_message)
 
         try:
-            from databricks.sql.client import Connection
-            Connection(server_hostname="test-host", http_path="/test-path")
+            from databricks import sql
+            sql.connect(server_hostname="test-host", http_path="/test-path")
         except Exception as e:
             assert str(e) == error_message
 
