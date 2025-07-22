@@ -19,7 +19,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
-from databricks.sql.backend.sea.result_set import SeaResultSet
+from databricks.sql.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -29,7 +29,7 @@ from databricks.sql.backend.types import (
     BackendType,
     ExecuteResponse,
 )
-from databricks.sql.exc import DatabaseError, ProgrammingError, ServerOperationError
+from databricks.sql.exc import DatabaseError, ServerOperationError
 from databricks.sql.backend.sea.utils.http_client import SeaHttpClient
 from databricks.sql.types import SSLOptions
 
@@ -135,7 +135,7 @@ class SeaDatabricksClient(DatabricksClient):
         self.warehouse_id = self._extract_warehouse_id(http_path)
 
         # Initialize HTTP client
-        self.http_client = SeaHttpClient(
+        self._http_client = SeaHttpClient(
             server_hostname=server_hostname,
             port=port,
             http_path=http_path,
@@ -180,7 +180,7 @@ class SeaDatabricksClient(DatabricksClient):
             f"Note: SEA only works for warehouses."
         )
         logger.error(error_message)
-        raise ProgrammingError(error_message)
+        raise ValueError(error_message)
 
     @property
     def max_download_threads(self) -> int:
@@ -227,7 +227,7 @@ class SeaDatabricksClient(DatabricksClient):
             schema=schema,
         )
 
-        response = self.http_client._make_request(
+        response = self._http_client._make_request(
             method="POST", path=self.SESSION_PATH, data=request_data.to_dict()
         )
 
@@ -252,14 +252,14 @@ class SeaDatabricksClient(DatabricksClient):
             session_id: The session identifier returned by open_session()
 
         Raises:
-            ProgrammingError: If the session ID is invalid
+            ValueError: If the session ID is invalid
             OperationalError: If there's an error closing the session
         """
 
         logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
         if session_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA session ID")
+            raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
 
         request_data = DeleteSessionRequest(
@@ -267,7 +267,7 @@ class SeaDatabricksClient(DatabricksClient):
             session_id=sea_session_id,
         )
 
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             data=request_data.to_dict(),
@@ -462,7 +462,7 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         if session_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA session ID")
+            raise ValueError("Not a valid SEA session ID")
 
         sea_session_id = session_id.to_sea_session_id()
 
@@ -509,7 +509,7 @@ class SeaDatabricksClient(DatabricksClient):
             result_compression=result_compression,
         )
 
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="POST", path=self.STATEMENT_PATH, data=request.to_dict()
         )
         response = ExecuteStatementResponse.from_dict(response_data)
@@ -546,16 +546,16 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to cancel
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="POST",
             path=self.CANCEL_STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -569,16 +569,16 @@ class SeaDatabricksClient(DatabricksClient):
             command_id: Command identifier to close
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         if command_id.backend_type != BackendType.SEA:
-            raise ProgrammingError("Not a valid SEA command ID")
+            raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
-        self.http_client._make_request(
+        self._http_client._make_request(
             method="DELETE",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -595,7 +595,7 @@ class SeaDatabricksClient(DatabricksClient):
         sea_statement_id = command_id.to_sea_statement_id()
 
         request = GetStatementRequest(statement_id=sea_statement_id)
-        response_data = self.http_client._make_request(
+        response_data = self._http_client._make_request(
             method="GET",
             path=self.STATEMENT_PATH_WITH_ID.format(sea_statement_id),
             data=request.to_dict(),
@@ -615,7 +615,7 @@ class SeaDatabricksClient(DatabricksClient):
             CommandState: The current state of the command
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         response = self._poll_query(command_id)
@@ -642,27 +642,6 @@ class SeaDatabricksClient(DatabricksClient):
 
         response = self._poll_query(command_id)
         return self._response_to_result_set(response, cursor)
-
-    def get_chunk_links(
-        self, statement_id: str, chunk_index: int
-    ) -> List[ExternalLink]:
-        """
-        Get links for chunks starting from the specified index.
-        Args:
-            statement_id: The statement ID
-            chunk_index: The starting chunk index
-        Returns:
-            ExternalLink: External link for the chunk
-        """
-
-        response_data = self._http_client._make_request(
-            method="GET",
-            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
-        )
-        response = GetChunksResponse.from_dict(response_data)
-
-        links = response.external_links or []
-        return links
 
     # == Metadata Operations ==
 

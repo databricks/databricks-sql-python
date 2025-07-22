@@ -132,7 +132,7 @@ class TestSeaBackend:
         assert client3.max_download_threads == 5
 
         # Test with invalid HTTP path
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             SeaDatabricksClient(
                 server_hostname="test-server.databricks.com",
                 port=443,
@@ -198,7 +198,7 @@ class TestSeaBackend:
         )
 
         # Test close_session with invalid ID type
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.close_session(thrift_session_id)
         assert "Not a valid SEA session ID" in str(excinfo.value)
 
@@ -244,7 +244,7 @@ class TestSeaBackend:
             assert result == "mock_result_set"
 
         # Test with invalid session ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             mock_thrift_handle = MagicMock()
             mock_thrift_handle.sessionId.guid = b"guid"
             mock_thrift_handle.sessionId.secret = b"secret"
@@ -449,7 +449,7 @@ class TestSeaBackend:
         )
 
         # Test cancel_command with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.cancel_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -463,7 +463,7 @@ class TestSeaBackend:
         )
 
         # Test close_command with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.close_command(thrift_command_id)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -522,7 +522,7 @@ class TestSeaBackend:
         assert result.status == CommandState.SUCCEEDED
 
         # Test get_execution_result with invalid ID
-        with pytest.raises(ProgrammingError) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             sea_client.get_execution_result(thrift_command_id, mock_cursor)
         assert "Not a valid SEA command ID" in str(excinfo.value)
 
@@ -955,67 +955,3 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_columns" in str(excinfo.value)
-
-    def test_get_chunk_links(self, sea_client, mock_http_client, sea_command_id):
-        """Test get_chunk_links method when links are available."""
-        # Setup mock response
-        mock_response = {
-            "external_links": [
-                {
-                    "external_link": "https://example.com/data/chunk0",
-                    "expiration": "2025-07-03T05:51:18.118009",
-                    "row_count": 100,
-                    "byte_count": 1024,
-                    "row_offset": 0,
-                    "chunk_index": 0,
-                    "next_chunk_index": 1,
-                    "http_headers": {"Authorization": "Bearer token123"},
-                }
-            ]
-        }
-        mock_http_client._make_request.return_value = mock_response
-
-        # Call the method
-        results = sea_client.get_chunk_links("test-statement-123", 0)
-
-        # Verify the HTTP client was called correctly
-        mock_http_client._make_request.assert_called_once_with(
-            method="GET",
-            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
-                "test-statement-123", 0
-            ),
-        )
-
-        # Verify the results
-        assert isinstance(results, list)
-        assert len(results) == 1
-        result = results[0]
-        assert result.external_link == "https://example.com/data/chunk0"
-        assert result.expiration == "2025-07-03T05:51:18.118009"
-        assert result.row_count == 100
-        assert result.byte_count == 1024
-        assert result.row_offset == 0
-        assert result.chunk_index == 0
-        assert result.next_chunk_index == 1
-        assert result.http_headers == {"Authorization": "Bearer token123"}
-
-    def test_get_chunk_links_empty(self, sea_client, mock_http_client):
-        """Test get_chunk_links when no links are returned (empty list)."""
-        # Setup mock response with no matching chunk
-        mock_response = {"external_links": []}
-        mock_http_client._make_request.return_value = mock_response
-
-        # Call the method
-        results = sea_client.get_chunk_links("test-statement-123", 0)
-
-        # Verify the HTTP client was called correctly
-        mock_http_client._make_request.assert_called_once_with(
-            method="GET",
-            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
-                "test-statement-123", 0
-            ),
-        )
-
-        # Verify the results are empty
-        assert isinstance(results, list)
-        assert results == []

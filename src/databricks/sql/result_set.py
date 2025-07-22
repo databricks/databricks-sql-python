@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Union, Tuple, TYPE_CHECKING
+from typing import List, Optional, Any, TYPE_CHECKING
 
 import logging
-import time
 import pandas
 
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
 
 try:
     import pyarrow
@@ -14,11 +12,12 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+    from databricks.sql.backend.sea.backend import SeaDatabricksClient
     from databricks.sql.client import Connection
+
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import Row
-from databricks.sql.exc import Error, RequestError, CursorAlreadyClosedError
+from databricks.sql.exc import RequestError, CursorAlreadyClosedError
 from databricks.sql.utils import ColumnTable, ColumnQueue
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
 
@@ -136,7 +135,8 @@ class ResultSet(ABC):
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            self.results.close()
+            if self.results:
+                self.results.close()
             if (
                 self.status != CommandState.CLOSED
                 and not self.has_been_closed_server_side
