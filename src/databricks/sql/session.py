@@ -127,7 +127,7 @@ class Session:
         )
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True
-        logger.info("Successfully opened session " + str(self.guid_hex))
+        logger.info("Successfully opened session %s", str(self.guid_hex))
 
     @staticmethod
     def get_protocol_version(session_id: SessionId):
@@ -149,7 +149,7 @@ class Session:
         return self._session_id
 
     @property
-    def guid(self):
+    def guid(self) -> Any:
         """Get the raw session ID (backend-specific)"""
         return self._session_id.guid
 
@@ -160,7 +160,7 @@ class Session:
 
     def close(self) -> None:
         """Close the underlying session."""
-        logger.info(f"Closing session {self.guid_hex}")
+        logger.info("Closing session %s", self.guid_hex)
         if not self.is_open:
             logger.debug("Session appears to have been closed already")
             return
@@ -173,13 +173,13 @@ class Session:
         except DatabaseError as e:
             if "Invalid SessionHandle" in str(e):
                 logger.warning(
-                    f"Attempted to close session that was already closed: {e}"
+                    "Attempted to close session that was already closed: %s", e
                 )
             else:
                 logger.warning(
-                    f"Attempt to close session raised an exception at the server: {e}"
+                    "Attempt to close session raised an exception at the server: %s", e
                 )
         except Exception as e:
-            logger.error(f"Attempt to close session raised a local exception: {e}")
+            logger.error("Attempt to close session raised a local exception: %s", e)
 
         self.is_open = False
