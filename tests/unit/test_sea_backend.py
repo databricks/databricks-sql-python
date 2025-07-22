@@ -519,43 +519,8 @@ class TestSeaBackend:
             )
         assert "Command failed" in str(excinfo.value)
 
-    def test_utility_methods(self, sea_client):
-        """Test utility methods."""
-        # Test get_default_session_configuration_value
-        value = SeaDatabricksClient.get_default_session_configuration_value("ANSI_MODE")
-        assert value == "true"
-
-        # Test with unsupported configuration parameter
-        value = SeaDatabricksClient.get_default_session_configuration_value(
-            "UNSUPPORTED_PARAM"
-        )
-        assert value is None
-
-        # Test with case-insensitive parameter name
-        value = SeaDatabricksClient.get_default_session_configuration_value("ansi_mode")
-        assert value == "true"
-
-        # Test get_allowed_session_configurations
-        configs = SeaDatabricksClient.get_allowed_session_configurations()
-        assert isinstance(configs, list)
-        assert len(configs) > 0
-        assert "ANSI_MODE" in configs
-
-        # Test getting the list of allowed configurations with specific keys
-        allowed_configs = SeaDatabricksClient.get_allowed_session_configurations()
-        expected_keys = {
-            "ANSI_MODE",
-            "ENABLE_PHOTON",
-            "LEGACY_TIME_PARSER_POLICY",
-            "MAX_FILE_PARTITION_BYTES",
-            "READ_ONLY_EXTERNAL_METASTORE",
-            "STATEMENT_TIMEOUT",
-            "TIMEZONE",
-            "USE_CACHED_RESULT",
-        }
-        assert set(allowed_configs) == expected_keys
-
-        # Test _extract_description_from_manifest
+    def test_extract_description_from_manifest(self, sea_client):
+        """Test _extract_description_from_manifest."""
         manifest_obj = MagicMock()
         manifest_obj.schema = {
             "columns": [

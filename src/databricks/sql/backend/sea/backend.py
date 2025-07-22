@@ -294,29 +294,6 @@ class SeaDatabricksClient(DatabricksClient):
             data=request_data.to_dict(),
         )
 
-    @staticmethod
-    def get_default_session_configuration_value(name: str) -> Optional[str]:
-        """
-        Get the default value for a session configuration parameter.
-
-        Args:
-            name: The name of the session configuration parameter
-
-        Returns:
-            The default value if the parameter is supported, None otherwise
-        """
-        return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
-
-    @staticmethod
-    def get_allowed_session_configurations() -> List[str]:
-        """
-        Get the list of allowed session configuration parameters.
-
-        Returns:
-            List of allowed session configuration parameter names
-        """
-        return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
-
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
     ) -> Optional[List]:
