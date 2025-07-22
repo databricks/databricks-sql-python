@@ -455,7 +455,7 @@ class Cursor:
         self.active_command_id = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
-        self._input_stream_data = None
+        self._input_stream_data: Optional[BinaryIO] = None
 
         self.ASYNC_DEFAULT_POLLING_INTERVAL = 2
 
