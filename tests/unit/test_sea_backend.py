@@ -597,9 +597,8 @@ class TestSeaBackend:
                 {
                     "name": "col1",
                     "type_name": "STRING",
-                    "precision": 10,
-                    "scale": 2,
-                    "nullable": True,
+                    "type_precision": 10,
+                    "type_scale": 2,
                 },
                 {
                     "name": "col2",
@@ -613,13 +612,13 @@ class TestSeaBackend:
         assert description is not None
         assert len(description) == 2
         assert description[0][0] == "col1"  # name
-        assert description[0][1] == "STRING"  # type_code
+        assert description[0][1] == "string"  # type_code
         assert description[0][4] == 10  # precision
         assert description[0][5] == 2  # scale
-        assert description[0][6] is True  # null_ok
+        assert description[0][6] is None  # null_ok
         assert description[1][0] == "col2"  # name
-        assert description[1][1] == "INT"  # type_code
-        assert description[1][6] is False  # null_ok
+        assert description[1][1] == "int"  # type_code
+        assert description[1][6] is None  # null_ok
 
     def test_filter_session_configuration(self):
         """Test that _filter_session_configuration converts all values to strings."""
