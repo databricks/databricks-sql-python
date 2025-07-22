@@ -224,10 +224,7 @@ class ClientTestSuite(unittest.TestCase):
 
         mock_thrift_backend.fetch_results.return_value = (Mock(), False, 0)
         result_set = ThriftResultSet(
-            mock_connection,
-            mock_results_response,
-            mock_thrift_backend,
-            session_id_hex=Mock(),
+            mock_connection, mock_results_response, mock_thrift_backend, session_id_hex=Mock()
         )
         result_set.results = mock_results
 
@@ -275,9 +272,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_backend = Mock()
         mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
-        result_set = ThriftResultSet(
-            Mock(), Mock(), mock_backend, session_id_hex=Mock()
-        )
+        result_set = ThriftResultSet(Mock(), Mock(), mock_backend, session_id_hex=Mock())
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
