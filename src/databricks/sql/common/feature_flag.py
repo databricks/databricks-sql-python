@@ -94,6 +94,8 @@ class FeatureFlagsContext:
                 # We don't check for an in-flight refresh; the executor queues the task, which is safe.
                 self._executor.submit(self._refresh_flags)
 
+            assert self._flags is not None
+
             # Now, return the value from the populated cache.
             flag_value = self._flags.get(name)
             if flag_value is None:
