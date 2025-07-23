@@ -1,14 +1,16 @@
 import logging
 from dataclasses import dataclass
+from typing import Optional
 
-import requests
-from requests.adapters import HTTPAdapter, Retry
+from requests.adapters import Retry
 import lz4.frame
 import time
-
+from databricks.sql.common.http import DatabricksHttpClient, HttpMethod
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
+from databricks.sql.telemetry.latency_logger import log_latency
+from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +68,19 @@ class ResultSetDownloadHandler:
         settings: DownloadableResultSettings,
         link: TSparkArrowResultLink,
         ssl_options: SSLOptions,
+        chunk_id: int,
+        session_id_hex: Optional[str],
+        statement_id: str,
     ):
         self.settings = settings
         self.link = link
         self._ssl_options = ssl_options
+        self._http_client = DatabricksHttpClient.get_instance()
+        self.chunk_id = chunk_id
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
 
+    @log_latency(StatementType.QUERY)
     def run(self) -> DownloadedFile:
         """
         Download the file described in the cloud fetch link.
@@ -80,8 +90,8 @@ class ResultSetDownloadHandler:
         """
 
         logger.debug(
-            "ResultSetDownloadHandler: starting file download, offset {}, row count {}".format(
-                self.link.startRowOffset, self.link.rowCount
+            "ResultSetDownloadHandler: starting file download, chunk id {}, offset {}, row count {}".format(
+                self.chunk_id, self.link.startRowOffset, self.link.rowCount
             )
         )
 
@@ -90,19 +100,14 @@ class ResultSetDownloadHandler:
             self.link, self.settings.link_expiry_buffer_secs
         )
 
-        session = requests.Session()
-        session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
-        session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
-
-        try:
-            # Get the file via HTTP request
-            response = session.get(
-                self.link.fileLink,
-                timeout=self.settings.download_timeout,
-                verify=self._ssl_options.tls_verify,
-                headers=self.link.httpHeaders
-                # TODO: Pass cert from `self._ssl_options`
-            )
+        with self._http_client.execute(
+            method=HttpMethod.GET,
+            url=self.link.fileLink,
+            timeout=self.settings.download_timeout,
+            verify=self._ssl_options.tls_verify,
+            headers=self.link.httpHeaders
+            # TODO: Pass cert from `self._ssl_options`
+        ) as response:
             response.raise_for_status()
 
             # Save (and decompress if needed) the downloaded file
@@ -132,9 +137,6 @@ class ResultSetDownloadHandler:
                 self.link.startRowOffset,
                 self.link.rowCount,
             )
-        finally:
-            if session:
-                session.close()
 
     @staticmethod
     def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int):

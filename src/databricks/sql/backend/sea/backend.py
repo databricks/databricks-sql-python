@@ -5,7 +5,12 @@ import time
 import re
 from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.models.base import ExternalLink, ResultManifest
+from databricks.sql.backend.sea.models.base import (
+    ExternalLink,
+    ResultManifest,
+    StatementStatus,
+)
+from databricks.sql.backend.sea.models.responses import GetChunksResponse
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -45,7 +50,6 @@ from databricks.sql.backend.sea.models import (
     GetStatementResponse,
     CreateSessionResponse,
 )
-from databricks.sql.backend.sea.models.responses import GetChunksResponse
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +57,27 @@ logger = logging.getLogger(__name__)
 def _filter_session_configuration(
     session_configuration: Optional[Dict[str, Any]],
 ) -> Dict[str, str]:
+    """
+    Filter and normalise the provided session configuration parameters.
+
+    The Statement Execution API supports only a subset of SQL session
+    configuration options.  This helper validates the supplied
+    ``session_configuration`` dictionary against the allow-list defined in
+    ``ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP`` and returns a new
+    dictionary that contains **only** the supported parameters.
+
+    Args:
+        session_configuration: Optional mapping of session configuration
+            names to their desired values.  Key comparison is
+            case-insensitive.
+
+    Returns:
+        Dict[str, str]: A dictionary containing only the supported
+        configuration parameters with lower-case keys and string values.  If
+        *session_configuration* is ``None`` or empty, an empty dictionary is
+        returned.
+    """
+
     if not session_configuration:
         return {}
 
@@ -143,7 +168,7 @@ class SeaDatabricksClient(DatabricksClient):
             http_path=http_path,
             http_headers=http_headers,
             auth_provider=auth_provider,
-            ssl_options=self._ssl_options,
+            ssl_options=ssl_options,
             **kwargs,
         )
 
@@ -275,29 +300,6 @@ class SeaDatabricksClient(DatabricksClient):
             data=request_data.to_dict(),
         )
 
-    @staticmethod
-    def get_default_session_configuration_value(name: str) -> Optional[str]:
-        """
-        Get the default value for a session configuration parameter.
-
-        Args:
-            name: The name of the session configuration parameter
-
-        Returns:
-            The default value if the parameter is supported, None otherwise
-        """
-        return ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.get(name.upper())
-
-    @staticmethod
-    def get_allowed_session_configurations() -> List[str]:
-        """
-        Get the list of allowed session configuration parameters.
-
-        Returns:
-            List of allowed session configuration parameter names
-        """
-        return list(ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP.keys())
-
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
     ) -> List[Tuple]:
@@ -309,7 +311,7 @@ class SeaDatabricksClient(DatabricksClient):
             manifest: The ResultManifest object containing schema information
 
         Returns:
-            List[Tuple]: A list of column tuples
+            Optional[List]: A list of column tuples or None if no columns are found
         """
 
         schema_data = manifest.schema
@@ -318,15 +320,23 @@ class SeaDatabricksClient(DatabricksClient):
         columns = []
         for col_data in columns_data:
             # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
+            name = col_data.get("name", "")
+            type_name = col_data.get("type_name", "")
+            type_name = (
+                type_name[:-5] if type_name.endswith("_TYPE") else type_name
+            ).lower()
+            precision = col_data.get("type_precision")
+            scale = col_data.get("type_scale")
+
             columns.append(
                 (
-                    col_data.get("name", ""),  # name
-                    col_data.get("type_name", ""),  # type_code
+                    name,  # name
+                    type_name,  # type_code
                     None,  # display_size (not provided by SEA)
                     None,  # internal_size (not provided by SEA)
-                    col_data.get("precision"),  # precision
-                    col_data.get("scale"),  # scale
-                    col_data.get("nullable", True),  # null_ok
+                    precision,  # precision
+                    scale,  # scale
+                    None,  # null_ok
                 )
             )
 
@@ -351,7 +361,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Check for compression
         lz4_compressed = (
-            response.manifest.result_compression == ResultCompression.LZ4_FRAME.value
+            response.manifest.result_compression == ResultCompression.LZ4_FRAME
         )
 
         execute_response = ExecuteResponse(
@@ -389,8 +399,9 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
     def _check_command_not_in_failed_or_closed_state(
-        self, state: CommandState, command_id: CommandId
+        self, status: StatementStatus, command_id: CommandId
     ) -> None:
+        state = status.state
         if state == CommandState.CLOSED:
             raise DatabaseError(
                 "Command {} unexpectedly closed server side".format(command_id),
@@ -399,8 +410,11 @@ class SeaDatabricksClient(DatabricksClient):
                 },
             )
         if state == CommandState.FAILED:
+            error = status.error
+            error_code = error.error_code if error else "UNKNOWN_ERROR_CODE"
+            error_message = error.message if error else "UNKNOWN_ERROR_MESSAGE"
             raise ServerOperationError(
-                "Command {} failed".format(command_id),
+                "Command failed: {} - {}".format(error_code, error_message),
                 {
                     "operation-id": command_id,
                 },
@@ -414,16 +428,18 @@ class SeaDatabricksClient(DatabricksClient):
         """
 
         final_response: Union[ExecuteStatementResponse, GetStatementResponse] = response
-
-        state = final_response.status.state
         command_id = CommandId.from_sea_statement_id(final_response.statement_id)
 
-        while state in [CommandState.PENDING, CommandState.RUNNING]:
+        while final_response.status.state in [
+            CommandState.PENDING,
+            CommandState.RUNNING,
+        ]:
             time.sleep(self.POLL_INTERVAL_SECONDS)
             final_response = self._poll_query(command_id)
-            state = final_response.status.state
 
-        self._check_command_not_in_failed_or_closed_state(state, command_id)
+        self._check_command_not_in_failed_or_closed_state(
+            final_response.status, command_id
+        )
 
         return final_response
 
@@ -457,7 +473,7 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
 
         Returns:
-            SeaResultSet: A SeaResultSet instance for the executed command
+            ResultSet: A SeaResultSet instance for the executed command
         """
 
         if session_id.backend_type != BackendType.SEA:
@@ -513,14 +529,6 @@ class SeaDatabricksClient(DatabricksClient):
         )
         response = ExecuteStatementResponse.from_dict(response_data)
         statement_id = response.statement_id
-        if not statement_id:
-            raise ServerOperationError(
-                "Failed to execute command: No statement ID returned",
-                {
-                    "operation-id": None,
-                    "diagnostic-info": None,
-                },
-            )
 
         command_id = CommandId.from_sea_statement_id(statement_id)
 
@@ -552,8 +560,6 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
-        if sea_statement_id is None:
-            raise ValueError("Not a valid SEA command ID")
 
         request = CancelStatementRequest(statement_id=sea_statement_id)
         self._http_client._make_request(
@@ -577,8 +583,6 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
-        if sea_statement_id is None:
-            raise ValueError("Not a valid SEA command ID")
 
         request = CloseStatementRequest(statement_id=sea_statement_id)
         self._http_client._make_request(
@@ -596,8 +600,6 @@ class SeaDatabricksClient(DatabricksClient):
             raise ValueError("Not a valid SEA command ID")
 
         sea_statement_id = command_id.to_sea_statement_id()
-        if sea_statement_id is None:
-            raise ValueError("Not a valid SEA command ID")
 
         request = GetStatementRequest(statement_id=sea_statement_id)
         response_data = self._http_client._make_request(
@@ -620,7 +622,7 @@ class SeaDatabricksClient(DatabricksClient):
             CommandState: The current state of the command
 
         Raises:
-            ProgrammingError: If the command ID is invalid
+            ValueError: If the command ID is invalid
         """
 
         response = self._poll_query(command_id)
