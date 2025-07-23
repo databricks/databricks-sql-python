@@ -36,8 +36,8 @@ class ResultSet(ABC):
 
     def __init__(
         self,
-        connection: "Connection",
-        backend: "DatabricksClient",
+        connection: Connection,
+        backend: DatabricksClient,
         arraysize: int,
         buffer_size_bytes: int,
         command_id: CommandId,
@@ -54,8 +54,8 @@ class ResultSet(ABC):
         A ResultSet manages the results of a single command.
 
         Parameters:
-            :param connection: The parent connection
-            :param backend: The backend client
+            :param connection: The parent connection that was used to execute this command
+            :param backend: The backend specialised backend client to be invoked in the fetch phase
             :param arraysize: The max number of rows to fetch at a time (PEP-249)
             :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
             :param command_id: The command ID
@@ -190,9 +190,9 @@ class ThriftResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        thrift_client: "ThriftDatabricksClient",
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        thrift_client: ThriftDatabricksClient,
         session_id_hex: Optional[str],
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
@@ -319,6 +319,7 @@ class ThriftResultSet(ResultSet):
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
         results = self.results.next_n_rows(size)
+        partial_result_chunks = [results]
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
 
@@ -329,11 +330,11 @@ class ThriftResultSet(ResultSet):
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results])
+            partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
-        return results
+        return pyarrow.concat_tables(partial_result_chunks)
 
     def fetchmany_columnar(self, size: int):
         """
@@ -364,7 +365,7 @@ class ThriftResultSet(ResultSet):
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
-
+        partial_result_chunks = [results]
         while not self.has_been_closed_server_side and self.is_direct_results:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
@@ -373,7 +374,7 @@ class ThriftResultSet(ResultSet):
             ):
                 results = self.merge_columnar(results, partial_results)
             else:
-                results = pyarrow.concat_tables([results, partial_results])
+                partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
@@ -384,7 +385,7 @@ class ThriftResultSet(ResultSet):
                 for name, col in zip(results.column_names, results.column_table)
             }
             return pyarrow.Table.from_pydict(data)
-        return results
+        return pyarrow.concat_tables(partial_result_chunks)
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
