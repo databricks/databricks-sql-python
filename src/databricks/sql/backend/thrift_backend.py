@@ -604,7 +604,7 @@ class ThriftDatabricksClient(DatabricksClient):
             session_id = SessionId.from_thrift_handle(
                 response.sessionHandle, properties
             )
-            self._session_id_hex = session_id.guid_hex
+            self._session_id_hex = session_id.hex_guid
             return session_id
         except:
             self._transport.close()
@@ -1048,8 +1048,8 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> ResultSet:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
