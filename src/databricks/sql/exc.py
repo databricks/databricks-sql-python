@@ -2,8 +2,6 @@ import json
 import logging
 
 logger = logging.getLogger(__name__)
-from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
-
 
 ### PEP-249 Mandated ###
 # https://peps.python.org/pep-0249/#exceptions
@@ -22,6 +20,8 @@ class Error(Exception):
 
         error_name = self.__class__.__name__
         if session_id_hex:
+            from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
+
             telemetry_client = TelemetryClientFactory.get_telemetry_client(
                 session_id_hex
             )
