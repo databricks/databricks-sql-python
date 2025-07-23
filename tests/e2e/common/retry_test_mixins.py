@@ -168,7 +168,9 @@ class PySQLRetryTestsMixin:
         ],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_urllib3_settings_are_honored(self, extra_params, mock_send_telemetry):
+    def test_retry_urllib3_settings_are_honored(
+        self, extra_params, mock_send_telemetry
+    ):
         """Databricks overrides some of urllib3's configuration. This tests confirms that what configuration
         we DON'T override is preserved in urllib3's internals
         """
@@ -474,9 +476,7 @@ class PySQLRetryTestsMixin:
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_retry_max_redirects_raises_too_many_redirects_exception(
-        
-        self, extra_params
-    , mock_send_telemetry
+        self, extra_params, mock_send_telemetry
     ):
         """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy is created
