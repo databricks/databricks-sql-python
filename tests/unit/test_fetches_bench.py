@@ -33,11 +33,9 @@ class FetchBenchmarkTests(unittest.TestCase):
         rs = client.ResultSet(
             connection=None,
             backend=None,
-            backend=None,
             execute_response=ExecuteResponse(
                 status=None,
                 has_been_closed_server_side=True,
-                is_direct_results=False,
                 is_direct_results=False,
                 description=Mock(),
                 command_id=None,

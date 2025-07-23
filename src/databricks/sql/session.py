@@ -40,7 +40,7 @@ class Session:
         self.session_configuration = session_configuration
         self.catalog = catalog
         self.schema = schema
-        self.http_path = http_path 
+        self.http_path = http_path
 
         self.auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs

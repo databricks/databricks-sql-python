@@ -79,7 +79,12 @@ class DownloaderTests(unittest.TestCase):
             return_value=create_response(status_code=404, _content=b"1234"),
         ):
             d = downloader.ResultSetDownloadHandler(
-                settings, result_link, ssl_options=SSLOptions()
+                settings,
+                result_link,
+                ssl_options=SSLOptions(),
+                chunk_id=0,
+                session_id_hex=Mock(),
+                statement_id=Mock(),
             )
             with self.assertRaises(requests.exceptions.HTTPError) as context:
                 d.run()
@@ -99,7 +104,12 @@ class DownloaderTests(unittest.TestCase):
             return_value=create_response(status_code=200, _content=file_bytes),
         ):
             d = downloader.ResultSetDownloadHandler(
-                settings, result_link, ssl_options=SSLOptions()
+                settings,
+                result_link,
+                ssl_options=SSLOptions(),
+                chunk_id=0,
+                session_id_hex=Mock(),
+                statement_id=Mock(),
             )
             file = d.run()
 
@@ -120,7 +130,12 @@ class DownloaderTests(unittest.TestCase):
             return_value=create_response(status_code=200, _content=compressed_bytes),
         ):
             d = downloader.ResultSetDownloadHandler(
-                settings, result_link, ssl_options=SSLOptions()
+                settings,
+                result_link,
+                ssl_options=SSLOptions(),
+                chunk_id=0,
+                session_id_hex=Mock(),
+                statement_id=Mock(),
             )
             file = d.run()
 
@@ -137,7 +152,12 @@ class DownloaderTests(unittest.TestCase):
 
         with patch.object(http_client, "execute", side_effect=ConnectionError("foo")):
             d = downloader.ResultSetDownloadHandler(
-                settings, result_link, ssl_options=SSLOptions()
+                settings,
+                result_link,
+                ssl_options=SSLOptions(),
+                chunk_id=0,
+                session_id_hex=Mock(),
+                statement_id=Mock(),
             )
             with self.assertRaises(ConnectionError):
                 d.run()
@@ -152,7 +172,12 @@ class DownloaderTests(unittest.TestCase):
 
         with patch.object(http_client, "execute", side_effect=TimeoutError("foo")):
             d = downloader.ResultSetDownloadHandler(
-                settings, result_link, ssl_options=SSLOptions()
+                settings,
+                result_link,
+                ssl_options=SSLOptions(),
+                chunk_id=0,
+                session_id_hex=Mock(),
+                statement_id=Mock(),
             )
             with self.assertRaises(TimeoutError):
                 d.run()

@@ -46,7 +46,6 @@ from databricks.sql.thrift_api.TCLIService.TCLIService import (
 
 from databricks.sql.utils import (
     ThriftResultSetQueueFactory,
-    ResultSetQueueFactory,
     _bound,
     RequestErrorInfo,
     NoRetryReason,
@@ -605,7 +604,7 @@ class ThriftDatabricksClient(DatabricksClient):
             session_id = SessionId.from_thrift_handle(
                 response.sessionHandle, properties
             )
-            self._session_id_hex = session_id.hex_guid
+            self._session_id_hex = session_id.guid_hex
             return session_id
         except:
             self._transport.close()

@@ -19,7 +19,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
-from databricks.sql.result_set import SeaResultSet
+from databricks.sql.backend.sea.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
