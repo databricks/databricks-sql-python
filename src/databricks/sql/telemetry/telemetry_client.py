@@ -100,16 +100,17 @@ class TelemetryHelper:
             return None
 
     @staticmethod
-    def is_server_telemetry_enabled(connection: "Connection") -> bool:
-        """
-        Checks if the server-side feature flag for telemetry is enabled.
-        This is a BLOCKING call on the first check per connection.
-        """
-        context = FeatureFlagsContextFactory.get_instance(connection)
+    def is_telemetry_enabled(connection: "Connection") -> bool:
+        if connection.force_enable_telemetry:
+            return True
 
-        return context.is_feature_enabled(
-            TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
-        )
+        if connection.enable_telemetry:
+            context = FeatureFlagsContextFactory.get_instance(connection)
+            return context.is_feature_enabled(
+                TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
+            )
+        else:
+            return False
 
 
 class NoopTelemetryClient(BaseTelemetryClient):

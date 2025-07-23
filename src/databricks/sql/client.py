@@ -262,16 +262,9 @@ class Connection:
         )
         self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
-        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
-        if self.client_telemetry_enabled:
-            self.server_telemetry_enabled = TelemetryHelper.is_server_telemetry_enabled(
-                self
-            )
-            self.telemetry_enabled = (
-                self.client_telemetry_enabled and self.server_telemetry_enabled
-            )
-        else:
-            self.telemetry_enabled = False
+        self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
+        self.enable_telemetry = kwargs.get("enable_telemetry", False)
+        self.telemetry_enabled = TelemetryHelper.is_telemetry_enabled(self)
 
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
