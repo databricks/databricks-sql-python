@@ -330,7 +330,7 @@ class PySQLRetryTestsMixin:
         with self.connection(extra_params={**self._retry_policy}) as conn:
             with conn.cursor() as curs:
                 with patch(
-                    "databricks.sql.utils.ExecuteResponse.has_been_closed_server_side",
+                    "databricks.sql.backend.types.ExecuteResponse.has_been_closed_server_side",
                     new_callable=PropertyMock,
                     return_value=False,
                 ):

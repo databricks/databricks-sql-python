@@ -27,7 +27,6 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.utils import (
-    ExecuteResponse,
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
@@ -101,6 +100,10 @@ class Connection:
         Connect to a Databricks SQL endpoint or a Databricks cluster.
 
         Parameters:
+            :param use_sea: `bool`, optional (default is False)
+                Use the SEA backend instead of the Thrift backend.
+            :param use_hybrid_disposition: `bool`, optional (default is False)
+                Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
             :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
                 or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
@@ -306,6 +309,7 @@ class Connection:
             driver_connection_params=driver_connection_params,
             user_agent=self.session.useragent_header,
         )
+        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -393,8 +397,14 @@ class Connection:
         self,
         arraysize: int = DEFAULT_ARRAY_SIZE,
         buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+        row_limit: Optional[int] = None,
     ) -> "Cursor":
         """
+        Args:
+            arraysize: The maximum number of rows in direct results.
+            buffer_size_bytes: The maximum number of bytes in direct results.
+            row_limit: The maximum number of rows in the result.
+
         Return a new Cursor object using the connection.
 
         Will throw an Error if the connection has been closed.
@@ -410,6 +420,7 @@ class Connection:
             self.session.backend,
             arraysize=arraysize,
             result_buffer_size_bytes=buffer_size_bytes,
+            row_limit=row_limit,
         )
         self._cursors.append(cursor)
         return cursor
@@ -448,6 +459,7 @@ class Cursor:
         backend: DatabricksClient,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = DEFAULT_ARRAY_SIZE,
+        row_limit: Optional[int] = None,
     ) -> None:
         """
         These objects represent a database cursor, which is used to manage the context of a fetch
@@ -457,16 +469,18 @@ class Cursor:
         visible by other cursors or connections.
         """
 
-        self.connection = connection
-        self.rowcount = -1  # Return -1 as this is not supported
-        self.buffer_size_bytes = result_buffer_size_bytes
+        self.connection: Connection = connection
+
+        self.rowcount: int = -1  # Return -1 as this is not supported
+        self.buffer_size_bytes: int = result_buffer_size_bytes
         self.active_result_set: Union[ResultSet, None] = None
-        self.arraysize = arraysize
+        self.arraysize: int = arraysize
+        self.row_limit: Optional[int] = row_limit
         # Note that Cursor closed => active result set closed, but not vice versa
-        self.open = True
-        self.executing_command_id = None
-        self.backend = backend
-        self.active_command_id = None
+        self.open: bool = True
+        self.executing_command_id: Optional[CommandId] = None
+        self.backend: DatabricksClient = backend
+        self.active_command_id: Optional[CommandId] = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
@@ -867,6 +881,7 @@ class Cursor:
             parameters=prepared_params,
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
+            row_limit=self.row_limit,
         )
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
@@ -924,6 +939,7 @@ class Cursor:
             parameters=prepared_params,
             async_op=True,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
+            row_limit=self.row_limit,
         )
 
         return self
