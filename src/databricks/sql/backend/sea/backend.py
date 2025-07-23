@@ -115,6 +115,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
+    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     # SEA constants
     POLL_INTERVAL_SECONDS = 0.2
@@ -301,7 +302,7 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
-    ) -> Optional[List]:
+    ) -> List[Tuple]:
         """
         Extract column description from a manifest object, in the format defined by
         the spec: https://peps.python.org/pep-0249/#description
@@ -310,39 +311,28 @@ class SeaDatabricksClient(DatabricksClient):
             manifest: The ResultManifest object containing schema information
 
         Returns:
-            Optional[List]: A list of column tuples or None if no columns are found
+            List[Tuple]: A list of column tuples
         """
 
         schema_data = manifest.schema
         columns_data = schema_data.get("columns", [])
 
-        if not columns_data:
-            return None
-
         columns = []
         for col_data in columns_data:
             # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
-            name = col_data.get("name", "")
-            type_name = col_data.get("type_name", "")
-            type_name = (
-                type_name[:-5] if type_name.endswith("_TYPE") else type_name
-            ).lower()
-            precision = col_data.get("type_precision")
-            scale = col_data.get("type_scale")
-
             columns.append(
                 (
-                    name,  # name
-                    type_name,  # type_code
+                    col_data.get("name", ""),  # name
+                    col_data.get("type_name", ""),  # type_code
                     None,  # display_size (not provided by SEA)
                     None,  # internal_size (not provided by SEA)
-                    precision,  # precision
-                    scale,  # scale
-                    None,  # null_ok
+                    col_data.get("precision"),  # precision
+                    col_data.get("scale"),  # scale
+                    col_data.get("nullable", True),  # null_ok
                 )
             )
 
-        return columns if columns else None
+        return columns
 
     def _results_message_to_execute_response(
         self, response: Union[ExecuteStatementResponse, GetStatementResponse]
