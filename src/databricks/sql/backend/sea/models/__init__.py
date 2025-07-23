@@ -9,7 +9,6 @@ from databricks.sql.backend.sea.models.base import (
     StatementStatus,
     ExternalLink,
     ResultData,
-    ColumnInfo,
     ResultManifest,
 )
 
@@ -27,7 +26,6 @@ from databricks.sql.backend.sea.models.responses import (
     ExecuteStatementResponse,
     GetStatementResponse,
     CreateSessionResponse,
-    GetChunksResponse,
 )
 
 __all__ = [
@@ -36,7 +34,6 @@ __all__ = [
     "StatementStatus",
     "ExternalLink",
     "ResultData",
-    "ColumnInfo",
     "ResultManifest",
     # Request models
     "StatementParameter",
@@ -50,5 +47,4 @@ __all__ = [
     "ExecuteStatementResponse",
     "GetStatementResponse",
     "CreateSessionResponse",
-    "GetChunksResponse",
 ]

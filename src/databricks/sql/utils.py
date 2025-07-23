@@ -9,7 +9,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 import re
 
 import lz4.frame
@@ -272,17 +272,19 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             logger.debug("CloudFetchQueue: no more rows available")
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
 
             # Replace current table with the next table if we are at the end of the current table
@@ -292,7 +294,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def remaining_rows(self) -> "pyarrow.Table":
         """
@@ -306,15 +308,16 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
         """Create next table at the given row offset"""

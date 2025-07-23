@@ -54,7 +54,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=Mock(),
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=True,
                 description=description,
@@ -100,7 +100,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=Mock(),
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=False,
                 description=description,
