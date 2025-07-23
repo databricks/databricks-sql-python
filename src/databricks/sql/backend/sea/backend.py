@@ -361,7 +361,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Check for compression
         lz4_compressed = (
-            response.manifest.result_compression == ResultCompression.LZ4_FRAME
+            response.manifest.result_compression == ResultCompression.LZ4_FRAME.value
         )
 
         execute_response = ExecuteResponse(
