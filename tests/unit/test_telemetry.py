@@ -8,7 +8,6 @@ from databricks.sql.telemetry.telemetry_client import (
     NoopTelemetryClient,
     TelemetryClientFactory,
     TelemetryHelper,
-    BaseTelemetryClient,
 )
 from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow
 from databricks.sql.auth.authenticators import (
@@ -290,3 +289,27 @@ class TestTelemetryFactory:
         TelemetryClientFactory.close(session2)
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
+
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log")
+    @patch("databricks.sql.client.Session")
+    def test_connection_failure_sends_correct_telemetry_payload(
+        self, mock_session, mock_export_failure_log
+    ):
+        """
+        Verify that a connection failure constructs and sends the correct
+        telemetry payload via _send_telemetry.
+        """
+
+        error_message = "Could not connect to host"
+        mock_session.side_effect = Exception(error_message)
+
+        try:
+            from databricks import sql
+            sql.connect(server_hostname="test-host", http_path="/test-path")
+        except Exception as e:
+            assert str(e) == error_message
+
+        mock_export_failure_log.assert_called_once()
+        call_arguments = mock_export_failure_log.call_args
+        assert call_arguments[0][0] == "Exception"
+        assert call_arguments[0][1] == error_message

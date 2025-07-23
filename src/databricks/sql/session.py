@@ -39,6 +39,7 @@ class Session:
         self.session_configuration = session_configuration
         self.catalog = catalog
         self.schema = schema
+        self.http_path = http_path
 
         self.auth_provider = get_python_sql_connector_auth_provider(
             server_hostname, **kwargs
@@ -93,6 +94,7 @@ class Session:
             catalog=self.catalog,
             schema=self.schema,
         )
+
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True
         logger.info("Successfully opened session %s", str(self.guid_hex))
