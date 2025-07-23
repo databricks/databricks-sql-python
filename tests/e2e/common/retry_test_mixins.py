@@ -160,8 +160,17 @@ class PySQLRetryTestsMixin:
         "_retry_delay_default": 0.5,
     }
 
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {"use_sea": True},
+        ],
+    )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_urllib3_settings_are_honored(self, mock_send_telemetry):
+    def test_retry_urllib3_settings_are_honored(
+        self, mock_send_telemetry, extra_params
+    ):
         """Databricks overrides some of urllib3's configuration. This tests confirms that what configuration
         we DON'T override is preserved in urllib3's internals
         """
@@ -189,7 +198,7 @@ class PySQLRetryTestsMixin:
         ],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_oserror_retries(self, extra_params, mock_send_telemetry):
+    def test_oserror_retries(self, mock_send_telemetry, extra_params):
         """If a network error occurs during make_request, the request is retried according to policy"""
         with patch(
             "urllib3.connectionpool.HTTPSConnectionPool._validate_conn",
@@ -210,7 +219,7 @@ class PySQLRetryTestsMixin:
         ],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_max_count_not_exceeded(self, extra_params, mock_send_telemetry):
+    def test_retry_max_count_not_exceeded(self, mock_send_telemetry, extra_params):
         """GIVEN the max_attempts_count is 5
         WHEN the server sends nothing but 429 responses
         THEN the connector issues six request (original plus five retries)
@@ -231,7 +240,7 @@ class PySQLRetryTestsMixin:
         ],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_exponential_backoff(self, extra_params, mock_send_telemetry):
+    def test_retry_exponential_backoff(self, mock_send_telemetry, extra_params):
         """GIVEN the retry policy is configured for reasonable exponential backoff
         WHEN the server sends nothing but 429 responses with retry-afters
         THEN the connector will use those retry-afters values as floor
@@ -467,7 +476,7 @@ class PySQLRetryTestsMixin:
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_retry_max_redirects_raises_too_many_redirects_exception(
-        self, extra_params, mock_send_telemetry
+        self, mock_send_telemetry, extra_params
     ):
         """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy is created
@@ -502,7 +511,7 @@ class PySQLRetryTestsMixin:
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_retry_max_redirects_unset_doesnt_redirect_forever(
-        self, extra_params, mock_send_telemetry
+        self, mock_send_telemetry, extra_params
     ):
         """GIVEN the connector is configured without a custom max_redirects
         WHEN the DatabricksRetryPolicy is used
