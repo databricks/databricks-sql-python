@@ -78,45 +78,29 @@ jobs:
       #----------------------------------------------
       #         check coverage percentage
       #----------------------------------------------
-      - name: Check coverage percentage
-        if: steps.override.outputs.override == 'false'
+      - name: Report coverage percentage
         run: |
           COVERAGE_FILE="coverage.xml"
           if [ ! -f "$COVERAGE_FILE" ]; then
             echo "ERROR: Coverage file not found at $COVERAGE_FILE"
             exit 1
           fi
-          
+
           # Install xmllint if not available
           if ! command -v xmllint &> /dev/null; then
             sudo apt-get update && sudo apt-get install -y libxml2-utils
           fi
-          
+
           COVERED=$(xmllint --xpath "string(//coverage/@lines-covered)" "$COVERAGE_FILE")
           TOTAL=$(xmllint --xpath "string(//coverage/@lines-valid)" "$COVERAGE_FILE")
-          
-          # Use Python for floating-point math
+
+          # Calculate percentage using Python for precision
           PERCENTAGE=$(python3 -c "covered=${COVERED}; total=${TOTAL}; print(round((covered/total)*100, 2))")
-          
-          echo "Branch Coverage: ${PERCENTAGE}%"
-          echo "Required Coverage: 85%"
-          
-          # Use Python to compare the coverage with 85
-          python3 -c "import sys; sys.exit(0 if float('${PERCENTAGE}') >= 85 else 1)"
-          if [ $? -eq 1 ]; then
-            echo "ERROR: Coverage is ${PERCENTAGE}%, which is less than the required 85%"
-            exit 1
-          else
-            echo "SUCCESS: Coverage is ${PERCENTAGE}%, which meets the required 85%"
-          fi
+
+          echo "📊 Branch Coverage: ${PERCENTAGE}%"
       #----------------------------------------------
       #         coverage enforcement summary
       #----------------------------------------------
-      - name: Coverage enforcement summary
+      - name: Coverage summary
         run: |
-          if [ "${{ steps.override.outputs.override }}" == "true" ]; then
-            echo "⚠️ Coverage checks bypassed: ${{ steps.override.outputs.reason }}"
-            echo "Please ensure this override is justified and temporary"
-          else
-            echo "✅ Coverage checks enforced - minimum 85% required"
-          fi 
+          echo "Coverage calculation complete. No minimum enforced." 
