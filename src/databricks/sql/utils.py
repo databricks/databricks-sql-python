@@ -740,6 +740,7 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
 
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
+
     converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":
