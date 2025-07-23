@@ -55,7 +55,7 @@ class ResultSet(ABC):
 
         Parameters:
             :param connection: The parent connection that was used to execute this command
-            :param backend: The backend specialised backend client to be invoked in the fetch phase
+            :param backend: The specialised backend client to be invoked in the fetch phase
             :param arraysize: The max number of rows to fetch at a time (PEP-249)
             :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
             :param command_id: The command ID
@@ -334,7 +334,7 @@ class ThriftResultSet(ResultSet):
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
-        return pyarrow.concat_tables(partial_result_chunks)
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def fetchmany_columnar(self, size: int):
         """
@@ -385,7 +385,7 @@ class ThriftResultSet(ResultSet):
                 for name, col in zip(results.column_names, results.column_table)
             }
             return pyarrow.Table.from_pydict(data)
-        return pyarrow.concat_tables(partial_result_chunks)
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
