@@ -105,17 +105,13 @@ class ClientTestSuite(unittest.TestCase):
 
                 # Mock the execute response with controlled state
                 mock_execute_response = Mock(spec=ExecuteResponse)
-
-                mock_execute_response.command_id = Mock(spec=CommandId)
-                mock_execute_response.status = (
-                    CommandState.SUCCEEDED if not closed else CommandState.CLOSED
-                )
+                mock_execute_response.status = initial_state
                 mock_execute_response.has_been_closed_server_side = closed
                 mock_execute_response.is_staging_operation = False
                 mock_execute_response.command_id = Mock(spec=CommandId)
                 mock_execute_response.description = []
 
-                # Mock the backend that will be used by the real ThriftResultSet
+                # Mock the backend that will be used
                 mock_backend = Mock(spec=ThriftDatabricksClient)
                 mock_backend.staging_allowed_local_path = None
                 mock_backend.fetch_results.return_value = (Mock(), False, 0)
@@ -137,15 +133,13 @@ class ClientTestSuite(unittest.TestCase):
                 # Mock execute_command to return our real result set
                 cursor.backend.execute_command = Mock(return_value=real_result_set)
 
-                # Execute a command - this should set cursor.active_result_set to our real result set
+                # Execute a command
                 cursor.execute("SELECT 1")
 
-                # Close the connection - this should trigger the real close chain:
-                # connection.close() -> cursor.close() -> result_set.close()
+                # Close the connection
                 connection.close()
 
-                # Verify the REAL close logic worked through the chain:
-                # 1. has_been_closed_server_side should always be True after close()
+                # Verify the close logic worked:
                 assert real_result_set.has_been_closed_server_side is True
 
                 # 2. op_state should always be CLOSED after close()
