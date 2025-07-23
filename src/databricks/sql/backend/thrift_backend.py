@@ -876,7 +876,8 @@ class ThriftDatabricksClient(DatabricksClient):
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         is_direct_results = resp.hasMoreRows
 
-        status = CommandState.from_thrift_state(resp.status)
+        status = CommandState.from_thrift_state(resp.status) or CommandState.RUNNING
+
         execute_response = ExecuteResponse(
             command_id=command_id,
             status=status,
