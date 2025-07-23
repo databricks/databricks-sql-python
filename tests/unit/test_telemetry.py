@@ -1,6 +1,5 @@
 import uuid
 import pytest
-import requests
 from unittest.mock import patch, MagicMock
 
 from databricks.sql.telemetry.telemetry_client import (

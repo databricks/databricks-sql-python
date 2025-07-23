@@ -1,6 +1,5 @@
 import threading
 import time
-import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
