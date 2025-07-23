@@ -160,17 +160,8 @@ class PySQLRetryTestsMixin:
         "_retry_delay_default": 0.5,
     }
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {},
-            {"use_sea": True},
-        ],
-    )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_urllib3_settings_are_honored(
-        self, extra_params, mock_send_telemetry
-    ):
+    def test_retry_urllib3_settings_are_honored(self, mock_send_telemetry):
         """Databricks overrides some of urllib3's configuration. This tests confirms that what configuration
         we DON'T override is preserved in urllib3's internals
         """
