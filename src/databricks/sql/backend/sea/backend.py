@@ -5,7 +5,12 @@ import time
 import re
 from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.models.base import ResultManifest, StatementStatus
+from databricks.sql.backend.sea.models.base import (
+    ExternalLink,
+    ResultManifest,
+    StatementStatus,
+)
+from databricks.sql.backend.sea.models.responses import GetChunksResponse
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -646,6 +651,27 @@ class SeaDatabricksClient(DatabricksClient):
 
         response = self._poll_query(command_id)
         return self._response_to_result_set(response, cursor)
+
+    def get_chunk_links(
+        self, statement_id: str, chunk_index: int
+    ) -> List[ExternalLink]:
+        """
+        Get links for chunks starting from the specified index.
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+        Returns:
+            ExternalLink: External link for the chunk
+        """
+
+        response_data = self._http_client._make_request(
+            method="GET",
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+        )
+        response = GetChunksResponse.from_dict(response_data)
+
+        links = response.external_links or []
+        return links
 
     # == Metadata Operations ==
 
