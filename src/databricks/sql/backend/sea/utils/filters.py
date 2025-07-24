@@ -53,7 +53,7 @@ class ResultSetFilter:
         # Reuse the command_id from the original result set
         command_id = result_set.command_id
 
-        # Create an ExecuteResponse with the filtered data
+        # Create an ExecuteResponse for the filtered data
         execute_response = ExecuteResponse(
             command_id=command_id,
             status=result_set.status,

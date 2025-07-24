@@ -11,6 +11,7 @@ from uuid import UUID
 from databricks.sql.result_set import ThriftResultSet
 from databricks.sql.telemetry.models.event import StatementType
 
+
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
     from databricks.sql.result_set import ResultSet
@@ -603,7 +604,7 @@ class ThriftDatabricksClient(DatabricksClient):
             session_id = SessionId.from_thrift_handle(
                 response.sessionHandle, properties
             )
-            self._session_id_hex = session_id.guid_hex
+            self._session_id_hex = session_id.hex_guid
             return session_id
         except:
             self._transport.close()
@@ -833,7 +834,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return execute_response, is_direct_results
 
     def get_execution_result(
-        self, command_id: CommandId, cursor: "Cursor"
+        self, command_id: CommandId, cursor: Cursor
     ) -> "ResultSet":
         thrift_handle = command_id.to_thrift_handle()
         if not thrift_handle:
@@ -877,7 +878,7 @@ class ThriftDatabricksClient(DatabricksClient):
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation
         is_direct_results = resp.hasMoreRows
 
-        status = self.get_query_state(command_id)
+        status = CommandState.from_thrift_state(resp.status) or CommandState.RUNNING
 
         execute_response = ExecuteResponse(
             command_id=command_id,
@@ -894,6 +895,7 @@ class ThriftDatabricksClient(DatabricksClient):
             connection=cursor.connection,
             execute_response=execute_response,
             thrift_client=self,
+            session_id_hex=self._session_id_hex,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
@@ -901,7 +903,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             is_direct_results=is_direct_results,
-            session_id_hex=self._session_id_hex,
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -1047,8 +1048,8 @@ class ThriftDatabricksClient(DatabricksClient):
         session_id: SessionId,
         max_rows: int,
         max_bytes: int,
-        cursor: "Cursor",
-    ) -> "ResultSet":
+        cursor: Cursor,
+    ) -> ResultSet:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
             raise ValueError("Not a valid Thrift session ID")
@@ -1091,7 +1092,7 @@ class ThriftDatabricksClient(DatabricksClient):
         cursor: Cursor,
         catalog_name=None,
         schema_name=None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         from databricks.sql.result_set import ThriftResultSet
 
         thrift_handle = session_id.to_thrift_handle()
@@ -1140,7 +1141,7 @@ class ThriftDatabricksClient(DatabricksClient):
         schema_name=None,
         table_name=None,
         table_types=None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         from databricks.sql.result_set import ThriftResultSet
 
         thrift_handle = session_id.to_thrift_handle()
@@ -1191,7 +1192,7 @@ class ThriftDatabricksClient(DatabricksClient):
         schema_name=None,
         table_name=None,
         column_name=None,
-    ) -> "ResultSet":
+    ) -> ResultSet:
         from databricks.sql.result_set import ThriftResultSet
 
         thrift_handle = session_id.to_thrift_handle()

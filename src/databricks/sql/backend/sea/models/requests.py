@@ -54,8 +54,8 @@ class ExecuteStatementRequest:
             result["parameters"] = [
                 {
                     "name": param.name,
-                    **({"value": param.value} if param.value is not None else {}),
-                    **({"type": param.type} if param.type is not None else {}),
+                    "value": param.value,
+                    "type": param.type,
                 }
                 for param in self.parameters
             ]
