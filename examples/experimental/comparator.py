@@ -233,6 +233,41 @@ class PythonConnectorComparator:
                         sea_val,
                     )
 
+    def _safe_compare(self, val1, val2):
+        """
+        Safely compare two values, handling lists, dicts, and complex types.
+        
+        Returns True if values are equal, False otherwise.
+        """
+        try:
+            # Handle None values
+            if val1 is None and val2 is None:
+                return True
+            if val1 is None or val2 is None:
+                return False
+            
+            # For lists, tuples, and other sequences (but not strings)
+            if isinstance(val1, (list, tuple)) and isinstance(val2, (list, tuple)):
+                if len(val1) != len(val2):
+                    return False
+                return all(self._safe_compare(v1, v2) for v1, v2 in zip(val1, val2))
+            
+            # For dictionaries
+            if isinstance(val1, dict) and isinstance(val2, dict):
+                if set(val1.keys()) != set(val2.keys()):
+                    return False
+                return all(self._safe_compare(val1[k], val2[k]) for k in val1.keys())
+            
+            # For Row objects (which are tuples with special properties)
+            if hasattr(val1, 'asDict') and hasattr(val2, 'asDict'):
+                return self._safe_compare(val1.asDict(recursive=True), val2.asDict(recursive=True))
+            
+            # Default comparison
+            return val1 == val2
+        except (ValueError, TypeError) as e:
+            # If comparison fails (e.g., numpy arrays), convert to string
+            return str(val1) == str(val2)
+
     def compare_rows(
         self, thrift_rows: List[Row], sea_rows: List[Row], result: ComparisonResult
     ):
@@ -264,9 +299,19 @@ class PythonConnectorComparator:
                 thrift_dict = thrift_row.asDict(recursive=True)
                 sea_dict = sea_row.asDict(recursive=True)
 
-                if thrift_dict != sea_dict:
-                    # Find which fields differ
-                    all_fields = set(thrift_dict.keys()) | set(sea_dict.keys())
+                # Check if dictionaries are different by comparing all fields
+                all_fields = set(thrift_dict.keys()) | set(sea_dict.keys())
+                dicts_differ = False
+                
+                for field in all_fields:
+                    if field not in thrift_dict or field not in sea_dict:
+                        dicts_differ = True
+                        break
+                    elif not self._safe_compare(thrift_dict.get(field), sea_dict.get(field)):
+                        dicts_differ = True
+                        break
+                
+                if dicts_differ:
 
                     for field in all_fields:
                         thrift_value = thrift_dict.get(field)
@@ -276,7 +321,7 @@ class PythonConnectorComparator:
                             fields_missing_in_thrift.add(field)
                         elif field not in sea_dict:
                             fields_missing_in_sea.add(field)
-                        elif thrift_value != sea_value:
+                        elif not self._safe_compare(thrift_value, sea_value):
                             if field not in field_value_mismatches:
                                 field_value_mismatches[field] = []
                             field_value_mismatches[field].append(
@@ -308,8 +353,8 @@ class PythonConnectorComparator:
                 thrift_values = [m[1] for m in mismatches]
                 sea_values = [m[2] for m in mismatches]
 
-                if all(v == thrift_values[0] for v in thrift_values) and all(
-                    v == sea_values[0] for v in sea_values
+                if all(self._safe_compare(v, thrift_values[0]) for v in thrift_values) and all(
+                    self._safe_compare(v, sea_values[0]) for v in sea_values
                 ):
                     result.add_difference(
                         f"Field '{field}' value mismatch in all rows",
