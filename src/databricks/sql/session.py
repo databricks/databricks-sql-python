@@ -126,9 +126,10 @@ class Session:
             catalog=self.catalog,
             schema=self.schema,
         )
+
         self.protocol_version = self.get_protocol_version(self._session_id)
         self.is_open = True
-        logger.info("Successfully opened session " + str(self.guid_hex))
+        logger.info("Successfully opened session %s", str(self.guid_hex))
 
     @staticmethod
     def get_protocol_version(session_id: SessionId):

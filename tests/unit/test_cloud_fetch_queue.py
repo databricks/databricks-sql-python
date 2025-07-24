@@ -162,8 +162,6 @@ class CloudFetchQueueSuite(unittest.TestCase):
         result = queue.next_n_rows(0)
         assert result.num_rows == 0
         assert queue.table_row_index == 0
-        # Instead of comparing tables directly, just check the row count
-        # This avoids issues with empty table schema differences
 
     @patch("databricks.sql.utils.ThriftCloudFetchQueue._create_next_table")
     def test_next_n_rows_partial_table(self, mock_create_next_table):
