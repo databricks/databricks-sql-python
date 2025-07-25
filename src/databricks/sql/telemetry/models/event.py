@@ -122,12 +122,14 @@ class SqlExecutionEvent(JsonSerializableMixin):
         is_compressed (bool): Whether the result is compressed
         execution_result (ExecutionResultFormat): Format of the execution result
         retry_count (int): Number of retry attempts made
+        chunk_id (int): ID of the chunk if applicable
     """
 
     statement_type: StatementType
     is_compressed: bool
     execution_result: ExecutionResultFormat
-    retry_count: int
+    retry_count: Optional[int]
+    chunk_id: Optional[int]
 
 
 @dataclass
@@ -149,9 +151,9 @@ class TelemetryEvent(JsonSerializableMixin):
         operation_latency_ms (Optional[int]): Operation latency in milliseconds
     """
 
-    session_id: str
     system_configuration: DriverSystemConfiguration
     driver_connection_params: DriverConnectionParameters
+    session_id: Optional[str] = None
     sql_statement_id: Optional[str] = None
     auth_type: Optional[str] = None
     vol_operation: Optional[DriverVolumeOperation] = None

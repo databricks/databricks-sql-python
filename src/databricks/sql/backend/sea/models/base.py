@@ -68,24 +68,11 @@ class ResultData:
 
 
 @dataclass
-class ColumnInfo:
-    """Information about a column in the result set."""
-
-    name: str
-    type_name: str
-    type_text: str
-    nullable: bool = True
-    precision: Optional[int] = None
-    scale: Optional[int] = None
-    ordinal_position: Optional[int] = None
-
-
-@dataclass
 class ResultManifest:
     """Manifest information for a result set."""
 
     format: str
-    schema: Dict[str, Any]  # Will contain column information
+    schema: Dict[str, Any]
     total_row_count: int
     total_byte_count: int
     total_chunk_count: int
