@@ -343,7 +343,9 @@ class PySQLRetryTestsMixin:
                         )
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_max_redirects_raises_too_many_redirects_exception(self, mock_send_telemetry):
+    def test_retry_max_redirects_raises_too_many_redirects_exception(
+        self, mock_send_telemetry
+    ):
         """GIVEN the connector is configured with a custom max_redirects
         WHEN the DatabricksRetryPolicy is created
         THEN the connector raises a MaxRedirectsError if that number is exceeded
@@ -368,7 +370,9 @@ class PySQLRetryTestsMixin:
             assert mock_obj.return_value.getresponse.call_count == expected_call_count
 
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_max_redirects_unset_doesnt_redirect_forever(self, mock_send_telemetry):
+    def test_retry_max_redirects_unset_doesnt_redirect_forever(
+        self, mock_send_telemetry
+    ):
         """GIVEN the connector is configured without a custom max_redirects
         WHEN the DatabricksRetryPolicy is used
         THEN the connector raises a MaxRedirectsError if that number is exceeded

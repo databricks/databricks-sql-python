@@ -7,8 +7,6 @@ from databricks.sql.telemetry.models.event import (
     SqlExecutionEvent,
 )
 from databricks.sql.telemetry.models.enums import ExecutionResultFormat, StatementType
-from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
-from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +34,13 @@ class TelemetryExtractor:
     def get_is_compressed(self):
         pass
 
-    def get_execution_result(self):
+    def get_execution_result_format(self):
         pass
 
     def get_retry_count(self):
+        pass
+
+    def get_chunk_id(self):
         pass
 
 
@@ -60,9 +61,11 @@ class CursorExtractor(TelemetryExtractor):
     def get_is_compressed(self) -> bool:
         return self.connection.lz4_compression
 
-    def get_execution_result(self) -> ExecutionResultFormat:
+    def get_execution_result_format(self) -> ExecutionResultFormat:
         if self.active_result_set is None:
             return ExecutionResultFormat.FORMAT_UNSPECIFIED
+
+        from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
 
         if isinstance(self.active_result_set.results, ColumnQueue):
             return ExecutionResultFormat.COLUMNAR_INLINE
@@ -73,49 +76,37 @@ class CursorExtractor(TelemetryExtractor):
         return ExecutionResultFormat.FORMAT_UNSPECIFIED
 
     def get_retry_count(self) -> int:
-        if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
-        ):
-            return len(self.thrift_backend.retry_policy.history)
+        if hasattr(self.backend, "retry_policy") and self.backend.retry_policy:
+            return len(self.backend.retry_policy.history)
         return 0
 
-
-class ResultSetExtractor(TelemetryExtractor):
-    """
-    Telemetry extractor specialized for ResultSet objects.
-
-    Extracts telemetry information from database result set objects, including
-    operation IDs, session information, compression settings, and result formats.
-    """
-
-    def get_statement_id(self) -> Optional[str]:
-        if self.command_id:
-            return str(UUID(bytes=self.command_id.operationId.guid))
+    def get_chunk_id(self):
         return None
 
+
+class ResultSetDownloadHandlerExtractor(TelemetryExtractor):
+    """
+    Telemetry extractor specialized for ResultSetDownloadHandler objects.
+    """
+
     def get_session_id_hex(self) -> Optional[str]:
-        return self.connection.get_session_id_hex()
+        return self._obj.session_id_hex
+
+    def get_statement_id(self) -> Optional[str]:
+        return self._obj.statement_id
 
     def get_is_compressed(self) -> bool:
-        return self.lz4_compressed
+        return self._obj.settings.is_lz4_compressed
 
-    def get_execution_result(self) -> ExecutionResultFormat:
-        if isinstance(self.results, ColumnQueue):
-            return ExecutionResultFormat.COLUMNAR_INLINE
-        elif isinstance(self.results, CloudFetchQueue):
-            return ExecutionResultFormat.EXTERNAL_LINKS
-        elif isinstance(self.results, ArrowQueue):
-            return ExecutionResultFormat.INLINE_ARROW
-        return ExecutionResultFormat.FORMAT_UNSPECIFIED
+    def get_execution_result_format(self) -> ExecutionResultFormat:
+        return ExecutionResultFormat.EXTERNAL_LINKS
 
-    def get_retry_count(self) -> int:
-        if (
-            hasattr(self.thrift_backend, "retry_policy")
-            and self.thrift_backend.retry_policy
-        ):
-            return len(self.thrift_backend.retry_policy.history)
-        return 0
+    def get_retry_count(self) -> Optional[int]:
+        # standard requests and urllib3 libraries don't expose retry count
+        return None
+
+    def get_chunk_id(self) -> Optional[int]:
+        return self._obj.chunk_id
 
 
 def get_extractor(obj):
@@ -126,19 +117,19 @@ def get_extractor(obj):
     that can extract telemetry information from that object type.
 
     Args:
-        obj: The object to create an extractor for. Can be a Cursor, ResultSet,
-             or any other object.
+        obj: The object to create an extractor for. Can be a Cursor,
+             ResultSetDownloadHandler, or any other object.
 
     Returns:
         TelemetryExtractor: A specialized extractor instance:
             - CursorExtractor for Cursor objects
-            - ResultSetExtractor for ResultSet objects
+            - ResultSetDownloadHandlerExtractor for ResultSetDownloadHandler objects
             - None for all other objects
     """
     if obj.__class__.__name__ == "Cursor":
         return CursorExtractor(obj)
-    elif obj.__class__.__name__ == "ResultSet":
-        return ResultSetExtractor(obj)
+    elif obj.__class__.__name__ == "ResultSetDownloadHandler":
+        return ResultSetDownloadHandlerExtractor(obj)
     else:
         logger.debug("No extractor found for %s", obj.__class__.__name__)
         return None
@@ -162,7 +153,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
         statement_type (StatementType): The type of SQL statement being executed.
 
     Usage:
-        @log_latency(StatementType.SQL)
+        @log_latency(StatementType.QUERY)
         def execute(self, query):
             # Method implementation
             pass
@@ -204,8 +195,11 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                     sql_exec_event = SqlExecutionEvent(
                         statement_type=statement_type,
                         is_compressed=_safe_call(extractor.get_is_compressed),
-                        execution_result=_safe_call(extractor.get_execution_result),
+                        execution_result=_safe_call(
+                            extractor.get_execution_result_format
+                        ),
                         retry_count=_safe_call(extractor.get_retry_count),
+                        chunk_id=_safe_call(extractor.get_chunk_id),
                     )
 
                     telemetry_client = TelemetryClientFactory.get_telemetry_client(

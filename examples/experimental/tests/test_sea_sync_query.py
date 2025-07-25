@@ -50,13 +50,34 @@ def test_sea_sync_query_with_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query
+        # Execute a query that generates large rows to force multiple chunks
+        requested_row_count = 10000
         cursor = connection.cursor()
+        query = f"""
+        SELECT 
+            id, 
+            concat('value_', repeat('a', 10000)) as test_value
+        FROM range(1, {requested_row_count} + 1) AS t(id)
+        """
+
         logger.info(
-            "Executing synchronous query with cloud fetch: SELECT 1 as test_value"
+            f"Executing synchronous query with cloud fetch to generate {requested_row_count} rows"
         )
-        cursor.execute("SELECT 1 as test_value")
-        logger.info("Query executed successfully with cloud fetch enabled")
+        cursor.execute(query)
+        results = [cursor.fetchone()]
+        results.extend(cursor.fetchmany(10))
+        results.extend(cursor.fetchall())
+        actual_row_count = len(results)
+        logger.info(
+            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
+        )
+
+        # Verify total row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
 
         # Close resources
         cursor.close()
@@ -115,13 +136,30 @@ def test_sea_sync_query_without_cloud_fetch():
             f"Successfully opened SEA session with ID: {connection.get_session_id_hex()}"
         )
 
-        # Execute a simple query
+        # For non-cloud fetch, use a smaller row count to avoid exceeding inline limits
+        requested_row_count = 100
         cursor = connection.cursor()
         logger.info(
-            "Executing synchronous query without cloud fetch: SELECT 1 as test_value"
+            f"Executing synchronous query without cloud fetch: SELECT {requested_row_count} rows"
         )
-        cursor.execute("SELECT 1 as test_value")
-        logger.info("Query executed successfully with cloud fetch disabled")
+        cursor.execute(
+            "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
+        )
+
+        results = [cursor.fetchone()]
+        results.extend(cursor.fetchmany(10))
+        results.extend(cursor.fetchall())
+        actual_row_count = len(results)
+        logger.info(
+            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
+        )
+
+        # Verify total row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
 
         # Close resources
         cursor.close()
