@@ -46,7 +46,7 @@ class TestSeaResultSet:
         mock_response.command_id = CommandId.from_sea_statement_id("test-statement-123")
         mock_response.status = CommandState.SUCCEEDED
         mock_response.has_been_closed_server_side = False
-        mock_response.is_direct_results = False
+        mock_response.has_more_rows = False
         mock_response.results_queue = None
         mock_response.description = [
             ("col1", "string", None, None, None, None, None),

@@ -46,7 +46,7 @@ class ThriftDatabricksClientMockFactory:
             is_staging_operation=False,
             command_id=None,
             has_been_closed_server_side=True,
-            is_direct_results=True,
+            has_more_rows=True,
             lz4_compressed=True,
             arrow_schema_bytes=b"schema",
         )
