@@ -644,6 +644,9 @@ class TestSeaBackend:
         """Test the get_catalogs method."""
         # Mock the execute_command method
         mock_result_set = Mock()
+        mock_result_set.description = [
+            ("catalog", "string", None, None, None, None, None)
+        ]
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
@@ -676,6 +679,10 @@ class TestSeaBackend:
         """Test the get_schemas method with various parameter combinations."""
         # Mock the execute_command method
         mock_result_set = Mock()
+        mock_result_set.description = [
+            ("databaseName", "string", None, None, None, None, None),
+            ("catalogName", "string", None, None, None, None, None),
+        ]
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
@@ -740,6 +747,13 @@ class TestSeaBackend:
         from databricks.sql.backend.sea.result_set import SeaResultSet
 
         mock_result_set = Mock(spec=SeaResultSet)
+        mock_result_set.description = [
+            ("catalogName", "string", None, None, None, None, None),
+            ("namespace", "string", None, None, None, None, None),
+            ("tableName", "string", None, None, None, None, None),
+            ("tableType", "string", None, None, None, None, None),
+            ("remarks", "string", None, None, None, None, None),
+        ]
 
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
@@ -825,6 +839,14 @@ class TestSeaBackend:
         """Test the get_columns method with various parameter combinations."""
         # Mock the execute_command method
         mock_result_set = Mock()
+        mock_result_set.description = [
+            ("catalogName", "string", None, None, None, None, None),
+            ("namespace", "string", None, None, None, None, None),
+            ("tableName", "string", None, None, None, None, None),
+            ("col_name", "string", None, None, None, None, None),
+            ("dataType", "int", None, None, None, None, None),
+            ("columnType", "string", None, None, None, None, None),
+        ]
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:

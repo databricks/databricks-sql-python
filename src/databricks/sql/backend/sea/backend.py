@@ -694,6 +694,14 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+
+        # Normalize column names to match JDBC/thrift backend
+        from .metadata_constants import CATALOG_COLUMNS, normalize_metadata_description
+
+        result.description = normalize_metadata_description(
+            result.description, CATALOG_COLUMNS
+        )
+
         return result
 
     def get_schemas(
@@ -727,6 +735,14 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+
+        # Normalize column names to match JDBC/thrift backend
+        from .metadata_constants import SCHEMA_COLUMNS, normalize_metadata_description
+
+        result.description = normalize_metadata_description(
+            result.description, SCHEMA_COLUMNS
+        )
+
         return result
 
     def get_tables(
@@ -768,6 +784,13 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+
+        # Normalize column names to match JDBC/thrift backend
+        from .metadata_constants import TABLE_COLUMNS, normalize_metadata_description
+
+        result.description = normalize_metadata_description(
+            result.description, TABLE_COLUMNS
+        )
 
         # Apply client-side filtering by table_types
         from databricks.sql.backend.sea.utils.filters import ResultSetFilter
@@ -815,4 +838,10 @@ class SeaDatabricksClient(DatabricksClient):
             enforce_embedded_schema_correctness=False,
         )
         assert result is not None, "execute_command returned None in synchronous mode"
+
+        # Normalize column names to match JDBC/thrift backend
+        from .metadata_constants import normalize_columns_metadata_description
+
+        result.description = normalize_columns_metadata_description(result.description)
+
         return result
