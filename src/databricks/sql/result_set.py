@@ -43,7 +43,7 @@ class ResultSet(ABC):
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
-        has_more_rows: bool = False,
+        is_direct_results: bool = False,
         results_queue=None,
         description: List[Tuple] = [],
         is_staging_operation: bool = False,
@@ -61,7 +61,7 @@ class ResultSet(ABC):
             :param command_id: The command ID
             :param status: The command status
             :param has_been_closed_server_side: Whether the command has been closed on the server
-            :param has_more_rows: Whether the command has more rows
+            :param is_direct_results: Whether the command has more rows
             :param results_queue: The results queue
             :param description: column description of the results
             :param is_staging_operation: Whether the command is a staging operation
@@ -76,7 +76,7 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self.has_more_rows = has_more_rows
+        self.is_direct_results = is_direct_results
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
         self.lz4_compressed = lz4_compressed
@@ -200,7 +200,7 @@ class ThriftResultSet(ResultSet):
         t_row_set=None,
         max_download_threads: int = 10,
         ssl_options=None,
-        has_more_rows: bool = True,
+        is_direct_results: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -215,13 +215,13 @@ class ThriftResultSet(ResultSet):
             :param t_row_set: The TRowSet containing result data (if available)
             :param max_download_threads: Maximum number of download threads for cloud fetch
             :param ssl_options: SSL options for cloud fetch
-            :param has_more_rows: Whether there are more rows to fetch
+            :param is_direct_results: Whether there are more rows to fetch
         """
         self.num_downloaded_chunks = 0
 
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
-        self.has_more_rows = has_more_rows
+        self.is_direct_results = is_direct_results
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -253,7 +253,7 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            has_more_rows=has_more_rows,
+            is_direct_results=is_direct_results,
             results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
@@ -266,7 +266,7 @@ class ThriftResultSet(ResultSet):
             self._fill_results_buffer()
 
     def _fill_results_buffer(self):
-        results, has_more_rows, result_links_count = self.backend.fetch_results(
+        results, is_direct_results, result_links_count = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -278,7 +278,7 @@ class ThriftResultSet(ResultSet):
             chunk_id=self.num_downloaded_chunks,
         )
         self.results = results
-        self.has_more_rows = has_more_rows
+        self.is_direct_results = is_direct_results
         self.num_downloaded_chunks += result_links_count
 
     def _convert_columnar_table(self, table):
@@ -326,7 +326,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self.is_direct_results
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -351,7 +351,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.has_more_rows
+            and self.is_direct_results
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -366,7 +366,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
         partial_result_chunks = [results]
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self.is_direct_results:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -392,7 +392,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.has_more_rows:
+        while not self.has_been_closed_server_side and self.is_direct_results:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
