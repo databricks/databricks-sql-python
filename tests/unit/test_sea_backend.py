@@ -56,6 +56,29 @@ class TestSeaBackend:
             http_headers=http_headers,
             auth_provider=auth_provider,
             ssl_options=ssl_options,
+            use_cloud_fetch=False,
+        )
+
+        return client
+
+    @pytest.fixture
+    def sea_client_cloud_fetch(self, mock_http_client):
+        """Create a SeaDatabricksClient instance with cloud fetch enabled."""
+        server_hostname = "test-server.databricks.com"
+        port = 443
+        http_path = "/sql/warehouses/abc123"
+        http_headers = [("header1", "value1"), ("header2", "value2")]
+        auth_provider = AuthProvider()
+        ssl_options = SSLOptions()
+
+        client = SeaDatabricksClient(
+            server_hostname=server_hostname,
+            port=port,
+            http_path=http_path,
+            http_headers=http_headers,
+            auth_provider=auth_provider,
+            ssl_options=ssl_options,
+            use_cloud_fetch=True,
         )
 
         return client
@@ -884,3 +907,74 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_columns" in str(excinfo.value)
+
+    def test_get_tables_with_cloud_fetch(
+        self, sea_client_cloud_fetch, sea_session_id, mock_cursor
+    ):
+        """Test the get_tables method with cloud fetch enabled."""
+        # Mock the execute_command method and ResultSetFilter
+        mock_result_set = Mock()
+
+        with patch.object(
+            sea_client_cloud_fetch, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            with patch(
+                "databricks.sql.backend.sea.utils.filters.ResultSetFilter"
+            ) as mock_filter:
+                mock_filter.filter_tables_by_type.return_value = mock_result_set
+
+                # Call get_tables
+                result = sea_client_cloud_fetch.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="test_catalog",
+                )
+
+                # Verify execute_command was called with use_cloud_fetch=True
+                mock_execute.assert_called_with(
+                    operation="SHOW TABLES IN CATALOG test_catalog",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=True,  # Should use True since client was created with use_cloud_fetch=True
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+                assert result == mock_result_set
+
+    def test_get_schemas_with_cloud_fetch(
+        self, sea_client_cloud_fetch, sea_session_id, mock_cursor
+    ):
+        """Test the get_schemas method with cloud fetch enabled."""
+        # Mock the execute_command method
+        mock_result_set = Mock()
+        with patch.object(
+            sea_client_cloud_fetch, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Test with catalog name
+            result = sea_client_cloud_fetch.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            mock_execute.assert_called_with(
+                operation="SHOW SCHEMAS IN test_catalog",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=True,  # Should use True since client was created with use_cloud_fetch=True
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+            assert result == mock_result_set

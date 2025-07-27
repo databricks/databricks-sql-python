@@ -123,37 +123,30 @@ class TestResultSetFilter(unittest.TestCase):
         # Case 1: Specific table types
         table_types = ["TABLE", "VIEW"]
 
-        with patch(
-            "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
-        ):
-            with patch.object(
-                ResultSetFilter, "filter_by_column_values"
-            ) as mock_filter:
-                ResultSetFilter.filter_tables_by_type(
-                    self.mock_sea_result_set, table_types
-                )
-                args, kwargs = mock_filter.call_args
-                self.assertEqual(args[0], self.mock_sea_result_set)
-                self.assertEqual(args[1], 5)  # Table type column index
-                self.assertEqual(args[2], table_types)
-                self.assertEqual(kwargs.get("case_sensitive"), True)
+        # Mock results as JsonQueue (not CloudFetchQueue or ArrowQueue)
+        from databricks.sql.backend.sea.queue import JsonQueue
+
+        self.mock_sea_result_set.results = JsonQueue([])
+
+        with patch.object(ResultSetFilter, "filter_by_column_values") as mock_filter:
+            ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, table_types)
+            args, kwargs = mock_filter.call_args
+            self.assertEqual(args[0], self.mock_sea_result_set)
+            self.assertEqual(args[1], 5)  # Table type column index
+            self.assertEqual(args[2], table_types)
+            self.assertEqual(kwargs.get("case_sensitive"), True)
 
         # Case 2: Default table types (None or empty list)
-        with patch(
-            "databricks.sql.backend.sea.utils.filters.isinstance", return_value=True
-        ):
-            with patch.object(
-                ResultSetFilter, "filter_by_column_values"
-            ) as mock_filter:
-                # Test with None
-                ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, None)
-                args, kwargs = mock_filter.call_args
-                self.assertEqual(args[2], ["TABLE", "VIEW", "SYSTEM TABLE"])
+        with patch.object(ResultSetFilter, "filter_by_column_values") as mock_filter:
+            # Test with None
+            ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, None)
+            args, kwargs = mock_filter.call_args
+            self.assertEqual(args[2], ["TABLE", "VIEW", "SYSTEM TABLE"])
 
-                # Test with empty list
-                ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, [])
-                args, kwargs = mock_filter.call_args
-                self.assertEqual(args[2], ["TABLE", "VIEW", "SYSTEM TABLE"])
+            # Test with empty list
+            ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, [])
+            args, kwargs = mock_filter.call_args
+            self.assertEqual(args[2], ["TABLE", "VIEW", "SYSTEM TABLE"])
 
 
 if __name__ == "__main__":

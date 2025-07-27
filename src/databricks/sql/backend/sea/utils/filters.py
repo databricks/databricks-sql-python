@@ -21,6 +21,13 @@ if TYPE_CHECKING:
 
 from databricks.sql.backend.types import ExecuteResponse
 
+try:
+    import pyarrow
+    import pyarrow.compute as pc
+except ImportError:
+    pyarrow = None
+    pc = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,6 +96,121 @@ class ResultSetFilter:
         return filtered_result_set
 
     @staticmethod
+    def _filter_arrow_table(
+        table: Any,  # pyarrow.Table
+        column_name: str,
+        allowed_values: List[str],
+    ) -> Any:  # returns pyarrow.Table
+        """
+        Filter a PyArrow table by column values.
+
+        Args:
+            table: The PyArrow table to filter
+            column_name: The name of the column to filter on
+            allowed_values: List of allowed values for the column
+
+        Returns:
+            A filtered PyArrow table
+        """
+
+        if not pyarrow:
+            raise ImportError("PyArrow is required for Arrow table filtering")
+
+        # Convert allowed_values to PyArrow Array for better performance
+        allowed_array = pyarrow.array(allowed_values)
+
+        # Construct a boolean mask: True where column is in allowed_list
+        mask = pc.is_in(table[column_name], value_set=allowed_array)
+        return table.filter(mask)
+
+    @staticmethod
+    def _filter_arrow_result_set(
+        result_set: SeaResultSet,
+        column_index: int,
+        allowed_values: List[str],
+    ) -> SeaResultSet:
+        """
+        Filter a SEA result set that contains Arrow tables.
+
+        Args:
+            result_set: The SEA result set to filter (containing Arrow data)
+            column_index: The index of the column to filter on
+            allowed_values: List of allowed values for the column
+
+        Returns:
+            A filtered SEA result set
+        """
+
+        # Get all remaining rows as Arrow table
+        arrow_table = result_set.results.remaining_rows()
+
+        # Get the column name from the description
+        if column_index >= len(result_set.description):
+            raise ValueError(f"Column index {column_index} is out of bounds")
+
+        column_name = result_set.description[column_index][0]
+
+        # Filter the Arrow table
+        filtered_table = ResultSetFilter._filter_arrow_table(
+            arrow_table, column_name, allowed_values
+        )
+
+        # Create a new result set with filtered data
+        command_id = result_set.command_id
+
+        # Create an ExecuteResponse for the filtered data
+        execute_response = ExecuteResponse(
+            command_id=command_id,
+            status=result_set.status,
+            description=result_set.description,
+            has_been_closed_server_side=result_set.has_been_closed_server_side,
+            lz4_compressed=result_set.lz4_compressed,
+            arrow_schema_bytes=result_set._arrow_schema_bytes,
+            is_staging_operation=False,
+        )
+
+        # Create ResultData with the filtered arrow table as attachment
+        # This mimics the hybrid disposition flow in build_queue
+        from databricks.sql.backend.sea.models.base import ResultData
+        from databricks.sql.backend.sea.result_set import SeaResultSet
+        from databricks.sql.backend.sea.backend import SeaDatabricksClient
+        import io
+
+        # Convert the filtered table to Arrow stream format
+        sink = io.BytesIO()
+        with pyarrow.ipc.new_stream(sink, filtered_table.schema) as writer:
+            writer.write_table(filtered_table)
+        arrow_stream_bytes = sink.getvalue()
+
+        # Create ResultData with attachment containing the filtered data
+        filtered_result_data = ResultData(
+            data=None,  # No JSON data
+            external_links=None,  # No external links
+            attachment=arrow_stream_bytes,  # Arrow data as attachment
+        )
+
+        # Update manifest to reflect new row count
+        manifest = result_set.manifest
+        # Create a copy of the manifest to avoid modifying the original
+        from copy import deepcopy
+
+        filtered_manifest = deepcopy(manifest)
+        filtered_manifest.total_row_count = filtered_table.num_rows
+
+        # Create a new SeaResultSet with the filtered data
+        filtered_result_set = SeaResultSet(
+            connection=result_set.connection,
+            execute_response=execute_response,
+            sea_client=cast(SeaDatabricksClient, result_set.backend),
+            result_data=filtered_result_data,
+            manifest=filtered_manifest,
+            buffer_size_bytes=result_set.buffer_size_bytes,
+            arraysize=result_set.arraysize,
+        )
+
+        return filtered_result_set
+
+    @staticmethod
     def filter_by_column_values(
         result_set: SeaResultSet,
         column_index: int,
@@ -150,7 +272,17 @@ class ResultSetFilter:
             table_types if table_types and len(table_types) > 0 else DEFAULT_TABLE_TYPES
         )
 
-        # Table type is the 6th column (index 5)
-        return ResultSetFilter.filter_by_column_values(
-            result_set, 5, valid_types, case_sensitive=True
-        )
+        # Check if we have an Arrow table (cloud fetch) or JSON data
+        from databricks.sql.utils import CloudFetchQueue, ArrowQueue
+
+        if isinstance(result_set.results, (CloudFetchQueue, ArrowQueue)):
+            # For Arrow tables, we need to handle filtering differently
+            return ResultSetFilter._filter_arrow_result_set(
+                result_set, column_index=5, allowed_values=valid_types
+            )
+        else:
+            # For JSON data, use the existing filter method
+            # Table type is the 6th column (index 5)
+            return ResultSetFilter.filter_by_column_values(
+                result_set, 5, valid_types, case_sensitive=True
+            )
