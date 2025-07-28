@@ -187,7 +187,6 @@ class Row(tuple):
     # let object acts like class
     def __call__(self, *args: Any) -> "Row":
         """create new Row object"""
-
         if len(args) > len(self):
             raise ValueError(
                 "Can not create Row with fields %s, expected %d values "
