@@ -68,7 +68,7 @@ class TestResultSetFilter(unittest.TestCase):
         self.mock_sea_result_set.has_been_closed_server_side = False
         self.mock_sea_result_set._arrow_schema_bytes = None
 
-    def test_filter_by_column_values(self):
+    def test__filter_json_result_set(self):
         """Test filtering by column values with various options."""
         # Case 1: Case-sensitive filtering
         allowed_values = ["table1", "table3"]
@@ -82,8 +82,8 @@ class TestResultSetFilter(unittest.TestCase):
                 mock_instance = MagicMock()
                 mock_sea_result_set_class.return_value = mock_instance
 
-                # Call filter_by_column_values on the table_name column (index 2)
-                result = ResultSetFilter.filter_by_column_values(
+                # Call _filter_json_result_set on the table_name column (index 2)
+                result = ResultSetFilter._filter_json_result_set(
                     self.mock_sea_result_set, 2, allowed_values, case_sensitive=True
                 )
 
@@ -109,8 +109,8 @@ class TestResultSetFilter(unittest.TestCase):
                 mock_instance = MagicMock()
                 mock_sea_result_set_class.return_value = mock_instance
 
-                # Call filter_by_column_values with case-insensitive matching
-                result = ResultSetFilter.filter_by_column_values(
+                # Call _filter_json_result_set with case-insensitive matching
+                result = ResultSetFilter._filter_json_result_set(
                     self.mock_sea_result_set,
                     2,
                     ["TABLE1", "TABLE3"],
@@ -128,7 +128,7 @@ class TestResultSetFilter(unittest.TestCase):
 
         self.mock_sea_result_set.results = JsonQueue([])
 
-        with patch.object(ResultSetFilter, "filter_by_column_values") as mock_filter:
+        with patch.object(ResultSetFilter, "_filter_json_result_set") as mock_filter:
             ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, table_types)
             args, kwargs = mock_filter.call_args
             self.assertEqual(args[0], self.mock_sea_result_set)
@@ -137,7 +137,7 @@ class TestResultSetFilter(unittest.TestCase):
             self.assertEqual(kwargs.get("case_sensitive"), True)
 
         # Case 2: Default table types (None or empty list)
-        with patch.object(ResultSetFilter, "filter_by_column_values") as mock_filter:
+        with patch.object(ResultSetFilter, "_filter_json_result_set") as mock_filter:
             # Test with None
             ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, None)
             args, kwargs = mock_filter.call_args
