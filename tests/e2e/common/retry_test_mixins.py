@@ -511,7 +511,7 @@ class PySQLRetryTestsMixin:
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_retry_max_redirects_unset_doesnt_redirect_forever(
-        self, mock_send_telemetry
+        self, mock_send_telemetry, extra_params
     ):
         """GIVEN the connector is configured without a custom max_redirects
         WHEN the DatabricksRetryPolicy is used
