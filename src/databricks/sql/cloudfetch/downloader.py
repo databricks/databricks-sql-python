@@ -51,14 +51,14 @@ class DownloadableResultSettings:
         link_expiry_buffer_secs (int): Time in seconds to prevent download of a link before it expires. Default 0 secs.
         download_timeout (int): Timeout for download requests. Default 60 secs.
         max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
-        speed_warning_threshold_mbps (float): Threshold in MB/s below which to log warning. Default 0.1 MB/s.
+        min_cloudfetch_download_speed (float): Threshold in MB/s below which to log warning. Default 0.1 MB/s.
     """
 
     is_lz4_compressed: bool
     link_expiry_buffer_secs: int = 0
     download_timeout: int = 60
     max_consecutive_file_download_retries: int = 0
-    speed_warning_threshold_mbps: float = 0.1
+    min_cloudfetch_download_speed: float = 0.1
 
 
 class ResultSetDownloadHandler:
@@ -143,24 +143,26 @@ class ResultSetDownloadHandler:
         self, url: str, bytes_downloaded: int, duration_seconds: float
     ):
         """Log download speed metrics at INFO/WARN levels."""
-        if duration_seconds <= 0:
-            return
-
         # Calculate speed in MB/s (ensure float division for precision)
         speed_mbps = (float(bytes_downloaded) / (1024 * 1024)) / duration_seconds
 
         urlEndpoint = url.split("?")[0]
         # INFO level logging
         logger.info(
-            f"CloudFetch download completed: {speed_mbps:.4f} MB/s, "
-            f"{bytes_downloaded} bytes in {duration_seconds:.3f}s from {urlEndpoint}"
+            "CloudFetch download completed: %.4f MB/s, %d bytes in %.3fs from %s",
+            speed_mbps,
+            bytes_downloaded,
+            duration_seconds,
+            urlEndpoint,
         )
 
         # WARN level logging if below threshold
-        if speed_mbps < self.settings.speed_warning_threshold_mbps:
+        if speed_mbps < self.settings.min_cloudfetch_download_speed:
             logger.warning(
-                f"CloudFetch download slower than threshold: {speed_mbps:.4f} MB/s "
-                f"(threshold: {self.settings.speed_warning_threshold_mbps:.1f} MB/s) from {url}"
+                "CloudFetch download slower than threshold: %.4f MB/s (threshold: %.1f MB/s) from %s",
+                speed_mbps,
+                self.settings.min_cloudfetch_download_speed,
+                url,
             )
 
     @staticmethod
