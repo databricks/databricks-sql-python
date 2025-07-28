@@ -1016,10 +1016,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_handle_execute_response_reads_has_more_rows_in_direct_results(
         self, tcli_service_class, build_queue
     ):
-        for is_direct_results, resp_type in itertools.product(
+        for has_more_rows, resp_type in itertools.product(
             [True, False], self.execute_response_types
         ):
-            with self.subTest(is_direct_results=is_direct_results, resp_type=resp_type):
+            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
                 tcli_service_instance = tcli_service_class.return_value
                 results_mock = Mock()
                 results_mock.startRowOffset = 0
@@ -1031,7 +1031,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     resultSetMetadata=self.metadata_resp,
                     resultSet=ttypes.TFetchResultsResp(
                         status=self.okay_status,
-                        hasMoreRows=is_direct_results,
+                        hasMoreRows=has_more_rows,
                         results=results_mock,
                     ),
                     closeOperation=Mock(),
@@ -1062,10 +1062,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_handle_execute_response_reads_has_more_rows_in_result_response(
         self, tcli_service_class, build_queue
     ):
-        for is_direct_results, resp_type in itertools.product(
+        for has_more_rows, resp_type in itertools.product(
             [True, False], self.execute_response_types
         ):
-            with self.subTest(is_direct_results=is_direct_results, resp_type=resp_type):
+            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
                 tcli_service_instance = tcli_service_class.return_value
                 results_mock = MagicMock()
                 results_mock.startRowOffset = 0
@@ -1078,7 +1078,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
                 fetch_results_resp = ttypes.TFetchResultsResp(
                     status=self.okay_status,
-                    hasMoreRows=is_direct_results,
+                    hasMoreRows=has_more_rows,
                     results=results_mock,
                     resultSetMetadata=ttypes.TGetResultSetMetadataResp(
                         resultFormat=ttypes.TSparkRowSetType.ARROW_BASED_SET
@@ -1112,7 +1112,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     chunk_id=0,
                 )
 
-                self.assertEqual(is_direct_results, has_more_rows_resp)
+                self.assertEqual(has_more_rows, has_more_rows_resp)
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_arrow_batches_row_count_are_respected(self, tcli_service_class):

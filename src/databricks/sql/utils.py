@@ -275,6 +275,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
 
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while num_rows > 0 and self.table.num_rows > 0:
             # Replace current table with the next table if we are at the end of the current table
             if self.table_row_index == self.table.num_rows:
@@ -300,6 +301,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         """
 
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while self.table.num_rows > 0:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
@@ -385,6 +387,8 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             statement_id=statement_id,
             chunk_id=chunk_id,
         )
+
+        self.num_links_downloaded = 0
 
         self.start_row_index = start_row_offset
         self.result_links = result_links or []

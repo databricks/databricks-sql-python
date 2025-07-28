@@ -73,17 +73,26 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         result_link = Mock(expiryTime=1001)
 
-        d = downloader.ResultSetDownloadHandler(
-            settings,
-            result_link,
-            ssl_options=SSLOptions(),
-            chunk_id=0,
-            session_id_hex=Mock(),
-            statement_id=Mock(),
+        # Create a mock response with 404 status
+        mock_response = create_response(status_code=404, _content=b"Not Found")
+        mock_response.raise_for_status = Mock(
+            side_effect=requests.exceptions.HTTPError("404")
         )
-        with self.assertRaises(requests.exceptions.HTTPError) as context:
-            d.run()
-        self.assertTrue("404" in str(context.exception))
+
+        with patch.object(http_client, "execute") as mock_execute:
+            mock_execute.return_value.__enter__.return_value = mock_response
+
+            d = downloader.ResultSetDownloadHandler(
+                settings,
+                result_link,
+                ssl_options=SSLOptions(),
+                chunk_id=0,
+                session_id_hex=Mock(),
+                statement_id=Mock(),
+            )
+            with self.assertRaises(requests.exceptions.HTTPError) as context:
+                d.run()
+            self.assertTrue("404" in str(context.exception))
 
     @patch("time.time", return_value=1000)
     def test_run_uncompressed_successful(self, mock_time):

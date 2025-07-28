@@ -69,6 +69,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
             session_id_hex=Mock(),
             statement_id=Mock(),
             chunk_id=0,
+            description=description,
         )
 
         assert (
