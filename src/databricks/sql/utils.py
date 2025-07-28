@@ -312,9 +312,6 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             self.table_row_index = 0
         return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
-    def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
-        """Create next table at the given row offset"""
-
     def _create_table_at_offset(self, offset: int) -> "pyarrow.Table":
         """Create next table at the given row offset"""
 
