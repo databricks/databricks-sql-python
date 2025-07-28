@@ -5,7 +5,12 @@ import time
 import re
 from typing import Any, Dict, Tuple, List, Optional, Union, TYPE_CHECKING, Set
 
-from databricks.sql.backend.sea.models.base import ResultManifest, StatementStatus
+from databricks.sql.backend.sea.models.base import (
+    ExternalLink,
+    ResultManifest,
+    StatementStatus,
+)
+from databricks.sql.backend.sea.models.responses import GetChunksResponse
 from databricks.sql.backend.sea.utils.constants import (
     ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP,
     ResultFormat,
@@ -19,7 +24,7 @@ from databricks.sql.thrift_api.TCLIService import ttypes
 if TYPE_CHECKING:
     from databricks.sql.client import Cursor
 
-from databricks.sql.result_set import SeaResultSet
+from databricks.sql.backend.sea.result_set import SeaResultSet
 
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import (
@@ -110,6 +115,7 @@ class SeaDatabricksClient(DatabricksClient):
     STATEMENT_PATH = BASE_PATH + "statements"
     STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}"
     CANCEL_STATEMENT_PATH_WITH_ID = STATEMENT_PATH + "/{}/cancel"
+    CHUNK_PATH_WITH_ID_AND_INDEX = STATEMENT_PATH + "/{}/result/chunks/{}"
 
     # SEA constants
     POLL_INTERVAL_SECONDS = 0.2
@@ -296,7 +302,7 @@ class SeaDatabricksClient(DatabricksClient):
 
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
-    ) -> Optional[List]:
+    ) -> List[Tuple]:
         """
         Extract column description from a manifest object, in the format defined by
         the spec: https://peps.python.org/pep-0249/#description
@@ -310,9 +316,6 @@ class SeaDatabricksClient(DatabricksClient):
 
         schema_data = manifest.schema
         columns_data = schema_data.get("columns", [])
-
-        if not columns_data:
-            return None
 
         columns = []
         for col_data in columns_data:
@@ -337,7 +340,7 @@ class SeaDatabricksClient(DatabricksClient):
                 )
             )
 
-        return columns if columns else None
+        return columns
 
     def _results_message_to_execute_response(
         self, response: Union[ExecuteStatementResponse, GetStatementResponse]
@@ -358,7 +361,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         # Check for compression
         lz4_compressed = (
-            response.manifest.result_compression == ResultCompression.LZ4_FRAME
+            response.manifest.result_compression == ResultCompression.LZ4_FRAME.value
         )
 
         execute_response = ExecuteResponse(
@@ -646,6 +649,27 @@ class SeaDatabricksClient(DatabricksClient):
 
         response = self._poll_query(command_id)
         return self._response_to_result_set(response, cursor)
+
+    def get_chunk_links(
+        self, statement_id: str, chunk_index: int
+    ) -> List[ExternalLink]:
+        """
+        Get links for chunks starting from the specified index.
+        Args:
+            statement_id: The statement ID
+            chunk_index: The starting chunk index
+        Returns:
+            ExternalLink: External link for the chunk
+        """
+
+        response_data = self._http_client._make_request(
+            method="GET",
+            path=self.CHUNK_PATH_WITH_ID_AND_INDEX.format(statement_id, chunk_index),
+        )
+        response = GetChunksResponse.from_dict(response_data)
+
+        links = response.external_links or []
+        return links
 
     # == Metadata Operations ==
 

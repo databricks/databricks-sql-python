@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import logging
 import pandas
-
 
 try:
     import pyarrow
@@ -14,14 +13,16 @@ except ImportError:
 
 if TYPE_CHECKING:
     from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
-    from databricks.sql.backend.sea.backend import SeaDatabricksClient
     from databricks.sql.client import Connection
-
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.types import Row
 from databricks.sql.exc import RequestError, CursorAlreadyClosedError
-from databricks.sql.utils import ColumnTable, ColumnQueue
+from databricks.sql.utils import (
+    ColumnTable,
+    ColumnQueue,
+)
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
+from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,9 @@ class ResultSet(ABC):
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
-        is_direct_results: bool = False,
+        has_more_rows: bool = False,
         results_queue=None,
-        description=None,
+        description: List[Tuple] = [],
         is_staging_operation: bool = False,
         lz4_compressed: bool = False,
         arrow_schema_bytes: Optional[bytes] = None,
@@ -60,7 +61,7 @@ class ResultSet(ABC):
             :param command_id: The command ID
             :param status: The command status
             :param has_been_closed_server_side: Whether the command has been closed on the server
-            :param is_direct_results: Whether the command has more rows
+            :param has_more_rows: Whether the command has more rows
             :param results_queue: The results queue
             :param description: column description of the results
             :param is_staging_operation: Whether the command is a staging operation
@@ -75,7 +76,7 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self.is_direct_results = is_direct_results
+        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
         self.lz4_compressed = lz4_compressed
@@ -88,169 +89,6 @@ class ResultSet(ABC):
                 yield row
             else:
                 break
-
-    @property
-    def rownumber(self):
-        return self._next_row_index
-
-    @property
-    def is_staging_operation(self) -> bool:
-        """Whether this result set represents a staging operation."""
-        return self._is_staging_operation
-
-    # Define abstract methods that concrete implementations must implement
-    @abstractmethod
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        pass
-
-    @abstractmethod
-    def fetchone(self) -> Optional[Row]:
-        """Fetch the next row of a query result set."""
-        pass
-
-    @abstractmethod
-    def fetchmany(self, size: int) -> List[Row]:
-        """Fetch the next set of rows of a query result."""
-        pass
-
-    @abstractmethod
-    def fetchall(self) -> List[Row]:
-        """Fetch all remaining rows of a query result."""
-        pass
-
-    @abstractmethod
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
-        """Fetch the next set of rows as an Arrow table."""
-        pass
-
-    @abstractmethod
-    def fetchall_arrow(self) -> "pyarrow.Table":
-        """Fetch all remaining rows as an Arrow table."""
-        pass
-
-    def close(self) -> None:
-        """
-        Close the result set.
-
-        If the connection has not been closed, and the result set has not already
-        been closed on the server for some other reason, issue a request to the server to close it.
-        """
-        try:
-            if self.results:
-                self.results.close()
-            if (
-                self.status != CommandState.CLOSED
-                and not self.has_been_closed_server_side
-                and self.connection.open
-            ):
-                self.backend.close_command(self.command_id)
-        except RequestError as e:
-            if isinstance(e.args[1], CursorAlreadyClosedError):
-                logger.info("Operation was canceled by a prior request")
-        finally:
-            self.has_been_closed_server_side = True
-            self.status = CommandState.CLOSED
-
-
-class ThriftResultSet(ResultSet):
-    """ResultSet implementation for the Thrift backend."""
-
-    def __init__(
-        self,
-        connection: Connection,
-        execute_response: ExecuteResponse,
-        thrift_client: ThriftDatabricksClient,
-        buffer_size_bytes: int = 104857600,
-        arraysize: int = 10000,
-        use_cloud_fetch: bool = True,
-        t_row_set=None,
-        max_download_threads: int = 10,
-        ssl_options=None,
-        is_direct_results: bool = True,
-    ):
-        """
-        Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
-
-        Parameters:
-            :param connection: The parent connection
-            :param execute_response: Response from the execute command
-            :param thrift_client: The ThriftDatabricksClient instance for direct access
-            :param buffer_size_bytes: Buffer size for fetching results
-            :param arraysize: Default number of rows to fetch
-            :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
-            :param t_row_set: The TRowSet containing result data (if available)
-            :param max_download_threads: Maximum number of download threads for cloud fetch
-            :param ssl_options: SSL options for cloud fetch
-            :param is_direct_results: Whether there are more rows to fetch
-        """
-
-        # Initialize ThriftResultSet-specific attributes
-        self._use_cloud_fetch = use_cloud_fetch
-        self.is_direct_results = is_direct_results
-
-        # Build the results queue if t_row_set is provided
-        results_queue = None
-        if t_row_set and execute_response.result_format is not None:
-            from databricks.sql.utils import ResultSetQueueFactory
-
-            # Create the results queue using the provided format
-            results_queue = ResultSetQueueFactory.build_queue(
-                row_set_type=execute_response.result_format,
-                t_row_set=t_row_set,
-                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
-                max_download_threads=max_download_threads,
-                lz4_compressed=execute_response.lz4_compressed,
-                description=execute_response.description,
-                ssl_options=ssl_options,
-            )
-
-        # Call parent constructor with common attributes
-        super().__init__(
-            connection=connection,
-            backend=thrift_client,
-            arraysize=arraysize,
-            buffer_size_bytes=buffer_size_bytes,
-            command_id=execute_response.command_id,
-            status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            is_direct_results=is_direct_results,
-            results_queue=results_queue,
-            description=execute_response.description,
-            is_staging_operation=execute_response.is_staging_operation,
-            lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
-        )
-
-        # Initialize results queue if not provided
-        if not self.results:
-            self._fill_results_buffer()
-
-    def _fill_results_buffer(self):
-        results, is_direct_results = self.backend.fetch_results(
-            command_id=self.command_id,
-            max_rows=self.arraysize,
-            max_bytes=self.buffer_size_bytes,
-            expected_row_start_offset=self._next_row_index,
-            lz4_compressed=self.lz4_compressed,
-            arrow_schema_bytes=self._arrow_schema_bytes,
-            description=self.description,
-            use_cloud_fetch=self._use_cloud_fetch,
-        )
-        self.results = results
-        self.is_direct_results = is_direct_results
-
-    def _convert_columnar_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-        result = []
-        for row_index in range(table.num_rows):
-            curr_row = []
-            for col_index in range(table.num_columns):
-                curr_row.append(table.get_item(col_index, row_index))
-            result.append(ResultRow(*curr_row))
-
-        return result
 
     def _convert_arrow_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -290,6 +128,174 @@ class ThriftResultSet(ResultSet):
         res = df.to_numpy(na_value=None, dtype="object")
         return [ResultRow(*v) for v in res]
 
+    @property
+    def rownumber(self):
+        return self._next_row_index
+
+    @property
+    def is_staging_operation(self) -> bool:
+        """Whether this result set represents a staging operation."""
+        return self._is_staging_operation
+
+    @abstractmethod
+    def fetchone(self) -> Optional[Row]:
+        """Fetch the next row of a query result set."""
+        pass
+
+    @abstractmethod
+    def fetchmany(self, size: int) -> List[Row]:
+        """Fetch the next set of rows of a query result."""
+        pass
+
+    @abstractmethod
+    def fetchall(self) -> List[Row]:
+        """Fetch all remaining rows of a query result."""
+        pass
+
+    @abstractmethod
+    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
+        """Fetch the next set of rows as an Arrow table."""
+        pass
+
+    @abstractmethod
+    def fetchall_arrow(self) -> "pyarrow.Table":
+        """Fetch all remaining rows as an Arrow table."""
+        pass
+
+    def close(self) -> None:
+        """
+        Close the result set.
+
+        If the connection has not been closed, and the result set has not already
+        been closed on the server for some other reason, issue a request to the server to close it.
+        """
+        try:
+            if self.results is not None:
+                self.results.close()
+            else:
+                logger.warning("result set close: queue not initialized")
+
+            if (
+                self.status != CommandState.CLOSED
+                and not self.has_been_closed_server_side
+                and self.connection.open
+            ):
+                self.backend.close_command(self.command_id)
+        except RequestError as e:
+            if isinstance(e.args[1], CursorAlreadyClosedError):
+                logger.info("Operation was canceled by a prior request")
+        finally:
+            self.has_been_closed_server_side = True
+            self.status = CommandState.CLOSED
+
+
+class ThriftResultSet(ResultSet):
+    """ResultSet implementation for the Thrift backend."""
+
+    def __init__(
+        self,
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        thrift_client: ThriftDatabricksClient,
+        buffer_size_bytes: int = 104857600,
+        arraysize: int = 10000,
+        use_cloud_fetch: bool = True,
+        t_row_set=None,
+        max_download_threads: int = 10,
+        ssl_options=None,
+        has_more_rows: bool = True,
+    ):
+        """
+        Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
+
+        Parameters:
+            :param connection: The parent connection
+            :param execute_response: Response from the execute command
+            :param thrift_client: The ThriftDatabricksClient instance for direct access
+            :param buffer_size_bytes: Buffer size for fetching results
+            :param arraysize: Default number of rows to fetch
+            :param use_cloud_fetch: Whether to use cloud fetch for retrieving results
+            :param t_row_set: The TRowSet containing result data (if available)
+            :param max_download_threads: Maximum number of download threads for cloud fetch
+            :param ssl_options: SSL options for cloud fetch
+            :param has_more_rows: Whether there are more rows to fetch
+        """
+        self.num_chunks = 0
+
+        # Initialize ThriftResultSet-specific attributes
+        self._use_cloud_fetch = use_cloud_fetch
+        self.has_more_rows = has_more_rows
+
+        # Build the results queue if t_row_set is provided
+        results_queue = None
+        if t_row_set and execute_response.result_format is not None:
+            from databricks.sql.utils import ThriftResultSetQueueFactory
+
+            # Create the results queue using the provided format
+            results_queue = ThriftResultSetQueueFactory.build_queue(
+                row_set_type=execute_response.result_format,
+                t_row_set=t_row_set,
+                arrow_schema_bytes=execute_response.arrow_schema_bytes or b"",
+                max_download_threads=max_download_threads,
+                lz4_compressed=execute_response.lz4_compressed,
+                description=execute_response.description,
+                ssl_options=ssl_options,
+                session_id_hex=connection.get_session_id_hex(),
+                statement_id=execute_response.command_id.to_hex_guid(),
+                chunk_id=self.num_chunks,
+            )
+            if t_row_set.resultLinks:
+                self.num_chunks += len(t_row_set.resultLinks)
+
+        # Call parent constructor with common attributes
+        super().__init__(
+            connection=connection,
+            backend=thrift_client,
+            arraysize=arraysize,
+            buffer_size_bytes=buffer_size_bytes,
+            command_id=execute_response.command_id,
+            status=execute_response.status,
+            has_been_closed_server_side=execute_response.has_been_closed_server_side,
+            has_more_rows=has_more_rows,
+            results_queue=results_queue,
+            description=execute_response.description,
+            is_staging_operation=execute_response.is_staging_operation,
+            lz4_compressed=execute_response.lz4_compressed,
+            arrow_schema_bytes=execute_response.arrow_schema_bytes,
+        )
+
+        # Initialize results queue if not provided
+        if not self.results:
+            self._fill_results_buffer()
+
+    def _fill_results_buffer(self):
+        results, has_more_rows, result_links_count = self.backend.fetch_results(
+            command_id=self.command_id,
+            max_rows=self.arraysize,
+            max_bytes=self.buffer_size_bytes,
+            expected_row_start_offset=self._next_row_index,
+            lz4_compressed=self.lz4_compressed,
+            arrow_schema_bytes=self._arrow_schema_bytes,
+            description=self.description,
+            use_cloud_fetch=self._use_cloud_fetch,
+            chunk_id=self.num_chunks,
+        )
+        self.results = results
+        self.has_more_rows = has_more_rows
+        self.num_chunks += result_links_count
+
+    def _convert_columnar_table(self, table):
+        column_names = [c[0] for c in self.description]
+        ResultRow = Row(*column_names)
+        result = []
+        for row_index in range(table.num_rows):
+            curr_row = []
+            for col_index in range(table.num_columns):
+                curr_row.append(table.get_item(col_index, row_index))
+            result.append(ResultRow(*curr_row))
+
+        return result
+
     def merge_columnar(self, result1, result2) -> "ColumnTable":
         """
         Function to merge / combining the columnar results into a single result
@@ -323,7 +329,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.is_direct_results
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -348,7 +354,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.is_direct_results
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -363,7 +369,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
         partial_result_chunks = [results]
-        while not self.has_been_closed_server_side and self.is_direct_results:
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -389,7 +395,7 @@ class ThriftResultSet(ResultSet):
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.is_direct_results:
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)
@@ -448,82 +454,3 @@ class ThriftResultSet(ResultSet):
             (column.name, map_col_type(column.datatype), None, None, None, None, None)
             for column in table_schema_message.columns
         ]
-
-
-class SeaResultSet(ResultSet):
-    """ResultSet implementation for SEA backend."""
-
-    def __init__(
-        self,
-        connection: Connection,
-        execute_response: ExecuteResponse,
-        sea_client: SeaDatabricksClient,
-        buffer_size_bytes: int = 104857600,
-        arraysize: int = 10000,
-        result_data=None,
-        manifest=None,
-    ):
-        """
-        Initialize a SeaResultSet with the response from a SEA query execution.
-
-        Args:
-            connection: The parent connection
-            execute_response: Response from the execute command
-            sea_client: The SeaDatabricksClient instance for direct access
-            buffer_size_bytes: Buffer size for fetching results
-            arraysize: Default number of rows to fetch
-            result_data: Result data from SEA response (optional)
-            manifest: Manifest from SEA response (optional)
-        """
-
-        super().__init__(
-            connection=connection,
-            backend=sea_client,
-            arraysize=arraysize,
-            buffer_size_bytes=buffer_size_bytes,
-            command_id=execute_response.command_id,
-            status=execute_response.status,
-            has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            description=execute_response.description,
-            is_staging_operation=execute_response.is_staging_operation,
-            lz4_compressed=execute_response.lz4_compressed,
-            arrow_schema_bytes=execute_response.arrow_schema_bytes,
-        )
-
-    def _fill_results_buffer(self):
-        """Fill the results buffer from the backend."""
-        raise NotImplementedError(
-            "_fill_results_buffer is not implemented for SEA backend"
-        )
-
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
-        """
-
-        raise NotImplementedError("fetchone is not implemented for SEA backend")
-
-    def fetchmany(self, size: Optional[int] = None) -> List[Row]:
-        """
-        Fetch the next set of rows of a query result, returning a list of rows.
-
-        An empty sequence is returned when no more rows are available.
-        """
-
-        raise NotImplementedError("fetchmany is not implemented for SEA backend")
-
-    def fetchall(self) -> List[Row]:
-        """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
-        """
-
-        raise NotImplementedError("fetchall is not implemented for SEA backend")
-
-    def fetchmany_arrow(self, size: int) -> Any:
-        """Fetch the next set of rows as an Arrow table."""
-        raise NotImplementedError("fetchmany_arrow is not implemented for SEA backend")
-
-    def fetchall_arrow(self) -> Any:
-        """Fetch all remaining rows as an Arrow table."""
-        raise NotImplementedError("fetchall_arrow is not implemented for SEA backend")

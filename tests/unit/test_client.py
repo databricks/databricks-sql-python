@@ -46,7 +46,7 @@ class ThriftDatabricksClientMockFactory:
             is_staging_operation=False,
             command_id=None,
             has_been_closed_server_side=True,
-            is_direct_results=True,
+            has_more_rows=True,
             lz4_compressed=True,
             arrow_schema_bytes=b"schema",
         )
@@ -109,11 +109,12 @@ class ClientTestSuite(unittest.TestCase):
                 mock_execute_response.has_been_closed_server_side = closed
                 mock_execute_response.is_staging_operation = False
                 mock_execute_response.command_id = Mock(spec=CommandId)
+                mock_execute_response.description = []
 
                 # Mock the backend that will be used
                 mock_backend = Mock(spec=ThriftDatabricksClient)
                 mock_backend.staging_allowed_local_path = None
-                mock_backend.fetch_results.return_value = (Mock(), False)
+                mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
                 # Configure the decorator's mock to return our specific mock_backend
                 mock_thrift_client_class.return_value = mock_backend
@@ -138,7 +139,6 @@ class ClientTestSuite(unittest.TestCase):
                 connection.close()
 
                 # Verify the close logic worked:
-                # 1. has_been_closed_server_side should always be True after close()
                 assert real_result_set.has_been_closed_server_side is True
 
                 # 2. op_state should always be CLOSED after close()
@@ -180,7 +180,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_connection = Mock()
         mock_backend = Mock()
         mock_results = Mock()
-        mock_backend.fetch_results.return_value = (Mock(), False)
+        mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
         result_set = ThriftResultSet(
             connection=mock_connection,
@@ -210,7 +210,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_session.open = True
         type(mock_connection).session = PropertyMock(return_value=mock_session)
 
-        mock_thrift_backend.fetch_results.return_value = (Mock(), False)
+        mock_thrift_backend.fetch_results.return_value = (Mock(), False, 0)
         result_set = ThriftResultSet(
             mock_connection,
             mock_results_response,
@@ -227,12 +227,6 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_executing_multiple_commands_uses_the_most_recent_command(self):
         mock_result_sets = [Mock(), Mock()]
-        # Set is_staging_operation to False to avoid _handle_staging_operation being called
-        for mock_rs in mock_result_sets:
-            mock_rs.is_staging_operation = False
-
-        mock_backend = ThriftDatabricksClientMockFactory.new()
-        mock_backend.execute_command.side_effect = mock_result_sets
         # Set is_staging_operation to False to avoid _handle_staging_operation being called
         for mock_rs in mock_result_sets:
             mock_rs.is_staging_operation = False
@@ -266,9 +260,11 @@ class ClientTestSuite(unittest.TestCase):
 
     def test_negative_fetch_throws_exception(self):
         mock_backend = Mock()
-        mock_backend.fetch_results.return_value = (Mock(), False)
+        mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
-        result_set = ThriftResultSet(Mock(), Mock(), mock_backend)
+        result_set = ThriftResultSet(
+            Mock(), Mock(), mock_backend
+        )
 
         with self.assertRaises(ValueError) as e:
             result_set.fetchmany(-1)
@@ -563,7 +559,10 @@ class ClientTestSuite(unittest.TestCase):
     @patch("%s.client.Cursor._handle_staging_operation" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_staging_operation_response_is_handled(
-        self, mock_client_class, mock_handle_staging_operation, mock_execute_response
+        self,
+        mock_client_class,
+        mock_handle_staging_operation,
+        mock_execute_response,
     ):
         # If server sets ExecuteResponse.is_staging_operation True then _handle_staging_operation should be called
 

@@ -65,7 +65,7 @@ class Session:
         base_headers = [("User-Agent", self.useragent_header)]
         all_headers = (http_headers or []) + base_headers
 
-        self._ssl_options = SSLOptions(
+        self.ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
             tls_verify=not kwargs.get(
                 "_tls_no_verify", False
@@ -98,10 +98,10 @@ class Session:
         kwargs: dict,
     ) -> DatabricksClient:
         """Create and return the appropriate backend client."""
-        use_sea = kwargs.get("use_sea", False)
+        self.use_sea = kwargs.get("use_sea", False)
 
         databricks_client_class: Type[DatabricksClient]
-        if use_sea:
+        if self.use_sea:
             logger.debug("Creating SEA backend client")
             databricks_client_class = SeaDatabricksClient
         else:
@@ -114,7 +114,7 @@ class Session:
             "http_path": http_path,
             "http_headers": all_headers,
             "auth_provider": auth_provider,
-            "ssl_options": self._ssl_options,
+            "ssl_options": self.ssl_options,
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }

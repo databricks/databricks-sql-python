@@ -43,7 +43,7 @@ class FetchTests(unittest.TestCase):
 
         # Create a mock backend that will return the queue when _fill_results_buffer is called
         mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
-        mock_thrift_backend.fetch_results.return_value = (arrow_queue, False)
+        mock_thrift_backend.fetch_results.return_value = (arrow_queue, False, 0)
 
         num_cols = len(initial_results[0]) if initial_results else 0
         description = [
@@ -79,12 +79,13 @@ class FetchTests(unittest.TestCase):
             arrow_schema_bytes,
             description,
             use_cloud_fetch=True,
+            chunk_id=0,
         ):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])
             batch_index += 1
 
-            return results, batch_index < len(batch_list)
+            return results, batch_index < len(batch_list), 0
 
         mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
         mock_thrift_backend.fetch_results = fetch_results

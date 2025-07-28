@@ -160,3 +160,37 @@ class CreateSessionResponse:
     def from_dict(cls, data: Dict[str, Any]) -> "CreateSessionResponse":
         """Create a CreateSessionResponse from a dictionary."""
         return cls(session_id=data.get("session_id", ""))
+
+
+@dataclass
+class GetChunksResponse:
+    """
+    Response from getting chunks for a statement.
+
+    The response model can be found in the docs, here:
+    https://docs.databricks.com/api/workspace/statementexecution/getstatementresultchunkn
+    """
+
+    data: Optional[List[List[Any]]] = None
+    external_links: Optional[List[ExternalLink]] = None
+    byte_count: Optional[int] = None
+    chunk_index: Optional[int] = None
+    next_chunk_index: Optional[int] = None
+    next_chunk_internal_link: Optional[str] = None
+    row_count: Optional[int] = None
+    row_offset: Optional[int] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GetChunksResponse":
+        """Create a GetChunksResponse from a dictionary."""
+        result = _parse_result({"result": data})
+        return cls(
+            data=result.data,
+            external_links=result.external_links,
+            byte_count=result.byte_count,
+            chunk_index=result.chunk_index,
+            next_chunk_index=result.next_chunk_index,
+            next_chunk_internal_link=result.next_chunk_internal_link,
+            row_count=result.row_count,
+            row_offset=result.row_offset,
+        )

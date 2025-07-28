@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Any, Tuple
 import logging
 
 from databricks.sql.backend.utils.guid_utils import guid_to_hex_id
+from databricks.sql.telemetry.models.enums import StatementType
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 logger = logging.getLogger(__name__)
@@ -418,7 +419,7 @@ class ExecuteResponse:
 
     command_id: CommandId
     status: CommandState
-    description: Optional[List[Tuple]] = None
+    description: List[Tuple]
     has_been_closed_server_side: bool = False
     lz4_compressed: bool = True
     is_staging_operation: bool = False
