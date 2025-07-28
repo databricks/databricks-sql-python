@@ -170,7 +170,11 @@ class ResultSet(ABC):
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            self.results.close()
+            if self.results is not None:
+                self.results.close()
+            else:
+                logger.warning("result set close: queue not initialized")
+
             if (
                 self.status != CommandState.CLOSED
                 and not self.has_been_closed_server_side
