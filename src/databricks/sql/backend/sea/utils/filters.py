@@ -116,6 +116,9 @@ class ResultSetFilter:
         if not pyarrow:
             raise ImportError("PyArrow is required for Arrow table filtering")
 
+        if table.num_rows == 0:
+            return table
+
         # Convert allowed_values to PyArrow Array for better performance
         allowed_array = pyarrow.array(allowed_values)
 
