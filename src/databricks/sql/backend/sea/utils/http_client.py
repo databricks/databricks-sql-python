@@ -24,7 +24,7 @@ class SeaHttpClient:
     HTTP client for Statement Execution API (SEA).
 
     This client uses urllib3 for robust HTTP communication with retry policies
-    and connection pooling, similar to the Thrift HTTP client but simplified.
+    and connection pooling.
     """
 
     retry_policy: Union[DatabricksRetryPolicy, int]
