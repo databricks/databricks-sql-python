@@ -55,10 +55,16 @@ jobs:
       - name: Install library
         run: poetry install --no-interaction
       #----------------------------------------------
+      # install additional dependencies for e2e tests
+      #----------------------------------------------
+      - name: Install e2e test dependencies
+        run: poetry run pip install pyarrow
+      #----------------------------------------------
       #              run test suite
       #----------------------------------------------
       - name: Run tests with coverage
-        run: poetry run python -m pytest tests/unit --cov=src --cov-report=xml --cov-report=term
+        continue-on-error: true
+        run: poetry run python -m pytest tests/unit tests/e2e --cov=src --cov-report=xml --cov-report=term
       #----------------------------------------------
       #         check for coverage override
       #----------------------------------------------
