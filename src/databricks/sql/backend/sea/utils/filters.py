@@ -13,7 +13,6 @@ from typing import (
     List,
     Optional,
     Any,
-    Callable,
     cast,
     TYPE_CHECKING,
 )
@@ -132,31 +131,6 @@ class ResultSetFilter:
         return result_set.description[column_index][0]
 
     @staticmethod
-    def _filter_json_table(
-        result_set: SeaResultSet, filter_func: Callable[[List[Any]], bool]
-    ) -> SeaResultSet:
-        """
-        Filter a SEA result set using the provided filter function.
-
-        Args:
-            result_set: The SEA result set to filter
-            filter_func: Function that takes a row and returns True if the row should be included
-
-        Returns:
-            A filtered SEA result set
-        """
-        # Get all remaining rows and filter them
-        all_rows = result_set.results.remaining_rows()
-        filtered_rows = [row for row in all_rows if filter_func(row)]
-
-        # Create ResultData with filtered rows
-        result_data = ResultData(data=filtered_rows, external_links=None)
-
-        return ResultSetFilter._create_filtered_result_set(
-            result_set, result_data, len(filtered_rows)
-        )
-
-    @staticmethod
     def _filter_arrow_table(
         table: Any,  # pyarrow.Table
         column_name: str,
@@ -248,22 +222,36 @@ class ResultSetFilter:
         Returns:
             A filtered result set
         """
+        # Validate column index (optional - not in arrow version but good practice)
+        if column_index >= len(result_set.description):
+            raise ValueError(f"Column index {column_index} is out of bounds")
 
-        # Convert to uppercase for case-insensitive comparison if needed
+        # Extract rows
+        all_rows = result_set.results.remaining_rows()
+
+        # Convert allowed values if case-insensitive
         if not case_sensitive:
             allowed_values = [v.upper() for v in allowed_values]
+        # Helper lambda to get column value based on case sensitivity
+        get_column_value = (
+            lambda row: row[column_index].upper()
+            if not case_sensitive
+            else row[column_index]
+        )
 
-        return ResultSetFilter._filter_json_table(
-            result_set,
-            lambda row: (
-                len(row) > column_index
-                and (
-                    row[column_index].upper()
-                    if not case_sensitive
-                    else row[column_index]
-                )
-                in allowed_values
-            ),
+        # Filter rows based on allowed values
+        filtered_rows = [
+            row
+            for row in all_rows
+            if len(row) > column_index and get_column_value(row) in allowed_values
+        ]
+
+        # Create filtered result set
+        result_data = ResultData(data=filtered_rows, external_links=None)
+
+        # Return
+        return ResultSetFilter._create_filtered_result_set(
+            result_set, result_data, len(filtered_rows)
         )
 
     @staticmethod
