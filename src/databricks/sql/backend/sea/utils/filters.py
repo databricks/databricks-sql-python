@@ -263,7 +263,6 @@ class ResultSetFilter:
         # Create filtered result set
         result_data = ResultData(data=filtered_rows, external_links=None)
 
-        # Return
         return ResultSetFilter._create_filtered_result_set(
             result_set, result_data, len(filtered_rows)
         )
