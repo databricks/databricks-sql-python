@@ -1,6 +1,5 @@
 import uuid
 import pytest
-import requests
 from unittest.mock import patch, MagicMock
 
 from databricks.sql.telemetry.telemetry_client import (
@@ -91,7 +90,7 @@ class TestTelemetryClient:
         args, kwargs = client._executor.submit.call_args
 
         # Verify correct function and URL
-        assert args[0] == requests.post
+        assert args[0] == client._http_client.post
         assert args[1] == "https://test-host.com/telemetry-ext"
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 

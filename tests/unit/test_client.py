@@ -46,7 +46,7 @@ class ThriftDatabricksClientMockFactory:
             is_staging_operation=False,
             command_id=None,
             has_been_closed_server_side=True,
-            is_direct_results=True,
+            has_more_rows=True,
             lz4_compressed=True,
             arrow_schema_bytes=b"schema",
         )
@@ -266,7 +266,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
         result_set = ThriftResultSet(
-            Mock(), Mock(), mock_backend, session_id_hex=Mock()
+            Mock(), Mock(), mock_backend
         )
 
         with self.assertRaises(ValueError) as e:
