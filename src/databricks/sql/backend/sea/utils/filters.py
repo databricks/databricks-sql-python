@@ -135,6 +135,7 @@ class ResultSetFilter:
         table: Any,  # pyarrow.Table
         column_name: str,
         allowed_values: List[str],
+        case_sensitive: bool = True,
     ) -> Any:  # returns pyarrow.Table
         """
         Filter a PyArrow table by column values.
@@ -143,6 +144,7 @@ class ResultSetFilter:
             table: The PyArrow table to filter
             column_name: The name of the column to filter on
             allowed_values: List of allowed values for the column
+            case_sensitive: Whether to perform case-sensitive comparison
 
         Returns:
             A filtered PyArrow table
@@ -153,11 +155,21 @@ class ResultSetFilter:
         if table.num_rows == 0:
             return table
 
+        # Handle case-insensitive filtering by normalizing both column and allowed values
+        if not case_sensitive:
+            # Convert allowed values to uppercase
+            allowed_values = [v.upper() for v in allowed_values]
+            # Get column values as uppercase
+            column = pc.utf8_upper(table[column_name])
+        else:
+            # Use column as-is
+            column = table[column_name]
+
         # Convert allowed_values to PyArrow Array for better performance
         allowed_array = pyarrow.array(allowed_values)
 
         # Construct a boolean mask: True where column is in allowed_list
-        mask = pc.is_in(table[column_name], value_set=allowed_array)
+        mask = pc.is_in(column, value_set=allowed_array)
         return table.filter(mask)
 
     @staticmethod
@@ -165,6 +177,7 @@ class ResultSetFilter:
         result_set: SeaResultSet,
         column_index: int,
         allowed_values: List[str],
+        case_sensitive: bool = True,
     ) -> SeaResultSet:
         """
         Filter a SEA result set that contains Arrow tables.
@@ -173,6 +186,7 @@ class ResultSetFilter:
             result_set: The SEA result set to filter (containing Arrow data)
             column_index: The index of the column to filter on
             allowed_values: List of allowed values for the column
+            case_sensitive: Whether to perform case-sensitive comparison
 
         Returns:
             A filtered SEA result set
@@ -183,7 +197,7 @@ class ResultSetFilter:
         # Get all remaining rows as Arrow table and filter it
         arrow_table = result_set.results.remaining_rows()
         filtered_table = ResultSetFilter._filter_arrow_table(
-            arrow_table, column_name, allowed_values
+            arrow_table, column_name, allowed_values, case_sensitive
         )
 
         # Convert the filtered table to Arrow stream format for ResultData
@@ -281,10 +295,16 @@ class ResultSetFilter:
         if isinstance(result_set.results, (CloudFetchQueue, ArrowQueue)):
             # For Arrow tables, we need to handle filtering differently
             return ResultSetFilter._filter_arrow_result_set(
-                result_set, column_index=5, allowed_values=valid_types
+                result_set,
+                column_index=5,
+                allowed_values=valid_types,
+                case_sensitive=True,
             )
         else:
             # For JSON data, use the existing filter method
             return ResultSetFilter._filter_json_result_set(
-                result_set, 5, valid_types, case_sensitive=True
+                result_set,
+                column_index=5,
+                allowed_values=valid_types,
+                case_sensitive=True,
             )
