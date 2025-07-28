@@ -1,13 +1,15 @@
 import threading
 import time
-import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
+from databricks.sql.common.http import TelemetryHttpClient
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
     DriverErrorInfo,
+    DriverConnectionParameters,
+    HostDetails,
 )
 from databricks.sql.telemetry.models.frontend_logs import (
     TelemetryFrontendLog,
@@ -15,7 +17,11 @@ from databricks.sql.telemetry.models.frontend_logs import (
     FrontendLogContext,
     FrontendLogEntry,
 )
-from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow
+from databricks.sql.telemetry.models.enums import (
+    AuthMech,
+    AuthFlow,
+    DatabricksClientType,
+)
 from databricks.sql.telemetry.models.endpoint_models import (
     TelemetryRequest,
     TelemetryResponse,
@@ -153,6 +159,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
+        self._http_client = TelemetryHttpClient.get_instance()
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -201,7 +208,7 @@ class TelemetryClient(BaseTelemetryClient):
         try:
             logger.debug("Submitting telemetry request to thread pool")
             future = self._executor.submit(
-                requests.post,
+                self._http_client.post,
                 url,
                 data=request.to_json(),
                 headers=headers,
@@ -427,7 +434,40 @@ class TelemetryClientFactory:
                 )
                 try:
                     TelemetryClientFactory._executor.shutdown(wait=True)
+                    TelemetryHttpClient.close()
                 except Exception as e:
                     logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
+
+    @staticmethod
+    def connection_failure_log(
+        error_name: str,
+        error_message: str,
+        host_url: str,
+        http_path: str,
+        port: int,
+        user_agent: Optional[str] = None,
+    ):
+        """Send error telemetry when connection creation fails, without requiring a session"""
+
+        UNAUTH_DUMMY_SESSION_ID = "unauth_session_id"
+
+        TelemetryClientFactory.initialize_telemetry_client(
+            telemetry_enabled=True,
+            session_id_hex=UNAUTH_DUMMY_SESSION_ID,
+            auth_provider=None,
+            host_url=host_url,
+        )
+
+        telemetry_client = TelemetryClientFactory.get_telemetry_client(
+            UNAUTH_DUMMY_SESSION_ID
+        )
+        telemetry_client._driver_connection_params = DriverConnectionParameters(
+            http_path=http_path,
+            mode=DatabricksClientType.THRIFT,  # TODO: Add SEA mode
+            host_info=HostDetails(host_url=host_url, port=port),
+        )
+        telemetry_client._user_agent = user_agent
+
+        telemetry_client.export_failure_log(error_name, error_message)

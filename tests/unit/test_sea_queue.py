@@ -27,11 +27,6 @@ from databricks.sql.utils import ArrowQueue
 import threading
 import time
 
-try:
-    import pyarrow as pa
-except ImportError:
-    pa = None
-
 
 class TestJsonQueue:
     """Test suite for the JsonQueue class."""

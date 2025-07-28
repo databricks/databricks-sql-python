@@ -18,6 +18,6 @@ def guid_to_hex_id(guid: bytes) -> str:
     try:
         this_uuid = uuid.UUID(bytes=guid)
     except Exception as e:
-        logger.debug(f"Unable to convert bytes to UUID: {guid!r} -- {str(e)}")
+        logger.debug("Unable to convert bytes to UUID: %r -- %s", guid, str(e))
         return str(guid)
     return str(this_uuid)

@@ -9,7 +9,7 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union, Sequence
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 import re
 
 import lz4.frame
@@ -284,12 +284,12 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def remaining_rows(self) -> "pyarrow.Table":
         """
@@ -304,11 +304,14 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
+
+    def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
+        """Create next table at the given row offset"""
 
     def _create_table_at_offset(self, offset: int) -> "pyarrow.Table":
         """Create next table at the given row offset"""
@@ -394,9 +397,6 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                 start_row_offset
             )
         )
-
-        self.num_links_downloaded = 0
-
         if self.result_links:
             for result_link in self.result_links:
                 logger.debug(

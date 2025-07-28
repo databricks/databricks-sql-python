@@ -1052,7 +1052,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     has_more_rows_result,
                 ) = thrift_backend._handle_execute_response(execute_resp, Mock())
 
-                self.assertEqual(is_direct_results, has_more_rows_result)
+                self.assertEqual(has_more_rows, has_more_rows_result)
 
     @patch(
         "databricks.sql.utils.ThriftResultSetQueueFactory.build_queue",

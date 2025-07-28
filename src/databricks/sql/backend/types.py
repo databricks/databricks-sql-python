@@ -161,7 +161,7 @@ class SessionId:
                 if isinstance(self.secret, bytes)
                 else str(self.secret)
             )
-            return f"{self.guid_hex}|{secret_hex}"
+            return f"{self.hex_guid}|{secret_hex}"
         return str(self.guid)
 
     @classmethod
@@ -240,7 +240,7 @@ class SessionId:
         return self.guid
 
     @property
-    def guid_hex(self) -> str:
+    def hex_guid(self) -> str:
         """
         Get a hexadecimal string representation of the session ID.
 

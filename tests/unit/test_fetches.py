@@ -54,7 +54,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=Mock(),
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=True,
                 description=description,
@@ -63,7 +63,6 @@ class FetchTests(unittest.TestCase):
             ),
             thrift_client=mock_thrift_backend,
             t_row_set=None,
-            session_id_hex=Mock(),
         )
         return rs
 
@@ -100,7 +99,7 @@ class FetchTests(unittest.TestCase):
         rs = ThriftResultSet(
             connection=Mock(),
             execute_response=ExecuteResponse(
-                command_id=Mock(),
+                command_id=None,
                 status=None,
                 has_been_closed_server_side=False,
                 description=description,
@@ -108,7 +107,6 @@ class FetchTests(unittest.TestCase):
                 is_staging_operation=False,
             ),
             thrift_client=mock_thrift_backend,
-            session_id_hex=Mock(),
         )
         return rs
 
