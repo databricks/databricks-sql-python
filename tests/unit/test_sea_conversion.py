@@ -18,10 +18,12 @@ class TestSqlTypeConverter:
     def test_convert_numeric_types(self):
         """Test converting numeric types."""
         # Test integer types
-        assert SqlTypeConverter.convert_value("123", SqlType.BYTE) == 123
-        assert SqlTypeConverter.convert_value("456", SqlType.SHORT) == 456
+        assert SqlTypeConverter.convert_value("123", SqlType.TINYINT) == 123
+        assert SqlTypeConverter.convert_value("456", SqlType.SMALLINT) == 456
         assert SqlTypeConverter.convert_value("789", SqlType.INT) == 789
-        assert SqlTypeConverter.convert_value("1234567890", SqlType.LONG) == 1234567890
+        assert (
+            SqlTypeConverter.convert_value("1234567890", SqlType.BIGINT) == 1234567890
+        )
 
         # Test floating point types
         assert SqlTypeConverter.convert_value("123.45", SqlType.FLOAT) == 123.45
@@ -80,11 +82,16 @@ class TestSqlTypeConverter:
         assert timestamp_value.minute == 30
         assert timestamp_value.second == 45
 
-        # Test interval type (currently returns as string)
-        interval_value = SqlTypeConverter.convert_value(
-            "1 day 2 hours", SqlType.INTERVAL
+        # Test interval types (currently return as string)
+        interval_ym_value = SqlTypeConverter.convert_value(
+            "1-6", SqlType.INTERVAL_YEAR_MONTH
         )
-        assert interval_value == "1 day 2 hours"
+        assert interval_ym_value == "1-6"
+
+        interval_dt_value = SqlTypeConverter.convert_value(
+            "1 day 2 hours", SqlType.INTERVAL_DAY_TIME
+        )
+        assert interval_dt_value == "1 day 2 hours"
 
         # Test invalid date input
         result = SqlTypeConverter.convert_value("not_a_date", SqlType.DATE)
@@ -98,6 +105,10 @@ class TestSqlTypeConverter:
             == "test string"
         )
         assert SqlTypeConverter.convert_value("test char", SqlType.CHAR) == "test char"
+        assert (
+            SqlTypeConverter.convert_value("test varchar", SqlType.VARCHAR)
+            == "test varchar"
+        )
 
     def test_convert_binary_type(self):
         """Test converting binary type."""
@@ -115,7 +126,7 @@ class TestSqlTypeConverter:
         # Should return the original value
         assert SqlTypeConverter.convert_value("test", "unsupported_type") == "test"
 
-        # Complex types should return as-is
+        # Complex types should return as-is (not yet implemented in TYPE_MAPPING)
         assert (
             SqlTypeConverter.convert_value("complex_value", SqlType.ARRAY)
             == "complex_value"
