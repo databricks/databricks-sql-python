@@ -112,25 +112,6 @@ class ResultSetFilter:
         )
 
     @staticmethod
-    def _validate_column_index(result_set: SeaResultSet, column_index: int) -> str:
-        """
-        Validate column index and return the column name.
-
-        Args:
-            result_set: Result set to validate against
-            column_index: Index of the column to validate
-
-        Returns:
-            str: Column name at the specified index
-
-        Raises:
-            ValueError: If column index is out of bounds
-        """
-        if column_index >= len(result_set.description):
-            raise ValueError(f"Column index {column_index} is out of bounds")
-        return result_set.description[column_index][0]
-
-    @staticmethod
     def _filter_arrow_table(
         table: Any,  # pyarrow.Table
         column_name: str,
@@ -192,7 +173,9 @@ class ResultSetFilter:
             A filtered SEA result set
         """
         # Validate column index and get column name
-        column_name = ResultSetFilter._validate_column_index(result_set, column_index)
+        if column_index >= len(result_set.description):
+            raise ValueError(f"Column index {column_index} is out of bounds")
+        column_name = result_set.description[column_index][0]
 
         # Get all remaining rows as Arrow table and filter it
         arrow_table = result_set.results.remaining_rows()
