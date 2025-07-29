@@ -135,6 +135,7 @@ class SqlTypeConverter:
     def convert_value(
         value: str,
         sql_type: str,
+        column_name: Optional[str],
         **kwargs,
     ) -> object:
         """
@@ -143,6 +144,7 @@ class SqlTypeConverter:
         Args:
             value: The string value to convert
             sql_type: The SQL type (e.g., 'tinyint', 'decimal')
+            column_name: The name of the column being converted
             **kwargs: Additional keyword arguments for the conversion function
 
         Returns:
@@ -162,6 +164,10 @@ class SqlTypeConverter:
                 return converter_func(value, precision, scale)
             else:
                 return converter_func(value)
-        except (ValueError, TypeError, decimal.InvalidOperation) as e:
-            logger.warning(f"Error converting value '{value}' to {sql_type}: {e}")
+        except Exception as e:
+            warning_message = f"Error converting value '{value}' to {sql_type}"
+            if column_name:
+                warning_message += f" in column {column_name}"
+            warning_message += f": {e}"
+            logger.warning(warning_message)
             return value
