@@ -47,6 +47,7 @@ class TestTelemetryClientRetries:
             session_id_hex=session_id,
             auth_provider=None,
             host_url="test.databricks.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
         client = TelemetryClientFactory.get_telemetry_client(session_id)
         
