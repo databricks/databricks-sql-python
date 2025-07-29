@@ -895,7 +895,6 @@ class ThriftDatabricksClient(DatabricksClient):
             connection=cursor.connection,
             execute_response=execute_response,
             thrift_client=self,
-            session_id_hex=self._session_id_hex,
             buffer_size_bytes=cursor.buffer_size_bytes,
             arraysize=cursor.arraysize,
             use_cloud_fetch=cursor.connection.use_cloud_fetch,
