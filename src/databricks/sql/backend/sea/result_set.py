@@ -106,7 +106,7 @@ class SeaResultSet(ResultSet):
         def convert_complex_column_to_string(col: "pyarrow.Array") -> "pyarrow.Array":
             python_values = col.to_pylist()
             json_strings = [
-                (None if val is None else json.dumps(val)) for val in python_values
+                (json.dumps(val) if val is not None else None) for val in python_values
             ]
             return pyarrow.array(json_strings, type=pyarrow.string())
 
