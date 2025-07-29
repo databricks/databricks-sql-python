@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 class SeaResultSet(ResultSet):
     """ResultSet implementation for SEA backend."""
 
+    backend: SeaDatabricksClient
+
     def __init__(
         self,
         connection: Connection,
@@ -82,10 +84,6 @@ class SeaResultSet(ResultSet):
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
-
-        assert isinstance(
-            self.backend, SeaDatabricksClient
-        ), "SeaResultSet must be used with SeaDatabricksClient"
 
     def _convert_complex_types_to_string(
         self, rows: "pyarrow.Table"
