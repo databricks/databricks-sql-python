@@ -132,8 +132,8 @@ class TestResultSetFilter(unittest.TestCase):
             ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, table_types)
             args, kwargs = mock_filter.call_args
             self.assertEqual(args[0], self.mock_sea_result_set)
-            self.assertEqual(args[1], 5)  # Table type column index
-            self.assertEqual(args[2], table_types)
+            self.assertEqual(kwargs.get("column_index"), 5)  # Table type column index
+            self.assertEqual(kwargs.get("allowed_values"), table_types)
             self.assertEqual(kwargs.get("case_sensitive"), True)
 
         # Case 2: Default table types (None or empty list)
@@ -141,12 +141,16 @@ class TestResultSetFilter(unittest.TestCase):
             # Test with None
             ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, None)
             args, kwargs = mock_filter.call_args
-            self.assertEqual(args[2], ["TABLE", "VIEW", "SYSTEM TABLE"])
+            self.assertEqual(
+                kwargs.get("allowed_values"), ["TABLE", "VIEW", "SYSTEM TABLE"]
+            )
 
             # Test with empty list
             ResultSetFilter.filter_tables_by_type(self.mock_sea_result_set, [])
             args, kwargs = mock_filter.call_args
-            self.assertEqual(args[2], ["TABLE", "VIEW", "SYSTEM TABLE"])
+            self.assertEqual(
+                kwargs.get("allowed_values"), ["TABLE", "VIEW", "SYSTEM TABLE"]
+            )
 
 
 if __name__ == "__main__":

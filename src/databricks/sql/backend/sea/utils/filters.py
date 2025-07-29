@@ -70,19 +70,43 @@ class ResultSetFilter:
             result_set: Original result set to copy manifest from
             new_row_count: New total row count for filtered data
 
-        from databricks.sql.backend.sea.backend import SeaDatabricksClient
+        Returns:
+            Updated manifest copy
+        """
+        filtered_manifest = deepcopy(result_set.manifest)
+        filtered_manifest.total_row_count = new_row_count
+        return filtered_manifest
+
+    @staticmethod
+    def _create_filtered_result_set(
+        result_set: SeaResultSet,
+        result_data: ResultData,
+        row_count: int,
+    ) -> "SeaResultSet":
+        """
+        Create a new filtered SeaResultSet with the provided data.
+
+        Args:
+            result_set: Original result set to copy parameters from
+            result_data: New result data for the filtered set
+            row_count: Number of rows in the filtered data
+
+        Returns:
+            New filtered SeaResultSet
+        """
         from databricks.sql.backend.sea.result_set import SeaResultSet
 
-        # Create a new SeaResultSet with the filtered data
-        manifest = result_set.manifest
-        manifest.total_row_count = len(filtered_rows)
+        execute_response = ResultSetFilter._create_execute_response(result_set)
+        filtered_manifest = ResultSetFilter._create_filtered_manifest(
+            result_set, row_count
+        )
 
-        filtered_result_set = SeaResultSet(
+        return SeaResultSet(
             connection=result_set.connection,
             execute_response=execute_response,
             sea_client=cast(SeaDatabricksClient, result_set.backend),
             result_data=result_data,
-            manifest=manifest,
+            manifest=filtered_manifest,
             buffer_size_bytes=result_set.buffer_size_bytes,
             arraysize=result_set.arraysize,
         )
