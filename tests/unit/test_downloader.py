@@ -26,12 +26,14 @@ class DownloaderTests(unittest.TestCase):
     def _setup_time_mock_for_download(self, mock_time, end_time):
         """Helper to setup time mock that handles logging system calls."""
         call_count = [0]
+
         def time_side_effect():
             call_count[0] += 1
             if call_count[0] <= 2:  # First two calls (validation, start_time)
                 return 1000
             else:  # All subsequent calls (logging, duration calculation)
                 return end_time
+
         mock_time.side_effect = time_side_effect
 
     @patch("time.time", return_value=1000)
@@ -104,7 +106,7 @@ class DownloaderTests(unittest.TestCase):
     @patch("time.time")
     def test_run_uncompressed_successful(self, mock_time):
         self._setup_time_mock_for_download(mock_time, 1000.5)
-        
+
         http_client = DatabricksHttpClient.get_instance()
         file_bytes = b"1234567890" * 10
         settings = Mock(link_expiry_buffer_secs=0, download_timeout=0, use_proxy=False)
@@ -133,7 +135,7 @@ class DownloaderTests(unittest.TestCase):
     @patch("time.time")
     def test_run_compressed_successful(self, mock_time):
         self._setup_time_mock_for_download(mock_time, 1000.2)
-        
+
         http_client = DatabricksHttpClient.get_instance()
         file_bytes = b"1234567890" * 10
         compressed_bytes = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
