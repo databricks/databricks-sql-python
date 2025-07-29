@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Tuple, List, Optional, Any
+from typing import Dict, Tuple, List, Optional, Any, Type
 
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
@@ -8,8 +8,9 @@ from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, Request
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
-from databricks.sql.backend.types import SessionId
+from databricks.sql.backend.types import SessionId, BackendType
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +63,9 @@ class Session:
             self.useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
 
         base_headers = [("User-Agent", self.useragent_header)]
+        all_headers = (http_headers or []) + base_headers
 
-        self._ssl_options = SSLOptions(
+        self.ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
             tls_verify=not kwargs.get(
                 "_tls_no_verify", False
@@ -75,18 +77,48 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        self.backend: DatabricksClient = ThriftDatabricksClient(
-            self.host,
-            self.port,
+        self.backend = self._create_backend(
+            server_hostname,
             http_path,
-            (http_headers or []) + base_headers,
+            all_headers,
             self.auth_provider,
-            ssl_options=self._ssl_options,
-            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
-            **kwargs,
+            _use_arrow_native_complex_types,
+            kwargs,
         )
 
         self.protocol_version = None
+
+    def _create_backend(
+        self,
+        server_hostname: str,
+        http_path: str,
+        all_headers: List[Tuple[str, str]],
+        auth_provider,
+        _use_arrow_native_complex_types: Optional[bool],
+        kwargs: dict,
+    ) -> DatabricksClient:
+        """Create and return the appropriate backend client."""
+        self.use_sea = kwargs.get("use_sea", False)
+
+        databricks_client_class: Type[DatabricksClient]
+        if self.use_sea:
+            logger.debug("Creating SEA backend client")
+            databricks_client_class = SeaDatabricksClient
+        else:
+            logger.debug("Creating Thrift backend client")
+            databricks_client_class = ThriftDatabricksClient
+
+        common_args = {
+            "server_hostname": server_hostname,
+            "port": self.port,
+            "http_path": http_path,
+            "http_headers": all_headers,
+            "auth_provider": auth_provider,
+            "ssl_options": self.ssl_options,
+            "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
+            **kwargs,
+        }
+        return databricks_client_class(**common_args)
 
     def open(self):
         self._session_id = self.backend.open_session(

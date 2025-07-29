@@ -30,6 +30,7 @@ from databricks.sql import (
     OperationalError,
     RequestError,
 )
+from databricks.sql.backend.types import CommandState
 from tests.e2e.common.predicates import (
     pysql_has_version,
     pysql_supports_arrow,
@@ -112,10 +113,12 @@ class PySQLPytestTestCase:
             conn.close()
 
     @contextmanager
-    def cursor(self, extra_params=()):
+    def cursor(self, extra_params=(), extra_cursor_params=()):
         with self.connection(extra_params) as conn:
             cursor = conn.cursor(
-                arraysize=self.arraysize, buffer_size_bytes=self.buffer_size_bytes
+                arraysize=self.arraysize,
+                buffer_size_bytes=self.buffer_size_bytes,
+                **dict(extra_cursor_params),
             )
             try:
                 yield cursor
@@ -179,10 +182,19 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
 
 
 class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
-    def test_execute_async__long_running(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_execute_async__long_running(self, extra_params):
 
         long_running_query = "SELECT COUNT(*) FROM RANGE(10000 * 16) x JOIN RANGE(10000) y ON FROM_UNIXTIME(x.id * y.id, 'yyyy-MM-dd') LIKE '%not%a%date%'"
-        with self.cursor() as cursor:
+        with self.cursor(extra_params) as cursor:
             cursor.execute_async(long_running_query)
 
             ## Polling after every POLLING_INTERVAL seconds
@@ -195,10 +207,21 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
             assert result[0].asDict() == {"count(1)": 0}
 
-    def test_execute_async__small_result(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
+    def test_execute_async__small_result(self, extra_params):
         small_result_query = "SELECT 1"
 
-        with self.cursor() as cursor:
+        with self.cursor(extra_params) as cursor:
             cursor.execute_async(small_result_query)
 
             ## Fake sleep for 5 secs
@@ -214,7 +237,16 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
 
             assert result[0].asDict() == {"1": 1}
 
-    def test_execute_async__large_result(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_execute_async__large_result(self, extra_params):
         x_dimension = 1000
         y_dimension = 1000
         large_result_query = f"""
@@ -228,7 +260,7 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
                     RANGE({y_dimension}) y
             """
 
-        with self.cursor() as cursor:
+        with self.cursor(extra_params) as cursor:
             cursor.execute_async(large_result_query)
 
             ## Fake sleep for 5 secs
@@ -327,8 +359,22 @@ class TestPySQLCoreSuite(
                 cursor.execute("CREATE TABLE IF NOT EXISTS TABLE table_234234234")
             assert "table_234234234" in str(cm.value)
 
-    def test_create_table_will_return_empty_result_set(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_create_table_will_return_empty_result_set(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             try:
                 cursor.execute(
@@ -526,10 +572,24 @@ class TestPySQLCoreSuite(
             ]
 
     @skipUnless(pysql_supports_arrow(), "arrow test need arrow support")
-    def test_get_arrow(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_get_arrow(self, extra_params):
         # These tests are quite light weight as the arrow fetch methods are used internally
         # by everything else
-        with self.cursor({}) as cursor:
+        with self.cursor(extra_params) as cursor:
             cursor.execute("SELECT * FROM range(10)")
             table_1 = cursor.fetchmany_arrow(1).to_pydict()
             assert table_1 == OrderedDict([("id", [0])])
@@ -537,9 +597,20 @@ class TestPySQLCoreSuite(
             table_2 = cursor.fetchall_arrow().to_pydict()
             assert table_2 == OrderedDict([("id", [1, 2, 3, 4, 5, 6, 7, 8, 9])])
 
-    def test_unicode(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
+    def test_unicode(self, extra_params):
         unicode_str = "数据砖"
-        with self.cursor({}) as cursor:
+        with self.cursor(extra_params) as cursor:
             cursor.execute("SELECT '{}'".format(unicode_str))
             results = cursor.fetchall()
             assert len(results) == 1 and len(results[0]) == 1
@@ -577,8 +648,22 @@ class TestPySQLCoreSuite(
             assert len(cursor.fetchall()) == 3
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    def test_can_execute_command_after_failure(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_can_execute_command_after_failure(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             with pytest.raises(DatabaseError):
                 cursor.execute("this is a sytnax error")
 
@@ -588,8 +673,22 @@ class TestPySQLCoreSuite(
             self.assertEqualRowValues(res, [[1]])
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    def test_can_execute_command_after_success(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_can_execute_command_after_success(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             cursor.execute("SELECT 1;")
             cursor.execute("SELECT 2;")
 
@@ -601,8 +700,22 @@ class TestPySQLCoreSuite(
         return query
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    def test_fetchone(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_fetchone(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             query = self.generate_multi_row_query()
             cursor.execute(query)
 
@@ -613,8 +726,19 @@ class TestPySQLCoreSuite(
             assert cursor.fetchone() == None
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    def test_fetchall(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+        ],
+    )
+    def test_fetchall(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             query = self.generate_multi_row_query()
             cursor.execute(query)
 
@@ -623,8 +747,22 @@ class TestPySQLCoreSuite(
             assert cursor.fetchone() == None
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    def test_fetchmany_when_stride_fits(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_fetchmany_when_stride_fits(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             query = "SELECT * FROM range(4)"
             cursor.execute(query)
 
@@ -632,8 +770,22 @@ class TestPySQLCoreSuite(
             self.assertEqualRowValues(cursor.fetchmany(2), [[2], [3]])
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    def test_fetchmany_in_excess(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_fetchmany_in_excess(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             query = "SELECT * FROM range(4)"
             cursor.execute(query)
 
@@ -641,8 +793,22 @@ class TestPySQLCoreSuite(
             self.assertEqualRowValues(cursor.fetchmany(3), [[3]])
 
     @skipIf(pysql_has_version("<", "2"), "requires pysql v2")
-    def test_iterator_api(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_iterator_api(self, extra_params):
+        with self.cursor(extra_params) as cursor:
             query = "SELECT * FROM range(4)"
             cursor.execute(query)
 
@@ -715,8 +881,24 @@ class TestPySQLCoreSuite(
                 ), "timestamp {} did not match {}".format(timestamp, expected)
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
-    def test_multi_timestamps_arrow(self):
-        with self.cursor({"session_configuration": {"ansi_mode": False}}) as cursor:
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {},
+            {
+                "use_sea": True,
+                "use_cloud_fetch": False,
+                "enable_query_result_lz4_compression": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_multi_timestamps_arrow(self, extra_params):
+        with self.cursor(
+            {"session_configuration": {"ansi_mode": False}, **extra_params}
+        ) as cursor:
             query, expected = self.multi_query()
             expected = [
                 [self.maybe_add_timezone_to_timestamp(ts) for ts in row]
@@ -807,6 +989,60 @@ class TestPySQLCoreSuite(
             cursor.catalogs()
             results = cursor.fetchall_arrow()
             assert isinstance(results, pyarrow.Table)
+
+    def test_row_limit_with_larger_result(self):
+        """Test that row_limit properly constrains results when query would return more rows"""
+        row_limit = 1000
+        with self.cursor(extra_cursor_params={"row_limit": row_limit}) as cursor:
+            # Execute a query that returns more than row_limit rows
+            cursor.execute("SELECT * FROM range(2000)")
+            rows = cursor.fetchall()
+
+            # Check if the number of rows is limited to row_limit
+            assert len(rows) == row_limit, f"Expected {row_limit} rows, got {len(rows)}"
+
+    def test_row_limit_with_smaller_result(self):
+        """Test that row_limit doesn't affect results when query returns fewer rows than limit"""
+        row_limit = 100
+        expected_rows = 50
+        with self.cursor(extra_cursor_params={"row_limit": row_limit}) as cursor:
+            # Execute a query that returns fewer than row_limit rows
+            cursor.execute(f"SELECT * FROM range({expected_rows})")
+            rows = cursor.fetchall()
+
+            # Check if all rows are returned (not limited by row_limit)
+            assert (
+                len(rows) == expected_rows
+            ), f"Expected {expected_rows} rows, got {len(rows)}"
+
+    @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
+    def test_row_limit_with_arrow_larger_result(self):
+        """Test that row_limit properly constrains arrow results when query would return more rows"""
+        row_limit = 800
+        with self.cursor(extra_cursor_params={"row_limit": row_limit}) as cursor:
+            # Execute a query that returns more than row_limit rows
+            cursor.execute("SELECT * FROM range(1500)")
+            arrow_table = cursor.fetchall_arrow()
+
+            # Check if the number of rows in the arrow table is limited to row_limit
+            assert (
+                arrow_table.num_rows == row_limit
+            ), f"Expected {row_limit} rows, got {arrow_table.num_rows}"
+
+    @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
+    def test_row_limit_with_arrow_smaller_result(self):
+        """Test that row_limit doesn't affect arrow results when query returns fewer rows than limit"""
+        row_limit = 200
+        expected_rows = 100
+        with self.cursor(extra_cursor_params={"row_limit": row_limit}) as cursor:
+            # Execute a query that returns fewer than row_limit rows
+            cursor.execute(f"SELECT * FROM range({expected_rows})")
+            arrow_table = cursor.fetchall_arrow()
+
+            # Check if all rows are returned (not limited by row_limit)
+            assert (
+                arrow_table.num_rows == expected_rows
+            ), f"Expected {expected_rows} rows, got {arrow_table.num_rows}"
 
 
 # use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep

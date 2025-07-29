@@ -1,6 +1,5 @@
 import uuid
 import pytest
-import requests
 from unittest.mock import patch, MagicMock
 
 from databricks.sql.telemetry.telemetry_client import (
@@ -8,6 +7,7 @@ from databricks.sql.telemetry.telemetry_client import (
     NoopTelemetryClient,
     TelemetryClientFactory,
     TelemetryHelper,
+    BaseTelemetryClient,
 )
 from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow
 from databricks.sql.auth.authenticators import (
@@ -90,7 +90,7 @@ class TestTelemetryClient:
         args, kwargs = client._executor.submit.call_args
 
         # Verify correct function and URL
-        assert args[0] == requests.post
+        assert args[0] == client._http_client.post
         assert args[1] == "https://test-host.com/telemetry-ext"
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 
@@ -290,7 +290,9 @@ class TestTelemetryFactory:
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
 
-    @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log")
+    @patch(
+        "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log"
+    )
     @patch("databricks.sql.client.Session")
     def test_connection_failure_sends_correct_telemetry_payload(
         self, mock_session, mock_export_failure_log
@@ -305,6 +307,7 @@ class TestTelemetryFactory:
 
         try:
             from databricks import sql
+
             sql.connect(server_hostname="test-host", http_path="/test-path")
         except Exception as e:
             assert str(e) == error_message
