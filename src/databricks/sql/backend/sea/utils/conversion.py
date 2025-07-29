@@ -155,9 +155,13 @@ class SqlTypeConverter:
             return value
 
         converter_func = SqlTypeConverter.TYPE_MAPPING[sql_type]
-        if sql_type == SqlType.DECIMAL:
-            precision = kwargs.get("precision", None)
-            scale = kwargs.get("scale", None)
-            return converter_func(value, precision, scale)
-        else:
-            return converter_func(value)
+        try:
+            if sql_type == SqlType.DECIMAL:
+                precision = kwargs.get("precision", None)
+                scale = kwargs.get("scale", None)
+                return converter_func(value, precision, scale)
+            else:
+                return converter_func(value)
+        except (ValueError, TypeError, decimal.InvalidOperation) as e:
+            logger.warning(f"Error converting value '{value}' to {sql_type}: {e}")
+            return value

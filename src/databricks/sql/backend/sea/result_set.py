@@ -92,7 +92,6 @@ class SeaResultSet(ResultSet):
         converted_row = []
 
         for i, value in enumerate(row):
-            column_name = self.description[i][0]
             column_type = self.description[i][1]
             precision = self.description[i][4]
             scale = self.description[i][5]
@@ -104,7 +103,7 @@ class SeaResultSet(ResultSet):
                 converted_row.append(converted_value)
             except Exception as e:
                 logger.warning(
-                    f"Error converting value '{value}' to {column_type} in column {column_name}: {e}"
+                    f"Error converting value '{value}' to {column_type}: {e}"
                 )
                 converted_row.append(value)
 
