@@ -266,7 +266,7 @@ class ClientTestSuite(unittest.TestCase):
         mock_backend.fetch_results.return_value = (Mock(), False, 0)
 
         result_set = ThriftResultSet(
-            Mock(), Mock(), mock_backend, session_id_hex=Mock()
+            Mock(), Mock(), mock_backend
         )
 
         with self.assertRaises(ValueError) as e:

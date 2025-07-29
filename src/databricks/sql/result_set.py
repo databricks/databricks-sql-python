@@ -170,7 +170,11 @@ class ResultSet(ABC):
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            self.results.close()
+            if self.results is not None:
+                self.results.close()
+            else:
+                logger.warning("result set close: queue not initialized")
+
             if (
                 self.status != CommandState.CLOSED
                 and not self.has_been_closed_server_side
@@ -193,7 +197,6 @@ class ThriftResultSet(ResultSet):
         connection: Connection,
         execute_response: ExecuteResponse,
         thrift_client: ThriftDatabricksClient,
-        session_id_hex: Optional[str],
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
@@ -217,7 +220,7 @@ class ThriftResultSet(ResultSet):
             :param ssl_options: SSL options for cloud fetch
             :param has_more_rows: Whether there are more rows to fetch
         """
-        self.num_downloaded_chunks = 0
+        self.num_chunks = 0
 
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
@@ -237,12 +240,12 @@ class ThriftResultSet(ResultSet):
                 lz4_compressed=execute_response.lz4_compressed,
                 description=execute_response.description,
                 ssl_options=ssl_options,
-                session_id_hex=session_id_hex,
+                session_id_hex=connection.get_session_id_hex(),
                 statement_id=execute_response.command_id.to_hex_guid(),
-                chunk_id=self.num_downloaded_chunks,
+                chunk_id=self.num_chunks,
             )
             if t_row_set.resultLinks:
-                self.num_downloaded_chunks += len(t_row_set.resultLinks)
+                self.num_chunks += len(t_row_set.resultLinks)
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -275,11 +278,11 @@ class ThriftResultSet(ResultSet):
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
             use_cloud_fetch=self._use_cloud_fetch,
-            chunk_id=self.num_downloaded_chunks,
+            chunk_id=self.num_chunks,
         )
         self.results = results
         self.has_more_rows = has_more_rows
-        self.num_downloaded_chunks += result_links_count
+        self.num_chunks += result_links_count
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]

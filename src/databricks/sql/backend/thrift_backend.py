@@ -1040,7 +1040,6 @@ class ThriftDatabricksClient(DatabricksClient):
                 max_download_threads=self.max_download_threads,
                 ssl_options=self._ssl_options,
                 has_more_rows=has_more_rows,
-                session_id_hex=self._session_id_hex,
             )
 
     def get_catalogs(
@@ -1079,7 +1078,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             has_more_rows=has_more_rows,
-            session_id_hex=self._session_id_hex,
         )
 
     def get_schemas(
@@ -1124,7 +1122,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             has_more_rows=has_more_rows,
-            session_id_hex=self._session_id_hex,
         )
 
     def get_tables(
@@ -1173,7 +1170,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             has_more_rows=has_more_rows,
-            session_id_hex=self._session_id_hex,
         )
 
     def get_columns(
@@ -1222,7 +1218,6 @@ class ThriftDatabricksClient(DatabricksClient):
             max_download_threads=self.max_download_threads,
             ssl_options=self._ssl_options,
             has_more_rows=has_more_rows,
-            session_id_hex=self._session_id_hex,
         )
 
     def _handle_execute_response(self, resp, cursor):
