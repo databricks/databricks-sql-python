@@ -235,8 +235,8 @@ class PythonConnectorComparator:
 
     def _safe_compare(self, val1, val2):
         """
-        Safely compare two values, handling lists, dicts, and complex types.
-        
+        Safely compare two values, handling Row objects and PyArrow tables.
+
         Returns True if values are equal, False otherwise.
         """
         try:
@@ -245,28 +245,40 @@ class PythonConnectorComparator:
                 return True
             if val1 is None or val2 is None:
                 return False
-            
-            # For lists, tuples, and other sequences (but not strings)
+
+            # For Row objects, convert to dictionaries
+            if hasattr(val1, "asDict") and hasattr(val2, "asDict"):
+                return self._safe_compare(
+                    val1.asDict(recursive=True), val2.asDict(recursive=True)
+                )
+
+            # For PyArrow arrays/tables
+            if hasattr(val1, "to_pylist") and hasattr(val2, "to_pylist"):
+                return val1.to_pylist() == val2.to_pylist()
+
+            # For lists and tuples
             if isinstance(val1, (list, tuple)) and isinstance(val2, (list, tuple)):
                 if len(val1) != len(val2):
                     return False
                 return all(self._safe_compare(v1, v2) for v1, v2 in zip(val1, val2))
-            
+
             # For dictionaries
             if isinstance(val1, dict) and isinstance(val2, dict):
                 if set(val1.keys()) != set(val2.keys()):
                     return False
                 return all(self._safe_compare(val1[k], val2[k]) for k in val1.keys())
-            
-            # For Row objects (which are tuples with special properties)
-            if hasattr(val1, 'asDict') and hasattr(val2, 'asDict'):
-                return self._safe_compare(val1.asDict(recursive=True), val2.asDict(recursive=True))
-            
-            # Default comparison
-            return val1 == val2
-        except (ValueError, TypeError) as e:
-            # If comparison fails (e.g., numpy arrays), convert to string
-            return str(val1) == str(val2)
+
+            # Default comparison - ensure we always return a boolean
+            result = val1 == val2
+            # If result is not a simple boolean, use bool() to convert it
+            return bool(result)
+
+        except (ValueError, TypeError):
+            # Fallback to string comparison for problematic types
+            try:
+                return str(val1) == str(val2)
+            except:
+                return False
 
     def compare_rows(
         self, thrift_rows: List[Row], sea_rows: List[Row], result: ComparisonResult
@@ -302,15 +314,17 @@ class PythonConnectorComparator:
                 # Check if dictionaries are different by comparing all fields
                 all_fields = set(thrift_dict.keys()) | set(sea_dict.keys())
                 dicts_differ = False
-                
+
                 for field in all_fields:
                     if field not in thrift_dict or field not in sea_dict:
                         dicts_differ = True
                         break
-                    elif not self._safe_compare(thrift_dict.get(field), sea_dict.get(field)):
+                    elif not self._safe_compare(
+                        thrift_dict.get(field), sea_dict.get(field)
+                    ):
                         dicts_differ = True
                         break
-                
+
                 if dicts_differ:
 
                     for field in all_fields:
@@ -353,9 +367,9 @@ class PythonConnectorComparator:
                 thrift_values = [m[1] for m in mismatches]
                 sea_values = [m[2] for m in mismatches]
 
-                if all(self._safe_compare(v, thrift_values[0]) for v in thrift_values) and all(
-                    self._safe_compare(v, sea_values[0]) for v in sea_values
-                ):
+                if all(
+                    self._safe_compare(v, thrift_values[0]) for v in thrift_values
+                ) and all(self._safe_compare(v, sea_values[0]) for v in sea_values):
                     result.add_difference(
                         f"Field '{field}' value mismatch in all rows",
                         thrift_values[0],
