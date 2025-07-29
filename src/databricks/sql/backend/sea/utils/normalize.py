@@ -7,7 +7,11 @@ Thrift type naming conventions.
 
 from typing import Dict, Any
 
-# Mapping of SEA types that need to be translated to Thrift conventions
+# SEA types that need to be translated to Thrift types
+# The list of all SEA types is available in the REST reference at:
+#    https://docs.databricks.com/api/workspace/statementexecution/executestatement
+# The list of all Thrift types can be found in the ttypes.TTypeId definition
+# The SEA types that do not align with Thrift are explicitly mapped below
 SEA_TO_THRIFT_TYPE_MAP = {
     "BYTE": "TINYINT",
     "SHORT": "SMALLINT",
