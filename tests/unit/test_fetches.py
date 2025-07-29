@@ -63,7 +63,6 @@ class FetchTests(unittest.TestCase):
             ),
             thrift_client=mock_thrift_backend,
             t_row_set=None,
-            session_id_hex=Mock(),
         )
         return rs
 
@@ -108,7 +107,6 @@ class FetchTests(unittest.TestCase):
                 is_staging_operation=False,
             ),
             thrift_client=mock_thrift_backend,
-            session_id_hex=Mock(),
         )
         return rs
 
