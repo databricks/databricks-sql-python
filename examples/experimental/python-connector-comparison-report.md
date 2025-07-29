@@ -1,6 +1,6 @@
 # Python Connector Comparison Report
 
-**Date:** 2025-07-24 06:52:12
+**Date:** 2025-07-29 19:19:02
 **Server:** benchmarking-staging-aws-us-west-2.staging.cloud.databricks.com
 **HTTP Path:** /sql/1.0/warehouses/17661fca65a0e4fc
 
@@ -12,9 +12,9 @@
 
 ## Performance Summary
 
-- **Total Thrift Execution Time:** 9.5053s
-- **Total SEA Execution Time:** 12.2712s
-- **SEA Performance:** +29.10% slower than Thrift
+- **Total Thrift Execution Time:** 30.1946s
+- **Total SEA Execution Time:** 23.1179s
+- **SEA Performance:** -23.44% faster than Thrift
 
 ## Test Results
 
@@ -181,8 +181,8 @@ Row Data:
 ---------------------
 Column Metadata:
   - Description length mismatch: Thrift has 10 columns, SEA has 7: [('TABLE_CAT', 'string', None, None, None, None, None), ('TABLE_SCHEM', 'string', None, None, None, None, None), ('TABLE_NAME', 'string', None, None, None, None, None), ('TABLE_TYPE', 'string', None, None, None, None, None), ('REMARKS', 'string', None, None, None, None, None), ('TYPE_CAT', 'string', None, None, None, None, None), ('TYPE_SCHEM', 'string', None, None, None, None, None), ('TYPE_NAME', 'string', None, None, None, None, None), ('SELF_REFERENCING_COL_NAME', 'string', None, None, None, None, None), ('REF_GENERATION', 'string', None, None, None, None, None)] vs [('namespace', 'string', None, None, None, None, None), ('tableName', 'string', None, None, None, None, None), ('isTemporary', 'boolean', None, None, None, None, None), ('information', 'string', None, None, None, None, None), ('catalogName', 'string', None, None, None, None, None), ('tableType', 'string', None, None, None, None, None), ('remarks', 'string', None, None, None, None, None)]
-  - Field 'tableType' missing in all Thrift rows
   - Field 'catalogName' missing in all Thrift rows
+  - Field 'tableType' missing in all Thrift rows
   - Field 'TYPE_CAT' missing in all SEA rows
   - Field 'TYPE_NAME' missing in all SEA rows
   - Field 'TABLE_TYPE' missing in all SEA rows
@@ -192,16 +192,16 @@ Column Metadata:
 -----------------
 Row Data:
   - Field 'tableName' missing in all Thrift rows
+  - Field 'isTemporary' missing in all Thrift rows
   - Field 'remarks' missing in all Thrift rows
   - Field 'namespace' missing in all Thrift rows
-  - Field 'isTemporary' missing in all Thrift rows
   - Field 'information' missing in all Thrift rows
-  - Field 'SELF_REFERENCING_COL_NAME' missing in all SEA rows
-  - Field 'TABLE_SCHEM' missing in all SEA rows
-  - Field 'TABLE_CAT' missing in all SEA rows
   - Field 'REMARKS' missing in all SEA rows
+  - Field 'TABLE_CAT' missing in all SEA rows
   - Field 'TABLE_NAME' missing in all SEA rows
   - Field 'REF_GENERATION' missing in all SEA rows
+  - Field 'SELF_REFERENCING_COL_NAME' missing in all SEA rows
+  - Field 'TABLE_SCHEM' missing in all SEA rows
 
 ============================
 
@@ -229,8 +229,8 @@ Row Data:
 ---------------------
 Column Metadata:
   - Description length mismatch: Thrift has 10 columns, SEA has 7: [('TABLE_CAT', 'string', None, None, None, None, None), ('TABLE_SCHEM', 'string', None, None, None, None, None), ('TABLE_NAME', 'string', None, None, None, None, None), ('TABLE_TYPE', 'string', None, None, None, None, None), ('REMARKS', 'string', None, None, None, None, None), ('TYPE_CAT', 'string', None, None, None, None, None), ('TYPE_SCHEM', 'string', None, None, None, None, None), ('TYPE_NAME', 'string', None, None, None, None, None), ('SELF_REFERENCING_COL_NAME', 'string', None, None, None, None, None), ('REF_GENERATION', 'string', None, None, None, None, None)] vs [('namespace', 'string', None, None, None, None, None), ('tableName', 'string', None, None, None, None, None), ('isTemporary', 'boolean', None, None, None, None, None), ('information', 'string', None, None, None, None, None), ('catalogName', 'string', None, None, None, None, None), ('tableType', 'string', None, None, None, None, None), ('remarks', 'string', None, None, None, None, None)]
-  - Field 'tableType' missing in all Thrift rows
   - Field 'catalogName' missing in all Thrift rows
+  - Field 'tableType' missing in all Thrift rows
   - Field 'TYPE_CAT' missing in all SEA rows
   - Field 'TYPE_NAME' missing in all SEA rows
   - Field 'TABLE_TYPE' missing in all SEA rows
@@ -240,16 +240,16 @@ Column Metadata:
 -----------------
 Row Data:
   - Field 'tableName' missing in all Thrift rows
+  - Field 'isTemporary' missing in all Thrift rows
   - Field 'remarks' missing in all Thrift rows
   - Field 'namespace' missing in all Thrift rows
-  - Field 'isTemporary' missing in all Thrift rows
   - Field 'information' missing in all Thrift rows
-  - Field 'SELF_REFERENCING_COL_NAME' missing in all SEA rows
-  - Field 'TABLE_SCHEM' missing in all SEA rows
-  - Field 'TABLE_CAT' missing in all SEA rows
   - Field 'REMARKS' missing in all SEA rows
+  - Field 'TABLE_CAT' missing in all SEA rows
   - Field 'TABLE_NAME' missing in all SEA rows
   - Field 'REF_GENERATION' missing in all SEA rows
+  - Field 'SELF_REFERENCING_COL_NAME' missing in all SEA rows
+  - Field 'TABLE_SCHEM' missing in all SEA rows
 
 ============================
 
@@ -261,46 +261,46 @@ Row Data:
 ---------------------
 Column Metadata:
   - Description length mismatch: Thrift has 23 columns, SEA has 13: [('TABLE_CAT', 'string', None, None, None, None, None), ('TABLE_SCHEM', 'string', None, None, None, None, None), ('TABLE_NAME', 'string', None, None, None, None, None), ('COLUMN_NAME', 'string', None, None, None, None, None), ('DATA_TYPE', 'int', None, None, None, None, None), ('TYPE_NAME', 'string', None, None, None, None, None), ('COLUMN_SIZE', 'int', None, None, None, None, None), ('BUFFER_LENGTH', 'tinyint', None, None, None, None, None), ('DECIMAL_DIGITS', 'int', None, None, None, None, None), ('NUM_PREC_RADIX', 'int', None, None, None, None, None), ('NULLABLE', 'int', None, None, None, None, None), ('REMARKS', 'string', None, None, None, None, None), ('COLUMN_DEF', 'string', None, None, None, None, None), ('SQL_DATA_TYPE', 'int', None, None, None, None, None), ('SQL_DATETIME_SUB', 'int', None, None, None, None, None), ('CHAR_OCTET_LENGTH', 'int', None, None, None, None, None), ('ORDINAL_POSITION', 'int', None, None, None, None, None), ('IS_NULLABLE', 'string', None, None, None, None, None), ('SCOPE_CATALOG', 'string', None, None, None, None, None), ('SCOPE_SCHEMA', 'string', None, None, None, None, None), ('SCOPE_TABLE', 'string', None, None, None, None, None), ('SOURCE_DATA_TYPE', 'smallint', None, None, None, None, None), ('IS_AUTO_INCREMENT', 'string', None, None, None, None, None)] vs [('col_name', 'string', None, None, None, None, None), ('catalogName', 'string', None, None, None, None, None), ('namespace', 'string', None, None, None, None, None), ('tableName', 'string', None, None, None, None, None), ('columnType', 'string', None, None, None, None, None), ('columnSize', 'int', None, None, None, None, None), ('decimalDigits', 'int', None, None, None, None, None), ('radix', 'int', None, None, None, None, None), ('isNullable', 'string', None, None, None, None, None), ('remarks', 'string', None, None, None, None, None), ('ordinalPosition', 'int', None, None, None, None, None), ('isAutoIncrement', 'string', None, None, None, None, None), ('isGenerated', 'string', None, None, None, None, None)]
-  - Field 'columnType' missing in all Thrift rows
   - Field 'columnSize' missing in all Thrift rows
   - Field 'catalogName' missing in all Thrift rows
-  - Field 'COLUMN_SIZE' missing in all SEA rows
-  - Field 'COLUMN_DEF' missing in all SEA rows
-  - Field 'TYPE_NAME' missing in all SEA rows
-  - Field 'SOURCE_DATA_TYPE' missing in all SEA rows
-  - Field 'SQL_DATA_TYPE' missing in all SEA rows
+  - Field 'columnType' missing in all Thrift rows
   - Field 'SCOPE_CATALOG' missing in all SEA rows
-  - Field 'COLUMN_NAME' missing in all SEA rows
   - Field 'SCOPE_SCHEMA' missing in all SEA rows
+  - Field 'COLUMN_SIZE' missing in all SEA rows
+  - Field 'SQL_DATA_TYPE' missing in all SEA rows
+  - Field 'COLUMN_DEF' missing in all SEA rows
+  - Field 'SOURCE_DATA_TYPE' missing in all SEA rows
   - Field 'DATA_TYPE' missing in all SEA rows
+  - Field 'TYPE_NAME' missing in all SEA rows
+  - Field 'COLUMN_NAME' missing in all SEA rows
 
 **Data Differences:**
 -----------------
 Row Data:
-  - Field 'isAutoIncrement' missing in all Thrift rows
   - Field 'tableName' missing in all Thrift rows
-  - Field 'remarks' missing in all Thrift rows
-  - Field 'namespace' missing in all Thrift rows
-  - Field 'radix' missing in all Thrift rows
   - Field 'isGenerated' missing in all Thrift rows
-  - Field 'ordinalPosition' missing in all Thrift rows
+  - Field 'isAutoIncrement' missing in all Thrift rows
+  - Field 'radix' missing in all Thrift rows
   - Field 'isNullable' missing in all Thrift rows
-  - Field 'col_name' missing in all Thrift rows
   - Field 'decimalDigits' missing in all Thrift rows
-  - Field 'NULLABLE' missing in all SEA rows
-  - Field 'BUFFER_LENGTH' missing in all SEA rows
-  - Field 'TABLE_NAME' missing in all SEA rows
-  - Field 'NUM_PREC_RADIX' missing in all SEA rows
-  - Field 'DECIMAL_DIGITS' missing in all SEA rows
-  - Field 'SQL_DATETIME_SUB' missing in all SEA rows
-  - Field 'IS_NULLABLE' missing in all SEA rows
-  - Field 'TABLE_SCHEM' missing in all SEA rows
-  - Field 'SCOPE_TABLE' missing in all SEA rows
+  - Field 'ordinalPosition' missing in all Thrift rows
+  - Field 'remarks' missing in all Thrift rows
+  - Field 'col_name' missing in all Thrift rows
+  - Field 'namespace' missing in all Thrift rows
   - Field 'IS_AUTO_INCREMENT' missing in all SEA rows
-  - Field 'TABLE_CAT' missing in all SEA rows
-  - Field 'ORDINAL_POSITION' missing in all SEA rows
-  - Field 'CHAR_OCTET_LENGTH' missing in all SEA rows
   - Field 'REMARKS' missing in all SEA rows
+  - Field 'TABLE_NAME' missing in all SEA rows
+  - Field 'ORDINAL_POSITION' missing in all SEA rows
+  - Field 'SQL_DATETIME_SUB' missing in all SEA rows
+  - Field 'SCOPE_TABLE' missing in all SEA rows
+  - Field 'IS_NULLABLE' missing in all SEA rows
+  - Field 'TABLE_CAT' missing in all SEA rows
+  - Field 'BUFFER_LENGTH' missing in all SEA rows
+  - Field 'NUM_PREC_RADIX' missing in all SEA rows
+  - Field 'CHAR_OCTET_LENGTH' missing in all SEA rows
+  - Field 'NULLABLE' missing in all SEA rows
+  - Field 'DECIMAL_DIGITS' missing in all SEA rows
+  - Field 'TABLE_SCHEM' missing in all SEA rows
 
 ============================
 
@@ -389,11 +389,6 @@ Column Metadata:
   - Column 1 (small_col) type_code mismatch: smallint vs short
   - Column 3 (big_col) type_code mismatch: bigint vs long
 
-**Data Differences:**
------------------
-Row Data:
-  - Exception: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()
-
 ============================
 
 **Query Type:** SQL Query
@@ -437,7 +432,7 @@ Column Metadata:
 ============================
 
 **Result:** PASSED
-**Execution Time:** Thrift: 2.7094s, SEA: 3.1544s
+**Execution Time:** Thrift: 4.7163s, SEA: 4.5337s
 
 ============================
 
