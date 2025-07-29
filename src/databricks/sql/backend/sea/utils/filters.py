@@ -146,7 +146,7 @@ class ResultSetFilter:
             # Use column as-is
             column = table[column_name]
 
-        # Convert allowed_values to PyArrow Array for better performance
+        # Convert allowed_values to PyArrow Array
         allowed_array = pyarrow.array(allowed_values)
 
         # Construct a boolean mask: True where column is in allowed_list
