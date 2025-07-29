@@ -1,4 +1,6 @@
+import random
 import threading
+import time
 from unittest.mock import patch
 import pytest
 
@@ -47,35 +49,59 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         An E2E test where concurrent threads execute real queries against
         the staging endpoint, while we capture and verify the generated telemetry.
         """
-        num_threads = 5
+        num_threads = 30
+        capture_lock = threading.Lock()
         captured_telemetry = []
-        captured_telemetry_lock = threading.Lock()
         captured_session_ids = []
         captured_statement_ids = []
-        capture_info_lock = threading.Lock()
+        captured_responses = []
+        captured_exceptions = []
 
         original_send_telemetry = TelemetryClient._send_telemetry
+        original_callback = TelemetryClient._telemetry_request_callback
 
         def send_telemetry_wrapper(self_client, events):
-            with captured_telemetry_lock:
+            with capture_lock:
                 captured_telemetry.extend(events)
             original_send_telemetry(self_client, events)
 
-        with patch.object(TelemetryClient, "_send_telemetry", send_telemetry_wrapper):
+        def callback_wrapper(self_client, future, sent_count):
+            """
+            Wraps the original callback to capture the server's response
+            or any exceptions from the async network call.
+            """
+            try:
+                original_callback(self_client, future, sent_count)
+                
+                # Now, capture the result for our assertions
+                response = future.result()
+                response.raise_for_status() # Raise an exception for 4xx/5xx errors
+                telemetry_response = response.json()
+                with capture_lock:
+                    captured_responses.append(telemetry_response)
+            except Exception as e:
+                with capture_lock:
+                    captured_exceptions.append(e)
+
+        with patch.object(TelemetryClient, "_send_telemetry", send_telemetry_wrapper), \
+             patch.object(TelemetryClient, "_telemetry_request_callback", callback_wrapper):
 
             def execute_query_worker(thread_id):
                 """Each thread creates a connection and executes a query."""
+
+                time.sleep(random.uniform(0, 0.05))
+                
                 with self.connection(extra_params={"enable_telemetry": True}) as conn:
                     # Capture the session ID from the connection before executing the query
                     session_id_hex = conn.get_session_id_hex()
-                    with capture_info_lock:
+                    with capture_lock:
                         captured_session_ids.append(session_id_hex)
                     
                     with conn.cursor() as cursor:
                         cursor.execute(f"SELECT {thread_id}")
                         # Capture the statement ID after executing the query
                         statement_id = cursor.query_id
-                        with capture_info_lock:
+                        with capture_lock:
                             captured_statement_ids.append(statement_id)
                         cursor.fetchall()
 
@@ -86,6 +112,16 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 TelemetryClientFactory._executor.shutdown(wait=True)
 
             # --- VERIFICATION ---
+            assert not captured_exceptions
+            assert len(captured_responses) > 0
+            
+            total_successful_events = 0
+            for response in captured_responses:
+                assert "errors" not in response or not response["errors"]
+                if "numProtoSuccess" in response:
+                    total_successful_events += response["numProtoSuccess"]
+            assert total_successful_events == num_threads * 2
+
             assert len(captured_telemetry) == num_threads * 2  # 2 events per thread (initial_telemetry_log, latency_log (execute))
             assert len(captured_session_ids) == num_threads  # One session ID per thread
             assert len(captured_statement_ids) == num_threads  # One statement ID per thread (per query)
