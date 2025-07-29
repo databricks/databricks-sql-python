@@ -41,12 +41,10 @@ def normalize_sea_type_to_thrift(type_name: str, col_data: Dict[str, Any]) -> st
     if type_name == "INTERVAL":
         type_interval_type = col_data.get("type_interval_type")
         if type_interval_type:
-            if any(t in type_interval_type.upper() for t in ["YEAR", "MONTH"]):
-                return "INTERVAL_YEAR_MONTH"
-            elif any(
-                t in type_interval_type.upper()
-                for t in ["DAY", "HOUR", "MINUTE", "SECOND"]
-            ):
-                return "INTERVAL_DAY_TIME"
+            return (
+                "INTERVAL_YEAR_MONTH"
+                if any(t in type_interval_type.upper() for t in ["YEAR", "MONTH"])
+                else "INTERVAL_DAY_TIME"
+            )
 
     return normalized_type
