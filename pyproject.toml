@@ -41,6 +41,8 @@ numpy = [
     { version = ">=1.16.6", python = ">=3.8,<3.11" },
     { version = ">=1.23.4", python = ">=3.11" },
 ]
+pytest-cov = "^4.0.0"
+coverage = "^7.0.0"
 
 [tool.poetry.urls]
 "Homepage" = "https://github.com/databricks/databricks-sql-python"
@@ -64,3 +66,21 @@ log_cli = "false"
 log_cli_level = "INFO"
 testpaths = ["tests"]
 env_files = ["test.env"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/thrift_api/*",  
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.coverage.xml]
+output = "coverage.xml"
