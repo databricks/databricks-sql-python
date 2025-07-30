@@ -65,7 +65,8 @@ jobs:
       #----------------------------------------------
       - name: Run tests with coverage
         continue-on-error: true
-        run: poetry run python -m pytest \
+        run: |
+          poetry run python -m pytest \
             tests/e2e/test_driver.py::TestPySQLCoreSuite::test_escape_single_quotes \
             --cov=src --cov-report=xml --cov-report=term -v
       #----------------------------------------------
@@ -107,9 +108,3 @@ jobs:
           PERCENTAGE=$(python3 -c "covered=${COVERED}; total=${TOTAL}; print(round((covered/total)*100, 2))")
 
           echo "📊 Branch Coverage: ${PERCENTAGE}%"
-      #----------------------------------------------
-      #         coverage enforcement summary
-      #----------------------------------------------
-      - name: Coverage summary
-        run: |
-          echo "Coverage calculation complete. No minimum enforced." 
