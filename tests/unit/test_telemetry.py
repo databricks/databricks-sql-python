@@ -1,16 +1,13 @@
 import uuid
 import pytest
 from unittest.mock import patch, MagicMock
-import time
-import requests
-from pybreaker import CircuitBreakerError
-from databricks.sql.common.http import TelemetryHttpClient
 
 from databricks.sql.telemetry.telemetry_client import (
     TelemetryClient,
     NoopTelemetryClient,
     TelemetryClientFactory,
     TelemetryHelper,
+    BaseTelemetryClient,
 )
 from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow
 from databricks.sql.auth.authenticators import (
@@ -319,93 +316,3 @@ class TestTelemetryFactory:
         call_arguments = mock_export_failure_log.call_args
         assert call_arguments[0][0] == "Exception"
         assert call_arguments[0][1] == error_message
-
-
-class TestTelemetryHttpClient:
-    """Tests for the TelemetryHttpClient, including retry and circuit breaker logic."""
-
-    @pytest.fixture
-    def http_client(self):
-        """
-        Provides a fresh TelemetryHttpClient instance for each test,
-        ensuring the singleton state is reset.
-        """
-        if TelemetryHttpClient._instance:
-            TelemetryHttpClient.get_instance().close()
-
-        client = TelemetryHttpClient.get_instance()
-        yield client
-
-        client.close()
-
-    def test_circuit_breaker_opens_after_failures(self, http_client):
-        """Verify the circuit opens after N consecutive failures and rejects new calls."""
-        fail_max = 3
-        http_client.breaker.fail_max = fail_max
-
-        with patch.object(http_client.session, "post") as mock_post:
-            mock_post.side_effect = requests.exceptions.RequestException("Connection failed")
-
-            for _ in range(fail_max - 1):
-                with pytest.raises(requests.exceptions.RequestException):
-                    http_client.post("https://test.com/telemetry")
-
-            with pytest.raises(CircuitBreakerError):
-                http_client.post("https://test.com/telemetry")
-
-            assert http_client.breaker.current_state == "open"
-            assert mock_post.call_count == fail_max
-
-            with pytest.raises(CircuitBreakerError):
-                http_client.post("https://test.com/telemetry")
-            assert mock_post.call_count == fail_max
-
-    def test_circuit_breaker_closes_after_timeout_and_success(self, http_client):
-        """Verify the circuit moves to half-open and then closes after a successful probe."""
-        fail_max = 2
-        reset_timeout = 0.1
-        http_client.breaker.fail_max = fail_max
-        http_client.breaker.reset_timeout = reset_timeout
-
-        with patch.object(http_client.session, "post") as mock_post:
-            mock_post.side_effect = [
-                requests.exceptions.RequestException("Fail 1"),
-                requests.exceptions.RequestException("Fail 2"),
-                MagicMock(ok=True)
-            ]
-
-            with pytest.raises(requests.exceptions.RequestException):
-                 http_client.post("https://test.com")
-            with pytest.raises(CircuitBreakerError):
-                 http_client.post("https://test.com")
-            
-            assert http_client.breaker.current_state == "open"
-            time.sleep(reset_timeout)
-
-            http_client.post("https://test.com")
-            assert http_client.breaker.current_state == "closed"
-            assert mock_post.call_count == 3
-
-    def test_circuit_breaker_reopens_if_probe_fails(self, http_client):
-        """Verify the circuit moves to half-open and then back to open if the probe fails."""
-        fail_max = 2
-        reset_timeout = 0.1
-        http_client.breaker.fail_max = fail_max
-        http_client.breaker.reset_timeout = reset_timeout
-
-        with patch.object(http_client.session, "post") as mock_post:
-            mock_post.side_effect = requests.exceptions.RequestException("Always fails")
-
-            with pytest.raises(requests.exceptions.RequestException):
-                 http_client.post("https://test.com")
-            with pytest.raises(CircuitBreakerError):
-                 http_client.post("https://test.com")
-            
-            assert http_client.breaker.current_state == "open"
-            time.sleep(reset_timeout)
-            
-            with pytest.raises(CircuitBreakerError):
-                http_client.post("https://test.com")
-            
-            assert http_client.breaker.current_state == "open"
-            assert mock_post.call_count == 3

@@ -9,7 +9,6 @@ from typing import Generator, Optional
 import logging
 from requests.adapters import HTTPAdapter
 from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
-from pybreaker import CircuitBreaker, CircuitBreakerError
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +109,6 @@ class TelemetryHttpClient:  # TODO: Unify all the http clients in the PySQL Conn
     TELEMETRY_RETRY_DELAY_MAX = 10.0
     TELEMETRY_RETRY_STOP_AFTER_ATTEMPTS_DURATION = 30.0
 
-    CIRCUIT_BREAKER_FAIL_MAX = 5
-    CIRCUIT_BREAKER_RESET_TIMEOUT = 60
-
     def __init__(self):
         """Initializes the session and mounts the custom retry adapter."""
         retry_policy = DatabricksRetryPolicy(
@@ -127,10 +123,6 @@ class TelemetryHttpClient:  # TODO: Unify all the http clients in the PySQL Conn
         self.session = requests.Session()
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
-        self.breaker = CircuitBreaker(
-            fail_max=self.CIRCUIT_BREAKER_FAIL_MAX,
-            reset_timeout=self.CIRCUIT_BREAKER_RESET_TIMEOUT,
-        )
 
     @classmethod
     def get_instance(cls) -> "TelemetryHttpClient":
@@ -149,14 +141,7 @@ class TelemetryHttpClient:  # TODO: Unify all the http clients in the PySQL Conn
         This is a blocking call intended to be run in a background thread.
         """
         logger.debug("Executing telemetry POST request to: %s", url)
-        try:
-            return self.breaker.call(self.session.post, url, **kwargs)
-        except CircuitBreakerError as e:
-            logger.error("Circuit breaker error: %s", e)
-            raise e
-        except Exception as e:
-            logger.error("Error executing telemetry POST request: %s", e)
-            raise e
+        return self.session.post(url, **kwargs)
 
     def close(self):
         """Closes the underlying requests.Session."""
