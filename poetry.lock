@@ -871,6 +871,20 @@ files = [
 test = ["cffi", "hypothesis", "pandas", "pytest", "pytz"]
 
 [[package]]
+name = "pybreaker"
+version = "0.6.0"
+description = "Python implementation of the Circuit Breaker pattern"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "pybreaker-0.6.0.tar.gz", hash = "sha256:038c2808d4f845bf7e17819ad278aa5701c6512a5e389760bc4657be0a5364d3"},
+]
+
+[package.dependencies]
+six = "*"
+
+[[package]]
 name = "pyjwt"
 version = "2.9.0"
 description = "JSON Web Token implementation in Python"
@@ -1176,4 +1190,4 @@ pyarrow = ["pyarrow", "pyarrow"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.8.0"
-content-hash = "0305d9a30397e4baa3d02d0a920989a901ba08749b93bd1c433886f151ed2cdc"
+content-hash = "4f5fde10f5fba65edbbe9285fba8f83fb033667e98a1fee5f61f83f0102daacc"
