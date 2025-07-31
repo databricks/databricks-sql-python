@@ -248,6 +248,9 @@ class Connection:
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._cursors = []  # type: List[Cursor]
+        self.telemetry_batch_size = kwargs.get(
+            "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
+        )
 
         try:
             self.session = Session(
@@ -288,6 +291,7 @@ class Connection:
             session_id_hex=self.get_session_id_hex(),
             auth_provider=self.session.auth_provider,
             host_url=self.session.host,
+            batch_size=self.telemetry_batch_size,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(

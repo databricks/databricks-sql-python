@@ -158,8 +158,6 @@ class TelemetryClient(BaseTelemetryClient):
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
 
-    DEFAULT_BATCH_SIZE = 100
-
     def __init__(
         self,
         telemetry_enabled,
@@ -167,10 +165,11 @@ class TelemetryClient(BaseTelemetryClient):
         auth_provider,
         host_url,
         executor,
+        batch_size,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
-        self._batch_size = self.DEFAULT_BATCH_SIZE
+        self._batch_size = batch_size
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
@@ -338,7 +337,7 @@ class TelemetryClient(BaseTelemetryClient):
 class TelemetryClientFactory:
     """
     Static factory class for creating and managing telemetry clients.
-    It uses a thread pool to handle asynchronous operations.
+    It uses a thread pool to handle asynchronous operations and a single flush thread for all clients.
     """
 
     _clients: Dict[
@@ -351,6 +350,13 @@ class TelemetryClientFactory:
     _original_excepthook = None
     _excepthook_installed = False
 
+    # Shared flush thread for all clients
+    _flush_thread = None
+    _flush_event = threading.Event()
+    _flush_interval_seconds = 90
+
+    DEFAULT_BATCH_SIZE = 100
+
     @classmethod
     def _initialize(cls):
         """Initialize the factory if not already initialized"""
@@ -361,10 +367,38 @@ class TelemetryClientFactory:
                 max_workers=10
             )  # Thread pool for async operations
             cls._install_exception_hook()
+            cls._start_flush_thread()
             cls._initialized = True
             logger.debug(
                 "TelemetryClientFactory initialized with thread pool (max_workers=10)"
             )
+
+    @classmethod
+    def _start_flush_thread(cls):
+        """Start the shared background thread for periodic flushing of all clients"""
+        cls._flush_event.clear()
+        cls._flush_thread = threading.Thread(target=cls._flush_worker, daemon=True)
+        cls._flush_thread.start()
+
+    @classmethod
+    def _flush_worker(cls):
+        """Background worker thread for periodic flushing of all clients"""
+        while not cls._flush_event.wait(cls._flush_interval_seconds):
+            logger.debug("Performing periodic flush for all telemetry clients")
+
+            with cls._lock:
+                clients_to_flush = list(cls._clients.values())
+
+                for client in clients_to_flush:
+                    client._flush()
+
+    @classmethod
+    def _stop_flush_thread(cls):
+        """Stop the shared background flush thread"""
+        if cls._flush_thread is not None:
+            cls._flush_event.set()
+            cls._flush_thread.join(timeout=1.0)
+            cls._flush_thread = None
 
     @classmethod
     def _install_exception_hook(cls):
@@ -394,6 +428,7 @@ class TelemetryClientFactory:
         session_id_hex,
         auth_provider,
         host_url,
+        batch_size,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
@@ -415,6 +450,7 @@ class TelemetryClientFactory:
                             auth_provider=auth_provider,
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
+                            batch_size=batch_size,
                         )
                     else:
                         TelemetryClientFactory._clients[
@@ -453,6 +489,7 @@ class TelemetryClientFactory:
                     "No more telemetry clients, shutting down thread pool executor"
                 )
                 try:
+                    TelemetryClientFactory._stop_flush_thread()
                     TelemetryClientFactory._executor.shutdown(wait=True)
                     TelemetryHttpClient.close()
                 except Exception as e:
@@ -478,6 +515,7 @@ class TelemetryClientFactory:
             session_id_hex=UNAUTH_DUMMY_SESSION_ID,
             auth_provider=None,
             host_url=host_url,
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
         )
 
         telemetry_client = TelemetryClientFactory.get_telemetry_client(
