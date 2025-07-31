@@ -249,7 +249,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.chunk_id = chunk_id
 
         # Table state
-        self.table = None
+        self.table = self._create_empty_table()
         self.table_row_index = 0
 
         # Initialize download manager
@@ -273,24 +273,20 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             pyarrow.Table
         """
 
-        if not self.table:
-            logger.debug("CloudFetchQueue: no more rows available")
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
         results = self.table.slice(0, 0)
         partial_result_chunks = [results]
-        while num_rows > 0 and self.table:
+        while num_rows > 0 and self.table.num_rows > 0:
+            # Replace current table with the next table if we are at the end of the current table
+            if self.table_row_index == self.table.num_rows:
+                self.table = self._create_next_table()
+                self.table_row_index = 0
+
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
             partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
-
-            # Replace current table with the next table if we are at the end of the current table
-            if self.table_row_index == self.table.num_rows:
-                self.table = self._create_next_table()
-                self.table_row_index = 0
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
@@ -304,12 +300,9 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             pyarrow.Table
         """
 
-        if not self.table:
-            # Return empty pyarrow table to cause retry of fetch
-            return self._create_empty_table()
         results = self.table.slice(0, 0)
         partial_result_chunks = [results]
-        while self.table:
+        while self.table.num_rows > 0:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
@@ -319,17 +312,11 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             self.table_row_index = 0
         return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
-    def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
+    def _create_table_at_offset(self, offset: int) -> "pyarrow.Table":
         """Create next table at the given row offset"""
 
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
         downloaded_file = self.download_manager.get_next_downloaded_file(offset)
-        if not downloaded_file:
-            logger.debug(
-                "CloudFetchQueue: Cannot find downloaded file for row {}".format(offset)
-            )
-            # None signals no more Arrow tables can be built from the remaining handlers if any remain
-            return None
         arrow_table = create_arrow_table_from_arrow_file(
             downloaded_file.file_bytes, self.description
         )
@@ -345,7 +332,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         return arrow_table
 
     @abstractmethod
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+    def _create_next_table(self) -> "pyarrow.Table":
         """Create next table by retrieving the logical next downloaded file."""
         pass
 
@@ -364,7 +351,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
 
     def __init__(
         self,
-        schema_bytes,
+        schema_bytes: Optional[bytes],
         max_download_threads: int,
         ssl_options: SSLOptions,
         session_id_hex: Optional[str],
@@ -398,6 +385,8 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             chunk_id=chunk_id,
         )
 
+        self.num_links_downloaded = 0
+
         self.start_row_index = start_row_offset
         self.result_links = result_links or []
         self.session_id_hex = session_id_hex
@@ -421,20 +410,23 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         # Initialize table and position
         self.table = self._create_next_table()
 
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+    def _create_next_table(self) -> "pyarrow.Table":
+        if self.num_links_downloaded >= len(self.result_links):
+            return self._create_empty_table()
+
         logger.debug(
             "ThriftCloudFetchQueue: Trying to get downloaded file for row {}".format(
                 self.start_row_index
             )
         )
         arrow_table = self._create_table_at_offset(self.start_row_index)
-        if arrow_table:
-            self.start_row_index += arrow_table.num_rows
-            logger.debug(
-                "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
-                    arrow_table.num_rows, self.start_row_index
-                )
+        self.num_links_downloaded += 1
+        self.start_row_index += arrow_table.num_rows
+        logger.debug(
+            "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
+                arrow_table.num_rows, self.start_row_index
             )
+        )
         return arrow_table
 
 
@@ -740,7 +732,6 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
 
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
-
     converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":
