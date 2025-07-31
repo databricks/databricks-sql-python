@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import Any, List, Optional, TYPE_CHECKING, Dict
 
 import logging
 
 from databricks.sql.backend.sea.models.base import ResultData, ResultManifest
 from databricks.sql.backend.sea.utils.conversion import SqlTypeConverter
+from databricks.sql.backend.sea.utils.result_column import ResultColumn
 
 try:
     import pyarrow
@@ -81,6 +82,10 @@ class SeaResultSet(ResultSet):
             lz4_compressed=execute_response.lz4_compressed,
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
+
+        # Initialize metadata columns for post-fetch transformation
+        self._metadata_columns = None
+        self._column_index_mapping = None
 
     def _convert_json_types(self, row: List[str]) -> List[Any]:
         """
@@ -160,6 +165,7 @@ class SeaResultSet(ResultSet):
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         results = self.results.next_n_rows(size)
+        results = self._transform_json_rows(results)
         self._next_row_index += len(results)
 
         return results
@@ -173,6 +179,7 @@ class SeaResultSet(ResultSet):
         """
 
         results = self.results.remaining_rows()
+        results = self._transform_json_rows(results)
         self._next_row_index += len(results)
 
         return results
@@ -197,7 +204,12 @@ class SeaResultSet(ResultSet):
 
         results = self.results.next_n_rows(size)
         if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+            # Transform JSON first, then convert to Arrow
+            transformed_json = self._transform_json_rows(results)
+            results = self._convert_json_to_arrow_table(transformed_json)
+        else:
+            # Transform Arrow table directly
+            results = self._transform_arrow_table(results)
 
         self._next_row_index += results.num_rows
 
@@ -210,7 +222,12 @@ class SeaResultSet(ResultSet):
 
         results = self.results.remaining_rows()
         if isinstance(self.results, JsonQueue):
-            results = self._convert_json_to_arrow_table(results)
+            # Transform JSON first, then convert to Arrow
+            transformed_json = self._transform_json_rows(results)
+            results = self._convert_json_to_arrow_table(transformed_json)
+        else:
+            # Transform Arrow table directly
+            results = self._transform_arrow_table(results)
 
         self._next_row_index += results.num_rows
 
@@ -263,3 +280,108 @@ class SeaResultSet(ResultSet):
             return self._create_json_table(self.fetchall_json())
         else:
             return self._convert_arrow_table(self.fetchall_arrow())
+
+    def prepare_metadata_columns(self, metadata_columns: List[ResultColumn]) -> None:
+        """
+        Prepare result set for metadata column normalization.
+
+        Args:
+            metadata_columns: List of ResultColumn objects defining the expected columns
+                            and their mappings from SEA column names
+        """
+        self._metadata_columns = metadata_columns
+        self._prepare_column_mapping()
+
+    def _prepare_column_mapping(self) -> None:
+        """
+        Prepare column index mapping for metadata queries.
+        Updates description to use JDBC column names.
+        """
+        # Ensure description is available
+        if not self.description:
+            raise ValueError("Cannot prepare column mapping without result description")
+
+        # Build mapping from SEA column names to their indices
+        sea_column_indices = {}
+        for idx, col in enumerate(self.description):
+            sea_column_indices[col[0]] = idx
+
+        # Create new description and index mapping
+        new_description = []
+        self._column_index_mapping = {}  # Maps new index -> old index
+
+        for new_idx, result_column in enumerate(self._metadata_columns):
+            # Find the corresponding SEA column
+            if (
+                result_column.result_set_column_name
+                and result_column.result_set_column_name in sea_column_indices
+            ):
+                old_idx = sea_column_indices[result_column.result_set_column_name]
+                self._column_index_mapping[new_idx] = old_idx
+                # Use the original column metadata but with JDBC name
+                old_col = self.description[old_idx]
+                new_description.append(
+                    (
+                        result_column.column_name,  # JDBC name
+                        result_column.column_type,  # Expected type
+                        old_col[2],  # display_size
+                        old_col[3],  # internal_size
+                        old_col[4],  # precision
+                        old_col[5],  # scale
+                        old_col[6],  # null_ok
+                    )
+                )
+            else:
+                # Column doesn't exist in SEA - add with None values
+                new_description.append(
+                    (
+                        result_column.column_name,
+                        result_column.column_type,
+                        None,
+                        None,
+                        None,
+                        None,
+                        True,
+                    )
+                )
+                self._column_index_mapping[new_idx] = None
+
+        self.description = new_description
+
+    def _transform_arrow_table(self, table: "pyarrow.Table") -> "pyarrow.Table":
+        """Transform arrow table columns for metadata normalization."""
+        if not self._metadata_columns:
+            return table
+
+        # Reorder columns and add missing ones
+        new_columns = []
+        column_names = []
+
+        for new_idx, result_column in enumerate(self._metadata_columns):
+            old_idx = self._column_index_mapping.get(new_idx)
+            if old_idx is not None:
+                new_columns.append(table.column(old_idx))
+            else:
+                # Create null column for missing data
+                null_array = pyarrow.nulls(table.num_rows)
+                new_columns.append(null_array)
+            column_names.append(result_column.column_name)
+
+        return pyarrow.Table.from_arrays(new_columns, names=column_names)
+
+    def _transform_json_rows(self, rows: List[List[str]]) -> List[List[Any]]:
+        """Transform JSON rows for metadata normalization."""
+        if not self._metadata_columns:
+            return rows
+
+        transformed_rows = []
+        for row in rows:
+            new_row = []
+            for new_idx in range(len(self._metadata_columns)):
+                old_idx = self._column_index_mapping.get(new_idx)
+                if old_idx is not None:
+                    new_row.append(row[old_idx])
+                else:
+                    new_row.append(None)
+            transformed_rows.append(new_row)
+        return transformed_rows
