@@ -29,17 +29,9 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         before each test and shuts it down afterward. Using a fixture makes
         this robust and automatic.
         """
-        # --- SETUP ---
-        if TelemetryClientFactory._executor:
-            TelemetryClientFactory._executor.shutdown(wait=True)
-        TelemetryClientFactory._clients.clear()
-        TelemetryClientFactory._executor = None
-        TelemetryClientFactory._initialized = False
-
         try:
-            yield  # This is where the test runs
+            yield 
         finally:
-            # --- TEARDOWN ---
             if TelemetryClientFactory._executor:
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
