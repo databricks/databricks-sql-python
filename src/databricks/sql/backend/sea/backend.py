@@ -19,6 +19,7 @@ from databricks.sql.backend.sea.utils.constants import (
     WaitTimeout,
     MetadataCommands,
 )
+from databricks.sql.backend.sea.utils.normalize import normalize_sea_type_to_thrift
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
@@ -322,6 +323,11 @@ class SeaDatabricksClient(DatabricksClient):
             # Format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
             name = col_data.get("name", "")
             type_name = col_data.get("type_name", "")
+
+            # Normalize SEA type to Thrift conventions before any processing
+            type_name = normalize_sea_type_to_thrift(type_name, col_data)
+
+            # Now strip _TYPE suffix and convert to lowercase
             type_name = (
                 type_name[:-5] if type_name.endswith("_TYPE") else type_name
             ).lower()
