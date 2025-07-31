@@ -123,12 +123,15 @@ class SeaHttpClient:
 
         # Handle proxy settings
         try:
+            # Try to get system proxy for this scheme (http/https)
             proxy = urllib.request.getproxies().get(self.scheme)
         except (KeyError, AttributeError):
+            # No proxy found or getproxies() failed - disable proxy
             proxy = None
         else:
+            # Proxy found, but check if this host should bypass proxy
             if self.host and urllib.request.proxy_bypass(self.host):
-                proxy = None
+                proxy = None  # Host bypasses proxy per system rules
 
         if proxy:
             parsed_proxy = urllib.parse.urlparse(proxy)
