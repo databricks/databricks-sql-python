@@ -36,13 +36,14 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         TelemetryClientFactory._executor = None
         TelemetryClientFactory._initialized = False
 
-        yield  # This is where the test runs
-
-        # --- TEARDOWN ---
-        if TelemetryClientFactory._executor:
-            TelemetryClientFactory._executor.shutdown(wait=True)
-            TelemetryClientFactory._executor = None
-        TelemetryClientFactory._initialized = False
+        try:
+            yield  # This is where the test runs
+        finally:
+            # --- TEARDOWN ---
+            if TelemetryClientFactory._executor:
+                TelemetryClientFactory._executor.shutdown(wait=True)
+                TelemetryClientFactory._executor = None
+            TelemetryClientFactory._initialized = False
 
     def test_concurrent_queries_sends_telemetry(self):
         """
