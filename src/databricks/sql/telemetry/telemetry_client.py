@@ -49,7 +49,7 @@ class TelemetryHelper:
 
     _DRIVER_SYSTEM_CONFIGURATION = None
     TELEMETRY_FEATURE_FLAG_NAME = (
-        "databricks.partnerplatform.clientConfigsFeatureFlags.enableTelemetry"
+        "databricks.partnerplatform.clientConfigsFeatureFlags.enableTelemetryForPythonDriver"
     )
 
     @classmethod
