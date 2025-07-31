@@ -123,7 +123,8 @@ class SeaHttpClient:
 
         # Handle proxy settings
         try:
-            # Try to get system proxy for this scheme (http/https)
+            # returns a dictionary of scheme -> proxy server URL mappings.
+            # https://docs.python.org/3/library/urllib.request.html#urllib.request.getproxies
             proxy = urllib.request.getproxies().get(self.scheme)
         except (KeyError, AttributeError):
             # No proxy found or getproxies() failed - disable proxy
