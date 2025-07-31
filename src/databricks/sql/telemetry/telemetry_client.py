@@ -48,9 +48,7 @@ class TelemetryHelper:
     """Helper class for getting telemetry related information."""
 
     _DRIVER_SYSTEM_CONFIGURATION = None
-    TELEMETRY_FEATURE_FLAG_NAME = (
-        "databricks.partnerplatform.clientConfigsFeatureFlags.enableTelemetryForPythonDriver"
-    )
+    TELEMETRY_FEATURE_FLAG_NAME = "databricks.partnerplatform.clientConfigsFeatureFlags.enableTelemetryForPythonDriver"
 
     @classmethod
     def get_driver_system_configuration(cls) -> DriverSystemConfiguration:

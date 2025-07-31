@@ -1,5 +1,3 @@
-# TODO: Test this when server-side feature flag is available
-
 import threading
 import time
 import requests
