@@ -35,6 +35,7 @@ class TestE2ETelemetry(PySQLPytestTestCase):
             if TelemetryClientFactory._executor:
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
+            TelemetryClientFactory._stop_flush_thread()
             TelemetryClientFactory._initialized = False
 
     def test_concurrent_queries_sends_telemetry(self):
@@ -101,8 +102,15 @@ class TestE2ETelemetry(PySQLPytestTestCase):
             # Run the workers concurrently
             run_in_threads(execute_query_worker, num_threads, pass_index=True)
 
-            if TelemetryClientFactory._executor:
-                TelemetryClientFactory._executor.shutdown(wait=True)
+            timeout_seconds = 60  # Max time to wait for telemetry to arrive
+            start_time = time.time()
+            expected_event_count = num_threads * 2  # initial_log + latency_log per thread
+
+            # Poll until the expected number of events are captured or we time out
+            while len(captured_telemetry) < expected_event_count:
+                if time.time() - start_time > timeout_seconds:
+                    break  # Exit loop if timeout is reached
+                time.sleep(0.1) 
 
             # --- VERIFICATION ---
             assert not captured_exceptions
