@@ -1,6 +1,5 @@
 import uuid
 import pytest
-import requests
 from unittest.mock import patch, MagicMock
 
 from databricks.sql.telemetry.telemetry_client import (
@@ -31,6 +30,7 @@ def mock_telemetry_client():
         auth_provider=auth_provider,
         host_url="test-host.com",
         executor=executor,
+        batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
     )
 
 
@@ -91,7 +91,7 @@ class TestTelemetryClient:
         args, kwargs = client._executor.submit.call_args
 
         # Verify correct function and URL
-        assert args[0] == requests.post
+        assert args[0] == client._http_client.post
         assert args[1] == "https://test-host.com/telemetry-ext"
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 
@@ -215,6 +215,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -239,6 +240,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=None,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -258,6 +260,7 @@ class TestTelemetryFactory:
                 session_id_hex=session_id,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
             )
 
         # Should fall back to NoopTelemetryClient
@@ -276,6 +279,7 @@ class TestTelemetryFactory:
                 session_id_hex=session,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
             )
 
         # Factory should be initialized
@@ -290,3 +294,30 @@ class TestTelemetryFactory:
         TelemetryClientFactory.close(session2)
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
+
+    @patch(
+        "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log"
+    )
+    @patch("databricks.sql.client.Session")
+    def test_connection_failure_sends_correct_telemetry_payload(
+        self, mock_session, mock_export_failure_log
+    ):
+        """
+        Verify that a connection failure constructs and sends the correct
+        telemetry payload via _send_telemetry.
+        """
+
+        error_message = "Could not connect to host"
+        mock_session.side_effect = Exception(error_message)
+
+        try:
+            from databricks import sql
+
+            sql.connect(server_hostname="test-host", http_path="/test-path")
+        except Exception as e:
+            assert str(e) == error_message
+
+        mock_export_failure_log.assert_called_once()
+        call_arguments = mock_export_failure_log.call_args
+        assert call_arguments[0][0] == "Exception"
+        assert call_arguments[0][1] == error_message

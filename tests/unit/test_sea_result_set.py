@@ -46,7 +46,7 @@ class TestSeaResultSet:
         mock_response.command_id = CommandId.from_sea_statement_id("test-statement-123")
         mock_response.status = CommandState.SUCCEEDED
         mock_response.has_been_closed_server_side = False
-        mock_response.is_direct_results = False
+        mock_response.has_more_rows = False
         mock_response.results_queue = None
         mock_response.description = [
             ("col1", "string", None, None, None, None, None),
@@ -565,50 +565,3 @@ class TestSeaResultSet:
 
         # Verify _convert_arrow_table was called
         result_set_with_arrow_queue._convert_arrow_table.assert_called_once()
-
-    @patch("databricks.sql.backend.sea.utils.conversion.SqlTypeConverter.convert_value")
-    def test_convert_json_types_with_errors(
-        self, mock_convert_value, result_set_with_data
-    ):
-        """Test error handling in _convert_json_types."""
-        # Mock the conversion to fail for the second and third values
-        mock_convert_value.side_effect = [
-            "value1",  # First value converts normally
-            Exception("Invalid int"),  # Second value fails
-            Exception("Invalid boolean"),  # Third value fails
-        ]
-
-        # Data with invalid values
-        data_row = ["value1", "not_an_int", "not_a_boolean"]
-
-        # Should not raise an exception but log warnings
-        result = result_set_with_data._convert_json_types(data_row)
-
-        # The first value should be converted normally
-        assert result[0] == "value1"
-
-        # The invalid values should remain as strings
-        assert result[1] == "not_an_int"
-        assert result[2] == "not_a_boolean"
-
-    @patch("databricks.sql.backend.sea.result_set.logger")
-    @patch("databricks.sql.backend.sea.utils.conversion.SqlTypeConverter.convert_value")
-    def test_convert_json_types_with_logging(
-        self, mock_convert_value, mock_logger, result_set_with_data
-    ):
-        """Test that errors in _convert_json_types are logged."""
-        # Mock the conversion to fail for the second and third values
-        mock_convert_value.side_effect = [
-            "value1",  # First value converts normally
-            Exception("Invalid int"),  # Second value fails
-            Exception("Invalid boolean"),  # Third value fails
-        ]
-
-        # Data with invalid values
-        data_row = ["value1", "not_an_int", "not_a_boolean"]
-
-        # Call the method
-        result_set_with_data._convert_json_types(data_row)
-
-        # Verify warnings were logged
-        assert mock_logger.warning.call_count == 2

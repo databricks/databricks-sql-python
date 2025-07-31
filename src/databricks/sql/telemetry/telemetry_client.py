@@ -1,13 +1,15 @@
 import threading
 import time
-import requests
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional
+from databricks.sql.common.http import TelemetryHttpClient
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
     DriverErrorInfo,
+    DriverConnectionParameters,
+    HostDetails,
 )
 from databricks.sql.telemetry.models.frontend_logs import (
     TelemetryFrontendLog,
@@ -15,7 +17,11 @@ from databricks.sql.telemetry.models.frontend_logs import (
     FrontendLogContext,
     FrontendLogEntry,
 )
-from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow
+from databricks.sql.telemetry.models.enums import (
+    AuthMech,
+    AuthFlow,
+    DatabricksClientType,
+)
 from databricks.sql.telemetry.models.endpoint_models import (
     TelemetryRequest,
     TelemetryResponse,
@@ -132,8 +138,6 @@ class TelemetryClient(BaseTelemetryClient):
     TELEMETRY_AUTHENTICATED_PATH = "/telemetry-ext"
     TELEMETRY_UNAUTHENTICATED_PATH = "/telemetry-unauth"
 
-    DEFAULT_BATCH_SIZE = 100
-
     def __init__(
         self,
         telemetry_enabled,
@@ -141,10 +145,11 @@ class TelemetryClient(BaseTelemetryClient):
         auth_provider,
         host_url,
         executor,
+        batch_size,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
-        self._batch_size = self.DEFAULT_BATCH_SIZE
+        self._batch_size = batch_size
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
@@ -153,6 +158,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
+        self._http_client = TelemetryHttpClient.get_instance()
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -201,7 +207,7 @@ class TelemetryClient(BaseTelemetryClient):
         try:
             logger.debug("Submitting telemetry request to thread pool")
             future = self._executor.submit(
-                requests.post,
+                self._http_client.post,
                 url,
                 data=request.to_json(),
                 headers=headers,
@@ -311,7 +317,7 @@ class TelemetryClient(BaseTelemetryClient):
 class TelemetryClientFactory:
     """
     Static factory class for creating and managing telemetry clients.
-    It uses a thread pool to handle asynchronous operations.
+    It uses a thread pool to handle asynchronous operations and a single flush thread for all clients.
     """
 
     _clients: Dict[
@@ -324,6 +330,13 @@ class TelemetryClientFactory:
     _original_excepthook = None
     _excepthook_installed = False
 
+    # Shared flush thread for all clients
+    _flush_thread = None
+    _flush_event = threading.Event()
+    _flush_interval_seconds = 90
+
+    DEFAULT_BATCH_SIZE = 100
+
     @classmethod
     def _initialize(cls):
         """Initialize the factory if not already initialized"""
@@ -334,10 +347,38 @@ class TelemetryClientFactory:
                 max_workers=10
             )  # Thread pool for async operations
             cls._install_exception_hook()
+            cls._start_flush_thread()
             cls._initialized = True
             logger.debug(
                 "TelemetryClientFactory initialized with thread pool (max_workers=10)"
             )
+
+    @classmethod
+    def _start_flush_thread(cls):
+        """Start the shared background thread for periodic flushing of all clients"""
+        cls._flush_event.clear()
+        cls._flush_thread = threading.Thread(target=cls._flush_worker, daemon=True)
+        cls._flush_thread.start()
+
+    @classmethod
+    def _flush_worker(cls):
+        """Background worker thread for periodic flushing of all clients"""
+        while not cls._flush_event.wait(cls._flush_interval_seconds):
+            logger.debug("Performing periodic flush for all telemetry clients")
+
+            with cls._lock:
+                clients_to_flush = list(cls._clients.values())
+
+                for client in clients_to_flush:
+                    client._flush()
+
+    @classmethod
+    def _stop_flush_thread(cls):
+        """Stop the shared background flush thread"""
+        if cls._flush_thread is not None:
+            cls._flush_event.set()
+            cls._flush_thread.join(timeout=1.0)
+            cls._flush_thread = None
 
     @classmethod
     def _install_exception_hook(cls):
@@ -367,6 +408,7 @@ class TelemetryClientFactory:
         session_id_hex,
         auth_provider,
         host_url,
+        batch_size,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
@@ -388,6 +430,7 @@ class TelemetryClientFactory:
                             auth_provider=auth_provider,
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
+                            batch_size=batch_size,
                         )
                     else:
                         TelemetryClientFactory._clients[
@@ -426,8 +469,43 @@ class TelemetryClientFactory:
                     "No more telemetry clients, shutting down thread pool executor"
                 )
                 try:
+                    TelemetryClientFactory._stop_flush_thread()
                     TelemetryClientFactory._executor.shutdown(wait=True)
+                    TelemetryHttpClient.close()
                 except Exception as e:
                     logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
                 TelemetryClientFactory._initialized = False
+
+    @staticmethod
+    def connection_failure_log(
+        error_name: str,
+        error_message: str,
+        host_url: str,
+        http_path: str,
+        port: int,
+        user_agent: Optional[str] = None,
+    ):
+        """Send error telemetry when connection creation fails, without requiring a session"""
+
+        UNAUTH_DUMMY_SESSION_ID = "unauth_session_id"
+
+        TelemetryClientFactory.initialize_telemetry_client(
+            telemetry_enabled=True,
+            session_id_hex=UNAUTH_DUMMY_SESSION_ID,
+            auth_provider=None,
+            host_url=host_url,
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+        )
+
+        telemetry_client = TelemetryClientFactory.get_telemetry_client(
+            UNAUTH_DUMMY_SESSION_ID
+        )
+        telemetry_client._driver_connection_params = DriverConnectionParameters(
+            http_path=http_path,
+            mode=DatabricksClientType.THRIFT,  # TODO: Add SEA mode
+            host_info=HostDetails(host_url=host_url, port=port),
+        )
+        telemetry_client._user_agent = user_agent
+
+        telemetry_client.export_failure_log(error_name, error_message)

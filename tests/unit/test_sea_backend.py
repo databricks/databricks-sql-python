@@ -12,6 +12,7 @@ from databricks.sql.backend.sea.backend import (
     SeaDatabricksClient,
     _filter_session_configuration,
 )
+from databricks.sql.backend.sea.models.base import ServiceError, StatementStatus
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.parameters.native import IntegerParameter, TDbsqlParameter
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -291,26 +292,6 @@ class TestSeaBackend:
         assert isinstance(mock_cursor.active_command_id, CommandId)
         assert mock_cursor.active_command_id.guid == "test-statement-456"
 
-        # Test async with missing statement ID
-        mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {"status": {"state": "PENDING"}}
-        with pytest.raises(ServerOperationError) as excinfo:
-            sea_client.execute_command(
-                operation="SELECT 1",
-                session_id=sea_session_id,
-                max_rows=100,
-                max_bytes=1000,
-                lz4_compression=False,
-                cursor=mock_cursor,
-                use_cloud_fetch=False,
-                parameters=[],
-                async_op=True,
-                enforce_embedded_schema_correctness=False,
-            )
-        assert "Failed to execute command: No statement ID returned" in str(
-            excinfo.value
-        )
-
     def test_command_execution_advanced(
         self, sea_client, mock_http_client, mock_cursor, sea_session_id
     ):
@@ -408,27 +389,7 @@ class TestSeaBackend:
                         async_op=False,
                         enforce_embedded_schema_correctness=False,
                     )
-                assert "Command test-statement-123 failed" in str(excinfo.value)
-
-        # Test missing statement ID
-        mock_http_client.reset_mock()
-        mock_http_client._make_request.return_value = {"status": {"state": "SUCCEEDED"}}
-        with pytest.raises(ServerOperationError) as excinfo:
-            sea_client.execute_command(
-                operation="SELECT 1",
-                session_id=sea_session_id,
-                max_rows=100,
-                max_bytes=1000,
-                lz4_compression=False,
-                cursor=mock_cursor,
-                use_cloud_fetch=False,
-                parameters=[],
-                async_op=False,
-                enforce_embedded_schema_correctness=False,
-            )
-        assert "Failed to execute command: No statement ID returned" in str(
-            excinfo.value
-        )
+                assert "Command failed" in str(excinfo.value)
 
     def test_command_management(
         self,
@@ -530,18 +491,18 @@ class TestSeaBackend:
         """Test _check_command_not_in_failed_or_closed_state method."""
         # Test with RUNNING state (should not raise)
         sea_client._check_command_not_in_failed_or_closed_state(
-            CommandState.RUNNING, sea_command_id
+            StatementStatus(state=CommandState.RUNNING), sea_command_id
         )
 
         # Test with SUCCEEDED state (should not raise)
         sea_client._check_command_not_in_failed_or_closed_state(
-            CommandState.SUCCEEDED, sea_command_id
+            StatementStatus(state=CommandState.SUCCEEDED), sea_command_id
         )
 
         # Test with CLOSED state (should raise DatabaseError)
         with pytest.raises(DatabaseError) as excinfo:
             sea_client._check_command_not_in_failed_or_closed_state(
-                CommandState.CLOSED, sea_command_id
+                StatementStatus(state=CommandState.CLOSED), sea_command_id
             )
         assert "Command test-statement-123 unexpectedly closed server side" in str(
             excinfo.value
@@ -550,56 +511,24 @@ class TestSeaBackend:
         # Test with FAILED state (should raise ServerOperationError)
         with pytest.raises(ServerOperationError) as excinfo:
             sea_client._check_command_not_in_failed_or_closed_state(
-                CommandState.FAILED, sea_command_id
+                StatementStatus(
+                    state=CommandState.FAILED,
+                    error=ServiceError(message="Test error", error_code="TEST_ERROR"),
+                ),
+                sea_command_id,
             )
-        assert "Command test-statement-123 failed" in str(excinfo.value)
+        assert "Command failed" in str(excinfo.value)
 
-    def test_utility_methods(self, sea_client):
-        """Test utility methods."""
-        # Test get_default_session_configuration_value
-        value = SeaDatabricksClient.get_default_session_configuration_value("ANSI_MODE")
-        assert value == "true"
-
-        # Test with unsupported configuration parameter
-        value = SeaDatabricksClient.get_default_session_configuration_value(
-            "UNSUPPORTED_PARAM"
-        )
-        assert value is None
-
-        # Test with case-insensitive parameter name
-        value = SeaDatabricksClient.get_default_session_configuration_value("ansi_mode")
-        assert value == "true"
-
-        # Test get_allowed_session_configurations
-        configs = SeaDatabricksClient.get_allowed_session_configurations()
-        assert isinstance(configs, list)
-        assert len(configs) > 0
-        assert "ANSI_MODE" in configs
-
-        # Test getting the list of allowed configurations with specific keys
-        allowed_configs = SeaDatabricksClient.get_allowed_session_configurations()
-        expected_keys = {
-            "ANSI_MODE",
-            "ENABLE_PHOTON",
-            "LEGACY_TIME_PARSER_POLICY",
-            "MAX_FILE_PARTITION_BYTES",
-            "READ_ONLY_EXTERNAL_METASTORE",
-            "STATEMENT_TIMEOUT",
-            "TIMEZONE",
-            "USE_CACHED_RESULT",
-        }
-        assert set(allowed_configs) == expected_keys
-
-        # Test _extract_description_from_manifest
+    def test_extract_description_from_manifest(self, sea_client):
+        """Test _extract_description_from_manifest."""
         manifest_obj = MagicMock()
         manifest_obj.schema = {
             "columns": [
                 {
                     "name": "col1",
                     "type_name": "STRING",
-                    "precision": 10,
-                    "scale": 2,
-                    "nullable": True,
+                    "type_precision": 10,
+                    "type_scale": 2,
                 },
                 {
                     "name": "col2",
@@ -613,13 +542,73 @@ class TestSeaBackend:
         assert description is not None
         assert len(description) == 2
         assert description[0][0] == "col1"  # name
-        assert description[0][1] == "STRING"  # type_code
+        assert description[0][1] == "string"  # type_code
         assert description[0][4] == 10  # precision
         assert description[0][5] == 2  # scale
-        assert description[0][6] is True  # null_ok
+        assert description[0][6] is None  # null_ok
         assert description[1][0] == "col2"  # name
-        assert description[1][1] == "INT"  # type_code
-        assert description[1][6] is False  # null_ok
+        assert description[1][1] == "int"  # type_code
+        assert description[1][6] is None  # null_ok
+
+    def test_extract_description_from_manifest_with_type_normalization(
+        self, sea_client
+    ):
+        """Test _extract_description_from_manifest with SEA to Thrift type normalization."""
+        manifest_obj = MagicMock()
+        manifest_obj.schema = {
+            "columns": [
+                {
+                    "name": "byte_col",
+                    "type_name": "BYTE",
+                },
+                {
+                    "name": "short_col",
+                    "type_name": "SHORT",
+                },
+                {
+                    "name": "long_col",
+                    "type_name": "LONG",
+                },
+                {
+                    "name": "interval_ym_col",
+                    "type_name": "INTERVAL",
+                    "type_interval_type": "YEAR TO MONTH",
+                },
+                {
+                    "name": "interval_dt_col",
+                    "type_name": "INTERVAL",
+                    "type_interval_type": "DAY TO SECOND",
+                },
+                {
+                    "name": "interval_default_col",
+                    "type_name": "INTERVAL",
+                    # No type_interval_type field
+                },
+            ]
+        }
+
+        description = sea_client._extract_description_from_manifest(manifest_obj)
+        assert description is not None
+        assert len(description) == 6
+
+        # Check normalized types
+        assert description[0][0] == "byte_col"
+        assert description[0][1] == "tinyint"  # BYTE -> tinyint
+
+        assert description[1][0] == "short_col"
+        assert description[1][1] == "smallint"  # SHORT -> smallint
+
+        assert description[2][0] == "long_col"
+        assert description[2][1] == "bigint"  # LONG -> bigint
+
+        assert description[3][0] == "interval_ym_col"
+        assert description[3][1] == "interval_year_month"  # INTERVAL with YEAR/MONTH
+
+        assert description[4][0] == "interval_dt_col"
+        assert description[4][1] == "interval_day_time"  # INTERVAL with DAY/TIME
+
+        assert description[5][0] == "interval_default_col"
+        assert description[5][1] == "interval"  # INTERVAL without subtype
 
     def test_filter_session_configuration(self):
         """Test that _filter_session_configuration converts all values to strings."""
@@ -955,67 +944,3 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_columns" in str(excinfo.value)
-
-    def test_get_chunk_links(self, sea_client, mock_http_client, sea_command_id):
-        """Test get_chunk_links method when links are available."""
-        # Setup mock response
-        mock_response = {
-            "external_links": [
-                {
-                    "external_link": "https://example.com/data/chunk0",
-                    "expiration": "2025-07-03T05:51:18.118009",
-                    "row_count": 100,
-                    "byte_count": 1024,
-                    "row_offset": 0,
-                    "chunk_index": 0,
-                    "next_chunk_index": 1,
-                    "http_headers": {"Authorization": "Bearer token123"},
-                }
-            ]
-        }
-        mock_http_client._make_request.return_value = mock_response
-
-        # Call the method
-        results = sea_client.get_chunk_links("test-statement-123", 0)
-
-        # Verify the HTTP client was called correctly
-        mock_http_client._make_request.assert_called_once_with(
-            method="GET",
-            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
-                "test-statement-123", 0
-            ),
-        )
-
-        # Verify the results
-        assert isinstance(results, list)
-        assert len(results) == 1
-        result = results[0]
-        assert result.external_link == "https://example.com/data/chunk0"
-        assert result.expiration == "2025-07-03T05:51:18.118009"
-        assert result.row_count == 100
-        assert result.byte_count == 1024
-        assert result.row_offset == 0
-        assert result.chunk_index == 0
-        assert result.next_chunk_index == 1
-        assert result.http_headers == {"Authorization": "Bearer token123"}
-
-    def test_get_chunk_links_empty(self, sea_client, mock_http_client):
-        """Test get_chunk_links when no links are returned (empty list)."""
-        # Setup mock response with no matching chunk
-        mock_response = {"external_links": []}
-        mock_http_client._make_request.return_value = mock_response
-
-        # Call the method
-        results = sea_client.get_chunk_links("test-statement-123", 0)
-
-        # Verify the HTTP client was called correctly
-        mock_http_client._make_request.assert_called_once_with(
-            method="GET",
-            path=sea_client.CHUNK_PATH_WITH_ID_AND_INDEX.format(
-                "test-statement-123", 0
-            ),
-        )
-
-        # Verify the results are empty
-        assert isinstance(results, list)
-        assert results == []

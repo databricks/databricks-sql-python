@@ -22,6 +22,7 @@ from databricks.sql.utils import (
     ColumnQueue,
 )
 from databricks.sql.backend.types import CommandId, CommandState, ExecuteResponse
+from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +36,14 @@ class ResultSet(ABC):
 
     def __init__(
         self,
-        connection: "Connection",
-        backend: "DatabricksClient",
+        connection: Connection,
+        backend: DatabricksClient,
         arraysize: int,
         buffer_size_bytes: int,
         command_id: CommandId,
         status: CommandState,
         has_been_closed_server_side: bool = False,
-        is_direct_results: bool = False,
+        has_more_rows: bool = False,
         results_queue=None,
         description: List[Tuple] = [],
         is_staging_operation: bool = False,
@@ -53,14 +54,14 @@ class ResultSet(ABC):
         A ResultSet manages the results of a single command.
 
         Parameters:
-            :param connection: The parent connection
-            :param backend: The backend client
+            :param connection: The parent connection that was used to execute this command
+            :param backend: The specialised backend client to be invoked in the fetch phase
             :param arraysize: The max number of rows to fetch at a time (PEP-249)
             :param buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
             :param command_id: The command ID
             :param status: The command status
             :param has_been_closed_server_side: Whether the command has been closed on the server
-            :param is_direct_results: Whether the command has more rows
+            :param has_more_rows: Whether the command has more rows
             :param results_queue: The results queue
             :param description: column description of the results
             :param is_staging_operation: Whether the command is a staging operation
@@ -75,7 +76,7 @@ class ResultSet(ABC):
         self.command_id = command_id
         self.status = status
         self.has_been_closed_server_side = has_been_closed_server_side
-        self.is_direct_results = is_direct_results
+        self.has_more_rows = has_more_rows
         self.results = results_queue
         self._is_staging_operation = is_staging_operation
         self.lz4_compressed = lz4_compressed
@@ -169,7 +170,11 @@ class ResultSet(ABC):
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
-            self.results.close()
+            if self.results is not None:
+                self.results.close()
+            else:
+                logger.warning("result set close: queue not initialized")
+
             if (
                 self.status != CommandState.CLOSED
                 and not self.has_been_closed_server_side
@@ -189,16 +194,16 @@ class ThriftResultSet(ResultSet):
 
     def __init__(
         self,
-        connection: "Connection",
-        execute_response: "ExecuteResponse",
-        thrift_client: "ThriftDatabricksClient",
+        connection: Connection,
+        execute_response: ExecuteResponse,
+        thrift_client: ThriftDatabricksClient,
         buffer_size_bytes: int = 104857600,
         arraysize: int = 10000,
         use_cloud_fetch: bool = True,
         t_row_set=None,
         max_download_threads: int = 10,
         ssl_options=None,
-        is_direct_results: bool = True,
+        has_more_rows: bool = True,
     ):
         """
         Initialize a ThriftResultSet with direct access to the ThriftDatabricksClient.
@@ -213,12 +218,13 @@ class ThriftResultSet(ResultSet):
             :param t_row_set: The TRowSet containing result data (if available)
             :param max_download_threads: Maximum number of download threads for cloud fetch
             :param ssl_options: SSL options for cloud fetch
-            :param is_direct_results: Whether there are more rows to fetch
+            :param has_more_rows: Whether there are more rows to fetch
         """
+        self.num_chunks = 0
 
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
-        self.is_direct_results = is_direct_results
+        self.has_more_rows = has_more_rows
 
         # Build the results queue if t_row_set is provided
         results_queue = None
@@ -234,7 +240,12 @@ class ThriftResultSet(ResultSet):
                 lz4_compressed=execute_response.lz4_compressed,
                 description=execute_response.description,
                 ssl_options=ssl_options,
+                session_id_hex=connection.get_session_id_hex(),
+                statement_id=execute_response.command_id.to_hex_guid(),
+                chunk_id=self.num_chunks,
             )
+            if t_row_set.resultLinks:
+                self.num_chunks += len(t_row_set.resultLinks)
 
         # Call parent constructor with common attributes
         super().__init__(
@@ -245,7 +256,7 @@ class ThriftResultSet(ResultSet):
             command_id=execute_response.command_id,
             status=execute_response.status,
             has_been_closed_server_side=execute_response.has_been_closed_server_side,
-            is_direct_results=is_direct_results,
+            has_more_rows=has_more_rows,
             results_queue=results_queue,
             description=execute_response.description,
             is_staging_operation=execute_response.is_staging_operation,
@@ -258,7 +269,7 @@ class ThriftResultSet(ResultSet):
             self._fill_results_buffer()
 
     def _fill_results_buffer(self):
-        results, is_direct_results = self.backend.fetch_results(
+        results, has_more_rows, result_links_count = self.backend.fetch_results(
             command_id=self.command_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
@@ -267,9 +278,11 @@ class ThriftResultSet(ResultSet):
             arrow_schema_bytes=self._arrow_schema_bytes,
             description=self.description,
             use_cloud_fetch=self._use_cloud_fetch,
+            chunk_id=self.num_chunks,
         )
         self.results = results
-        self.is_direct_results = is_direct_results
+        self.has_more_rows = has_more_rows
+        self.num_chunks += result_links_count
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]
@@ -309,21 +322,22 @@ class ThriftResultSet(ResultSet):
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
         results = self.results.next_n_rows(size)
+        partial_result_chunks = [results]
         n_remaining_rows = size - results.num_rows
         self._next_row_index += results.num_rows
 
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.is_direct_results
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results])
+            partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def fetchmany_columnar(self, size: int):
         """
@@ -340,7 +354,7 @@ class ThriftResultSet(ResultSet):
         while (
             n_remaining_rows > 0
             and not self.has_been_closed_server_side
-            and self.is_direct_results
+            and self.has_more_rows
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
@@ -354,8 +368,8 @@ class ThriftResultSet(ResultSet):
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
-
-        while not self.has_been_closed_server_side and self.is_direct_results:
+        partial_result_chunks = [results]
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             if isinstance(results, ColumnTable) and isinstance(
@@ -363,7 +377,7 @@ class ThriftResultSet(ResultSet):
             ):
                 results = self.merge_columnar(results, partial_results)
             else:
-                results = pyarrow.concat_tables([results, partial_results])
+                partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
@@ -374,14 +388,14 @@ class ThriftResultSet(ResultSet):
                 for name, col in zip(results.column_names, results.column_table)
             }
             return pyarrow.Table.from_pydict(data)
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
         results = self.results.remaining_rows()
         self._next_row_index += results.num_rows
 
-        while not self.has_been_closed_server_side and self.is_direct_results:
+        while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
             results = self.merge_columnar(results, partial_results)

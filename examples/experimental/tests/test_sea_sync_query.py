@@ -72,6 +72,13 @@ def test_sea_sync_query_with_cloud_fetch():
             f"{actual_row_count} rows retrieved against {requested_row_count} requested"
         )
 
+        # Verify total row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
+
         # Close resources
         cursor.close()
         connection.close()
@@ -132,7 +139,9 @@ def test_sea_sync_query_without_cloud_fetch():
         # For non-cloud fetch, use a smaller row count to avoid exceeding inline limits
         requested_row_count = 100
         cursor = connection.cursor()
-        logger.info("Executing synchronous query without cloud fetch: SELECT 100 rows")
+        logger.info(
+            f"Executing synchronous query without cloud fetch: SELECT {requested_row_count} rows"
+        )
         cursor.execute(
             "SELECT id, 'test_value_' || CAST(id as STRING) as test_value FROM range(1, 101)"
         )
@@ -140,7 +149,17 @@ def test_sea_sync_query_without_cloud_fetch():
         results = [cursor.fetchone()]
         results.extend(cursor.fetchmany(10))
         results.extend(cursor.fetchall())
-        logger.info(f"{len(results)} rows retrieved against 100 requested")
+        actual_row_count = len(results)
+        logger.info(
+            f"{actual_row_count} rows retrieved against {requested_row_count} requested"
+        )
+
+        # Verify total row count
+        if actual_row_count != requested_row_count:
+            logger.error(
+                f"FAIL: Row count mismatch. Expected {requested_row_count}, got {actual_row_count}"
+            )
+            return False
 
         # Close resources
         cursor.close()
