@@ -76,7 +76,7 @@ class FeatureFlagsContext:
         )
         return time.monotonic() > refresh_threshold
 
-    def is_feature_enabled(self, name: str, default_value: bool) -> bool:
+    def get_flag_value(self, name: str, default_value: Any) -> Any:
         """
         Checks if a feature is enabled.
         - BLOCKS on the first call until flags are fetched.
@@ -95,10 +95,7 @@ class FeatureFlagsContext:
             assert self._flags is not None
 
             # Now, return the value from the populated cache.
-            flag_value = self._flags.get(name)
-            if flag_value is None:
-                return default_value
-            return flag_value.lower() == "true"
+            return self._flags.get(name, default_value)
 
     def _refresh_flags(self):
         """Performs a synchronous network request to fetch and update flags."""

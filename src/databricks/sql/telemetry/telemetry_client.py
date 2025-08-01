@@ -110,9 +110,10 @@ class TelemetryHelper:
 
         if connection.enable_telemetry:
             context = FeatureFlagsContextFactory.get_instance(connection)
-            return context.is_feature_enabled(
+            flag_value = context.get_flag_value(
                 TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
             )
+            return str(flag_value).lower() == "true"
         else:
             return False
 
