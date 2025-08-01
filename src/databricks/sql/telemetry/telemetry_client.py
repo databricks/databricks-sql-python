@@ -145,6 +145,9 @@ class NoopTelemetryClient(BaseTelemetryClient):
     def close(self):
         pass
 
+    def _flush(self):
+        pass
+
 
 class TelemetryClient(BaseTelemetryClient):
     """
