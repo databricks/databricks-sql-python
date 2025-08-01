@@ -39,10 +39,19 @@ class DecimalTestsMixin:
     ]
 
     @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    @pytest.mark.parametrize(
         "decimal, expected_value, expected_type", decimal_and_expected_results
     )
-    def test_decimals(self, decimal, expected_value, expected_type):
-        with self.cursor({}) as cursor:
+    def test_decimals(self, decimal, expected_value, expected_type, backend_params):
+        with self.cursor(backend_params) as cursor:
             query = "SELECT CAST ({})".format(decimal)
             cursor.execute(query)
             table = cursor.fetchmany_arrow(1)
@@ -50,10 +59,21 @@ class DecimalTestsMixin:
             assert table.to_pydict().popitem()[1][0] == expected_value
 
     @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    @pytest.mark.parametrize(
         "decimals, expected_values, expected_type", multi_decimals_and_expected_results
     )
-    def test_multi_decimals(self, decimals, expected_values, expected_type):
-        with self.cursor({}) as cursor:
+    def test_multi_decimals(
+        self, decimals, expected_values, expected_type, backend_params
+    ):
+        with self.cursor(backend_params) as cursor:
             union_str = " UNION ".join(
                 ["(SELECT CAST ({}))".format(dec) for dec in decimals]
             )

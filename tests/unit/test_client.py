@@ -46,7 +46,7 @@ class ThriftDatabricksClientMockFactory:
             is_staging_operation=False,
             command_id=None,
             has_been_closed_server_side=True,
-            has_more_rows=True,
+            is_direct_results=True,
             lz4_compressed=True,
             arrow_schema_bytes=b"schema",
         )
@@ -105,7 +105,11 @@ class ClientTestSuite(unittest.TestCase):
 
                 # Mock the execute response with controlled state
                 mock_execute_response = Mock(spec=ExecuteResponse)
-                mock_execute_response.status = initial_state
+
+                mock_execute_response.command_id = Mock(spec=CommandId)
+                mock_execute_response.status = (
+                    CommandState.SUCCEEDED if not closed else CommandState.CLOSED
+                )
                 mock_execute_response.has_been_closed_server_side = closed
                 mock_execute_response.is_staging_operation = False
                 mock_execute_response.command_id = Mock(spec=CommandId)
