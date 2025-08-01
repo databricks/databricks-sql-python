@@ -76,7 +76,7 @@ class TestE2ETelemetry(PySQLPytestTestCase):
 
                 time.sleep(random.uniform(0, 0.05))
                 
-                with self.connection(extra_params={"enable_telemetry": True}) as conn:
+                with self.connection(extra_params={"force_enable_telemetry": True}) as conn:
                     # Capture the session ID from the connection before executing the query
                     session_id_hex = conn.get_session_id_hex()
                     with capture_lock:
