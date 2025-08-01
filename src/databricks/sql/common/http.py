@@ -149,14 +149,7 @@ class TelemetryHttpClient:  # TODO: Unify all the http clients in the PySQL Conn
         This is a blocking call intended to be run in a background thread.
         """
         logger.debug("Executing telemetry POST request to: %s", url)
-        try:
-            return self.circuit_breaker.call(self.session.post, url, **kwargs)
-        except CircuitBreakerError as e:
-            logger.error("Circuit breaker error: %s", e)
-            raise e
-        except Exception as e:
-            logger.error("Error executing telemetry POST request: %s", e)
-            raise e
+        return self.circuit_breaker.call(self.session.post, url, **kwargs)
 
     def close(self):
         """Closes the underlying requests.Session."""
