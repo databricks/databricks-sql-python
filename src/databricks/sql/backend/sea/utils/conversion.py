@@ -150,6 +150,10 @@ class SqlTypeConverter:
         Returns:
             The converted value in the appropriate Python type
         """
+        
+        # Handle None values directly
+        if value is None:
+            return None
 
         sql_type = sql_type.lower().strip()
 

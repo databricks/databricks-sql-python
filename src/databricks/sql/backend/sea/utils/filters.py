@@ -86,6 +86,13 @@ class ResultSetFilter:
             arraysize=result_set.arraysize,
         )
 
+        # Preserve metadata columns setup from original result set
+        if hasattr(result_set, '_metadata_columns') and result_set._metadata_columns:
+            filtered_result_set._metadata_columns = result_set._metadata_columns
+            filtered_result_set._column_index_mapping = result_set._column_index_mapping
+            # Update the description to match the original prepared description
+            filtered_result_set.description = result_set.description
+
         return filtered_result_set
 
     @staticmethod
