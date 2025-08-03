@@ -24,6 +24,15 @@ from databricks.sql.result_set import ResultSet
 logger = logging.getLogger(__name__)
 
 
+# Column-to-column data mapping for metadata queries
+# Maps target column -> source column to get data from
+COLUMN_DATA_MAPPING = {
+    "DATA_TYPE": "TYPE_NAME",  # DATA_TYPE calculated from TYPE_NAME
+    "NULLABLE": "IS_NULLABLE",  # NULLABLE calculated from IS_NULLABLE
+    "BUFFER_LENGTH": "TYPE_NAME",  # BUFFER_LENGTH calculated from TYPE_NAME
+}
+
+
 class SeaResultSet(ResultSet):
     """ResultSet implementation for SEA backend."""
 
@@ -292,6 +301,40 @@ class SeaResultSet(ResultSet):
         self._metadata_columns = metadata_columns
         self._prepare_column_mapping()
 
+    def _populate_columns_from_others(
+        self, result_column: ResultColumn, row_data: Any
+    ) -> Any:
+        """
+        Helper function to populate column data from other columns based on COLUMN_DATA_MAPPING.
+
+        Args:
+            result_column: The result column that needs data
+            row_data: Row data (list for JSON, PyArrow table for Arrow)
+
+        Returns:
+            The value to use for this column, or None if not found
+        """
+        target_column = result_column.column_name
+        if target_column not in COLUMN_DATA_MAPPING:
+            return None
+
+        source_column = COLUMN_DATA_MAPPING[target_column]
+
+        # Find the source column index
+        for idx, col in enumerate(self._metadata_columns):
+            if col.column_name == source_column:
+                source_idx = self._column_index_mapping.get(idx)
+                if source_idx is not None:
+                    # Handle Arrow table format
+                    if hasattr(row_data, "column"):  # PyArrow table
+                        return row_data.column(source_idx).to_pylist()
+                    # Handle JSON row format
+                    else:
+                        return row_data[source_idx]
+                break
+
+        return None
+
     def _prepare_column_mapping(self) -> None:
         """
         Prepare column index mapping for metadata queries.
@@ -359,44 +402,24 @@ class SeaResultSet(ResultSet):
 
         for new_idx, result_column in enumerate(self._metadata_columns):
             old_idx = self._column_index_mapping.get(new_idx)
-            
-            # Get the source data 
+
+            # Get the source data
             if old_idx is not None:
                 column = table.column(old_idx)
                 values = column.to_pylist()
             else:
                 values = None
-                
+
             # Special handling for columns that need data from other columns
-            if result_column.column_name == "DATA_TYPE" and result_column.result_set_column_name is None:
-                # Get TYPE_NAME column value for DATA_TYPE calculation
-                for idx, col in enumerate(self._metadata_columns):
-                    if col.column_name == "TYPE_NAME":
-                        type_idx = self._column_index_mapping.get(idx)
-                        if type_idx is not None:
-                            values = table.column(type_idx).to_pylist()
-                        break
-            elif result_column.column_name == "NULLABLE" and result_column.result_set_column_name is None:
-                # Get IS_NULLABLE column value for NULLABLE calculation
-                for idx, col in enumerate(self._metadata_columns):
-                    if col.column_name == "IS_NULLABLE":
-                        nullable_idx = self._column_index_mapping.get(idx)
-                        if nullable_idx is not None:
-                            values = table.column(nullable_idx).to_pylist()
-                        break
-            elif result_column.column_name == "BUFFER_LENGTH" and result_column.result_set_column_name is None:
-                # Get TYPE_NAME column value for BUFFER_LENGTH calculation
-                for idx, col in enumerate(self._metadata_columns):
-                    if col.column_name == "TYPE_NAME":
-                        type_idx = self._column_index_mapping.get(idx)
-                        if type_idx is not None:
-                            values = table.column(type_idx).to_pylist()
-                        break
-            
+            if result_column.result_set_column_name is None:
+                values = self._populate_columns_from_others(result_column, table)
+
             # Apply transformation and create column
             if values is not None:
                 if result_column.transform_value:
-                    transformed_values = [result_column.transform_value(v) for v in values]
+                    transformed_values = [
+                        result_column.transform_value(v) for v in values
+                    ]
                     column = pyarrow.array(transformed_values)
                 else:
                     column = pyarrow.array(values)
@@ -409,7 +432,7 @@ class SeaResultSet(ResultSet):
                 else:
                     null_array = pyarrow.nulls(table.num_rows)
                 new_columns.append(null_array)
-                
+
             column_names.append(result_column.column_name)
 
         return pyarrow.Table.from_arrays(new_columns, names=column_names)
@@ -428,37 +451,15 @@ class SeaResultSet(ResultSet):
                     value = row[old_idx]
                 else:
                     value = None
-                    
+
                 # Special handling for columns that need data from other columns
-                if result_column.column_name == "DATA_TYPE" and result_column.result_set_column_name is None:
-                    # Get TYPE_NAME column value for DATA_TYPE calculation
-                    for idx, col in enumerate(self._metadata_columns):
-                        if col.column_name == "TYPE_NAME":
-                            type_idx = self._column_index_mapping.get(idx)
-                            if type_idx is not None and type_idx < len(row):
-                                value = row[type_idx]
-                            break
-                elif result_column.column_name == "NULLABLE" and result_column.result_set_column_name is None:
-                    # Get IS_NULLABLE column value for NULLABLE calculation
-                    for idx, col in enumerate(self._metadata_columns):
-                        if col.column_name == "IS_NULLABLE":
-                            nullable_idx = self._column_index_mapping.get(idx)
-                            if nullable_idx is not None and nullable_idx < len(row):
-                                value = row[nullable_idx]
-                            break
-                elif result_column.column_name == "BUFFER_LENGTH" and result_column.result_set_column_name is None:
-                    # Get TYPE_NAME column value for BUFFER_LENGTH calculation
-                    for idx, col in enumerate(self._metadata_columns):
-                        if col.column_name == "TYPE_NAME":
-                            type_idx = self._column_index_mapping.get(idx)
-                            if type_idx is not None and type_idx < len(row):
-                                value = row[type_idx]
-                            break
-                
+                if result_column.result_set_column_name is None:
+                    value = self._populate_columns_from_others(result_column, row)
+
                 # Apply transformation if defined
                 if result_column.transform_value:
                     value = result_column.transform_value(value)
-                    
+
                 new_row.append(value)
             transformed_rows.append(new_row)
         return transformed_rows

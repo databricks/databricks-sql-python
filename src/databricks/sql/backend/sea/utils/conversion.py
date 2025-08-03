@@ -150,7 +150,7 @@ class SqlTypeConverter:
         Returns:
             The converted value in the appropriate Python type
         """
-        
+
         # Handle None values directly
         if value is None:
             return None

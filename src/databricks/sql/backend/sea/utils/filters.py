@@ -87,7 +87,7 @@ class ResultSetFilter:
         )
 
         # Preserve metadata columns setup from original result set
-        if hasattr(result_set, '_metadata_columns') and result_set._metadata_columns:
+        if hasattr(result_set, "_metadata_columns") and result_set._metadata_columns:
             filtered_result_set._metadata_columns = result_set._metadata_columns
             filtered_result_set._column_index_mapping = result_set._column_index_mapping
             # Update the description to match the original prepared description
