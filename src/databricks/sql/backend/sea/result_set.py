@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, TYPE_CHECKING, Dict
+from typing import Any, List, Optional, TYPE_CHECKING, Dict, Union
 
 import logging
 
@@ -93,8 +93,8 @@ class SeaResultSet(ResultSet):
         )
 
         # Initialize metadata columns for post-fetch transformation
-        self._metadata_columns = None
-        self._column_index_mapping = None
+        self._metadata_columns: Optional[List[ResultColumn]] = None
+        self._column_index_mapping: Optional[Dict[int, Union[int, None]]] = None
 
     def _convert_json_types(self, row: List[str]) -> List[Any]:
         """
@@ -301,40 +301,6 @@ class SeaResultSet(ResultSet):
         self._metadata_columns = metadata_columns
         self._prepare_column_mapping()
 
-    def _populate_columns_from_others(
-        self, result_column: ResultColumn, row_data: Any
-    ) -> Any:
-        """
-        Helper function to populate column data from other columns based on COLUMN_DATA_MAPPING.
-
-        Args:
-            result_column: The result column that needs data
-            row_data: Row data (list for JSON, PyArrow table for Arrow)
-
-        Returns:
-            The value to use for this column, or None if not found
-        """
-        target_column = result_column.column_name
-        if target_column not in COLUMN_DATA_MAPPING:
-            return None
-
-        source_column = COLUMN_DATA_MAPPING[target_column]
-
-        # Find the source column index
-        for idx, col in enumerate(self._metadata_columns):
-            if col.column_name == source_column:
-                source_idx = self._column_index_mapping.get(idx)
-                if source_idx is not None:
-                    # Handle Arrow table format
-                    if hasattr(row_data, "column"):  # PyArrow table
-                        return row_data.column(source_idx).to_pylist()
-                    # Handle JSON row format
-                    else:
-                        return row_data[source_idx]
-                break
-
-        return None
-
     def _prepare_column_mapping(self) -> None:
         """
         Prepare column index mapping for metadata queries.
@@ -353,7 +319,7 @@ class SeaResultSet(ResultSet):
         new_description = []
         self._column_index_mapping = {}  # Maps new index -> old index
 
-        for new_idx, result_column in enumerate(self._metadata_columns):
+        for new_idx, result_column in enumerate(self._metadata_columns or []):
             # Find the corresponding SEA column
             if (
                 result_column.result_set_column_name
@@ -400,8 +366,12 @@ class SeaResultSet(ResultSet):
         new_columns = []
         column_names = []
 
-        for new_idx, result_column in enumerate(self._metadata_columns):
-            old_idx = self._column_index_mapping.get(new_idx)
+        for new_idx, result_column in enumerate(self._metadata_columns or []):
+            old_idx = (
+                self._column_index_mapping.get(new_idx)
+                if self._column_index_mapping
+                else None
+            )
 
             # Get the source data
             if old_idx is not None:
@@ -410,27 +380,13 @@ class SeaResultSet(ResultSet):
             else:
                 values = None
 
-            # Special handling for columns that need data from other columns
-            if result_column.result_set_column_name is None:
-                values = self._populate_columns_from_others(result_column, table)
-
             # Apply transformation and create column
             if values is not None:
-                if result_column.transform_value:
-                    transformed_values = [
-                        result_column.transform_value(v) for v in values
-                    ]
-                    column = pyarrow.array(transformed_values)
-                else:
-                    column = pyarrow.array(values)
+                column = pyarrow.array(values)
                 new_columns.append(column)
             else:
                 # Create column with default/transformed values
-                if result_column.transform_value:
-                    default_value = result_column.transform_value(None)
-                    null_array = pyarrow.array([default_value] * table.num_rows)
-                else:
-                    null_array = pyarrow.nulls(table.num_rows)
+                null_array = pyarrow.nulls(table.num_rows)
                 new_columns.append(null_array)
 
             column_names.append(result_column.column_name)
@@ -445,20 +401,16 @@ class SeaResultSet(ResultSet):
         transformed_rows = []
         for row in rows:
             new_row = []
-            for new_idx, result_column in enumerate(self._metadata_columns):
-                old_idx = self._column_index_mapping.get(new_idx)
+            for new_idx, result_column in enumerate(self._metadata_columns or []):
+                old_idx = (
+                    self._column_index_mapping.get(new_idx)
+                    if self._column_index_mapping
+                    else None
+                )
                 if old_idx is not None:
                     value = row[old_idx]
                 else:
                     value = None
-
-                # Special handling for columns that need data from other columns
-                if result_column.result_set_column_name is None:
-                    value = self._populate_columns_from_others(result_column, row)
-
-                # Apply transformation if defined
-                if result_column.transform_value:
-                    value = result_column.transform_value(value)
 
                 new_row.append(value)
             transformed_rows.append(new_row)

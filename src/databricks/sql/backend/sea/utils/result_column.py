@@ -17,4 +17,3 @@ class ResultColumn:
     column_name: str
     result_set_column_name: Optional[str]  # None if SEA doesn't return this column
     column_type: str
-    transform_value: Optional[Callable[[Any], Any]] = None
