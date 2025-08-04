@@ -248,11 +248,8 @@ class Connection:
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._cursors = []  # type: List[Cursor]
-
-        self.server_telemetry_enabled = True
-        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
-        self.telemetry_enabled = (
-            self.client_telemetry_enabled and self.server_telemetry_enabled
+        self.telemetry_batch_size = kwargs.get(
+            "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
         try:
@@ -285,11 +282,16 @@ class Connection:
         )
         self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
+        self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
+        self.enable_telemetry = kwargs.get("enable_telemetry", False)
+        self.telemetry_enabled = TelemetryHelper.is_telemetry_enabled(self)
+
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             session_id_hex=self.get_session_id_hex(),
             auth_provider=self.session.auth_provider,
             host_url=self.session.host,
+            batch_size=self.telemetry_batch_size,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(

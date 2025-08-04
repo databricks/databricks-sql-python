@@ -23,6 +23,19 @@ class DownloaderTests(unittest.TestCase):
     Unit tests for checking downloader logic.
     """
 
+    def _setup_time_mock_for_download(self, mock_time, end_time):
+        """Helper to setup time mock that handles logging system calls."""
+        call_count = [0]
+
+        def time_side_effect():
+            call_count[0] += 1
+            if call_count[0] <= 2:  # First two calls (validation, start_time)
+                return 1000
+            else:  # All subsequent calls (logging, duration calculation)
+                return end_time
+
+        mock_time.side_effect = time_side_effect
+
     @patch("time.time", return_value=1000)
     def test_run_link_expired(self, mock_time):
         settings = Mock()
@@ -90,13 +103,17 @@ class DownloaderTests(unittest.TestCase):
                 d.run()
             self.assertTrue("404" in str(context.exception))
 
-    @patch("time.time", return_value=1000)
+    @patch("time.time")
     def test_run_uncompressed_successful(self, mock_time):
+        self._setup_time_mock_for_download(mock_time, 1000.5)
+
         http_client = DatabricksHttpClient.get_instance()
         file_bytes = b"1234567890" * 10
         settings = Mock(link_expiry_buffer_secs=0, download_timeout=0, use_proxy=False)
         settings.is_lz4_compressed = False
+        settings.min_cloudfetch_download_speed = 1.0
         result_link = Mock(bytesNum=100, expiryTime=1001)
+        result_link.fileLink = "https://s3.amazonaws.com/bucket/file.arrow?token=abc123"
 
         with patch.object(
             http_client,
@@ -115,15 +132,19 @@ class DownloaderTests(unittest.TestCase):
 
             assert file.file_bytes == b"1234567890" * 10
 
-    @patch("time.time", return_value=1000)
+    @patch("time.time")
     def test_run_compressed_successful(self, mock_time):
+        self._setup_time_mock_for_download(mock_time, 1000.2)
+
         http_client = DatabricksHttpClient.get_instance()
         file_bytes = b"1234567890" * 10
         compressed_bytes = b'\x04"M\x18h@d\x00\x00\x00\x00\x00\x00\x00#\x14\x00\x00\x00\xaf1234567890\n\x00BP67890\x00\x00\x00\x00'
 
         settings = Mock(link_expiry_buffer_secs=0, download_timeout=0, use_proxy=False)
         settings.is_lz4_compressed = True
+        settings.min_cloudfetch_download_speed = 1.0
         result_link = Mock(bytesNum=100, expiryTime=1001)
+        result_link.fileLink = "https://s3.amazonaws.com/bucket/file.arrow?token=xyz789"
         with patch.object(
             http_client,
             "execute",
