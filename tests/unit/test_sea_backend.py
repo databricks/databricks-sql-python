@@ -974,7 +974,7 @@ class TestSeaBackend:
     ):
         """Test the get_tables method with cloud fetch enabled."""
         # Mock the execute_command method and ResultSetFilter
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=SeaResultSet)
 
         with patch.object(
             sea_client_cloud_fetch, "execute_command", return_value=mock_result_set
@@ -1013,7 +1013,7 @@ class TestSeaBackend:
     ):
         """Test the get_schemas method with cloud fetch enabled."""
         # Mock the execute_command method
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=SeaResultSet)
         with patch.object(
             sea_client_cloud_fetch, "execute_command", return_value=mock_result_set
         ) as mock_execute:
