@@ -24,15 +24,6 @@ from databricks.sql.result_set import ResultSet
 logger = logging.getLogger(__name__)
 
 
-# Column-to-column data mapping for metadata queries
-# Maps target column -> source column to get data from
-COLUMN_DATA_MAPPING = {
-    "DATA_TYPE": "TYPE_NAME",  # DATA_TYPE calculated from TYPE_NAME
-    "NULLABLE": "IS_NULLABLE",  # NULLABLE calculated from IS_NULLABLE
-    "BUFFER_LENGTH": "TYPE_NAME",  # BUFFER_LENGTH calculated from TYPE_NAME
-}
-
-
 class SeaResultSet(ResultSet):
     """ResultSet implementation for SEA backend."""
 
