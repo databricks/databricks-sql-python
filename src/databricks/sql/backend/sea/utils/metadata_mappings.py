@@ -1,71 +1,78 @@
 from databricks.sql.backend.sea.utils.result_column import ResultColumn
+from databricks.sql.backend.sea.utils.conversion import SqlType
 
 
 class MetadataColumnMappings:
     """Column mappings for metadata queries following JDBC specification."""
 
     # Common columns used across multiple metadata queries
-    CATALOG_COLUMN = ResultColumn("TABLE_CAT", "catalogName", "string")
-    CATALOG_COLUMN_FOR_GET_CATALOGS = ResultColumn("TABLE_CAT", "catalog", "string")
+    CATALOG_COLUMN = ResultColumn("TABLE_CAT", "catalogName", SqlType.VARCHAR)
+    CATALOG_COLUMN_FOR_GET_CATALOGS = ResultColumn(
+        "TABLE_CAT", "catalog", SqlType.VARCHAR
+    )
 
-    SCHEMA_COLUMN = ResultColumn("TABLE_SCHEM", "namespace", "string")
-    SCHEMA_COLUMN_FOR_GET_SCHEMA = ResultColumn("TABLE_SCHEM", "databaseName", "string")
-    TABLE_NAME_COLUMN = ResultColumn("TABLE_NAME", "tableName", "string")
-    TABLE_TYPE_COLUMN = ResultColumn("TABLE_TYPE", "tableType", "string")
-    REMARKS_COLUMN = ResultColumn("REMARKS", "remarks", "string")
+    SCHEMA_COLUMN = ResultColumn("TABLE_SCHEM", "namespace", SqlType.VARCHAR)
+    SCHEMA_COLUMN_FOR_GET_SCHEMA = ResultColumn(
+        "TABLE_SCHEM", "databaseName", SqlType.VARCHAR
+    )
+    TABLE_NAME_COLUMN = ResultColumn("TABLE_NAME", "tableName", SqlType.VARCHAR)
+    TABLE_TYPE_COLUMN = ResultColumn("TABLE_TYPE", "tableType", SqlType.VARCHAR)
+    REMARKS_COLUMN = ResultColumn("REMARKS", "remarks", SqlType.VARCHAR)
 
     # Columns specific to getColumns()
-    COLUMN_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", "string")
-    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, "int")
-    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", "columnType", "string")
+    COLUMN_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", SqlType.VARCHAR)
+    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, SqlType.INT)
+    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", "columnType", SqlType.VARCHAR)
 
-    COLUMN_SIZE_COLUMN = ResultColumn("COLUMN_SIZE", "columnSize", "int")
+    COLUMN_SIZE_COLUMN = ResultColumn("COLUMN_SIZE", "columnSize", SqlType.INT)
     DECIMAL_DIGITS_COLUMN = ResultColumn(
         "DECIMAL_DIGITS",
         "decimalDigits",
-        "int",
+        SqlType.INT,
     )
-    NUM_PREC_RADIX_COLUMN = ResultColumn("NUM_PREC_RADIX", "radix", "int")
+    NUM_PREC_RADIX_COLUMN = ResultColumn("NUM_PREC_RADIX", "radix", SqlType.INT)
     ORDINAL_POSITION_COLUMN = ResultColumn(
         "ORDINAL_POSITION",
         "ordinalPosition",
-        "int",
+        SqlType.INT,
     )
 
-    NULLABLE_COLUMN = ResultColumn("NULLABLE", None, "int")
-    COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", "columnType", "string")
-    SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", None, "int")
-    SQL_DATETIME_SUB_COLUMN = ResultColumn("SQL_DATETIME_SUB", None, "int")
-    CHAR_OCTET_LENGTH_COLUMN = ResultColumn("CHAR_OCTET_LENGTH", None, "int")
-    IS_NULLABLE_COLUMN = ResultColumn("IS_NULLABLE", "isNullable", "string")
+    NULLABLE_COLUMN = ResultColumn("NULLABLE", None, SqlType.INT)
+    COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", "columnType", SqlType.VARCHAR)
+    SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", None, SqlType.INT)
+    SQL_DATETIME_SUB_COLUMN = ResultColumn("SQL_DATETIME_SUB", None, SqlType.INT)
+    CHAR_OCTET_LENGTH_COLUMN = ResultColumn("CHAR_OCTET_LENGTH", None, SqlType.INT)
+    IS_NULLABLE_COLUMN = ResultColumn("IS_NULLABLE", "isNullable", SqlType.VARCHAR)
 
     # Columns for getTables() that don't exist in SEA
-    TYPE_CAT_COLUMN = ResultColumn("TYPE_CAT", None, "string")
-    TYPE_SCHEM_COLUMN = ResultColumn("TYPE_SCHEM", None, "string")
-    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", None, "string")
+    TYPE_CAT_COLUMN = ResultColumn("TYPE_CAT", None, SqlType.VARCHAR)
+    TYPE_SCHEM_COLUMN = ResultColumn("TYPE_SCHEM", None, SqlType.VARCHAR)
+    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", None, SqlType.VARCHAR)
     SELF_REFERENCING_COL_NAME_COLUMN = ResultColumn(
-        "SELF_REFERENCING_COL_NAME", None, "string"
+        "SELF_REFERENCING_COL_NAME", None, SqlType.VARCHAR
     )
-    REF_GENERATION_COLUMN = ResultColumn("REF_GENERATION", None, "string")
+    REF_GENERATION_COLUMN = ResultColumn("REF_GENERATION", None, SqlType.VARCHAR)
 
-    SCOPE_CATALOG_COLUMN = ResultColumn("SCOPE_CATALOG", None, "string")
-    SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", None, "string")
-    SCOPE_TABLE_COLUMN = ResultColumn("SCOPE_TABLE", None, "string")
-    SOURCE_DATA_TYPE_COLUMN = ResultColumn("SOURCE_DATA_TYPE", None, "smallint")
+    SCOPE_CATALOG_COLUMN = ResultColumn("SCOPE_CATALOG", None, SqlType.VARCHAR)
+    SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", None, SqlType.VARCHAR)
+    SCOPE_TABLE_COLUMN = ResultColumn("SCOPE_TABLE", None, SqlType.VARCHAR)
+    SOURCE_DATA_TYPE_COLUMN = ResultColumn("SOURCE_DATA_TYPE", None, SqlType.INT)
 
     IS_AUTO_INCREMENT_COLUMN = ResultColumn(
-        "IS_AUTOINCREMENT", "isAutoIncrement", "string"
+        "IS_AUTOINCREMENT", "isAutoIncrement", SqlType.VARCHAR
     )
-    IS_GENERATED_COLUMN = ResultColumn("IS_GENERATEDCOLUMN", "isGenerated", "string")
+    IS_GENERATED_COLUMN = ResultColumn(
+        "IS_GENERATEDCOLUMN", "isGenerated", SqlType.VARCHAR
+    )
 
-    BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, "int")
+    BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, SqlType.INT)
 
     # Column lists for each metadata operation
     CATALOG_COLUMNS = [CATALOG_COLUMN_FOR_GET_CATALOGS]  # Use specific catalog column
 
     SCHEMA_COLUMNS = [
         SCHEMA_COLUMN_FOR_GET_SCHEMA,
-        ResultColumn("TABLE_CATALOG", None, "string"),
+        ResultColumn("TABLE_CATALOG", "catalogName", SqlType.VARCHAR),
     ]
 
     TABLE_COLUMNS = [
