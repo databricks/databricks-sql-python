@@ -50,6 +50,14 @@ def _convert_decimal(
     return result
 
 
+def _get_type_name(thrift_type_id: int) -> str:
+    type_name = ttypes.TTypeId._VALUES_TO_NAMES[thrift_type_id]
+    type_name = type_name.lower()
+    if type_name.endswith("_type"):
+        type_name = type_name[:-5]
+    return type_name
+
+
 class SqlType:
     """
     SQL type constants based on Thrift TTypeId values.
@@ -57,14 +65,6 @@ class SqlType:
     These correspond to the normalized type names that come from the SEA backend
     after normalize_sea_type_to_thrift processing (lowercase, without _TYPE suffix).
     """
-
-    @staticmethod
-    def _get_type_name(thrift_type_id: int) -> str:
-        type_name = ttypes.TTypeId._VALUES_TO_NAMES[thrift_type_id]
-        type_name = type_name.lower()
-        if type_name.endswith("_type"):
-            type_name = type_name[:-5]
-        return type_name
 
     # Numeric types
     TINYINT = _get_type_name(ttypes.TTypeId.TINYINT_TYPE)
