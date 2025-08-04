@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import io
 import logging
-from copy import deepcopy
 from typing import (
     List,
     Optional,
@@ -62,7 +61,7 @@ class ResultSetFilter:
         )
 
     @staticmethod
-    def _create_filtered_manifest(result_set: SeaResultSet, new_row_count: int):
+    def _update_manifest(result_set: SeaResultSet, new_row_count: int):
         """
         Create a copy of the manifest with updated row count.
 
@@ -73,7 +72,7 @@ class ResultSetFilter:
         Returns:
             Updated manifest copy
         """
-        filtered_manifest = deepcopy(result_set.manifest)
+        filtered_manifest = result_set.manifest
         filtered_manifest.total_row_count = new_row_count
         return filtered_manifest
 
@@ -97,9 +96,7 @@ class ResultSetFilter:
         from databricks.sql.backend.sea.result_set import SeaResultSet
 
         execute_response = ResultSetFilter._create_execute_response(result_set)
-        filtered_manifest = ResultSetFilter._create_filtered_manifest(
-            result_set, row_count
-        )
+        filtered_manifest = ResultSetFilter._update_manifest(result_set, row_count)
 
         return SeaResultSet(
             connection=result_set.connection,
