@@ -39,9 +39,11 @@ class TestComplexTypes(PySQLPytestTestCase):
                 )
                 """
             )
-            yield
-            # Clean up the table after the test
-            cursor.execute("DELETE FROM pysql_test_complex_types_table")
+            try:
+                yield
+            finally:
+                # Clean up the table after the test
+                cursor.execute("DELETE FROM pysql_test_complex_types_table")
 
     @pytest.mark.parametrize(
         "field,expected_type",
