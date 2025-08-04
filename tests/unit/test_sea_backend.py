@@ -13,6 +13,7 @@ from databricks.sql.backend.sea.backend import (
     _filter_session_configuration,
 )
 from databricks.sql.backend.sea.models.base import ServiceError, StatementStatus
+from databricks.sql.backend.sea.result_set import SeaResultSet
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.parameters.native import IntegerParameter, TDbsqlParameter
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -703,7 +704,7 @@ class TestSeaBackend:
     def test_get_catalogs(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_catalogs method."""
         # Mock the execute_command method
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=SeaResultSet)
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
@@ -735,7 +736,7 @@ class TestSeaBackend:
     def test_get_schemas(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_schemas method with various parameter combinations."""
         # Mock the execute_command method
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=SeaResultSet)
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
@@ -884,7 +885,7 @@ class TestSeaBackend:
     def test_get_columns(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_columns method with various parameter combinations."""
         # Mock the execute_command method
-        mock_result_set = Mock()
+        mock_result_set = Mock(spec=SeaResultSet)
         with patch.object(
             sea_client, "execute_command", return_value=mock_result_set
         ) as mock_execute:
