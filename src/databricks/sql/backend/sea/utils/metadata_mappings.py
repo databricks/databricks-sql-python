@@ -5,10 +5,8 @@ class MetadataColumnMappings:
     """Column mappings for metadata queries following JDBC specification."""
 
     # Common columns used across multiple metadata queries
-    # FIX 1: Catalog columns - swap the mappings
     CATALOG_COLUMN = ResultColumn("TABLE_CAT", "catalogName", "string")
     CATALOG_COLUMN_FOR_GET_CATALOGS = ResultColumn("TABLE_CAT", "catalog", "string")
-    # Remove CATALOG_COLUMN_FOR_TABLES - will use CATALOG_COLUMN instead
 
     SCHEMA_COLUMN = ResultColumn("TABLE_SCHEM", "namespace", "string")
     SCHEMA_COLUMN_FOR_GET_SCHEMA = ResultColumn("TABLE_SCHEM", "databaseName", "string")
@@ -18,12 +16,9 @@ class MetadataColumnMappings:
 
     # Columns specific to getColumns()
     COLUMN_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", "string")
-    DATA_TYPE_COLUMN = ResultColumn(
-        "DATA_TYPE", None, "int"
-    )  # Calculated from columnType
+    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, "int")
     TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", "columnType", "string")
 
-    # FIX 5: SEA actually provides these columns
     COLUMN_SIZE_COLUMN = ResultColumn("COLUMN_SIZE", "columnSize", "int")
     DECIMAL_DIGITS_COLUMN = ResultColumn(
         "DECIMAL_DIGITS",
@@ -37,12 +32,8 @@ class MetadataColumnMappings:
         "int",
     )
 
-    NULLABLE_COLUMN = ResultColumn(
-        "NULLABLE", None, "int"
-    )  # Calculated from isNullable
-    COLUMN_DEF_COLUMN = ResultColumn(
-        "COLUMN_DEF", "columnType", "string"
-    )  # Note: duplicate mapping
+    NULLABLE_COLUMN = ResultColumn("NULLABLE", None, "int")
+    COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", "columnType", "string")
     SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", None, "int")
     SQL_DATETIME_SUB_COLUMN = ResultColumn("SQL_DATETIME_SUB", None, "int")
     CHAR_OCTET_LENGTH_COLUMN = ResultColumn("CHAR_OCTET_LENGTH", None, "int")
@@ -57,33 +48,24 @@ class MetadataColumnMappings:
     )
     REF_GENERATION_COLUMN = ResultColumn("REF_GENERATION", None, "string")
 
-    # FIX 8: Scope columns (always null per JDBC)
     SCOPE_CATALOG_COLUMN = ResultColumn("SCOPE_CATALOG", None, "string")
     SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", None, "string")
     SCOPE_TABLE_COLUMN = ResultColumn("SCOPE_TABLE", None, "string")
     SOURCE_DATA_TYPE_COLUMN = ResultColumn("SOURCE_DATA_TYPE", None, "smallint")
 
-    # FIX 9 & 10: Auto increment and generated columns
     IS_AUTO_INCREMENT_COLUMN = ResultColumn(
         "IS_AUTOINCREMENT", "isAutoIncrement", "string"
-    )  # No underscore!
-    IS_GENERATED_COLUMN = ResultColumn(
-        "IS_GENERATEDCOLUMN", "isGenerated", "string"
-    )  # SEA provides this
+    )
+    IS_GENERATED_COLUMN = ResultColumn("IS_GENERATEDCOLUMN", "isGenerated", "string")
 
-    # FIX 11: Buffer length column
-    BUFFER_LENGTH_COLUMN = ResultColumn(
-        "BUFFER_LENGTH", None, "int"
-    )  # Always null per JDBC
+    BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, "int")
 
     # Column lists for each metadata operation
     CATALOG_COLUMNS = [CATALOG_COLUMN_FOR_GET_CATALOGS]  # Use specific catalog column
 
     SCHEMA_COLUMNS = [
         SCHEMA_COLUMN_FOR_GET_SCHEMA,
-        ResultColumn(
-            "TABLE_CATALOG", None, "string"
-        ),  # Will need special population logic
+        ResultColumn("TABLE_CATALOG", None, "string"),
     ]
 
     TABLE_COLUMNS = [
@@ -99,7 +81,6 @@ class MetadataColumnMappings:
         REF_GENERATION_COLUMN,
     ]
 
-    # FIX 13: Remove IS_GENERATEDCOLUMN from list (should be 23 columns, not 24)
     COLUMN_COLUMNS = [
         CATALOG_COLUMN,  # Use general catalog column (catalogName)
         SCHEMA_COLUMN,
