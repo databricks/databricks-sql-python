@@ -30,8 +30,8 @@ class SeaHttpClient:
     retry_policy: Union[DatabricksRetryPolicy, int]
     _pool: Optional[Union[HTTPConnectionPool, HTTPSConnectionPool]]
     proxy_uri: Optional[str]
-    realhost: Optional[str]
-    realport: Optional[int]
+    proxy_host: Optional[str]
+    proxy_port: Optional[int]
     proxy_auth: Optional[Dict[str, str]]
 
     def __init__(
@@ -136,15 +136,15 @@ class SeaHttpClient:
 
         if proxy:
             parsed_proxy = urllib.parse.urlparse(proxy)
-            self.realhost = self.host
-            self.realport = self.port
+            self.proxy_host = self.host
+            self.proxy_port = self.port
             self.proxy_uri = proxy
             self.host = parsed_proxy.hostname
             self.port = parsed_proxy.port or (443 if self.scheme == "https" else 80)
             self.proxy_auth = self._basic_proxy_auth_headers(parsed_proxy)
         else:
-            self.realhost = None
-            self.realport = None
+            self.proxy_host = None
+            self.proxy_port = None
             self.proxy_auth = None
             self.proxy_uri = None
 
@@ -186,8 +186,8 @@ class SeaHttpClient:
                 proxy_headers=self.proxy_auth,
             )
             self._pool = proxy_manager.connection_from_host(
-                host=self.realhost,
-                port=self.realport,
+                host=self.proxy_host,
+                port=self.proxy_port,
                 scheme=self.scheme,
                 pool_kwargs=pool_kwargs,
             )
@@ -201,7 +201,7 @@ class SeaHttpClient:
 
     def using_proxy(self) -> bool:
         """Check if proxy is being used."""
-        return self.realhost is not None
+        return self.proxy_host is not None
 
     def set_retry_command_type(self, command_type: CommandType):
         """Set the command type for retry policy decision making."""
