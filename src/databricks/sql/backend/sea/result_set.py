@@ -83,8 +83,8 @@ class SeaResultSet(ResultSet):
             arrow_schema_bytes=execute_response.arrow_schema_bytes,
         )
 
-        # Initialize metadata columns for post-fetch transformation
         self._metadata_columns: Optional[List[ResultColumn]] = None
+        # new index -> old index 
         self._column_index_mapping: Optional[Dict[int, Union[int, None]]] = None
 
     def _convert_json_types(self, row: List[str]) -> List[Any]:
