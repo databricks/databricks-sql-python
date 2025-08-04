@@ -1,3 +1,4 @@
+from concurrent.futures import wait
 import random
 import threading
 import time
@@ -38,6 +39,7 @@ class TestE2ETelemetry(PySQLPytestTestCase):
             if TelemetryClientFactory._executor:
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
+            TelemetryClientFactory._stop_flush_thread()
             TelemetryClientFactory._initialized = False
 
     def test_concurrent_queries_sends_telemetry(self):
@@ -50,8 +52,7 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         captured_telemetry = []
         captured_session_ids = []
         captured_statement_ids = []
-        captured_responses = []
-        captured_exceptions = []
+        captured_futures = []
 
         original_send_telemetry = TelemetryClient._send_telemetry
         original_callback = TelemetryClient._telemetry_request_callback
@@ -66,18 +67,9 @@ class TestE2ETelemetry(PySQLPytestTestCase):
             Wraps the original callback to capture the server's response
             or any exceptions from the async network call.
             """
-            try:
-                original_callback(self_client, future, sent_count)
-
-                # Now, capture the result for our assertions
-                response = future.result()
-                response.raise_for_status()  # Raise an exception for 4xx/5xx errors
-                telemetry_response = response.json()
-                with capture_lock:
-                    captured_responses.append(telemetry_response)
-            except Exception as e:
-                with capture_lock:
-                    captured_exceptions.append(e)
+            with capture_lock:
+                captured_futures.append(future)
+            original_callback(self_client, future, sent_count)
 
         with patch.object(
             TelemetryClient, "_send_telemetry", send_telemetry_wrapper
@@ -90,7 +82,9 @@ class TestE2ETelemetry(PySQLPytestTestCase):
 
                 time.sleep(random.uniform(0, 0.05))
 
-                with self.connection(extra_params={"enable_telemetry": True}) as conn:
+                with self.connection(
+                    extra_params={"force_enable_telemetry": True}
+                ) as conn:
                     # Capture the session ID from the connection before executing the query
                     session_id_hex = conn.get_session_id_hex()
                     with capture_lock:
@@ -107,10 +101,29 @@ class TestE2ETelemetry(PySQLPytestTestCase):
             # Run the workers concurrently
             run_in_threads(execute_query_worker, num_threads, pass_index=True)
 
-            if TelemetryClientFactory._executor:
-                TelemetryClientFactory._executor.shutdown(wait=True)
+            timeout_seconds = 60
+            start_time = time.time()
+            expected_event_count = num_threads
 
-            # --- VERIFICATION ---
+            while (
+                len(captured_futures) < expected_event_count
+                and time.time() - start_time < timeout_seconds
+            ):
+                time.sleep(0.1)
+
+            done, not_done = wait(captured_futures, timeout=timeout_seconds)
+            assert not not_done
+
+            captured_exceptions = []
+            captured_responses = []
+            for future in done:
+                try:
+                    response = future.result()
+                    response.raise_for_status()
+                    captured_responses.append(response.json())
+                except Exception as e:
+                    captured_exceptions.append(e)
+
             assert not captured_exceptions
             assert len(captured_responses) > 0
 
