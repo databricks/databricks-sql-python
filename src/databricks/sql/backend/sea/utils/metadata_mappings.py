@@ -15,12 +15,23 @@ class MetadataColumnMappings:
     )
 
     CATALOG_COLUMN = ResultColumn("TABLE_CAT", "catalogName", SqlType.VARCHAR)
-
     SCHEMA_COLUMN = ResultColumn("TABLE_SCHEM", "namespace", SqlType.VARCHAR)
-
     TABLE_NAME_COLUMN = ResultColumn("TABLE_NAME", "tableName", SqlType.VARCHAR)
     TABLE_TYPE_COLUMN = ResultColumn("TABLE_TYPE", "tableType", SqlType.VARCHAR)
     REMARKS_COLUMN = ResultColumn("REMARKS", "remarks", SqlType.VARCHAR)
+    TYPE_CATALOG_COLUMN = ResultColumn(
+        "TYPE_CAT", "TYPE_CATALOG_COLUMN", SqlType.VARCHAR
+    )
+    TYPE_SCHEM_COLUMN = ResultColumn(
+        "TYPE_SCHEM", "TYPE_SCHEMA_COLUMN", SqlType.VARCHAR
+    )
+    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", "TYPE_NAME", SqlType.VARCHAR)
+    SELF_REFERENCING_COL_NAME_COLUMN = ResultColumn(
+        "SELF_REFERENCING_COL_NAME", "SELF_REFERENCING_COLUMN_NAME", SqlType.VARCHAR
+    )
+    REF_GENERATION_COLUMN = ResultColumn(
+        "REF_GENERATION", "REF_GENERATION_COLUMN", SqlType.VARCHAR
+    )
 
     # Columns specific to getColumns()
     COLUMN_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", SqlType.VARCHAR)
@@ -48,13 +59,6 @@ class MetadataColumnMappings:
     IS_NULLABLE_COLUMN = ResultColumn("IS_NULLABLE", "isNullable", SqlType.VARCHAR)
 
     # Columns for getTables() that don't exist in SEA
-    TYPE_CAT_COLUMN = ResultColumn("TYPE_CAT", None, SqlType.VARCHAR)
-    TYPE_SCHEM_COLUMN = ResultColumn("TYPE_SCHEM", None, SqlType.VARCHAR)
-    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", None, SqlType.VARCHAR)
-    SELF_REFERENCING_COL_NAME_COLUMN = ResultColumn(
-        "SELF_REFERENCING_COL_NAME", None, SqlType.VARCHAR
-    )
-    REF_GENERATION_COLUMN = ResultColumn("REF_GENERATION", None, SqlType.VARCHAR)
 
     SCOPE_CATALOG_COLUMN = ResultColumn("SCOPE_CATALOG", None, SqlType.VARCHAR)
     SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", None, SqlType.VARCHAR)
@@ -79,12 +83,12 @@ class MetadataColumnMappings:
     ]
 
     TABLE_COLUMNS = [
-        CATALOG_COLUMN,  # Use general catalog column (catalogName)
+        CATALOG_COLUMN,
         SCHEMA_COLUMN,
         TABLE_NAME_COLUMN,
         TABLE_TYPE_COLUMN,
         REMARKS_COLUMN,
-        TYPE_CAT_COLUMN,
+        TYPE_CATALOG_COLUMN,
         TYPE_SCHEM_COLUMN,
         TYPE_NAME_COLUMN,
         SELF_REFERENCING_COL_NAME_COLUMN,
