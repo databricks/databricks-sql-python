@@ -5,16 +5,19 @@ from databricks.sql.backend.sea.utils.conversion import SqlType
 class MetadataColumnMappings:
     """Column mappings for metadata queries following JDBC specification."""
 
-    # Common columns used across multiple metadata queries
-    CATALOG_COLUMN = ResultColumn("TABLE_CAT", "catalogName", SqlType.VARCHAR)
     CATALOG_COLUMN_FOR_GET_CATALOGS = ResultColumn(
         "TABLE_CAT", "catalog", SqlType.VARCHAR
     )
 
-    SCHEMA_COLUMN = ResultColumn("TABLE_SCHEM", "namespace", SqlType.VARCHAR)
+    CATALOG_FULL_COLUMN = ResultColumn("TABLE_CATALOG", "catalogName", SqlType.VARCHAR)
     SCHEMA_COLUMN_FOR_GET_SCHEMA = ResultColumn(
         "TABLE_SCHEM", "databaseName", SqlType.VARCHAR
     )
+
+    CATALOG_COLUMN = ResultColumn("TABLE_CAT", "catalogName", SqlType.VARCHAR)
+
+    SCHEMA_COLUMN = ResultColumn("TABLE_SCHEM", "namespace", SqlType.VARCHAR)
+
     TABLE_NAME_COLUMN = ResultColumn("TABLE_NAME", "tableName", SqlType.VARCHAR)
     TABLE_TYPE_COLUMN = ResultColumn("TABLE_TYPE", "tableType", SqlType.VARCHAR)
     REMARKS_COLUMN = ResultColumn("REMARKS", "remarks", SqlType.VARCHAR)
@@ -72,7 +75,7 @@ class MetadataColumnMappings:
 
     SCHEMA_COLUMNS = [
         SCHEMA_COLUMN_FOR_GET_SCHEMA,
-        ResultColumn("TABLE_CATALOG", "catalogName", SqlType.VARCHAR),
+        CATALOG_FULL_COLUMN,
     ]
 
     TABLE_COLUMNS = [
