@@ -30,7 +30,7 @@ def mock_telemetry_client():
         auth_provider=auth_provider,
         host_url="test-host.com",
         executor=executor,
-        batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
+        batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
     )
 
 
@@ -215,7 +215,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url="test-host.com",
-            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -240,7 +240,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=None,
             host_url="test-host.com",
-            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -260,7 +260,7 @@ class TestTelemetryFactory:
                 session_id_hex=session_id,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
-                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
             )
 
         # Should fall back to NoopTelemetryClient
@@ -279,7 +279,7 @@ class TestTelemetryFactory:
                 session_id_hex=session,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
-                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
             )
 
         # Factory should be initialized
@@ -342,9 +342,7 @@ class TestTelemetryFeatureFlag:
         mock_requests_get.return_value = mock_response
 
     @patch("databricks.sql.common.feature_flag.requests.get")
-    def test_telemetry_enabled_when_flag_is_true(
-        self, mock_requests_get, MockSession
-    ):
+    def test_telemetry_enabled_when_flag_is_true(self, mock_requests_get, MockSession):
         """Telemetry should be ON when enable_telemetry=True and server flag is 'true'."""
         self._mock_ff_response(mock_requests_get, enabled=True)
         mock_session_instance = MockSession.return_value
