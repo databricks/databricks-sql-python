@@ -165,7 +165,7 @@ class SeaResultSet(ResultSet):
             raise ValueError(f"size argument for fetchmany is {size} but must be >= 0")
 
         results = self.results.next_n_rows(size)
-        results = self._transform_json_rows(results)
+        results = self._normalise_json_metadata_cols(results)
         self._next_row_index += len(results)
 
         return results
@@ -179,7 +179,7 @@ class SeaResultSet(ResultSet):
         """
 
         results = self.results.remaining_rows()
-        results = self._transform_json_rows(results)
+        results = self._normalise_json_metadata_cols(results)
         self._next_row_index += len(results)
 
         return results
@@ -205,11 +205,11 @@ class SeaResultSet(ResultSet):
         results = self.results.next_n_rows(size)
         if isinstance(self.results, JsonQueue):
             # Transform JSON first, then convert to Arrow
-            transformed_json = self._transform_json_rows(results)
+            transformed_json = self._normalise_json_metadata_cols(results)
             results = self._convert_json_to_arrow_table(transformed_json)
         else:
             # Transform Arrow table directly
-            results = self._transform_arrow_table(results)
+            results = self._normalise_arrow_metadata_cols(results)
 
         self._next_row_index += results.num_rows
 
@@ -223,11 +223,11 @@ class SeaResultSet(ResultSet):
         results = self.results.remaining_rows()
         if isinstance(self.results, JsonQueue):
             # Transform JSON first, then convert to Arrow
-            transformed_json = self._transform_json_rows(results)
+            transformed_json = self._normalise_json_metadata_cols(results)
             results = self._convert_json_to_arrow_table(transformed_json)
         else:
             # Transform Arrow table directly
-            results = self._transform_arrow_table(results)
+            results = self._normalise_arrow_metadata_cols(results)
 
         self._next_row_index += results.num_rows
 
@@ -348,7 +348,7 @@ class SeaResultSet(ResultSet):
 
         self.description = new_description
 
-    def _transform_arrow_table(self, table: "pyarrow.Table") -> "pyarrow.Table":
+    def _normalise_arrow_metadata_cols(self, table: "pyarrow.Table") -> "pyarrow.Table":
         """Transform arrow table columns for metadata normalization."""
         if not self._metadata_columns:
             return table
@@ -384,7 +384,7 @@ class SeaResultSet(ResultSet):
 
         return pyarrow.Table.from_arrays(new_columns, names=column_names)
 
-    def _transform_json_rows(self, rows: List[List[str]]) -> List[List[Any]]:
+    def _normalise_json_metadata_cols(self, rows: List[List[str]]) -> List[List[Any]]:
         """Transform JSON rows for metadata normalization."""
         if not self._metadata_columns:
             return rows
