@@ -342,7 +342,7 @@ class SeaResultSet(ResultSet):
 
     def _normalise_arrow_metadata_cols(self, table: "pyarrow.Table") -> "pyarrow.Table":
         """Transform arrow table columns for metadata normalization."""
-        if not self._metadata_columns:
+        if not self._metadata_columns or len(table.schema) == 0:
             return table
 
         # Reorder columns and add missing ones
@@ -351,26 +351,17 @@ class SeaResultSet(ResultSet):
 
         for new_idx, result_column in enumerate(self._metadata_columns or []):
             old_idx = (
-                self._column_index_mapping.get(new_idx)
+                self._column_index_mapping.get(new_idx, None)
                 if self._column_index_mapping
                 else None
             )
 
-            # Get the source data
-            if old_idx is not None:
-                column = table.column(old_idx)
-                values = column.to_pylist()
-            else:
-                values = None
-
-            # Apply transformation and create column
-            if values is not None:
-                column = pyarrow.array(values)
-                new_columns.append(column)
-            else:
-                # Create column with default/transformed values
-                null_array = pyarrow.nulls(table.num_rows)
-                new_columns.append(null_array)
+            column = (
+                pyarrow.nulls(table.num_rows)
+                if old_idx is None
+                else table.column(old_idx)
+            )
+            new_columns.append(column)
 
             column_names.append(result_column.thrift_col_name)
 
@@ -378,7 +369,7 @@ class SeaResultSet(ResultSet):
 
     def _normalise_json_metadata_cols(self, rows: List[List[str]]) -> List[List[Any]]:
         """Transform JSON rows for metadata normalization."""
-        if not self._metadata_columns:
+        if not self._metadata_columns or len(rows) == 0:
             return rows
 
         transformed_rows = []
@@ -386,15 +377,12 @@ class SeaResultSet(ResultSet):
             new_row = []
             for new_idx, result_column in enumerate(self._metadata_columns or []):
                 old_idx = (
-                    self._column_index_mapping.get(new_idx)
+                    self._column_index_mapping.get(new_idx, None)
                     if self._column_index_mapping
                     else None
                 )
-                if old_idx is not None:
-                    value = row[old_idx]
-                else:
-                    value = None
 
+                value = None if old_idx is None else row[old_idx]
                 new_row.append(value)
             transformed_rows.append(new_row)
         return transformed_rows

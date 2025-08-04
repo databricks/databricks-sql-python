@@ -784,12 +784,13 @@ class SeaDatabricksClient(DatabricksClient):
         assert isinstance(
             result, SeaResultSet
         ), "Expected SeaResultSet from SEA backend"
-        result.prepare_metadata_columns(MetadataColumnMappings.TABLE_COLUMNS)
 
         # Apply client-side filtering by table_types
         from databricks.sql.backend.sea.utils.filters import ResultSetFilter
 
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
+
+        result.prepare_metadata_columns(MetadataColumnMappings.TABLE_COLUMNS)
 
         return result
 
