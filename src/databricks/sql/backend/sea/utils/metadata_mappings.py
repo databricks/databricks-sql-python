@@ -33,12 +33,12 @@ class MetadataColumnMappings:
         "REF_GENERATION", "REF_GENERATION_COLUMN", SqlType.VARCHAR
     )
 
-    # Columns specific to getColumns()
-    COLUMN_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", SqlType.VARCHAR)
-    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, SqlType.INT)
-    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", "columnType", SqlType.VARCHAR)
-
+    COL_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", SqlType.VARCHAR)
+    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", "dataType", SqlType.INT)
+    COLUMN_TYPE_COLUMN = ResultColumn("TYPE_NAME", "columnType", SqlType.VARCHAR)
     COLUMN_SIZE_COLUMN = ResultColumn("COLUMN_SIZE", "columnSize", SqlType.INT)
+    BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, SqlType.INT)
+
     DECIMAL_DIGITS_COLUMN = ResultColumn(
         "DECIMAL_DIGITS",
         "decimalDigits",
@@ -51,19 +51,25 @@ class MetadataColumnMappings:
         SqlType.INT,
     )
 
-    NULLABLE_COLUMN = ResultColumn("NULLABLE", None, SqlType.INT)
+    NULLABLE_COLUMN = ResultColumn("NULLABLE", "Nullable", SqlType.INT)
     COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", "columnType", SqlType.VARCHAR)
-    SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", None, SqlType.INT)
-    SQL_DATETIME_SUB_COLUMN = ResultColumn("SQL_DATETIME_SUB", None, SqlType.INT)
-    CHAR_OCTET_LENGTH_COLUMN = ResultColumn("CHAR_OCTET_LENGTH", None, SqlType.INT)
+    SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", "SQLDataType", SqlType.INT)
+    SQL_DATETIME_SUB_COLUMN = ResultColumn(
+        "SQL_DATETIME_SUB", "SQLDateTimeSub", SqlType.INT
+    )
+    CHAR_OCTET_LENGTH_COLUMN = ResultColumn(
+        "CHAR_OCTET_LENGTH", "CharOctetLength", SqlType.INT
+    )
     IS_NULLABLE_COLUMN = ResultColumn("IS_NULLABLE", "isNullable", SqlType.VARCHAR)
 
-    # Columns for getTables() that don't exist in SEA
-
-    SCOPE_CATALOG_COLUMN = ResultColumn("SCOPE_CATALOG", None, SqlType.VARCHAR)
-    SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", None, SqlType.VARCHAR)
-    SCOPE_TABLE_COLUMN = ResultColumn("SCOPE_TABLE", None, SqlType.VARCHAR)
-    SOURCE_DATA_TYPE_COLUMN = ResultColumn("SOURCE_DATA_TYPE", None, SqlType.INT)
+    SCOPE_CATALOG_COLUMN = ResultColumn(
+        "SCOPE_CATALOG", "ScopeCatalog", SqlType.VARCHAR
+    )
+    SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", "ScopeSchema", SqlType.VARCHAR)
+    SCOPE_TABLE_COLUMN = ResultColumn("SCOPE_TABLE", "ScopeTable", SqlType.VARCHAR)
+    SOURCE_DATA_TYPE_COLUMN = ResultColumn(
+        "SOURCE_DATA_TYPE", "SourceDataType", SqlType.INT
+    )
 
     IS_AUTO_INCREMENT_COLUMN = ResultColumn(
         "IS_AUTOINCREMENT", "isAutoIncrement", SqlType.VARCHAR
@@ -72,9 +78,6 @@ class MetadataColumnMappings:
         "IS_GENERATEDCOLUMN", "isGenerated", SqlType.VARCHAR
     )
 
-    BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, SqlType.INT)
-
-    # Column lists for each metadata operation
     CATALOG_COLUMNS = [CATALOG_COLUMN_FOR_GET_CATALOGS]
 
     SCHEMA_COLUMNS = [
@@ -96,12 +99,12 @@ class MetadataColumnMappings:
     ]
 
     COLUMN_COLUMNS = [
-        CATALOG_COLUMN,  # Use general catalog column (catalogName)
+        CATALOG_COLUMN,
         SCHEMA_COLUMN,
         TABLE_NAME_COLUMN,
-        COLUMN_NAME_COLUMN,
+        COL_NAME_COLUMN,
         DATA_TYPE_COLUMN,
-        TYPE_NAME_COLUMN,
+        COLUMN_TYPE_COLUMN,
         COLUMN_SIZE_COLUMN,
         BUFFER_LENGTH_COLUMN,
         DECIMAL_DIGITS_COLUMN,
