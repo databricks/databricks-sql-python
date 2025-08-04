@@ -9,7 +9,7 @@ class MetadataColumnMappings:
         "TABLE_CAT", "catalog", SqlType.VARCHAR
     )
 
-    CATALOG_FULL_COLUMN = ResultColumn("TABLE_CATALOG", "catalogName", SqlType.VARCHAR)
+    CATALOG_FULL_COLUMN = ResultColumn("TABLE_CATALOG", None, SqlType.VARCHAR)
     SCHEMA_COLUMN_FOR_GET_SCHEMA = ResultColumn(
         "TABLE_SCHEM", "databaseName", SqlType.VARCHAR
     )
@@ -19,22 +19,16 @@ class MetadataColumnMappings:
     TABLE_NAME_COLUMN = ResultColumn("TABLE_NAME", "tableName", SqlType.VARCHAR)
     TABLE_TYPE_COLUMN = ResultColumn("TABLE_TYPE", "tableType", SqlType.VARCHAR)
     REMARKS_COLUMN = ResultColumn("REMARKS", "remarks", SqlType.VARCHAR)
-    TYPE_CATALOG_COLUMN = ResultColumn(
-        "TYPE_CAT", "TYPE_CATALOG_COLUMN", SqlType.VARCHAR
-    )
-    TYPE_SCHEM_COLUMN = ResultColumn(
-        "TYPE_SCHEM", "TYPE_SCHEMA_COLUMN", SqlType.VARCHAR
-    )
-    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", "TYPE_NAME", SqlType.VARCHAR)
+    TYPE_CATALOG_COLUMN = ResultColumn("TYPE_CAT", None, SqlType.VARCHAR)
+    TYPE_SCHEM_COLUMN = ResultColumn("TYPE_SCHEM", None, SqlType.VARCHAR)
+    TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", None, SqlType.VARCHAR)
     SELF_REFERENCING_COL_NAME_COLUMN = ResultColumn(
-        "SELF_REFERENCING_COL_NAME", "SELF_REFERENCING_COLUMN_NAME", SqlType.VARCHAR
+        "SELF_REFERENCING_COL_NAME", None, SqlType.VARCHAR
     )
-    REF_GENERATION_COLUMN = ResultColumn(
-        "REF_GENERATION", "REF_GENERATION_COLUMN", SqlType.VARCHAR
-    )
+    REF_GENERATION_COLUMN = ResultColumn("REF_GENERATION", None, SqlType.VARCHAR)
 
     COL_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", SqlType.VARCHAR)
-    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", "dataType", SqlType.INT)
+    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, SqlType.INT)
     COLUMN_TYPE_COLUMN = ResultColumn("TYPE_NAME", "columnType", SqlType.VARCHAR)
     COLUMN_SIZE_COLUMN = ResultColumn("COLUMN_SIZE", "columnSize", SqlType.INT)
     BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, SqlType.INT)
@@ -51,25 +45,17 @@ class MetadataColumnMappings:
         SqlType.INT,
     )
 
-    NULLABLE_COLUMN = ResultColumn("NULLABLE", "Nullable", SqlType.INT)
-    COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", "columnType", SqlType.VARCHAR)
-    SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", "SQLDataType", SqlType.INT)
-    SQL_DATETIME_SUB_COLUMN = ResultColumn(
-        "SQL_DATETIME_SUB", "SQLDateTimeSub", SqlType.INT
-    )
-    CHAR_OCTET_LENGTH_COLUMN = ResultColumn(
-        "CHAR_OCTET_LENGTH", "CharOctetLength", SqlType.INT
-    )
+    NULLABLE_COLUMN = ResultColumn("NULLABLE", None, SqlType.INT)
+    COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", None, SqlType.VARCHAR)
+    SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", None, SqlType.INT)
+    SQL_DATETIME_SUB_COLUMN = ResultColumn("SQL_DATETIME_SUB", None, SqlType.INT)
+    CHAR_OCTET_LENGTH_COLUMN = ResultColumn("CHAR_OCTET_LENGTH", None, SqlType.INT)
     IS_NULLABLE_COLUMN = ResultColumn("IS_NULLABLE", "isNullable", SqlType.VARCHAR)
 
-    SCOPE_CATALOG_COLUMN = ResultColumn(
-        "SCOPE_CATALOG", "ScopeCatalog", SqlType.VARCHAR
-    )
-    SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", "ScopeSchema", SqlType.VARCHAR)
-    SCOPE_TABLE_COLUMN = ResultColumn("SCOPE_TABLE", "ScopeTable", SqlType.VARCHAR)
-    SOURCE_DATA_TYPE_COLUMN = ResultColumn(
-        "SOURCE_DATA_TYPE", "SourceDataType", SqlType.INT
-    )
+    SCOPE_CATALOG_COLUMN = ResultColumn("SCOPE_CATALOG", None, SqlType.VARCHAR)
+    SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", None, SqlType.VARCHAR)
+    SCOPE_TABLE_COLUMN = ResultColumn("SCOPE_TABLE", None, SqlType.VARCHAR)
+    SOURCE_DATA_TYPE_COLUMN = ResultColumn("SOURCE_DATA_TYPE", None, SqlType.INT)
 
     IS_AUTO_INCREMENT_COLUMN = ResultColumn(
         "IS_AUTOINCREMENT", "isAutoIncrement", SqlType.VARCHAR
