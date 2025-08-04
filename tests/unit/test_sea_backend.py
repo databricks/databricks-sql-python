@@ -14,6 +14,7 @@ from databricks.sql.backend.sea.backend import (
 )
 from databricks.sql.backend.sea.models.base import ServiceError, StatementStatus
 from databricks.sql.backend.sea.result_set import SeaResultSet
+from databricks.sql.backend.sea.utils.metadata_mappings import MetadataColumnMappings
 from databricks.sql.backend.types import SessionId, CommandId, CommandState, BackendType
 from databricks.sql.parameters.native import IntegerParameter, TDbsqlParameter
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -756,6 +757,11 @@ class TestSeaBackend:
             # Verify the result is correct
             assert result == mock_result_set
 
+            # Verify prepare_metadata_columns was called
+            mock_result_set.prepare_metadata_columns.assert_called_once_with(
+                MetadataColumnMappings.CATALOG_COLUMNS
+            )
+
     def test_get_schemas(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_schemas method with various parameter combinations."""
         # Mock the execute_command method
@@ -817,6 +823,12 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_schemas" in str(excinfo.value)
+
+            # Verify prepare_metadata_columns was called for successful cases
+            assert mock_result_set.prepare_metadata_columns.call_count == 2
+            mock_result_set.prepare_metadata_columns.assert_called_with(
+                MetadataColumnMappings.SCHEMA_COLUMNS
+            )
 
     def test_get_tables(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_tables method with various parameter combinations."""
@@ -905,6 +917,11 @@ class TestSeaBackend:
                     enforce_embedded_schema_correctness=False,
                 )
 
+                # Verify prepare_metadata_columns was called
+                mock_result_set.prepare_metadata_columns.assert_called_with(
+                    MetadataColumnMappings.TABLE_COLUMNS
+                )
+
     def test_get_columns(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_columns method with various parameter combinations."""
         # Mock the execute_command method
@@ -968,6 +985,12 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_columns" in str(excinfo.value)
+
+            # Verify prepare_metadata_columns was called for successful cases
+            assert mock_result_set.prepare_metadata_columns.call_count == 2
+            mock_result_set.prepare_metadata_columns.assert_called_with(
+                MetadataColumnMappings.COLUMN_COLUMNS
+            )
 
     def test_get_tables_with_cloud_fetch(
         self, sea_client_cloud_fetch, sea_session_id, mock_cursor
