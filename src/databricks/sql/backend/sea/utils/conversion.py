@@ -11,6 +11,8 @@ import logging
 from dateutil import parser
 from typing import Callable, Dict, Optional
 
+from databricks.sql.thrift_api.TCLIService import ttypes
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,43 +58,49 @@ class SqlType:
     after normalize_sea_type_to_thrift processing (lowercase, without _TYPE suffix).
     """
 
+    @staticmethod
+    def _get_type_name(thrift_type_id: int) -> str:
+        type_name = ttypes.TTypeId._VALUES_TO_NAMES[thrift_type_id]
+        type_name = type_name.lower()
+        if type_name.endswith("_type"):
+            type_name = type_name[:-5]
+        return type_name
+
     # Numeric types
-    TINYINT = "tinyint"  # Maps to TTypeId.TINYINT_TYPE
-    SMALLINT = "smallint"  # Maps to TTypeId.SMALLINT_TYPE
-    INT = "int"  # Maps to TTypeId.INT_TYPE
-    BIGINT = "bigint"  # Maps to TTypeId.BIGINT_TYPE
-    FLOAT = "float"  # Maps to TTypeId.FLOAT_TYPE
-    DOUBLE = "double"  # Maps to TTypeId.DOUBLE_TYPE
-    DECIMAL = "decimal"  # Maps to TTypeId.DECIMAL_TYPE
+    TINYINT = _get_type_name(ttypes.TTypeId.TINYINT_TYPE)
+    SMALLINT = _get_type_name(ttypes.TTypeId.SMALLINT_TYPE)
+    INT = _get_type_name(ttypes.TTypeId.INT_TYPE)
+    BIGINT = _get_type_name(ttypes.TTypeId.BIGINT_TYPE)
+    FLOAT = _get_type_name(ttypes.TTypeId.FLOAT_TYPE)
+    DOUBLE = _get_type_name(ttypes.TTypeId.DOUBLE_TYPE)
+    DECIMAL = _get_type_name(ttypes.TTypeId.DECIMAL_TYPE)
 
     # Boolean type
-    BOOLEAN = "boolean"  # Maps to TTypeId.BOOLEAN_TYPE
+    BOOLEAN = _get_type_name(ttypes.TTypeId.BOOLEAN_TYPE)
 
     # Date/Time types
-    DATE = "date"  # Maps to TTypeId.DATE_TYPE
-    TIMESTAMP = "timestamp"  # Maps to TTypeId.TIMESTAMP_TYPE
-    INTERVAL_YEAR_MONTH = (
-        "interval_year_month"  # Maps to TTypeId.INTERVAL_YEAR_MONTH_TYPE
-    )
-    INTERVAL_DAY_TIME = "interval_day_time"  # Maps to TTypeId.INTERVAL_DAY_TIME_TYPE
+    DATE = _get_type_name(ttypes.TTypeId.DATE_TYPE)
+    TIMESTAMP = _get_type_name(ttypes.TTypeId.TIMESTAMP_TYPE)
+    INTERVAL_YEAR_MONTH = _get_type_name(ttypes.TTypeId.INTERVAL_YEAR_MONTH_TYPE)
+    INTERVAL_DAY_TIME = _get_type_name(ttypes.TTypeId.INTERVAL_DAY_TIME_TYPE)
 
     # String types
-    CHAR = "char"  # Maps to TTypeId.CHAR_TYPE
-    VARCHAR = "varchar"  # Maps to TTypeId.VARCHAR_TYPE
-    STRING = "string"  # Maps to TTypeId.STRING_TYPE
+    CHAR = _get_type_name(ttypes.TTypeId.CHAR_TYPE)
+    VARCHAR = _get_type_name(ttypes.TTypeId.VARCHAR_TYPE)
+    STRING = _get_type_name(ttypes.TTypeId.STRING_TYPE)
 
     # Binary type
-    BINARY = "binary"  # Maps to TTypeId.BINARY_TYPE
+    BINARY = _get_type_name(ttypes.TTypeId.BINARY_TYPE)
 
     # Complex types
-    ARRAY = "array"  # Maps to TTypeId.ARRAY_TYPE
-    MAP = "map"  # Maps to TTypeId.MAP_TYPE
-    STRUCT = "struct"  # Maps to TTypeId.STRUCT_TYPE
+    ARRAY = _get_type_name(ttypes.TTypeId.ARRAY_TYPE)
+    MAP = _get_type_name(ttypes.TTypeId.MAP_TYPE)
+    STRUCT = _get_type_name(ttypes.TTypeId.STRUCT_TYPE)
 
     # Other types
-    NULL = "null"  # Maps to TTypeId.NULL_TYPE
-    UNION = "union"  # Maps to TTypeId.UNION_TYPE
-    USER_DEFINED = "user_defined"  # Maps to TTypeId.USER_DEFINED_TYPE
+    NULL = _get_type_name(ttypes.TTypeId.NULL_TYPE)
+    UNION = _get_type_name(ttypes.TTypeId.UNION_TYPE)
+    USER_DEFINED = _get_type_name(ttypes.TTypeId.USER_DEFINED_TYPE)
 
 
 class SqlTypeConverter:

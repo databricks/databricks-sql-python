@@ -313,17 +313,17 @@ class SeaResultSet(ResultSet):
         for new_idx, result_column in enumerate(self._metadata_columns or []):
             # Find the corresponding SEA column
             if (
-                result_column.result_set_column_name
-                and result_column.result_set_column_name in sea_column_indices
+                result_column.sea_col_name
+                and result_column.sea_col_name in sea_column_indices
             ):
-                old_idx = sea_column_indices[result_column.result_set_column_name]
+                old_idx = sea_column_indices[result_column.sea_col_name]
                 self._column_index_mapping[new_idx] = old_idx
                 # Use the original column metadata but with JDBC name
                 old_col = self.description[old_idx]
                 new_description.append(
                     (
-                        result_column.column_name,  # JDBC name
-                        result_column.column_type,  # Expected type
+                        result_column.thrift_col_name,  # JDBC name
+                        result_column.thrift_col_type,  # Expected type
                         old_col[2],  # display_size
                         old_col[3],  # internal_size
                         old_col[4],  # precision
@@ -335,8 +335,8 @@ class SeaResultSet(ResultSet):
                 # Column doesn't exist in SEA - add with None values
                 new_description.append(
                     (
-                        result_column.column_name,
-                        result_column.column_type,
+                        result_column.thrift_col_name,
+                        result_column.thrift_col_type,
                         None,
                         None,
                         None,
@@ -380,7 +380,7 @@ class SeaResultSet(ResultSet):
                 null_array = pyarrow.nulls(table.num_rows)
                 new_columns.append(null_array)
 
-            column_names.append(result_column.column_name)
+            column_names.append(result_column.thrift_col_name)
 
         return pyarrow.Table.from_arrays(new_columns, names=column_names)
 
