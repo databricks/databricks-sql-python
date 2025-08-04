@@ -68,7 +68,7 @@ class MetadataColumnMappings:
     BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, SqlType.INT)
 
     # Column lists for each metadata operation
-    CATALOG_COLUMNS = [CATALOG_COLUMN_FOR_GET_CATALOGS]  # Use specific catalog column
+    CATALOG_COLUMNS = [CATALOG_COLUMN_FOR_GET_CATALOGS]
 
     SCHEMA_COLUMNS = [
         SCHEMA_COLUMN_FOR_GET_SCHEMA,
