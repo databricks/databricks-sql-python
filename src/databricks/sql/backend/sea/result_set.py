@@ -84,7 +84,7 @@ class SeaResultSet(ResultSet):
         )
 
         self._metadata_columns: Optional[List[ResultColumn]] = None
-        # new index -> old index 
+        # new index -> old index
         self._column_index_mapping: Optional[Dict[int, Union[int, None]]] = None
 
     def _convert_json_types(self, row: List[str]) -> List[Any]:
@@ -287,7 +287,7 @@ class SeaResultSet(ResultSet):
     def _prepare_column_mapping(self) -> None:
         """
         Prepare column index mapping for metadata queries.
-        Updates description to use JDBC column names.
+        Updates description to use Thrift column names.
         """
         # Ensure description is available
         if not self.description:
@@ -303,40 +303,41 @@ class SeaResultSet(ResultSet):
         self._column_index_mapping = {}  # Maps new index -> old index
 
         for new_idx, result_column in enumerate(self._metadata_columns or []):
-            # Find the corresponding SEA column
+            # Determine the old index and get column metadata
             if (
                 result_column.sea_col_name
                 and result_column.sea_col_name in sea_column_indices
             ):
                 old_idx = sea_column_indices[result_column.sea_col_name]
-                self._column_index_mapping[new_idx] = old_idx
-                # Use the original column metadata but with JDBC name
                 old_col = self.description[old_idx]
-                new_description.append(
-                    (
-                        result_column.thrift_col_name,  # JDBC name
-                        result_column.thrift_col_type,  # Expected type
-                        old_col[2],  # display_size
-                        old_col[3],  # internal_size
-                        old_col[4],  # precision
-                        old_col[5],  # scale
-                        old_col[6],  # null_ok
-                    )
-                )
+                # Use original column metadata
+                display_size, internal_size, precision, scale, null_ok = old_col[2:7]
             else:
-                # Column doesn't exist in SEA - add with None values
-                new_description.append(
-                    (
-                        result_column.thrift_col_name,
-                        result_column.thrift_col_type,
-                        None,
-                        None,
-                        None,
-                        None,
-                        True,
-                    )
+                old_idx = None
+                # Use None values for missing columns
+                display_size, internal_size, precision, scale, null_ok = (
+                    None,
+                    None,
+                    None,
+                    None,
+                    True,
                 )
-                self._column_index_mapping[new_idx] = None
+
+            # Set the mapping
+            self._column_index_mapping[new_idx] = old_idx
+
+            # Create the new description entry
+            new_description.append(
+                (
+                    result_column.thrift_col_name,  # Thrift (normalised) name
+                    result_column.thrift_col_type,  # Expected type
+                    display_size,
+                    internal_size,
+                    precision,
+                    scale,
+                    null_ok,
+                )
+            )
 
         self.description = new_description
 

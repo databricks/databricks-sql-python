@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass(frozen=True)
 class ResultColumn:
     """
-    Represents a mapping between JDBC specification column names and actual result set column names.
+    Represents a mapping between Thrift specification column names and SEA column names.
 
     Attributes:
         thrift_col_name: Column name as returned by Thrift (e.g., "TABLE_CAT")
