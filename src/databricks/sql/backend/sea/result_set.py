@@ -361,14 +361,13 @@ class SeaResultSet(ResultSet):
                 column = pyarrow.nulls(table.num_rows)
             else:
                 column = table.column(old_idx)
-                # Apply transform if available
-                if result_column.transform_value:
-                    # Convert to list, apply transform, and convert back
-                    values = column.to_pylist()
-                    transformed_values = [
-                        result_column.transform_value(v) for v in values
-                    ]
-                    column = pyarrow.array(transformed_values)
+
+            # Apply transform if available
+            if result_column.transform_value:
+                # Convert to list, apply transform, and convert back
+                values = column.to_pylist()
+                transformed_values = [result_column.transform_value(v) for v in values]
+                column = pyarrow.array(transformed_values)
 
             new_columns.append(column)
             column_names.append(result_column.thrift_col_name)
@@ -392,7 +391,7 @@ class SeaResultSet(ResultSet):
 
                 value = None if old_idx is None else row[old_idx]
                 # Apply transform if available
-                if value is not None and result_column.transform_value:
+                if result_column.transform_value:
                     value = result_column.transform_value(value)
                 new_row.append(value)
             transformed_rows.append(new_row)

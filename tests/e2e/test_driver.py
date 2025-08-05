@@ -386,8 +386,17 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
-    def test_get_tables(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_get_tables(self, backend_params):
+        with self.cursor(backend_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             table_names = [table_name + "_1", table_name + "_2"]
 
@@ -432,8 +441,17 @@ class TestPySQLCoreSuite(
                 for table in table_names:
                     cursor.execute("DROP TABLE IF EXISTS {}".format(table))
 
-    def test_get_columns(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_get_columns(self, backend_params):
+        with self.cursor(backend_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             table_names = [table_name + "_1", table_name + "_2"]
 
@@ -544,8 +562,17 @@ class TestPySQLCoreSuite(
             rows = cursor.fetchall()
             assert rows[0]["col_1"] == "you're"
 
-    def test_get_schemas(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_get_schemas(self, backend_params):
+        with self.cursor(backend_params) as cursor:
             database_name = "db_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             try:
                 cursor.execute("CREATE DATABASE IF NOT EXISTS {}".format(database_name))
@@ -562,8 +589,17 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP DATABASE IF EXISTS {}".format(database_name))
 
-    def test_get_catalogs(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_get_catalogs(self, backend_params):
+        with self.cursor(backend_params) as cursor:
             cursor.catalogs()
             cursor.fetchall()
             catalogs_desc = cursor.description

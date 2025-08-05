@@ -26,7 +26,9 @@ class MetadataColumnMappings:
     SCHEMA_COLUMN = ResultColumn("TABLE_SCHEM", "namespace", SqlType.STRING)
     TABLE_NAME_COLUMN = ResultColumn("TABLE_NAME", "tableName", SqlType.STRING)
     TABLE_TYPE_COLUMN = ResultColumn("TABLE_TYPE", "tableType", SqlType.STRING)
-    REMARKS_COLUMN = ResultColumn("REMARKS", "remarks", SqlType.STRING, transform_remarks)
+    REMARKS_COLUMN = ResultColumn(
+        "REMARKS", "remarks", SqlType.STRING, transform_remarks
+    )
     TYPE_CATALOG_COLUMN = ResultColumn("TYPE_CAT", None, SqlType.STRING)
     TYPE_SCHEM_COLUMN = ResultColumn("TYPE_SCHEM", None, SqlType.STRING)
     TYPE_NAME_COLUMN = ResultColumn("TYPE_NAME", None, SqlType.STRING)
@@ -54,7 +56,9 @@ class MetadataColumnMappings:
         transform_ordinal_position,
     )
 
-    NULLABLE_COLUMN = ResultColumn("NULLABLE", "isNullable", SqlType.INT, transform_nullable)
+    NULLABLE_COLUMN = ResultColumn(
+        "NULLABLE", "isNullable", SqlType.INT, transform_nullable
+    )
     COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", None, SqlType.STRING)
     SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", None, SqlType.INT)
     SQL_DATETIME_SUB_COLUMN = ResultColumn("SQL_DATETIME_SUB", None, SqlType.INT)

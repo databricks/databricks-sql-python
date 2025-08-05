@@ -16,10 +16,12 @@ def transform_is_nullable(value):
         return "NO"
     return value
 
+
 def transform_remarks(value):
-    if value is None: 
-        return "" 
-    return value 
+    if value is None:
+        return ""
+    return value
+
 
 def transform_nullable(value):
     """Transform NULLABLE column: boolean/string to integer."""
@@ -69,3 +71,13 @@ def transform_ordinal_position(value):
     if isinstance(value, int):
         return value - 1
     return value
+
+
+def create_table_catalog_transform(catalog_name):
+    """Factory function to create TABLE_CATALOG transform with bound catalog name."""
+
+    def transform_table_catalog(value):
+        """Transform TABLE_CATALOG: return the catalog name for all rows."""
+        return catalog_name
+
+    return transform_table_catalog

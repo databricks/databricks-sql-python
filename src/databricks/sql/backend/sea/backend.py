@@ -20,7 +20,12 @@ from databricks.sql.backend.sea.utils.constants import (
     MetadataCommands,
 )
 from databricks.sql.backend.sea.utils.metadata_mappings import MetadataColumnMappings
+from databricks.sql.backend.sea.utils.metadata_transforms import (
+    create_table_catalog_transform,
+)
 from databricks.sql.backend.sea.utils.normalize import normalize_sea_type_to_thrift
+from databricks.sql.backend.sea.utils.result_column import ResultColumn
+from databricks.sql.backend.sea.utils.conversion import SqlType
 from databricks.sql.thrift_api.TCLIService import ttypes
 
 if TYPE_CHECKING:
@@ -740,7 +745,23 @@ class SeaDatabricksClient(DatabricksClient):
         assert isinstance(
             result, SeaResultSet
         ), "Expected SeaResultSet from SEA backend"
-        result.prepare_metadata_columns(MetadataColumnMappings.SCHEMA_COLUMNS)
+
+        # Create dynamic schema columns with catalog name bound to TABLE_CATALOG
+        schema_columns = []
+        for col in MetadataColumnMappings.SCHEMA_COLUMNS:
+            if col.thrift_col_name == "TABLE_CATALOG":
+                # Create a new column with the catalog transform bound
+                dynamic_col = ResultColumn(
+                    col.thrift_col_name,
+                    col.sea_col_name,
+                    col.thrift_col_type,
+                    create_table_catalog_transform(catalog_name),
+                )
+                schema_columns.append(dynamic_col)
+            else:
+                schema_columns.append(col)
+
+        result.prepare_metadata_columns(schema_columns)
         return result
 
     def get_tables(
