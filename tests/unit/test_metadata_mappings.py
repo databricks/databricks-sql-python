@@ -89,7 +89,7 @@ class TestMetadataColumnMappings:
             "TABLE_SCHEM": ("namespace", SqlType.STRING),
             "TABLE_NAME": ("tableName", SqlType.STRING),
             "COLUMN_NAME": ("col_name", SqlType.STRING),
-            "DATA_TYPE": (None, SqlType.INT),
+            "DATA_TYPE": ("columnType", SqlType.INT),
             "TYPE_NAME": ("columnType", SqlType.STRING),
             "COLUMN_SIZE": ("columnSize", SqlType.INT),
             "DECIMAL_DIGITS": ("decimalDigits", SqlType.INT),
