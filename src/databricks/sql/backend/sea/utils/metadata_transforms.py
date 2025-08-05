@@ -3,7 +3,7 @@
 
 def transform_is_autoincrement(value):
     """Transform IS_AUTOINCREMENT: boolean to YES/NO string."""
-    if isinstance(value, bool):
+    if isinstance(value, bool) or value is None:
         return "YES" if value else "NO"
     return value
 
@@ -16,6 +16,10 @@ def transform_is_nullable(value):
         return "NO"
     return value
 
+def transform_remarks(value):
+    if value is None: 
+        return "" 
+    return value 
 
 def transform_nullable(value):
     """Transform NULLABLE column: boolean/string to integer."""
