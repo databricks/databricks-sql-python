@@ -38,7 +38,9 @@ class MetadataColumnMappings:
     REF_GENERATION_COLUMN = ResultColumn("REF_GENERATION", None, SqlType.STRING)
 
     COL_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", SqlType.STRING)
-    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, SqlType.INT, transform_data_type)
+    DATA_TYPE_COLUMN = ResultColumn(
+        "DATA_TYPE", "columnType", SqlType.INT, transform_data_type
+    )
     COLUMN_TYPE_COLUMN = ResultColumn("TYPE_NAME", "columnType", SqlType.STRING)
     COLUMN_SIZE_COLUMN = ResultColumn("COLUMN_SIZE", "columnSize", SqlType.INT)
     BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, SqlType.TINYINT)
