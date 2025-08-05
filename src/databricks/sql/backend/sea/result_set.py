@@ -356,11 +356,11 @@ class SeaResultSet(ResultSet):
                 if self._column_index_mapping
                 else None
             )
-
-            if old_idx is None:
-                column = pyarrow.nulls(table.num_rows)
-            else:
-                column = table.column(old_idx)
+            column = (
+                pyarrow.nulls(table.num_rows)
+                if old_idx is None
+                else table.column(old_idx)
+            )
 
             # Apply transform if available
             if result_column.transform_value:
@@ -388,8 +388,8 @@ class SeaResultSet(ResultSet):
                     if self._column_index_mapping
                     else None
                 )
-
                 value = None if old_idx is None else row[old_idx]
+
                 # Apply transform if available
                 if result_column.transform_value:
                     value = result_column.transform_value(value)
