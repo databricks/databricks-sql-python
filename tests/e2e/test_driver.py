@@ -851,7 +851,7 @@ class TestPySQLCoreSuite(
     def test_ssp_passthrough(self):
         for enable_ansi in (True, False):
             with self.cursor(
-                {"session_configuration": {"ansi_mode": enable_ansi}}
+                {"session_configuration": {"ansi_mode": enable_ansi, "QUERY_TAGS": "team:marketing,dashboard:abc123,driver:python"}}
             ) as cursor:
                 cursor.execute("SET ansi_mode")
                 assert list(cursor.fetchone()) == ["ansi_mode", str(enable_ansi)]
