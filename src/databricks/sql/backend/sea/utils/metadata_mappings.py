@@ -1,5 +1,13 @@
 from databricks.sql.backend.sea.utils.result_column import ResultColumn
 from databricks.sql.backend.sea.utils.conversion import SqlType
+from databricks.sql.backend.sea.utils.metadata_transforms import (
+    transform_remarks,
+    transform_is_autoincrement,
+    transform_is_nullable,
+    transform_nullable,
+    transform_data_type,
+    transform_ordinal_position,
+)
 
 
 class MetadataColumnMappings:
@@ -28,7 +36,7 @@ class MetadataColumnMappings:
     REF_GENERATION_COLUMN = ResultColumn("REF_GENERATION", None, SqlType.STRING)
 
     COL_NAME_COLUMN = ResultColumn("COLUMN_NAME", "col_name", SqlType.STRING)
-    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, SqlType.INT)
+    DATA_TYPE_COLUMN = ResultColumn("DATA_TYPE", None, SqlType.INT, transform_data_type)
     COLUMN_TYPE_COLUMN = ResultColumn("TYPE_NAME", "columnType", SqlType.STRING)
     COLUMN_SIZE_COLUMN = ResultColumn("COLUMN_SIZE", "columnSize", SqlType.INT)
     BUFFER_LENGTH_COLUMN = ResultColumn("BUFFER_LENGTH", None, SqlType.TINYINT)
@@ -43,14 +51,17 @@ class MetadataColumnMappings:
         "ORDINAL_POSITION",
         "ordinalPosition",
         SqlType.INT,
+        transform_ordinal_position,
     )
 
-    NULLABLE_COLUMN = ResultColumn("NULLABLE", None, SqlType.INT)
+    NULLABLE_COLUMN = ResultColumn("NULLABLE", None, SqlType.INT, transform_nullable)
     COLUMN_DEF_COLUMN = ResultColumn("COLUMN_DEF", None, SqlType.STRING)
     SQL_DATA_TYPE_COLUMN = ResultColumn("SQL_DATA_TYPE", None, SqlType.INT)
     SQL_DATETIME_SUB_COLUMN = ResultColumn("SQL_DATETIME_SUB", None, SqlType.INT)
     CHAR_OCTET_LENGTH_COLUMN = ResultColumn("CHAR_OCTET_LENGTH", None, SqlType.INT)
-    IS_NULLABLE_COLUMN = ResultColumn("IS_NULLABLE", "isNullable", SqlType.STRING)
+    IS_NULLABLE_COLUMN = ResultColumn(
+        "IS_NULLABLE", "isNullable", SqlType.STRING, transform_is_nullable
+    )
 
     SCOPE_CATALOG_COLUMN = ResultColumn("SCOPE_CATALOG", None, SqlType.STRING)
     SCOPE_SCHEMA_COLUMN = ResultColumn("SCOPE_SCHEMA", None, SqlType.STRING)
@@ -58,7 +69,10 @@ class MetadataColumnMappings:
     SOURCE_DATA_TYPE_COLUMN = ResultColumn("SOURCE_DATA_TYPE", None, SqlType.SMALLINT)
 
     IS_AUTO_INCREMENT_COLUMN = ResultColumn(
-        "IS_AUTOINCREMENT", "isAutoIncrement", SqlType.STRING
+        "IS_AUTO_INCREMENT",
+        "isAutoIncrement",
+        SqlType.STRING,
+        transform_is_autoincrement,
     )
     IS_GENERATED_COLUMN = ResultColumn(
         "IS_GENERATEDCOLUMN", "isGenerated", SqlType.STRING
