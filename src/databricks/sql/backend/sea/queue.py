@@ -190,9 +190,11 @@ class LinkFetcher:
             len(links),
             ", ".join(str(l.chunk_index) for l in links) if links else "<none>",
         )
-        for link in links:
-            self.chunk_index_to_link[link.chunk_index] = link
-            self.download_manager.add_link(LinkFetcher._convert_to_thrift_link(link))
+
+        self.chunk_index_to_link.update({link.chunk_index: link for link in links})
+        self.download_manager.add_links(
+            [LinkFetcher._convert_to_thrift_link(link) for link in links]
+        )
 
     def _get_next_chunk_index(self) -> Optional[int]:
         """Return the next *chunk_index* that should be requested from the backend, or ``None`` if we have them all."""
@@ -282,9 +284,27 @@ class LinkFetcher:
         with self._link_data_update:
             self._link_data_update.notify_all()
 
+    def _restart_from_expired_link(self, link: TSparkArrowResultLink):
+        """Restart the link fetcher from the expired link."""
+        self.stop()
+
+        with self._link_data_update:
+            self.download_manager.cancel_tasks_from_offset(link.startRowOffset)
+
+            chunks_to_restart = []
+            for chunk_index, l in self.chunk_index_to_link.items():
+                if l.row_offset < link.startRowOffset:
+                    continue
+                chunks_to_restart.append(chunk_index)
+            for chunk_index in chunks_to_restart:
+                self.chunk_index_to_link.pop(chunk_index)
+
+        self.start()
+
     def start(self):
         """Spawn the worker thread."""
         logger.debug("LinkFetcher[%s]: starting worker thread", self._statement_id)
+        self._shutdown_event.clear()
         self._worker_thread = threading.Thread(
             target=self._worker_loop, name=f"LinkFetcher-{self._statement_id}"
         )
@@ -334,6 +354,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             schema_bytes=None,
             lz4_compressed=lz4_compressed,
             description=description,
+            expiry_callback=self._expiry_callback,
             # TODO: fix these arguments when telemetry is implemented in SEA
             session_id_hex=None,
             chunk_id=0,
@@ -363,6 +384,14 @@ class SeaCloudFetchQueue(CloudFetchQueue):
 
         # Initialize table and position
         self.table = self._create_next_table()
+
+    def _expiry_callback(self, link: TSparkArrowResultLink):
+        logger.info(
+            f"SeaCloudFetchQueue: Link expired, restarting from offset {link.startRowOffset}"
+        )
+        if not self.link_fetcher:
+            return
+        self.link_fetcher._restart_from_expired_link(link)
 
     def _create_next_table(self) -> "pyarrow.Table":
         """Create next table by retrieving the logical next downloaded file."""

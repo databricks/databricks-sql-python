@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from dateutil import parser
 import datetime
@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 import re
 
 import lz4.frame
+
+from databricks.sql.exc import Error
 
 try:
     import pyarrow
@@ -227,6 +229,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
+        expiry_callback: Callable[[TSparkArrowResultLink], None] = lambda _: None,
     ):
         """
         Initialize the base CloudFetchQueue.
@@ -261,6 +264,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             session_id_hex=session_id_hex,
             statement_id=statement_id,
             chunk_id=chunk_id,
+            expiry_callback=expiry_callback,
         )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
@@ -383,6 +387,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             session_id_hex=session_id_hex,
             statement_id=statement_id,
             chunk_id=chunk_id,
+            expiry_callback=self._expiry_callback,
         )
 
         self.num_links_downloaded = 0
@@ -405,10 +410,13 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
                         result_link.startRowOffset, result_link.rowCount
                     )
                 )
-                self.download_manager.add_link(result_link)
+            self.download_manager.add_links(self.result_links)
 
         # Initialize table and position
         self.table = self._create_next_table()
+
+    def _expiry_callback(self, link: TSparkArrowResultLink):
+        raise Error("Cloudfetch link has expired")
 
     def _create_next_table(self) -> "pyarrow.Table":
         if self.num_links_downloaded >= len(self.result_links):
