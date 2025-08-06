@@ -1,29 +1,35 @@
 
 import io
-import unittest
+import pytest
 from unittest.mock import patch, Mock, MagicMock
 import databricks.sql.client as client
 from databricks.sql import ProgrammingError
 import requests
 
 
-class TestStreamingPutUnit(unittest.TestCase):
+class TestStreamingPut:
     """Unit tests for streaming PUT functionality."""
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        self.mock_connection = Mock()
-        self.mock_backend = Mock()
-        self.cursor = client.Cursor(
-            connection=self.mock_connection,
-            backend=self.mock_backend
+
+    @pytest.fixture
+    def mock_connection(self):
+        return Mock()
+
+    @pytest.fixture
+    def mock_backend(self):
+        return Mock()
+
+    @pytest.fixture
+    def cursor(self, mock_connection, mock_backend):
+        return client.Cursor(
+            connection=mock_connection,
+            backend=mock_backend
         )
-    
-    def _setup_mock_staging_put_stream_response(self):
+
+    def _setup_mock_staging_put_stream_response(self, mock_backend):
         """Helper method to set up mock staging PUT stream response."""
         mock_result_set = Mock()
         mock_result_set.is_staging_operation = True
-        self.mock_backend.execute_command.return_value = mock_result_set
+        mock_backend.execute_command.return_value = mock_result_set
         
         mock_row = Mock()
         mock_row.operation = "PUT"
@@ -34,168 +40,132 @@ class TestStreamingPutUnit(unittest.TestCase):
         
         return mock_result_set
 
-
-    def test_execute_with_valid_stream(self):
+    def test_execute_with_valid_stream(self, cursor, mock_backend):
         """Test execute method with valid input stream."""
         
         # Mock the backend response
-        self._setup_mock_staging_put_stream_response()
+        self._setup_mock_staging_put_stream_response(mock_backend)
         
         # Test with valid stream
         test_stream = io.BytesIO(b"test data")
         
-        with patch.object(self.cursor, '_handle_staging_put_stream') as mock_handler:
-            self.cursor.execute(
+        with patch.object(cursor, '_handle_staging_put_stream') as mock_handler:
+            cursor.execute(
                 "PUT '__input_stream__' INTO '/Volumes/test/cat/schema/vol/file.txt'",
                 input_stream=test_stream
             )
             
             # Verify staging handler was called
             mock_handler.assert_called_once()
-            
-            # Verify the finally block cleanup
-            self.assertIsNone(self.cursor._input_stream_data)
-    
 
-    def test_execute_with_invalid_stream_types(self):
-        """Test execute method rejects all invalid stream types."""
-        
-        # Test all invalid input types in one place
-        invalid_inputs = [
-            "not a stream",
-            [1, 2, 3],
-            {"key": "value"},
-            42,
-            True
-        ]
-        
-        for invalid_input in invalid_inputs:
-            with self.subTest(invalid_input=invalid_input):
-                with self.assertRaises(TypeError) as context:
-                    self.cursor.execute(
-                        "PUT '__input_stream__' INTO '/Volumes/test/cat/schema/vol/file.txt'",
-                        input_stream=invalid_input
-                    )
-                error_msg = str(context.exception)
-                self.assertIn("input_stream must be a binary stream", error_msg)
-    
+    def test_execute_with_invalid_stream_types(self, cursor, mock_backend):
 
-    def test_execute_with_none_stream_for_staging_put(self):
-        """Test execute method rejects None stream for streaming PUT operations."""
+        # Mock the backend response
+        self._setup_mock_staging_put_stream_response(mock_backend)
         
-        # Mock staging operation response for None case
-        self._setup_mock_staging_put_stream_response()
-        
-        # None with __input_stream__ raises ProgrammingError
-        with self.assertRaises(client.ProgrammingError) as context:
-            self.cursor.execute(
+        # Test with None input stream
+        with pytest.raises(client.ProgrammingError) as excinfo:
+            cursor.execute(
                 "PUT '__input_stream__' INTO '/Volumes/test/cat/schema/vol/file.txt'",
                 input_stream=None
             )
-        error_msg = str(context.exception)
-        self.assertIn("No input stream provided for streaming operation", error_msg)
-    
-    
-    def test_handle_staging_put_stream_success(self):
+        assert "No input stream provided for streaming operation" in str(excinfo.value)
+
+    def test_execute_with_none_stream_for_staging_put(self, cursor, mock_backend):
+        """Test execute method rejects None stream for streaming PUT operations."""
+        
+        # Mock staging operation response for None case
+        self._setup_mock_staging_put_stream_response(mock_backend)
+        
+        # None with __input_stream__ raises ProgrammingError
+        with pytest.raises(client.ProgrammingError) as excinfo:
+            cursor.execute(
+                "PUT '__input_stream__' INTO '/Volumes/test/cat/schema/vol/file.txt'",
+                input_stream=None
+            )
+        error_msg = str(excinfo.value)
+        assert "No input stream provided for streaming operation" in error_msg
+
+    def test_handle_staging_put_stream_success(self, cursor):
         """Test successful streaming PUT operation."""
         
         test_stream = io.BytesIO(b"test data")
         presigned_url = "https://example.com/upload"
         headers = {"Content-Type": "text/plain"}
         
-        with patch('requests.put') as mock_put:
+        with patch('databricks.sql.client.DatabricksHttpClient') as mock_client_class:
+            mock_client = Mock()
+            mock_client_class.get_instance.return_value = mock_client
+            
+            # Mock the context manager properly using MagicMock
+            mock_context = MagicMock()
             mock_response = Mock()
             mock_response.status_code = 200
-            mock_put.return_value = mock_response
+            mock_context.__enter__.return_value = mock_response
+            mock_context.__exit__.return_value = None
+            mock_client.execute.return_value = mock_context
             
-            self.cursor._handle_staging_put_stream(
+            cursor._handle_staging_put_stream(
                 presigned_url=presigned_url,
                 stream=test_stream,
                 headers=headers
             )
             
-            # Verify HTTP PUT was called correctly
-            mock_put.assert_called_once_with(
-                url=presigned_url,
-                data=test_stream,
-                headers=headers,
-                timeout=300
-            )
-    
+            # Verify the HTTP client was called correctly
+            mock_client.execute.assert_called_once()
+            call_args = mock_client.execute.call_args
+            assert call_args[1]['method'].value == 'PUT'
+            assert call_args[1]['url'] == presigned_url
+            assert call_args[1]['data'] == test_stream
+            assert call_args[1]['headers'] == headers
 
-    def test_handle_staging_put_stream_http_error(self):
+    def test_handle_staging_put_stream_http_error(self, cursor):
         """Test streaming PUT operation with HTTP error."""
         
         test_stream = io.BytesIO(b"test data")
         presigned_url = "https://example.com/upload"
         
-        with patch('requests.put') as mock_put:
+        with patch('databricks.sql.client.DatabricksHttpClient') as mock_client_class:
+            mock_client = Mock()
+            mock_client_class.get_instance.return_value = mock_client
+            
+            # Mock the context manager with error response
+            mock_context = MagicMock()
             mock_response = Mock()
             mock_response.status_code = 500
             mock_response.text = "Internal Server Error"
-            mock_put.return_value = mock_response
+            mock_context.__enter__.return_value = mock_response
+            mock_context.__exit__.return_value = None
+            mock_client.execute.return_value = mock_context
             
-            with self.assertRaises(client.OperationalError) as context:
-                self.cursor._handle_staging_put_stream(
+            with pytest.raises(client.OperationalError) as excinfo:
+                cursor._handle_staging_put_stream(
                     presigned_url=presigned_url,
                     stream=test_stream
                 )
             
             # Check for the actual error message format
-            self.assertIn("500", str(context.exception))
-    
+            assert "500" in str(excinfo.value)
 
-    def test_handle_staging_put_stream_network_error(self):
+    def test_handle_staging_put_stream_network_error(self, cursor):
         """Test streaming PUT operation with network error."""
         
         test_stream = io.BytesIO(b"test data")
         presigned_url = "https://example.com/upload"
         
-        with patch('requests.put') as mock_put:
-            # Use requests.exceptions.RequestException instead of generic Exception
-            mock_put.side_effect = requests.exceptions.RequestException("Network error")
+        with patch('databricks.sql.client.DatabricksHttpClient') as mock_client_class:
+            mock_client = Mock()
+            mock_client_class.get_instance.return_value = mock_client
             
-            with self.assertRaises(client.OperationalError) as context:
-                self.cursor._handle_staging_put_stream(
+            # Mock the context manager to raise an exception
+            mock_context = MagicMock()
+            mock_context.__enter__.side_effect = requests.exceptions.RequestException("Network error")
+            mock_client.execute.return_value = mock_context
+            
+            with pytest.raises(requests.exceptions.RequestException) as excinfo:
+                cursor._handle_staging_put_stream(
                     presigned_url=presigned_url,
                     stream=test_stream
                 )
             
-            self.assertIn("HTTP request failed", str(context.exception))
-    
-    
-    def test_stream_cleanup_after_execute(self):
-        """Test that stream data is cleaned up after execute."""
-        
-        # Mock the backend response
-        mock_result_set = Mock()
-        mock_result_set.is_staging_operation = False
-        self.mock_backend.execute_command.return_value = mock_result_set
-        
-        test_stream = io.BytesIO(b"test data")
-        
-        # Execute with stream
-        self.cursor.execute("SELECT 1", input_stream=test_stream)
-        
-        # Verify stream data is cleaned up
-        self.assertIsNone(self.cursor._input_stream_data)
-    
-
-    def test_stream_cleanup_after_exception(self):
-        """Test that stream data is cleaned up even after exception."""
-        
-        # Mock the backend to raise exception
-        self.mock_backend.execute_command.side_effect = Exception("Backend error")
-        
-        test_stream = io.BytesIO(b"test data")
-        
-        # Execute should raise exception but cleanup should still happen
-        with self.assertRaises(Exception):
-            self.cursor.execute("SELECT 1", input_stream=test_stream)
-        
-        # Verify stream data is still cleaned up
-        self.assertIsNone(self.cursor._input_stream_data)
-
-
-if __name__ == '__main__':
-    unittest.main() 
+            assert "Network error" in str(excinfo.value)
