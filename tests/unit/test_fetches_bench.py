@@ -10,7 +10,8 @@ import time
 import pytest
 
 import databricks.sql.client as client
-from databricks.sql.utils import ExecuteResponse, ArrowQueue
+from databricks.sql.backend.types import ExecuteResponse
+from databricks.sql.utils import ArrowQueue
 
 
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
@@ -38,8 +39,7 @@ class FetchBenchmarkTests(unittest.TestCase):
                 has_more_rows=False,
                 description=Mock(),
                 command_id=None,
-                arrow_queue=arrow_queue,
-                arrow_schema=arrow_table.schema,
+                arrow_schema_bytes=arrow_table.schema,
             ),
         )
         rs.description = [

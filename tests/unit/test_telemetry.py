@@ -1,6 +1,5 @@
 import uuid
 import pytest
-import requests
 from unittest.mock import patch, MagicMock
 
 from databricks.sql.telemetry.telemetry_client import (
@@ -8,7 +7,6 @@ from databricks.sql.telemetry.telemetry_client import (
     NoopTelemetryClient,
     TelemetryClientFactory,
     TelemetryHelper,
-    BaseTelemetryClient,
 )
 from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow
 from databricks.sql.auth.authenticators import (
@@ -16,6 +14,7 @@ from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
     ExternalAuthProvider,
 )
+from databricks import sql
 
 
 @pytest.fixture
@@ -31,6 +30,7 @@ def mock_telemetry_client():
         auth_provider=auth_provider,
         host_url="test-host.com",
         executor=executor,
+        batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
     )
 
 
@@ -91,7 +91,7 @@ class TestTelemetryClient:
         args, kwargs = client._executor.submit.call_args
 
         # Verify correct function and URL
-        assert args[0] == requests.post
+        assert args[0] == client._http_client.post
         assert args[1] == "https://test-host.com/telemetry-ext"
         assert kwargs["headers"]["Authorization"] == "Bearer test-token"
 
@@ -215,6 +215,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=auth_provider,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -239,6 +240,7 @@ class TestTelemetryFactory:
             session_id_hex=session_id_hex,
             auth_provider=None,
             host_url="test-host.com",
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -258,6 +260,7 @@ class TestTelemetryFactory:
                 session_id_hex=session_id,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
             )
 
         # Should fall back to NoopTelemetryClient
@@ -276,6 +279,7 @@ class TestTelemetryFactory:
                 session_id_hex=session,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
             )
 
         # Factory should be initialized
@@ -290,3 +294,113 @@ class TestTelemetryFactory:
         TelemetryClientFactory.close(session2)
         assert TelemetryClientFactory._initialized is False
         assert TelemetryClientFactory._executor is None
+
+    @patch(
+        "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log"
+    )
+    @patch("databricks.sql.client.Session")
+    def test_connection_failure_sends_correct_telemetry_payload(
+        self, mock_session, mock_export_failure_log
+    ):
+        """
+        Verify that a connection failure constructs and sends the correct
+        telemetry payload via _send_telemetry.
+        """
+
+        error_message = "Could not connect to host"
+        mock_session.side_effect = Exception(error_message)
+
+        try:
+            sql.connect(server_hostname="test-host", http_path="/test-path")
+        except Exception as e:
+            assert str(e) == error_message
+
+        mock_export_failure_log.assert_called_once()
+        call_arguments = mock_export_failure_log.call_args
+        assert call_arguments[0][0] == "Exception"
+        assert call_arguments[0][1] == error_message
+
+
+@patch("databricks.sql.client.Session")
+class TestTelemetryFeatureFlag:
+    """Tests the interaction between the telemetry feature flag and connection parameters."""
+
+    def _mock_ff_response(self, mock_requests_get, enabled: bool):
+        """Helper to configure the mock response for the feature flag endpoint."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        payload = {
+            "flags": [
+                {
+                    "name": "databricks.partnerplatform.clientConfigsFeatureFlags.enableTelemetryForPythonDriver",
+                    "value": str(enabled).lower(),
+                }
+            ],
+            "ttl_seconds": 3600,
+        }
+        mock_response.json.return_value = payload
+        mock_requests_get.return_value = mock_response
+
+    @patch("databricks.sql.common.feature_flag.requests.get")
+    def test_telemetry_enabled_when_flag_is_true(self, mock_requests_get, MockSession):
+        """Telemetry should be ON when enable_telemetry=True and server flag is 'true'."""
+        self._mock_ff_response(mock_requests_get, enabled=True)
+        mock_session_instance = MockSession.return_value
+        mock_session_instance.guid_hex = "test-session-ff-true"
+        mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
+
+        conn = sql.client.Connection(
+            server_hostname="test",
+            http_path="test",
+            access_token="test",
+            enable_telemetry=True,
+        )
+
+        assert conn.telemetry_enabled is True
+        mock_requests_get.assert_called_once()
+        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-true")
+        assert isinstance(client, TelemetryClient)
+
+    @patch("databricks.sql.common.feature_flag.requests.get")
+    def test_telemetry_disabled_when_flag_is_false(
+        self, mock_requests_get, MockSession
+    ):
+        """Telemetry should be OFF when enable_telemetry=True but server flag is 'false'."""
+        self._mock_ff_response(mock_requests_get, enabled=False)
+        mock_session_instance = MockSession.return_value
+        mock_session_instance.guid_hex = "test-session-ff-false"
+        mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
+
+        conn = sql.client.Connection(
+            server_hostname="test",
+            http_path="test",
+            access_token="test",
+            enable_telemetry=True,
+        )
+
+        assert conn.telemetry_enabled is False
+        mock_requests_get.assert_called_once()
+        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-false")
+        assert isinstance(client, NoopTelemetryClient)
+
+    @patch("databricks.sql.common.feature_flag.requests.get")
+    def test_telemetry_disabled_when_flag_request_fails(
+        self, mock_requests_get, MockSession
+    ):
+        """Telemetry should default to OFF if the feature flag network request fails."""
+        mock_requests_get.side_effect = Exception("Network is down")
+        mock_session_instance = MockSession.return_value
+        mock_session_instance.guid_hex = "test-session-ff-fail"
+        mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
+
+        conn = sql.client.Connection(
+            server_hostname="test",
+            http_path="test",
+            access_token="test",
+            enable_telemetry=True,
+        )
+
+        assert conn.telemetry_enabled is False
+        mock_requests_get.assert_called_once()
+        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-fail")
+        assert isinstance(client, NoopTelemetryClient)
