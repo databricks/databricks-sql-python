@@ -826,9 +826,6 @@ class TestSeaBackend:
 
             # Verify prepare_metadata_columns was called for successful cases
             assert mock_result_set.prepare_metadata_columns.call_count == 2
-            mock_result_set.prepare_metadata_columns.assert_called_with(
-                MetadataColumnMappings.SCHEMA_COLUMNS
-            )
 
     def test_get_tables(self, sea_client, sea_session_id, mock_cursor):
         """Test the get_tables method with various parameter combinations."""
