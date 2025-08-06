@@ -86,11 +86,15 @@ class DownloaderTests(unittest.TestCase):
         settings.use_proxy = False
         result_link = Mock(expiryTime=1001)
 
-        with patch.object(
-            http_client,
-            "execute",
-            return_value=create_response(status_code=404, _content=b"1234"),
-        ):
+        # Create a mock response with 404 status
+        mock_response = create_response(status_code=404, _content=b"Not Found")
+        mock_response.raise_for_status = Mock(
+            side_effect=requests.exceptions.HTTPError("404")
+        )
+
+        with patch.object(http_client, "execute") as mock_execute:
+            mock_execute.return_value.__enter__.return_value = mock_response
+
             d = downloader.ResultSetDownloadHandler(
                 settings,
                 result_link,
