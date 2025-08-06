@@ -24,6 +24,22 @@ class DownloaderTests(unittest.TestCase):
     Unit tests for checking downloader logic.
     """
 
+    def create_download_handler(
+        self, settings: Mock, result_link: Mock
+    ) -> downloader.ResultSetDownloadHandler:
+        def expiry_callback(link: TSparkArrowResultLink):
+            raise Error("Cloudfetch link has expired")
+
+        return downloader.ResultSetDownloadHandler(
+            settings,
+            result_link,
+            ssl_options=SSLOptions(),
+            expiry_callback=expiry_callback,
+            chunk_id=0,
+            session_id_hex=Mock(),
+            statement_id=Mock(),
+        )
+
     def _setup_time_mock_for_download(self, mock_time, end_time):
         """Helper to setup time mock that handles logging system calls."""
         call_count = [0]
@@ -82,14 +98,7 @@ class DownloaderTests(unittest.TestCase):
         with patch.object(http_client, "execute") as mock_execute:
             mock_execute.return_value.__enter__.return_value = mock_response
 
-            d = downloader.ResultSetDownloadHandler(
-                settings,
-                result_link,
-                ssl_options=SSLOptions(),
-                chunk_id=0,
-                session_id_hex=Mock(),
-                statement_id=Mock(),
-            )
+            d = self.create_download_handler(settings, result_link)
             with self.assertRaises(requests.exceptions.HTTPError) as context:
                 d.run()
             self.assertTrue("404" in str(context.exception))
@@ -111,14 +120,7 @@ class DownloaderTests(unittest.TestCase):
             "execute",
             return_value=create_response(status_code=200, _content=file_bytes),
         ):
-            d = downloader.ResultSetDownloadHandler(
-                settings,
-                result_link,
-                ssl_options=SSLOptions(),
-                chunk_id=0,
-                session_id_hex=Mock(),
-                statement_id=Mock(),
-            )
+            d = self.create_download_handler(settings, result_link)
             file = d.run()
 
             assert file.file_bytes == b"1234567890" * 10
@@ -141,14 +143,7 @@ class DownloaderTests(unittest.TestCase):
             "execute",
             return_value=create_response(status_code=200, _content=compressed_bytes),
         ):
-            d = downloader.ResultSetDownloadHandler(
-                settings,
-                result_link,
-                ssl_options=SSLOptions(),
-                chunk_id=0,
-                session_id_hex=Mock(),
-                statement_id=Mock(),
-            )
+            d = self.create_download_handler(settings, result_link)
             file = d.run()
 
             assert file.file_bytes == b"1234567890" * 10
@@ -163,14 +158,7 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
         with patch.object(http_client, "execute", side_effect=ConnectionError("foo")):
-            d = downloader.ResultSetDownloadHandler(
-                settings,
-                result_link,
-                ssl_options=SSLOptions(),
-                chunk_id=0,
-                session_id_hex=Mock(),
-                statement_id=Mock(),
-            )
+            d = self.create_download_handler(settings, result_link)
             with self.assertRaises(ConnectionError):
                 d.run()
 
@@ -183,13 +171,6 @@ class DownloaderTests(unittest.TestCase):
         result_link = Mock(bytesNum=100, expiryTime=1001)
 
         with patch.object(http_client, "execute", side_effect=TimeoutError("foo")):
-            d = downloader.ResultSetDownloadHandler(
-                settings,
-                result_link,
-                ssl_options=SSLOptions(),
-                chunk_id=0,
-                session_id_hex=Mock(),
-                statement_id=Mock(),
-            )
+            d = self.create_download_handler(settings, result_link)
             with self.assertRaises(TimeoutError):
                 d.run()
