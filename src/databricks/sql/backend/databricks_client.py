@@ -96,7 +96,7 @@ class DatabricksClient(ABC):
             max_rows: Maximum number of rows to fetch in a single fetch batch
             max_bytes: Maximum number of bytes to fetch in a single fetch batch
             lz4_compression: Whether to use LZ4 compression for result data
-            cursor: The cursor object that will handle the results
+            cursor: The cursor object that will handle the results. The command id is set in this cursor.
             use_cloud_fetch: Whether to use cloud fetch for retrieving large result sets
             parameters: List of parameters to bind to the query
             async_op: Whether to execute the command asynchronously
@@ -282,7 +282,9 @@ class DatabricksClient(ABC):
             max_bytes: Maximum number of bytes to fetch in a single batch
             cursor: The cursor object that will handle the results
             catalog_name: Optional catalog name pattern to filter by
+                if catalog_name is None, we fetch across all catalogs
             schema_name: Optional schema name pattern to filter by
+                if schema_name is None, we fetch across all schemas
             table_name: Optional table name pattern to filter by
             table_types: Optional list of table types to filter by (e.g., ['TABLE', 'VIEW'])
 
@@ -321,6 +323,7 @@ class DatabricksClient(ABC):
             catalog_name: Optional catalog name pattern to filter by
             schema_name: Optional schema name pattern to filter by
             table_name: Optional table name pattern to filter by
+                if table_name is None, we fetch across all tables
             column_name: Optional column name pattern to filter by
 
         Returns:

@@ -72,6 +72,7 @@ class SeaResultSetQueueFactory(ABC):
             return JsonQueue(result_data.data)
         elif manifest.format == ResultFormat.ARROW_STREAM.value:
             if result_data.attachment is not None:
+                # direct results from Hybrid disposition
                 arrow_file = (
                     ResultSetDownloadHandler._decompress_data(result_data.attachment)
                     if lz4_compressed

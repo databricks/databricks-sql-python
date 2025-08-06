@@ -22,6 +22,7 @@ from databricks.sql.exc import (
     NotSupportedError,
     ProgrammingError,
 )
+
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
@@ -247,35 +248,50 @@ class Connection:
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
         self._cursors = []  # type: List[Cursor]
-
-        self.server_telemetry_enabled = True
-        self.client_telemetry_enabled = kwargs.get("enable_telemetry", False)
-        self.telemetry_enabled = (
-            self.client_telemetry_enabled and self.server_telemetry_enabled
+        self.telemetry_batch_size = kwargs.get(
+            "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
-        self.session = Session(
-            server_hostname,
-            http_path,
-            http_headers,
-            session_configuration,
-            catalog,
-            schema,
-            _use_arrow_native_complex_types,
-            **kwargs,
-        )
-        self.session.open()
+        try:
+            self.session = Session(
+                server_hostname,
+                http_path,
+                http_headers,
+                session_configuration,
+                catalog,
+                schema,
+                _use_arrow_native_complex_types,
+                **kwargs,
+            )
+            self.session.open()
+        except Exception as e:
+            TelemetryClientFactory.connection_failure_log(
+                error_name="Exception",
+                error_message=str(e),
+                host_url=server_hostname,
+                http_path=http_path,
+                port=kwargs.get("_port", 443),
+                user_agent=self.session.useragent_header
+                if hasattr(self, "session")
+                else None,
+            )
+            raise e
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )
         self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
+        self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
+        self.enable_telemetry = kwargs.get("enable_telemetry", False)
+        self.telemetry_enabled = TelemetryHelper.is_telemetry_enabled(self)
+
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=self.telemetry_enabled,
             session_id_hex=self.get_session_id_hex(),
             auth_provider=self.session.auth_provider,
             host_url=self.session.host,
+            batch_size=self.telemetry_batch_size,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
@@ -355,7 +371,7 @@ class Connection:
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
-        """Delegate to Session class static method"""
+        """Check if parameterized queries are enabled for the given protocol version"""
         return Session.server_parameterized_queries_enabled(protocolVersion)
 
     @property
@@ -365,7 +381,7 @@ class Connection:
 
     @staticmethod
     def get_protocol_version(openSessionResp: TOpenSessionResp):
-        """Delegate to Session class static method"""
+        """Get the protocol version from the OpenSessionResp object"""
         properties = (
             {"serverProtocolVersion": openSessionResp.serverProtocolVersion}
             if openSessionResp.serverProtocolVersion
