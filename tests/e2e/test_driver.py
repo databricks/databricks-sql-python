@@ -386,8 +386,15 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP TABLE IF EXISTS {}".format(table_name))
 
-    def test_get_tables(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {"use_sea": True},
+        ],
+    )
+    def test_get_tables(self, backend_params):
+        with self.cursor(extra_params=backend_params) as cursor:
             table_name = "table_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             table_names = [table_name + "_1", table_name + "_2"]
 
@@ -562,8 +569,15 @@ class TestPySQLCoreSuite(
             finally:
                 cursor.execute("DROP DATABASE IF EXISTS {}".format(database_name))
 
-    def test_get_catalogs(self):
-        with self.cursor({}) as cursor:
+    @pytest.mark.parametrize(
+        "backend_params",
+        [
+            {},
+            {"use_sea": True},
+        ],
+    )
+    def test_get_catalogs(self, backend_params):
+        with self.cursor(extra_params=backend_params) as cursor:
             cursor.catalogs()
             cursor.fetchall()
             catalogs_desc = cursor.description
@@ -1053,9 +1067,18 @@ class TestPySQLRetrySuite:
 
     class HTTP503Suite(Client503ResponseMixin, PySQLPytestTestCase):
         # 503Response suite gets custom error here vs PyODBC
-        def test_retry_disabled(self):
+        @pytest.mark.parametrize(
+            "backend_params",
+            [
+                {},
+                {
+                    "use_sea": True,
+                },
+            ],
+        )
+        def test_retry_disabled(self, backend_params):
             self._test_retry_disabled_with_message(
-                "TEMPORARILY_UNAVAILABLE", OperationalError
+                "TEMPORARILY_UNAVAILABLE", OperationalError, backend_params
             )
 
 
