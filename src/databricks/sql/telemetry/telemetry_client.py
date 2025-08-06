@@ -2,7 +2,7 @@ import threading
 import time
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 from databricks.sql.common.http import TelemetryHttpClient
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
@@ -36,6 +36,10 @@ import platform
 import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
+from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+
+if TYPE_CHECKING:
+    from databricks.sql.client import Connection
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,7 @@ class TelemetryHelper:
     """Helper class for getting telemetry related information."""
 
     _DRIVER_SYSTEM_CONFIGURATION = None
+    TELEMETRY_FEATURE_FLAG_NAME = "databricks.partnerplatform.clientConfigsFeatureFlags.enableTelemetryForPythonDriver"
 
     @classmethod
     def get_driver_system_configuration(cls) -> DriverSystemConfiguration:
@@ -98,6 +103,20 @@ class TelemetryHelper:
         else:
             return None
 
+    @staticmethod
+    def is_telemetry_enabled(connection: "Connection") -> bool:
+        if connection.force_enable_telemetry:
+            return True
+
+        if connection.enable_telemetry:
+            context = FeatureFlagsContextFactory.get_instance(connection)
+            flag_value = context.get_flag_value(
+                TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
+            )
+            return str(flag_value).lower() == "true"
+        else:
+            return False
+
 
 class NoopTelemetryClient(BaseTelemetryClient):
     """
@@ -125,6 +144,9 @@ class NoopTelemetryClient(BaseTelemetryClient):
         pass
 
     def close(self):
+        pass
+
+    def _flush(self):
         pass
 
 

@@ -158,6 +158,7 @@ class SeaDatabricksClient(DatabricksClient):
         )
 
         self.use_hybrid_disposition = kwargs.get("use_hybrid_disposition", True)
+        self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
 
         # Extract warehouse ID from http_path
         self.warehouse_id = self._extract_warehouse_id(http_path)
@@ -694,7 +695,7 @@ class SeaDatabricksClient(DatabricksClient):
             max_bytes=max_bytes,
             lz4_compression=False,
             cursor=cursor,
-            use_cloud_fetch=False,
+            use_cloud_fetch=self.use_cloud_fetch,
             parameters=[],
             async_op=False,
             enforce_embedded_schema_correctness=False,
@@ -727,7 +728,7 @@ class SeaDatabricksClient(DatabricksClient):
             max_bytes=max_bytes,
             lz4_compression=False,
             cursor=cursor,
-            use_cloud_fetch=False,
+            use_cloud_fetch=self.use_cloud_fetch,
             parameters=[],
             async_op=False,
             enforce_embedded_schema_correctness=False,
@@ -768,7 +769,7 @@ class SeaDatabricksClient(DatabricksClient):
             max_bytes=max_bytes,
             lz4_compression=False,
             cursor=cursor,
-            use_cloud_fetch=False,
+            use_cloud_fetch=self.use_cloud_fetch,
             parameters=[],
             async_op=False,
             enforce_embedded_schema_correctness=False,
@@ -815,7 +816,7 @@ class SeaDatabricksClient(DatabricksClient):
             max_bytes=max_bytes,
             lz4_compression=False,
             cursor=cursor,
-            use_cloud_fetch=False,
+            use_cloud_fetch=self.use_cloud_fetch,
             parameters=[],
             async_op=False,
             enforce_embedded_schema_correctness=False,
