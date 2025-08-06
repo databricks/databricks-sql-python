@@ -544,8 +544,8 @@ class TestPySQLCoreSuite(
             rows = cursor.fetchall()
             assert rows[0]["col_1"] == "you're"
 
-    def test_get_schemas(self, backend_params):
-        with self.cursor(backend_params) as cursor:
+    def test_get_schemas(self):
+        with self.cursor({}) as cursor:
             database_name = "db_{uuid}".format(uuid=str(uuid4()).replace("-", "_"))
             try:
                 cursor.execute("CREATE DATABASE IF NOT EXISTS {}".format(database_name))
