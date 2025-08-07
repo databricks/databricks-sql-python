@@ -616,7 +616,9 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    def _validate_staging_http_response(self, response: requests.Response, operation_name: str = "staging operation") -> None:
+    def _validate_staging_http_response(
+        self, response: requests.Response, operation_name: str = "staging operation"
+    ) -> None:
 
         # Check response codes
         OK = requests.codes.ok  # 200
@@ -634,11 +636,14 @@ class Cursor:
             logger.debug(
                 "Response code %s from server indicates %s was accepted "
                 "but not yet applied on the server. It's possible this command may fail later.",
-                ACCEPTED, operation_name
+                ACCEPTED,
+                operation_name,
             )
 
     def _handle_staging_operation(
-        self, staging_allowed_local_path: Union[None, str, List[str]], input_stream: Optional[BinaryIO] = None
+        self,
+        staging_allowed_local_path: Union[None, str, List[str]],
+        input_stream: Optional[BinaryIO] = None,
     ):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler.
@@ -713,7 +718,8 @@ class Cursor:
 
         logger.debug(
             "Attempting staging operation indicated by server: %s - %s",
-            row.operation, getattr(row, 'localFile', '')
+            row.operation,
+            getattr(row, "localFile", ""),
         )
 
         # TODO: Create a retry loop here to re-attempt if the request times out or fails
@@ -885,9 +891,7 @@ class Cursor:
             )
         elif param_approach == ParameterApproach.NATIVE:
             normalized_parameters = self._normalize_tparametercollection(parameters)
-            param_structure = self._determine_parameter_structure(
-                normalized_parameters
-            )
+            param_structure = self._determine_parameter_structure(normalized_parameters)
             transformed_operation = transform_paramstyle(
                 operation, normalized_parameters, param_structure
             )
@@ -913,7 +917,7 @@ class Cursor:
         if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
                 staging_allowed_local_path=self.connection.staging_allowed_local_path,
-                input_stream=input_stream
+                input_stream=input_stream,
             )
 
         return self
