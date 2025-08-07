@@ -22,6 +22,10 @@ jobs:
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for coverage comparison
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name ||  github.repository }}
       - name: Set up python
         id: setup-python
         uses: actions/setup-python@v5
@@ -50,9 +54,78 @@ jobs:
       # install dependencies if cache does not exist
       #----------------------------------------------
       - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+      #----------------------------------------------
+      # install your root project, if required
+      #----------------------------------------------
+      - name: Install library
         run: poetry install --no-interaction --all-extras
       #----------------------------------------------
-      #              run test suite
+      #              run all tests with coverage
       #----------------------------------------------
-      - name: Run e2e tests
-        run: poetry run python -m pytest tests/e2e
+      - name: Run tests with coverage
+        run: |
+          poetry run python -m pytest \
+            tests/unit tests/e2e \
+            --cov=src --cov-report=xml --cov-report=term -v
+      #----------------------------------------------
+      #         check for coverage override
+      #----------------------------------------------
+      - name: Check for coverage override
+        id: override
+        run: |
+          OVERRIDE_COMMENT=$(echo "${{ github.event.pull_request.body }}" | grep -E "SKIP_COVERAGE_CHECK\s*=" || echo "")
+          if [ -n "$OVERRIDE_COMMENT" ]; then
+            echo "override=true" >> $GITHUB_OUTPUT
+            REASON=$(echo "$OVERRIDE_COMMENT" | sed -E 's/.*SKIP_COVERAGE_CHECK\s*=\s*(.+)/\1/')
+            echo "reason=$REASON" >> $GITHUB_OUTPUT
+            echo "Coverage override found in PR description: $REASON"
+          else
+            echo "override=false" >> $GITHUB_OUTPUT
+            echo "No coverage override found"
+          fi
+      #----------------------------------------------
+      #         check coverage percentage
+      #----------------------------------------------
+      - name: Check coverage percentage
+        if: steps.override.outputs.override == 'false'
+        run: |
+          COVERAGE_FILE="coverage.xml"
+          if [ ! -f "$COVERAGE_FILE" ]; then
+            echo "ERROR: Coverage file not found at $COVERAGE_FILE"
+            exit 1
+          fi
+          
+          # Install xmllint if not available
+          if ! command -v xmllint &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y libxml2-utils
+          fi
+          
+          COVERED=$(xmllint --xpath "string(//coverage/@lines-covered)" "$COVERAGE_FILE")
+          TOTAL=$(xmllint --xpath "string(//coverage/@lines-valid)" "$COVERAGE_FILE")
+          PERCENTAGE=$(python3 -c "covered=${COVERED}; total=${TOTAL}; print(round((covered/total)*100, 2))")
+          
+          echo "Branch Coverage: $PERCENTAGE%"
+          echo "Required Coverage: 85%"
+          
+          # Use Python to compare the coverage with 85
+          python3 -c "import sys; sys.exit(0 if float('$PERCENTAGE') >= 85 else 1)"
+          if [ $? -eq 1 ]; then
+            echo "ERROR: Coverage is $PERCENTAGE%, which is less than the required 85%"
+            exit 1
+          else
+            echo "SUCCESS: Coverage is $PERCENTAGE%, which meets the required 85%"
+          fi
+          
+      #----------------------------------------------
+      #         coverage enforcement summary
+      #----------------------------------------------
+      - name: Coverage enforcement summary
+        run: |
+          if [ "${{ steps.override.outputs.override }}" == "true" ]; then
+            echo "⚠️ Coverage checks bypassed: ${{ steps.override.outputs.reason }}"
+            echo "Please ensure this override is justified and temporary"
+          else
+            echo "✅ Coverage checks enforced - minimum 85% required"
+          fi

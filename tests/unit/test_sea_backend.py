@@ -56,6 +56,29 @@ class TestSeaBackend:
             http_headers=http_headers,
             auth_provider=auth_provider,
             ssl_options=ssl_options,
+            use_cloud_fetch=False,
+        )
+
+        return client
+
+    @pytest.fixture
+    def sea_client_cloud_fetch(self, mock_http_client):
+        """Create a SeaDatabricksClient instance with cloud fetch enabled."""
+        server_hostname = "test-server.databricks.com"
+        port = 443
+        http_path = "/sql/warehouses/abc123"
+        http_headers = [("header1", "value1"), ("header2", "value2")]
+        auth_provider = AuthProvider()
+        ssl_options = SSLOptions()
+
+        client = SeaDatabricksClient(
+            server_hostname=server_hostname,
+            port=port,
+            http_path=http_path,
+            http_headers=http_headers,
+            auth_provider=auth_provider,
+            ssl_options=ssl_options,
+            use_cloud_fetch=True,
         )
 
         return client
@@ -550,6 +573,66 @@ class TestSeaBackend:
         assert description[1][1] == "int"  # type_code
         assert description[1][6] is None  # null_ok
 
+    def test_extract_description_from_manifest_with_type_normalization(
+        self, sea_client
+    ):
+        """Test _extract_description_from_manifest with SEA to Thrift type normalization."""
+        manifest_obj = MagicMock()
+        manifest_obj.schema = {
+            "columns": [
+                {
+                    "name": "byte_col",
+                    "type_name": "BYTE",
+                },
+                {
+                    "name": "short_col",
+                    "type_name": "SHORT",
+                },
+                {
+                    "name": "long_col",
+                    "type_name": "LONG",
+                },
+                {
+                    "name": "interval_ym_col",
+                    "type_name": "INTERVAL",
+                    "type_interval_type": "YEAR TO MONTH",
+                },
+                {
+                    "name": "interval_dt_col",
+                    "type_name": "INTERVAL",
+                    "type_interval_type": "DAY TO SECOND",
+                },
+                {
+                    "name": "interval_default_col",
+                    "type_name": "INTERVAL",
+                    # No type_interval_type field
+                },
+            ]
+        }
+
+        description = sea_client._extract_description_from_manifest(manifest_obj)
+        assert description is not None
+        assert len(description) == 6
+
+        # Check normalized types
+        assert description[0][0] == "byte_col"
+        assert description[0][1] == "tinyint"  # BYTE -> tinyint
+
+        assert description[1][0] == "short_col"
+        assert description[1][1] == "smallint"  # SHORT -> smallint
+
+        assert description[2][0] == "long_col"
+        assert description[2][1] == "bigint"  # LONG -> bigint
+
+        assert description[3][0] == "interval_ym_col"
+        assert description[3][1] == "interval_year_month"  # INTERVAL with YEAR/MONTH
+
+        assert description[4][0] == "interval_dt_col"
+        assert description[4][1] == "interval_day_time"  # INTERVAL with DAY/TIME
+
+        assert description[5][0] == "interval_default_col"
+        assert description[5][1] == "interval"  # INTERVAL without subtype
+
     def test_filter_session_configuration(self):
         """Test that _filter_session_configuration converts all values to strings."""
         session_config = {
@@ -884,3 +967,74 @@ class TestSeaBackend:
                     cursor=mock_cursor,
                 )
             assert "Catalog name is required for get_columns" in str(excinfo.value)
+
+    def test_get_tables_with_cloud_fetch(
+        self, sea_client_cloud_fetch, sea_session_id, mock_cursor
+    ):
+        """Test the get_tables method with cloud fetch enabled."""
+        # Mock the execute_command method and ResultSetFilter
+        mock_result_set = Mock()
+
+        with patch.object(
+            sea_client_cloud_fetch, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            with patch(
+                "databricks.sql.backend.sea.utils.filters.ResultSetFilter"
+            ) as mock_filter:
+                mock_filter.filter_tables_by_type.return_value = mock_result_set
+
+                # Call get_tables
+                result = sea_client_cloud_fetch.get_tables(
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    cursor=mock_cursor,
+                    catalog_name="test_catalog",
+                )
+
+                # Verify execute_command was called with use_cloud_fetch=True
+                mock_execute.assert_called_with(
+                    operation="SHOW TABLES IN CATALOG test_catalog",
+                    session_id=sea_session_id,
+                    max_rows=100,
+                    max_bytes=1000,
+                    lz4_compression=False,
+                    cursor=mock_cursor,
+                    use_cloud_fetch=True,  # Should use True since client was created with use_cloud_fetch=True
+                    parameters=[],
+                    async_op=False,
+                    enforce_embedded_schema_correctness=False,
+                )
+                assert result == mock_result_set
+
+    def test_get_schemas_with_cloud_fetch(
+        self, sea_client_cloud_fetch, sea_session_id, mock_cursor
+    ):
+        """Test the get_schemas method with cloud fetch enabled."""
+        # Mock the execute_command method
+        mock_result_set = Mock()
+        with patch.object(
+            sea_client_cloud_fetch, "execute_command", return_value=mock_result_set
+        ) as mock_execute:
+            # Test with catalog name
+            result = sea_client_cloud_fetch.get_schemas(
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                cursor=mock_cursor,
+                catalog_name="test_catalog",
+            )
+
+            mock_execute.assert_called_with(
+                operation="SHOW SCHEMAS IN test_catalog",
+                session_id=sea_session_id,
+                max_rows=100,
+                max_bytes=1000,
+                lz4_compression=False,
+                cursor=mock_cursor,
+                use_cloud_fetch=True,  # Should use True since client was created with use_cloud_fetch=True
+                parameters=[],
+                async_op=False,
+                enforce_embedded_schema_correctness=False,
+            )
+            assert result == mock_result_set
