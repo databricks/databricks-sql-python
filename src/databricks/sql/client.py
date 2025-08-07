@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
+from typing import Dict, Tuple, List, Optional, Any, Union, Sequence, BinaryIO
 import pandas
 
 try:
@@ -67,6 +67,7 @@ from databricks.sql.telemetry.models.event import (
 )
 from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.enums import StatementType
+from databricks.sql.common.http import DatabricksHttpClient, HttpMethod
 
 logger = logging.getLogger(__name__)
 
@@ -647,8 +648,34 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    def _validate_staging_http_response(
+        self, response: requests.Response, operation_name: str = "staging operation"
+    ) -> None:
+
+        # Check response codes
+        OK = requests.codes.ok  # 200
+        CREATED = requests.codes.created  # 201
+        ACCEPTED = requests.codes.accepted  # 202
+        NO_CONTENT = requests.codes.no_content  # 204
+
+        if response.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+            raise OperationalError(
+                f"{operation_name} over HTTP was unsuccessful: {response.status_code}-{response.text}",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
+
+        if response.status_code == ACCEPTED:
+            logger.debug(
+                "Response code %s from server indicates %s was accepted "
+                "but not yet applied on the server. It's possible this command may fail later.",
+                ACCEPTED,
+                operation_name,
+            )
+
     def _handle_staging_operation(
-        self, staging_allowed_local_path: Union[None, str, List[str]]
+        self,
+        staging_allowed_local_path: Union[None, str, List[str]],
+        input_stream: Optional[BinaryIO] = None,
     ):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler.
@@ -657,6 +684,28 @@ class Cursor:
         is not descended from staging_allowed_local_path.
         """
 
+        assert self.active_result_set is not None
+        row = self.active_result_set.fetchone()
+        assert row is not None
+
+        # Parse headers
+        headers = (
+            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
+        )
+        headers = dict(headers) if headers else {}
+
+        # Handle __input_stream__ token for PUT operations
+        if (
+            row.operation == "PUT"
+            and getattr(row, "localFile", None) == "__input_stream__"
+        ):
+            return self._handle_staging_put_stream(
+                presigned_url=row.presignedUrl,
+                stream=input_stream,
+                headers=headers,
+            )
+
+        # For non-streaming operations, validate staging_allowed_local_path
         if isinstance(staging_allowed_local_path, type(str())):
             _staging_allowed_local_paths = [staging_allowed_local_path]
         elif isinstance(staging_allowed_local_path, type(list())):
@@ -670,10 +719,6 @@ class Cursor:
         abs_staging_allowed_local_paths = [
             os.path.abspath(i) for i in _staging_allowed_local_paths
         ]
-
-        assert self.active_result_set is not None
-        row = self.active_result_set.fetchone()
-        assert row is not None
 
         # Must set to None in cases where server response does not include localFile
         abs_localFile = None
@@ -697,19 +742,16 @@ class Cursor:
                     session_id_hex=self.connection.get_session_id_hex(),
                 )
 
-        # May be real headers, or could be json string
-        headers = (
-            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
-        )
-
         handler_args = {
             "presigned_url": row.presignedUrl,
             "local_file": abs_localFile,
-            "headers": dict(headers) or {},
+            "headers": headers,
         }
 
         logger.debug(
-            f"Attempting staging operation indicated by server: {row.operation} - {getattr(row, 'localFile', '')}"
+            "Attempting staging operation indicated by server: %s - %s",
+            row.operation,
+            getattr(row, "localFile", ""),
         )
 
         # TODO: Create a retry loop here to re-attempt if the request times out or fails
@@ -729,6 +771,43 @@ class Cursor:
             )
 
     @log_latency(StatementType.SQL)
+    def _handle_staging_put_stream(
+        self,
+        presigned_url: str,
+        stream: BinaryIO,
+        headers: dict = {},
+    ) -> None:
+        """Handle PUT operation with streaming data.
+
+        Args:
+            presigned_url: The presigned URL for upload
+            stream: Binary stream to upload
+            headers: HTTP headers
+
+        Raises:
+            ProgrammingError: If no input stream is provided
+            OperationalError: If the upload fails
+        """
+
+        if not stream:
+            raise ProgrammingError(
+                "No input stream provided for streaming operation",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
+
+        http_client = DatabricksHttpClient.get_instance()
+
+        # Stream directly to presigned URL
+        with http_client.execute(
+            method=HttpMethod.PUT,
+            url=presigned_url,
+            data=stream,
+            headers=headers,
+            timeout=300,  # 5 minute timeout
+        ) as response:
+            self._validate_staging_http_response(response, "stream upload")
+
+    @log_latency(StatementType.SQL)
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -746,27 +825,7 @@ class Cursor:
         with open(local_file, "rb") as fh:
             r = requests.put(url=presigned_url, data=fh, headers=headers)
 
-        # fmt: off
-        # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
-
-        OK = requests.codes.ok                  # 200
-        CREATED = requests.codes.created        # 201
-        ACCEPTED = requests.codes.accepted      # 202
-        NO_CONTENT = requests.codes.no_content  # 204
-
-        # fmt: on
-
-        if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
-            raise OperationalError(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
-                session_id_hex=self.connection.get_session_id_hex(),
-            )
-
-        if r.status_code == ACCEPTED:
-            logger.debug(
-                f"Response code {ACCEPTED} from server indicates ingestion command was accepted "
-                + "but not yet applied on the server. It's possible this command may fail later."
-            )
+        self._validate_staging_http_response(r, "file upload")
 
     @log_latency(StatementType.SQL)
     def _handle_staging_get(
@@ -816,6 +875,7 @@ class Cursor:
         operation: str,
         parameters: Optional[TParameterCollection] = None,
         enforce_embedded_schema_correctness=False,
+        input_stream: Optional[BinaryIO] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -852,7 +912,6 @@ class Cursor:
         logger.debug(
             "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
         )
-
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
@@ -890,7 +949,8 @@ class Cursor:
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
-                staging_allowed_local_path=self.connection.staging_allowed_local_path
+                staging_allowed_local_path=self.connection.staging_allowed_local_path,
+                input_stream=input_stream,
             )
 
         return self
