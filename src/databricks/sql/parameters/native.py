@@ -65,7 +65,7 @@ TAllowedParameterValue = Union[
     None,
     list[TAllowedParameterValue],
     dict[TAllowedParameterValue, TAllowedParameterValue],
-    tuple[TAllowedParameterValue, ...]
+    tuple[TAllowedParameterValue, ...],
 ]
 
 
