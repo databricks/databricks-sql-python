@@ -230,7 +230,7 @@ class TelemetryClient(BaseTelemetryClient):
 
         try:
             logger.debug("Submitting telemetry request to thread pool")
-            
+
             # Use unified HTTP client
             future = self._executor.submit(
                 self._send_with_unified_client,
@@ -239,7 +239,7 @@ class TelemetryClient(BaseTelemetryClient):
                 headers=headers,
                 timeout=900,
             )
-            
+
             future.add_done_callback(
                 lambda fut: self._telemetry_request_callback(fut, sent_count=sent_count)
             )
@@ -249,10 +249,14 @@ class TelemetryClient(BaseTelemetryClient):
     def _send_with_unified_client(self, url, data, headers):
         """Helper method to send telemetry using the unified HTTP client."""
         try:
-            response = self._http_client.request('POST', url, body=data, headers=headers, timeout=900)
+            response = self._http_client.request(
+                "POST", url, body=data, headers=headers, timeout=900
+            )
             # Convert urllib3 response to requests-like response for compatibility
             response.status_code = response.status
-            response.json = lambda: json.loads(response.data.decode()) if response.data else {}
+            response.json = (
+                lambda: json.loads(response.data.decode()) if response.data else {}
+            )
             return response
         except Exception as e:
             logger.error("Failed to send telemetry with unified client: %s", e)

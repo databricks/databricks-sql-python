@@ -87,7 +87,7 @@ class OAuthManager:
         known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
 
         try:
-            response = self.http_client.request('GET', url=known_config_url)
+            response = self.http_client.request("GET", url=known_config_url)
             # Convert urllib3 response to requests-like response for compatibility
             response.status_code = response.status
             response.json = lambda: json.loads(response.data.decode())
@@ -198,7 +198,7 @@ class OAuthManager:
         }
         # Use unified HTTP client
         response = self.http_client.request(
-            'POST', url=token_request_url, body=data, headers=headers
+            "POST", url=token_request_url, body=data, headers=headers
         )
         # Convert urllib3 response to dict for compatibility
         return json.loads(response.data.decode())

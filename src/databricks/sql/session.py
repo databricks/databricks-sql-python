@@ -193,7 +193,7 @@ class Session:
             logger.error("Attempt to close session raised a local exception: %s", e)
 
         self.is_open = False
-        
+
         # Close HTTP client if it exists
-        if hasattr(self, 'http_client') and self.http_client:
+        if hasattr(self, "http_client") and self.http_client:
             self.http_client.close()

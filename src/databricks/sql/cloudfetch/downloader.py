@@ -95,10 +95,10 @@ class ResultSetDownloadHandler:
         start_time = time.time()
 
         with self._http_client.request_context(
-            method='GET',
+            method="GET",
             url=self.link.fileLink,
             timeout=self.settings.download_timeout,
-            headers=self.link.httpHeaders
+            headers=self.link.httpHeaders,
         ) as response:
             if response.status >= 400:
                 raise Exception(f"HTTP {response.status}: {response.data.decode()}")

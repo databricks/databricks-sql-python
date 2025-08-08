@@ -354,7 +354,7 @@ class Connection:
         """Build ClientContext for HTTP client configuration."""
         from databricks.sql.auth.common import ClientContext
         from databricks.sql.types import SSLOptions
-        
+
         # Extract SSL options
         ssl_options = SSLOptions(
             tls_verify=not kwargs.get("_tls_no_verify", False),
@@ -364,22 +364,26 @@ class Connection:
             tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
-        
+
         # Build user agent
         user_agent_entry = kwargs.get("user_agent_entry", "")
         if user_agent_entry:
             user_agent = f"PyDatabricksSqlConnector/{__version__} ({user_agent_entry})"
         else:
             user_agent = f"PyDatabricksSqlConnector/{__version__}"
-        
+
         return ClientContext(
             hostname=server_hostname,
             ssl_options=ssl_options,
             socket_timeout=kwargs.get("_socket_timeout"),
-            retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count", 30),
+            retry_stop_after_attempts_count=kwargs.get(
+                "_retry_stop_after_attempts_count", 30
+            ),
             retry_delay_min=kwargs.get("_retry_delay_min", 1.0),
             retry_delay_max=kwargs.get("_retry_delay_max", 60.0),
-            retry_stop_after_attempts_duration=kwargs.get("_retry_stop_after_attempts_duration", 900.0),
+            retry_stop_after_attempts_duration=kwargs.get(
+                "_retry_stop_after_attempts_duration", 900.0
+            ),
             retry_delay_default=kwargs.get("_retry_delay_default", 1.0),
             retry_dangerous_codes=kwargs.get("_retry_dangerous_codes", []),
             http_proxy=kwargs.get("_http_proxy"),
@@ -443,7 +447,7 @@ class Connection:
     @property
     def open(self) -> bool:
         """Return whether the connection is open by checking if the session is open."""
-        return hasattr(self, 'session') and self.session.is_open
+        return hasattr(self, "session") and self.session.is_open
 
     def cursor(
         self,
@@ -792,10 +796,12 @@ class Cursor:
             )
 
         with open(local_file, "rb") as fh:
-            r = self.connection.session.http_client.request('PUT', presigned_url, body=fh.read(), headers=headers)
+            r = self.connection.session.http_client.request(
+                "PUT", presigned_url, body=fh.read(), headers=headers
+            )
             # Add compatibility attributes for urllib3 response
             r.status_code = r.status
-            if hasattr(r, 'data'):
+            if hasattr(r, "data"):
                 r.content = r.data
                 r.ok = r.status < 400
                 r.text = r.data.decode() if r.data else ""
@@ -835,10 +841,12 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        r = self.connection.session.http_client.request('GET', presigned_url, headers=headers)
+        r = self.connection.session.http_client.request(
+            "GET", presigned_url, headers=headers
+        )
         # Add compatibility attributes for urllib3 response
         r.status_code = r.status
-        if hasattr(r, 'data'):
+        if hasattr(r, "data"):
             r.content = r.data
             r.ok = r.status < 400
             r.text = r.data.decode() if r.data else ""
@@ -860,10 +868,12 @@ class Cursor:
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        r = self.connection.session.http_client.request('DELETE', presigned_url, headers=headers)
+        r = self.connection.session.http_client.request(
+            "DELETE", presigned_url, headers=headers
+        )
         # Add compatibility attributes for urllib3 response
         r.status_code = r.status
-        if hasattr(r, 'data'):
+        if hasattr(r, "data"):
             r.content = r.data
             r.ok = r.status < 400
             r.text = r.data.decode() if r.data else ""

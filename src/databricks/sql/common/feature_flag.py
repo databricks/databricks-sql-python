@@ -49,7 +49,9 @@ class FeatureFlagsContext:
        in the background, returning stale data until the refresh completes.
     """
 
-    def __init__(self, connection: "Connection", executor: ThreadPoolExecutor, http_client):
+    def __init__(
+        self, connection: "Connection", executor: ThreadPoolExecutor, http_client
+    ):
         from databricks.sql import __version__
 
         self._connection = connection
@@ -65,7 +67,7 @@ class FeatureFlagsContext:
         self._feature_flag_endpoint = (
             f"https://{self._connection.session.host}{endpoint_suffix}"
         )
-        
+
         # Use the provided HTTP client
         self._http_client = http_client
 
@@ -109,7 +111,7 @@ class FeatureFlagsContext:
             headers["User-Agent"] = self._connection.session.useragent_header
 
             response = self._http_client.request(
-                'GET', self._feature_flag_endpoint, headers=headers, timeout=30
+                "GET", self._feature_flag_endpoint, headers=headers, timeout=30
             )
             # Add compatibility attributes for urllib3 response
             response.status_code = response.status
@@ -165,7 +167,9 @@ class FeatureFlagsContextFactory:
             # Use the unique session ID as the key
             key = connection.get_session_id_hex()
             if key not in cls._context_map:
-                cls._context_map[key] = FeatureFlagsContext(connection, cls._executor, connection.session.http_client)
+                cls._context_map[key] = FeatureFlagsContext(
+                    connection, cls._executor, connection.session.http_client
+                )
             return cls._context_map[key]
 
     @classmethod

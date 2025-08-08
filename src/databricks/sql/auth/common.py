@@ -65,14 +65,16 @@ class ClientContext:
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
         self.credentials_provider = credentials_provider
-        
+
         # HTTP client configuration
         self.ssl_options = ssl_options
         self.socket_timeout = socket_timeout
         self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 30
         self.retry_delay_min = retry_delay_min or 1.0
         self.retry_delay_max = retry_delay_max or 60.0
-        self.retry_stop_after_attempts_duration = retry_stop_after_attempts_duration or 900.0
+        self.retry_stop_after_attempts_duration = (
+            retry_stop_after_attempts_duration or 900.0
+        )
         self.retry_delay_default = retry_delay_default or 5.0
         self.retry_dangerous_codes = retry_dangerous_codes or []
         self.http_proxy = http_proxy
@@ -110,8 +112,8 @@ def get_azure_tenant_id_from_host(host: str, http_client) -> str:
 
     login_url = f"{host}/aad/auth"
     logger.debug("Loading tenant ID from %s", login_url)
-    
-    with http_client.request_context('GET', login_url, allow_redirects=False) as resp:
+
+    with http_client.request_context("GET", login_url, allow_redirects=False) as resp:
         if resp.status // 100 != 3:
             raise ValueError(
                 f"Failed to get tenant ID from {login_url}: expected status code 3xx, got {resp.status}"
@@ -119,7 +121,7 @@ def get_azure_tenant_id_from_host(host: str, http_client) -> str:
         entra_id_endpoint = dict(resp.headers).get("Location")
         if entra_id_endpoint is None:
             raise ValueError(f"No Location header in response from {login_url}")
-    
+
     # The Location header has the following form: https://login.microsoftonline.com/<tenant-id>/oauth2/authorize?...
     # The domain may change depending on the Azure cloud (e.g. login.microsoftonline.us for US Government cloud).
     url = urlparse(entra_id_endpoint)
