@@ -10,7 +10,7 @@ from databricks.sql.auth.authenticators import (
 from databricks.sql.auth.common import AuthType, ClientContext
 
 
-def get_auth_provider(cfg: ClientContext):
+def get_auth_provider(cfg: ClientContext, http_client):
     if cfg.credentials_provider:
         return ExternalAuthProvider(cfg.credentials_provider)
     elif cfg.auth_type == AuthType.AZURE_SP_M2M.value:
@@ -113,4 +113,4 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
     )
-    return get_auth_provider(cfg)
+    return get_auth_provider(cfg, http_client)

@@ -22,6 +22,7 @@ class Session:
         self,
         server_hostname: str,
         http_path: str,
+        http_client: UnifiedHttpClient,
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Optional[Dict[str, Any]] = None,
         catalog: Optional[str] = None,
@@ -75,9 +76,8 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
-        # Create HTTP client configuration and unified HTTP client
-        self.client_context = self._build_client_context(server_hostname, **kwargs)
-        self.http_client = UnifiedHttpClient(self.client_context)
+        # Use the provided HTTP client (created in Connection)
+        self.http_client = http_client
 
         # Create auth provider with HTTP client context
         self.auth_provider = get_python_sql_connector_auth_provider(
@@ -94,26 +94,6 @@ class Session:
         )
 
         self.protocol_version = None
-
-    def _build_client_context(self, server_hostname: str, **kwargs) -> ClientContext:
-        """Build ClientContext with HTTP configuration from kwargs."""
-        return ClientContext(
-            hostname=server_hostname,
-            ssl_options=self.ssl_options,
-            socket_timeout=kwargs.get("_socket_timeout"),
-            retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count"),
-            retry_delay_min=kwargs.get("_retry_delay_min"),
-            retry_delay_max=kwargs.get("_retry_delay_max"),
-            retry_stop_after_attempts_duration=kwargs.get("_retry_stop_after_attempts_duration"),
-            retry_delay_default=kwargs.get("_retry_delay_default"),
-            retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
-            http_proxy=kwargs.get("http_proxy"),
-            proxy_username=kwargs.get("proxy_username"),
-            proxy_password=kwargs.get("proxy_password"),
-            pool_connections=kwargs.get("pool_connections"),
-            pool_maxsize=kwargs.get("pool_maxsize"),
-            user_agent=self.useragent_header,
-        )
 
     def _create_backend(
         self,
@@ -142,6 +122,7 @@ class Session:
             "http_headers": all_headers,
             "auth_provider": auth_provider,
             "ssl_options": self.ssl_options,
+            "http_client": self.http_client,
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }

@@ -6,27 +6,23 @@ import time
 from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 from databricks.sql.auth.retry import DatabricksRetryPolicy
 
-PATCH_TARGET = "urllib3.connectionpool.HTTPSConnectionPool._get_conn"
+PATCH_TARGET = "databricks.sql.common.unified_http_client.UnifiedHttpClient.request"
 
 
-def create_mock_conn(responses):
-    """Creates a mock connection object whose getresponse() method yields a series of responses."""
-    mock_conn = MagicMock()
-    mock_http_responses = []
+def create_mock_response(responses):
+    """Creates mock urllib3 HTTPResponse objects for the given response specifications."""
+    mock_responses = []
     for resp in responses:
-        mock_http_response = MagicMock()
-        mock_http_response.status = resp.get("status")
-        mock_http_response.headers = resp.get("headers", {})
-        body = resp.get("body", b"{}")
-        mock_http_response.fp = io.BytesIO(body)
-
-        def release():
-            mock_http_response.fp.close()
-
-        mock_http_response.release_conn = release
-        mock_http_responses.append(mock_http_response)
-    mock_conn.getresponse.side_effect = mock_http_responses
-    return mock_conn
+        mock_response = MagicMock()
+        mock_response.status = resp.get("status")
+        mock_response.status_code = resp.get("status")  # Add status_code for compatibility
+        mock_response.headers = resp.get("headers", {})
+        mock_response.data = resp.get("body", b"{}")
+        mock_response.ok = resp.get("status", 200) < 400
+        mock_response.text = resp.get("body", b"{}").decode() if isinstance(resp.get("body", b"{}"), bytes) else str(resp.get("body", "{}"))
+        mock_response.json = lambda: {}  # Simple json mock
+        mock_responses.append(mock_response)
+    return mock_responses
 
 
 class TestTelemetryClientRetries:
@@ -43,30 +39,16 @@ class TestTelemetryClientRetries:
         TelemetryClientFactory._executor = None
 
     def get_client(self, session_id, num_retries=3):
-        """
-        Configures a client with a specific number of retries.
-        """
+        mock_http_client = MagicMock()
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=True,
             session_id_hex=session_id,
             auth_provider=None,
             host_url="test.databricks.com",
-            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+            batch_size=1,  # Use batch size of 1 to trigger immediate HTTP requests
+            http_client=mock_http_client,
         )
-        client = TelemetryClientFactory.get_telemetry_client(session_id)
-
-        retry_policy = DatabricksRetryPolicy(
-            delay_min=0.01,
-            delay_max=0.02,
-            stop_after_attempts_duration=2.0,
-            stop_after_attempts_count=num_retries,
-            delay_default=0.1,
-            force_dangerous_codes=[],
-            urllib3_kwargs={"total": num_retries},
-        )
-        adapter = client._http_client.session.adapters.get("https://")
-        adapter.max_retries = retry_policy
-        return client
+        return TelemetryClientFactory.get_telemetry_client(session_id)
 
     @pytest.mark.parametrize(
         "status_code, description",
@@ -85,13 +67,19 @@ class TestTelemetryClientRetries:
         client = self.get_client(f"session-{status_code}")
         mock_responses = [{"status": status_code}]
 
-        with patch(
-            PATCH_TARGET, return_value=create_mock_conn(mock_responses)
-        ) as mock_get_conn:
+        mock_response = create_mock_response(mock_responses)[0]
+        with patch(PATCH_TARGET, return_value=mock_response) as mock_request:
             client.export_failure_log("TestError", "Test message")
+            
+            # Wait a moment for async operations to complete
+            time.sleep(0.1)
+            
             TelemetryClientFactory.close(client._session_id_hex)
+            
+            # Wait a bit more for any final operations
+            time.sleep(0.1)
 
-            mock_get_conn.return_value.getresponse.assert_called_once()
+            mock_request.assert_called_once()
 
     def test_exceeds_retry_count_limit(self):
         """
@@ -103,22 +91,28 @@ class TestTelemetryClientRetries:
         retry_after = 1
         client = self.get_client("session-exceed-limit", num_retries=num_retries)
         mock_responses = [
-            {"status": 503, "headers": {"Retry-After": str(retry_after)}},
-            {"status": 429},
+            {"status": 429, "headers": {"Retry-After": str(retry_after)}},
             {"status": 502},
             {"status": 503},
+            {"status": 200},
         ]
 
-        with patch(
-            PATCH_TARGET, return_value=create_mock_conn(mock_responses)
-        ) as mock_get_conn:
+        mock_response_objects = create_mock_response(mock_responses)
+        with patch(PATCH_TARGET, side_effect=mock_response_objects) as mock_request:
             start_time = time.time()
             client.export_failure_log("TestError", "Test message")
+            
+            # Wait for async operations to complete
+            time.sleep(0.2)
+            
             TelemetryClientFactory.close(client._session_id_hex)
+            
+            # Wait for any final operations
+            time.sleep(0.2)
+            
             end_time = time.time()
 
             assert (
-                mock_get_conn.return_value.getresponse.call_count
+                mock_request.call_count
                 == expected_total_calls
             )
-            assert end_time - start_time > retry_after

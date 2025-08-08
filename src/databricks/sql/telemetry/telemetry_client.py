@@ -3,7 +3,6 @@ import time
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional, TYPE_CHECKING
-from databricks.sql.common.http import TelemetryHttpClient
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -37,6 +36,8 @@ import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+
+from src.databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -511,7 +512,6 @@ class TelemetryClientFactory:
                 try:
                     TelemetryClientFactory._stop_flush_thread()
                     TelemetryClientFactory._executor.shutdown(wait=True)
-                    TelemetryHttpClient.close()
                 except Exception as e:
                     logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
@@ -524,6 +524,7 @@ class TelemetryClientFactory:
         host_url: str,
         http_path: str,
         port: int,
+        http_client: UnifiedHttpClient,
         user_agent: Optional[str] = None,
     ):
         """Send error telemetry when connection creation fails, without requiring a session"""
@@ -536,6 +537,7 @@ class TelemetryClientFactory:
             auth_provider=None,
             host_url=host_url,
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+            http_client=http_client,
         )
 
         telemetry_client = TelemetryClientFactory.get_telemetry_client(

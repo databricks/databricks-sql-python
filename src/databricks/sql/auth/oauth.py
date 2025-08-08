@@ -61,22 +61,6 @@ class RefreshableTokenSource(ABC):
         pass
 
 
-class IgnoreNetrcAuth(requests.auth.AuthBase):
-    """This auth method is a no-op.
-
-    We use it to force requestslib to not use .netrc to write auth headers
-    when making .post() requests to the oauth token endpoints, since these
-    don't require authentication.
-
-    In cases where .netrc is outdated or corrupt, these requests will fail.
-
-    See issue #121
-    """
-
-    def __call__(self, r):
-        return r
-
-
 class OAuthManager:
     def __init__(
         self,
@@ -103,7 +87,6 @@ class OAuthManager:
         known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
 
         try:
-            from databricks.sql.common.unified_http_client import IgnoreNetrcAuth
             response = self.http_client.request('GET', url=known_config_url)
             # Convert urllib3 response to requests-like response for compatibility
             response.status_code = response.status
@@ -214,7 +197,6 @@ class OAuthManager:
             "Content-Type": "application/x-www-form-urlencoded",
         }
         # Use unified HTTP client
-        from databricks.sql.common.unified_http_client import IgnoreNetrcAuth
         response = self.http_client.request(
             'POST', url=token_request_url, body=data, headers=headers
         )

@@ -50,6 +50,9 @@ from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
 from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
 
+from databricks.sql.auth.common import ClientContext
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
+
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOpenSessionResp,
     TSparkParameter,
@@ -251,10 +254,14 @@ class Connection:
             "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
+        client_context = self._build_client_context(server_hostname, **kwargs)
+        http_client = UnifiedHttpClient(client_context)
+
         try:
             self.session = Session(
                 server_hostname,
                 http_path,
+                http_client,
                 http_headers,
                 session_configuration,
                 catalog,
@@ -270,6 +277,7 @@ class Connection:
                 host_url=server_hostname,
                 http_path=http_path,
                 port=kwargs.get("_port", 443),
+                http_client=http_client,
                 user_agent=self.session.useragent_header
                 if hasattr(self, "session")
                 else None,
@@ -341,6 +349,46 @@ class Connection:
             )
 
         return value
+
+    def _build_client_context(self, server_hostname: str, **kwargs):
+        """Build ClientContext for HTTP client configuration."""
+        from databricks.sql.auth.common import ClientContext
+        from databricks.sql.types import SSLOptions
+        
+        # Extract SSL options
+        ssl_options = SSLOptions(
+            tls_verify=not kwargs.get("_tls_no_verify", False),
+            tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
+            tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
+            tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
+            tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
+            tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
+        )
+        
+        # Build user agent
+        user_agent_entry = kwargs.get("user_agent_entry", "")
+        if user_agent_entry:
+            user_agent = f"PyDatabricksSqlConnector/{__version__} ({user_agent_entry})"
+        else:
+            user_agent = f"PyDatabricksSqlConnector/{__version__}"
+        
+        return ClientContext(
+            hostname=server_hostname,
+            ssl_options=ssl_options,
+            socket_timeout=kwargs.get("_socket_timeout"),
+            retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count", 30),
+            retry_delay_min=kwargs.get("_retry_delay_min", 1.0),
+            retry_delay_max=kwargs.get("_retry_delay_max", 60.0),
+            retry_stop_after_attempts_duration=kwargs.get("_retry_stop_after_attempts_duration", 900.0),
+            retry_delay_default=kwargs.get("_retry_delay_default", 1.0),
+            retry_dangerous_codes=kwargs.get("_retry_dangerous_codes", []),
+            http_proxy=kwargs.get("_http_proxy"),
+            proxy_username=kwargs.get("_proxy_username"),
+            proxy_password=kwargs.get("_proxy_password"),
+            pool_connections=kwargs.get("_pool_connections", 1),
+            pool_maxsize=kwargs.get("_pool_maxsize", 1),
+            user_agent=user_agent,
+        )
 
     # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
     def __enter__(self) -> "Connection":
