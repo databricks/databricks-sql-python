@@ -7,7 +7,7 @@ whether attachment is set.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 from databricks.sql.backend.sea.queue import (
     JsonQueue,
@@ -184,6 +184,7 @@ class TestSeaResultSetQueueFactory:
     def test_build_queue_json_array(self, json_manifest, sample_data):
         """Test building a JSON array queue."""
         result_data = ResultData(data=sample_data)
+        mock_http_client = MagicMock()
 
         queue = SeaResultSetQueueFactory.build_queue(
             result_data=result_data,
@@ -194,6 +195,7 @@ class TestSeaResultSetQueueFactory:
             max_download_threads=10,
             sea_client=Mock(),
             lz4_compressed=False,
+            http_client=mock_http_client,
         )
 
         assert isinstance(queue, JsonQueue)
@@ -217,6 +219,8 @@ class TestSeaResultSetQueueFactory:
         ]
         result_data = ResultData(data=None, external_links=external_links)
 
+        mock_http_client = MagicMock()
+
         with patch(
             "databricks.sql.backend.sea.queue.ResultFileDownloadManager"
         ), patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
@@ -229,6 +233,7 @@ class TestSeaResultSetQueueFactory:
                 max_download_threads=10,
                 sea_client=mock_sea_client,
                 lz4_compressed=False,
+                http_client=mock_http_client,
             )
 
         assert isinstance(queue, SeaCloudFetchQueue)
@@ -236,6 +241,7 @@ class TestSeaResultSetQueueFactory:
     def test_build_queue_invalid_format(self, invalid_manifest):
         """Test building a queue with invalid format."""
         result_data = ResultData(data=[])
+        mock_http_client = MagicMock()
 
         with pytest.raises(ProgrammingError, match="Invalid result format"):
             SeaResultSetQueueFactory.build_queue(
@@ -247,6 +253,7 @@ class TestSeaResultSetQueueFactory:
                 max_download_threads=10,
                 sea_client=Mock(),
                 lz4_compressed=False,
+                http_client=mock_http_client,
             )
 
 
@@ -339,6 +346,7 @@ class TestSeaCloudFetchQueue:
     ):
         """Test initialization with valid initial link."""
         # Create a queue with valid initial link
+        mock_http_client = MagicMock()
         with patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
             queue = SeaCloudFetchQueue(
                 result_data=ResultData(external_links=[sample_external_link]),
@@ -349,6 +357,7 @@ class TestSeaCloudFetchQueue:
                 total_chunk_count=1,
                 lz4_compressed=False,
                 description=description,
+                http_client=mock_http_client,
             )
 
         # Verify attributes
@@ -367,6 +376,7 @@ class TestSeaCloudFetchQueue:
     ):
         """Test initialization with no initial links."""
         # Create a queue with empty initial links
+        mock_http_client = MagicMock()
         queue = SeaCloudFetchQueue(
             result_data=ResultData(external_links=[]),
             max_download_threads=5,
@@ -376,6 +386,7 @@ class TestSeaCloudFetchQueue:
             total_chunk_count=0,
             lz4_compressed=False,
             description=description,
+            http_client=mock_http_client,
         )
         assert queue.table is None
 
@@ -462,7 +473,7 @@ class TestHybridDisposition:
         # Create result data with attachment
         attachment_data = b"mock_arrow_data"
         result_data = ResultData(attachment=attachment_data)
-
+        mock_http_client = MagicMock()
         # Build queue
         queue = SeaResultSetQueueFactory.build_queue(
             result_data=result_data,
@@ -473,6 +484,7 @@ class TestHybridDisposition:
             max_download_threads=10,
             sea_client=mock_sea_client,
             lz4_compressed=False,
+            http_client=mock_http_client,
         )
 
         # Verify ArrowQueue was created
@@ -508,7 +520,8 @@ class TestHybridDisposition:
         # Create result data with external links but no attachment
         result_data = ResultData(external_links=external_links, attachment=None)
 
-        # Build queue
+        # Build queue   
+        mock_http_client = MagicMock()
         queue = SeaResultSetQueueFactory.build_queue(
             result_data=result_data,
             manifest=arrow_manifest,
@@ -518,6 +531,7 @@ class TestHybridDisposition:
             max_download_threads=10,
             sea_client=mock_sea_client,
             lz4_compressed=False,
+            http_client=mock_http_client,
         )
 
         # Verify SeaCloudFetchQueue was created
@@ -548,7 +562,7 @@ class TestHybridDisposition:
 
         # Create result data with attachment
         result_data = ResultData(attachment=compressed_data)
-
+        mock_http_client = MagicMock()
         # Build queue with lz4_compressed=True
         queue = SeaResultSetQueueFactory.build_queue(
             result_data=result_data,
@@ -559,6 +573,7 @@ class TestHybridDisposition:
             max_download_threads=10,
             sea_client=mock_sea_client,
             lz4_compressed=True,
+            http_client=mock_http_client,
         )
 
         # Verify ArrowQueue was created with decompressed data

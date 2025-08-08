@@ -50,6 +50,7 @@ class SeaResultSetQueueFactory(ABC):
         max_download_threads: int,
         sea_client: SeaDatabricksClient,
         lz4_compressed: bool,
+        http_client,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue for SEA backend.
@@ -94,6 +95,7 @@ class SeaResultSetQueueFactory(ABC):
                 total_chunk_count=manifest.total_chunk_count,
                 lz4_compressed=lz4_compressed,
                 description=description,
+                http_client=http_client,
             )
         raise ProgrammingError("Invalid result format")
 
@@ -309,6 +311,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
         sea_client: SeaDatabricksClient,
         statement_id: str,
         total_chunk_count: int,
+        http_client,
         lz4_compressed: bool = False,
         description: List[Tuple] = [],
     ):
@@ -337,6 +340,7 @@ class SeaCloudFetchQueue(CloudFetchQueue):
             # TODO: fix these arguments when telemetry is implemented in SEA
             session_id_hex=None,
             chunk_id=0,
+            http_client=http_client,
         )
 
         logger.debug(

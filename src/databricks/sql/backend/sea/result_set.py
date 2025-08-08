@@ -64,6 +64,7 @@ class SeaResultSet(ResultSet):
             max_download_threads=sea_client.max_download_threads,
             sea_client=sea_client,
             lz4_compressed=execute_response.lz4_compressed,
+            http_client=connection.session.http_client,
         )
 
         # Call parent constructor with common attributes
