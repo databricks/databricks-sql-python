@@ -63,9 +63,9 @@ TAllowedParameterValue = Union[
     bool,
     decimal.Decimal,
     None,
-    list['TAllowedParameterValue'],
-    dict['TAllowedParameterValue', 'TAllowedParameterValue'],
-    tuple['TAllowedParameterValue', ...],
+    list["TAllowedParameterValue"],
+    dict["TAllowedParameterValue", "TAllowedParameterValue"],
+    tuple["TAllowedParameterValue", ...],
 ]
 
 
