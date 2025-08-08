@@ -10,6 +10,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkParameterValueArg,
 )
 
+
 class ParameterApproach(Enum):
     INLINE = 1
     NATIVE = 2
