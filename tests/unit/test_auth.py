@@ -294,7 +294,7 @@ class TestClientCredentialsTokenSource:
             mock_http_client.execute.return_value.__enter__.return_value = mock_response
             mock_http_client.execute.return_value.__exit__.return_value = None
             
-            with pytest.raises(Exception):
+            with pytest.raises(Exception) as e:
                 token_source.get_token()
             assert "Failed to get token: 400" in str(e.value)
 

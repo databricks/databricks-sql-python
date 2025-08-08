@@ -75,8 +75,9 @@ class TestSession:
         call_kwargs = mock_client_class.call_args[1]
         assert ("foo", "bar") in call_kwargs["http_headers"]
 
+    @patch("%s.client.UnifiedHttpClient" % PACKAGE_NAME)
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_tls_arg_passthrough(self, mock_client_class):
+    def test_tls_arg_passthrough(self, mock_client_class, mock_http_client):
         databricks.sql.connect(
             **self.DUMMY_CONNECTION_ARGS,
             _tls_verify_hostname="hostname",

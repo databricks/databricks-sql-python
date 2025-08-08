@@ -443,7 +443,7 @@ class Connection:
     @property
     def open(self) -> bool:
         """Return whether the connection is open by checking if the session is open."""
-        return self.session.is_open
+        return hasattr(self, 'session') and self.session.is_open
 
     def cursor(
         self,
