@@ -15,6 +15,7 @@ ALLOWED_SESSION_CONF_TO_DEFAULT_VALUES_MAP: Dict[str, str] = {
     "STATEMENT_TIMEOUT": "0",
     "TIMEZONE": "UTC",
     "USE_CACHED_RESULT": "true",
+    "QUERY_TAGS": "",
 }
 
 
