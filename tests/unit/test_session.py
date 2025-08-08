@@ -154,25 +154,13 @@ class TestSession:
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_configuration_passthrough(self, mock_client_class):
-        mock_session_config = Mock()
+        mock_session_config = {"ANSI_MODE": "FALSE", "QUERY_TAGS": "team:engineering,project:data-pipeline"}
         databricks.sql.connect(
             session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
         )
 
         call_kwargs = mock_client_class.return_value.open_session.call_args[1]
         assert call_kwargs["session_configuration"] == mock_session_config
-
-    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_query_tags_configuration_passthrough(self, mock_client_class):
-        """Test that Query Tags are properly passed through to the backend."""
-        query_tags_config = {"QUERY_TAGS": "team:marketing,dashboard:abc123"}
-        databricks.sql.connect(
-            session_configuration=query_tags_config, **self.DUMMY_CONNECTION_ARGS
-        )
-
-        call_kwargs = mock_client_class.return_value.open_session.call_args[1]
-        assert call_kwargs["session_configuration"] == query_tags_config
-        assert call_kwargs["session_configuration"]["QUERY_TAGS"] == "team:marketing,dashboard:abc123"
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_initial_namespace_passthrough(self, mock_client_class):

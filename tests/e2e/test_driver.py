@@ -848,10 +848,21 @@ class TestPySQLCoreSuite(
                 query = "select * from range(1000000000)"
                 cursor.execute(query)
 
-    def test_ssp_passthrough(self):
+    @pytest.mark.parametrize(
+        "extra_params",
+        [
+            {
+                "use_sea": False,
+            },
+            {
+                "use_sea": True,
+            },
+        ],
+    )
+    def test_ssp_passthrough(self, extra_params):
         for enable_ansi in (True, False):
             with self.cursor(
-                {"session_configuration": {"ansi_mode": enable_ansi, "QUERY_TAGS": "team:marketing,dashboard:abc123,driver:python"}}
+                {"session_configuration": {"ansi_mode": enable_ansi, "QUERY_TAGS": "team:marketing,dashboard:abc123,driver:python"}, **extra_params}
             ) as cursor:
                 cursor.execute("SET ansi_mode")
                 assert list(cursor.fetchone()) == ["ansi_mode", str(enable_ansi)]
