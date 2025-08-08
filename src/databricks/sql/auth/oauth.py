@@ -9,10 +9,8 @@ from http.server import HTTPServer
 from typing import List, Optional
 
 import oauthlib.oauth2
-import requests
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
-from requests.exceptions import RequestException
-from databricks.sql.common.http import HttpMethod, DatabricksHttpClient, HttpHeader
+from databricks.sql.common.http import HttpMethod, HttpHeader
 from databricks.sql.common.http import OAuthResponse
 from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
 from databricks.sql.auth.endpoint import OAuthEndpointCollection
@@ -85,11 +83,13 @@ class OAuthManager:
         port_range: List[int],
         client_id: str,
         idp_endpoint: OAuthEndpointCollection,
+        http_client,
     ):
         self.port_range = port_range
         self.client_id = client_id
         self.redirect_port = None
         self.idp_endpoint = idp_endpoint
+        self.http_client = http_client
 
     @staticmethod
     def __token_urlsafe(nbytes=32):
@@ -103,8 +103,12 @@ class OAuthManager:
         known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
 
         try:
-            response = requests.get(url=known_config_url, auth=IgnoreNetrcAuth())
-        except RequestException as e:
+            from databricks.sql.common.unified_http_client import IgnoreNetrcAuth
+            response = self.http_client.request('GET', url=known_config_url)
+            # Convert urllib3 response to requests-like response for compatibility
+            response.status_code = response.status
+            response.json = lambda: json.loads(response.data.decode())
+        except Exception as e:
             logger.error(
                 f"Unable to fetch OAuth configuration from {known_config_url}.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
@@ -122,7 +126,7 @@ class OAuthManager:
             raise RuntimeError(msg)
         try:
             return response.json()
-        except requests.exceptions.JSONDecodeError as e:
+        except Exception as e:
             logger.error(
                 f"Unable to decode OAuth configuration from {known_config_url}.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
@@ -209,10 +213,13 @@ class OAuthManager:
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        response = requests.post(
-            url=token_request_url, data=data, headers=headers, auth=IgnoreNetrcAuth()
+        # Use unified HTTP client
+        from databricks.sql.common.unified_http_client import IgnoreNetrcAuth
+        response = self.http_client.request(
+            'POST', url=token_request_url, body=data, headers=headers
         )
-        return response.json()
+        # Convert urllib3 response to dict for compatibility
+        return json.loads(response.data.decode())
 
     def __send_refresh_token_request(self, hostname, refresh_token):
         oauth_config = self.__fetch_well_known_config(hostname)
@@ -320,6 +327,7 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         token_url,
         client_id,
         client_secret,
+        http_client,
         extra_params: dict = {},
     ):
         self.client_id = client_id
@@ -327,7 +335,7 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         self.token_url = token_url
         self.extra_params = extra_params
         self.token: Optional[Token] = None
-        self._http_client = DatabricksHttpClient.get_instance()
+        self._http_client = http_client
 
     def get_token(self) -> Token:
         if self.token is None or self.token.is_expired():

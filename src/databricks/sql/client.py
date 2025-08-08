@@ -6,7 +6,6 @@ try:
     import pyarrow
 except ImportError:
     pyarrow = None
-import requests
 import json
 import os
 import decimal
@@ -292,6 +291,7 @@ class Connection:
             auth_provider=self.session.auth_provider,
             host_url=self.session.host,
             batch_size=self.telemetry_batch_size,
+            http_client=self.session.http_client,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
@@ -744,16 +744,20 @@ class Cursor:
             )
 
         with open(local_file, "rb") as fh:
-            r = requests.put(url=presigned_url, data=fh, headers=headers)
+            r = self.connection.session.http_client.request('PUT', presigned_url, body=fh.read(), headers=headers)
+            # Add compatibility attributes for urllib3 response
+            r.status_code = r.status
+            if hasattr(r, 'data'):
+                r.content = r.data
+                r.ok = r.status < 400
+                r.text = r.data.decode() if r.data else ""
 
         # fmt: off
-        # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
-
-        OK = requests.codes.ok                  # 200
-        CREATED = requests.codes.created        # 201
-        ACCEPTED = requests.codes.accepted      # 202
-        NO_CONTENT = requests.codes.no_content  # 204
-
+        # HTTP status codes
+        OK = 200
+        CREATED = 201
+        ACCEPTED = 202
+        NO_CONTENT = 204
         # fmt: on
 
         if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
@@ -783,7 +787,13 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        r = requests.get(url=presigned_url, headers=headers)
+        r = self.connection.session.http_client.request('GET', presigned_url, headers=headers)
+        # Add compatibility attributes for urllib3 response
+        r.status_code = r.status
+        if hasattr(r, 'data'):
+            r.content = r.data
+            r.ok = r.status < 400
+            r.text = r.data.decode() if r.data else ""
 
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
@@ -802,7 +812,13 @@ class Cursor:
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        r = requests.delete(url=presigned_url, headers=headers)
+        r = self.connection.session.http_client.request('DELETE', presigned_url, headers=headers)
+        # Add compatibility attributes for urllib3 response
+        r.status_code = r.status
+        if hasattr(r, 'data'):
+            r.content = r.data
+            r.ok = r.status < 400
+            r.text = r.data.decode() if r.data else ""
 
         if not r.ok:
             raise OperationalError(

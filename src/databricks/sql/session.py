@@ -4,6 +4,7 @@ from typing import Dict, Tuple, List, Optional, Any, Type
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.common import ClientContext
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
@@ -11,6 +12,7 @@ from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +43,6 @@ class Session:
         self.catalog = catalog
         self.schema = schema
         self.http_path = http_path
-
-        self.auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, **kwargs
-        )
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
@@ -77,6 +75,15 @@ class Session:
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
         )
 
+        # Create HTTP client configuration and unified HTTP client
+        self.client_context = self._build_client_context(server_hostname, **kwargs)
+        self.http_client = UnifiedHttpClient(self.client_context)
+
+        # Create auth provider with HTTP client context
+        self.auth_provider = get_python_sql_connector_auth_provider(
+            server_hostname, http_client=self.http_client, **kwargs
+        )
+
         self.backend = self._create_backend(
             server_hostname,
             http_path,
@@ -87,6 +94,26 @@ class Session:
         )
 
         self.protocol_version = None
+
+    def _build_client_context(self, server_hostname: str, **kwargs) -> ClientContext:
+        """Build ClientContext with HTTP configuration from kwargs."""
+        return ClientContext(
+            hostname=server_hostname,
+            ssl_options=self.ssl_options,
+            socket_timeout=kwargs.get("_socket_timeout"),
+            retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count"),
+            retry_delay_min=kwargs.get("_retry_delay_min"),
+            retry_delay_max=kwargs.get("_retry_delay_max"),
+            retry_stop_after_attempts_duration=kwargs.get("_retry_stop_after_attempts_duration"),
+            retry_delay_default=kwargs.get("_retry_delay_default"),
+            retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
+            http_proxy=kwargs.get("http_proxy"),
+            proxy_username=kwargs.get("proxy_username"),
+            proxy_password=kwargs.get("proxy_password"),
+            pool_connections=kwargs.get("pool_connections"),
+            pool_maxsize=kwargs.get("pool_maxsize"),
+            user_agent=self.useragent_header,
+        )
 
     def _create_backend(
         self,
@@ -185,3 +212,7 @@ class Session:
             logger.error("Attempt to close session raised a local exception: %s", e)
 
         self.is_open = False
+        
+        # Close HTTP client if it exists
+        if hasattr(self, 'http_client') and self.http_client:
+            self.http_client.close()

@@ -64,6 +64,7 @@ class ThriftResultSetQueueFactory(ABC):
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
+        http_client,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
     ) -> ResultSetQueue:
@@ -104,15 +105,16 @@ class ThriftResultSetQueueFactory(ABC):
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
             return ThriftCloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
-                start_row_offset=t_row_set.startRowOffset,
-                result_links=t_row_set.resultLinks,
-                lz4_compressed=lz4_compressed,
-                description=description,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
                 session_id_hex=session_id_hex,
                 statement_id=statement_id,
                 chunk_id=chunk_id,
+                http_client=http_client,
+                start_row_offset=t_row_set.startRowOffset,
+                result_links=t_row_set.resultLinks,
+                lz4_compressed=lz4_compressed,
+                description=description,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -224,6 +226,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
+        http_client,
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
@@ -247,6 +250,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
         self.chunk_id = chunk_id
+        self._http_client = http_client
 
         # Table state
         self.table = None
@@ -261,6 +265,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             session_id_hex=session_id_hex,
             statement_id=statement_id,
             chunk_id=chunk_id,
+            http_client=http_client,
         )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
@@ -370,6 +375,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
+        http_client,
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
@@ -396,6 +402,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             session_id_hex=session_id_hex,
             statement_id=statement_id,
             chunk_id=chunk_id,
+            http_client=http_client,
         )
 
         self.start_row_index = start_row_offset

@@ -63,6 +63,7 @@ class DatabricksOAuthProvider(AuthProvider):
         redirect_port_range: List[int],
         client_id: str,
         scopes: List[str],
+        http_client,
         auth_type: str = "databricks-oauth",
     ):
         try:
@@ -79,6 +80,7 @@ class DatabricksOAuthProvider(AuthProvider):
                 port_range=redirect_port_range,
                 client_id=client_id,
                 idp_endpoint=idp_endpoint,
+                http_client=http_client,
             )
             self._hostname = hostname
             self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(cloud_scopes)

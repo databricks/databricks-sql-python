@@ -35,6 +35,7 @@ def get_auth_provider(cfg: ClientContext):
             cfg.oauth_client_id,
             cfg.oauth_scopes,
             cfg.auth_type,
+            http_client=http_client,
         )
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
@@ -53,6 +54,7 @@ def get_auth_provider(cfg: ClientContext):
                 cfg.oauth_redirect_port_range,
                 cfg.oauth_client_id,
                 cfg.oauth_scopes,
+                http_client=http_client,
             )
         else:
             raise RuntimeError("No valid authentication settings!")
@@ -79,7 +81,7 @@ def get_client_id_and_redirect_port(use_azure_auth: bool):
     )
 
 
-def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
+def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs):
     # TODO : unify all the auth mechanisms with the Python SDK
 
     auth_type = kwargs.get("auth_type")

@@ -2,7 +2,6 @@ from enum import Enum
 import logging
 from typing import Optional, List
 from urllib.parse import urlparse
-from databricks.sql.common.http import DatabricksHttpClient, HttpMethod
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +35,21 @@ class ClientContext:
         tls_client_cert_file: Optional[str] = None,
         oauth_persistence=None,
         credentials_provider=None,
+        # HTTP client configuration parameters
+        ssl_options=None,  # SSLOptions type
+        socket_timeout: Optional[float] = None,
+        retry_stop_after_attempts_count: Optional[int] = None,
+        retry_delay_min: Optional[float] = None,
+        retry_delay_max: Optional[float] = None,
+        retry_stop_after_attempts_duration: Optional[float] = None,
+        retry_delay_default: Optional[float] = None,
+        retry_dangerous_codes: Optional[List[int]] = None,
+        http_proxy: Optional[str] = None,
+        proxy_username: Optional[str] = None,
+        proxy_password: Optional[str] = None,
+        pool_connections: Optional[int] = None,
+        pool_maxsize: Optional[int] = None,
+        user_agent: Optional[str] = None,
     ):
         self.hostname = hostname
         self.access_token = access_token
@@ -51,6 +65,22 @@ class ClientContext:
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
         self.credentials_provider = credentials_provider
+        
+        # HTTP client configuration
+        self.ssl_options = ssl_options
+        self.socket_timeout = socket_timeout
+        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 30
+        self.retry_delay_min = retry_delay_min or 1.0
+        self.retry_delay_max = retry_delay_max or 60.0
+        self.retry_stop_after_attempts_duration = retry_stop_after_attempts_duration or 900.0
+        self.retry_delay_default = retry_delay_default or 5.0
+        self.retry_dangerous_codes = retry_dangerous_codes or []
+        self.http_proxy = http_proxy
+        self.proxy_username = proxy_username
+        self.proxy_password = proxy_password
+        self.pool_connections = pool_connections or 10
+        self.pool_maxsize = pool_maxsize or 20
+        self.user_agent = user_agent
 
 
 def get_effective_azure_login_app_id(hostname) -> str:
@@ -69,7 +99,7 @@ def get_effective_azure_login_app_id(hostname) -> str:
     return AzureAppId.PROD.value[1]
 
 
-def get_azure_tenant_id_from_host(host: str, http_client=None) -> str:
+def get_azure_tenant_id_from_host(host: str, http_client) -> str:
     """
     Load the Azure tenant ID from the Azure Databricks login page.
 
@@ -78,23 +108,22 @@ def get_azure_tenant_id_from_host(host: str, http_client=None) -> str:
     the Azure login page, and the tenant ID is extracted from the redirect URL.
     """
 
-    if http_client is None:
-        http_client = DatabricksHttpClient.get_instance()
-
     login_url = f"{host}/aad/auth"
     logger.debug("Loading tenant ID from %s", login_url)
-    with http_client.execute(HttpMethod.GET, login_url, allow_redirects=False) as resp:
-        if resp.status_code // 100 != 3:
+    
+    with http_client.request_context('GET', login_url, allow_redirects=False) as resp:
+        if resp.status // 100 != 3:
             raise ValueError(
-                f"Failed to get tenant ID from {login_url}: expected status code 3xx, got {resp.status_code}"
+                f"Failed to get tenant ID from {login_url}: expected status code 3xx, got {resp.status}"
             )
-        entra_id_endpoint = resp.headers.get("Location")
+        entra_id_endpoint = dict(resp.headers).get("Location")
         if entra_id_endpoint is None:
             raise ValueError(f"No Location header in response from {login_url}")
-        # The Location header has the following form: https://login.microsoftonline.com/<tenant-id>/oauth2/authorize?...
-        # The domain may change depending on the Azure cloud (e.g. login.microsoftonline.us for US Government cloud).
-        url = urlparse(entra_id_endpoint)
-        path_segments = url.path.split("/")
-        if len(path_segments) < 2:
-            raise ValueError(f"Invalid path in Location header: {url.path}")
-        return path_segments[1]
+    
+    # The Location header has the following form: https://login.microsoftonline.com/<tenant-id>/oauth2/authorize?...
+    # The domain may change depending on the Azure cloud (e.g. login.microsoftonline.us for US Government cloud).
+    url = urlparse(entra_id_endpoint)
+    path_segments = url.path.split("/")
+    if len(path_segments) < 2:
+        raise ValueError(f"Invalid path in Location header: {url.path}")
+    return path_segments[1]

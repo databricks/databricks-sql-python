@@ -168,6 +168,7 @@ class TelemetryClient(BaseTelemetryClient):
         host_url,
         executor,
         batch_size,
+        http_client,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
@@ -180,7 +181,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
-        self._http_client = TelemetryHttpClient.get_instance()
+        self._http_client = http_client
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -228,18 +229,33 @@ class TelemetryClient(BaseTelemetryClient):
 
         try:
             logger.debug("Submitting telemetry request to thread pool")
+            
+            # Use unified HTTP client
             future = self._executor.submit(
-                self._http_client.post,
+                self._send_with_unified_client,
                 url,
                 data=request.to_json(),
                 headers=headers,
                 timeout=900,
             )
+            
             future.add_done_callback(
                 lambda fut: self._telemetry_request_callback(fut, sent_count=sent_count)
             )
         except Exception as e:
             logger.debug("Failed to submit telemetry request: %s", e)
+
+    def _send_with_unified_client(self, url, data, headers):
+        """Helper method to send telemetry using the unified HTTP client."""
+        try:
+            response = self._http_client.request('POST', url, body=data, headers=headers, timeout=900)
+            # Convert urllib3 response to requests-like response for compatibility
+            response.status_code = response.status
+            response.json = lambda: json.loads(response.data.decode()) if response.data else {}
+            return response
+        except Exception as e:
+            logger.error("Failed to send telemetry with unified client: %s", e)
+            raise
 
     def _telemetry_request_callback(self, future, sent_count: int):
         """Callback function to handle telemetry request completion"""
@@ -431,6 +447,7 @@ class TelemetryClientFactory:
         auth_provider,
         host_url,
         batch_size,
+        http_client,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
@@ -453,6 +470,7 @@ class TelemetryClientFactory:
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
                             batch_size=batch_size,
+                            http_client=http_client,
                         )
                     else:
                         TelemetryClientFactory._clients[
