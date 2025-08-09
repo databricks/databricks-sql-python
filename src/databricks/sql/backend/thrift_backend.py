@@ -232,7 +232,7 @@ class ThriftDatabricksClient(DatabricksClient):
         try:
             self._transport.open()
         except:
-            self._transport.close()
+            self._transport.release_connection()
             raise
 
         self._request_lock = threading.RLock()
@@ -478,7 +478,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 )
             finally:
                 # Calling `close()` here releases the active HTTP connection back to the pool
-                self._transport.close()
+                self._transport.release_connection()
 
             return RequestErrorInfo(
                 error=error,
@@ -607,7 +607,7 @@ class ThriftDatabricksClient(DatabricksClient):
             self._session_id_hex = session_id.hex_guid
             return session_id
         except:
-            self._transport.close()
+            self._transport.release_connection()
             raise
 
     def close_session(self, session_id: SessionId) -> None:
@@ -619,7 +619,8 @@ class ThriftDatabricksClient(DatabricksClient):
         try:
             self.make_request(self._client.CloseSession, req)
         finally:
-            self._transport.close()
+            self._transport.release_connection()
+        self._transport.close()
 
     def _check_command_not_in_error_or_closed_state(
         self, op_handle, get_operations_resp
