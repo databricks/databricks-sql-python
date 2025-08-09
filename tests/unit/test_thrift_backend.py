@@ -1420,7 +1420,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
-        # Manually set the mocked transport instance
         thrift_backend._transport = mock_http_client_instance
 
         session_id = SessionId.from_thrift_handle(self.session_handle)
