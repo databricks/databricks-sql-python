@@ -1406,8 +1406,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
-    def test_session_handle_respected_in_close_session(self, tcli_service_class):
+    @patch("databricks.sql.auth.thrift_http_client.THttpClient", autospec=True)
+    def test_session_handle_respected_in_close_session(
+        self, mock_http_client_class, tcli_service_class
+    ):
         tcli_service_instance = tcli_service_class.return_value
+        mock_http_client_instance = mock_http_client_class.return_value
         thrift_backend = ThriftDatabricksClient(
             "foobar",
             443,
@@ -1416,12 +1420,16 @@ class ThriftBackendTestSuite(unittest.TestCase):
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
         )
+        # Manually set the mocked transport instance
+        thrift_backend._transport = mock_http_client_instance
+
         session_id = SessionId.from_thrift_handle(self.session_handle)
         thrift_backend.close_session(session_id)
         self.assertEqual(
             tcli_service_instance.CloseSession.call_args[0][0].sessionHandle,
             self.session_handle,
         )
+        mock_http_client_instance.close.assert_called_once()
 
     @patch("databricks.sql.backend.thrift_backend.TCLIService.Client", autospec=True)
     def test_non_arrow_non_column_based_set_triggers_exception(
