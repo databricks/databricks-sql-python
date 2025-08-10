@@ -477,7 +477,7 @@ class ThriftDatabricksClient(DatabricksClient):
                     )
                 )
             finally:
-                # Calling `close()` here releases the active HTTP connection back to the pool
+                # Calling `release_connection()` here releases the active HTTP connection back to the pool
                 self._transport.release_connection()
 
             return RequestErrorInfo(
