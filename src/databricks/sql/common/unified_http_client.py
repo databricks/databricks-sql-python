@@ -9,7 +9,7 @@ from urllib3 import PoolManager, ProxyManager
 from urllib3.util import make_headers
 from urllib3.exceptions import MaxRetryError
 
-from databricks.sql.auth.retry import DatabricksRetryPolicy
+from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
 from databricks.sql.exc import RequestError
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ class UnifiedHttpClient:
         """
         self.config = client_context
         self._pool_manager = None
+        self._retry_policy = None
         self._setup_pool_manager()
 
     def _setup_pool_manager(self):
@@ -69,7 +70,7 @@ class UnifiedHttpClient:
                 )
 
         # Create retry policy
-        retry_policy = DatabricksRetryPolicy(
+        self._retry_policy = DatabricksRetryPolicy(
             delay_min=self.config.retry_delay_min,
             delay_max=self.config.retry_delay_max,
             stop_after_attempts_count=self.config.retry_stop_after_attempts_count,
@@ -77,12 +78,17 @@ class UnifiedHttpClient:
             delay_default=self.config.retry_delay_default,
             force_dangerous_codes=self.config.retry_dangerous_codes,
         )
+        
+        # Initialize the required attributes that DatabricksRetryPolicy expects
+        # but doesn't initialize in its constructor
+        self._retry_policy._command_type = None
+        self._retry_policy._retry_start_time = None
 
         # Common pool manager kwargs
         pool_kwargs = {
             "num_pools": self.config.pool_connections,
             "maxsize": self.config.pool_maxsize,
-            "retries": retry_policy,
+            "retries": self._retry_policy,
             "timeout": urllib3.Timeout(
                 connect=self.config.socket_timeout, read=self.config.socket_timeout
             )
@@ -119,6 +125,14 @@ class UnifiedHttpClient:
 
         return request_headers
 
+    def _prepare_retry_policy(self):
+        """Set up the retry policy for the current request."""
+        if isinstance(self._retry_policy, DatabricksRetryPolicy):
+            # Set command type for HTTP requests to OTHER (not database commands)
+            self._retry_policy.command_type = CommandType.OTHER
+            # Start the retry timer for duration-based retry limits
+            self._retry_policy.start_retry_timer()
+
     @contextmanager
     def request_context(
         self, method: str, url: str, headers: Optional[Dict[str, str]] = None, **kwargs
@@ -138,6 +152,10 @@ class UnifiedHttpClient:
         logger.debug("Making %s request to %s", method, url)
 
         request_headers = self._prepare_headers(headers)
+        
+        # Prepare retry policy for this request
+        self._prepare_retry_policy()
+        
         response = None
 
         try:

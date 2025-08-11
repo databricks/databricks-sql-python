@@ -294,7 +294,7 @@ class DatabricksRetryPolicy(Retry):
         else:
             proposed_wait = self.get_backoff_time()
 
-        proposed_wait = max(proposed_wait, self.delay_max)
+        proposed_wait = min(proposed_wait, self.delay_max)
         self.check_proposed_wait(proposed_wait)
         logger.debug(f"Retrying after {proposed_wait} seconds")
         time.sleep(proposed_wait)
@@ -355,8 +355,8 @@ class DatabricksRetryPolicy(Retry):
         logger.info(f"Received status code {status_code} for {method} request")
 
         # Request succeeded. Don't retry.
-        if status_code == 200:
-            return False, "200 codes are not retried"
+        if status_code // 100 == 2:
+            return False, "2xx codes are not retried"
 
         if status_code == 401:
             return (

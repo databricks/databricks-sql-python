@@ -69,12 +69,10 @@ class ClientContext:
         # HTTP client configuration
         self.ssl_options = ssl_options
         self.socket_timeout = socket_timeout
-        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 30
+        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 5
         self.retry_delay_min = retry_delay_min or 1.0
         self.retry_delay_max = retry_delay_max or 60.0
-        self.retry_stop_after_attempts_duration = (
-            retry_stop_after_attempts_duration or 900.0
-        )
+        self.retry_stop_after_attempts_duration = retry_stop_after_attempts_duration or 900.0
         self.retry_delay_default = retry_delay_default or 5.0
         self.retry_dangerous_codes = retry_dangerous_codes or []
         self.http_proxy = http_proxy

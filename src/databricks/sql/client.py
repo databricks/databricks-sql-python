@@ -376,21 +376,17 @@ class Connection:
             hostname=server_hostname,
             ssl_options=ssl_options,
             socket_timeout=kwargs.get("_socket_timeout"),
-            retry_stop_after_attempts_count=kwargs.get(
-                "_retry_stop_after_attempts_count", 30
-            ),
-            retry_delay_min=kwargs.get("_retry_delay_min", 1.0),
-            retry_delay_max=kwargs.get("_retry_delay_max", 60.0),
-            retry_stop_after_attempts_duration=kwargs.get(
-                "_retry_stop_after_attempts_duration", 900.0
-            ),
-            retry_delay_default=kwargs.get("_retry_delay_default", 1.0),
-            retry_dangerous_codes=kwargs.get("_retry_dangerous_codes", []),
+            retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count"),
+            retry_delay_min=kwargs.get("_retry_delay_min"),
+            retry_delay_max=kwargs.get("_retry_delay_max"),
+            retry_stop_after_attempts_duration=kwargs.get("_retry_stop_after_attempts_duration"),
+            retry_delay_default=kwargs.get("_retry_delay_default"),
+            retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
             http_proxy=kwargs.get("_http_proxy"),
             proxy_username=kwargs.get("_proxy_username"),
             proxy_password=kwargs.get("_proxy_password"),
-            pool_connections=kwargs.get("_pool_connections", 1),
-            pool_maxsize=kwargs.get("_pool_maxsize", 1),
+            pool_connections=kwargs.get("_pool_connections"),
+            pool_maxsize=kwargs.get("_pool_maxsize"),
             user_agent=user_agent,
         )
 

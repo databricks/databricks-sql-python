@@ -247,6 +247,7 @@ class PySQLRetryTestsMixin:
         """
         retry_policy = self._retry_policy.copy()
         retry_policy["_retry_delay_min"] = 1
+        retry_policy["_retry_delay_max"] = 10
 
         time_start = time.time()
         with mocked_server_response(
@@ -282,9 +283,11 @@ class PySQLRetryTestsMixin:
         WHEN the server sends a Retry-After header of 60 seconds
         THEN the connector raises a MaxRetryDurationError
         """
+        retry_policy = self._retry_policy.copy()
+        retry_policy["_retry_delay_max"] = 60
         with mocked_server_response(status=429, headers={"Retry-After": "60"}):
             with pytest.raises(RequestError) as cm:
-                extra_params = {**extra_params, **self._retry_policy}
+                extra_params = {**extra_params, **retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
                     pass
             assert isinstance(cm.value.args[1], MaxRetryDurationError)
