@@ -306,6 +306,7 @@ class TestAzureServicePrincipalCredentialProvider:
             hostname="hostname",
             azure_client_id="client_id",
             azure_client_secret="client_secret",
+            http_client=MagicMock(),
             azure_tenant_id="tenant_id",
         )
 

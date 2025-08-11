@@ -19,12 +19,17 @@ from databricks import sql
 
 
 @pytest.fixture
-def mock_telemetry_client():
+@patch("databricks.sql.telemetry.telemetry_client.TelemetryHttpClientSingleton")
+def mock_telemetry_client(mock_singleton_class):
     """Create a mock telemetry client for testing."""
     session_id = str(uuid.uuid4())
     auth_provider = AccessTokenAuthProvider("test-token")
     executor = MagicMock()
-    mock_http_client = MagicMock()
+    mock_client_context = MagicMock()
+    
+    # Mock the singleton to return a mock HTTP client
+    mock_singleton = mock_singleton_class.return_value
+    mock_singleton.get_http_client.return_value = MagicMock()
 
     return TelemetryClient(
         telemetry_enabled=True,
@@ -33,7 +38,7 @@ def mock_telemetry_client():
         host_url="test-host.com",
         executor=executor,
         batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-        http_client=mock_http_client,
+        client_context=mock_client_context,
     )
 
 
@@ -212,11 +217,16 @@ class TestTelemetryFactory:
         TelemetryClientFactory._executor = None
         TelemetryClientFactory._initialized = False
 
-    def test_client_lifecycle_flow(self):
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHttpClientSingleton")
+    def test_client_lifecycle_flow(self, mock_singleton_class):
         """Test complete client lifecycle: initialize -> use -> close."""
         session_id_hex = "test-session"
         auth_provider = AccessTokenAuthProvider("token")
-        mock_http_client = MagicMock()
+        mock_client_context = MagicMock()
+        
+        # Mock the singleton to return a mock HTTP client
+        mock_singleton = mock_singleton_class.return_value
+        mock_singleton.get_http_client.return_value = MagicMock()
 
         # Initialize enabled client
         TelemetryClientFactory.initialize_telemetry_client(
@@ -225,7 +235,7 @@ class TestTelemetryFactory:
             auth_provider=auth_provider,
             host_url="test-host.com",
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-            http_client=mock_http_client,
+            client_context=mock_client_context,
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -241,10 +251,15 @@ class TestTelemetryFactory:
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_disabled_telemetry_flow(self):
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHttpClientSingleton")
+    def test_disabled_telemetry_flow(self, mock_singleton_class):
         """Test that disabled telemetry uses NoopTelemetryClient."""
         session_id_hex = "test-session"
-        mock_http_client = MagicMock()
+        mock_client_context = MagicMock()
+        
+        # Mock the singleton to return a mock HTTP client
+        mock_singleton = mock_singleton_class.return_value
+        mock_singleton.get_http_client.return_value = MagicMock()
 
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=False,
@@ -252,16 +267,21 @@ class TestTelemetryFactory:
             auth_provider=None,
             host_url="test-host.com",
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-            http_client=mock_http_client,
+            client_context=mock_client_context,
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_factory_error_handling(self):
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHttpClientSingleton")
+    def test_factory_error_handling(self, mock_singleton_class):
         """Test that factory errors fall back to NoopTelemetryClient."""
         session_id = "test-session"
-        mock_http_client = MagicMock()
+        mock_client_context = MagicMock()
+        
+        # Mock the singleton to return a mock HTTP client
+        mock_singleton = mock_singleton_class.return_value
+        mock_singleton.get_http_client.return_value = MagicMock()
 
         # Simulate initialization error
         with patch(
@@ -274,18 +294,23 @@ class TestTelemetryFactory:
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
                 batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-                http_client=mock_http_client,
+                client_context=mock_client_context,
             )
 
         # Should fall back to NoopTelemetryClient
         client = TelemetryClientFactory.get_telemetry_client(session_id)
         assert isinstance(client, NoopTelemetryClient)
 
-    def test_factory_shutdown_flow(self):
+    @patch("databricks.sql.telemetry.telemetry_client.TelemetryHttpClientSingleton")
+    def test_factory_shutdown_flow(self, mock_singleton_class):
         """Test factory shutdown when last client is removed."""
         session1 = "session-1"
         session2 = "session-2"
-        mock_http_client = MagicMock()
+        mock_client_context = MagicMock()
+        
+        # Mock the singleton to return a mock HTTP client
+        mock_singleton = mock_singleton_class.return_value
+        mock_singleton.get_http_client.return_value = MagicMock()
 
         # Initialize multiple clients
         for session in [session1, session2]:
@@ -295,7 +320,7 @@ class TestTelemetryFactory:
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
                 batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-                http_client=mock_http_client,
+                client_context=mock_client_context,
             )
 
         # Factory should be initialized

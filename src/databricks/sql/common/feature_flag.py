@@ -113,12 +113,11 @@ class FeatureFlagsContext:
             response = self._http_client.request(
                 "GET", self._feature_flag_endpoint, headers=headers, timeout=30
             )
-            # Add compatibility attributes for urllib3 response
-            response.status_code = response.status
-            response.json = lambda: json.loads(response.data.decode())
 
-            if response.status_code == 200:
-                ff_response = FeatureFlagsResponse.from_dict(response.json())
+            if response.status == 200:
+                # Parse JSON response from urllib3 response data
+                response_data = json.loads(response.data.decode())
+                ff_response = FeatureFlagsResponse.from_dict(response_data)
                 self._update_cache_from_response(ff_response)
             else:
                 # On failure, initialize with an empty dictionary to prevent re-blocking.

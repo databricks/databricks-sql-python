@@ -34,7 +34,7 @@ class TestRetry:
         retry_policy.history = [error_history, error_history]
         retry_policy.sleep(HTTPResponse(status=503))
 
-        expected_backoff_time = min(
+        expected_backoff_time = max(
             self.calculate_backoff_time(
                 0, retry_policy.delay_min, retry_policy.delay_max
             ),
@@ -57,7 +57,7 @@ class TestRetry:
         expected_backoff_times = []
         for attempt in range(num_attempts):
             expected_backoff_times.append(
-                min(
+                max(
                     self.calculate_backoff_time(
                         attempt, retry_policy.delay_min, retry_policy.delay_max
                     ),

@@ -19,6 +19,7 @@ def get_auth_provider(cfg: ClientContext, http_client):
                 cfg.hostname,
                 cfg.azure_client_id,
                 cfg.azure_client_secret,
+                http_client,
                 cfg.azure_tenant_id,
                 cfg.azure_workspace_resource_id,
             )
@@ -34,8 +35,8 @@ def get_auth_provider(cfg: ClientContext, http_client):
             cfg.oauth_redirect_port_range,
             cfg.oauth_client_id,
             cfg.oauth_scopes,
+            http_client,
             cfg.auth_type,
-            http_client=http_client,
         )
     elif cfg.access_token is not None:
         return AccessTokenAuthProvider(cfg.access_token)
@@ -54,7 +55,8 @@ def get_auth_provider(cfg: ClientContext, http_client):
                 cfg.oauth_redirect_port_range,
                 cfg.oauth_client_id,
                 cfg.oauth_scopes,
-                http_client=http_client,
+                http_client,
+                cfg.auth_type or "databricks-oauth",
             )
         else:
             raise RuntimeError("No valid authentication settings!")

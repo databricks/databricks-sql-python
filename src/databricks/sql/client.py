@@ -799,12 +799,6 @@ class Cursor:
             r = self.connection.session.http_client.request(
                 "PUT", presigned_url, body=fh.read(), headers=headers
             )
-            # Add compatibility attributes for urllib3 response
-            r.status_code = r.status
-            if hasattr(r, "data"):
-                r.content = r.data
-                r.ok = r.status < 400
-                r.text = r.data.decode() if r.data else ""
 
         # fmt: off
         # HTTP status codes
@@ -814,13 +808,15 @@ class Cursor:
         NO_CONTENT = 204
         # fmt: on
 
-        if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+        if r.status not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
             raise OperationalError(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        if r.status_code == ACCEPTED:
+        if r.status == ACCEPTED:
             logger.debug(
                 f"Response code {ACCEPTED} from server indicates ingestion command was accepted "
                 + "but not yet applied on the server. It's possible this command may fail later."
@@ -844,23 +840,19 @@ class Cursor:
         r = self.connection.session.http_client.request(
             "GET", presigned_url, headers=headers
         )
-        # Add compatibility attributes for urllib3 response
-        r.status_code = r.status
-        if hasattr(r, "data"):
-            r.content = r.data
-            r.ok = r.status < 400
-            r.text = r.data.decode() if r.data else ""
 
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
-        if not r.ok:
+        if r.status >= 400:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
             raise OperationalError(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
         with open(local_file, "wb") as fp:
-            fp.write(r.content)
+            fp.write(r.data)
 
     @log_latency(StatementType.SQL)
     def _handle_staging_remove(
@@ -871,16 +863,12 @@ class Cursor:
         r = self.connection.session.http_client.request(
             "DELETE", presigned_url, headers=headers
         )
-        # Add compatibility attributes for urllib3 response
-        r.status_code = r.status
-        if hasattr(r, "data"):
-            r.content = r.data
-            r.ok = r.status < 400
-            r.text = r.data.decode() if r.data else ""
 
-        if not r.ok:
+        if r.status >= 400:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
             raise OperationalError(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 

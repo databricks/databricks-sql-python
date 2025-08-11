@@ -190,8 +190,7 @@ class OAuthManager:
         data = f"{token_request_body}&code_verifier={verifier}"
         return self.__send_token_request(token_request_url, data)
 
-    @staticmethod
-    def __send_token_request(token_request_url, data):
+    def __send_token_request(self, token_request_url, data):
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
@@ -210,7 +209,7 @@ class OAuthManager:
         token_request_body = client.prepare_refresh_body(
             refresh_token=refresh_token, client_id=client.client_id
         )
-        return OAuthManager.__send_token_request(token_request_url, token_request_body)
+        return self.__send_token_request(token_request_url, token_request_body)
 
     @staticmethod
     def __get_tokens_from_response(oauth_response):

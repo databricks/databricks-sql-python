@@ -8,6 +8,7 @@ import threading
 from typing import List, Optional, Union, Any, TYPE_CHECKING
 from uuid import UUID
 
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.result_set import ThriftResultSet
 from databricks.sql.telemetry.models.event import StatementType
 
@@ -105,7 +106,7 @@ class ThriftDatabricksClient(DatabricksClient):
         http_headers,
         auth_provider: AuthProvider,
         ssl_options: SSLOptions,
-        http_client,
+        http_client: UnifiedHttpClient,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
