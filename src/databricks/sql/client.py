@@ -376,10 +376,14 @@ class Connection:
             hostname=server_hostname,
             ssl_options=ssl_options,
             socket_timeout=kwargs.get("_socket_timeout"),
-            retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count"),
+            retry_stop_after_attempts_count=kwargs.get(
+                "_retry_stop_after_attempts_count"
+            ),
             retry_delay_min=kwargs.get("_retry_delay_min"),
             retry_delay_max=kwargs.get("_retry_delay_max"),
-            retry_stop_after_attempts_duration=kwargs.get("_retry_stop_after_attempts_duration"),
+            retry_stop_after_attempts_duration=kwargs.get(
+                "_retry_stop_after_attempts_duration"
+            ),
             retry_delay_default=kwargs.get("_retry_delay_default"),
             retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
             http_proxy=kwargs.get("_http_proxy"),

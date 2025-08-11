@@ -78,7 +78,7 @@ class UnifiedHttpClient:
             delay_default=self.config.retry_delay_default,
             force_dangerous_codes=self.config.retry_dangerous_codes,
         )
-        
+
         # Initialize the required attributes that DatabricksRetryPolicy expects
         # but doesn't initialize in its constructor
         self._retry_policy._command_type = None
@@ -152,10 +152,10 @@ class UnifiedHttpClient:
         logger.debug("Making %s request to %s", method, url)
 
         request_headers = self._prepare_headers(headers)
-        
+
         # Prepare retry policy for this request
         self._prepare_retry_policy()
-        
+
         response = None
 
         try:
