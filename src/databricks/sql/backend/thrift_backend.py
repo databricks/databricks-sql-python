@@ -105,7 +105,7 @@ class ThriftDatabricksClient(DatabricksClient):
         http_headers,
         auth_provider: AuthProvider,
         ssl_options: SSLOptions,
-        http_client=None,
+        http_client,
         **kwargs,
     ):
         # Internal arguments in **kwargs:

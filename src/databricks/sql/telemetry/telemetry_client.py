@@ -1,8 +1,11 @@
 import threading
 import time
 import logging
+import json
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, TYPE_CHECKING
+from concurrent.futures import Future
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -36,8 +39,7 @@ import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
-
-from src.databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -151,6 +153,44 @@ class NoopTelemetryClient(BaseTelemetryClient):
         pass
 
 
+class TelemetryHttpClientSingleton:
+    """
+    Singleton HTTP client for telemetry operations.
+
+    This ensures that telemetry has its own dedicated HTTP client that
+    is independent of individual connection lifecycles.
+    """
+
+    _instance = None
+    _lock = threading.RLock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._http_client = None
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def get_http_client(self, client_context):
+        """Get or create the singleton HTTP client."""
+        if not self._initialized and client_context:
+            with self._lock:
+                if not self._initialized:
+                    self._http_client = UnifiedHttpClient(client_context)
+                    self._initialized = True
+        return self._http_client
+
+    def close(self):
+        """Close the singleton HTTP client."""
+        with self._lock:
+            if self._http_client:
+                self._http_client.close()
+                self._http_client = None
+                self._initialized = False
+
+
 class TelemetryClient(BaseTelemetryClient):
     """
     Telemetry client class that handles sending telemetry events in batches to the server.
@@ -169,7 +209,7 @@ class TelemetryClient(BaseTelemetryClient):
         host_url,
         executor,
         batch_size,
-        http_client,
+        client_context,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
@@ -182,7 +222,10 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
-        self._http_client = http_client
+
+        # Use singleton HTTP client for telemetry instead of connection-specific client
+        self._http_client_singleton = TelemetryHttpClientSingleton()
+        self._http_client = self._http_client_singleton.get_http_client(client_context)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -246,17 +289,24 @@ class TelemetryClient(BaseTelemetryClient):
         except Exception as e:
             logger.debug("Failed to submit telemetry request: %s", e)
 
-    def _send_with_unified_client(self, url, data, headers):
+    def _send_with_unified_client(self, url, data, headers, timeout=900):
         """Helper method to send telemetry using the unified HTTP client."""
         try:
             response = self._http_client.request(
-                "POST", url, body=data, headers=headers, timeout=900
+                "POST", url, body=data, headers=headers, timeout=timeout
             )
             # Convert urllib3 response to requests-like response for compatibility
             response.status_code = response.status
+            response.ok = 200 <= response.status < 300
             response.json = (
                 lambda: json.loads(response.data.decode()) if response.data else {}
             )
+            # Add raise_for_status method
+            def raise_for_status():
+                if not response.ok:
+                    raise Exception(f"HTTP {response.status_code}")
+
+            response.raise_for_status = raise_for_status
             return response
         except Exception as e:
             logger.error("Failed to send telemetry with unified client: %s", e)
@@ -452,7 +502,7 @@ class TelemetryClientFactory:
         auth_provider,
         host_url,
         batch_size,
-        http_client,
+        client_context,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
@@ -475,7 +525,7 @@ class TelemetryClientFactory:
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
                             batch_size=batch_size,
-                            http_client=http_client,
+                            client_context=client_context,
                         )
                     else:
                         TelemetryClientFactory._clients[
@@ -528,7 +578,7 @@ class TelemetryClientFactory:
         host_url: str,
         http_path: str,
         port: int,
-        http_client: UnifiedHttpClient,
+        client_context,
         user_agent: Optional[str] = None,
     ):
         """Send error telemetry when connection creation fails, without requiring a session"""
@@ -541,7 +591,7 @@ class TelemetryClientFactory:
             auth_provider=None,
             host_url=host_url,
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-            http_client=http_client,
+            client_context=client_context,
         )
 
         telemetry_client = TelemetryClientFactory.get_telemetry_client(

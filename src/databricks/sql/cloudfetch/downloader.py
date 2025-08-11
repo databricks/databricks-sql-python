@@ -13,9 +13,6 @@ from databricks.sql.telemetry.models.event import StatementType
 
 logger = logging.getLogger(__name__)
 
-# TODO: Ideally, we should use a common retry policy (DatabricksRetryPolicy) for all the requests across the library.
-#       But DatabricksRetryPolicy should be updated first - currently it can work only with Thrift requests
-
 
 @dataclass
 class DownloadedFile:

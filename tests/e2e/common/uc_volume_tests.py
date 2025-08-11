@@ -72,6 +72,7 @@ class PySQLUCVolumeTestSuiteMixin:
         extra_params = {
             "staging_allowed_local_path": "/",
             "_retry_stop_after_attempts_count": 1,
+            "_retry_delay_max": 10,
         }
         with self.connection(extra_params=extra_params) as conn:
             cursor = conn.cursor()

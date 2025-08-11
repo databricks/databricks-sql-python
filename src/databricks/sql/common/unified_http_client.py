@@ -193,38 +193,6 @@ class UnifiedHttpClient:
             response._body = response.data
             return response
 
-    def upload_file(
-        self, url: str, file_path: str, headers: Optional[Dict[str, str]] = None
-    ) -> urllib3.HTTPResponse:
-        """
-        Upload a file using PUT method.
-
-        Args:
-            url: URL to upload to
-            file_path: Path to the file to upload
-            headers: Optional headers
-
-        Returns:
-            urllib3.HTTPResponse: The response from the server
-        """
-        with open(file_path, "rb") as file_obj:
-            return self.request("PUT", url, body=file_obj.read(), headers=headers)
-
-    def download_file(
-        self, url: str, file_path: str, headers: Optional[Dict[str, str]] = None
-    ) -> None:
-        """
-        Download a file using GET method.
-
-        Args:
-            url: URL to download from
-            file_path: Path where to save the downloaded file
-            headers: Optional headers
-        """
-        response = self.request("GET", url, headers=headers)
-        with open(file_path, "wb") as file_obj:
-            file_obj.write(response.data)
-
     def close(self):
         """Close the underlying connection pools."""
         if self._pool_manager:
@@ -236,14 +204,3 @@ class UnifiedHttpClient:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
-
-# Compatibility class to maintain requests-like interface for OAuth
-class IgnoreNetrcAuth:
-    """
-    Compatibility class for OAuth code that expects requests.auth.AuthBase interface.
-    This is a no-op auth handler since OAuth handles auth differently.
-    """
-
-    def __call__(self, request):
-        return request
