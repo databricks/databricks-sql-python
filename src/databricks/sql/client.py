@@ -773,7 +773,9 @@ class Cursor:
             headers=headers,
             timeout=300,  # 5 minute timeout
         ) as response:
-            self._validate_staging_http_response(response, UploadType.STREAM_UPLOAD.value)
+            self._validate_staging_http_response(
+                response, UploadType.STREAM_UPLOAD.value
+            )
 
     @log_latency(StatementType.SQL)
     def _handle_staging_put(
