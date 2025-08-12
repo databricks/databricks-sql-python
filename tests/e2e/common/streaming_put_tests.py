@@ -19,13 +19,14 @@ class PySQLStreamingPutTestSuiteMixin:
         
         # Create test data
         test_data = b"Hello, streaming world! This is test data."
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"stream_test_{timestamp}.txt"
+        filename = "streaming_put_test.txt"
         file_path = f"/Volumes/{catalog}/{schema}/e2etests/{filename}"
         
         try:
             with self.connection() as conn:
                 with conn.cursor() as cursor:
+                    self._cleanup_test_file(file_path)
+                    
                     with io.BytesIO(test_data) as stream:
                         cursor.execute(
                             f"PUT '__input_stream__' INTO '{file_path}'",

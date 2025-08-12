@@ -67,7 +67,7 @@ from databricks.sql.telemetry.models.event import (
 )
 from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.enums import StatementType
-from databricks.sql.common.http import DatabricksHttpClient, HttpMethod
+from databricks.sql.common.http import DatabricksHttpClient, HttpMethod, UploadType
 
 logger = logging.getLogger(__name__)
 
@@ -773,7 +773,7 @@ class Cursor:
             headers=headers,
             timeout=300,  # 5 minute timeout
         ) as response:
-            self._validate_staging_http_response(response, "stream upload")
+            self._validate_staging_http_response(response, UploadType.STREAM_UPLOAD.value)
 
     @log_latency(StatementType.SQL)
     def _handle_staging_put(
@@ -793,7 +793,7 @@ class Cursor:
         with open(local_file, "rb") as fh:
             r = requests.put(url=presigned_url, data=fh, headers=headers)
 
-        self._validate_staging_http_response(r, "file upload")
+        self._validate_staging_http_response(r, UploadType.FILE_UPLOAD.value)
 
     @log_latency(StatementType.SQL)
     def _handle_staging_get(
