@@ -349,7 +349,11 @@ class TestTelemetryFactory:
         """
 
         error_message = "Could not connect to host"
-        mock_session.side_effect = Exception(error_message)
+        # Set up the mock to create a session instance first, then make open() fail
+        mock_session_instance = MagicMock()
+        mock_session_instance.is_open = False  # Ensure cleanup is safe
+        mock_session_instance.open.side_effect = Exception(error_message)
+        mock_session.return_value = mock_session_instance
 
         try:
             sql.connect(server_hostname="test-host", http_path="/test-path")
@@ -391,6 +395,7 @@ class TestTelemetryFeatureFlag:
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-true"
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
+        mock_session_instance.is_open = False  # Connection starts closed for test cleanup
         
         # Set up mock HTTP client on the session
         mock_http_client = MagicMock()
@@ -418,6 +423,7 @@ class TestTelemetryFeatureFlag:
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-false"
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
+        mock_session_instance.is_open = False  # Connection starts closed for test cleanup
         
         # Set up mock HTTP client on the session
         mock_http_client = MagicMock()
@@ -445,6 +451,7 @@ class TestTelemetryFeatureFlag:
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-fail"
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
+        mock_session_instance.is_open = False  # Connection starts closed for test cleanup
         
         # Set up mock HTTP client on the session
         mock_http_client = MagicMock()
