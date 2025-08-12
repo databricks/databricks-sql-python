@@ -257,18 +257,6 @@ class TelemetryClient(BaseTelemetryClient):
             response = self._http_client.request(
                 HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
             )
-            # Convert urllib3 response to requests-like response for compatibility
-            response.status_code = response.status
-            response.ok = 200 <= response.status < 300
-            response.json = (
-                lambda: json.loads(response.data.decode()) if response.data else {}
-            )
-            # Add raise_for_status method
-            def raise_for_status():
-                if not response.ok:
-                    raise Exception(f"HTTP {response.status_code}")
-
-            response.raise_for_status = raise_for_status
             return response
         except Exception as e:
             logger.error("Failed to send telemetry with unified client: %s", e)
@@ -279,14 +267,18 @@ class TelemetryClient(BaseTelemetryClient):
         try:
             response = future.result()
 
-            if not response.ok:
+            # Check if response is successful (urllib3 uses response.status)
+            is_success = 200 <= response.status < 300
+            if not is_success:
                 logger.debug(
                     "Telemetry request failed with status code: %s, response: %s",
-                    response.status_code,
-                    response.text,
+                    response.status,
+                    response.data.decode() if response.data else "",
                 )
 
-            telemetry_response = TelemetryResponse(**response.json())
+            # Parse JSON response (urllib3 uses response.data)
+            response_data = json.loads(response.data.decode()) if response.data else {}
+            telemetry_response = TelemetryResponse(**response_data)
 
             logger.debug(
                 "Pushed Telemetry logs with success count: %s, error count: %s",
