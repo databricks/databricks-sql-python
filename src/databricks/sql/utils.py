@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 
 from dateutil import parser
 import datetime
@@ -9,7 +9,6 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 import re
 
 import lz4.frame
@@ -906,30 +905,23 @@ def build_client_context(server_hostname: str, version: str, **kwargs):
     else:
         user_agent = f"PyDatabricksSqlConnector/{version}"
 
-    # Build ClientContext kwargs, excluding None values to use defaults
-    context_kwargs = {
-        "hostname": server_hostname,
-        "ssl_options": ssl_options,
-        "user_agent": user_agent,
-    }
-
-    # Only add non-None values to let defaults work
-    for param, kwarg_key in [
-        ("socket_timeout", "_socket_timeout"),
-        ("retry_stop_after_attempts_count", "_retry_stop_after_attempts_count"),
-        ("retry_delay_min", "_retry_delay_min"),
-        ("retry_delay_max", "_retry_delay_max"),
-        ("retry_stop_after_attempts_duration", "_retry_stop_after_attempts_duration"),
-        ("retry_delay_default", "_retry_delay_default"),
-        ("retry_dangerous_codes", "_retry_dangerous_codes"),
-        ("http_proxy", "_http_proxy"),
-        ("proxy_username", "_proxy_username"),
-        ("proxy_password", "_proxy_password"),
-        ("pool_connections", "_pool_connections"),
-        ("pool_maxsize", "_pool_maxsize"),
-    ]:
-        value = kwargs.get(kwarg_key)
-        if value is not None:
-            context_kwargs[param] = value
-
-    return ClientContext(**context_kwargs)
+    # Explicitly construct ClientContext with proper types
+    return ClientContext(
+        hostname=server_hostname,
+        ssl_options=ssl_options,
+        user_agent=user_agent,
+        socket_timeout=kwargs.get("_socket_timeout"),
+        retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count"),
+        retry_delay_min=kwargs.get("_retry_delay_min"),
+        retry_delay_max=kwargs.get("_retry_delay_max"),
+        retry_stop_after_attempts_duration=kwargs.get(
+            "_retry_stop_after_attempts_duration"
+        ),
+        retry_delay_default=kwargs.get("_retry_delay_default"),
+        retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
+        http_proxy=kwargs.get("_http_proxy"),
+        proxy_username=kwargs.get("_proxy_username"),
+        proxy_password=kwargs.get("_proxy_password"),
+        pool_connections=kwargs.get("_pool_connections"),
+        pool_maxsize=kwargs.get("_pool_maxsize"),
+    )

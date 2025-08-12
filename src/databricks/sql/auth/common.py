@@ -40,17 +40,17 @@ class ClientContext:
         # HTTP client configuration parameters
         ssl_options=None,  # SSLOptions type
         socket_timeout: Optional[float] = None,
-        retry_stop_after_attempts_count: int = 5,
-        retry_delay_min: float = 1.0,
-        retry_delay_max: float = 60.0,
-        retry_stop_after_attempts_duration: float = 900.0,
-        retry_delay_default: float = 5.0,
+        retry_stop_after_attempts_count: Optional[int] = None,
+        retry_delay_min: Optional[float] = None,
+        retry_delay_max: Optional[float] = None,
+        retry_stop_after_attempts_duration: Optional[float] = None,
+        retry_delay_default: Optional[float] = None,
         retry_dangerous_codes: Optional[List[int]] = None,
         http_proxy: Optional[str] = None,
         proxy_username: Optional[str] = None,
         proxy_password: Optional[str] = None,
-        pool_connections: int = 10,
-        pool_maxsize: int = 20,
+        pool_connections: Optional[int] = None,
+        pool_maxsize: Optional[int] = None,
         user_agent: Optional[str] = None,
     ):
         self.hostname = hostname
@@ -71,17 +71,19 @@ class ClientContext:
         # HTTP client configuration
         self.ssl_options = ssl_options
         self.socket_timeout = socket_timeout
-        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count
-        self.retry_delay_min = retry_delay_min
-        self.retry_delay_max = retry_delay_max
-        self.retry_stop_after_attempts_duration = retry_stop_after_attempts_duration
-        self.retry_delay_default = retry_delay_default
+        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 5
+        self.retry_delay_min = retry_delay_min or 1.0
+        self.retry_delay_max = retry_delay_max or 10.0
+        self.retry_stop_after_attempts_duration = (
+            retry_stop_after_attempts_duration or 300.0
+        )
+        self.retry_delay_default = retry_delay_default or 5.0
         self.retry_dangerous_codes = retry_dangerous_codes or []
         self.http_proxy = http_proxy
         self.proxy_username = proxy_username
         self.proxy_password = proxy_password
-        self.pool_connections = pool_connections
-        self.pool_maxsize = pool_maxsize
+        self.pool_connections = pool_connections or 10
+        self.pool_maxsize = pool_maxsize or 20
         self.user_agent = user_agent
 
 
