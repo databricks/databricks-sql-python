@@ -27,6 +27,11 @@ class HttpHeader(str, Enum):
     AUTHORIZATION = "Authorization"
 
 
+class UploadType(str, Enum):
+    FILE_UPLOAD = "file_upload"
+    STREAM_UPLOAD = "stream_upload"
+
+
 # Dataclass for OAuthHTTP Response
 @dataclass
 class OAuthResponse:
