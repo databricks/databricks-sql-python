@@ -56,7 +56,7 @@ def get_auth_provider(cfg: ClientContext, http_client):
                 cfg.oauth_client_id,
                 cfg.oauth_scopes,
                 http_client,
-                cfg.auth_type or "databricks-oauth",
+                cfg.auth_type or AuthType.DATABRICKS_OAUTH.value,
             )
         else:
             raise RuntimeError("No valid authentication settings!")

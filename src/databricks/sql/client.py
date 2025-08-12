@@ -31,6 +31,7 @@ from databricks.sql.utils import (
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
+    build_client_context,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -52,6 +53,7 @@ from databricks.sql.backend.types import CommandId, BackendType, CommandState, S
 
 from databricks.sql.auth.common import ClientContext
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.http import HttpMethod
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOpenSessionResp,
@@ -254,14 +256,14 @@ class Connection:
             "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
-        client_context = self._build_client_context(server_hostname, **kwargs)
-        http_client = UnifiedHttpClient(client_context)
+        client_context = build_client_context(server_hostname, __version__, **kwargs)
+        self.http_client = UnifiedHttpClient(client_context)
 
         try:
             self.session = Session(
                 server_hostname,
                 http_path,
-                http_client,
+                self.http_client,
                 http_headers,
                 session_configuration,
                 catalog,
@@ -350,50 +352,6 @@ class Connection:
 
         return value
 
-    def _build_client_context(self, server_hostname: str, **kwargs):
-        """Build ClientContext for HTTP client configuration."""
-        from databricks.sql.auth.common import ClientContext
-        from databricks.sql.types import SSLOptions
-
-        # Extract SSL options
-        ssl_options = SSLOptions(
-            tls_verify=not kwargs.get("_tls_no_verify", False),
-            tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
-            tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
-            tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
-            tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
-            tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
-        )
-
-        # Build user agent
-        user_agent_entry = kwargs.get("user_agent_entry", "")
-        if user_agent_entry:
-            user_agent = f"PyDatabricksSqlConnector/{__version__} ({user_agent_entry})"
-        else:
-            user_agent = f"PyDatabricksSqlConnector/{__version__}"
-
-        return ClientContext(
-            hostname=server_hostname,
-            ssl_options=ssl_options,
-            socket_timeout=kwargs.get("_socket_timeout"),
-            retry_stop_after_attempts_count=kwargs.get(
-                "_retry_stop_after_attempts_count"
-            ),
-            retry_delay_min=kwargs.get("_retry_delay_min"),
-            retry_delay_max=kwargs.get("_retry_delay_max"),
-            retry_stop_after_attempts_duration=kwargs.get(
-                "_retry_stop_after_attempts_duration"
-            ),
-            retry_delay_default=kwargs.get("_retry_delay_default"),
-            retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
-            http_proxy=kwargs.get("_http_proxy"),
-            proxy_username=kwargs.get("_proxy_username"),
-            proxy_password=kwargs.get("_proxy_password"),
-            pool_connections=kwargs.get("_pool_connections"),
-            pool_maxsize=kwargs.get("_pool_maxsize"),
-            user_agent=user_agent,
-        )
-
     # The ideal return type for this method is perhaps Self, but that was not added until 3.11, and we support pre-3.11 pythons, currently.
     def __enter__(self) -> "Connection":
         return self
@@ -447,7 +405,7 @@ class Connection:
     @property
     def open(self) -> bool:
         """Return whether the connection is open by checking if the session is open."""
-        return hasattr(self, "session") and self.session.is_open
+        return self.session.is_open
 
     def cursor(
         self,
@@ -496,6 +454,10 @@ class Connection:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
         TelemetryClientFactory.close(self.get_session_id_hex())
+
+        # Close HTTP client that was created by this connection
+        if self.http_client:
+            self.http_client.close()
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
@@ -796,8 +758,8 @@ class Cursor:
             )
 
         with open(local_file, "rb") as fh:
-            r = self.connection.session.http_client.request(
-                "PUT", presigned_url, body=fh.read(), headers=headers
+            r = self.connection.http_client.request(
+                HttpMethod.PUT, presigned_url, body=fh.read(), headers=headers
             )
 
         # fmt: off
@@ -837,8 +799,8 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        r = self.connection.session.http_client.request(
-            "GET", presigned_url, headers=headers
+        r = self.connection.http_client.request(
+            HttpMethod.GET, presigned_url, headers=headers
         )
 
         # response.ok verifies the status code is not between 400-600.
@@ -860,8 +822,8 @@ class Cursor:
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        r = self.connection.session.http_client.request(
-            "DELETE", presigned_url, headers=headers
+        r = self.connection.http_client.request(
+            HttpMethod.DELETE, presigned_url, headers=headers
         )
 
         if r.status >= 400:

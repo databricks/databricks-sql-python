@@ -10,6 +10,7 @@ from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
 from databricks.sql.telemetry.latency_logger import log_latency
 from databricks.sql.telemetry.models.event import StatementType
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +80,10 @@ class ResultSetDownloadHandler:
         """
 
         logger.debug(
-            "ResultSetDownloadHandler: starting file download, chunk id {}, offset {}, row count {}".format(
-                self.chunk_id, self.link.startRowOffset, self.link.rowCount
-            )
+            "ResultSetDownloadHandler: starting file download, chunk id %s, offset %s, row count %s",
+            self.chunk_id,
+            self.link.startRowOffset,
+            self.link.rowCount,
         )
 
         # Check if link is already expired or is expiring
@@ -92,7 +94,7 @@ class ResultSetDownloadHandler:
         start_time = time.time()
 
         with self._http_client.request_context(
-            method="GET",
+            method=HttpMethod.GET,
             url=self.link.fileLink,
             timeout=self.settings.download_timeout,
             headers=self.link.httpHeaders,
@@ -116,15 +118,15 @@ class ResultSetDownloadHandler:
         # The size of the downloaded file should match the size specified from TSparkArrowResultLink
         if len(decompressed_data) != self.link.bytesNum:
             logger.debug(
-                "ResultSetDownloadHandler: downloaded file size {} does not match the expected value {}".format(
-                    len(decompressed_data), self.link.bytesNum
-                )
+                "ResultSetDownloadHandler: downloaded file size %s does not match the expected value %s",
+                len(decompressed_data),
+                self.link.bytesNum,
             )
 
         logger.debug(
-            "ResultSetDownloadHandler: successfully downloaded file, offset {}, row count {}".format(
-                self.link.startRowOffset, self.link.rowCount
-            )
+            "ResultSetDownloadHandler: successfully downloaded file, offset %s, row count %s",
+            self.link.startRowOffset,
+            self.link.rowCount,
         )
 
         return DownloadedFile(

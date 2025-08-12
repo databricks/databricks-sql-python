@@ -40,6 +40,7 @@ import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.http import HttpMethod
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -293,7 +294,7 @@ class TelemetryClient(BaseTelemetryClient):
         """Helper method to send telemetry using the unified HTTP client."""
         try:
             response = self._http_client.request(
-                "POST", url, body=data, headers=headers, timeout=timeout
+                HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
             )
             # Convert urllib3 response to requests-like response for compatibility
             response.status_code = response.status

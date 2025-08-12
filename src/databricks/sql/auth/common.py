@@ -2,6 +2,8 @@ from enum import Enum
 import logging
 from typing import Optional, List
 from urllib.parse import urlparse
+from databricks.sql.auth.retry import DatabricksRetryPolicy
+from databricks.sql.common.http import HttpMethod
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +40,17 @@ class ClientContext:
         # HTTP client configuration parameters
         ssl_options=None,  # SSLOptions type
         socket_timeout: Optional[float] = None,
-        retry_stop_after_attempts_count: Optional[int] = None,
-        retry_delay_min: Optional[float] = None,
-        retry_delay_max: Optional[float] = None,
-        retry_stop_after_attempts_duration: Optional[float] = None,
-        retry_delay_default: Optional[float] = None,
+        retry_stop_after_attempts_count: int = 5,
+        retry_delay_min: float = 1.0,
+        retry_delay_max: float = 60.0,
+        retry_stop_after_attempts_duration: float = 900.0,
+        retry_delay_default: float = 5.0,
         retry_dangerous_codes: Optional[List[int]] = None,
         http_proxy: Optional[str] = None,
         proxy_username: Optional[str] = None,
         proxy_password: Optional[str] = None,
-        pool_connections: Optional[int] = None,
-        pool_maxsize: Optional[int] = None,
+        pool_connections: int = 10,
+        pool_maxsize: int = 20,
         user_agent: Optional[str] = None,
     ):
         self.hostname = hostname
@@ -69,19 +71,17 @@ class ClientContext:
         # HTTP client configuration
         self.ssl_options = ssl_options
         self.socket_timeout = socket_timeout
-        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count or 5
-        self.retry_delay_min = retry_delay_min or 1.0
-        self.retry_delay_max = retry_delay_max or 60.0
-        self.retry_stop_after_attempts_duration = (
-            retry_stop_after_attempts_duration or 900.0
-        )
-        self.retry_delay_default = retry_delay_default or 5.0
+        self.retry_stop_after_attempts_count = retry_stop_after_attempts_count
+        self.retry_delay_min = retry_delay_min
+        self.retry_delay_max = retry_delay_max
+        self.retry_stop_after_attempts_duration = retry_stop_after_attempts_duration
+        self.retry_delay_default = retry_delay_default
         self.retry_dangerous_codes = retry_dangerous_codes or []
         self.http_proxy = http_proxy
         self.proxy_username = proxy_username
         self.proxy_password = proxy_password
-        self.pool_connections = pool_connections or 10
-        self.pool_maxsize = pool_maxsize or 20
+        self.pool_connections = pool_connections
+        self.pool_maxsize = pool_maxsize
         self.user_agent = user_agent
 
 
@@ -113,7 +113,9 @@ def get_azure_tenant_id_from_host(host: str, http_client) -> str:
     login_url = f"{host}/aad/auth"
     logger.debug("Loading tenant ID from %s", login_url)
 
-    with http_client.request_context("GET", login_url, allow_redirects=False) as resp:
+    with http_client.request_context(
+        HttpMethod.GET, login_url, allow_redirects=False
+    ) as resp:
         if resp.status // 100 != 3:
             raise ValueError(
                 f"Failed to get tenant ID from {login_url}: expected status code 3xx, got {resp.status}"

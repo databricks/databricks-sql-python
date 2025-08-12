@@ -2,7 +2,7 @@ import logging
 import ssl
 import urllib.parse
 from contextlib import contextmanager
-from typing import Dict, Any, Optional, Generator, Union
+from typing import Dict, Any, Optional, Generator
 
 import urllib3
 from urllib3 import PoolManager, ProxyManager
@@ -11,6 +11,7 @@ from urllib3.exceptions import MaxRetryError
 
 from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
 from databricks.sql.exc import RequestError
+from databricks.sql.common.http import HttpMethod
 
 logger = logging.getLogger(__name__)
 
@@ -135,13 +136,17 @@ class UnifiedHttpClient:
 
     @contextmanager
     def request_context(
-        self, method: str, url: str, headers: Optional[Dict[str, str]] = None, **kwargs
+        self,
+        method: HttpMethod,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        **kwargs,
     ) -> Generator[urllib3.HTTPResponse, None, None]:
         """
         Context manager for making HTTP requests with proper resource cleanup.
 
         Args:
-            method: HTTP method (GET, POST, PUT, DELETE)
+            method: HTTP method (HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE)
             url: URL to request
             headers: Optional headers dict
             **kwargs: Additional arguments passed to urllib3 request
@@ -160,7 +165,7 @@ class UnifiedHttpClient:
 
         try:
             response = self._pool_manager.request(
-                method=method, url=url, headers=request_headers, **kwargs
+                method=method.value, url=url, headers=request_headers, **kwargs
             )
             yield response
         except MaxRetryError as e:
@@ -174,22 +179,27 @@ class UnifiedHttpClient:
                 response.close()
 
     def request(
-        self, method: str, url: str, headers: Optional[Dict[str, str]] = None, **kwargs
+        self,
+        method: HttpMethod,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        **kwargs,
     ) -> urllib3.HTTPResponse:
         """
         Make an HTTP request.
 
         Args:
-            method: HTTP method (GET, POST, PUT, DELETE, etc.)
+            method: HTTP method (HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, etc.)
             url: URL to request
             headers: Optional headers dict
             **kwargs: Additional arguments passed to urllib3 request
 
         Returns:
-            urllib3.HTTPResponse: The HTTP response object with data pre-loaded
+            urllib3.HTTPResponse: The HTTP response object with data and metadata pre-loaded
         """
         with self.request_context(method, url, headers=headers, **kwargs) as response:
             # Read the response data to ensure it's available after context exit
+            # Note: status and headers remain accessible after close(), only data needs caching
             response._body = response.data
             return response
 

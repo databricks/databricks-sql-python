@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional, List, Any, TYPE_CHECKING
 
+from databricks.sql.common.http import HttpMethod
+
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
 
@@ -111,7 +113,7 @@ class FeatureFlagsContext:
             headers["User-Agent"] = self._connection.session.useragent_header
 
             response = self._http_client.request(
-                "GET", self._feature_flag_endpoint, headers=headers, timeout=30
+                HttpMethod.GET, self._feature_flag_endpoint, headers=headers, timeout=30
             )
 
             if response.status == 200:
