@@ -64,9 +64,9 @@ test_loader = loader.TestLoader()
 for name in test_loader.getTestCaseNames(DecimalTestsMixin):
     if name.startswith("test_"):
         fn = getattr(DecimalTestsMixin, name)
-        decorated = skipUnless(
-            pysql_supports_arrow(), "Decimal tests need arrow support"
-        )(fn)
+        decorated = skipUnless(pysql_supports_arrow(), "Decimal tests need arrow support")(
+            fn
+        )
         setattr(DecimalTestsMixin, name, decorated)
 
 

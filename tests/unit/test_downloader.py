@@ -131,7 +131,7 @@ class DownloaderTests(unittest.TestCase):
         self._setup_mock_http_response(mock_http_client, status=200, data=file_bytes)
 
         # Patch the log metrics method to avoid division by zero
-        with patch.object(downloader.ResultSetDownloadHandler, "_log_download_metrics"):
+        with patch.object(downloader.ResultSetDownloadHandler, '_log_download_metrics'):
             d = downloader.ResultSetDownloadHandler(
                 settings,
                 result_link,
@@ -160,16 +160,11 @@ class DownloaderTests(unittest.TestCase):
         result_link.fileLink = "https://s3.amazonaws.com/bucket/file.arrow?token=xyz789"
 
         # Setup mock HTTP response using helper method
-        self._setup_mock_http_response(
-            mock_http_client, status=200, data=compressed_bytes
-        )
+        self._setup_mock_http_response(mock_http_client, status=200, data=compressed_bytes)
 
         # Mock the decompression method and log metrics to avoid issues
-        with patch.object(
-            downloader.ResultSetDownloadHandler,
-            "_decompress_data",
-            return_value=file_bytes,
-        ), patch.object(downloader.ResultSetDownloadHandler, "_log_download_metrics"):
+        with patch.object(downloader.ResultSetDownloadHandler, '_decompress_data', return_value=file_bytes), \
+             patch.object(downloader.ResultSetDownloadHandler, '_log_download_metrics'):
             d = downloader.ResultSetDownloadHandler(
                 settings,
                 result_link,
