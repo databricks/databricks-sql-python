@@ -340,19 +340,14 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         response = self._http_client.request(
             method=HttpMethod.POST, url=self.token_url, headers=headers, body=data
         )
-        try:
-            if response.status == 200:
-                oauth_response = OAuthResponse(
-                    **json.loads(response.data.decode("utf-8"))
-                )
-                return Token(
-                    oauth_response.access_token,
-                    oauth_response.token_type,
-                    oauth_response.refresh_token,
-                )
-            else:
-                raise Exception(
-                    f"Failed to get token: {response.status} {response.data.decode('utf-8')}"
-                )
-        finally:
-            response.close()
+        if response.status == 200:
+            oauth_response = OAuthResponse(**json.loads(response.data.decode("utf-8")))
+            return Token(
+                oauth_response.access_token,
+                oauth_response.token_type,
+                oauth_response.refresh_token,
+            )
+        else:
+            raise Exception(
+                f"Failed to get token: {response.status} {response.data.decode('utf-8')}"
+            )
