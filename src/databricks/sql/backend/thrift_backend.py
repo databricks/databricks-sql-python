@@ -619,8 +619,7 @@ class ThriftDatabricksClient(DatabricksClient):
         try:
             self.make_request(self._client.CloseSession, req)
         finally:
-            self._transport.release_connection()
-        self._transport.close()
+            self._transport.close()
 
     def _check_command_not_in_error_or_closed_state(
         self, op_handle, get_operations_resp
