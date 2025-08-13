@@ -336,15 +336,15 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
                 **self.extra_params,
             }
         )
-        
 
         response = self._http_client.request(
             method=HttpMethod.POST, url=self.token_url, headers=headers, body=data
         )
         try:
             if response.status == 200:
-                import json
-                oauth_response = OAuthResponse(**json.loads(response.data.decode('utf-8')))
+                oauth_response = OAuthResponse(
+                    **json.loads(response.data.decode("utf-8"))
+                )
                 return Token(
                     oauth_response.access_token,
                     oauth_response.token_type,

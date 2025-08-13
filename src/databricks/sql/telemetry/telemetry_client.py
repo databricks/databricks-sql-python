@@ -187,8 +187,6 @@ class TelemetryClient(BaseTelemetryClient):
         self._executor = executor
 
         # Create own HTTP client from client context
-        from databricks.sql.common.unified_http_client import UnifiedHttpClient
-
         self._http_client = UnifiedHttpClient(client_context)
 
     def _export_event(self, event):
