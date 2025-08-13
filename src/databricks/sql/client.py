@@ -284,7 +284,6 @@ class Connection:
                 if hasattr(self, "session")
                 else None,
             )
-            self.http_client.close()
             raise e
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
@@ -363,9 +362,8 @@ class Connection:
     def __del__(self):
         if self.open:
             logger.debug(
-                "Closing unclosed connection for session " "{}".format(
-                    self.get_session_id_hex()
-                )
+                "Closing unclosed connection for session "
+                "{}".format(self.get_session_id_hex())
             )
             try:
                 self._close(close_cursors=False)
