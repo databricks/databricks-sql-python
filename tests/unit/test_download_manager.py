@@ -14,6 +14,7 @@ class DownloadManagerTests(unittest.TestCase):
     def create_download_manager(
         self, links, max_download_threads=10, lz4_compressed=True
     ):
+        mock_http_client = MagicMock()
         return download_manager.ResultFileDownloadManager(
             links,
             max_download_threads,
@@ -22,6 +23,7 @@ class DownloadManagerTests(unittest.TestCase):
             session_id_hex=Mock(),
             statement_id=Mock(),
             chunk_id=0,
+            http_client=mock_http_client,
         )
 
     def create_result_link(

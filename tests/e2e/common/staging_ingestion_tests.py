@@ -68,15 +68,20 @@ class PySQLStagingIngestionTestSuiteMixin:
         # REMOVE should succeed
 
         remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv'"
-
-        with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
+        # Use minimal retry settings to fail fast for staging operations
+        extra_params = {
+            "staging_allowed_local_path": "/",
+            "_retry_stop_after_attempts_count": 1,
+            "_retry_delay_max": 10,
+        }
+        with self.connection(extra_params=extra_params) as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
 
             # GET after REMOVE should fail
 
             with pytest.raises(
-                Error, match="Staging operation over HTTP was unsuccessful: 404"
+                Error, match="too many 404 error responses"
             ):
                 cursor = conn.cursor()
                 query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' TO '{new_temp_path}'"

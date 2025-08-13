@@ -24,8 +24,8 @@ from databricks.sql.auth.endpoint import (
     AzureOAuthEndpointCollection,
 )
 from databricks.sql.auth.authenticators import CredentialsProvider, HeaderFactory
-from databricks.sql.common.http import DatabricksHttpClient
 from databricks.sql.experimental.oauth_persistence import OAuthPersistenceCache
+import json
 
 
 class Auth(unittest.TestCase):
@@ -98,12 +98,14 @@ class Auth(unittest.TestCase):
         ) in params:
             with self.subTest(cloud_type.value):
                 oauth_persistence = OAuthPersistenceCache()
+                mock_http_client = MagicMock()
                 auth_provider = DatabricksOAuthProvider(
                     hostname=host,
                     oauth_persistence=oauth_persistence,
                     redirect_port_range=[8020],
                     client_id=client_id,
                     scopes=scopes,
+                    http_client=mock_http_client,
                     auth_type=AuthType.AZURE_OAUTH.value
                     if use_azure_auth
                     else AuthType.DATABRICKS_OAUTH.value,
@@ -142,7 +144,8 @@ class Auth(unittest.TestCase):
     def test_get_python_sql_connector_auth_provider_access_token(self):
         hostname = "moderakh-test.cloud.databricks.com"
         kwargs = {"access_token": "dpi123"}
-        auth_provider = get_python_sql_connector_auth_provider(hostname, **kwargs)
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client, **kwargs)
         self.assertTrue(type(auth_provider).__name__, "AccessTokenAuthProvider")
 
         headers = {}
@@ -159,7 +162,8 @@ class Auth(unittest.TestCase):
 
         hostname = "moderakh-test.cloud.databricks.com"
         kwargs = {"credentials_provider": MyProvider()}
-        auth_provider = get_python_sql_connector_auth_provider(hostname, **kwargs)
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client, **kwargs)
         self.assertTrue(type(auth_provider).__name__, "ExternalAuthProvider")
 
         headers = {}
@@ -174,7 +178,8 @@ class Auth(unittest.TestCase):
             "_tls_client_cert_file": tls_client_cert_file,
             "_use_cert_as_auth": use_cert_as_auth,
         }
-        auth_provider = get_python_sql_connector_auth_provider(hostname, **kwargs)
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client, **kwargs)
         self.assertTrue(type(auth_provider).__name__, "CredentialProvider")
 
     def test_get_python_sql_connector_basic_auth(self):
@@ -182,8 +187,9 @@ class Auth(unittest.TestCase):
             "username": "username",
             "password": "password",
         }
+        mock_http_client = MagicMock()
         with self.assertRaises(ValueError) as e:
-            get_python_sql_connector_auth_provider("foo.cloud.databricks.com", **kwargs)
+            get_python_sql_connector_auth_provider("foo.cloud.databricks.com", mock_http_client, **kwargs)
         self.assertIn(
             "Username/password authentication is no longer supported", str(e.exception)
         )
@@ -191,7 +197,8 @@ class Auth(unittest.TestCase):
     @patch.object(DatabricksOAuthProvider, "_initial_get_token")
     def test_get_python_sql_connector_default_auth(self, mock__initial_get_token):
         hostname = "foo.cloud.databricks.com"
-        auth_provider = get_python_sql_connector_auth_provider(hostname)
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client)
         self.assertTrue(type(auth_provider).__name__, "DatabricksOAuthProvider")
         self.assertTrue(auth_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
 
@@ -223,10 +230,12 @@ class TestClientCredentialsTokenSource:
 
     @pytest.fixture
     def token_source(self):
+        mock_http_client = MagicMock()
         return ClientCredentialsTokenSource(
             token_url="https://token_url.com",
             client_id="client_id",
             client_secret="client_secret",
+            http_client=mock_http_client,
         )
 
     def test_no_token_refresh__when_token_is_not_expired(
@@ -249,10 +258,17 @@ class TestClientCredentialsTokenSource:
             assert mock_get_token.call_count == 1
 
     def test_get_token_success(self, token_source, http_response):
-        databricks_http_client = DatabricksHttpClient.get_instance()
-        with patch.object(
-            databricks_http_client.session, "request", return_value=http_response(200)
-        ) as mock_request:
+        mock_http_client = MagicMock()
+        
+        with patch.object(token_source, "_http_client", mock_http_client):
+            # Create a mock response with the expected format
+            mock_response = MagicMock()
+            mock_response.status = 200
+            mock_response.data.decode.return_value = '{"access_token": "abc123", "token_type": "Bearer", "refresh_token": null}'
+            
+            # Mock the request method to return the response directly
+            mock_http_client.request.return_value = mock_response
+            
             token = token_source.get_token()
 
             # Assert
@@ -262,10 +278,17 @@ class TestClientCredentialsTokenSource:
             assert token.refresh_token is None
 
     def test_get_token_failure(self, token_source, http_response):
-        databricks_http_client = DatabricksHttpClient.get_instance()
-        with patch.object(
-            databricks_http_client.session, "request", return_value=http_response(400)
-        ) as mock_request:
+        mock_http_client = MagicMock()
+        
+        with patch.object(token_source, "_http_client", mock_http_client):
+            # Create a mock response with error
+            mock_response = MagicMock()
+            mock_response.status = 400
+            mock_response.data.decode.return_value = "Bad Request"
+            
+            # Mock the request method to return the response directly
+            mock_http_client.request.return_value = mock_response
+            
             with pytest.raises(Exception) as e:
                 token_source.get_token()
             assert "Failed to get token: 400" in str(e.value)
@@ -278,6 +301,7 @@ class TestAzureServicePrincipalCredentialProvider:
             hostname="hostname",
             azure_client_id="client_id",
             azure_client_secret="client_secret",
+            http_client=MagicMock(),
             azure_tenant_id="tenant_id",
         )
 

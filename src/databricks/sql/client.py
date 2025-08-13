@@ -6,7 +6,6 @@ try:
     import pyarrow
 except ImportError:
     pyarrow = None
-import requests
 import json
 import os
 import decimal
@@ -32,6 +31,7 @@ from databricks.sql.utils import (
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
+    build_client_context,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -50,6 +50,10 @@ from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
 from databricks.sql.session import Session
 from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
+
+from databricks.sql.auth.common import ClientContext
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.http import HttpMethod
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TOpenSessionResp,
@@ -252,10 +256,14 @@ class Connection:
             "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
         )
 
+        client_context = build_client_context(server_hostname, __version__, **kwargs)
+        self.http_client = UnifiedHttpClient(client_context)
+
         try:
             self.session = Session(
                 server_hostname,
                 http_path,
+                self.http_client,
                 http_headers,
                 session_configuration,
                 catalog,
@@ -271,6 +279,7 @@ class Connection:
                 host_url=server_hostname,
                 http_path=http_path,
                 port=kwargs.get("_port", 443),
+                client_context=client_context,
                 user_agent=self.session.useragent_header
                 if hasattr(self, "session")
                 else None,
@@ -292,6 +301,7 @@ class Connection:
             auth_provider=self.session.auth_provider,
             host_url=self.session.host,
             batch_size=self.telemetry_batch_size,
+            client_context=client_context,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
@@ -444,6 +454,10 @@ class Connection:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
         TelemetryClientFactory.close(self.get_session_id_hex())
+
+        # Close HTTP client that was created by this connection
+        if self.http_client:
+            self.http_client.close()
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
@@ -744,25 +758,27 @@ class Cursor:
             )
 
         with open(local_file, "rb") as fh:
-            r = requests.put(url=presigned_url, data=fh, headers=headers)
+            r = self.connection.http_client.request(
+                HttpMethod.PUT, presigned_url, body=fh.read(), headers=headers
+            )
 
         # fmt: off
-        # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
-
-        OK = requests.codes.ok                  # 200
-        CREATED = requests.codes.created        # 201
-        ACCEPTED = requests.codes.accepted      # 202
-        NO_CONTENT = requests.codes.no_content  # 204
-
+        # HTTP status codes
+        OK = 200
+        CREATED = 201
+        ACCEPTED = 202
+        NO_CONTENT = 204
         # fmt: on
 
-        if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+        if r.status not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
             raise OperationalError(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        if r.status_code == ACCEPTED:
+        if r.status == ACCEPTED:
             logger.debug(
                 f"Response code {ACCEPTED} from server indicates ingestion command was accepted "
                 + "but not yet applied on the server. It's possible this command may fail later."
@@ -783,18 +799,22 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        r = requests.get(url=presigned_url, headers=headers)
+        r = self.connection.http_client.request(
+            HttpMethod.GET, presigned_url, headers=headers
+        )
 
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
-        if not r.ok:
+        if r.status >= 400:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
             raise OperationalError(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
         with open(local_file, "wb") as fp:
-            fp.write(r.content)
+            fp.write(r.data)
 
     @log_latency(StatementType.SQL)
     def _handle_staging_remove(
@@ -802,11 +822,15 @@ class Cursor:
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        r = requests.delete(url=presigned_url, headers=headers)
+        r = self.connection.http_client.request(
+            HttpMethod.DELETE, presigned_url, headers=headers
+        )
 
-        if not r.ok:
+        if r.status >= 400:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
             raise OperationalError(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}",
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 

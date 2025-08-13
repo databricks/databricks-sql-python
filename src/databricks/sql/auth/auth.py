@@ -10,7 +10,7 @@ from databricks.sql.auth.authenticators import (
 from databricks.sql.auth.common import AuthType, ClientContext
 
 
-def get_auth_provider(cfg: ClientContext):
+def get_auth_provider(cfg: ClientContext, http_client):
     if cfg.credentials_provider:
         return ExternalAuthProvider(cfg.credentials_provider)
     elif cfg.auth_type == AuthType.AZURE_SP_M2M.value:
@@ -19,6 +19,7 @@ def get_auth_provider(cfg: ClientContext):
                 cfg.hostname,
                 cfg.azure_client_id,
                 cfg.azure_client_secret,
+                http_client,
                 cfg.azure_tenant_id,
                 cfg.azure_workspace_resource_id,
             )
@@ -34,6 +35,7 @@ def get_auth_provider(cfg: ClientContext):
             cfg.oauth_redirect_port_range,
             cfg.oauth_client_id,
             cfg.oauth_scopes,
+            http_client,
             cfg.auth_type,
         )
     elif cfg.access_token is not None:
@@ -53,6 +55,8 @@ def get_auth_provider(cfg: ClientContext):
                 cfg.oauth_redirect_port_range,
                 cfg.oauth_client_id,
                 cfg.oauth_scopes,
+                http_client,
+                cfg.auth_type or AuthType.DATABRICKS_OAUTH.value,
             )
         else:
             raise RuntimeError("No valid authentication settings!")
@@ -79,7 +83,7 @@ def get_client_id_and_redirect_port(use_azure_auth: bool):
     )
 
 
-def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
+def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs):
     # TODO : unify all the auth mechanisms with the Python SDK
 
     auth_type = kwargs.get("auth_type")
@@ -111,4 +115,4 @@ def get_python_sql_connector_auth_provider(hostname: str, **kwargs):
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
     )
-    return get_auth_provider(cfg)
+    return get_auth_provider(cfg, http_client)

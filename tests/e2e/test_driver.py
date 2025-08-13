@@ -60,12 +60,14 @@ unsafe_logger.setLevel(logging.DEBUG)
 unsafe_logger.addHandler(logging.FileHandler("./tests-unsafe.log"))
 
 # manually decorate DecimalTestsMixin to need arrow support
-for name in loader.getTestCaseNames(DecimalTestsMixin, "test_"):
-    fn = getattr(DecimalTestsMixin, name)
-    decorated = skipUnless(pysql_supports_arrow(), "Decimal tests need arrow support")(
-        fn
-    )
-    setattr(DecimalTestsMixin, name, decorated)
+test_loader = loader.TestLoader()
+for name in test_loader.getTestCaseNames(DecimalTestsMixin):
+    if name.startswith("test_"):
+        fn = getattr(DecimalTestsMixin, name)
+        decorated = skipUnless(pysql_supports_arrow(), "Decimal tests need arrow support")(
+            fn
+        )
+        setattr(DecimalTestsMixin, name, decorated)
 
 
 class PySQLPytestTestCase:

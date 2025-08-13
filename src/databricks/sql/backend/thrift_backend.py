@@ -8,6 +8,7 @@ import threading
 from typing import List, Optional, Union, Any, TYPE_CHECKING
 from uuid import UUID
 
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.result_set import ThriftResultSet
 from databricks.sql.telemetry.models.event import StatementType
 
@@ -105,6 +106,7 @@ class ThriftDatabricksClient(DatabricksClient):
         http_headers,
         auth_provider: AuthProvider,
         ssl_options: SSLOptions,
+        http_client: UnifiedHttpClient,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
@@ -145,10 +147,8 @@ class ThriftDatabricksClient(DatabricksClient):
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
         logger.debug(
-            "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)",
-            server_hostname,
-            port,
-            http_path,
+            "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)"
+            % (server_hostname, port, http_path)
         )
 
         port = port or 443
@@ -177,8 +177,8 @@ class ThriftDatabricksClient(DatabricksClient):
         self._max_download_threads = kwargs.get("max_download_threads", 10)
 
         self._ssl_options = ssl_options
-
         self._auth_provider = auth_provider
+        self._http_client = http_client
 
         # Connector version 3 retry approach
         self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
@@ -195,7 +195,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
         if _max_redirects:
             if _max_redirects > self._retry_stop_after_attempts_count:
-                logger.warn(
+                logger.warning(
                     "_retry_max_redirects > _retry_stop_after_attempts_count so it will have no affect!"
                 )
             urllib3_kwargs = {"redirect": _max_redirects}
@@ -1292,6 +1292,7 @@ class ThriftDatabricksClient(DatabricksClient):
             session_id_hex=self._session_id_hex,
             statement_id=command_id.to_hex_guid(),
             chunk_id=chunk_id,
+            http_client=self._http_client,
         )
 
         return (

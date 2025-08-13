@@ -9,10 +9,8 @@ from http.server import HTTPServer
 from typing import List, Optional
 
 import oauthlib.oauth2
-import requests
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
-from requests.exceptions import RequestException
-from databricks.sql.common.http import HttpMethod, DatabricksHttpClient, HttpHeader
+from databricks.sql.common.http import HttpMethod, HttpHeader
 from databricks.sql.common.http import OAuthResponse
 from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
 from databricks.sql.auth.endpoint import OAuthEndpointCollection
@@ -63,33 +61,19 @@ class RefreshableTokenSource(ABC):
         pass
 
 
-class IgnoreNetrcAuth(requests.auth.AuthBase):
-    """This auth method is a no-op.
-
-    We use it to force requestslib to not use .netrc to write auth headers
-    when making .post() requests to the oauth token endpoints, since these
-    don't require authentication.
-
-    In cases where .netrc is outdated or corrupt, these requests will fail.
-
-    See issue #121
-    """
-
-    def __call__(self, r):
-        return r
-
-
 class OAuthManager:
     def __init__(
         self,
         port_range: List[int],
         client_id: str,
         idp_endpoint: OAuthEndpointCollection,
+        http_client,
     ):
         self.port_range = port_range
         self.client_id = client_id
         self.redirect_port = None
         self.idp_endpoint = idp_endpoint
+        self.http_client = http_client
 
     @staticmethod
     def __token_urlsafe(nbytes=32):
@@ -103,8 +87,11 @@ class OAuthManager:
         known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
 
         try:
-            response = requests.get(url=known_config_url, auth=IgnoreNetrcAuth())
-        except RequestException as e:
+            response = self.http_client.request(HttpMethod.GET, url=known_config_url)
+            # Convert urllib3 response to requests-like response for compatibility
+            response.status_code = response.status
+            response.json = lambda: json.loads(response.data.decode())
+        except Exception as e:
             logger.error(
                 f"Unable to fetch OAuth configuration from {known_config_url}.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
@@ -122,7 +109,7 @@ class OAuthManager:
             raise RuntimeError(msg)
         try:
             return response.json()
-        except requests.exceptions.JSONDecodeError as e:
+        except Exception as e:
             logger.error(
                 f"Unable to decode OAuth configuration from {known_config_url}.\n"
                 "Verify it is a valid workspace URL and that OAuth is "
@@ -203,16 +190,17 @@ class OAuthManager:
         data = f"{token_request_body}&code_verifier={verifier}"
         return self.__send_token_request(token_request_url, data)
 
-    @staticmethod
-    def __send_token_request(token_request_url, data):
+    def __send_token_request(self, token_request_url, data):
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        response = requests.post(
-            url=token_request_url, data=data, headers=headers, auth=IgnoreNetrcAuth()
+        # Use unified HTTP client
+        response = self.http_client.request(
+            HttpMethod.POST, url=token_request_url, body=data, headers=headers
         )
-        return response.json()
+        # Convert urllib3 response to dict for compatibility
+        return json.loads(response.data.decode())
 
     def __send_refresh_token_request(self, hostname, refresh_token):
         oauth_config = self.__fetch_well_known_config(hostname)
@@ -221,7 +209,7 @@ class OAuthManager:
         token_request_body = client.prepare_refresh_body(
             refresh_token=refresh_token, client_id=client.client_id
         )
-        return OAuthManager.__send_token_request(token_request_url, token_request_body)
+        return self.__send_token_request(token_request_url, token_request_body)
 
     @staticmethod
     def __get_tokens_from_response(oauth_response):
@@ -320,6 +308,7 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         token_url,
         client_id,
         client_secret,
+        http_client,
         extra_params: dict = {},
     ):
         self.client_id = client_id
@@ -327,7 +316,7 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
         self.token_url = token_url
         self.extra_params = extra_params
         self.token: Optional[Token] = None
-        self._http_client = DatabricksHttpClient.get_instance()
+        self._http_client = http_client
 
     def get_token(self) -> Token:
         if self.token is None or self.token.is_expired():
@@ -348,17 +337,17 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
             }
         )
 
-        with self._http_client.execute(
-            method=HttpMethod.POST, url=self.token_url, headers=headers, data=data
-        ) as response:
-            if response.status_code == 200:
-                oauth_response = OAuthResponse(**response.json())
-                return Token(
-                    oauth_response.access_token,
-                    oauth_response.token_type,
-                    oauth_response.refresh_token,
-                )
-            else:
-                raise Exception(
-                    f"Failed to get token: {response.status_code} {response.text}"
-                )
+        response = self._http_client.request(
+            method=HttpMethod.POST, url=self.token_url, headers=headers, body=data
+        )
+        if response.status == 200:
+            oauth_response = OAuthResponse(**json.loads(response.data.decode("utf-8")))
+            return Token(
+                oauth_response.access_token,
+                oauth_response.token_type,
+                oauth_response.refresh_token,
+            )
+        else:
+            raise Exception(
+                f"Failed to get token: {response.status} {response.data.decode('utf-8')}"
+            )

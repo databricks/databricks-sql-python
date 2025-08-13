@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 
 from dateutil import parser
 import datetime
@@ -9,7 +9,6 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 import re
 
 import lz4.frame
@@ -64,6 +63,7 @@ class ThriftResultSetQueueFactory(ABC):
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
+        http_client,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
     ) -> ResultSetQueue:
@@ -113,6 +113,7 @@ class ThriftResultSetQueueFactory(ABC):
                 session_id_hex=session_id_hex,
                 statement_id=statement_id,
                 chunk_id=chunk_id,
+                http_client=http_client,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -224,6 +225,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
+        http_client,
         schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
@@ -247,6 +249,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
         self.session_id_hex = session_id_hex
         self.statement_id = statement_id
         self.chunk_id = chunk_id
+        self._http_client = http_client
 
         # Table state
         self.table = None
@@ -261,6 +264,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             session_id_hex=session_id_hex,
             statement_id=statement_id,
             chunk_id=chunk_id,
+            http_client=http_client,
         )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
@@ -370,6 +374,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
         session_id_hex: Optional[str],
         statement_id: str,
         chunk_id: int,
+        http_client,
         start_row_offset: int = 0,
         result_links: Optional[List[TSparkArrowResultLink]] = None,
         lz4_compressed: bool = True,
@@ -396,6 +401,7 @@ class ThriftCloudFetchQueue(CloudFetchQueue):
             session_id_hex=session_id_hex,
             statement_id=statement_id,
             chunk_id=chunk_id,
+            http_client=http_client,
         )
 
         self.start_row_index = start_row_offset
@@ -875,3 +881,47 @@ def concat_table_chunks(
         return ColumnTable(result_table, table_chunks[0].column_names)
     else:
         return pyarrow.concat_tables(table_chunks, use_threads=True)
+
+
+def build_client_context(server_hostname: str, version: str, **kwargs):
+    """Build ClientContext for HTTP client configuration."""
+    from databricks.sql.auth.common import ClientContext
+    from databricks.sql.types import SSLOptions
+
+    # Extract SSL options
+    ssl_options = SSLOptions(
+        tls_verify=not kwargs.get("_tls_no_verify", False),
+        tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
+        tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
+        tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
+        tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
+        tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
+    )
+
+    # Build user agent
+    user_agent_entry = kwargs.get("user_agent_entry", "")
+    if user_agent_entry:
+        user_agent = f"PyDatabricksSqlConnector/{version} ({user_agent_entry})"
+    else:
+        user_agent = f"PyDatabricksSqlConnector/{version}"
+
+    # Explicitly construct ClientContext with proper types
+    return ClientContext(
+        hostname=server_hostname,
+        ssl_options=ssl_options,
+        user_agent=user_agent,
+        socket_timeout=kwargs.get("_socket_timeout"),
+        retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count"),
+        retry_delay_min=kwargs.get("_retry_delay_min"),
+        retry_delay_max=kwargs.get("_retry_delay_max"),
+        retry_stop_after_attempts_duration=kwargs.get(
+            "_retry_stop_after_attempts_duration"
+        ),
+        retry_delay_default=kwargs.get("_retry_delay_default"),
+        retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
+        http_proxy=kwargs.get("_http_proxy"),
+        proxy_username=kwargs.get("_proxy_username"),
+        proxy_password=kwargs.get("_proxy_password"),
+        pool_connections=kwargs.get("_pool_connections"),
+        pool_maxsize=kwargs.get("_pool_maxsize"),
+    )

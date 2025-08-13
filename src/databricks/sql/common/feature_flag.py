@@ -1,9 +1,11 @@
+import json
 import threading
 import time
-import requests
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional, List, Any, TYPE_CHECKING
+
+from databricks.sql.common.http import HttpMethod
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -49,7 +51,9 @@ class FeatureFlagsContext:
        in the background, returning stale data until the refresh completes.
     """
 
-    def __init__(self, connection: "Connection", executor: ThreadPoolExecutor):
+    def __init__(
+        self, connection: "Connection", executor: ThreadPoolExecutor, http_client
+    ):
         from databricks.sql import __version__
 
         self._connection = connection
@@ -65,6 +69,9 @@ class FeatureFlagsContext:
         self._feature_flag_endpoint = (
             f"https://{self._connection.session.host}{endpoint_suffix}"
         )
+
+        # Use the provided HTTP client
+        self._http_client = http_client
 
     def _is_refresh_needed(self) -> bool:
         """Checks if the cache is due for a proactive background refresh."""
@@ -105,12 +112,14 @@ class FeatureFlagsContext:
             self._connection.session.auth_provider.add_headers(headers)
             headers["User-Agent"] = self._connection.session.useragent_header
 
-            response = requests.get(
-                self._feature_flag_endpoint, headers=headers, timeout=30
+            response = self._http_client.request(
+                HttpMethod.GET, self._feature_flag_endpoint, headers=headers, timeout=30
             )
 
-            if response.status_code == 200:
-                ff_response = FeatureFlagsResponse.from_dict(response.json())
+            if response.status == 200:
+                # Parse JSON response from urllib3 response data
+                response_data = json.loads(response.data.decode())
+                ff_response = FeatureFlagsResponse.from_dict(response_data)
                 self._update_cache_from_response(ff_response)
             else:
                 # On failure, initialize with an empty dictionary to prevent re-blocking.
@@ -159,7 +168,9 @@ class FeatureFlagsContextFactory:
             # Use the unique session ID as the key
             key = connection.get_session_id_hex()
             if key not in cls._context_map:
-                cls._context_map[key] = FeatureFlagsContext(connection, cls._executor)
+                cls._context_map[key] = FeatureFlagsContext(
+                    connection, cls._executor, connection.session.http_client
+                )
             return cls._context_map[key]
 
     @classmethod

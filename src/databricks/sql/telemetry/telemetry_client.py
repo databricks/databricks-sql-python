@@ -1,9 +1,11 @@
 import threading
 import time
 import logging
+import json
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional, TYPE_CHECKING
-from databricks.sql.common.http import TelemetryHttpClient
+from concurrent.futures import Future
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverSystemConfiguration,
@@ -37,6 +39,8 @@ import uuid
 import locale
 from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.http import HttpMethod
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -168,6 +172,7 @@ class TelemetryClient(BaseTelemetryClient):
         host_url,
         executor,
         batch_size,
+        client_context,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
@@ -180,7 +185,9 @@ class TelemetryClient(BaseTelemetryClient):
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
-        self._http_client = TelemetryHttpClient.get_instance()
+
+        # Create own HTTP client from client context
+        self._http_client = UnifiedHttpClient(client_context)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -228,32 +235,50 @@ class TelemetryClient(BaseTelemetryClient):
 
         try:
             logger.debug("Submitting telemetry request to thread pool")
+
+            # Use unified HTTP client
             future = self._executor.submit(
-                self._http_client.post,
+                self._send_with_unified_client,
                 url,
                 data=request.to_json(),
                 headers=headers,
                 timeout=900,
             )
+
             future.add_done_callback(
                 lambda fut: self._telemetry_request_callback(fut, sent_count=sent_count)
             )
         except Exception as e:
             logger.debug("Failed to submit telemetry request: %s", e)
 
+    def _send_with_unified_client(self, url, data, headers, timeout=900):
+        """Helper method to send telemetry using the unified HTTP client."""
+        try:
+            response = self._http_client.request(
+                HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
+            )
+            return response
+        except Exception as e:
+            logger.error("Failed to send telemetry with unified client: %s", e)
+            raise
+
     def _telemetry_request_callback(self, future, sent_count: int):
         """Callback function to handle telemetry request completion"""
         try:
             response = future.result()
 
-            if not response.ok:
+            # Check if response is successful (urllib3 uses response.status)
+            is_success = 200 <= response.status < 300
+            if not is_success:
                 logger.debug(
                     "Telemetry request failed with status code: %s, response: %s",
-                    response.status_code,
-                    response.text,
+                    response.status,
+                    response.data.decode() if response.data else "",
                 )
 
-            telemetry_response = TelemetryResponse(**response.json())
+            # Parse JSON response (urllib3 uses response.data)
+            response_data = json.loads(response.data.decode()) if response.data else {}
+            telemetry_response = TelemetryResponse(**response_data)
 
             logger.debug(
                 "Pushed Telemetry logs with success count: %s, error count: %s",
@@ -431,6 +456,7 @@ class TelemetryClientFactory:
         auth_provider,
         host_url,
         batch_size,
+        client_context,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
@@ -453,6 +479,7 @@ class TelemetryClientFactory:
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
                             batch_size=batch_size,
+                            client_context=client_context,
                         )
                     else:
                         TelemetryClientFactory._clients[
@@ -493,7 +520,6 @@ class TelemetryClientFactory:
                 try:
                     TelemetryClientFactory._stop_flush_thread()
                     TelemetryClientFactory._executor.shutdown(wait=True)
-                    TelemetryHttpClient.close()
                 except Exception as e:
                     logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
@@ -506,9 +532,10 @@ class TelemetryClientFactory:
         host_url: str,
         http_path: str,
         port: int,
+        client_context,
         user_agent: Optional[str] = None,
     ):
-        """Send error telemetry when connection creation fails, without requiring a session"""
+        """Send error telemetry when connection creation fails, using provided client context"""
 
         UNAUTH_DUMMY_SESSION_ID = "unauth_session_id"
 
@@ -518,6 +545,7 @@ class TelemetryClientFactory:
             auth_provider=None,
             host_url=host_url,
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+            client_context=client_context,
         )
 
         telemetry_client = TelemetryClientFactory.get_telemetry_client(
