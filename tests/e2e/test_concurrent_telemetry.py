@@ -4,6 +4,7 @@ import threading
 import time
 from unittest.mock import patch
 import pytest
+import json
 
 from databricks.sql.telemetry.models.enums import StatementType
 from databricks.sql.telemetry.telemetry_client import (
@@ -119,8 +120,12 @@ class TestE2ETelemetry(PySQLPytestTestCase):
             for future in done:
                 try:
                     response = future.result()
-                    response.raise_for_status()
-                    captured_responses.append(response.json())
+                    # Check status using urllib3 method (response.status instead of response.raise_for_status())
+                    if response.status >= 400:
+                        raise Exception(f"HTTP {response.status}: {getattr(response, 'reason', 'Unknown')}")
+                    # Parse JSON using urllib3 method (response.data.decode() instead of response.json())
+                    response_data = json.loads(response.data.decode()) if response.data else {}
+                    captured_responses.append(response_data)
                 except Exception as e:
                     captured_exceptions.append(e)
 

@@ -172,7 +172,7 @@ class TelemetryClient(BaseTelemetryClient):
         host_url,
         executor,
         batch_size,
-        http_client,
+        client_context,
     ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
@@ -186,8 +186,10 @@ class TelemetryClient(BaseTelemetryClient):
         self._host_url = host_url
         self._executor = executor
 
-        # Use the provided HTTP client directly
-        self._http_client = http_client
+        # Create own HTTP client from client context
+        from databricks.sql.common.unified_http_client import UnifiedHttpClient
+
+        self._http_client = UnifiedHttpClient(client_context)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -456,7 +458,7 @@ class TelemetryClientFactory:
         auth_provider,
         host_url,
         batch_size,
-        http_client,
+        client_context,
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
@@ -479,7 +481,7 @@ class TelemetryClientFactory:
                             host_url=host_url,
                             executor=TelemetryClientFactory._executor,
                             batch_size=batch_size,
-                            http_client=http_client,
+                            client_context=client_context,
                         )
                     else:
                         TelemetryClientFactory._clients[
@@ -532,10 +534,10 @@ class TelemetryClientFactory:
         host_url: str,
         http_path: str,
         port: int,
-        http_client,
+        client_context,
         user_agent: Optional[str] = None,
     ):
-        """Send error telemetry when connection creation fails, using existing HTTP client"""
+        """Send error telemetry when connection creation fails, using provided client context"""
 
         UNAUTH_DUMMY_SESSION_ID = "unauth_session_id"
 
@@ -545,7 +547,7 @@ class TelemetryClientFactory:
             auth_provider=None,
             host_url=host_url,
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-            http_client=http_client,
+            client_context=client_context,
         )
 
         telemetry_client = TelemetryClientFactory.get_telemetry_client(

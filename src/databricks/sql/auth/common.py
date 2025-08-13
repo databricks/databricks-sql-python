@@ -116,15 +116,15 @@ def get_azure_tenant_id_from_host(host: str, http_client) -> str:
     logger.debug("Loading tenant ID from %s", login_url)
 
     with http_client.request_context(
-        HttpMethod.GET, login_url, allow_redirects=False
+        HttpMethod.GET, login_url
     ) as resp:
-        if resp.status // 100 != 3:
-            raise ValueError(
-                f"Failed to get tenant ID from {login_url}: expected status code 3xx, got {resp.status}"
-            )
-        entra_id_endpoint = dict(resp.headers).get("Location")
+        # if resp.status // 100 != 3:
+        #     raise ValueError(
+        #         f"Failed to get tenant ID from {login_url}: expected status code 3xx, got {resp.status}"
+        #     )
+        entra_id_endpoint = resp.retries.history[-1].redirect_location
         if entra_id_endpoint is None:
-            raise ValueError(f"No Location header in response from {login_url}")
+            raise ValueError(f"No Location header in response from {login_url}: {entra_id_endpoint}")
 
     # The Location header has the following form: https://login.microsoftonline.com/<tenant-id>/oauth2/authorize?...
     # The domain may change depending on the Azure cloud (e.g. login.microsoftonline.us for US Government cloud).
