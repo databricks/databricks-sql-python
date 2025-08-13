@@ -284,6 +284,8 @@ class Connection:
                 if hasattr(self, "session")
                 else None,
             )
+            if self.http_client:
+                self.http_client.close()
             raise e
 
         self.use_inline_params = self._set_use_inline_params_with_warning(

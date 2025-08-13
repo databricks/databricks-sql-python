@@ -520,7 +520,7 @@ class TestHybridDisposition:
         # Create result data with external links but no attachment
         result_data = ResultData(external_links=external_links, attachment=None)
 
-        # Build queue   
+        # Build queue
         mock_http_client = MagicMock()
         queue = SeaResultSetQueueFactory.build_queue(
             result_data=result_data,

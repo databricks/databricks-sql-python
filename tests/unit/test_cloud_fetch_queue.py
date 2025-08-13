@@ -13,22 +13,24 @@ from databricks.sql.types import SSLOptions
 
 @pytest.mark.skipif(pyarrow is None, reason="PyArrow is not installed")
 class CloudFetchQueueSuite(unittest.TestCase):
-    def create_queue(self, schema_bytes=None, result_links=None, description=None, **kwargs):
+    def create_queue(
+        self, schema_bytes=None, result_links=None, description=None, **kwargs
+    ):
         """Helper method to create ThriftCloudFetchQueue with sensible defaults"""
         # Set up defaults for commonly used parameters
         defaults = {
-            'max_download_threads': 10,
-            'ssl_options': SSLOptions(),
-            'session_id_hex': Mock(),
-            'statement_id': Mock(),
-            'chunk_id': 0,
-            'start_row_offset': 0,
-            'lz4_compressed': True,
+            "max_download_threads": 10,
+            "ssl_options": SSLOptions(),
+            "session_id_hex": Mock(),
+            "statement_id": Mock(),
+            "chunk_id": 0,
+            "start_row_offset": 0,
+            "lz4_compressed": True,
         }
-        
+
         # Override defaults with any provided kwargs
         defaults.update(kwargs)
-        
+
         mock_http_client = MagicMock()
         return utils.ThriftCloudFetchQueue(
             schema_bytes=schema_bytes or MagicMock(),
@@ -198,7 +200,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_next_n_rows_empty_table(self, mock_create_next_table):
         schema_bytes = self.get_schema_bytes()
         # Create description that matches the 4-column schema
-        description = [("col0", "uint32"), ("col1", "uint32"), ("col2", "uint32"), ("col3", "uint32")]
+        description = [
+            ("col0", "uint32"),
+            ("col1", "uint32"),
+            ("col2", "uint32"),
+            ("col3", "uint32"),
+        ]
         queue = self.create_queue(schema_bytes=schema_bytes, description=description)
         assert queue.table is None
 
@@ -277,7 +284,12 @@ class CloudFetchQueueSuite(unittest.TestCase):
     def test_remaining_rows_empty_table(self, mock_create_next_table):
         schema_bytes = self.get_schema_bytes()
         # Create description that matches the 4-column schema
-        description = [("col0", "uint32"), ("col1", "uint32"), ("col2", "uint32"), ("col3", "uint32")]
+        description = [
+            ("col0", "uint32"),
+            ("col1", "uint32"),
+            ("col2", "uint32"),
+            ("col3", "uint32"),
+        ]
         queue = self.create_queue(schema_bytes=schema_bytes, description=description)
         assert queue.table is None
 

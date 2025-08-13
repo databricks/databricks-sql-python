@@ -359,6 +359,7 @@ class TelemetryClient(BaseTelemetryClient):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._flush()
+        self._http_client.close()
 
 
 class TelemetryClientFactory:
@@ -460,7 +461,6 @@ class TelemetryClientFactory:
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
-
             with TelemetryClientFactory._lock:
                 TelemetryClientFactory._initialize()
 

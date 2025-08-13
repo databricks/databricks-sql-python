@@ -122,9 +122,13 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                     response = future.result()
                     # Check status using urllib3 method (response.status instead of response.raise_for_status())
                     if response.status >= 400:
-                        raise Exception(f"HTTP {response.status}: {getattr(response, 'reason', 'Unknown')}")
+                        raise Exception(
+                            f"HTTP {response.status}: {getattr(response, 'reason', 'Unknown')}"
+                        )
                     # Parse JSON using urllib3 method (response.data.decode() instead of response.json())
-                    response_data = json.loads(response.data.decode()) if response.data else {}
+                    response_data = (
+                        json.loads(response.data.decode()) if response.data else {}
+                    )
                     captured_responses.append(response_data)
                 except Exception as e:
                     captured_exceptions.append(e)
