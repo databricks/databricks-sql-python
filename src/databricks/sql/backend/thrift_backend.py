@@ -232,7 +232,7 @@ class ThriftDatabricksClient(DatabricksClient):
         try:
             self._transport.open()
         except:
-            self._transport.release_connection()
+            self._transport.close()
             raise
 
         self._request_lock = threading.RLock()
@@ -607,7 +607,7 @@ class ThriftDatabricksClient(DatabricksClient):
             self._session_id_hex = session_id.hex_guid
             return session_id
         except:
-            self._transport.release_connection()
+            self._transport.close()
             raise
 
     def close_session(self, session_id: SessionId) -> None:
