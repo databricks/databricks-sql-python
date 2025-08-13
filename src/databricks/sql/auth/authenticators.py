@@ -63,6 +63,7 @@ class DatabricksOAuthProvider(AuthProvider):
         redirect_port_range: List[int],
         client_id: str,
         scopes: List[str],
+        http_client,
         auth_type: str = "databricks-oauth",
     ):
         try:
@@ -79,6 +80,7 @@ class DatabricksOAuthProvider(AuthProvider):
                 port_range=redirect_port_range,
                 client_id=client_id,
                 idp_endpoint=idp_endpoint,
+                http_client=http_client,
             )
             self._hostname = hostname
             self._scopes_as_str = DatabricksOAuthProvider.SCOPE_DELIM.join(cloud_scopes)
@@ -188,6 +190,7 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         hostname,
         azure_client_id,
         azure_client_secret,
+        http_client,
         azure_tenant_id=None,
         azure_workspace_resource_id=None,
     ):
@@ -198,6 +201,7 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         self.azure_tenant_id = azure_tenant_id or get_azure_tenant_id_from_host(
             hostname
         )
+        self._http_client = http_client
 
     def auth_type(self) -> str:
         return AuthType.AZURE_SP_M2M.value
@@ -207,6 +211,7 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
             token_url=f"{self.AZURE_AAD_ENDPOINT}/{self.azure_tenant_id}/{self.AZURE_TOKEN_ENDPOINT}",
             client_id=self.azure_client_id,
             client_secret=self.azure_client_secret,
+            http_client=self._http_client,
             extra_params={"resource": resource},
         )
 

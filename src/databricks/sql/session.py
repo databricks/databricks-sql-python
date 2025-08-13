@@ -4,6 +4,7 @@ from typing import Dict, Tuple, List, Optional, Any, Type
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.common import ClientContext
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
@@ -11,6 +12,7 @@ from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,7 @@ class Session:
         self,
         server_hostname: str,
         http_path: str,
+        http_client: UnifiedHttpClient,
         http_headers: Optional[List[Tuple[str, str]]] = None,
         session_configuration: Optional[Dict[str, Any]] = None,
         catalog: Optional[str] = None,
@@ -41,10 +44,6 @@ class Session:
         self.catalog = catalog
         self.schema = schema
         self.http_path = http_path
-
-        self.auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, **kwargs
-        )
 
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
@@ -75,6 +74,14 @@ class Session:
             tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
             tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
             tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
+        )
+
+        # Use the provided HTTP client (created in Connection)
+        self.http_client = http_client
+
+        # Create auth provider with HTTP client context
+        self.auth_provider = get_python_sql_connector_auth_provider(
+            server_hostname, http_client=self.http_client, **kwargs
         )
 
         self.backend = self._create_backend(
@@ -115,6 +122,7 @@ class Session:
             "http_headers": all_headers,
             "auth_provider": auth_provider,
             "ssl_options": self.ssl_options,
+            "http_client": self.http_client,
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }

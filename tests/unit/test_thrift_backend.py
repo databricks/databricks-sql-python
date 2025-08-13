@@ -83,6 +83,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         with self.assertRaises(DatabaseError):
             thrift_backend.make_request(mock_method, Mock())
@@ -102,6 +103,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend._hive_schema_to_arrow_schema = Mock()
         thrift_backend._hive_schema_to_description = Mock()
@@ -196,6 +198,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [("header", "value")],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         t_http_client_class.return_value.setCustomHeaders.assert_called_with(
             {"header": "value"}
@@ -243,6 +246,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=mock_ssl_options,
+            http_client=MagicMock(),
         )
 
         mock_ssl_context.load_cert_chain.assert_called_once_with(
@@ -329,6 +333,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=mock_ssl_options,
+            http_client=MagicMock(),
         )
 
         self.assertFalse(mock_ssl_context.check_hostname)
@@ -353,6 +358,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=mock_ssl_options,
+            http_client=MagicMock(),
         )
 
         self.assertFalse(mock_ssl_context.check_hostname)
@@ -370,6 +376,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         self.assertEqual(
             t_http_client_class.call_args[1]["uri_or_host"],
@@ -385,6 +392,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         self.assertEqual(
             t_http_client_class.call_args[1]["uri_or_host"],
@@ -400,6 +408,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         self.assertEqual(
             t_http_client_class.call_args[1]["uri_or_host"],
@@ -415,6 +424,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             _socket_timeout=129,
         )
         self.assertEqual(
@@ -427,6 +437,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             _socket_timeout=0,
         )
         self.assertEqual(t_http_client_class.return_value.setTimeout.call_args[0][0], 0)
@@ -437,6 +448,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         self.assertEqual(
             t_http_client_class.return_value.setTimeout.call_args[0][0], 900 * 1000
@@ -448,6 +460,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             _socket_timeout=None,
         )
         self.assertEqual(
@@ -559,6 +572,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
 
         for code in error_codes:
@@ -604,6 +618,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
+            http_client=MagicMock(),
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -647,6 +662,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             )
 
             execute_response, _ = thrift_backend._handle_execute_response(
@@ -691,6 +707,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
+            http_client=MagicMock(),
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -729,6 +746,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         with self.assertRaises(DatabaseError) as cm:
             thrift_backend.execute_command(
@@ -772,6 +790,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         with self.assertRaises(DatabaseError) as cm:
             thrift_backend.execute_command(
@@ -840,6 +859,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                         [],
                         auth_provider=AuthProvider(),
                         ssl_options=SSLOptions(),
+            http_client=MagicMock(),
                     )
 
                     with self.assertRaises(DatabaseError) as cm:
@@ -892,6 +912,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
+            http_client=MagicMock(),
                 )
                 (
                     execute_response,
@@ -930,6 +951,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
+            http_client=MagicMock(),
                 )
                 thrift_backend._results_message_to_execute_response = Mock()
 
@@ -1154,6 +1176,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         arrow_queue, has_more_results, _ = thrift_backend.fetch_results(
             command_id=Mock(),
@@ -1183,6 +1206,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend._handle_execute_response = Mock()
         thrift_backend._handle_execute_response.return_value = (Mock(), Mock())
@@ -1219,6 +1243,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend._handle_execute_response = Mock()
         thrift_backend._handle_execute_response.return_value = (Mock(), Mock())
@@ -1252,6 +1277,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend._handle_execute_response = Mock()
         thrift_backend._handle_execute_response.return_value = (Mock(), Mock())
@@ -1294,6 +1320,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend._handle_execute_response = Mock()
         thrift_backend._handle_execute_response.return_value = (Mock(), Mock())
@@ -1340,6 +1367,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend._handle_execute_response = Mock()
         thrift_backend._handle_execute_response.return_value = (Mock(), Mock())
@@ -1383,6 +1411,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend.open_session({}, None, None)
         self.assertEqual(len(tcli_service_instance.OpenSession.call_args_list), 1)
@@ -1397,6 +1426,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         command_id = CommandId.from_thrift_handle(self.operation_handle)
         thrift_backend.close_command(command_id)
@@ -1419,6 +1449,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         thrift_backend._transport = mock_http_client_instance
 
@@ -1477,6 +1508,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         with self.assertRaises(OperationalError):
             thrift_backend._create_arrow_table(t_row_set, Mock(), None, Mock())
@@ -1497,6 +1529,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         convert_arrow_mock.return_value = (MagicMock(), Mock())
         convert_col_mock.return_value = (MagicMock(), Mock())
@@ -1532,6 +1565,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
 
         lz4_decompress_mock.return_value = bytearray("Testing", "utf-8")
@@ -1752,6 +1786,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             _retry_stop_after_attempts_count=EXPECTED_RETRIES,
             _retry_delay_default=1,
         )
@@ -1830,6 +1865,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             _retry_stop_after_attempts_count=EXPECTED_RETRIES,
             _retry_delay_default=1,
         )
@@ -1862,6 +1898,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
 
         with self.assertRaises(OperationalError) as cm:
@@ -1891,6 +1928,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             _retry_stop_after_attempts_count=14,
             _retry_delay_max=0,
             _retry_delay_min=0,
@@ -1920,6 +1958,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
 
         error_headers = [
@@ -2044,6 +2083,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
             **retry_delay_args,
         )
         for arg, val in retry_delay_args.items():
@@ -2075,6 +2115,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
+            http_client=MagicMock(),
                 **retry_delay_args,
             )
             retry_delay_expected_vals = {
@@ -2103,6 +2144,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         backend.open_session(mock_config, None, None)
 
@@ -2121,6 +2163,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
 
         with self.assertRaises(databricks.sql.Error) as cm:
@@ -2148,6 +2191,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         initial_cat_schem_args = [("cat", None), (None, "schem"), ("cat", "schem")]
 
@@ -2179,6 +2223,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         backend.open_session({}, None, None)
 
@@ -2198,6 +2243,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
         # If the initial catalog is set, but server returns canUseMultipleCatalogs=False, we
         # expect failure. If the initial catalog isn't set, then canUseMultipleCatalogs=False
@@ -2244,6 +2290,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             [],
             auth_provider=AuthProvider(),
             ssl_options=SSLOptions(),
+            http_client=MagicMock(),
         )
 
         with self.assertRaises(InvalidServerResponseError) as cm:
@@ -2290,6 +2337,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
+            http_client=MagicMock(),
                 **complex_arg_types,
             )
             thrift_backend.execute_command(

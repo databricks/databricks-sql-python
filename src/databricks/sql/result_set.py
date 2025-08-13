@@ -244,6 +244,7 @@ class ThriftResultSet(ResultSet):
                 session_id_hex=connection.get_session_id_hex(),
                 statement_id=execute_response.command_id.to_hex_guid(),
                 chunk_id=self.num_chunks,
+                http_client=connection.http_client,
             )
             if t_row_set.resultLinks:
                 self.num_chunks += len(t_row_set.resultLinks)
