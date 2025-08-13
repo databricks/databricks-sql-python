@@ -192,6 +192,14 @@ class ThriftDatabricksClient(DatabricksClient):
 
         additional_transport_args = {}
         _max_redirects: Union[None, int] = kwargs.get("_retry_max_redirects")
+        
+        # Add Kerberos proxy parameters if provided
+        if kwargs.get("_proxy_auth_type"):
+            additional_transport_args["proxy_auth_type"] = kwargs.get("_proxy_auth_type")
+            additional_transport_args["proxy_kerberos_service_name"] = kwargs.get("_proxy_kerberos_service_name", "HTTP")
+            additional_transport_args["proxy_kerberos_principal"] = kwargs.get("_proxy_kerberos_principal")
+            additional_transport_args["proxy_kerberos_delegate"] = kwargs.get("_proxy_kerberos_delegate", False)
+            additional_transport_args["proxy_kerberos_mutual_auth"] = kwargs.get("_proxy_kerberos_mutual_auth", "REQUIRED")
 
         if _max_redirects:
             if _max_redirects > self._retry_stop_after_attempts_count:

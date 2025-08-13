@@ -237,6 +237,16 @@ class Connection:
         # (True by default)
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
+        # _proxy_auth_type
+        #   Type of proxy authentication: "basic" or "kerberos"
+        # _proxy_kerberos_service_name
+        #   Kerberos service name for proxy (default: "HTTP")
+        # _proxy_kerberos_principal
+        #   Kerberos principal for proxy authentication (optional, uses default if not specified)
+        # _proxy_kerberos_delegate
+        #   Whether to delegate Kerberos credentials to proxy (default: False)
+        # _proxy_kerberos_mutual_auth
+        #   Kerberos mutual authentication requirement: "REQUIRED", "OPTIONAL", or "DISABLED" (default: "REQUIRED")
 
         logger.debug(
             "Connection.__init__(server_hostname=%s, http_path=%s)",
