@@ -279,7 +279,7 @@ class Connection:
                 host_url=server_hostname,
                 http_path=http_path,
                 port=kwargs.get("_port", 443),
-                http_client=self.http_client,
+                client_context=client_context,
                 user_agent=self.session.useragent_header
                 if hasattr(self, "session")
                 else None,
@@ -301,7 +301,7 @@ class Connection:
             auth_provider=self.session.auth_provider,
             host_url=self.session.host,
             batch_size=self.telemetry_batch_size,
-            http_client=self.http_client,
+            client_context=client_context,
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(

@@ -199,7 +199,7 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
         self.azure_client_secret = azure_client_secret
         self.azure_workspace_resource_id = azure_workspace_resource_id
         self.azure_tenant_id = azure_tenant_id or get_azure_tenant_id_from_host(
-            hostname
+            hostname, http_client
         )
         self._http_client = http_client
 

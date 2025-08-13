@@ -24,17 +24,19 @@ def mock_telemetry_client():
     session_id = str(uuid.uuid4())
     auth_provider = AccessTokenAuthProvider("test-token")
     executor = MagicMock()
-    mock_http_client = MagicMock()
+    client_context = MagicMock()
 
-    return TelemetryClient(
-        telemetry_enabled=True,
-        session_id_hex=session_id,
-        auth_provider=auth_provider,
-        host_url="test-host.com",
-        executor=executor,
-        batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-        http_client=mock_http_client,
-    )
+    # Patch the _setup_pool_manager method to avoid SSL file loading
+    with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_manager'):
+        return TelemetryClient(
+            telemetry_enabled=True,
+            session_id_hex=session_id,
+            auth_provider=auth_provider,
+            host_url="test-host.com",
+            executor=executor,
+            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+            client_context=client_context,
+        )
 
 
 class TestNoopTelemetryClient:
@@ -216,33 +218,34 @@ class TestTelemetryFactory:
         """Test complete client lifecycle: initialize -> use -> close."""
         session_id_hex = "test-session"
         auth_provider = AccessTokenAuthProvider("token")
-        mock_http_client = MagicMock()
+        client_context = MagicMock()
 
         # Initialize enabled client
-        TelemetryClientFactory.initialize_telemetry_client(
-            telemetry_enabled=True,
-            session_id_hex=session_id_hex,
-            auth_provider=auth_provider,
-            host_url="test-host.com",
-            batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-            http_client=mock_http_client,
-        )
+        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_manager'):
+            TelemetryClientFactory.initialize_telemetry_client(
+                telemetry_enabled=True,
+                session_id_hex=session_id_hex,
+                auth_provider=auth_provider,
+                host_url="test-host.com",
+                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+                client_context=client_context,
+            )
 
-        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
-        assert isinstance(client, TelemetryClient)
-        assert client._session_id_hex == session_id_hex
+            client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+            assert isinstance(client, TelemetryClient)
+            assert client._session_id_hex == session_id_hex
 
-        # Close client
-        with patch.object(client, "close") as mock_close:
-            TelemetryClientFactory.close(session_id_hex)
-            mock_close.assert_called_once()
+            # Close client
+            with patch.object(client, "close") as mock_close:
+                TelemetryClientFactory.close(session_id_hex)
+                mock_close.assert_called_once()
 
-        # Should get NoopTelemetryClient after close
+            # Should get NoopTelemetryClient after close
 
     def test_disabled_telemetry_creates_noop_client(self):
         """Test that disabled telemetry creates NoopTelemetryClient."""
         session_id_hex = "test-session"
-        mock_http_client = MagicMock()
+        client_context = MagicMock()
 
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=False,
@@ -250,7 +253,7 @@ class TestTelemetryFactory:
             auth_provider=None,
             host_url="test-host.com",
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-            http_client=mock_http_client,
+            client_context=client_context,
         )
 
         client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
@@ -259,7 +262,7 @@ class TestTelemetryFactory:
     def test_factory_error_handling(self):
         """Test that factory errors fall back to NoopTelemetryClient."""
         session_id = "test-session"
-        mock_http_client = MagicMock()
+        client_context = MagicMock()
 
         # Simulate initialization error
         with patch(
@@ -272,7 +275,7 @@ class TestTelemetryFactory:
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
                 batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-                http_client=mock_http_client,
+                client_context=client_context,
             )
 
         # Should fall back to NoopTelemetryClient
@@ -283,31 +286,32 @@ class TestTelemetryFactory:
         """Test factory shutdown when last client is removed."""
         session1 = "session-1"
         session2 = "session-2"
-        mock_http_client = MagicMock()
+        client_context = MagicMock()
 
         # Initialize multiple clients
-        for session in [session1, session2]:
-            TelemetryClientFactory.initialize_telemetry_client(
-                telemetry_enabled=True,
-                session_id_hex=session,
-                auth_provider=AccessTokenAuthProvider("token"),
-                host_url="test-host.com",
-                batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
-                http_client=mock_http_client,
-            )
+        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_manager'):
+            for session in [session1, session2]:
+                TelemetryClientFactory.initialize_telemetry_client(
+                    telemetry_enabled=True,
+                    session_id_hex=session,
+                    auth_provider=AccessTokenAuthProvider("token"),
+                    host_url="test-host.com",
+                    batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
+                    client_context=client_context,
+                )
 
-        # Factory should be initialized
-        assert TelemetryClientFactory._initialized is True
-        assert TelemetryClientFactory._executor is not None
+            # Factory should be initialized
+            assert TelemetryClientFactory._initialized is True
+            assert TelemetryClientFactory._executor is not None
 
-        # Close first client - factory should stay initialized
-        TelemetryClientFactory.close(session1)
-        assert TelemetryClientFactory._initialized is True
+            # Close first client - factory should stay initialized
+            TelemetryClientFactory.close(session1)
+            assert TelemetryClientFactory._initialized is True
 
-        # Close second client - factory should shut down
-        TelemetryClientFactory.close(session2)
-        assert TelemetryClientFactory._initialized is False
-        assert TelemetryClientFactory._executor is None
+            # Close second client - factory should shut down
+            TelemetryClientFactory.close(session2)
+            assert TelemetryClientFactory._initialized is False
+            assert TelemetryClientFactory._executor is None
 
     @patch(
         "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_failure_log"

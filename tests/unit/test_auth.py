@@ -263,15 +263,11 @@ class TestClientCredentialsTokenSource:
         with patch.object(token_source, "_http_client", mock_http_client):
             # Create a mock response with the expected format
             mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = {
-                "access_token": "abc123",
-                "token_type": "Bearer",
-                "refresh_token": None,
-            }
-            # Mock the context manager (execute returns context manager)
-            mock_http_client.execute.return_value.__enter__.return_value = mock_response
-            mock_http_client.execute.return_value.__exit__.return_value = None
+            mock_response.status = 200
+            mock_response.data.decode.return_value = '{"access_token": "abc123", "token_type": "Bearer", "refresh_token": null}'
+            
+            # Mock the request method to return the response directly
+            mock_http_client.request.return_value = mock_response
             
             token = token_source.get_token()
 
@@ -287,12 +283,11 @@ class TestClientCredentialsTokenSource:
         with patch.object(token_source, "_http_client", mock_http_client):
             # Create a mock response with error
             mock_response = MagicMock()
-            mock_response.status_code = 400
-            mock_response.text = "Bad Request"
-            mock_response.json.return_value = {"error": "invalid_client"}
-            # Mock the context manager (execute returns context manager)
-            mock_http_client.execute.return_value.__enter__.return_value = mock_response
-            mock_http_client.execute.return_value.__exit__.return_value = None
+            mock_response.status = 400
+            mock_response.data.decode.return_value = "Bad Request"
+            
+            # Mock the request method to return the response directly
+            mock_http_client.request.return_value = mock_response
             
             with pytest.raises(Exception) as e:
                 token_source.get_token()

@@ -154,7 +154,9 @@ class UnifiedHttpClient:
         Yields:
             urllib3.HTTPResponse: The HTTP response object
         """
-        logger.debug("Making %s request to %s", method, url)
+        logger.debug(
+            "Making %s request to %s", method, urllib.parse.urlparse(url).netloc
+        )
 
         request_headers = self._prepare_headers(headers)
 
