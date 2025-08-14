@@ -68,11 +68,9 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         
         if proxy_uri:
             parsed_proxy = urllib.parse.urlparse(proxy_uri)
-
             # realhost and realport are the host and port of the actual request
             self.realhost = self.host
             self.realport = self.port
-
             # this is passed to ProxyManager
             self.proxy_uri: str = proxy_uri
             self.host = parsed_proxy.hostname
@@ -112,7 +110,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             host=self.realhost if self.using_proxy() else self.host,
             port=self.realport if self.using_proxy() else self.port,
             ssl_options=self._ssl_options,
-            proxy_uri=getattr(self, 'proxy_uri', None),
+            proxy_uri=self.proxy_uri,
             proxy_headers=self.proxy_auth,
             retry_policy=self.retry_policy,
             max_connections=self.max_connections,

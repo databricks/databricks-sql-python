@@ -14,7 +14,6 @@ from databricks.sql.exc import RequestError
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
-    create_retry_policy_from_kwargs,
     create_connection_pool,
 )
 
@@ -62,9 +61,24 @@ class UnifiedHttpClient:
         
         parsed_url = urllib.parse.urlparse(self.config.hostname)
         self.scheme = parsed_url.scheme
+        self.host = parsed_url.hostname
+        self.port = parsed_url.port
+
         # Detect proxy using shared utility
-        proxy_uri, proxy_headers = detect_and_parse_proxy(self.scheme, self.config.hostname)
+        proxy_uri, proxy_auth = detect_and_parse_proxy(self.scheme, self.config.hostname)
         
+        if proxy_uri:
+            parsed_proxy = urllib.parse.urlparse(proxy_uri)
+            # realhost and realport are the host and port of the actual request
+            self.realhost = self.host
+            self.realport = self.port
+            # this is passed to ProxyManager
+            self.proxy_uri: str = proxy_uri
+            self.host = parsed_proxy.hostname
+            self.port = parsed_proxy.port
+            self.proxy_auth = proxy_auth
+        else:
+            self.realhost = self.realport = self.proxy_auth = None
 
         # Create pool 
         additional_kwargs = {}
@@ -76,11 +90,11 @@ class UnifiedHttpClient:
         
         self._pool_manager = create_connection_pool(
             scheme=self.scheme,
-            host=self.config.hostname,
-            port=443,
+            host=self.realhost if self.using_proxy() else self.host,
+            port=self.realport if self.using_proxy() else self.port,
             ssl_options=self.config.ssl_options,
             proxy_uri=proxy_uri,
-            proxy_headers=proxy_headers,
+            proxy_headers=proxy_auth,
             retry_policy=self._retry_policy,
             max_connections=self.config.pool_maxsize,
             **additional_kwargs

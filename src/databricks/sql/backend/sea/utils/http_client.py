@@ -131,17 +131,14 @@ class SeaHttpClient:
         
         if proxy_uri:
             parsed_proxy = urllib.parse.urlparse(proxy_uri)
-            self.proxy_host = self.host
-            self.proxy_port = self.port
+            self.realhost = self.host
+            self.realport = self.port
             self.proxy_uri = proxy_uri
             self.host = parsed_proxy.hostname
             self.port = parsed_proxy.port or (443 if self.scheme == "https" else 80)
             self.proxy_auth = proxy_auth
         else:
-            self.proxy_host = None
-            self.proxy_port = None
-            self.proxy_auth = None
-            self.proxy_uri = None
+            self.realhost = self.realport = self.proxy_auth = None
 
         # Initialize connection pool
         self._pool = None
@@ -151,8 +148,8 @@ class SeaHttpClient:
         """Initialize the connection pool using shared utility."""
         self._pool = create_connection_pool(
             scheme=self.scheme,
-            host=self.proxy_host if self.using_proxy() else self.host,
-            port=self.proxy_port if self.using_proxy() else self.port,
+            host=self.realhost if self.using_proxy() else self.host,
+            port=self.realport if self.using_proxy() else self.port,
             ssl_options=self.ssl_options,
             proxy_uri=self.proxy_uri,
             proxy_headers=self.proxy_auth,
