@@ -197,7 +197,7 @@ class SeaHttpClient:
     def close(self):
         """Close the connection pool."""
         if self._pool:
-            self._pool.clear()
+            self._pool.close()
 
     def using_proxy(self) -> bool:
         """Check if proxy is being used."""

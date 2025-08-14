@@ -220,6 +220,7 @@ class TestSeaBackend:
             path=sea_client.SESSION_PATH_WITH_ID.format("test-session-789"),
             data={"session_id": "test-session-789", "warehouse_id": "abc123"},
         )
+        mock_http_client.close.assert_called_once()
 
         # Test close_session with invalid ID type
         with pytest.raises(ValueError) as excinfo:
