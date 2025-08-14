@@ -9,15 +9,17 @@ from urllib3.util import make_headers
 from databricks.sql.auth.retry import DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
 
+
 def detect_and_parse_proxy(
-    scheme: str, host: str
+    scheme: str, host: str = None, skip_bypass: bool = False
 ) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
     """
     Detect system proxy and return proxy URI and headers using standardized logic.
 
     Args:
         scheme: URL scheme (http/https)
-        host: Target hostname
+        host: Target hostname (optional, only needed for bypass checking)
+        skip_bypass: If True, skip proxy bypass checking and return proxy config if found
 
     Returns:
         Tuple of (proxy_uri, proxy_headers) or (None, None) if no proxy
@@ -30,8 +32,8 @@ def detect_and_parse_proxy(
         # No proxy found or getproxies() failed - disable proxy
         proxy = None
     else:
-        # Proxy found, but check if this host should bypass proxy
-        if host and urllib.request.proxy_bypass(host):
+        # Proxy found, but check if this host should bypass proxy (unless skipped)
+        if not skip_bypass and host and urllib.request.proxy_bypass(host):
             proxy = None  # Host bypasses proxy per system rules
 
     if not proxy:

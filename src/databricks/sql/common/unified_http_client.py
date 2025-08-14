@@ -1,6 +1,7 @@
 import logging
 import ssl
 import urllib.parse
+import urllib.request
 from contextlib import contextmanager
 from typing import Dict, Any, Optional, Generator
 
@@ -14,7 +15,7 @@ from databricks.sql.exc import RequestError
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
-    create_connection_pool,
+    create_basic_proxy_auth_headers,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,10 @@ class UnifiedHttpClient:
     This client uses urllib3 for robust HTTP communication with retry policies,
     connection pooling, SSL support, and proxy support. It replaces the various
     singleton HTTP clients and direct requests usage throughout the codebase.
+
+    The client supports per-request proxy decisions, automatically routing requests
+    through proxy or direct connections based on system proxy bypass rules and
+    the target hostname of each request.
     """
 
     def __init__(self, client_context):
@@ -37,12 +42,17 @@ class UnifiedHttpClient:
             client_context: ClientContext instance containing HTTP configuration
         """
         self.config = client_context
-        self._pool_manager = None
+        # Since the unified http client is used for all requests, we need to have proxy and direct pool managers
+        # for per-request proxy decisions.
+        self._direct_pool_manager = None
+        self._proxy_pool_manager = None
         self._retry_policy = None
-        self._setup_pool_manager()
+        self._proxy_uri = None
+        self._proxy_auth = None
+        self._setup_pool_managers()
 
-    def _setup_pool_manager(self):
-        """Set up the urllib3 PoolManager with configuration from ClientContext."""
+    def _setup_pool_managers(self):
+        """Set up both direct and proxy pool managers for per-request proxy decisions."""
 
         # SSL context setup
         ssl_context = None
@@ -89,11 +99,6 @@ class UnifiedHttpClient:
         self._retry_policy._command_type = None
         self._retry_policy._retry_start_time = None
 
-        parsed_url = urllib.parse.urlparse(self.config.hostname)
-        self.scheme = parsed_url.scheme
-        self.host = parsed_url.hostname
-        self.port = parsed_url.port
-
         # Common pool manager kwargs
         pool_kwargs = {
             "num_pools": self.config.pool_connections,
@@ -107,31 +112,83 @@ class UnifiedHttpClient:
             "ssl_context": ssl_context,
         }
 
-        # Detect proxy using shared utility
-        proxy_uri, proxy_auth = detect_and_parse_proxy(
-            self.scheme, self.config.hostname
-        )
+        # Always create a direct pool manager
+        self._direct_pool_manager = PoolManager(**pool_kwargs)
 
-        if proxy_uri:
-            parsed_proxy = urllib.parse.urlparse(proxy_uri)
-            # realhost and realport are the host and port of the actual request
-            self.realhost = self.host
-            self.realport = self.port
-            # this is passed to ProxyManager
-            self.proxy_uri: str = proxy_uri
-            self.host = parsed_proxy.hostname
-            self.port = parsed_proxy.port
-            self.proxy_auth = proxy_auth
-        else:
-            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
+        # Detect system proxy configuration
+        # We use 'https' as default scheme since most requests will be HTTPS
+        parsed_url = urllib.parse.urlparse(self.config.hostname)
+        self.scheme = parsed_url.scheme or "https"
 
-        # Create proxy or regular pool manager
-        if self.using_proxy():
-            self._pool_manager = ProxyManager(
-                self.config.http_proxy, proxy_headers=proxy_auth, **pool_kwargs
+        # Check if system has proxy configured for our scheme
+        try:
+            # Use shared proxy detection logic, skipping bypass since we handle that per-request
+            proxy_url, proxy_auth = detect_and_parse_proxy(
+                self.scheme, skip_bypass=True
             )
+
+            if proxy_url:
+                # Store proxy configuration for per-request decisions
+                self._proxy_uri = proxy_url
+                self._proxy_auth = proxy_auth
+
+                # Create proxy pool manager
+                self._proxy_pool_manager = ProxyManager(
+                    proxy_url, proxy_headers=proxy_auth, **pool_kwargs
+                )
+                logger.debug("Initialized with proxy support: %s", proxy_url)
+            else:
+                self._proxy_pool_manager = None
+                logger.debug("No system proxy detected, using direct connections only")
+
+        except Exception as e:
+            # If proxy detection fails, fall back to direct connections only
+            logger.debug("Error detecting system proxy configuration: %s", e)
+            self._proxy_pool_manager = None
+
+    def _should_use_proxy(self, target_host: str) -> bool:
+        """
+        Determine if a request to the target host should use proxy.
+
+        Args:
+            target_host: The hostname of the target URL
+
+        Returns:
+            True if proxy should be used, False for direct connection
+        """
+        # If no proxy is configured, always use direct connection
+        if not self._proxy_pool_manager or not self._proxy_uri:
+            return False
+
+        # Check system proxy bypass rules for this specific host
+        try:
+            # proxy_bypass returns True if the host should BYPASS the proxy
+            # We want the opposite - True if we should USE the proxy
+            return not urllib.request.proxy_bypass(target_host)
+        except Exception as e:
+            # If proxy_bypass fails, default to using proxy (safer choice)
+            logger.debug("Error checking proxy bypass for host %s: %s", target_host, e)
+            return True
+
+    def _get_pool_manager_for_url(self, url: str) -> urllib3.PoolManager:
+        """
+        Get the appropriate pool manager for the given URL.
+
+        Args:
+            url: The target URL
+
+        Returns:
+            PoolManager instance (either direct or proxy)
+        """
+        parsed_url = urllib.parse.urlparse(url)
+        target_host = parsed_url.hostname
+
+        if target_host and self._should_use_proxy(target_host):
+            logger.debug("Using proxy for request to %s", target_host)
+            return self._proxy_pool_manager
         else:
-            self._pool_manager = PoolManager(**pool_kwargs)
+            logger.debug("Using direct connection for request to %s", target_host)
+            return self._direct_pool_manager
 
     def _prepare_headers(
         self, headers: Optional[Dict[str, str]] = None
@@ -184,10 +241,13 @@ class UnifiedHttpClient:
         # Prepare retry policy for this request
         self._prepare_retry_policy()
 
+        # Select appropriate pool manager based on target URL
+        pool_manager = self._get_pool_manager_for_url(url)
+
         response = None
 
         try:
-            response = self._pool_manager.request(
+            response = pool_manager.request(
                 method=method.value, url=url, headers=request_headers, **kwargs
             )
             yield response
@@ -227,14 +287,17 @@ class UnifiedHttpClient:
             return response
 
     def using_proxy(self) -> bool:
-        """Check if proxy is being used."""
-        return self.realhost is not None
+        """Check if proxy support is available (not whether it's being used for a specific request)."""
+        return self._proxy_pool_manager is not None
 
     def close(self):
         """Close the underlying connection pools."""
-        if self._pool_manager:
-            self._pool_manager.clear()
-            self._pool_manager = None
+        if self._direct_pool_manager:
+            self._direct_pool_manager.clear()
+            self._direct_pool_manager = None
+        if self._proxy_pool_manager:
+            self._proxy_pool_manager.clear()
+            self._proxy_pool_manager = None
 
     def __enter__(self):
         return self

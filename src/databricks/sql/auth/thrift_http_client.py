@@ -17,7 +17,6 @@ from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
-    create_connection_pool,
 )
 
 logger = logging.getLogger(__name__)

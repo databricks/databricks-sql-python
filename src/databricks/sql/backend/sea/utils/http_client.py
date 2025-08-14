@@ -17,7 +17,6 @@ from databricks.sql.exc import (
 )
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
-    create_connection_pool,
 )
 
 logger = logging.getLogger(__name__)
