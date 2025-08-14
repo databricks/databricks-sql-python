@@ -87,7 +87,7 @@ description = "Foreign Function Interface for Python calling C code."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"kerberos\" and platform_python_implementation != \"PyPy\""
+markers = "platform_python_implementation != \"PyPy\""
 files = [
     {file = "cffi-1.17.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:df8b1c11f177bc2313ec4b2d46baec87a5f3e71fc8b45dab2ee7cae86d9aba14"},
     {file = "cffi-1.17.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:8f2cdc858323644ab277e9bb925ad72ae0e67f69e804f4898c070998d50b1a67"},
@@ -496,7 +496,7 @@ description = "cryptography is a package which provides cryptographic recipes an
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "python_version < \"3.10\" and extra == \"kerberos\""
+markers = "python_version < \"3.10\""
 files = [
     {file = "cryptography-43.0.3-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:bf7a1932ac4176486eab36a19ed4c0492da5d97123f1406cf15e41b05e787d2e"},
     {file = "cryptography-43.0.3-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:63efa177ff54aec6e1c0aefaa1a241232dcd37413835a9b674b6e3f0ae2bfd3e"},
@@ -547,7 +547,7 @@ description = "cryptography is a package which provides cryptographic recipes an
 optional = true
 python-versions = "!=3.9.0,!=3.9.1,>=3.7"
 groups = ["main"]
-markers = "python_version >= \"3.10\" and extra == \"kerberos\""
+markers = "python_version >= \"3.10\""
 files = [
     {file = "cryptography-45.0.6-cp311-abi3-macosx_10_9_universal2.whl", hash = "sha256:048e7ad9e08cf4c0ab07ff7f36cc3115924e22e2266e034450a890d9e312dd74"},
     {file = "cryptography-45.0.6-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:44647c5d796f5fc042bbc6d61307d04bf29bccb74d188f18051b635f20a9c75f"},
@@ -608,7 +608,7 @@ description = "Decorators for Humans"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"kerberos\" and sys_platform != \"win32\""
+markers = "sys_platform != \"win32\""
 files = [
     {file = "decorator-5.2.1-py3-none-any.whl", hash = "sha256:d316bb415a2d9e2d2b3abcc4084c6502fc09240e292cd76a76afc106a1c8e04a"},
     {file = "decorator-5.2.1.tar.gz", hash = "sha256:65f266143752f734b0a7cc83c46f4618af75b8c5911b00ccb61d0ac9b6da0360"},
@@ -668,7 +668,7 @@ description = "Python GSSAPI Wrapper"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"kerberos\" and sys_platform != \"win32\""
+markers = "sys_platform != \"win32\""
 files = [
     {file = "gssapi-1.9.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:261e00ac426d840055ddb2199f4989db7e3ce70fa18b1538f53e392b4823e8f1"},
     {file = "gssapi-1.9.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:14a1ae12fdf1e4c8889206195ba1843de09fe82587fa113112887cd5894587c6"},
@@ -767,7 +767,7 @@ description = "Kerberos API bindings for Python"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"kerberos\" and sys_platform != \"win32\""
+markers = "sys_platform != \"win32\""
 files = [
     {file = "krb5-0.7.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:cbdcd2c4514af5ca32d189bc31f30fee2ab297dcbff74a53bd82f92ad1f6e0ef"},
     {file = "krb5-0.7.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:40ad837d563865946cffd65a588f24876da2809aa5ce4412de49442d7cf11d50"},
@@ -1626,7 +1626,7 @@ description = "C parser in Python"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"kerberos\" and platform_python_implementation != \"PyPy\""
+markers = "platform_python_implementation != \"PyPy\""
 files = [
     {file = "pycparser-2.22-py3-none-any.whl", hash = "sha256:c3702b6d3dd8c7abc1afa565d7e63d53a1d0bd86cdc24edd75470f4de499cfcc"},
     {file = "pycparser-2.22.tar.gz", hash = "sha256:491c8be9c040f5390f5bf44a5b07752bd07f56edf992381b05c701439eec10f6"},
@@ -1736,7 +1736,6 @@ description = "Windows Negotiate Authentication Client and Server"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"kerberos\""
 files = [
     {file = "pyspnego-0.11.2-py3-none-any.whl", hash = "sha256:74abc1fb51e59360eb5c5c9086e5962174f1072c7a50cf6da0bda9a4bcfdfbd4"},
     {file = "pyspnego-0.11.2.tar.gz", hash = "sha256:994388d308fb06e4498365ce78d222bf4f3570b6df4ec95738431f61510c971b"},
@@ -1898,7 +1897,6 @@ description = "A Kerberos authentication handler for python-requests"
 optional = true
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "extra == \"kerberos\""
 files = [
     {file = "requests_kerberos-0.15.0-py2.py3-none-any.whl", hash = "sha256:ba9b0980b8489c93bfb13854fd118834e576d6700bfea3745cb2e62278cd16a6"},
     {file = "requests_kerberos-0.15.0.tar.gz", hash = "sha256:437512e424413d8113181d696e56694ffa4259eb9a5fc4e803926963864eaf4e"},
@@ -1928,7 +1926,7 @@ description = "SSPI API bindings for Python"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"kerberos\" and sys_platform == \"win32\" and python_version < \"3.10\""
+markers = "python_version < \"3.10\" and sys_platform == \"win32\""
 files = [
     {file = "sspilib-0.2.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:34f566ba8b332c91594e21a71200de2d4ce55ca5a205541d4128ed23e3c98777"},
     {file = "sspilib-0.2.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:5b11e4f030de5c5de0f29bcf41a6e87c9fd90cb3b0f64e446a6e1d1aef4d08f5"},
@@ -1975,7 +1973,7 @@ description = "SSPI API bindings for Python"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"kerberos\" and sys_platform == \"win32\" and python_version >= \"3.10\""
+markers = "python_version >= \"3.10\" and sys_platform == \"win32\""
 files = [
     {file = "sspilib-0.3.1-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:c45860bdc4793af572d365434020ff5a1ef78c42a2fc2c7a7d8e44eacaf475b6"},
     {file = "sspilib-0.3.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:62cc4de547503dec13b81a6af82b398e9ef53ea82c3535418d7d069c7a05d5cd"},
@@ -2161,10 +2159,9 @@ socks = ["pysocks (>=1.5.6,!=1.5.7,<2.0)"]
 zstd = ["zstandard (>=0.18.0)"]
 
 [extras]
-kerberos = ["requests-kerberos"]
 pyarrow = ["pyarrow", "pyarrow"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.8.0"
-content-hash = "9ec306c7a07996b0f0bcdb0934b75d9da11f9f5ef0a6661b62022982ccb5b6b4"
+content-hash = "ddc7354d47a940fa40b4d34c43a1c42488b01258d09d771d58d64a0dfaf0b955"
