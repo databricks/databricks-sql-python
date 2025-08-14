@@ -125,7 +125,10 @@ class SeaHttpClient:
             self.retry_policy = 0
 
         # Handle proxy settings using shared utility
-        proxy_uri, proxy_auth = detect_and_parse_proxy(self.scheme, self.host)
+        proxy_auth_method = kwargs.get("_proxy_auth_method")
+        proxy_uri, proxy_auth = detect_and_parse_proxy(
+            self.scheme, self.host, proxy_auth_method=proxy_auth_method
+        )
 
         if proxy_uri:
             parsed_proxy = urllib.parse.urlparse(proxy_uri)

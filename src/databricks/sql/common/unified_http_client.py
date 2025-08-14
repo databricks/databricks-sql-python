@@ -15,7 +15,6 @@ from databricks.sql.exc import RequestError
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
-    create_basic_proxy_auth_headers,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,7 +123,9 @@ class UnifiedHttpClient:
         try:
             # Use shared proxy detection logic, skipping bypass since we handle that per-request
             proxy_url, proxy_auth = detect_and_parse_proxy(
-                self.scheme, skip_bypass=True
+                self.scheme,
+                skip_bypass=True,
+                proxy_auth_method=self.config.proxy_auth_method,
             )
 
             if proxy_url:
