@@ -27,7 +27,7 @@ def mock_telemetry_client():
     client_context = MagicMock()
 
     # Patch the _setup_pool_manager method to avoid SSL file loading
-    with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_manager'):
+    with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers'):
         return TelemetryClient(
             telemetry_enabled=True,
             session_id_hex=session_id,
@@ -221,7 +221,7 @@ class TestTelemetryFactory:
         client_context = MagicMock()
 
         # Initialize enabled client
-        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_manager'):
+        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers'):
             TelemetryClientFactory.initialize_telemetry_client(
                 telemetry_enabled=True,
                 session_id_hex=session_id_hex,
@@ -289,7 +289,7 @@ class TestTelemetryFactory:
         client_context = MagicMock()
 
         # Initialize multiple clients
-        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_manager'):
+        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers'):
             for session in [session1, session2]:
                 TelemetryClientFactory.initialize_telemetry_client(
                     telemetry_enabled=True,

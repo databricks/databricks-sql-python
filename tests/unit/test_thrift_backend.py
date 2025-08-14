@@ -206,14 +206,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     def test_proxy_headers_are_set(self):
 
-        from databricks.sql.auth.thrift_http_client import THttpClient
+        from databricks.sql.common.http_utils import create_basic_proxy_auth_headers
         from urllib.parse import urlparse
 
         fake_proxy_spec = "https://someuser:somepassword@8.8.8.8:12340"
         parsed_proxy = urlparse(fake_proxy_spec)
 
         try:
-            result = THttpClient.basic_proxy_auth_headers(parsed_proxy)
+            result = create_basic_proxy_auth_headers(parsed_proxy)
         except TypeError as e:
             assert False
 

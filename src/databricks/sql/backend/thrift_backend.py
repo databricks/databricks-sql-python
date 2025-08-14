@@ -191,6 +191,12 @@ class ThriftDatabricksClient(DatabricksClient):
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}
+
+        # Add proxy authentication method if specified
+        proxy_auth_method = kwargs.get("_proxy_auth_method")
+        if proxy_auth_method:
+            additional_transport_args["_proxy_auth_method"] = proxy_auth_method
+
         _max_redirects: Union[None, int] = kwargs.get("_retry_max_redirects")
 
         if _max_redirects:

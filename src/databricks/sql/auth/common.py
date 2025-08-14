@@ -46,9 +46,7 @@ class ClientContext:
         retry_stop_after_attempts_duration: Optional[float] = None,
         retry_delay_default: Optional[float] = None,
         retry_dangerous_codes: Optional[List[int]] = None,
-        http_proxy: Optional[str] = None,
-        proxy_username: Optional[str] = None,
-        proxy_password: Optional[str] = None,
+        proxy_auth_method: Optional[str] = None,
         pool_connections: Optional[int] = None,
         pool_maxsize: Optional[int] = None,
         user_agent: Optional[str] = None,
@@ -79,9 +77,7 @@ class ClientContext:
         )
         self.retry_delay_default = retry_delay_default or 5.0
         self.retry_dangerous_codes = retry_dangerous_codes or []
-        self.http_proxy = http_proxy
-        self.proxy_username = proxy_username
-        self.proxy_password = proxy_password
+        self.proxy_auth_method = proxy_auth_method
         self.pool_connections = pool_connections or 10
         self.pool_maxsize = pool_maxsize or 20
         self.user_agent = user_agent
