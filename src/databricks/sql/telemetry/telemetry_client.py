@@ -4,6 +4,7 @@ import logging
 import json
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import Future
+from concurrent.futures import wait
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from databricks.sql.telemetry.models.event import (
@@ -182,6 +183,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._user_agent = None
         self._events_batch = []
         self._lock = threading.RLock()
+        self._pending_futures = set()
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
@@ -245,6 +247,9 @@ class TelemetryClient(BaseTelemetryClient):
                 timeout=900,
             )
 
+            with self._lock:
+                self._pending_futures.add(future)
+
             future.add_done_callback(
                 lambda fut: self._telemetry_request_callback(fut, sent_count=sent_count)
             )
@@ -303,6 +308,9 @@ class TelemetryClient(BaseTelemetryClient):
 
         except Exception as e:
             logger.debug("Telemetry request failed with exception: %s", e)
+        finally:
+            with self._lock:
+                self._pending_futures.discard(future)
 
     def _export_telemetry_log(self, **telemetry_event_kwargs):
         """
@@ -356,9 +364,20 @@ class TelemetryClient(BaseTelemetryClient):
         )
 
     def close(self):
-        """Flush remaining events before closing"""
+        """Flush remaining events and wait for them to complete before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._flush()
+
+        with self._lock:
+            futures_to_wait_on = list(self._pending_futures)
+
+        if futures_to_wait_on:
+            logger.debug(
+                "Waiting for %s pending telemetry requests to complete.",
+                len(futures_to_wait_on),
+            )
+            wait(futures_to_wait_on)
+
         self._http_client.close()
 
 
