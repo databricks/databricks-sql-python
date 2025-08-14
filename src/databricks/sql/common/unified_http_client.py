@@ -220,7 +220,7 @@ class UnifiedHttpClient:
         url: str,
         headers: Optional[Dict[str, str]] = None,
         **kwargs,
-    ) -> Generator[urllib3.HTTPResponse, None, None]:
+    ) -> Generator[urllib3.BaseHTTPResponse, None, None]:
         """
         Context manager for making HTTP requests with proper resource cleanup.
 

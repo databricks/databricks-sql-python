@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 def detect_and_parse_proxy(
     scheme: str,
-    host: str = None,
+    host: Optional[str],
     skip_bypass: bool = False,
     proxy_auth_method: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
