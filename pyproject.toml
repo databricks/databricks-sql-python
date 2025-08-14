@@ -31,7 +31,7 @@ requests-kerberos = "^0.15.0"
 
 [tool.poetry.extras]
 pyarrow = ["pyarrow"]
-kerberos = ["requests-kerberos"]
+kerberos = ["gssapi", "krb5"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.1.2"
