@@ -12,6 +12,11 @@ from urllib3.exceptions import MaxRetryError
 from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
 from databricks.sql.exc import RequestError
 from databricks.sql.common.http import HttpMethod
+from databricks.sql.common.http_utils import (
+    detect_and_parse_proxy,
+    create_retry_policy_from_kwargs,
+    create_connection_pool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,37 +44,6 @@ class UnifiedHttpClient:
 
     def _setup_pool_manager(self):
         """Set up the urllib3 PoolManager with configuration from ClientContext."""
-
-        # SSL context setup
-        ssl_context = None
-        if self.config.ssl_options:
-            ssl_context = ssl.create_default_context()
-
-            # Configure SSL verification
-            if not self.config.ssl_options.tls_verify:
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_NONE
-            elif not self.config.ssl_options.tls_verify_hostname:
-                ssl_context.check_hostname = False
-                ssl_context.verify_mode = ssl.CERT_REQUIRED
-
-            # Load custom CA file if specified
-            if self.config.ssl_options.tls_trusted_ca_file:
-                ssl_context.load_verify_locations(
-                    self.config.ssl_options.tls_trusted_ca_file
-                )
-
-            # Load client certificate if specified
-            if (
-                self.config.ssl_options.tls_client_cert_file
-                and self.config.ssl_options.tls_client_cert_key_file
-            ):
-                ssl_context.load_cert_chain(
-                    self.config.ssl_options.tls_client_cert_file,
-                    self.config.ssl_options.tls_client_cert_key_file,
-                    self.config.ssl_options.tls_client_cert_key_password,
-                )
-
         # Create retry policy
         self._retry_policy = DatabricksRetryPolicy(
             delay_min=self.config.retry_delay_min,
@@ -85,32 +59,32 @@ class UnifiedHttpClient:
         self._retry_policy._command_type = None
         self._retry_policy._retry_start_time = None
 
-        # Common pool manager kwargs
-        pool_kwargs = {
-            "num_pools": self.config.pool_connections,
-            "maxsize": self.config.pool_maxsize,
-            "retries": self._retry_policy,
-            "timeout": urllib3.Timeout(
-                connect=self.config.socket_timeout, read=self.config.socket_timeout
-            )
-            if self.config.socket_timeout
-            else None,
-            "ssl_context": ssl_context,
-        }
+        
+        parsed_url = urllib.parse.urlparse(self.config.hostname)
+        self.scheme = parsed_url.scheme
+        # Detect proxy using shared utility
+        proxy_uri, proxy_headers = detect_and_parse_proxy(self.scheme, self.config.hostname)
+        
 
-        # Create proxy or regular pool manager
-        if self.config.http_proxy:
-            proxy_headers = None
-            if self.config.proxy_username and self.config.proxy_password:
-                proxy_headers = make_headers(
-                    proxy_basic_auth=f"{self.config.proxy_username}:{self.config.proxy_password}"
-                )
-
-            self._pool_manager = ProxyManager(
-                self.config.http_proxy, proxy_headers=proxy_headers, **pool_kwargs
+        # Create pool 
+        additional_kwargs = {}
+        if self.config.socket_timeout:
+            additional_kwargs["timeout"] = urllib3.Timeout(
+                connect=self.config.socket_timeout, 
+                read=self.config.socket_timeout
             )
-        else:
-            self._pool_manager = PoolManager(**pool_kwargs)
+        
+        self._pool_manager = create_connection_pool(
+            scheme=self.scheme,
+            host=self.config.hostname,
+            port=443,
+            ssl_options=self.config.ssl_options,
+            proxy_uri=proxy_uri,
+            proxy_headers=proxy_headers,
+            retry_policy=self._retry_policy,
+            max_connections=self.config.pool_maxsize,
+            **additional_kwargs
+        )
 
     def _prepare_headers(
         self, headers: Optional[Dict[str, str]] = None

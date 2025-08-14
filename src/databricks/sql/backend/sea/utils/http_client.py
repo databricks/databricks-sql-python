@@ -15,6 +15,11 @@ from databricks.sql.types import SSLOptions
 from databricks.sql.exc import (
     RequestError,
 )
+from databricks.sql.common.http_utils import (
+    detect_and_parse_proxy,
+    create_retry_policy_from_kwargs,
+    create_connection_pool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,27 +126,17 @@ class SeaHttpClient:
             )
             self.retry_policy = 0
 
-        # Handle proxy settings
-        try:
-            # returns a dictionary of scheme -> proxy server URL mappings.
-            # https://docs.python.org/3/library/urllib.request.html#urllib.request.getproxies
-            proxy = urllib.request.getproxies().get(self.scheme)
-        except (KeyError, AttributeError):
-            # No proxy found or getproxies() failed - disable proxy
-            proxy = None
-        else:
-            # Proxy found, but check if this host should bypass proxy
-            if self.host and urllib.request.proxy_bypass(self.host):
-                proxy = None  # Host bypasses proxy per system rules
-
-        if proxy:
-            parsed_proxy = urllib.parse.urlparse(proxy)
+        # Handle proxy settings using shared utility
+        proxy_uri, proxy_auth = detect_and_parse_proxy(self.scheme, self.host)
+        
+        if proxy_uri:
+            parsed_proxy = urllib.parse.urlparse(proxy_uri)
             self.proxy_host = self.host
             self.proxy_port = self.port
-            self.proxy_uri = proxy
+            self.proxy_uri = proxy_uri
             self.host = parsed_proxy.hostname
             self.port = parsed_proxy.port or (443 if self.scheme == "https" else 80)
-            self.proxy_auth = self._basic_proxy_auth_headers(parsed_proxy)
+            self.proxy_auth = proxy_auth
         else:
             self.proxy_host = None
             self.proxy_port = None
@@ -152,47 +147,18 @@ class SeaHttpClient:
         self._pool = None
         self._open()
 
-    def _basic_proxy_auth_headers(self, proxy_parsed) -> Optional[Dict[str, str]]:
-        """Create basic auth headers for proxy if credentials are provided."""
-        if proxy_parsed is None or not proxy_parsed.username:
-            return None
-        ap = f"{urllib.parse.unquote(proxy_parsed.username)}:{urllib.parse.unquote(proxy_parsed.password)}"
-        return make_headers(proxy_basic_auth=ap)
-
     def _open(self):
-        """Initialize the connection pool."""
-        pool_kwargs = {"maxsize": self.max_connections}
-
-        if self.scheme == "http":
-            pool_class = HTTPConnectionPool
-        else:  # https
-            pool_class = HTTPSConnectionPool
-            pool_kwargs.update(
-                {
-                    "cert_reqs": ssl.CERT_REQUIRED
-                    if self.ssl_options.tls_verify
-                    else ssl.CERT_NONE,
-                    "ca_certs": self.ssl_options.tls_trusted_ca_file,
-                    "cert_file": self.ssl_options.tls_client_cert_file,
-                    "key_file": self.ssl_options.tls_client_cert_key_file,
-                    "key_password": self.ssl_options.tls_client_cert_key_password,
-                }
-            )
-
-        if self.using_proxy():
-            proxy_manager = ProxyManager(
-                self.proxy_uri,
-                num_pools=1,
-                proxy_headers=self.proxy_auth,
-            )
-            self._pool = proxy_manager.connection_from_host(
-                host=self.proxy_host,
-                port=self.proxy_port,
-                scheme=self.scheme,
-                pool_kwargs=pool_kwargs,
-            )
-        else:
-            self._pool = pool_class(self.host, self.port, **pool_kwargs)
+        """Initialize the connection pool using shared utility."""
+        self._pool = create_connection_pool(
+            scheme=self.scheme,
+            host=self.proxy_host if self.using_proxy() else self.host,
+            port=self.proxy_port if self.using_proxy() else self.port,
+            ssl_options=self.ssl_options,
+            proxy_uri=self.proxy_uri,
+            proxy_headers=self.proxy_auth,
+            retry_policy=self.retry_policy,
+            max_connections=self.max_connections,
+        )
 
     def close(self):
         """Close the connection pool."""
