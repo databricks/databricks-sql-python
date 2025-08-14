@@ -364,8 +364,15 @@ class TelemetryClient(BaseTelemetryClient):
         )
 
     def close(self):
-        """Flush remaining events and wait for them to complete before closing"""
-        logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
+        """Schedules the client to be closed in the background."""
+        logger.debug(
+            "Scheduling background closure for TelemetryClient of connection %s",
+            self._session_id_hex,
+        )
+        self._executor.submit(self._close_and_wait)
+
+    def _close_and_wait(self):
+        """Flush remaining events and wait for them to complete before closing."""
         self._flush()
 
         with self._lock:
