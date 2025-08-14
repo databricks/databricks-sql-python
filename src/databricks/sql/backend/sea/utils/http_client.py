@@ -17,7 +17,6 @@ from databricks.sql.exc import (
 )
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
-    create_retry_policy_from_kwargs,
     create_connection_pool,
 )
 
@@ -128,7 +127,7 @@ class SeaHttpClient:
 
         # Handle proxy settings using shared utility
         proxy_uri, proxy_auth = detect_and_parse_proxy(self.scheme, self.host)
-        
+
         if proxy_uri:
             parsed_proxy = urllib.parse.urlparse(proxy_uri)
             self.realhost = self.host
@@ -138,24 +137,46 @@ class SeaHttpClient:
             self.port = parsed_proxy.port or (443 if self.scheme == "https" else 80)
             self.proxy_auth = proxy_auth
         else:
-            self.realhost = self.realport = self.proxy_auth = None
+            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
 
         # Initialize connection pool
         self._pool = None
         self._open()
 
     def _open(self):
-        """Initialize the connection pool using shared utility."""
-        self._pool = create_connection_pool(
-            scheme=self.scheme,
-            host=self.realhost if self.using_proxy() else self.host,
-            port=self.realport if self.using_proxy() else self.port,
-            ssl_options=self.ssl_options,
-            proxy_uri=self.proxy_uri,
-            proxy_headers=self.proxy_auth,
-            retry_policy=self.retry_policy,
-            max_connections=self.max_connections,
-        )
+        """Initialize the connection pool."""
+        pool_kwargs = {"maxsize": self.max_connections}
+
+        if self.scheme == "http":
+            pool_class = HTTPConnectionPool
+        else:  # https
+            pool_class = HTTPSConnectionPool
+            pool_kwargs.update(
+                {
+                    "cert_reqs": ssl.CERT_REQUIRED
+                    if self.ssl_options.tls_verify
+                    else ssl.CERT_NONE,
+                    "ca_certs": self.ssl_options.tls_trusted_ca_file,
+                    "cert_file": self.ssl_options.tls_client_cert_file,
+                    "key_file": self.ssl_options.tls_client_cert_key_file,
+                    "key_password": self.ssl_options.tls_client_cert_key_password,
+                }
+            )
+
+        if self.using_proxy():
+            proxy_manager = ProxyManager(
+                self.proxy_uri,
+                num_pools=1,
+                proxy_headers=self.proxy_auth,
+            )
+            self._pool = proxy_manager.connection_from_host(
+                host=self.proxy_host,
+                port=self.proxy_port,
+                scheme=self.scheme,
+                pool_kwargs=pool_kwargs,
+            )
+        else:
+            self._pool = pool_class(self.host, self.port, **pool_kwargs)
 
     def close(self):
         """Close the connection pool."""
@@ -164,7 +185,7 @@ class SeaHttpClient:
 
     def using_proxy(self) -> bool:
         """Check if proxy is being used."""
-        return self.proxy_host is not None
+        return self.realhost is not None
 
     def set_retry_command_type(self, command_type: CommandType):
         """Set the command type for retry policy decision making."""

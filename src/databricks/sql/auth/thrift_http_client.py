@@ -62,10 +62,10 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.path = parsed.path
             if parsed.query:
                 self.path += "?%s" % parsed.query
-        
+
         # Handle proxy settings using shared utility
         proxy_uri, proxy_auth = detect_and_parse_proxy(self.scheme, self.host)
-        
+
         if proxy_uri:
             parsed_proxy = urllib.parse.urlparse(proxy_uri)
             # realhost and realport are the host and port of the actual request
@@ -77,7 +77,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.port = parsed_proxy.port
             self.proxy_auth = proxy_auth
         else:
-            self.realhost = self.realport = self.proxy_auth = None
+            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
 
         self.max_connections = max_connections
 
@@ -104,17 +104,40 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.retry_policy and self.retry_policy.start_retry_timer()
 
     def open(self):
-        """Initialize the connection pool using shared utility."""
-        self.__pool = create_connection_pool(
-            scheme=self.scheme,
-            host=self.realhost if self.using_proxy() else self.host,
-            port=self.realport if self.using_proxy() else self.port,
-            ssl_options=self._ssl_options,
-            proxy_uri=self.proxy_uri,
-            proxy_headers=self.proxy_auth,
-            retry_policy=self.retry_policy,
-            max_connections=self.max_connections,
-        )
+
+        # self.__pool replaces the self.__http used by the original THttpClient
+        _pool_kwargs = {"maxsize": self.max_connections}
+
+        if self.scheme == "http":
+            pool_class = HTTPConnectionPool
+        elif self.scheme == "https":
+            pool_class = HTTPSConnectionPool
+            _pool_kwargs.update(
+                {
+                    "cert_reqs": ssl.CERT_REQUIRED
+                    if self._ssl_options.tls_verify
+                    else ssl.CERT_NONE,
+                    "ca_certs": self._ssl_options.tls_trusted_ca_file,
+                    "cert_file": self._ssl_options.tls_client_cert_file,
+                    "key_file": self._ssl_options.tls_client_cert_key_file,
+                    "key_password": self._ssl_options.tls_client_cert_key_password,
+                }
+            )
+
+        if self.using_proxy():
+            proxy_manager = ProxyManager(
+                self.proxy_uri,
+                num_pools=1,
+                proxy_headers=self.proxy_auth,
+            )
+            self.__pool = proxy_manager.connection_from_host(
+                host=self.realhost,
+                port=self.realport,
+                scheme=self.scheme,
+                pool_kwargs=_pool_kwargs,
+            )
+        else:
+            self.__pool = pool_class(self.host, self.port, **_pool_kwargs)
 
     def close(self):
         self.__resp and self.__resp.drain_conn()

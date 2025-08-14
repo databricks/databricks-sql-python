@@ -43,6 +43,37 @@ class UnifiedHttpClient:
 
     def _setup_pool_manager(self):
         """Set up the urllib3 PoolManager with configuration from ClientContext."""
+
+        # SSL context setup
+        ssl_context = None
+        if self.config.ssl_options:
+            ssl_context = ssl.create_default_context()
+
+            # Configure SSL verification
+            if not self.config.ssl_options.tls_verify:
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            elif not self.config.ssl_options.tls_verify_hostname:
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+            # Load custom CA file if specified
+            if self.config.ssl_options.tls_trusted_ca_file:
+                ssl_context.load_verify_locations(
+                    self.config.ssl_options.tls_trusted_ca_file
+                )
+
+            # Load client certificate if specified
+            if (
+                self.config.ssl_options.tls_client_cert_file
+                and self.config.ssl_options.tls_client_cert_key_file
+            ):
+                ssl_context.load_cert_chain(
+                    self.config.ssl_options.tls_client_cert_file,
+                    self.config.ssl_options.tls_client_cert_key_file,
+                    self.config.ssl_options.tls_client_cert_key_password,
+                )
+
         # Create retry policy
         self._retry_policy = DatabricksRetryPolicy(
             delay_min=self.config.retry_delay_min,
@@ -58,15 +89,29 @@ class UnifiedHttpClient:
         self._retry_policy._command_type = None
         self._retry_policy._retry_start_time = None
 
-        
         parsed_url = urllib.parse.urlparse(self.config.hostname)
         self.scheme = parsed_url.scheme
         self.host = parsed_url.hostname
         self.port = parsed_url.port
 
+        # Common pool manager kwargs
+        pool_kwargs = {
+            "num_pools": self.config.pool_connections,
+            "maxsize": self.config.pool_maxsize,
+            "retries": self._retry_policy,
+            "timeout": urllib3.Timeout(
+                connect=self.config.socket_timeout, read=self.config.socket_timeout
+            )
+            if self.config.socket_timeout
+            else None,
+            "ssl_context": ssl_context,
+        }
+
         # Detect proxy using shared utility
-        proxy_uri, proxy_auth = detect_and_parse_proxy(self.scheme, self.config.hostname)
-        
+        proxy_uri, proxy_auth = detect_and_parse_proxy(
+            self.scheme, self.config.hostname
+        )
+
         if proxy_uri:
             parsed_proxy = urllib.parse.urlparse(proxy_uri)
             # realhost and realport are the host and port of the actual request
@@ -78,27 +123,15 @@ class UnifiedHttpClient:
             self.port = parsed_proxy.port
             self.proxy_auth = proxy_auth
         else:
-            self.realhost = self.realport = self.proxy_auth = None
+            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
 
-        # Create pool 
-        additional_kwargs = {}
-        if self.config.socket_timeout:
-            additional_kwargs["timeout"] = urllib3.Timeout(
-                connect=self.config.socket_timeout, 
-                read=self.config.socket_timeout
+        # Create proxy or regular pool manager
+        if self.using_proxy():
+            self._pool_manager = ProxyManager(
+                self.config.http_proxy, proxy_headers=proxy_auth, **pool_kwargs
             )
-        
-        self._pool_manager = create_connection_pool(
-            scheme=self.scheme,
-            host=self.realhost if self.using_proxy() else self.host,
-            port=self.realport if self.using_proxy() else self.port,
-            ssl_options=self.config.ssl_options,
-            proxy_uri=proxy_uri,
-            proxy_headers=proxy_auth,
-            retry_policy=self._retry_policy,
-            max_connections=self.config.pool_maxsize,
-            **additional_kwargs
-        )
+        else:
+            self._pool_manager = PoolManager(**pool_kwargs)
 
     def _prepare_headers(
         self, headers: Optional[Dict[str, str]] = None
@@ -192,6 +225,10 @@ class UnifiedHttpClient:
             # Note: status and headers remain accessible after close(), only data needs caching
             response._body = response.data
             return response
+
+    def using_proxy(self) -> bool:
+        """Check if proxy is being used."""
+        return self.realhost is not None
 
     def close(self):
         """Close the underlying connection pools."""
