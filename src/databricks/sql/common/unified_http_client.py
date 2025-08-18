@@ -118,12 +118,14 @@ class UnifiedHttpClient:
         # We use 'https' as default scheme since most requests will be HTTPS
         parsed_url = urllib.parse.urlparse(self.config.hostname)
         self.scheme = parsed_url.scheme or "https"
+        self.host = parsed_url.hostname
 
         # Check if system has proxy configured for our scheme
         try:
             # Use shared proxy detection logic, skipping bypass since we handle that per-request
             proxy_url, proxy_auth = detect_and_parse_proxy(
                 self.scheme,
+                self.host,
                 skip_bypass=True,
                 proxy_auth_method=self.config.proxy_auth_method,
             )
@@ -283,7 +285,7 @@ class UnifiedHttpClient:
         """
         with self.request_context(method, url, headers=headers, **kwargs) as response:
             # Read the response data to ensure it's available after context exit
-            # Note: status and headers remain accessible after close(), only data needs caching
+            # Note: status and headers remain accessible after close(); calling response.read() loads and caches the response data so it remains accessible after the response is closed.
             response.read()
             return response
 
