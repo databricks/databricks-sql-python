@@ -68,7 +68,7 @@ def _generate_negotiate_headers(
         from requests_kerberos import HTTPKerberosAuth
 
         logger.debug(
-            f"Attempting to generate Kerberos SPNEGO token for proxy: {proxy_hostname}"
+            "Attempting to generate Kerberos SPNEGO token for proxy: %s", proxy_hostname
         )
         auth = HTTPKerberosAuth()
         negotiate_details = auth.generate_request_header(
@@ -79,7 +79,7 @@ def _generate_negotiate_headers(
         else:
             logger.debug("Unable to generate kerberos proxy auth headers")
     except Exception as e:
-        logger.error(f"Error generating Kerberos proxy auth headers: {e}")
+        logger.error("Error generating Kerberos proxy auth headers: %s", e)
 
     return None
 
