@@ -2,7 +2,7 @@
 
 # 4.0.6 (2025-08-18)
 - Removed Codeowners (databricks/databricks-sql-python#623 by @jprakash-db)
-- [PECOBLR-587] Azure Service Principal Credential Provider (databricks/databricks-sql-python#621 by @jprakash-db)
+- Azure Service Principal Credential Provider (databricks/databricks-sql-python#621 by @jprakash-db)
 - Add optional telemetry support to the python connector (databricks/databricks-sql-python#628 by @saishreeeee)
 - Fix potential resource leak in `CloudFetchQueue` (databricks/databricks-sql-python#624 by @varun-edachali-dbx)
 - Generalise Backend Layer (databricks/databricks-sql-python#604 by @varun-edachali-dbx)
@@ -22,7 +22,7 @@
 - Added code coverage workflow to test the code coverage from unit and e2e tests (databricks/databricks-sql-python#657 by @msrathore-db)
 - Concat tables to be backward compatible (databricks/databricks-sql-python#647 by @jprakash-db)
 - Refactor codebase to use a unified http client (databricks/databricks-sql-python#673 by @vikrantpuppala)
-- [PECOBLR-727] Add kerberos support for proxy auth (databricks/databricks-sql-python#675 by @vikrantpuppala)
+- Add kerberos support for proxy auth (databricks/databricks-sql-python#675 by @vikrantpuppala)
 
 # 4.0.5 (2025-06-24)
 - Fix: Reverted change in cursor close handling which led to errors impacting users (databricks/databricks-sql-python#613 by @madhav-db)
