@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
+    realhost: Optional[str]
+    realport: Optional[int]
+    proxy_uri: Optional[str]
+    proxy_auth: Optional[Dict[str, str]]
+
     def __init__(
         self,
         auth_provider,
@@ -75,7 +80,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.realhost = self.host
             self.realport = self.port
             # this is passed to ProxyManager
-            self.proxy_uri: str = proxy_uri
+            self.proxy_uri = proxy_uri
             self.host = parsed_proxy.hostname
             self.port = parsed_proxy.port
             self.proxy_auth = proxy_auth

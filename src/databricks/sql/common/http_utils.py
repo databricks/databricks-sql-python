@@ -60,7 +60,7 @@ def detect_and_parse_proxy(
     return proxy, proxy_headers
 
 
-def _generate_negotiate_headers(proxy_hostname: str) -> Optional[Dict[str, str]]:
+def _generate_negotiate_headers(proxy_hostname: Optional[str]) -> Optional[Dict[str, str]]:
     """Generate Kerberos/SPNEGO authentication headers"""
     try:
         from requests_kerberos import HTTPKerberosAuth

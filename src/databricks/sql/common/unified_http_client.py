@@ -231,7 +231,7 @@ class UnifiedHttpClient:
             **kwargs: Additional arguments passed to urllib3 request
 
         Yields:
-            urllib3.HTTPResponse: The HTTP response object
+            urllib3.BaseHTTPResponse: The HTTP response object
         """
         logger.debug(
             "Making %s request to %s", method, urllib.parse.urlparse(url).netloc
@@ -268,7 +268,7 @@ class UnifiedHttpClient:
         url: str,
         headers: Optional[Dict[str, str]] = None,
         **kwargs,
-    ) -> urllib3.HTTPResponse:
+    ) -> urllib3.BaseHTTPResponse:
         """
         Make an HTTP request.
 
@@ -279,12 +279,12 @@ class UnifiedHttpClient:
             **kwargs: Additional arguments passed to urllib3 request
 
         Returns:
-            urllib3.HTTPResponse: The HTTP response object with data and metadata pre-loaded
+            urllib3.BaseHTTPResponse: The HTTP response object with data and metadata pre-loaded
         """
         with self.request_context(method, url, headers=headers, **kwargs) as response:
             # Read the response data to ensure it's available after context exit
             # Note: status and headers remain accessible after close(), only data needs caching
-            response._body = response.data
+            response.read()
             return response
 
     def using_proxy(self) -> bool:

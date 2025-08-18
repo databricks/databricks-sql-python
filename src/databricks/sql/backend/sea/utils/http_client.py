@@ -33,9 +33,9 @@ class SeaHttpClient:
     retry_policy: Union[DatabricksRetryPolicy, int]
     _pool: Optional[Union[HTTPConnectionPool, HTTPSConnectionPool]]
     proxy_uri: Optional[str]
-    proxy_host: Optional[str]
-    proxy_port: Optional[int]
     proxy_auth: Optional[Dict[str, str]]
+    realhost: Optional[str]
+    realport: Optional[int]
 
     def __init__(
         self,
@@ -172,8 +172,8 @@ class SeaHttpClient:
                 proxy_headers=self.proxy_auth,
             )
             self._pool = proxy_manager.connection_from_host(
-                host=self.proxy_host,
-                port=self.proxy_port,
+                host=self.realhost,
+                port=self.realport,
                 scheme=self.scheme,
                 pool_kwargs=pool_kwargs,
             )
