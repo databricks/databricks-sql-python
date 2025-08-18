@@ -1,6 +1,6 @@
 # Release History
 
-# 4.0.6 (2025-08-18)
+# 4.1.0 (2025-08-18)
 - Removed Codeowners (databricks/databricks-sql-python#623 by @jprakash-db)
 - Azure Service Principal Credential Provider (databricks/databricks-sql-python#621 by @jprakash-db)
 - Add optional telemetry support to the python connector (databricks/databricks-sql-python#628 by @saishreeeee)
