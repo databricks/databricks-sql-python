@@ -15,6 +15,17 @@ class DependencyManager:
     def __init__(self, pyproject_path="pyproject.toml"):
         self.pyproject_path = Path(pyproject_path)
         self.dependencies = self._load_dependencies()
+        
+        # Map of packages that need specific transitive dependency constraints when downgraded
+        self.transitive_dependencies = {
+            'pandas': {
+                # When pandas is downgraded to 1.x, ensure numpy compatibility
+                'numpy': {
+                    'min_constraint': '>=1.16.5,<2.0.0',  # pandas 1.x works with numpy 1.x
+                    'applies_when': lambda version: version.startswith('1.')
+                }
+            }
+        }
     
     def _load_dependencies(self):
         """Load dependencies from pyproject.toml"""
@@ -96,6 +107,24 @@ class DependencyManager:
             # Fallback to exact version
             return f"{package_name}=={min_version}"
     
+    def _get_transitive_dependencies(self, package_name, version, version_type):
+        """Get transitive dependencies that need specific constraints based on the main package version"""
+        transitive_reqs = []
+        
+        if package_name in self.transitive_dependencies:
+            transitive_deps = self.transitive_dependencies[package_name]
+            
+            for dep_name, dep_config in transitive_deps.items():
+                # Check if this transitive dependency applies for this version
+                if dep_config['applies_when'](version):
+                    if version_type == "min":
+                        # Use the predefined constraint for minimum versions
+                        constraint = dep_config['min_constraint']
+                        transitive_reqs.append(f"{dep_name}{constraint}")
+                    # For default version_type, we don't add transitive deps as Poetry handles them
+        
+        return transitive_reqs
+    
     def generate_requirements(self, version_type="min", include_optional=False):
         """
         Generate requirements for specified version type.
@@ -105,6 +134,7 @@ class DependencyManager:
             include_optional: Whether to include optional dependencies
         """
         requirements = []
+        transitive_requirements = []
         
         for name, constraint in self.dependencies.items():
             if name == 'python':
@@ -126,8 +156,31 @@ class DependencyManager:
                     # Create flexible constraint that allows patch updates for compatibility
                     flexible_constraint = self._create_flexible_minimum_constraint(name, min_version)
                     requirements.append(flexible_constraint)
+                    
+                    # Check if this package needs specific transitive dependencies
+                    transitive_deps = self._get_transitive_dependencies(name, min_version, version_type)
+                    transitive_requirements.extend(transitive_deps)
         
-        return requirements
+        # Combine main requirements with transitive requirements
+        all_requirements = requirements + transitive_requirements
+        
+        # Remove duplicates (prefer main requirements over transitive ones)
+        seen_packages = set()
+        final_requirements = []
+        
+        # First add main requirements
+        for req in requirements:
+            package_name = req.split('>=')[0].split('==')[0].split('<')[0]
+            seen_packages.add(package_name)
+            final_requirements.append(req)
+        
+        # Then add transitive requirements that don't conflict
+        for req in transitive_requirements:
+            package_name = req.split('>=')[0].split('==')[0].split('<')[0]
+            if package_name not in seen_packages:
+                final_requirements.append(req)
+        
+        return final_requirements
     
 
     def write_requirements_file(self, filename, version_type="min", include_optional=False):
@@ -140,6 +193,7 @@ class DependencyManager:
                 f.write(f"# Uses flexible constraints to resolve compatibility conflicts:\n")
                 f.write(f"# - Common packages (requests, urllib3, pandas): >=min,<next_major\n") 
                 f.write(f"# - Other packages: >=min,<next_minor\n")
+                f.write(f"# - Includes transitive dependencies (e.g., numpy for pandas)\n")
             else:
                 f.write(f"# {version_type.title()} dependency versions generated from pyproject.toml\n")
             for req in sorted(requirements):
