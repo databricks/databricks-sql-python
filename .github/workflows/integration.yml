@@ -12,7 +12,7 @@ jobs:
     environment: azure-prod
     strategy:
       matrix:
-        dependency-version: ["default", "minimum"]
+        dependency-version: ["default", "min"]
     
     name: "E2E Tests (${{ matrix.dependency-version }} deps)"
     

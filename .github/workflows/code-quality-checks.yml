@@ -8,13 +8,13 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        dependency-version: ["default", "minimum"]
+        dependency-version: ["default", "min"]
         # Optimize matrix - test min/max on subset of Python versions
         exclude:
           - python-version: "3.12"
-            dependency-version: "minimum"
+            dependency-version: "min"
           - python-version: "3.13"
-            dependency-version: "minimum"
+            dependency-version: "min"
     
     name: "Unit Tests (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
     
@@ -92,12 +92,12 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        dependency-version: ["default", "minimum"]
+        dependency-version: ["default", "min"]
         exclude:
           - python-version: "3.12"
-            dependency-version: "minimum"
+            dependency-version: "min"
           - python-version: "3.13"
-            dependency-version: "minimum"
+            dependency-version: "min"
     
     name: "Unit Tests + PyArrow (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
     
