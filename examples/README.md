@@ -42,3 +42,4 @@ this example the string `ExamplePartnerTag` will be added to the the user agent 
 - **`custom_cred_provider.py`** shows how to pass a custom credential provider to bypass connector authentication. Please install databricks-sdk prior to running this example.
 - **`v3_retries_query_execute.py`** shows how to enable v3 retries in connector version 2.9.x including how to enable retries for non-default retry cases.
 - **`parameters.py`** shows how to use parameters in native and inline modes.
+- **`proxy_authentication.py`** demonstrates how to connect through proxy servers using different authentication methods including basic authentication and Kerberos/Negotiate authentication.
