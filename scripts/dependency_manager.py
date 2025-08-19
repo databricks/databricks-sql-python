@@ -9,6 +9,7 @@ import toml
 import sys
 import argparse
 from packaging.specifiers import SpecifierSet
+from packaging.requirements import Requirement
 from pathlib import Path
 
 class DependencyManager:
@@ -170,13 +171,13 @@ class DependencyManager:
         
         # First add main requirements
         for req in requirements:
-            package_name = req.split('>=')[0].split('==')[0].split('<')[0]
+            package_name = Requirement(req).name
             seen_packages.add(package_name)
             final_requirements.append(req)
         
         # Then add transitive requirements that don't conflict
         for req in transitive_requirements:
-            package_name = req.split('>=')[0].split('==')[0].split('<')[0]
+            package_name = Requirement(req).name
             if package_name not in seen_packages:
                 final_requirements.append(req)
         
