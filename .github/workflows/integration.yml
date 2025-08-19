@@ -10,6 +10,12 @@ jobs:
   run-e2e-tests:
     runs-on: ubuntu-latest
     environment: azure-prod
+    strategy:
+      matrix:
+        dependency-version: ["default", "minimum"]
+    
+    name: "E2E Tests (${{ matrix.dependency-version }} deps)"
+    
     env:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
@@ -52,7 +58,29 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction --all-extras
       #----------------------------------------------
+      # override with custom dependency versions
+      #----------------------------------------------
+      - name: Install Python tools for custom versions
+        if: matrix.dependency-version != 'default'
+        run: poetry run pip install toml packaging
+
+      - name: Generate requirements file for e2e
+        if: matrix.dependency-version != 'default'
+        run: |
+          poetry run python scripts/dependency_manager.py ${{ matrix.dependency-version }} --include-optional --output requirements-${{ matrix.dependency-version }}-e2e.txt
+          echo "Generated requirements for ${{ matrix.dependency-version }} versions (E2E):"
+          cat requirements-${{ matrix.dependency-version }}-e2e.txt
+
+      - name: Override with custom dependency versions
+        if: matrix.dependency-version != 'default'
+        run: poetry run pip install -r requirements-${{ matrix.dependency-version }}-e2e.txt
+      #----------------------------------------------
       #              run test suite
       #----------------------------------------------
+      - name: Show installed versions
+        run: |
+          echo "=== E2E Dependency Version: ${{ matrix.dependency-version }} ==="
+          poetry run pip list
+
       - name: Run e2e tests
         run: poetry run python -m pytest tests/e2e
