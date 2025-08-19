@@ -27,8 +27,11 @@ class DependencyManager:
         if isinstance(constraint, str):
             return constraint, False  # version_constraint, is_optional
         elif isinstance(constraint, list):
-            # Handle complex constraints like pandas
-            return constraint[0]['version'], False
+            # Handle complex constraints like pandas/pyarrow
+            first_constraint = constraint[0]
+            version = first_constraint['version']
+            is_optional = first_constraint.get('optional', False)
+            return version, is_optional
         elif isinstance(constraint, dict):
             if 'version' in constraint:
                 return constraint['version'], constraint.get('optional', False)
