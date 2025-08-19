@@ -10,6 +10,14 @@ from urllib3 import PoolManager, ProxyManager
 from urllib3.util import make_headers
 from urllib3.exceptions import MaxRetryError
 
+# Compatibility import for different urllib3 versions
+try:
+    # If urllib3~=2.0 is installed
+    from urllib3 import BaseHTTPResponse
+except ImportError:
+    # If urllib3~=1.0 is installed
+    from urllib3 import HTTPResponse as BaseHTTPResponse
+
 from databricks.sql.auth.retry import DatabricksRetryPolicy, CommandType
 from databricks.sql.exc import RequestError
 from databricks.sql.common.http import HttpMethod
@@ -222,7 +230,7 @@ class UnifiedHttpClient:
         url: str,
         headers: Optional[Dict[str, str]] = None,
         **kwargs,
-    ) -> Generator[urllib3.BaseHTTPResponse, None, None]:
+    ) -> Generator[BaseHTTPResponse, None, None]:
         """
         Context manager for making HTTP requests with proper resource cleanup.
 
@@ -233,7 +241,7 @@ class UnifiedHttpClient:
             **kwargs: Additional arguments passed to urllib3 request
 
         Yields:
-            urllib3.BaseHTTPResponse: The HTTP response object
+            BaseHTTPResponse: The HTTP response object
         """
         logger.debug(
             "Making %s request to %s", method, urllib.parse.urlparse(url).netloc
@@ -270,7 +278,7 @@ class UnifiedHttpClient:
         url: str,
         headers: Optional[Dict[str, str]] = None,
         **kwargs,
-    ) -> urllib3.BaseHTTPResponse:
+    ) -> BaseHTTPResponse:
         """
         Make an HTTP request.
 
@@ -281,7 +289,7 @@ class UnifiedHttpClient:
             **kwargs: Additional arguments passed to urllib3 request
 
         Returns:
-            urllib3.BaseHTTPResponse: The HTTP response object with data and metadata pre-loaded
+            BaseHTTPResponse: The HTTP response object with data and metadata pre-loaded
         """
         with self.request_context(method, url, headers=headers, **kwargs) as response:
             # Read the response data to ensure it's available after context exit
