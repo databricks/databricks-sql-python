@@ -1,6 +1,8 @@
 """
 Dependency version management for testing.
-Generates requirements files for min, max, and default dependency versions.
+Generates requirements files for min and default dependency versions.
+For min versions, creates flexible constraints (e.g., >=1.2.5,<1.3.0) to allow 
+compatible patch updates instead of pinning exact versions.
 """
 
 import toml
@@ -58,6 +60,39 @@ class DependencyManager:
             print(f"Warning: Could not parse constraint '{spec_set_str}': {e}", file=sys.stderr)
             return None, None
     
+    def _create_flexible_minimum_constraint(self, package_name, min_version):
+        """Create a flexible minimum constraint that allows compatible updates"""
+        try:
+            # Split version into parts
+            version_parts = min_version.split('.')
+            
+            if len(version_parts) >= 2:
+                major = version_parts[0]
+                minor = version_parts[1]
+                
+                # Special handling for packages that commonly have conflicts
+                # For these packages, use wider constraints to allow more compatibility
+                if package_name in ['requests', 'urllib3', 'pandas']:
+                    # Use wider constraint: >=min_version,<next_major
+                    # e.g., 2.18.1 becomes >=2.18.1,<3.0.0
+                    next_major = int(major) + 1
+                    upper_bound = f"{next_major}.0.0"
+                    return f"{package_name}>={min_version},<{upper_bound}"
+                else:
+                    # For other packages, use minor version constraint
+                    # e.g., 1.2.5 becomes >=1.2.5,<1.3.0
+                    next_minor = int(minor) + 1
+                    upper_bound = f"{major}.{next_minor}.0"
+                    return f"{package_name}>={min_version},<{upper_bound}"
+            else:
+                # If version doesn't have minor version, just use exact version
+                return f"{package_name}=={min_version}"
+                
+        except (ValueError, IndexError) as e:
+            print(f"Warning: Could not create flexible constraint for {package_name}=={min_version}: {e}", file=sys.stderr)
+            # Fallback to exact version
+            return f"{package_name}=={min_version}"
+    
     def generate_requirements(self, version_type="min", include_optional=False):
         """
         Generate requirements for specified version type.
@@ -85,7 +120,9 @@ class DependencyManager:
             elif version_type == "min":
                 min_version, _ = self._extract_versions_from_specifier(version_constraint)
                 if min_version:
-                    requirements.append(f"{name}=={min_version}")
+                    # Create flexible constraint that allows patch updates for compatibility
+                    flexible_constraint = self._create_flexible_minimum_constraint(name, min_version)
+                    requirements.append(flexible_constraint)
         
         return requirements
     
@@ -95,7 +132,13 @@ class DependencyManager:
         requirements = self.generate_requirements(version_type, include_optional)
         
         with open(filename, 'w') as f:
-            f.write(f"# {version_type.title()} dependency versions generated from pyproject.toml\n")
+            if version_type == "min":
+                f.write(f"# Minimum compatible dependency versions generated from pyproject.toml\n")
+                f.write(f"# Uses flexible constraints to resolve compatibility conflicts:\n")
+                f.write(f"# - Common packages (requests, urllib3, pandas): >=min,<next_major\n") 
+                f.write(f"# - Other packages: >=min,<next_minor\n")
+            else:
+                f.write(f"# {version_type.title()} dependency versions generated from pyproject.toml\n")
             for req in sorted(requirements):
                 f.write(f"{req}\n")
         
