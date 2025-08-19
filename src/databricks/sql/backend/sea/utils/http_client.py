@@ -255,7 +255,10 @@ class SeaHttpClient:
             ) as response:
                 # Handle successful responses
                 if 200 <= response.status < 300:
-                    return response.json()
+                    if response.data:
+                        return json.loads(response.data.decode())
+                    else:
+                        return {}
 
                 error_message = f"SEA HTTP request failed with status {response.status}"
                 raise Exception(error_message)
