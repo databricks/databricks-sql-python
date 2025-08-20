@@ -2370,7 +2370,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             metadata={b'Spark:DataType:SqlName': b'VARIANT'}
         )
         
-        result = ThriftBackend._col_to_description(col, field)
+        result = ThriftDatabricksClient._col_to_description(col, field)
         
         # Verify the result has variant as the type
         self.assertEqual(result[0], "variant_col")  # Column name
@@ -2395,7 +2395,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             metadata={}
         )
         
-        result = ThriftBackend._col_to_description(col, field)
+        result = ThriftDatabricksClient._col_to_description(col, field)
         
         # Verify the result has string as the type (unchanged)
         self.assertEqual(result[0], "normal_col")  # Column name
@@ -2414,7 +2414,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
         
         # Pass None as the field
-        result = ThriftBackend._col_to_description(col, None)
+        result = ThriftDatabricksClient._col_to_description(col, None)
         
         # Verify the result has string as the type (unchanged)
         self.assertEqual(result[0], "missing_field")  # Column name
@@ -2452,7 +2452,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         schema_bytes = arrow_schema.serialize().to_pybytes()
         
         # Get the description
-        description = ThriftBackend._hive_schema_to_description(t_table_schema, schema_bytes)
+        description = ThriftDatabricksClient._hive_schema_to_description(t_table_schema, schema_bytes)
         
         # Verify regular column type
         self.assertEqual(description[0][0], "regular_col")
@@ -2473,7 +2473,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         t_table_schema = ttypes.TTableSchema(columns=columns)
         
         # Get the description with null schema_bytes
-        description = ThriftBackend._hive_schema_to_description(t_table_schema, None)
+        description = ThriftDatabricksClient._hive_schema_to_description(t_table_schema, None)
         
         # Verify column type remains unchanged
         self.assertEqual(description[0][0], "regular_col")
@@ -2493,7 +2493,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
             metadata={b'Spark:DataType:SqlName': b'Some unexpected value'}
         )
         
-        result = ThriftBackend._col_to_description(col, field)
+        result = ThriftDatabricksClient._col_to_description(col, field)
         
         # Verify the type remains unchanged
         self.assertEqual(result[0], "weird_field")  # Column name
