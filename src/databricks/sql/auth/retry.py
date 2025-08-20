@@ -67,7 +67,7 @@ COMMAND_IDEMPOTENCY_MAP = {
 # These are client error codes that indicate permanent issues
 NON_RETRYABLE_STATUS_CODES = {
     400,  # Bad Request
-    401,  # Unauthorized  
+    401,  # Unauthorized
     403,  # Forbidden
     404,  # Not Found
     405,  # Method Not Allowed
@@ -408,7 +408,9 @@ class DatabricksRetryPolicy(Retry):
             return False, "Only POST requests are retried"
 
         # Get command idempotency for use in multiple conditions below
-        command_idempotency = COMMAND_IDEMPOTENCY_MAP.get(self.command_type, CommandIdempotency.IDEMPOTENT)
+        command_idempotency = COMMAND_IDEMPOTENCY_MAP.get(
+            self.command_type or CommandType.OTHER, CommandIdempotency.IDEMPOTENT
+        )
 
         # Request failed, was a non-idempotent command and the command may have reached the server
         if (
@@ -418,7 +420,7 @@ class DatabricksRetryPolicy(Retry):
         ):
             return (
                 False,
-                f"{self.command_type.value} command can only be retried for codes 429 and 503",
+                f"{self.command_type.value if self.command_type else 'Unknown'} command can only be retried for codes 429 and 503",
             )
 
         # Request failed with a dangerous code, was a non-idempotent command, but user forced retries for this
