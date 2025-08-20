@@ -7,6 +7,8 @@ The Databricks SQL Connector for Python allows you to develop Python application
 
 This connector uses Arrow as the data-exchange format, and supports APIs (e.g. `fetchmany_arrow`) to directly fetch Arrow tables. Arrow tables are wrapped in the `ArrowQueue` class to provide a natural API to get several rows at a time. [PyArrow](https://arrow.apache.org/docs/python/index.html) is required to enable this and use these APIs, you can install it via  `pip install pyarrow` or `pip install databricks-sql-connector[pyarrow]`.
 
+The connector includes built-in support for HTTP/HTTPS proxy servers with multiple authentication methods including basic authentication and Kerberos/Negotiate authentication. See `docs/proxy.md` and `examples/proxy_authentication.py` for details.
+
 You are welcome to file an issue here for general use cases. You can also contact Databricks Support [here](help.databricks.com).
 
 ## Requirements
