@@ -96,7 +96,8 @@ class TestSeaHttpClient:
         # Setup mock response
         mock_response = Mock()
         mock_response.status = 200
-        mock_response.json.return_value = {"result": "success"}
+        # Mock response.data.decode() to return a valid JSON string
+        mock_response.data.decode.return_value = '{"result": "success"}'
         mock_response.__enter__ = Mock(return_value=mock_response)
         mock_response.__exit__ = Mock(return_value=None)
 

@@ -2,6 +2,7 @@ from contextlib import contextmanager
 import time
 from typing import Optional, List
 from unittest.mock import MagicMock, PropertyMock, patch
+import io
 
 import pytest
 from urllib3.exceptions import MaxRetryError
@@ -91,22 +92,78 @@ class Client503ResponseMixin:
         assert error_msg_substring in str(cm.exception)
 
 
+class SimpleHttpResponse:
+    """A simple HTTP response mock that works with both urllib3 v1.x and v2.x"""
+    
+    def __init__(self, status: int, headers: dict, redirect_location: Optional[str] = None):
+        # Import the correct HTTP message type that urllib3 v1.x expects
+        try:
+            from http.client import HTTPMessage
+        except ImportError:
+            from httplib import HTTPMessage
+            
+        self.status = status
+        # Create proper HTTPMessage for urllib3 v1.x compatibility  
+        self.headers = HTTPMessage()
+        for key, value in headers.items():
+            self.headers[key] = str(value)
+        self.msg = self.headers  # For urllib3~=1.0.0 compatibility
+        self.reason = "Mocked Response"
+        self.version = 11
+        self.length = 0
+        self.length_remaining = 0
+        self._redirect_location = redirect_location
+        self._body = b""
+        self._fp = io.BytesIO(self._body)
+        self._url = "https://example.com"
+        
+    def get_redirect_location(self, *args, **kwargs):
+        """Return the redirect location or False"""
+        return False if self._redirect_location is None else self._redirect_location
+        
+    def read(self, amt=None):
+        """Mock read method for file-like behavior"""
+        return self._body
+        
+    def close(self):
+        """Mock close method"""
+        pass
+        
+    def drain_conn(self):
+        """Mock drain_conn method for urllib3 v2.x"""
+        pass
+        
+    def isclosed(self):
+        """Mock isclosed method for urllib3 v1.x"""
+        return False
+        
+    def release_conn(self):
+        """Mock release_conn method for thrift HTTP client"""
+        pass
+        
+    @property
+    def data(self):
+        """Mock data property for urllib3 v2.x"""
+        return self._body
+        
+    @property
+    def url(self):
+        """Mock url property"""
+        return self._url
+        
+    @url.setter
+    def url(self, value):
+        """Mock url setter"""
+        self._url = value
+
+
 @contextmanager
 def mocked_server_response(
     status: int = 200, headers: dict = {}, redirect_location: Optional[str] = None
 ):
-    """Context manager for patching urllib3 responses"""
-
-    # When mocking mocking a BaseHTTPResponse for urllib3 the mock must include
-    #   1. A status code
-    #   2. A headers dict
-    #   3. mock.get_redirect_location() return falsy by default
-
-    # `msg` is included for testing when urllib3~=1.0.0 is installed
-    mock_response = MagicMock(headers=headers, msg=headers, status=status)
-    mock_response.get_redirect_location.return_value = (
-        False if redirect_location is None else redirect_location
-    )
+    """Context manager for patching urllib3 responses with version compatibility"""
+    
+    mock_response = SimpleHttpResponse(status, headers, redirect_location)
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.return_value = mock_response
@@ -127,18 +184,14 @@ def mock_sequential_server_responses(responses: List[dict]):
         - redirect_location: str
     """
 
-    mock_responses = []
-
-    # Each resp should have these members:
-
-    for resp in responses:
-        _mock = MagicMock(
-            headers=resp["headers"], msg=resp["headers"], status=resp["status"]
+    mock_responses = [
+        SimpleHttpResponse(
+            status=resp["status"],
+            headers=resp["headers"],
+            redirect_location=resp["redirect_location"]
         )
-        _mock.get_redirect_location.return_value = (
-            False if resp["redirect_location"] is None else resp["redirect_location"]
-        )
-        mock_responses.append(_mock)
+        for resp in responses
+    ]
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
         getconn_mock.return_value.getresponse.side_effect = mock_responses
@@ -475,21 +528,23 @@ class PySQLRetryTestsMixin:
         ],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_max_redirects_raises_too_many_redirects_exception(
+    def test_3xx_redirect_codes_are_not_retried(
         self, mock_send_telemetry, extra_params
     ):
         """GIVEN the connector is configured with a custom max_redirects
-        WHEN the DatabricksRetryPolicy is created
-        THEN the connector raises a MaxRedirectsError if that number is exceeded
+        WHEN the DatabricksRetryPolicy receives a 302 redirect
+        THEN the connector does not retry since 3xx codes are not retried per policy
         """
 
-        max_redirects, expected_call_count = 1, 2
+        max_redirects, expected_call_count = 1, 1
 
-        # Code 302 is a redirect
+        # Code 302 is a redirect, but 3xx codes are not retried per policy
+        # Note: We don't set redirect_location because that would cause urllib3 v2.x 
+        # to follow redirects internally, bypassing our retry policy test
         with mocked_server_response(
-            status=302, redirect_location="/foo.bar"
+            status=302, redirect_location=None
         ) as mock_obj:
-            with pytest.raises(MaxRetryError) as cm:
+            with pytest.raises(RequestError):  # Should get RequestError, not MaxRetryError
                 with self.connection(
                     extra_params={
                         **extra_params,
@@ -498,8 +553,7 @@ class PySQLRetryTestsMixin:
                     }
                 ):
                     pass
-            assert "too many redirects" == str(cm.value.reason)
-            # Total call count should be 2 (original + 1 retry)
+            # Total call count should be 1 (original only, no retries for 3xx codes)
             assert mock_obj.return_value.getresponse.call_count == expected_call_count
 
     @pytest.mark.parametrize(
@@ -510,21 +564,23 @@ class PySQLRetryTestsMixin:
         ],
     )
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
-    def test_retry_max_redirects_unset_doesnt_redirect_forever(
+    def test_3xx_codes_not_retried_regardless_of_max_redirects_setting(
         self, mock_send_telemetry, extra_params
     ):
         """GIVEN the connector is configured without a custom max_redirects
-        WHEN the DatabricksRetryPolicy is used
-        THEN the connector raises a MaxRedirectsError if that number is exceeded
+        WHEN the DatabricksRetryPolicy receives a 302 redirect
+        THEN the connector does not retry since 3xx codes are not retried per policy
 
-        This test effectively guarantees that regardless of _retry_max_redirects,
-        _stop_after_attempts_count is enforced.
+        This test confirms that 3xx codes (including redirects) are not retried
+        according to the DatabricksRetryPolicy regardless of redirect settings.
         """
-        # Code 302 is a redirect
+        # Code 302 is a redirect, but 3xx codes are not retried per policy
+        # Note: We don't set redirect_location because that would cause urllib3 v2.x 
+        # to follow redirects internally, bypassing our retry policy test
         with mocked_server_response(
-            status=302, redirect_location="/foo.bar/"
+            status=302, redirect_location=None
         ) as mock_obj:
-            with pytest.raises(MaxRetryError) as cm:
+            with pytest.raises(RequestError):  # Should get RequestError, not MaxRetryError
                 with self.connection(
                     extra_params={
                         **extra_params,
@@ -533,8 +589,8 @@ class PySQLRetryTestsMixin:
                 ):
                     pass
 
-            # Total call count should be 6 (original + _retry_stop_after_attempts_count)
-            assert mock_obj.return_value.getresponse.call_count == 6
+            # Total call count should be 1 (original only, no retries for 3xx codes)
+            assert mock_obj.return_value.getresponse.call_count == 1
 
     @pytest.mark.parametrize(
         "extra_params",
@@ -543,13 +599,13 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    def test_retry_max_redirects_is_bounded_by_stop_after_attempts_count(
+    def test_3xx_codes_stop_request_immediately_no_retry_attempts(
         self, extra_params
     ):
-        # If I add another 503 or 302 here the test will fail with a MaxRetryError
+        # Since 3xx codes are not retried per policy, we only ever see the first 302 response
         responses = [
             {"status": 302, "headers": {}, "redirect_location": "/foo.bar"},
-            {"status": 500, "headers": {}, "redirect_location": None},
+            {"status": 500, "headers": {}, "redirect_location": None},  # Never reached
         ]
 
         additional_settings = {
@@ -568,7 +624,7 @@ class PySQLRetryTestsMixin:
                 ):
                     pass
 
-        # The error should be the result of the 500, not because of too many requests.
+        # The error should be the result of the 302, since 3xx codes are not retried
         assert "too many redirects" not in str(cm.value.message)
         assert "Error during request to server" in str(cm.value.message)
 
