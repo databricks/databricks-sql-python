@@ -2330,7 +2330,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                http_client=MagicMock(),
                 **complex_arg_types,
             )
             thrift_backend.execute_command(
@@ -2356,148 +2356,85 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 t_execute_statement_req.useArrowNativeTypes.intervalTypesAsArrow
             )
 
-    def test_col_to_description_with_variant_type(self):
-        # Test variant type detection from Arrow field metadata
-        col = ttypes.TColumnDesc(
-            columnName="variant_col",
-            typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
-        )
+    @unittest.skipIf(pyarrow is None, "Requires pyarrow")
+    def test_col_to_description(self):
+        test_cases = [
+            ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}, "variant"),
+            ("normal_col", {}, "string"),
+            ("weird_field", {b"Spark:DataType:SqlName": b"Some unexpected value"}, "string"),
+            ("missing_field", None, "string"),  # None field case
+        ]
         
-        # Create a field with variant type in metadata
-        field = pyarrow.field(
-            "variant_col", 
-            pyarrow.string(),
-            metadata={b'Spark:DataType:SqlName': b'VARIANT'}
-        )
-        
-        result = ThriftDatabricksClient._col_to_description(col, field)
-        
-        # Verify the result has variant as the type
-        self.assertEqual(result[0], "variant_col")  # Column name
-        self.assertEqual(result[1], "variant")      # Type name (should be variant instead of string)
-        self.assertIsNone(result[2])                # No display size
-        self.assertIsNone(result[3])                # No internal size
-        self.assertIsNone(result[4])                # No precision
-        self.assertIsNone(result[5])                # No scale
-        self.assertIsNone(result[6])                # No null ok
+        for column_name, field_metadata, expected_type in test_cases:
+            with self.subTest(column_name=column_name, expected_type=expected_type):
+                col = ttypes.TColumnDesc(
+                    columnName=column_name,
+                    typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
+                )
 
-    def test_col_to_description_without_variant_type(self):
-        # Test normal column without variant type
-        col = ttypes.TColumnDesc(
-            columnName="normal_col",
-            typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
-        )
-        
-        # Create a normal field without variant metadata
-        field = pyarrow.field(
-            "normal_col", 
-            pyarrow.string(),
-            metadata={}
-        )
-        
-        result = ThriftDatabricksClient._col_to_description(col, field)
-        
-        # Verify the result has string as the type (unchanged)
-        self.assertEqual(result[0], "normal_col")  # Column name
-        self.assertEqual(result[1], "string")      # Type name (should be string)
-        self.assertIsNone(result[2])               # No display size
-        self.assertIsNone(result[3])               # No internal size
-        self.assertIsNone(result[4])               # No precision
-        self.assertIsNone(result[5])               # No scale
-        self.assertIsNone(result[6])               # No null ok
+                field = (
+                    None
+                    if field_metadata is None
+                    else pyarrow.field(column_name, pyarrow.string(), metadata=field_metadata)
+                )
 
-    def test_col_to_description_with_null_field(self):
-        # Test handling of null field
-        col = ttypes.TColumnDesc(
-            columnName="missing_field",
-            typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
-        )
-        
-        # Pass None as the field
-        result = ThriftDatabricksClient._col_to_description(col, None)
-        
-        # Verify the result has string as the type (unchanged)
-        self.assertEqual(result[0], "missing_field")  # Column name
-        self.assertEqual(result[1], "string")        # Type name (should be string)
-        self.assertIsNone(result[2])                # No display size
-        self.assertIsNone(result[3])                # No internal size
-        self.assertIsNone(result[4])                # No precision
-        self.assertIsNone(result[5])                # No scale
-        self.assertIsNone(result[6])                # No null ok
+                result = ThriftDatabricksClient._col_to_description(col, field)
 
-    def test_hive_schema_to_description_with_arrow_schema(self):
-        # Create a table schema with regular and variant columns
-        columns = [
-            ttypes.TColumnDesc(
-                columnName="regular_col",
-                typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
+                self.assertEqual(result[0], column_name)
+                self.assertEqual(result[1], expected_type)
+                self.assertIsNone(result[2])
+                self.assertIsNone(result[3])
+                self.assertIsNone(result[4])
+                self.assertIsNone(result[5])
+                self.assertIsNone(result[6])
+
+    @unittest.skipIf(pyarrow is None, "Requires pyarrow")
+    def test_hive_schema_to_description(self):
+        test_cases = [
+            (
+                [
+                    ("regular_col", ttypes.TTypeId.STRING_TYPE),
+                    ("variant_col", ttypes.TTypeId.STRING_TYPE),
+                ],
+                [
+                    ("regular_col", {}),
+                    ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}),
+                ],
+                [("regular_col", "string"), ("variant_col", "variant")],
             ),
-            ttypes.TColumnDesc(
-                columnName="variant_col",
-                typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
+            (
+                [("regular_col", ttypes.TTypeId.STRING_TYPE)],
+                None,  # No arrow schema
+                [("regular_col", "string")],
             ),
         ]
-        t_table_schema = ttypes.TTableSchema(columns=columns)
         
-        # Create an Arrow schema with one variant column
-        fields = [
-            pyarrow.field("regular_col", pyarrow.string()),
-            pyarrow.field(
-                "variant_col", 
-                pyarrow.string(),
-                metadata={b'Spark:DataType:SqlName': b'VARIANT'}
-            )
-        ]
-        arrow_schema = pyarrow.schema(fields)
-        schema_bytes = arrow_schema.serialize().to_pybytes()
-        
-        # Get the description
-        description = ThriftDatabricksClient._hive_schema_to_description(t_table_schema, schema_bytes)
-        
-        # Verify regular column type
-        self.assertEqual(description[0][0], "regular_col")
-        self.assertEqual(description[0][1], "string")
-        
-        # Verify variant column type
-        self.assertEqual(description[1][0], "variant_col")
-        self.assertEqual(description[1][1], "variant")
+        for columns, arrow_fields, expected_types in test_cases:
+            with self.subTest(arrow_fields=arrow_fields is not None):
+                t_table_schema = ttypes.TTableSchema(
+                    columns=[
+                        ttypes.TColumnDesc(
+                            columnName=name, typeDesc=self._make_type_desc(col_type)
+                        )
+                        for name, col_type in columns
+                    ]
+                )
 
-    def test_hive_schema_to_description_with_null_schema_bytes(self):
-        # Create a simple table schema
-        columns = [
-            ttypes.TColumnDesc(
-                columnName="regular_col",
-                typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
-            ),
-        ]
-        t_table_schema = ttypes.TTableSchema(columns=columns)
-        
-        # Get the description with null schema_bytes
-        description = ThriftDatabricksClient._hive_schema_to_description(t_table_schema, None)
-        
-        # Verify column type remains unchanged
-        self.assertEqual(description[0][0], "regular_col")
-        self.assertEqual(description[0][1], "string")
+                schema_bytes = None
+                if arrow_fields:
+                    fields = [
+                        pyarrow.field(name, pyarrow.string(), metadata=metadata)
+                        for name, metadata in arrow_fields
+                    ]
+                    schema_bytes = pyarrow.schema(fields).serialize().to_pybytes()
 
-    def test_col_to_description_with_malformed_metadata(self):
-        # Test handling of malformed metadata
-        col = ttypes.TColumnDesc(
-            columnName="weird_field",
-            typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
-        )
-        
-        # Create a field with malformed metadata
-        field = pyarrow.field(
-            "weird_field", 
-            pyarrow.string(),
-            metadata={b'Spark:DataType:SqlName': b'Some unexpected value'}
-        )
-        
-        result = ThriftDatabricksClient._col_to_description(col, field)
-        
-        # Verify the type remains unchanged
-        self.assertEqual(result[0], "weird_field")  # Column name
-        self.assertEqual(result[1], "string")       # Type name (should remain string)
+                description = ThriftDatabricksClient._hive_schema_to_description(
+                    t_table_schema, schema_bytes
+                )
+
+                for i, (expected_name, expected_type) in enumerate(expected_types):
+                    self.assertEqual(description[i][0], expected_name)
+                    self.assertEqual(description[i][1], expected_type)
 
 
 if __name__ == "__main__":
