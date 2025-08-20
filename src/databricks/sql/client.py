@@ -836,7 +836,6 @@ class Cursor:
 
         self._handle_staging_http_response(r)
 
-
     @log_latency(StatementType.SQL)
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
