@@ -8,6 +8,16 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        dependency-version: ["default", "min"]
+        # Optimize matrix - test min/max on subset of Python versions
+        exclude:
+          - python-version: "3.12"
+            dependency-version: "min"
+          - python-version: "3.13"
+            dependency-version: "min"
+    
+    name: "Unit Tests (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
+    
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -37,7 +47,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
       #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
@@ -50,8 +60,31 @@ jobs:
       - name: Install library
         run: poetry install --no-interaction
       #----------------------------------------------
+      # override with custom dependency versions
+      #----------------------------------------------
+      - name: Install Python tools for custom versions
+        if: matrix.dependency-version != 'default'
+        run: poetry run pip install toml packaging
+
+      - name: Generate requirements file
+        if: matrix.dependency-version != 'default'
+        run: |
+          poetry run python scripts/dependency_manager.py ${{ matrix.dependency-version }} --output requirements-${{ matrix.dependency-version }}.txt
+          echo "Generated requirements for ${{ matrix.dependency-version }} versions:"
+          cat requirements-${{ matrix.dependency-version }}.txt
+
+      - name: Override with custom dependency versions
+        if: matrix.dependency-version != 'default'
+        run: poetry run pip install -r requirements-${{ matrix.dependency-version }}.txt
+
+      #----------------------------------------------
       #              run test suite
       #----------------------------------------------
+      - name: Show installed versions
+        run: |
+          echo "=== Dependency Version: ${{ matrix.dependency-version }} ==="
+          poetry run pip list
+
       - name: Run tests
         run: poetry run python -m pytest tests/unit
   run-unit-tests-with-arrow:
@@ -59,6 +92,15 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        dependency-version: ["default", "min"]
+        exclude:
+          - python-version: "3.12"
+            dependency-version: "min"
+          - python-version: "3.13"
+            dependency-version: "min"
+    
+    name: "Unit Tests + PyArrow (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
+    
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -88,7 +130,7 @@ jobs:
           uses: actions/cache@v4
           with:
             path: .venv-pyarrow
-            key: venv-pyarrow-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+            key: venv-pyarrow-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
       #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
@@ -101,8 +143,30 @@ jobs:
       -   name: Install library
           run: poetry install --no-interaction --all-extras
       #----------------------------------------------
+      # override with custom dependency versions
+      #----------------------------------------------
+      -   name: Install Python tools for custom versions
+          if: matrix.dependency-version != 'default'
+          run: poetry run pip install toml packaging
+
+      -   name: Generate requirements file with pyarrow
+          if: matrix.dependency-version != 'default'
+          run: |
+            poetry run python scripts/dependency_manager.py ${{ matrix.dependency-version }} --output requirements-${{ matrix.dependency-version }}-arrow.txt
+            echo "Generated requirements for ${{ matrix.dependency-version }} versions with PyArrow:"
+            cat requirements-${{ matrix.dependency-version }}-arrow.txt
+
+      -   name: Override with custom dependency versions
+          if: matrix.dependency-version != 'default'
+          run: poetry run pip install -r requirements-${{ matrix.dependency-version }}-arrow.txt
+      #----------------------------------------------
       #              run test suite
       #----------------------------------------------
+      -   name: Show installed versions
+          run: |
+            echo "=== Dependency Version: ${{ matrix.dependency-version }} with PyArrow ==="
+            poetry run pip list
+
       -   name: Run tests
           run: poetry run python -m pytest tests/unit
   check-linting:

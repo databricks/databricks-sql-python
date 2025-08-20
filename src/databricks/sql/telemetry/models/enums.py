@@ -1,0 +1,44 @@
+from enum import Enum
+
+
+class AuthFlow(Enum):
+    TYPE_UNSPECIFIED = "TYPE_UNSPECIFIED"
+    TOKEN_PASSTHROUGH = "TOKEN_PASSTHROUGH"
+    CLIENT_CREDENTIALS = "CLIENT_CREDENTIALS"
+    BROWSER_BASED_AUTHENTICATION = "BROWSER_BASED_AUTHENTICATION"
+
+
+class AuthMech(Enum):
+    TYPE_UNSPECIFIED = "TYPE_UNSPECIFIED"
+    OTHER = "OTHER"
+    PAT = "PAT"
+    OAUTH = "OAUTH"
+
+
+class DatabricksClientType(Enum):
+    SEA = "SEA"
+    THRIFT = "THRIFT"
+
+
+class DriverVolumeOperationType(Enum):
+    TYPE_UNSPECIFIED = "TYPE_UNSPECIFIED"
+    PUT = "PUT"
+    GET = "GET"
+    DELETE = "DELETE"
+    LIST = "LIST"
+    QUERY = "QUERY"
+
+
+class ExecutionResultFormat(Enum):
+    FORMAT_UNSPECIFIED = "FORMAT_UNSPECIFIED"
+    INLINE_ARROW = "INLINE_ARROW"
+    EXTERNAL_LINKS = "EXTERNAL_LINKS"
+    COLUMNAR_INLINE = "COLUMNAR_INLINE"
+
+
+class StatementType(Enum):
+    NONE = "NONE"
+    QUERY = "QUERY"
+    SQL = "SQL"
+    UPDATE = "UPDATE"
+    METADATA = "METADATA"

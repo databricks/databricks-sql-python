@@ -3,18 +3,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 ### PEP-249 Mandated ###
+# https://peps.python.org/pep-0249/#exceptions
 class Error(Exception):
     """Base class for DB-API2.0 exceptions.
     `message`: An optional user-friendly error message. It should be short, actionable and stable
     `context`: Optional extra context about the error. MUST be JSON serializable
     """
 
-    def __init__(self, message=None, context=None, *args, **kwargs):
+    def __init__(
+        self, message=None, context=None, session_id_hex=None, *args, **kwargs
+    ):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}
+
+        error_name = self.__class__.__name__
+        if session_id_hex:
+            from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
+
+            telemetry_client = TelemetryClientFactory.get_telemetry_client(
+                session_id_hex
+            )
+            telemetry_client.export_failure_log(error_name, self.message)
 
     def __str__(self):
         return self.message

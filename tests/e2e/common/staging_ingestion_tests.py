@@ -46,7 +46,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         ) as conn:
 
             cursor = conn.cursor()
-            query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+            query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
             cursor.execute(query)
 
         # GET should succeed
@@ -57,7 +57,7 @@ class PySQLStagingIngestionTestSuiteMixin:
             extra_params={"staging_allowed_local_path": new_temp_path}
         ) as conn:
             cursor = conn.cursor()
-            query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+            query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' TO '{new_temp_path}'"
             cursor.execute(query)
 
         with open(new_fh, "rb") as fp:
@@ -67,19 +67,24 @@ class PySQLStagingIngestionTestSuiteMixin:
 
         # REMOVE should succeed
 
-        remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv'"
-
-        with self.connection(extra_params={"staging_allowed_local_path": "/"}) as conn:
+        remove_query = f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv'"
+        # Use minimal retry settings to fail fast for staging operations
+        extra_params = {
+            "staging_allowed_local_path": "/",
+            "_retry_stop_after_attempts_count": 1,
+            "_retry_delay_max": 10,
+        }
+        with self.connection(extra_params=extra_params) as conn:
             cursor = conn.cursor()
             cursor.execute(remove_query)
 
             # GET after REMOVE should fail
 
             with pytest.raises(
-                Error, match="Staging operation over HTTP was unsuccessful: 404"
+                Error, match="too many 404 error responses"
             ):
                 cursor = conn.cursor()
-                query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' TO '{new_temp_path}'"
+                query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' TO '{new_temp_path}'"
                 cursor.execute(query)
 
         os.remove(temp_path)

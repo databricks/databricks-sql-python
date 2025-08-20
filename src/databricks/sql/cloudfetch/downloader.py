@@ -1,29 +1,18 @@
 import logging
 from dataclasses import dataclass
+from typing import Optional
 
-import requests
-from requests.adapters import HTTPAdapter, Retry
 import lz4.frame
 import time
-
+from databricks.sql.common.http import HttpMethod
 from databricks.sql.thrift_api.TCLIService.ttypes import TSparkArrowResultLink
 from databricks.sql.exc import Error
 from databricks.sql.types import SSLOptions
+from databricks.sql.telemetry.latency_logger import log_latency
+from databricks.sql.telemetry.models.event import StatementType
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
 
 logger = logging.getLogger(__name__)
-
-# TODO: Ideally, we should use a common retry policy (DatabricksRetryPolicy) for all the requests across the library.
-#       But DatabricksRetryPolicy should be updated first - currently it can work only with Thrift requests
-retryPolicy = Retry(
-    total=5,  # max retry attempts
-    backoff_factor=1,  # min delay, 1 second
-    # TODO: `backoff_max` is supported since `urllib3` v2.0.0, but we allow >= 1.26.
-    #       The default value (120 seconds) used since v1.26 looks reasonable enough
-    # backoff_max=60,  # max delay, 60 seconds
-    # retry all status codes below 100, 429 (Too Many Requests), and all codes above 500,
-    # excluding 501 Not implemented
-    status_forcelist=[*range(0, 101), 429, 500, *range(502, 1000)],
-)
 
 
 @dataclass
@@ -52,12 +41,14 @@ class DownloadableResultSettings:
         link_expiry_buffer_secs (int): Time in seconds to prevent download of a link before it expires. Default 0 secs.
         download_timeout (int): Timeout for download requests. Default 60 secs.
         max_consecutive_file_download_retries (int): Number of consecutive download retries before shutting down.
+        min_cloudfetch_download_speed (float): Threshold in MB/s below which to log warning. Default 0.1 MB/s.
     """
 
     is_lz4_compressed: bool
     link_expiry_buffer_secs: int = 0
     download_timeout: int = 60
     max_consecutive_file_download_retries: int = 0
+    min_cloudfetch_download_speed: float = 0.1
 
 
 class ResultSetDownloadHandler:
@@ -66,11 +57,20 @@ class ResultSetDownloadHandler:
         settings: DownloadableResultSettings,
         link: TSparkArrowResultLink,
         ssl_options: SSLOptions,
+        chunk_id: int,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        http_client,
     ):
         self.settings = settings
         self.link = link
         self._ssl_options = ssl_options
+        self._http_client = http_client
+        self.chunk_id = chunk_id
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
 
+    @log_latency(StatementType.QUERY)
     def run(self) -> DownloadedFile:
         """
         Download the file described in the cloud fetch link.
@@ -80,9 +80,10 @@ class ResultSetDownloadHandler:
         """
 
         logger.debug(
-            "ResultSetDownloadHandler: starting file download, offset {}, row count {}".format(
-                self.link.startRowOffset, self.link.rowCount
-            )
+            "ResultSetDownloadHandler: starting file download, chunk id %s, offset %s, row count %s",
+            self.chunk_id,
+            self.link.startRowOffset,
+            self.link.rowCount,
         )
 
         # Check if link is already expired or is expiring
@@ -90,51 +91,75 @@ class ResultSetDownloadHandler:
             self.link, self.settings.link_expiry_buffer_secs
         )
 
-        session = requests.Session()
-        session.mount("http://", HTTPAdapter(max_retries=retryPolicy))
-        session.mount("https://", HTTPAdapter(max_retries=retryPolicy))
+        start_time = time.time()
 
-        try:
-            # Get the file via HTTP request
-            response = session.get(
-                self.link.fileLink,
-                timeout=self.settings.download_timeout,
-                verify=self._ssl_options.tls_verify,
-                headers=self.link.httpHeaders
-                # TODO: Pass cert from `self._ssl_options`
-            )
-            response.raise_for_status()
+        with self._http_client.request_context(
+            method=HttpMethod.GET,
+            url=self.link.fileLink,
+            timeout=self.settings.download_timeout,
+            headers=self.link.httpHeaders,
+        ) as response:
+            if response.status >= 400:
+                raise Exception(f"HTTP {response.status}: {response.data.decode()}")
+            compressed_data = response.data
 
-            # Save (and decompress if needed) the downloaded file
-            compressed_data = response.content
-            decompressed_data = (
-                ResultSetDownloadHandler._decompress_data(compressed_data)
-                if self.settings.is_lz4_compressed
-                else compressed_data
-            )
+        # Log download metrics
+        download_duration = time.time() - start_time
+        self._log_download_metrics(
+            self.link.fileLink, len(compressed_data), download_duration
+        )
 
-            # The size of the downloaded file should match the size specified from TSparkArrowResultLink
-            if len(decompressed_data) != self.link.bytesNum:
-                logger.debug(
-                    "ResultSetDownloadHandler: downloaded file size {} does not match the expected value {}".format(
-                        len(decompressed_data), self.link.bytesNum
-                    )
-                )
+        decompressed_data = (
+            ResultSetDownloadHandler._decompress_data(compressed_data)
+            if self.settings.is_lz4_compressed
+            else compressed_data
+        )
 
+        # The size of the downloaded file should match the size specified from TSparkArrowResultLink
+        if len(decompressed_data) != self.link.bytesNum:
             logger.debug(
-                "ResultSetDownloadHandler: successfully downloaded file, offset {}, row count {}".format(
-                    self.link.startRowOffset, self.link.rowCount
-                )
+                "ResultSetDownloadHandler: downloaded file size %s does not match the expected value %s",
+                len(decompressed_data),
+                self.link.bytesNum,
             )
 
-            return DownloadedFile(
-                decompressed_data,
-                self.link.startRowOffset,
-                self.link.rowCount,
+        logger.debug(
+            "ResultSetDownloadHandler: successfully downloaded file, offset %s, row count %s",
+            self.link.startRowOffset,
+            self.link.rowCount,
+        )
+
+        return DownloadedFile(
+            decompressed_data,
+            self.link.startRowOffset,
+            self.link.rowCount,
+        )
+
+    def _log_download_metrics(
+        self, url: str, bytes_downloaded: int, duration_seconds: float
+    ):
+        """Log download speed metrics at INFO/WARN levels."""
+        # Calculate speed in MB/s (ensure float division for precision)
+        speed_mbps = (float(bytes_downloaded) / (1024 * 1024)) / duration_seconds
+
+        urlEndpoint = url.split("?")[0]
+        # INFO level logging
+        logger.info(
+            "CloudFetch download completed: %.4f MB/s, %d bytes in %.3fs from %s",
+            speed_mbps,
+            bytes_downloaded,
+            duration_seconds,
+            urlEndpoint,
+        )
+
+        # WARN level logging if below threshold
+        if speed_mbps < self.settings.min_cloudfetch_download_speed:
+            logger.warning(
+                "CloudFetch download slower than threshold: %.4f MB/s (threshold: %.1f MB/s) from %s",
+                speed_mbps,
+                self.settings.min_cloudfetch_download_speed,
+                url,
             )
-        finally:
-            if session:
-                session.close()
 
     @staticmethod
     def _validate_link(link: TSparkArrowResultLink, expiry_buffer_secs: int):

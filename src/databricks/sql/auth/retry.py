@@ -127,7 +127,7 @@ class DatabricksRetryPolicy(Retry):
             total=_attempts_remaining,
             respect_retry_after_header=True,
             backoff_factor=self.delay_min,
-            allowed_methods=["POST"],
+            allowed_methods=["POST", "GET", "DELETE"],
             status_forcelist=[429, 503, *self.force_dangerous_codes],
         )
 
@@ -355,8 +355,14 @@ class DatabricksRetryPolicy(Retry):
         logger.info(f"Received status code {status_code} for {method} request")
 
         # Request succeeded. Don't retry.
-        if status_code == 200:
-            return False, "200 codes are not retried"
+        if status_code // 100 <= 3:
+            return False, "2xx/3xx codes are not retried"
+
+        if status_code == 400:
+            return (
+                False,
+                "Received 400 - BAD_REQUEST. Please check the request parameters.",
+            )
 
         if status_code == 401:
             return (

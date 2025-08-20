@@ -15,11 +15,19 @@ from urllib3 import HTTPConnectionPool, HTTPSConnectionPool, ProxyManager
 from urllib3.util import make_headers
 from databricks.sql.auth.retry import CommandType, DatabricksRetryPolicy
 from databricks.sql.types import SSLOptions
+from databricks.sql.common.http_utils import (
+    detect_and_parse_proxy,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class THttpClient(thrift.transport.THttpClient.THttpClient):
+    realhost: Optional[str]
+    realport: Optional[int]
+    proxy_uri: Optional[str]
+    proxy_auth: Optional[Dict[str, str]]
+
     def __init__(
         self,
         auth_provider,
@@ -29,6 +37,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         ssl_options: Optional[SSLOptions] = None,
         max_connections: int = 1,
         retry_policy: Union[DatabricksRetryPolicy, int] = 0,
+        **kwargs,
     ):
         self._ssl_options = ssl_options
 
@@ -58,27 +67,25 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             self.path = parsed.path
             if parsed.query:
                 self.path += "?%s" % parsed.query
-        try:
-            proxy = urllib.request.getproxies()[self.scheme]
-        except KeyError:
-            proxy = None
-        else:
-            if urllib.request.proxy_bypass(self.host):
-                proxy = None
-        if proxy:
-            parsed = urllib.parse.urlparse(proxy)
 
+        # Handle proxy settings using shared utility
+        proxy_auth_method = kwargs.get("_proxy_auth_method")
+        proxy_uri, proxy_auth = detect_and_parse_proxy(
+            self.scheme, self.host, proxy_auth_method=proxy_auth_method
+        )
+
+        if proxy_uri:
+            parsed_proxy = urllib.parse.urlparse(proxy_uri)
             # realhost and realport are the host and port of the actual request
             self.realhost = self.host
             self.realport = self.port
-
             # this is passed to ProxyManager
-            self.proxy_uri: str = proxy
-            self.host = parsed.hostname
-            self.port = parsed.port
-            self.proxy_auth = self.basic_proxy_auth_headers(parsed)
+            self.proxy_uri = proxy_uri
+            self.host = parsed_proxy.hostname
+            self.port = parsed_proxy.port
+            self.proxy_auth = proxy_auth
         else:
-            self.realhost = self.realport = self.proxy_auth = None
+            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
 
         self.max_connections = max_connections
 
@@ -204,15 +211,9 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
             )
         )
 
-    @staticmethod
-    def basic_proxy_auth_headers(proxy):
-        if proxy is None or not proxy.username:
-            return None
-        ap = "%s:%s" % (
-            urllib.parse.unquote(proxy.username),
-            urllib.parse.unquote(proxy.password),
-        )
-        return make_headers(proxy_basic_auth=ap)
+    def using_proxy(self) -> bool:
+        """Check if proxy is being used."""
+        return self.realhost is not None
 
     def set_retry_command_type(self, value: CommandType):
         """Pass the provided CommandType to the retry policy"""

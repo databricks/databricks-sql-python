@@ -1,13 +1,29 @@
-from decimal import Decimal
+from __future__ import annotations
+
 import errno
 import logging
 import math
 import time
-import uuid
 import threading
-from typing import List, Union
+from typing import List, Optional, Union, Any, TYPE_CHECKING
+from uuid import UUID
 
-from databricks.sql.thrift_api.TCLIService.ttypes import TOperationState
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.result_set import ThriftResultSet
+from databricks.sql.telemetry.models.event import StatementType
+
+
+if TYPE_CHECKING:
+    from databricks.sql.client import Cursor
+    from databricks.sql.result_set import ResultSet
+
+from databricks.sql.backend.types import (
+    CommandState,
+    SessionId,
+    CommandId,
+    ExecuteResponse,
+)
+from databricks.sql.backend.utils import guid_to_hex_id
 
 try:
     import pyarrow
@@ -25,22 +41,21 @@ from databricks.sql.auth.thrift_http_client import CommandType
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.thrift_api.TCLIService import TCLIService, ttypes
 from databricks.sql import *
-from databricks.sql.exc import MaxRetryDurationError
 from databricks.sql.thrift_api.TCLIService.TCLIService import (
     Client as TCLIServiceClient,
 )
 
 from databricks.sql.utils import (
-    ExecuteResponse,
+    ThriftResultSetQueueFactory,
     _bound,
     RequestErrorInfo,
     NoRetryReason,
-    ResultSetQueueFactory,
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
 )
 from databricks.sql.types import SSLOptions
+from databricks.sql.backend.databricks_client import DatabricksClient
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +88,9 @@ _retry_policy = {  # (type, default, min, max)
 }
 
 
-class ThriftBackend:
-    CLOSED_OP_STATE = ttypes.TOperationState.CLOSED_STATE
-    ERROR_OP_STATE = ttypes.TOperationState.ERROR_STATE
+class ThriftDatabricksClient(DatabricksClient):
+    CLOSED_OP_STATE = CommandState.CLOSED
+    ERROR_OP_STATE = CommandState.FAILED
 
     _retry_delay_min: float
     _retry_delay_max: float
@@ -91,7 +106,7 @@ class ThriftBackend:
         http_headers,
         auth_provider: AuthProvider,
         ssl_options: SSLOptions,
-        staging_allowed_local_path: Union[None, str, List[str]] = None,
+        http_client: UnifiedHttpClient,
         **kwargs,
     ):
         # Internal arguments in **kwargs:
@@ -132,10 +147,8 @@ class ThriftBackend:
         #  Number of threads for handling cloud fetch downloads. Defaults to 10
 
         logger.debug(
-            "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)",
-            server_hostname,
-            port,
-            http_path,
+            "ThriftBackend.__init__(server_hostname=%s, port=%s, http_path=%s)"
+            % (server_hostname, port, http_path)
         )
 
         port = port or 443
@@ -150,22 +163,22 @@ class ThriftBackend:
         else:
             raise ValueError("No valid connection settings.")
 
-        self.staging_allowed_local_path = staging_allowed_local_path
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
         )
+
         self._use_arrow_native_decimals = kwargs.get("_use_arrow_native_decimals", True)
         self._use_arrow_native_timestamps = kwargs.get(
             "_use_arrow_native_timestamps", True
         )
 
         # Cloud fetch
-        self.max_download_threads = kwargs.get("max_download_threads", 10)
+        self._max_download_threads = kwargs.get("max_download_threads", 10)
 
         self._ssl_options = ssl_options
-
         self._auth_provider = auth_provider
+        self._http_client = http_client
 
         # Connector version 3 retry approach
         self.enable_v3_retries = kwargs.get("_enable_v3_retries", True)
@@ -178,11 +191,17 @@ class ThriftBackend:
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}
+
+        # Add proxy authentication method if specified
+        proxy_auth_method = kwargs.get("_proxy_auth_method")
+        if proxy_auth_method:
+            additional_transport_args["_proxy_auth_method"] = proxy_auth_method
+
         _max_redirects: Union[None, int] = kwargs.get("_retry_max_redirects")
 
         if _max_redirects:
             if _max_redirects > self._retry_stop_after_attempts_count:
-                logger.warn(
+                logger.warning(
                     "_retry_max_redirects > _retry_stop_after_attempts_count so it will have no affect!"
                 )
             urllib3_kwargs = {"redirect": _max_redirects}
@@ -223,6 +242,11 @@ class ThriftBackend:
             raise
 
         self._request_lock = threading.RLock()
+        self._session_id_hex = None
+
+    @property
+    def max_download_threads(self) -> int:
+        return self._max_download_threads
 
     # TODO: Move this bounding logic into DatabricksRetryPolicy for v3 (PECO-918)
     def _initialize_retry_args(self, kwargs):
@@ -255,12 +279,15 @@ class ThriftBackend:
             )
 
     @staticmethod
-    def _check_response_for_error(response):
+    def _check_response_for_error(response, session_id_hex=None):
         if response.status and response.status.statusCode in [
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
         ]:
-            raise DatabaseError(response.status.errorMessage)
+            raise DatabaseError(
+                response.status.errorMessage,
+                session_id_hex=session_id_hex,
+            )
 
     @staticmethod
     def _extract_error_message_from_headers(headers):
@@ -311,7 +338,10 @@ class ThriftBackend:
                 no_retry_reason, attempt, elapsed
             )
             network_request_error = RequestError(
-                user_friendly_error_message, full_error_info_context, error_info.error
+                user_friendly_error_message,
+                full_error_info_context,
+                self._session_id_hex,
+                error_info.error,
             )
             logger.info(network_request_error.message_with_context())
 
@@ -337,6 +367,7 @@ class ThriftBackend:
         Will stop retry attempts if total elapsed time + next retry delay would exceed
         _retry_stop_after_attempts_duration.
         """
+
         # basic strategy: build range iterator rep'ing number of available
         # retries. bounds can be computed from there. iterate over it with
         # retries until success or final failure achieved.
@@ -446,8 +477,10 @@ class ThriftBackend:
                 logger.error("ThriftBackend.attempt_request: Exception: %s", err)
                 error = err
                 retry_delay = extract_retry_delay(attempt)
-                error_message = ThriftBackend._extract_error_message_from_headers(
-                    getattr(self._transport, "headers", {})
+                error_message = (
+                    ThriftDatabricksClient._extract_error_message_from_headers(
+                        getattr(self._transport, "headers", {})
+                    )
                 )
             finally:
                 # Calling `close()` here releases the active HTTP connection back to the pool
@@ -483,7 +516,9 @@ class ThriftBackend:
             if not isinstance(response_or_error_info, RequestErrorInfo):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
-                ThriftBackend._check_response_for_error(response)
+                ThriftDatabricksClient._check_response_for_error(
+                    response, self._session_id_hex
+                )
                 return response
 
             error_info = response_or_error_info
@@ -497,7 +532,8 @@ class ThriftBackend:
             raise OperationalError(
                 "Error: expected server to use a protocol version >= "
                 "SPARK_CLI_SERVICE_PROTOCOL_V2, "
-                "instead got: {}".format(protocol_version)
+                "instead got: {}".format(protocol_version),
+                session_id_hex=self._session_id_hex,
             )
 
     def _check_initial_namespace(self, catalog, schema, response):
@@ -510,14 +546,16 @@ class ThriftBackend:
         ):
             raise InvalidServerResponseError(
                 "Setting initial namespace not supported by the DBR version, "
-                "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0."
+                "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0.",
+                session_id_hex=self._session_id_hex,
             )
 
         if catalog:
             if not response.canUseMultipleCatalogs:
                 raise InvalidServerResponseError(
                     "Unexpected response from server: Trying to set initial catalog to {}, "
-                    + "but server does not support multiple catalogs.".format(catalog)  # type: ignore
+                    + "but server does not support multiple catalogs.".format(catalog),  # type: ignore
+                    session_id_hex=self._session_id_hex,
                 )
 
     def _check_session_configuration(self, session_configuration):
@@ -531,10 +569,11 @@ class ThriftBackend:
                 "while using the Databricks SQL connector, it must be false not {}".format(
                     TIMESTAMP_AS_STRING_CONFIG,
                     session_configuration[TIMESTAMP_AS_STRING_CONFIG],
-                )
+                ),
+                session_id_hex=self._session_id_hex,
             )
 
-    def open_session(self, session_configuration, catalog, schema):
+    def open_session(self, session_configuration, catalog, schema) -> SessionId:
         try:
             self._transport.open()
             session_configuration = {
@@ -562,13 +601,27 @@ class ThriftBackend:
             response = self.make_request(self._client.OpenSession, open_session_req)
             self._check_initial_namespace(catalog, schema, response)
             self._check_protocol_version(response)
-            return response
+
+            properties = (
+                {"serverProtocolVersion": response.serverProtocolVersion}
+                if response.serverProtocolVersion
+                else {}
+            )
+            session_id = SessionId.from_thrift_handle(
+                response.sessionHandle, properties
+            )
+            self._session_id_hex = session_id.hex_guid
+            return session_id
         except:
             self._transport.close()
             raise
 
-    def close_session(self, session_handle) -> None:
-        req = ttypes.TCloseSessionReq(sessionHandle=session_handle)
+    def close_session(self, session_id: SessionId) -> None:
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
+
+        req = ttypes.TCloseSessionReq(sessionHandle=thrift_handle)
         try:
             self.make_request(self._client.CloseSession, req)
         finally:
@@ -583,28 +636,31 @@ class ThriftBackend:
                     get_operations_resp.displayMessage,
                     {
                         "operation-id": op_handle
-                        and self.guid_to_hex_id(op_handle.operationId.guid),
+                        and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
+                    session_id_hex=self._session_id_hex,
                 )
             else:
                 raise ServerOperationError(
                     get_operations_resp.errorMessage,
                     {
                         "operation-id": op_handle
-                        and self.guid_to_hex_id(op_handle.operationId.guid),
+                        and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
+                    session_id_hex=self._session_id_hex,
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
                 "Command {} unexpectedly closed server side".format(
-                    op_handle and self.guid_to_hex_id(op_handle.operationId.guid)
+                    op_handle and guid_to_hex_id(op_handle.operationId.guid)
                 ),
                 {
                     "operation-id": op_handle
-                    and self.guid_to_hex_id(op_handle.operationId.guid)
+                    and guid_to_hex_id(op_handle.operationId.guid)
                 },
+                session_id_hex=self._session_id_hex,
             )
 
     def _poll_for_status(self, op_handle):
@@ -625,7 +681,10 @@ class ThriftBackend:
                 t_row_set.arrowBatches, lz4_compressed, schema_bytes
             )
         else:
-            raise OperationalError("Unsupported TRowSet instance {}".format(t_row_set))
+            raise OperationalError(
+                "Unsupported TRowSet instance {}".format(t_row_set),
+                session_id_hex=self._session_id_hex,
+            )
         return convert_decimals_in_arrow_table(arrow_table, description), num_rows
 
     def _get_metadata_resp(self, op_handle):
@@ -633,7 +692,7 @@ class ThriftBackend:
         return self.make_request(self._client.GetResultSetMetadata, req)
 
     @staticmethod
-    def _hive_schema_to_arrow_schema(t_table_schema):
+    def _hive_schema_to_arrow_schema(t_table_schema, session_id_hex=None):
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -664,7 +723,8 @@ class ThriftBackend:
                 # Current thriftserver implementation should always return a primitiveEntry,
                 # even for complex types
                 raise OperationalError(
-                    "Thrift protocol error: t_type_entry not a primitiveEntry"
+                    "Thrift protocol error: t_type_entry not a primitiveEntry",
+                    session_id_hex=session_id_hex,
                 )
 
         def convert_col(t_column_desc):
@@ -675,7 +735,7 @@ class ThriftBackend:
         return pyarrow.schema([convert_col(col) for col in t_table_schema.columns])
 
     @staticmethod
-    def _col_to_description(col, field):
+    def _col_to_description(col, field, session_id_hex=None):
         type_entry = col.typeDesc.types[0]
 
         if type_entry.primitiveEntry:
@@ -684,7 +744,8 @@ class ThriftBackend:
             cleaned_type = (name[:-5] if name.endswith("_TYPE") else name).lower()
         else:
             raise OperationalError(
-                "Thrift protocol error: t_type_entry not a primitiveEntry"
+                "Thrift protocol error: t_type_entry not a primitiveEntry",
+                session_id_hex=session_id_hex,
             )
 
         if type_entry.primitiveEntry.type == ttypes.TTypeId.DECIMAL_TYPE:
@@ -697,7 +758,8 @@ class ThriftBackend:
             else:
                 raise OperationalError(
                     "Decimal type did not provide typeQualifier precision, scale in "
-                    "primitiveEntry {}".format(type_entry.primitiveEntry)
+                    "primitiveEntry {}".format(type_entry.primitiveEntry),
+                    session_id_hex=session_id_hex,
                 )
         else:
             precision, scale = None, None
@@ -716,8 +778,7 @@ class ThriftBackend:
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
-    def _hive_schema_to_description(t_table_schema, schema_bytes=None):
-        # Create a field lookup dictionary for efficient column access
+    def _hive_schema_to_description(t_table_schema, schema_bytes=None, session_id_hex=None):
         field_dict = {}
         if pyarrow and schema_bytes:
             try:
@@ -727,10 +788,8 @@ class ThriftBackend:
                     field_dict[field.name] = field
             except Exception as e:
                 logger.debug(f"Could not parse arrow schema: {e}")
-
-        # Process each column with its corresponding Arrow field (if available)
         return [
-            ThriftBackend._col_to_description(col, field_dict.get(col.columnName))
+            ThriftDatabricksClient._col_to_description(col, field_dict.get(col.columnName), session_id_hex)
             for col in t_table_schema.columns
         ]
 
@@ -751,20 +810,29 @@ class ThriftBackend:
                     ttypes.TSparkRowSetType._VALUES_TO_NAMES[
                         t_result_set_metadata_resp.resultFormat
                     ]
-                )
+                ),
+                session_id_hex=self._session_id_hex,
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
+
         has_more_rows = (
             (not direct_results)
             or (not direct_results.resultSet)
             or direct_results.resultSet.hasMoreRows
         )
 
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema,
+            self._session_id_hex,
+        )
+
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                or self._hive_schema_to_arrow_schema(
+                    t_result_set_metadata_resp.schema, self._session_id_hex
+                )
                 .serialize()
                 .to_pybytes()
             )
@@ -776,44 +844,38 @@ class ThriftBackend:
         )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
-        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
-        if direct_results and direct_results.resultSet:
-            assert direct_results.resultSet.results.startRowOffset == 0
-            assert direct_results.resultSetMetadata
+        command_id = CommandId.from_thrift_handle(resp.operationHandle)
 
-            arrow_queue_opt = ResultSetQueueFactory.build_queue(
-                row_set_type=t_result_set_metadata_resp.resultFormat,
-                t_row_set=direct_results.resultSet.results,
-                arrow_schema_bytes=schema_bytes,
-                max_download_threads=self.max_download_threads,
-                lz4_compressed=lz4_compressed,
-                description=description,
-                ssl_options=self._ssl_options,
-            )
-        else:
-            arrow_queue_opt = None
-        return ExecuteResponse(
-            arrow_queue=arrow_queue_opt,
-            status=operation_state,
-            has_been_closed_server_side=has_been_closed_server_side,
-            has_more_rows=has_more_rows,
-            lz4_compressed=lz4_compressed,
-            is_staging_operation=is_staging_operation,
-            command_handle=resp.operationHandle,
+        status = CommandState.from_thrift_state(operation_state)
+        if status is None:
+            raise ValueError(f"Unknown command state: {operation_state}")
+
+        execute_response = ExecuteResponse(
+            command_id=command_id,
+            status=status,
             description=description,
+            has_been_closed_server_side=has_been_closed_server_side,
+            lz4_compressed=lz4_compressed,
+            is_staging_operation=t_result_set_metadata_resp.isStagingOperation,
             arrow_schema_bytes=schema_bytes,
+            result_format=t_result_set_metadata_resp.resultFormat,
         )
 
-    def get_execution_result(self, op_handle, cursor):
+        return execute_response, has_more_rows
 
-        assert op_handle is not None
+    def get_execution_result(
+        self, command_id: CommandId, cursor: Cursor
+    ) -> "ResultSet":
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
 
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
-                op_handle.operationId,
-                op_handle.operationType,
+                thrift_handle.operationId,
+                thrift_handle.operationType,
                 False,
-                op_handle.modifiedRowCount,
+                thrift_handle.modifiedRowCount,
             ),
             maxRows=cursor.arraysize,
             maxBytes=cursor.buffer_size_bytes,
@@ -825,44 +887,51 @@ class ThriftBackend:
 
         t_result_set_metadata_resp = resp.resultSetMetadata
 
-        lz4_compressed = t_result_set_metadata_resp.lz4Compressed
-        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
-        has_more_rows = resp.hasMoreRows
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema,
+            self._session_id_hex,
+        )
 
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
-                or self._hive_schema_to_arrow_schema(t_result_set_metadata_resp.schema)
+                or self._hive_schema_to_arrow_schema(
+                    t_result_set_metadata_resp.schema, self._session_id_hex
+                )
                 .serialize()
                 .to_pybytes()
             )
         else:
             schema_bytes = None
 
-            description = self._hive_schema_to_description(
-                t_result_set_metadata_resp.schema, schema_bytes
-            )
+        lz4_compressed = t_result_set_metadata_resp.lz4Compressed
+        is_staging_operation = t_result_set_metadata_resp.isStagingOperation
+        has_more_rows = resp.hasMoreRows
 
-        queue = ResultSetQueueFactory.build_queue(
-            row_set_type=resp.resultSetMetadata.resultFormat,
-            t_row_set=resp.results,
-            arrow_schema_bytes=schema_bytes,
-            max_download_threads=self.max_download_threads,
-            lz4_compressed=lz4_compressed,
+        status = CommandState.from_thrift_state(resp.status) or CommandState.RUNNING
+
+        execute_response = ExecuteResponse(
+            command_id=command_id,
+            status=status,
             description=description,
-            ssl_options=self._ssl_options,
-        )
-
-        return ExecuteResponse(
-            arrow_queue=queue,
-            status=resp.status,
             has_been_closed_server_side=False,
-            has_more_rows=has_more_rows,
             lz4_compressed=lz4_compressed,
             is_staging_operation=is_staging_operation,
-            command_handle=op_handle,
-            description=description,
             arrow_schema_bytes=schema_bytes,
+            result_format=t_result_set_metadata_resp.resultFormat,
+        )
+
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=cursor.buffer_size_bytes,
+            arraysize=cursor.arraysize,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch,
+            t_row_set=resp.results,
+            max_download_threads=self.max_download_threads,
+            ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
         )
 
     def _wait_until_command_done(self, op_handle, initial_operation_status_resp):
@@ -883,51 +952,65 @@ class ThriftBackend:
             self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
         return operation_state
 
-    def get_query_state(self, op_handle) -> "TOperationState":
-        poll_resp = self._poll_for_status(op_handle)
+    def get_query_state(self, command_id: CommandId) -> CommandState:
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
+
+        poll_resp = self._poll_for_status(thrift_handle)
         operation_state = poll_resp.operationState
-        self._check_command_not_in_error_or_closed_state(op_handle, poll_resp)
-        return operation_state
+        self._check_command_not_in_error_or_closed_state(thrift_handle, poll_resp)
+        state = CommandState.from_thrift_state(operation_state)
+        if state is None:
+            raise ValueError(f"Unknown command state: {operation_state}")
+        return state
 
     @staticmethod
-    def _check_direct_results_for_error(t_spark_direct_results):
+    def _check_direct_results_for_error(t_spark_direct_results, session_id_hex=None):
         if t_spark_direct_results:
             if t_spark_direct_results.operationStatus:
-                ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.operationStatus
+                ThriftDatabricksClient._check_response_for_error(
+                    t_spark_direct_results.operationStatus,
+                    session_id_hex,
                 )
             if t_spark_direct_results.resultSetMetadata:
-                ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.resultSetMetadata
+                ThriftDatabricksClient._check_response_for_error(
+                    t_spark_direct_results.resultSetMetadata,
+                    session_id_hex,
                 )
             if t_spark_direct_results.resultSet:
-                ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.resultSet
+                ThriftDatabricksClient._check_response_for_error(
+                    t_spark_direct_results.resultSet,
+                    session_id_hex,
                 )
             if t_spark_direct_results.closeOperation:
-                ThriftBackend._check_response_for_error(
-                    t_spark_direct_results.closeOperation
+                ThriftDatabricksClient._check_response_for_error(
+                    t_spark_direct_results.closeOperation,
+                    session_id_hex,
                 )
 
     def execute_command(
         self,
-        operation,
-        session_handle,
-        max_rows,
-        max_bytes,
-        lz4_compression,
-        cursor,
+        operation: str,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        lz4_compression: bool,
+        cursor: Cursor,
         use_cloud_fetch=True,
         parameters=[],
         async_op=False,
         enforce_embedded_schema_correctness=False,
-    ):
-        assert session_handle is not None
+        row_limit: Optional[int] = None,
+    ) -> Union["ResultSet", None]:
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         logger.debug(
             "ThriftBackend.execute_command(operation=%s, session_handle=%s)",
             operation,
-            session_handle,
+            thrift_handle,
         )
 
         spark_arrow_types = ttypes.TSparkArrowTypes(
@@ -939,7 +1022,7 @@ class ThriftBackend:
             intervalTypesAsArrow=False,
         )
         req = ttypes.TExecuteStatementReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             statement=operation,
             runAsync=True,
             # For async operation we don't want the direct results
@@ -959,39 +1042,90 @@ class ThriftBackend:
             useArrowNativeTypes=spark_arrow_types,
             parameters=parameters,
             enforceEmbeddedSchemaCorrectness=enforce_embedded_schema_correctness,
+            resultRowLimit=row_limit,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
 
         if async_op:
             self._handle_execute_response_async(resp, cursor)
+            return None
         else:
-            return self._handle_execute_response(resp, cursor)
+            execute_response, has_more_rows = self._handle_execute_response(
+                resp, cursor
+            )
 
-    def get_catalogs(self, session_handle, max_rows, max_bytes, cursor):
-        assert session_handle is not None
+            t_row_set = None
+            if resp.directResults and resp.directResults.resultSet:
+                t_row_set = resp.directResults.resultSet.results
+
+            return ThriftResultSet(
+                connection=cursor.connection,
+                execute_response=execute_response,
+                thrift_client=self,
+                buffer_size_bytes=max_bytes,
+                arraysize=max_rows,
+                use_cloud_fetch=use_cloud_fetch,
+                t_row_set=t_row_set,
+                max_download_threads=self.max_download_threads,
+                ssl_options=self._ssl_options,
+                has_more_rows=has_more_rows,
+            )
+
+    def get_catalogs(
+        self,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Cursor,
+    ) -> ResultSet:
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetCatalogsReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
         )
         resp = self.make_request(self._client.GetCatalogs, req)
-        return self._handle_execute_response(resp, cursor)
+
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
+
+        t_row_set = None
+        if resp.directResults and resp.directResults.resultSet:
+            t_row_set = resp.directResults.resultSet.results
+
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch,
+            t_row_set=t_row_set,
+            max_download_threads=self.max_download_threads,
+            ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
+        )
 
     def get_schemas(
         self,
-        session_handle,
-        max_rows,
-        max_bytes,
-        cursor,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
-    ):
-        assert session_handle is not None
+    ) -> ResultSet:
+        from databricks.sql.result_set import ThriftResultSet
+
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetSchemasReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
@@ -999,23 +1133,45 @@ class ThriftBackend:
             schemaName=schema_name,
         )
         resp = self.make_request(self._client.GetSchemas, req)
-        return self._handle_execute_response(resp, cursor)
+
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
+
+        t_row_set = None
+        if resp.directResults and resp.directResults.resultSet:
+            t_row_set = resp.directResults.resultSet.results
+
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch,
+            t_row_set=t_row_set,
+            max_download_threads=self.max_download_threads,
+            ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
+        )
 
     def get_tables(
         self,
-        session_handle,
-        max_rows,
-        max_bytes,
-        cursor,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         table_types=None,
-    ):
-        assert session_handle is not None
+    ) -> ResultSet:
+        from databricks.sql.result_set import ThriftResultSet
+
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetTablesReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
@@ -1025,23 +1181,45 @@ class ThriftBackend:
             tableTypes=table_types,
         )
         resp = self.make_request(self._client.GetTables, req)
-        return self._handle_execute_response(resp, cursor)
+
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
+
+        t_row_set = None
+        if resp.directResults and resp.directResults.resultSet:
+            t_row_set = resp.directResults.resultSet.results
+
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch,
+            t_row_set=t_row_set,
+            max_download_threads=self.max_download_threads,
+            ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
+        )
 
     def get_columns(
         self,
-        session_handle,
-        max_rows,
-        max_bytes,
-        cursor,
+        session_id: SessionId,
+        max_rows: int,
+        max_bytes: int,
+        cursor: Cursor,
         catalog_name=None,
         schema_name=None,
         table_name=None,
         column_name=None,
-    ):
-        assert session_handle is not None
+    ) -> ResultSet:
+        from databricks.sql.result_set import ThriftResultSet
+
+        thrift_handle = session_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift session ID")
 
         req = ttypes.TGetColumnsReq(
-            sessionHandle=session_handle,
+            sessionHandle=thrift_handle,
             getDirectResults=ttypes.TSparkGetDirectResults(
                 maxRows=max_rows, maxBytes=max_bytes
             ),
@@ -1051,11 +1229,33 @@ class ThriftBackend:
             columnName=column_name,
         )
         resp = self.make_request(self._client.GetColumns, req)
-        return self._handle_execute_response(resp, cursor)
+
+        execute_response, has_more_rows = self._handle_execute_response(resp, cursor)
+
+        t_row_set = None
+        if resp.directResults and resp.directResults.resultSet:
+            t_row_set = resp.directResults.resultSet.results
+
+        return ThriftResultSet(
+            connection=cursor.connection,
+            execute_response=execute_response,
+            thrift_client=self,
+            buffer_size_bytes=max_bytes,
+            arraysize=max_rows,
+            use_cloud_fetch=cursor.connection.use_cloud_fetch,
+            t_row_set=t_row_set,
+            max_download_threads=self.max_download_threads,
+            ssl_options=self._ssl_options,
+            has_more_rows=has_more_rows,
+        )
 
     def _handle_execute_response(self, resp, cursor):
-        cursor.active_op_handle = resp.operationHandle
-        self._check_direct_results_for_error(resp.directResults)
+        command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        if command_id is None:
+            raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
+
+        cursor.active_command_id = command_id
+        self._check_direct_results_for_error(resp.directResults, self._session_id_hex)
 
         final_operation_state = self._wait_until_command_done(
             resp.operationHandle,
@@ -1065,28 +1265,35 @@ class ThriftBackend:
         return self._results_message_to_execute_response(resp, final_operation_state)
 
     def _handle_execute_response_async(self, resp, cursor):
-        cursor.active_op_handle = resp.operationHandle
-        self._check_direct_results_for_error(resp.directResults)
+        command_id = CommandId.from_thrift_handle(resp.operationHandle)
+        if command_id is None:
+            raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
+
+        cursor.active_command_id = command_id
+        self._check_direct_results_for_error(resp.directResults, self._session_id_hex)
 
     def fetch_results(
         self,
-        op_handle,
-        max_rows,
-        max_bytes,
-        expected_row_start_offset,
-        lz4_compressed,
+        command_id: CommandId,
+        max_rows: int,
+        max_bytes: int,
+        expected_row_start_offset: int,
+        lz4_compressed: bool,
         arrow_schema_bytes,
         description,
+        chunk_id: int,
         use_cloud_fetch=True,
     ):
-        assert op_handle is not None
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
 
         req = ttypes.TFetchResultsReq(
             operationHandle=ttypes.TOperationHandle(
-                op_handle.operationId,
-                op_handle.operationType,
+                thrift_handle.operationId,
+                thrift_handle.operationType,
                 False,
-                op_handle.modifiedRowCount,
+                thrift_handle.modifiedRowCount,
             ),
             maxRows=max_rows,
             maxBytes=max_bytes,
@@ -1100,10 +1307,11 @@ class ThriftBackend:
             raise DataError(
                 "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
                     expected_row_start_offset, resp.results.startRowOffset
-                )
+                ),
+                session_id_hex=self._session_id_hex,
             )
 
-        queue = ResultSetQueueFactory.build_queue(
+        queue = ThriftResultSetQueueFactory.build_queue(
             row_set_type=resp.resultSetMetadata.resultFormat,
             t_row_set=resp.results,
             arrow_schema_bytes=arrow_schema_bytes,
@@ -1111,50 +1319,32 @@ class ThriftBackend:
             lz4_compressed=lz4_compressed,
             description=description,
             ssl_options=self._ssl_options,
+            session_id_hex=self._session_id_hex,
+            statement_id=command_id.to_hex_guid(),
+            chunk_id=chunk_id,
+            http_client=self._http_client,
         )
 
-        return queue, resp.hasMoreRows
-
-    def close_command(self, op_handle):
-        logger.debug("ThriftBackend.close_command(op_handle=%s)", op_handle)
-        req = ttypes.TCloseOperationReq(operationHandle=op_handle)
-        resp = self.make_request(self._client.CloseOperation, req)
-        return resp.status
-
-    def cancel_command(self, active_op_handle):
-        logger.debug(
-            "Cancelling command {}".format(
-                self.guid_to_hex_id(active_op_handle.operationId.guid)
-            )
+        return (
+            queue,
+            resp.hasMoreRows,
+            len(resp.results.resultLinks) if resp.results.resultLinks else 0,
         )
-        req = ttypes.TCancelOperationReq(active_op_handle)
+
+    def cancel_command(self, command_id: CommandId) -> None:
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
+
+        logger.debug("Cancelling command %s", command_id.to_hex_guid())
+        req = ttypes.TCancelOperationReq(thrift_handle)
         self.make_request(self._client.CancelOperation, req)
 
-    @staticmethod
-    def handle_to_id(session_handle):
-        return session_handle.sessionId.guid
+    def close_command(self, command_id: CommandId) -> None:
+        thrift_handle = command_id.to_thrift_handle()
+        if not thrift_handle:
+            raise ValueError("Not a valid Thrift command ID")
 
-    @staticmethod
-    def handle_to_hex_id(session_handle: TCLIService.TSessionHandle):
-        this_uuid = uuid.UUID(bytes=session_handle.sessionId.guid)
-        return str(this_uuid)
-
-    @staticmethod
-    def guid_to_hex_id(guid: bytes) -> str:
-        """Return a hexadecimal string instead of bytes
-
-        Example:
-            IN   b'\x01\xee\x1d)\xa4\x19\x1d\xb6\xa9\xc0\x8d\xf1\xfe\xbaB\xdd'
-            OUT  '01ee1d29-a419-1db6-a9c0-8df1feba42dd'
-
-        If conversion to hexadecimal fails, the original bytes are returned
-        """
-
-        this_uuid: Union[bytes, uuid.UUID]
-
-        try:
-            this_uuid = uuid.UUID(bytes=guid)
-        except Exception as e:
-            logger.debug(f"Unable to convert bytes to UUID: {bytes} -- {str(e)}")
-            this_uuid = guid
-        return str(this_uuid)
+        logger.debug("ThriftBackend.close_command(command_id=%s)", command_id)
+        req = ttypes.TCloseOperationReq(operationHandle=thrift_handle)
+        self.make_request(self._client.CloseOperation, req)

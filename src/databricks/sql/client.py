@@ -1,13 +1,11 @@
 import time
 from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
-
 import pandas
 
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
-import requests
 import json
 import os
 import decimal
@@ -19,16 +17,21 @@ from databricks.sql.exc import (
     OperationalError,
     SessionAlreadyClosedError,
     CursorAlreadyClosedError,
+    InterfaceError,
+    NotSupportedError,
+    ProgrammingError,
 )
+
 from databricks.sql.thrift_api.TCLIService import ttypes
-from databricks.sql.thrift_backend import ThriftBackend
+from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.utils import (
-    ExecuteResponse,
     ParamEscaper,
     inject_parameters,
     transform_paramstyle,
     ColumnTable,
     ColumnQueue,
+    build_client_context,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -41,16 +44,33 @@ from databricks.sql.parameters.native import (
     ParameterApproach,
 )
 
-
+from databricks.sql.result_set import ResultSet, ThriftResultSet
 from databricks.sql.types import Row, SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
 from databricks.sql.experimental.oauth_persistence import OAuthPersistence
+from databricks.sql.session import Session
+from databricks.sql.backend.types import CommandId, BackendType, CommandState, SessionId
+
+from databricks.sql.auth.common import ClientContext
+from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.http import HttpMethod
 
 from databricks.sql.thrift_api.TCLIService.ttypes import (
+    TOpenSessionResp,
     TSparkParameter,
     TOperationState,
 )
-
+from databricks.sql.telemetry.telemetry_client import (
+    TelemetryHelper,
+    TelemetryClientFactory,
+)
+from databricks.sql.telemetry.models.enums import DatabricksClientType
+from databricks.sql.telemetry.models.event import (
+    DriverConnectionParameters,
+    HostDetails,
+)
+from databricks.sql.telemetry.latency_logger import log_latency
+from databricks.sql.telemetry.models.enums import StatementType
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +104,10 @@ class Connection:
         Connect to a Databricks SQL endpoint or a Databricks cluster.
 
         Parameters:
+            :param use_sea: `bool`, optional (default is False)
+                Use the SEA backend instead of the Thrift backend.
+            :param use_hybrid_disposition: `bool`, optional (default is False)
+                Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
             :param http_path: Http path either to a DBSQL endpoint (e.g. /sql/1.0/endpoints/1234567890abcdef)
                 or to a DBR interactive cluster (e.g. /sql/protocolv1/o/1234567890123456/1234-123456-slid123)
@@ -224,70 +248,82 @@ class Connection:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
 
-        self.open = False
-        self.host = server_hostname
-        self.port = kwargs.get("_port", 443)
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
-
-        auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, **kwargs
-        )
-
-        user_agent_entry = kwargs.get("user_agent_entry")
-        if user_agent_entry is None:
-            user_agent_entry = kwargs.get("_user_agent_entry")
-            if user_agent_entry is not None:
-                logger.warning(
-                    "[WARN] Parameter '_user_agent_entry' is deprecated; use 'user_agent_entry' instead. "
-                    "This parameter will be removed in the upcoming releases."
-                )
-
-        if user_agent_entry:
-            useragent_header = "{}/{} ({})".format(
-                USER_AGENT_NAME, __version__, user_agent_entry
-            )
-        else:
-            useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
-
-        base_headers = [("User-Agent", useragent_header)]
-
-        self._ssl_options = SSLOptions(
-            # Double negation is generally a bad thing, but we have to keep backward compatibility
-            tls_verify=not kwargs.get(
-                "_tls_no_verify", False
-            ),  # by default - verify cert and host
-            tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
-            tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
-            tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
-            tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
-            tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
-        )
-
-        self.thrift_backend = ThriftBackend(
-            self.host,
-            self.port,
-            http_path,
-            (http_headers or []) + base_headers,
-            auth_provider,
-            ssl_options=self._ssl_options,
-            _use_arrow_native_complex_types=_use_arrow_native_complex_types,
-            **kwargs,
-        )
-
-        self._open_session_resp = self.thrift_backend.open_session(
-            session_configuration, catalog, schema
-        )
-        self._session_handle = self._open_session_resp.sessionHandle
-        self.protocol_version = self.get_protocol_version(self._open_session_resp)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
-        self.open = True
-        logger.info("Successfully opened session " + str(self.get_session_id_hex()))
         self._cursors = []  # type: List[Cursor]
+        self.telemetry_batch_size = kwargs.get(
+            "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
+        )
+
+        client_context = build_client_context(server_hostname, __version__, **kwargs)
+        self.http_client = UnifiedHttpClient(client_context)
+
+        try:
+            self.session = Session(
+                server_hostname,
+                http_path,
+                self.http_client,
+                http_headers,
+                session_configuration,
+                catalog,
+                schema,
+                _use_arrow_native_complex_types,
+                **kwargs,
+            )
+            self.session.open()
+        except Exception as e:
+            TelemetryClientFactory.connection_failure_log(
+                error_name="Exception",
+                error_message=str(e),
+                host_url=server_hostname,
+                http_path=http_path,
+                port=kwargs.get("_port", 443),
+                client_context=client_context,
+                user_agent=self.session.useragent_header
+                if hasattr(self, "session")
+                else None,
+            )
+            raise e
 
         self.use_inline_params = self._set_use_inline_params_with_warning(
             kwargs.get("use_inline_params", False)
         )
+        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
+
+        self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
+        self.enable_telemetry = kwargs.get("enable_telemetry", False)
+        self.telemetry_enabled = TelemetryHelper.is_telemetry_enabled(self)
+
+        TelemetryClientFactory.initialize_telemetry_client(
+            telemetry_enabled=self.telemetry_enabled,
+            session_id_hex=self.get_session_id_hex(),
+            auth_provider=self.session.auth_provider,
+            host_url=self.session.host,
+            batch_size=self.telemetry_batch_size,
+            client_context=client_context,
+        )
+
+        self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
+            session_id_hex=self.get_session_id_hex()
+        )
+
+        driver_connection_params = DriverConnectionParameters(
+            http_path=http_path,
+            mode=DatabricksClientType.SEA
+            if self.session.use_sea
+            else DatabricksClientType.THRIFT,
+            host_info=HostDetails(host_url=server_hostname, port=self.session.port),
+            auth_mech=TelemetryHelper.get_auth_mechanism(self.session.auth_provider),
+            auth_flow=TelemetryHelper.get_auth_flow(self.session.auth_provider),
+            socket_timeout=kwargs.get("_socket_timeout", None),
+        )
+
+        self._telemetry_client.export_initial_telemetry_log(
+            driver_connection_params=driver_connection_params,
+            user_agent=self.session.useragent_header,
+        )
+        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -321,13 +357,7 @@ class Connection:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        try:
-            self.close()
-        except BaseException as e:
-            logger.warning(f"Exception during connection close in __exit__: {e}")
-            if exc_type is None:
-                raise
-        return False
+        self.close()
 
     def __del__(self):
         if self.open:
@@ -342,53 +372,69 @@ class Connection:
                 logger.debug("Couldn't close unclosed connection: {}".format(e.message))
 
     def get_session_id(self):
-        return self.thrift_backend.handle_to_id(self._session_handle)
+        """Get the raw session ID (backend-specific)"""
+        return self.session.guid
 
-    @staticmethod
-    def get_protocol_version(openSessionResp):
-        """
-        Since the sessionHandle will sometimes have a serverProtocolVersion, it takes
-        precedence over the serverProtocolVersion defined in the OpenSessionResponse.
-        """
-        if (
-            openSessionResp.sessionHandle
-            and hasattr(openSessionResp.sessionHandle, "serverProtocolVersion")
-            and openSessionResp.sessionHandle.serverProtocolVersion
-        ):
-            return openSessionResp.sessionHandle.serverProtocolVersion
-        return openSessionResp.serverProtocolVersion
+    def get_session_id_hex(self):
+        """Get the session ID in hex format"""
+        return self.session.guid_hex
 
     @staticmethod
     def server_parameterized_queries_enabled(protocolVersion):
-        if (
-            protocolVersion
-            and protocolVersion >= ttypes.TProtocolVersion.SPARK_CLI_SERVICE_PROTOCOL_V8
-        ):
-            return True
-        else:
-            return False
+        """Check if parameterized queries are enabled for the given protocol version"""
+        return Session.server_parameterized_queries_enabled(protocolVersion)
 
-    def get_session_id_hex(self):
-        return self.thrift_backend.handle_to_hex_id(self._session_handle)
+    @property
+    def protocol_version(self):
+        """Get the protocol version from the Session object"""
+        return self.session.protocol_version
+
+    @staticmethod
+    def get_protocol_version(openSessionResp: TOpenSessionResp):
+        """Get the protocol version from the OpenSessionResp object"""
+        properties = (
+            {"serverProtocolVersion": openSessionResp.serverProtocolVersion}
+            if openSessionResp.serverProtocolVersion
+            else {}
+        )
+        session_id = SessionId.from_thrift_handle(
+            openSessionResp.sessionHandle, properties
+        )
+        return Session.get_protocol_version(session_id)
+
+    @property
+    def open(self) -> bool:
+        """Return whether the connection is open by checking if the session is open."""
+        return self.session.is_open
 
     def cursor(
         self,
         arraysize: int = DEFAULT_ARRAY_SIZE,
         buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
+        row_limit: Optional[int] = None,
     ) -> "Cursor":
         """
+        Args:
+            arraysize: The maximum number of rows in direct results.
+            buffer_size_bytes: The maximum number of bytes in direct results.
+            row_limit: The maximum number of rows in the result.
+
         Return a new Cursor object using the connection.
 
         Will throw an Error if the connection has been closed.
         """
         if not self.open:
-            raise Error("Cannot create cursor from closed connection")
+            raise InterfaceError(
+                "Cannot create cursor from closed connection",
+                session_id_hex=self.get_session_id_hex(),
+            )
 
         cursor = Cursor(
             self,
-            self.thrift_backend,
+            self.session.backend,
             arraysize=arraysize,
             result_buffer_size_bytes=buffer_size_bytes,
+            row_limit=row_limit,
         )
         self._cursors.append(cursor)
         return cursor
@@ -402,44 +448,36 @@ class Connection:
             for cursor in self._cursors:
                 cursor.close()
 
-        logger.info(f"Closing session {self.get_session_id_hex()}")
-        if not self.open:
-            logger.debug("Session appears to have been closed already")
-
         try:
-            self.thrift_backend.close_session(self._session_handle)
-        except RequestError as e:
-            if isinstance(e.args[1], SessionAlreadyClosedError):
-                logger.info("Session was closed by a prior request")
-        except DatabaseError as e:
-            if "Invalid SessionHandle" in str(e):
-                logger.warning(
-                    f"Attempted to close session that was already closed: {e}"
-                )
-            else:
-                logger.warning(
-                    f"Attempt to close session raised an exception at the server: {e}"
-                )
+            self.session.close()
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
-        self.open = False
+        TelemetryClientFactory.close(self.get_session_id_hex())
+
+        # Close HTTP client that was created by this connection
+        if self.http_client:
+            self.http_client.close()
 
     def commit(self):
         """No-op because Databricks does not support transactions"""
         pass
 
     def rollback(self):
-        raise NotSupportedError("Transactions are not supported on Databricks")
+        raise NotSupportedError(
+            "Transactions are not supported on Databricks",
+            session_id_hex=self.get_session_id_hex(),
+        )
 
 
 class Cursor:
     def __init__(
         self,
         connection: Connection,
-        thrift_backend: ThriftBackend,
+        backend: DatabricksClient,
         result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
         arraysize: int = DEFAULT_ARRAY_SIZE,
+        row_limit: Optional[int] = None,
     ) -> None:
         """
         These objects represent a database cursor, which is used to manage the context of a fetch
@@ -448,16 +486,19 @@ class Cursor:
         Cursors are not isolated, i.e., any changes done to the database by a cursor are immediately
         visible by other cursors or connections.
         """
-        self.connection = connection
-        self.rowcount = -1  # Return -1 as this is not supported
-        self.buffer_size_bytes = result_buffer_size_bytes
+
+        self.connection: Connection = connection
+
+        self.rowcount: int = -1  # Return -1 as this is not supported
+        self.buffer_size_bytes: int = result_buffer_size_bytes
         self.active_result_set: Union[ResultSet, None] = None
-        self.arraysize = arraysize
+        self.arraysize: int = arraysize
+        self.row_limit: Optional[int] = row_limit
         # Note that Cursor closed => active result set closed, but not vice versa
-        self.open = True
-        self.executing_command_id = None
-        self.thrift_backend = thrift_backend
-        self.active_op_handle = None
+        self.open: bool = True
+        self.executing_command_id: Optional[CommandId] = None
+        self.backend: DatabricksClient = backend
+        self.active_command_id: Optional[CommandId] = None
         self.escaper = ParamEscaper()
         self.lastrowid = None
 
@@ -468,21 +509,17 @@ class Cursor:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        try:
-            logger.debug("Cursor context manager exiting, calling close()")
-            self.close()
-        except BaseException as e:
-            logger.warning(f"Exception during cursor close in __exit__: {e}")
-            if exc_type is None:
-                raise
-        return False
+        self.close()
 
     def __iter__(self):
         if self.active_result_set:
             for row in self.active_result_set:
                 yield row
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def _determine_parameter_approach(
         self, params: Optional[TParameterCollection]
@@ -619,7 +656,10 @@ class Cursor:
 
     def _check_not_closed(self):
         if not self.open:
-            raise Error("Attempting operation on closed cursor")
+            raise InterfaceError(
+                "Attempting operation on closed cursor",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def _handle_staging_operation(
         self, staging_allowed_local_path: Union[None, str, List[str]]
@@ -636,8 +676,9 @@ class Cursor:
         elif isinstance(staging_allowed_local_path, type(list())):
             _staging_allowed_local_paths = staging_allowed_local_path
         else:
-            raise Error(
-                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands"
+            raise ProgrammingError(
+                "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         abs_staging_allowed_local_paths = [
@@ -665,8 +706,9 @@ class Cursor:
                 else:
                     continue
             if not allow_operation:
-                raise Error(
-                    "Local file operations are restricted to paths within the configured staging_allowed_local_path"
+                raise ProgrammingError(
+                    "Local file operations are restricted to paths within the configured staging_allowed_local_path",
+                    session_id_hex=self.connection.get_session_id_hex(),
                 )
 
         # May be real headers, or could be json string
@@ -694,11 +736,13 @@ class Cursor:
             handler_args.pop("local_file")
             return self._handle_staging_remove(**handler_args)
         else:
-            raise Error(
+            raise ProgrammingError(
                 f"Operation {row.operation} is not supported. "
-                + "Supported operations are GET, PUT, and REMOVE"
+                + "Supported operations are GET, PUT, and REMOVE",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_put(
         self, presigned_url: str, local_file: str, headers: Optional[dict] = None
     ):
@@ -708,32 +752,39 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error("Cannot perform PUT without specifying a local_file")
-
-        with open(local_file, "rb") as fh:
-            r = requests.put(url=presigned_url, data=fh, headers=headers)
-
-        # fmt: off
-        # Design borrowed from: https://stackoverflow.com/a/2342589/5093960
-
-        OK = requests.codes.ok                  # 200
-        CREATED = requests.codes.created        # 201
-        ACCEPTED = requests.codes.accepted      # 202
-        NO_CONTENT = requests.codes.no_content  # 204
-
-        # fmt: on
-
-        if r.status_code not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
-            raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+            raise ProgrammingError(
+                "Cannot perform PUT without specifying a local_file",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
-        if r.status_code == ACCEPTED:
+        with open(local_file, "rb") as fh:
+            r = self.connection.http_client.request(
+                HttpMethod.PUT, presigned_url, body=fh.read(), headers=headers
+            )
+
+        # fmt: off
+        # HTTP status codes
+        OK = 200
+        CREATED = 201
+        ACCEPTED = 202
+        NO_CONTENT = 204
+        # fmt: on
+
+        if r.status not in [OK, CREATED, NO_CONTENT, ACCEPTED]:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
+            raise OperationalError(
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
+
+        if r.status == ACCEPTED:
             logger.debug(
                 f"Response code {ACCEPTED} from server indicates ingestion command was accepted "
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_get(
         self, local_file: str, presigned_url: str, headers: Optional[dict] = None
     ):
@@ -743,32 +794,47 @@ class Cursor:
         """
 
         if local_file is None:
-            raise Error("Cannot perform GET without specifying a local_file")
+            raise ProgrammingError(
+                "Cannot perform GET without specifying a local_file",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
-        r = requests.get(url=presigned_url, headers=headers)
+        r = self.connection.http_client.request(
+            HttpMethod.GET, presigned_url, headers=headers
+        )
 
         # response.ok verifies the status code is not between 400-600.
         # Any 2xx or 3xx will evaluate r.ok == True
-        if not r.ok:
-            raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+        if r.status >= 400:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
+            raise OperationalError(
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         with open(local_file, "wb") as fp:
-            fp.write(r.content)
+            fp.write(r.data)
 
+    @log_latency(StatementType.SQL)
     def _handle_staging_remove(
         self, presigned_url: str, headers: Optional[dict] = None
     ):
         """Make an HTTP DELETE request to the presigned_url"""
 
-        r = requests.delete(url=presigned_url, headers=headers)
+        r = self.connection.http_client.request(
+            HttpMethod.DELETE, presigned_url, headers=headers
+        )
 
-        if not r.ok:
-            raise Error(
-                f"Staging operation over HTTP was unsuccessful: {r.status_code}-{r.text}"
+        if r.status >= 400:
+            # Decode response data for error message
+            error_text = r.data.decode() if r.data else ""
+            raise OperationalError(
+                f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
+    @log_latency(StatementType.QUERY)
     def execute(
         self,
         operation: str,
@@ -806,6 +872,7 @@ class Cursor:
 
         :returns self
         """
+
         logger.debug(
             "Cursor.execute(operation=%s, parameters=%s)", operation, parameters
         )
@@ -831,9 +898,9 @@ class Cursor:
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        execute_response = self.thrift_backend.execute_command(
+        self.active_result_set = self.backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection._session_handle,
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -842,23 +909,17 @@ class Cursor:
             parameters=prepared_params,
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
-        )
-        self.active_result_set = ResultSet(
-            self.connection,
-            execute_response,
-            self.thrift_backend,
-            self.buffer_size_bytes,
-            self.arraysize,
-            self.connection.use_cloud_fetch,
+            row_limit=self.row_limit,
         )
 
-        if execute_response.is_staging_operation:
+        if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
-                staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
+                staging_allowed_local_path=self.connection.staging_allowed_local_path
             )
 
         return self
 
+    @log_latency(StatementType.QUERY)
     def execute_async(
         self,
         operation: str,
@@ -873,6 +934,7 @@ class Cursor:
         :param parameters:
         :return:
         """
+
         param_approach = self._determine_parameter_approach(parameters)
         if param_approach == ParameterApproach.NONE:
             prepared_params = NO_NATIVE_PARAMS
@@ -894,9 +956,9 @@ class Cursor:
 
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        self.thrift_backend.execute_command(
+        self.backend.execute_command(
             operation=prepared_operation,
-            session_handle=self.connection._session_handle,
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             lz4_compression=self.connection.lz4_compression,
@@ -905,18 +967,21 @@ class Cursor:
             parameters=prepared_params,
             async_op=True,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
+            row_limit=self.row_limit,
         )
 
         return self
 
-    def get_query_state(self) -> "TOperationState":
+    def get_query_state(self) -> CommandState:
         """
         Get the state of the async executing query or basically poll the status of the query
 
         :return:
         """
         self._check_not_closed()
-        return self.thrift_backend.get_query_state(self.active_op_handle)
+        if self.active_command_id is None:
+            raise Error("No active command to get state for")
+        return self.backend.get_query_state(self.active_command_id)
 
     def is_query_pending(self):
         """
@@ -925,11 +990,7 @@ class Cursor:
         :return:
         """
         operation_state = self.get_query_state()
-
-        return not operation_state or operation_state in [
-            ttypes.TOperationState.RUNNING_STATE,
-            ttypes.TOperationState.PENDING_STATE,
-        ]
+        return operation_state in [CommandState.PENDING, CommandState.RUNNING]
 
     def get_async_execution_result(self):
         """
@@ -945,27 +1006,21 @@ class Cursor:
             time.sleep(self.ASYNC_DEFAULT_POLLING_INTERVAL)
 
         operation_state = self.get_query_state()
-        if operation_state == ttypes.TOperationState.FINISHED_STATE:
-            execute_response = self.thrift_backend.get_execution_result(
-                self.active_op_handle, self
-            )
-            self.active_result_set = ResultSet(
-                self.connection,
-                execute_response,
-                self.thrift_backend,
-                self.buffer_size_bytes,
-                self.arraysize,
+        if operation_state == CommandState.SUCCEEDED:
+            self.active_result_set = self.backend.get_execution_result(
+                self.active_command_id, self
             )
 
-            if execute_response.is_staging_operation:
+            if self.active_result_set and self.active_result_set.is_staging_operation:
                 self._handle_staging_operation(
-                    staging_allowed_local_path=self.thrift_backend.staging_allowed_local_path
+                    staging_allowed_local_path=self.connection.staging_allowed_local_path
                 )
 
             return self
         else:
-            raise Error(
-                f"get_execution_result failed with Operation status {operation_state}"
+            raise OperationalError(
+                f"get_execution_result failed with Operation status {operation_state}",
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def executemany(self, operation, seq_of_parameters):
@@ -983,6 +1038,7 @@ class Cursor:
             self.execute(operation, parameters)
         return self
 
+    @log_latency(StatementType.METADATA)
     def catalogs(self) -> "Cursor":
         """
         Get all available catalogs.
@@ -991,21 +1047,15 @@ class Cursor:
         """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        execute_response = self.thrift_backend.get_catalogs(
-            session_handle=self.connection._session_handle,
+        self.active_result_set = self.backend.get_catalogs(
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
         )
-        self.active_result_set = ResultSet(
-            self.connection,
-            execute_response,
-            self.thrift_backend,
-            self.buffer_size_bytes,
-            self.arraysize,
-        )
         return self
 
+    @log_latency(StatementType.METADATA)
     def schemas(
         self, catalog_name: Optional[str] = None, schema_name: Optional[str] = None
     ) -> "Cursor":
@@ -1017,23 +1067,17 @@ class Cursor:
         """
         self._check_not_closed()
         self._close_and_clear_active_result_set()
-        execute_response = self.thrift_backend.get_schemas(
-            session_handle=self.connection._session_handle,
+        self.active_result_set = self.backend.get_schemas(
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
             catalog_name=catalog_name,
             schema_name=schema_name,
         )
-        self.active_result_set = ResultSet(
-            self.connection,
-            execute_response,
-            self.thrift_backend,
-            self.buffer_size_bytes,
-            self.arraysize,
-        )
         return self
 
+    @log_latency(StatementType.METADATA)
     def tables(
         self,
         catalog_name: Optional[str] = None,
@@ -1050,8 +1094,8 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
-        execute_response = self.thrift_backend.get_tables(
-            session_handle=self.connection._session_handle,
+        self.active_result_set = self.backend.get_tables(
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1060,15 +1104,9 @@ class Cursor:
             table_name=table_name,
             table_types=table_types,
         )
-        self.active_result_set = ResultSet(
-            self.connection,
-            execute_response,
-            self.thrift_backend,
-            self.buffer_size_bytes,
-            self.arraysize,
-        )
         return self
 
+    @log_latency(StatementType.METADATA)
     def columns(
         self,
         catalog_name: Optional[str] = None,
@@ -1085,8 +1123,8 @@ class Cursor:
         self._check_not_closed()
         self._close_and_clear_active_result_set()
 
-        execute_response = self.thrift_backend.get_columns(
-            session_handle=self.connection._session_handle,
+        self.active_result_set = self.backend.get_columns(
+            session_id=self.connection.session.session_id,
             max_rows=self.arraysize,
             max_bytes=self.buffer_size_bytes,
             cursor=self,
@@ -1094,13 +1132,6 @@ class Cursor:
             schema_name=schema_name,
             table_name=table_name,
             column_name=column_name,
-        )
-        self.active_result_set = ResultSet(
-            self.connection,
-            execute_response,
-            self.thrift_backend,
-            self.buffer_size_bytes,
-            self.arraysize,
         )
         return self
 
@@ -1115,7 +1146,10 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchall()
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchone(self) -> Optional[Row]:
         """
@@ -1129,7 +1163,10 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchone()
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchmany(self, size: int) -> List[Row]:
         """
@@ -1151,21 +1188,30 @@ class Cursor:
         if self.active_result_set:
             return self.active_result_set.fetchmany(size)
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchall_arrow()
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def fetchmany_arrow(self, size) -> "pyarrow.Table":
         self._check_not_closed()
         if self.active_result_set:
             return self.active_result_set.fetchmany_arrow(size)
         else:
-            raise Error("There is no active result set")
+            raise ProgrammingError(
+                "There is no active result set",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
 
     def cancel(self) -> None:
         """
@@ -1174,8 +1220,8 @@ class Cursor:
         The command should be closed to free resources from the server.
         This method can be called from another thread.
         """
-        if self.active_op_handle is not None:
-            self.thrift_backend.cancel_command(self.active_op_handle)
+        if self.active_command_id is not None:
+            self.backend.cancel_command(self.active_command_id)
         else:
             logger.warning(
                 "Attempting to cancel a command, but there is no "
@@ -1185,21 +1231,7 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
-
-        # Close active operation handle if it exists
-        if self.active_op_handle:
-            try:
-                self.thrift_backend.close_command(self.active_op_handle)
-            except RequestError as e:
-                if isinstance(e.args[1], CursorAlreadyClosedError):
-                    logger.info("Operation was canceled by a prior request")
-                else:
-                    logging.warning(f"Error closing operation handle: {e}")
-            except Exception as e:
-                logging.warning(f"Error closing operation handle: {e}")
-            finally:
-                self.active_op_handle = None
-
+        self.active_command_id = None
         if self.active_result_set:
             self._close_and_clear_active_result_set()
 
@@ -1211,8 +1243,8 @@ class Cursor:
         This attribute will be ``None`` if the cursor has not had an operation
         invoked via the execute method yet, or if cursor was closed.
         """
-        if self.active_op_handle is not None:
-            return str(UUID(bytes=self.active_op_handle.operationId.guid))
+        if self.active_command_id is not None:
+            return self.active_command_id.to_hex_guid()
         return None
 
     @property
@@ -1257,301 +1289,3 @@ class Cursor:
     def setoutputsize(self, size, column=None):
         """Does nothing by default"""
         pass
-
-
-class ResultSet:
-    def __init__(
-        self,
-        connection: Connection,
-        execute_response: ExecuteResponse,
-        thrift_backend: ThriftBackend,
-        result_buffer_size_bytes: int = DEFAULT_RESULT_BUFFER_SIZE_BYTES,
-        arraysize: int = 10000,
-        use_cloud_fetch: bool = True,
-    ):
-        """
-        A ResultSet manages the results of a single command.
-
-        :param connection: The parent connection that was used to execute this command
-        :param execute_response: A `ExecuteResponse` class returned by a command execution
-        :param result_buffer_size_bytes: The size (in bytes) of the internal buffer + max fetch
-        amount :param arraysize: The max number of rows to fetch at a time (PEP-249)
-        """
-        self.connection = connection
-        self.command_id = execute_response.command_handle
-        self.op_state = execute_response.status
-        self.has_been_closed_server_side = execute_response.has_been_closed_server_side
-        self.has_more_rows = execute_response.has_more_rows
-        self.buffer_size_bytes = result_buffer_size_bytes
-        self.lz4_compressed = execute_response.lz4_compressed
-        self.arraysize = arraysize
-        self.thrift_backend = thrift_backend
-        self.description = execute_response.description
-        self._arrow_schema_bytes = execute_response.arrow_schema_bytes
-        self._next_row_index = 0
-        self._use_cloud_fetch = use_cloud_fetch
-
-        if execute_response.arrow_queue:
-            # In this case the server has taken the fast path and returned an initial batch of
-            # results
-            self.results = execute_response.arrow_queue
-        else:
-            # In this case, there are results waiting on the server so we fetch now for simplicity
-            self._fill_results_buffer()
-
-    def __iter__(self):
-        while True:
-            row = self.fetchone()
-            if row:
-                yield row
-            else:
-                break
-
-    def _fill_results_buffer(self):
-        # At initialization or if the server does not have cloud fetch result links available
-        results, has_more_rows = self.thrift_backend.fetch_results(
-            op_handle=self.command_id,
-            max_rows=self.arraysize,
-            max_bytes=self.buffer_size_bytes,
-            expected_row_start_offset=self._next_row_index,
-            lz4_compressed=self.lz4_compressed,
-            arrow_schema_bytes=self._arrow_schema_bytes,
-            description=self.description,
-            use_cloud_fetch=self._use_cloud_fetch,
-        )
-        self.results = results
-        self.has_more_rows = has_more_rows
-
-    def _convert_columnar_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-        result = []
-        for row_index in range(table.num_rows):
-            curr_row = []
-            for col_index in range(table.num_columns):
-                curr_row.append(table.get_item(col_index, row_index))
-            result.append(ResultRow(*curr_row))
-
-        return result
-
-    def _convert_arrow_table(self, table):
-        column_names = [c[0] for c in self.description]
-        ResultRow = Row(*column_names)
-
-        if self.connection.disable_pandas is True:
-            return [
-                ResultRow(*[v.as_py() for v in r]) for r in zip(*table.itercolumns())
-            ]
-
-        # Need to use nullable types, as otherwise type can change when there are missing values.
-        # See https://arrow.apache.org/docs/python/pandas.html#nullable-types
-        # NOTE: This api is epxerimental https://pandas.pydata.org/pandas-docs/stable/user_guide/integer_na.html
-        dtype_mapping = {
-            pyarrow.int8(): pandas.Int8Dtype(),
-            pyarrow.int16(): pandas.Int16Dtype(),
-            pyarrow.int32(): pandas.Int32Dtype(),
-            pyarrow.int64(): pandas.Int64Dtype(),
-            pyarrow.uint8(): pandas.UInt8Dtype(),
-            pyarrow.uint16(): pandas.UInt16Dtype(),
-            pyarrow.uint32(): pandas.UInt32Dtype(),
-            pyarrow.uint64(): pandas.UInt64Dtype(),
-            pyarrow.bool_(): pandas.BooleanDtype(),
-            pyarrow.float32(): pandas.Float32Dtype(),
-            pyarrow.float64(): pandas.Float64Dtype(),
-            pyarrow.string(): pandas.StringDtype(),
-        }
-
-        # Need to rename columns, as the to_pandas function cannot handle duplicate column names
-        table_renamed = table.rename_columns([str(c) for c in range(table.num_columns)])
-        df = table_renamed.to_pandas(
-            types_mapper=dtype_mapping.get,
-            date_as_object=True,
-            timestamp_as_object=True,
-        )
-
-        res = df.to_numpy(na_value=None, dtype="object")
-        return [ResultRow(*v) for v in res]
-
-    @property
-    def rownumber(self):
-        return self._next_row_index
-
-    def fetchmany_arrow(self, size: int) -> "pyarrow.Table":
-        """
-        Fetch the next set of rows of a query result, returning a PyArrow table.
-
-        An empty sequence is returned when no more rows are available.
-        """
-        if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
-        results = self.results.next_n_rows(size)
-        n_remaining_rows = size - results.num_rows
-        self._next_row_index += results.num_rows
-
-        while (
-            n_remaining_rows > 0
-            and not self.has_been_closed_server_side
-            and self.has_more_rows
-        ):
-            self._fill_results_buffer()
-            partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results])
-            n_remaining_rows -= partial_results.num_rows
-            self._next_row_index += partial_results.num_rows
-
-        return results
-
-    def merge_columnar(self, result1, result2):
-        """
-        Function to merge / combining the columnar results into a single result
-        :param result1:
-        :param result2:
-        :return:
-        """
-
-        if result1.column_names != result2.column_names:
-            raise ValueError("The columns in the results don't match")
-
-        merged_result = [
-            result1.column_table[i] + result2.column_table[i]
-            for i in range(result1.num_columns)
-        ]
-        return ColumnTable(merged_result, result1.column_names)
-
-    def fetchmany_columnar(self, size: int):
-        """
-        Fetch the next set of rows of a query result, returning a Columnar Table.
-        An empty sequence is returned when no more rows are available.
-        """
-        if size < 0:
-            raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
-
-        results = self.results.next_n_rows(size)
-        n_remaining_rows = size - results.num_rows
-        self._next_row_index += results.num_rows
-
-        while (
-            n_remaining_rows > 0
-            and not self.has_been_closed_server_side
-            and self.has_more_rows
-        ):
-            self._fill_results_buffer()
-            partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = self.merge_columnar(results, partial_results)
-            n_remaining_rows -= partial_results.num_rows
-            self._next_row_index += partial_results.num_rows
-
-        return results
-
-    def fetchall_arrow(self) -> "pyarrow.Table":
-        """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
-        results = self.results.remaining_rows()
-        self._next_row_index += results.num_rows
-
-        while not self.has_been_closed_server_side and self.has_more_rows:
-            self._fill_results_buffer()
-            partial_results = self.results.remaining_rows()
-            if isinstance(results, ColumnTable) and isinstance(
-                partial_results, ColumnTable
-            ):
-                results = self.merge_columnar(results, partial_results)
-            else:
-                results = pyarrow.concat_tables([results, partial_results])
-            self._next_row_index += partial_results.num_rows
-
-        # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
-        # Valid only for metadata commands result set
-        if isinstance(results, ColumnTable) and pyarrow:
-            data = {
-                name: col
-                for name, col in zip(results.column_names, results.column_table)
-            }
-            return pyarrow.Table.from_pydict(data)
-        return results
-
-    def fetchall_columnar(self):
-        """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
-        results = self.results.remaining_rows()
-        self._next_row_index += results.num_rows
-
-        while not self.has_been_closed_server_side and self.has_more_rows:
-            self._fill_results_buffer()
-            partial_results = self.results.remaining_rows()
-            results = self.merge_columnar(results, partial_results)
-            self._next_row_index += partial_results.num_rows
-
-        return results
-
-    def fetchone(self) -> Optional[Row]:
-        """
-        Fetch the next row of a query result set, returning a single sequence,
-        or None when no more data is available.
-        """
-
-        if isinstance(self.results, ColumnQueue):
-            res = self._convert_columnar_table(self.fetchmany_columnar(1))
-        else:
-            res = self._convert_arrow_table(self.fetchmany_arrow(1))
-
-        if len(res) > 0:
-            return res[0]
-        else:
-            return None
-
-    def fetchall(self) -> List[Row]:
-        """
-        Fetch all (remaining) rows of a query result, returning them as a list of rows.
-        """
-        if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchall_columnar())
-        else:
-            return self._convert_arrow_table(self.fetchall_arrow())
-
-    def fetchmany(self, size: int) -> List[Row]:
-        """
-        Fetch the next set of rows of a query result, returning a list of rows.
-
-        An empty sequence is returned when no more rows are available.
-        """
-        if isinstance(self.results, ColumnQueue):
-            return self._convert_columnar_table(self.fetchmany_columnar(size))
-        else:
-            return self._convert_arrow_table(self.fetchmany_arrow(size))
-
-    def close(self) -> None:
-        """
-        Close the cursor.
-
-        If the connection has not been closed, and the cursor has not already
-        been closed on the server for some other reason, issue a request to the server to close it.
-        """
-        try:
-            if (
-                self.op_state != self.thrift_backend.CLOSED_OP_STATE
-                and not self.has_been_closed_server_side
-                and self.connection.open
-            ):
-                self.thrift_backend.close_command(self.command_id)
-        except RequestError as e:
-            if isinstance(e.args[1], CursorAlreadyClosedError):
-                logger.info("Operation was canceled by a prior request")
-        finally:
-            self.has_been_closed_server_side = True
-            self.op_state = self.thrift_backend.CLOSED_OP_STATE
-
-    @staticmethod
-    def _get_schema_description(table_schema_message):
-        """
-        Takes a TableSchema message and returns a description 7-tuple as specified by PEP-249
-        """
-
-        def map_col_type(type_):
-            if type_.startswith("decimal"):
-                return "decimal"
-            else:
-                return type_
-
-        return [
-            (column.name, map_col_type(column.datatype), None, None, None, None, None)
-            for column in table_schema_message.columns
-        ]

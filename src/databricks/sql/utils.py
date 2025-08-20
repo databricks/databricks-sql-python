@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 
 from dateutil import parser
 import datetime
@@ -8,7 +9,6 @@ from collections import OrderedDict, namedtuple
 from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union, Sequence
 import re
 
 import lz4.frame
@@ -18,7 +18,7 @@ try:
 except ImportError:
     pyarrow = None
 
-from databricks.sql import OperationalError, exc
+from databricks.sql import OperationalError
 from databricks.sql.cloudfetch.download_manager import ResultFileDownloadManager
 from databricks.sql.thrift_api.TCLIService.ttypes import (
     TRowSet,
@@ -26,7 +26,8 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     TSparkRowSetType,
 )
 from databricks.sql.types import SSLOptions
-
+from databricks.sql.backend.types import CommandId
+from databricks.sql.telemetry.models.event import StatementType
 from databricks.sql.parameters.native import ParameterStructure, TDbsqlParameter
 
 import logging
@@ -46,8 +47,12 @@ class ResultSetQueue(ABC):
     def remaining_rows(self):
         pass
 
+    @abstractmethod
+    def close(self):
+        pass
 
-class ResultSetQueueFactory(ABC):
+
+class ThriftResultSetQueueFactory(ABC):
     @staticmethod
     def build_queue(
         row_set_type: TSparkRowSetType,
@@ -55,11 +60,15 @@ class ResultSetQueueFactory(ABC):
         arrow_schema_bytes: bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        chunk_id: int,
+        http_client,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: List[Tuple] = [],
     ) -> ResultSetQueue:
         """
-        Factory method to build a result set queue.
+        Factory method to build a result set queue for Thrift backend.
 
         Args:
             row_set_type (enum): Row set type (Arrow, Column, or URL).
@@ -73,6 +82,7 @@ class ResultSetQueueFactory(ABC):
         Returns:
             ResultSetQueue
         """
+
         if row_set_type == TSparkRowSetType.ARROW_BASED_SET:
             arrow_table, n_valid_rows = convert_arrow_based_set_to_arrow_table(
                 t_row_set.arrowBatches, lz4_compressed, arrow_schema_bytes
@@ -92,7 +102,7 @@ class ResultSetQueueFactory(ABC):
 
             return ColumnQueue(ColumnTable(converted_column_table, column_names))
         elif row_set_type == TSparkRowSetType.URL_BASED_SET:
-            return CloudFetchQueue(
+            return ThriftCloudFetchQueue(
                 schema_bytes=arrow_schema_bytes,
                 start_row_offset=t_row_set.startRowOffset,
                 result_links=t_row_set.resultLinks,
@@ -100,6 +110,10 @@ class ResultSetQueueFactory(ABC):
                 description=description,
                 max_download_threads=max_download_threads,
                 ssl_options=ssl_options,
+                session_id_hex=session_id_hex,
+                statement_id=statement_id,
+                chunk_id=chunk_id,
+                http_client=http_client,
             )
         else:
             raise AssertionError("Row set type is not valid")
@@ -157,6 +171,9 @@ class ColumnQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
+    def close(self):
+        return
+
 
 class ArrowQueue(ResultSetQueue):
     def __init__(
@@ -172,12 +189,14 @@ class ArrowQueue(ResultSetQueue):
         :param n_valid_rows: The index of the last valid row in the table
         :param start_row_index: The first row in the table we should start fetching from
         """
+
         self.cur_row_index = start_row_index
         self.arrow_table = arrow_table
         self.n_valid_rows = n_valid_rows
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """Get upto the next n rows of the Arrow dataframe"""
+
         length = min(num_rows, self.n_valid_rows - self.cur_row_index)
         # Note that the table.slice API is not the same as Python's slice
         # The second argument should be length, not end index
@@ -192,58 +211,61 @@ class ArrowQueue(ResultSetQueue):
         self.cur_row_index += slice.num_rows
         return slice
 
+    def close(self):
+        return
 
-class CloudFetchQueue(ResultSetQueue):
+
+class CloudFetchQueue(ResultSetQueue, ABC):
+    """Base class for cloud fetch queues that handle EXTERNAL_LINKS disposition with ARROW format."""
+
     def __init__(
         self,
-        schema_bytes,
         max_download_threads: int,
         ssl_options: SSLOptions,
-        start_row_offset: int = 0,
-        result_links: Optional[List[TSparkArrowResultLink]] = None,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        chunk_id: int,
+        http_client,
+        schema_bytes: Optional[bytes] = None,
         lz4_compressed: bool = True,
-        description: Optional[List[List[Any]]] = None,
+        description: List[Tuple] = [],
     ):
         """
-        A queue-like wrapper over CloudFetch arrow batches.
+        Initialize the base CloudFetchQueue.
 
-        Attributes:
-            schema_bytes (bytes): Table schema in bytes.
-            max_download_threads (int): Maximum number of downloader thread pool threads.
-            start_row_offset (int): The offset of the first row of the cloud fetch links.
-            result_links (List[TSparkArrowResultLink]): Links containing the downloadable URL and metadata.
-            lz4_compressed (bool): Whether the files are lz4 compressed.
-            description (List[List[Any]]): Hive table schema description.
+        Args:
+            max_download_threads: Maximum number of download threads
+            ssl_options: SSL options for downloads
+            schema_bytes: Arrow schema bytes
+            lz4_compressed: Whether the data is LZ4 compressed
+            description: Column descriptions
         """
+
         self.schema_bytes = schema_bytes
         self.max_download_threads = max_download_threads
-        self.start_row_index = start_row_offset
-        self.result_links = result_links
         self.lz4_compressed = lz4_compressed
         self.description = description
         self._ssl_options = ssl_options
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
+        self.chunk_id = chunk_id
+        self._http_client = http_client
 
-        logger.debug(
-            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
-                start_row_offset
-            )
-        )
-        if result_links is not None:
-            for result_link in result_links:
-                logger.debug(
-                    "- start row offset: {}, row count: {}".format(
-                        result_link.startRowOffset, result_link.rowCount
-                    )
-                )
-        self.download_manager = ResultFileDownloadManager(
-            links=result_links or [],
-            max_download_threads=self.max_download_threads,
-            lz4_compressed=self.lz4_compressed,
-            ssl_options=self._ssl_options,
-        )
-
-        self.table = self._create_next_table()
+        # Table state
+        self.table = None
         self.table_row_index = 0
+
+        # Initialize download manager
+        self.download_manager = ResultFileDownloadManager(
+            links=[],
+            max_download_threads=max_download_threads,
+            lz4_compressed=lz4_compressed,
+            ssl_options=ssl_options,
+            session_id_hex=session_id_hex,
+            statement_id=statement_id,
+            chunk_id=chunk_id,
+            http_client=http_client,
+        )
 
     def next_n_rows(self, num_rows: int) -> "pyarrow.Table":
         """
@@ -251,21 +273,22 @@ class CloudFetchQueue(ResultSetQueue):
 
         Args:
             num_rows (int): Number of rows to retrieve.
-
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             logger.debug("CloudFetchQueue: no more rows available")
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         logger.debug("CloudFetchQueue: trying to get {} next rows".format(num_rows))
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while num_rows > 0 and self.table:
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
 
             # Replace current table with the next table if we are at the end of the current table
@@ -275,7 +298,7 @@ class CloudFetchQueue(ResultSetQueue):
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
     def remaining_rows(self) -> "pyarrow.Table":
         """
@@ -284,35 +307,30 @@ class CloudFetchQueue(ResultSetQueue):
         Returns:
             pyarrow.Table
         """
+
         if not self.table:
             # Return empty pyarrow table to cause retry of fetch
             return self._create_empty_table()
         results = self.table.slice(0, 0)
+        partial_result_chunks = [results]
         while self.table:
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            results = pyarrow.concat_tables([results, table_slice])
+            partial_result_chunks.append(table_slice)
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
-        return results
+        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
 
-    def _create_next_table(self) -> Union["pyarrow.Table", None]:
-        logger.debug(
-            "CloudFetchQueue: Trying to get downloaded file for row {}".format(
-                self.start_row_index
-            )
-        )
+    def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
+        """Create next table at the given row offset"""
+
         # Create next table by retrieving the logical next downloaded file, or return None to signal end of queue
-        downloaded_file = self.download_manager.get_next_downloaded_file(
-            self.start_row_index
-        )
+        downloaded_file = self.download_manager.get_next_downloaded_file(offset)
         if not downloaded_file:
             logger.debug(
-                "CloudFetchQueue: Cannot find downloaded file for row {}".format(
-                    self.start_row_index
-                )
+                "CloudFetchQueue: Cannot find downloaded file for row {}".format(offset)
             )
             # None signals no more Arrow tables can be built from the remaining handlers if any remain
             return None
@@ -327,26 +345,103 @@ class CloudFetchQueue(ResultSetQueue):
 
         # At this point, whether the file has extraneous rows or not, the arrow table should have the correct num rows
         assert downloaded_file.row_count == arrow_table.num_rows
-        self.start_row_index += arrow_table.num_rows
-
-        logger.debug(
-            "CloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
-                arrow_table.num_rows, self.start_row_index
-            )
-        )
 
         return arrow_table
 
+    @abstractmethod
+    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+        """Create next table by retrieving the logical next downloaded file."""
+        pass
+
     def _create_empty_table(self) -> "pyarrow.Table":
-        # Create a 0-row table with just the schema bytes
+        """Create a 0-row table with just the schema bytes."""
+        if not self.schema_bytes:
+            return pyarrow.Table.from_pydict({})
         return create_arrow_table_from_arrow_file(self.schema_bytes, self.description)
 
+    def close(self):
+        self.download_manager._shutdown_manager()
 
-ExecuteResponse = namedtuple(
-    "ExecuteResponse",
-    "status has_been_closed_server_side has_more_rows description lz4_compressed is_staging_operation "
-    "command_handle arrow_queue arrow_schema_bytes",
-)
+
+class ThriftCloudFetchQueue(CloudFetchQueue):
+    """Queue implementation for EXTERNAL_LINKS disposition with ARROW format for Thrift backend."""
+
+    def __init__(
+        self,
+        schema_bytes,
+        max_download_threads: int,
+        ssl_options: SSLOptions,
+        session_id_hex: Optional[str],
+        statement_id: str,
+        chunk_id: int,
+        http_client,
+        start_row_offset: int = 0,
+        result_links: Optional[List[TSparkArrowResultLink]] = None,
+        lz4_compressed: bool = True,
+        description: List[Tuple] = [],
+    ):
+        """
+        Initialize the Thrift CloudFetchQueue.
+
+        Args:
+            schema_bytes: Table schema in bytes
+            max_download_threads: Maximum number of downloader thread pool threads
+            ssl_options: SSL options for downloads
+            start_row_offset: The offset of the first row of the cloud fetch links
+            result_links: Links containing the downloadable URL and metadata
+            lz4_compressed: Whether the files are lz4 compressed
+            description: Hive table schema description
+        """
+        super().__init__(
+            max_download_threads=max_download_threads,
+            ssl_options=ssl_options,
+            schema_bytes=schema_bytes,
+            lz4_compressed=lz4_compressed,
+            description=description,
+            session_id_hex=session_id_hex,
+            statement_id=statement_id,
+            chunk_id=chunk_id,
+            http_client=http_client,
+        )
+
+        self.start_row_index = start_row_offset
+        self.result_links = result_links or []
+        self.session_id_hex = session_id_hex
+        self.statement_id = statement_id
+        self.chunk_id = chunk_id
+
+        logger.debug(
+            "Initialize CloudFetch loader, row set start offset: {}, file list:".format(
+                start_row_offset
+            )
+        )
+        if self.result_links:
+            for result_link in self.result_links:
+                logger.debug(
+                    "- start row offset: {}, row count: {}".format(
+                        result_link.startRowOffset, result_link.rowCount
+                    )
+                )
+                self.download_manager.add_link(result_link)
+
+        # Initialize table and position
+        self.table = self._create_next_table()
+
+    def _create_next_table(self) -> Union["pyarrow.Table", None]:
+        logger.debug(
+            "ThriftCloudFetchQueue: Trying to get downloaded file for row {}".format(
+                self.start_row_index
+            )
+        )
+        arrow_table = self._create_table_at_offset(self.start_row_index)
+        if arrow_table:
+            self.start_row_index += arrow_table.num_rows
+            logger.debug(
+                "ThriftCloudFetchQueue: Found downloaded file, row count: {}, new start offset: {}".format(
+                    arrow_table.num_rows, self.start_row_index
+                )
+            )
+        return arrow_table
 
 
 def _bound(min_x, max_x, x):
@@ -576,6 +671,7 @@ def transform_paramstyle(
     Returns:
         str
     """
+
     output = operation
     if (
         param_structure == ParameterStructure.POSITIONAL
@@ -763,3 +859,67 @@ def _create_python_tuple(t_col_value_wrapper):
             result[i] = None
 
     return tuple(result)
+
+
+def concat_table_chunks(
+    table_chunks: List[Union["pyarrow.Table", ColumnTable]]
+) -> Union["pyarrow.Table", ColumnTable]:
+    if len(table_chunks) == 0:
+        return table_chunks
+
+    if isinstance(table_chunks[0], ColumnTable):
+        ## Check if all have the same column names
+        if not all(
+            table.column_names == table_chunks[0].column_names for table in table_chunks
+        ):
+            raise ValueError("The columns in the results don't match")
+
+        result_table: List[List[Any]] = [[] for _ in range(table_chunks[0].num_columns)]
+        for i in range(0, len(table_chunks)):
+            for j in range(table_chunks[i].num_columns):
+                result_table[j].extend(table_chunks[i].column_table[j])
+        return ColumnTable(result_table, table_chunks[0].column_names)
+    else:
+        return pyarrow.concat_tables(table_chunks, use_threads=True)
+
+
+def build_client_context(server_hostname: str, version: str, **kwargs):
+    """Build ClientContext for HTTP client configuration."""
+    from databricks.sql.auth.common import ClientContext
+    from databricks.sql.types import SSLOptions
+
+    # Extract SSL options
+    ssl_options = SSLOptions(
+        tls_verify=not kwargs.get("_tls_no_verify", False),
+        tls_verify_hostname=kwargs.get("_tls_verify_hostname", True),
+        tls_trusted_ca_file=kwargs.get("_tls_trusted_ca_file"),
+        tls_client_cert_file=kwargs.get("_tls_client_cert_file"),
+        tls_client_cert_key_file=kwargs.get("_tls_client_cert_key_file"),
+        tls_client_cert_key_password=kwargs.get("_tls_client_cert_key_password"),
+    )
+
+    # Build user agent
+    user_agent_entry = kwargs.get("user_agent_entry", "")
+    if user_agent_entry:
+        user_agent = f"PyDatabricksSqlConnector/{version} ({user_agent_entry})"
+    else:
+        user_agent = f"PyDatabricksSqlConnector/{version}"
+
+    # Explicitly construct ClientContext with proper types
+    return ClientContext(
+        hostname=server_hostname,
+        ssl_options=ssl_options,
+        user_agent=user_agent,
+        socket_timeout=kwargs.get("_socket_timeout"),
+        retry_stop_after_attempts_count=kwargs.get("_retry_stop_after_attempts_count"),
+        retry_delay_min=kwargs.get("_retry_delay_min"),
+        retry_delay_max=kwargs.get("_retry_delay_max"),
+        retry_stop_after_attempts_duration=kwargs.get(
+            "_retry_stop_after_attempts_duration"
+        ),
+        retry_delay_default=kwargs.get("_retry_delay_default"),
+        retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
+        proxy_auth_method=kwargs.get("_proxy_auth_method"),
+        pool_connections=kwargs.get("_pool_connections"),
+        pool_maxsize=kwargs.get("_pool_maxsize"),
+    )
