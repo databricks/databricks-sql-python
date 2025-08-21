@@ -1,5 +1,9 @@
 # Release History
 
+# 4.1.1 (2025-08-21)
+- Add documentation for proxy support (databricks/databricks-sql-python#680 by @vikrantpuppala)
+- Fix compatibility with urllib3<2 and add CI actions to improve dependency checks (databricks/databricks-sql-python#678 by @vikrantpuppala)
+
 # 4.1.0 (2025-08-18)
 - Removed Codeowners (databricks/databricks-sql-python#623 by @jprakash-db)
 - Azure Service Principal Credential Provider (databricks/databricks-sql-python#621 by @jprakash-db)
