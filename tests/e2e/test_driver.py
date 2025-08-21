@@ -50,6 +50,7 @@ from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSu
 from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
+from tests.e2e.common.streaming_put_tests import PySQLStreamingPutTestSuiteMixin
 
 from databricks.sql.exc import SessionAlreadyClosedError
 
@@ -290,6 +291,7 @@ class TestPySQLCoreSuite(
     PySQLStagingIngestionTestSuiteMixin,
     PySQLRetryTestsMixin,
     PySQLUCVolumeTestSuiteMixin,
+    PySQLStreamingPutTestSuiteMixin,
 ):
     validate_row_value_type = True
     validate_result = True
