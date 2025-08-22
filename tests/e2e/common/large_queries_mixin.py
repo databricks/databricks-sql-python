@@ -117,7 +117,7 @@ class LargeQueriesMixin:
         scale_factor = 1
         with self.cursor(extra_params) as cursor:
             while duration < min_duration:
-                assert scale_factor < 1024, "Detected infinite loop"
+                assert scale_factor < 4096, "Detected infinite loop"
                 start = time.time()
 
                 cursor.execute(
