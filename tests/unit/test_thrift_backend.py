@@ -2330,7 +2330,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                http_client=MagicMock(),
                 **complex_arg_types,
             )
             thrift_backend.execute_command(
@@ -2355,6 +2355,86 @@ class ThriftBackendTestSuite(unittest.TestCase):
             self.assertFalse(
                 t_execute_statement_req.useArrowNativeTypes.intervalTypesAsArrow
             )
+
+    @unittest.skipIf(pyarrow is None, "Requires pyarrow")
+    def test_col_to_description(self):
+        test_cases = [
+            ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}, "variant"),
+            ("normal_col", {}, "string"),
+            ("weird_field", {b"Spark:DataType:SqlName": b"Some unexpected value"}, "string"),
+            ("missing_field", None, "string"),  # None field case
+        ]
+        
+        for column_name, field_metadata, expected_type in test_cases:
+            with self.subTest(column_name=column_name, expected_type=expected_type):
+                col = ttypes.TColumnDesc(
+                    columnName=column_name,
+                    typeDesc=self._make_type_desc(ttypes.TTypeId.STRING_TYPE),
+                )
+
+                field = (
+                    None
+                    if field_metadata is None
+                    else pyarrow.field(column_name, pyarrow.string(), metadata=field_metadata)
+                )
+
+                result = ThriftDatabricksClient._col_to_description(col, field)
+
+                self.assertEqual(result[0], column_name)
+                self.assertEqual(result[1], expected_type)
+                self.assertIsNone(result[2])
+                self.assertIsNone(result[3])
+                self.assertIsNone(result[4])
+                self.assertIsNone(result[5])
+                self.assertIsNone(result[6])
+
+    @unittest.skipIf(pyarrow is None, "Requires pyarrow")
+    def test_hive_schema_to_description(self):
+        test_cases = [
+            (
+                [
+                    ("regular_col", ttypes.TTypeId.STRING_TYPE),
+                    ("variant_col", ttypes.TTypeId.STRING_TYPE),
+                ],
+                [
+                    ("regular_col", {}),
+                    ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}),
+                ],
+                [("regular_col", "string"), ("variant_col", "variant")],
+            ),
+            (
+                [("regular_col", ttypes.TTypeId.STRING_TYPE)],
+                None,  # No arrow schema
+                [("regular_col", "string")],
+            ),
+        ]
+        
+        for columns, arrow_fields, expected_types in test_cases:
+            with self.subTest(arrow_fields=arrow_fields is not None):
+                t_table_schema = ttypes.TTableSchema(
+                    columns=[
+                        ttypes.TColumnDesc(
+                            columnName=name, typeDesc=self._make_type_desc(col_type)
+                        )
+                        for name, col_type in columns
+                    ]
+                )
+
+                schema_bytes = None
+                if arrow_fields:
+                    fields = [
+                        pyarrow.field(name, pyarrow.string(), metadata=metadata)
+                        for name, metadata in arrow_fields
+                    ]
+                    schema_bytes = pyarrow.schema(fields).serialize().to_pybytes()
+
+                description = ThriftDatabricksClient._hive_schema_to_description(
+                    t_table_schema, schema_bytes
+                )
+
+                for i, (expected_name, expected_type) in enumerate(expected_types):
+                    self.assertEqual(description[i][0], expected_name)
+                    self.assertEqual(description[i][1], expected_type)
 
 
 if __name__ == "__main__":
