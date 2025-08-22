@@ -1,5 +1,9 @@
 # Release History
 
+# 4.1.2 (2025-08-22)
+- Streaming ingestion support for PUT operation (databricks/databricks-sql-python#643 by @sreekanth-db)
+- Removed use_threads argument on concat_tables for compatibility with pyarrow<14 (databricks/databricks-sql-python#684 by @jprakash-db)
+
 # 4.1.1 (2025-08-21)
 - Add documentation for proxy support (databricks/databricks-sql-python#680 by @vikrantpuppala)
 - Fix compatibility with urllib3<2 and add CI actions to improve dependency checks (databricks/databricks-sql-python#678 by @vikrantpuppala)
