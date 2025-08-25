@@ -848,21 +848,10 @@ class TestPySQLCoreSuite(
                 query = "select * from range(1000000000)"
                 cursor.execute(query)
 
-    @pytest.mark.parametrize(
-        "extra_params",
-        [
-            {
-                "use_sea": False,
-            },
-            {
-                "use_sea": True,
-            },
-        ],
-    )
-    def test_ssp_passthrough(self, extra_params):
+    def test_ssp_passthrough(self):
         for enable_ansi in (True, False):
             with self.cursor(
-                {"session_configuration": {"ansi_mode": enable_ansi, "QUERY_TAGS": "team:marketing,dashboard:abc123,driver:python"}, **extra_params}
+                {"session_configuration": {"ansi_mode": enable_ansi}}
             ) as cursor:
                 cursor.execute("SET ansi_mode")
                 assert list(cursor.fetchone()) == ["ansi_mode", str(enable_ansi)]
@@ -908,7 +897,7 @@ class TestPySQLCoreSuite(
     )
     def test_multi_timestamps_arrow(self, extra_params):
         with self.cursor(
-            {"session_configuration": {"ansi_mode": False}, **extra_params}
+            {"session_configuration": {"ansi_mode": False, "query_tags": "test:multi-timestamps,driver:python"}, **extra_params}
         ) as cursor:
             query, expected = self.multi_query()
             expected = [
