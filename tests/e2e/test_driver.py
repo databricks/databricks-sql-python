@@ -901,7 +901,7 @@ class TestPySQLCoreSuite(
     )
     def test_multi_timestamps_arrow(self, extra_params):
         with self.cursor(
-            {"session_configuration": {"ansi_mode": False}, **extra_params}
+            {"session_configuration": {"ansi_mode": False, "query_tags": "test:multi-timestamps,driver:python"}, **extra_params}
         ) as cursor:
             query, expected = self.multi_query()
             expected = [

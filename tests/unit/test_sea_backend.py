@@ -185,6 +185,7 @@ class TestSeaBackend:
         session_config = {
             "ANSI_MODE": "FALSE",  # Supported parameter
             "STATEMENT_TIMEOUT": "3600",  # Supported parameter
+            "QUERY_TAGS": "team:marketing,dashboard:abc123", # Supported parameter
             "unsupported_param": "value",  # Unsupported parameter
         }
         catalog = "test_catalog"
@@ -196,6 +197,7 @@ class TestSeaBackend:
             "session_confs": {
                 "ansi_mode": "FALSE",
                 "statement_timeout": "3600",
+                "query_tags": "team:marketing,dashboard:abc123", 
             },
             "catalog": catalog,
             "schema": schema,
@@ -641,6 +643,7 @@ class TestSeaBackend:
             "TIMEZONE": "UTC",
             "enable_photon": False,
             "MAX_FILE_PARTITION_BYTES": 128.5,
+            "QUERY_TAGS": "team:engineering,project:data-pipeline",
             "unsupported_param": "value",
             "ANOTHER_UNSUPPORTED": 42,
         }
@@ -663,6 +666,7 @@ class TestSeaBackend:
             "timezone": "UTC",  # string -> "UTC", key lowercased
             "enable_photon": "False",  # boolean False -> "False", key lowercased
             "max_file_partition_bytes": "128.5",  # float -> "128.5", key lowercased
+            "query_tags": "team:engineering,project:data-pipeline",
         }
 
         assert result == expected_result
@@ -683,12 +687,14 @@ class TestSeaBackend:
             "ansi_mode": "false",  # lowercase key
             "STATEMENT_TIMEOUT": 7200,  # uppercase key
             "TiMeZoNe": "America/New_York",  # mixed case key
+            "QueRy_TaGs": "team:marketing,test:case-insensitive",
         }
         result = _filter_session_configuration(case_insensitive_config)
         expected_case_result = {
             "ansi_mode": "false",
             "statement_timeout": "7200",
             "timezone": "America/New_York",
+            "query_tags": "team:marketing,test:case-insensitive",
         }
         assert result == expected_case_result
 

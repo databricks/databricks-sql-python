@@ -155,7 +155,7 @@ class TestSession:
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_configuration_passthrough(self, mock_client_class):
-        mock_session_config = Mock()
+        mock_session_config = {"ANSI_MODE": "FALSE", "QUERY_TAGS": "team:engineering,project:data-pipeline"}
         databricks.sql.connect(
             session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
         )
