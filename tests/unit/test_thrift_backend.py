@@ -2403,6 +2403,17 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [("regular_col", "string"), ("variant_col", "variant")],
             ),
             (
+                [
+                    ("measure_col", ttypes.TTypeId.DOUBLE_TYPE),
+                    ("int_measure_col", ttypes.TTypeId.INT_TYPE),
+                ],
+                [
+                    ("measure_col", {b"Spark:DataType:SqlName": b"double measure"}),
+                    ("int_measure_col", {b"Spark:DataType:SqlName": b"int measure"}),
+                ],
+                [("measure_col", "double measure"), ("int_measure_col", "int measure")],
+            ),
+            (
                 [("regular_col", ttypes.TTypeId.STRING_TYPE)],
                 None,  # No arrow schema
                 [("regular_col", "string")],
