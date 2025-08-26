@@ -764,14 +764,16 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             precision, scale = None, None
 
-        # Extract variant type from field if available
+        # Extract variant/measure type from field if available
         if field is not None:
             try:
-                # Check for variant type in metadata
+                # Check for variant/measure type in metadata
                 if field.metadata and b"Spark:DataType:SqlName" in field.metadata:
                     sql_type = field.metadata.get(b"Spark:DataType:SqlName")
                     if sql_type == b"VARIANT":
                         cleaned_type = "variant"
+                    if sql_type and b"measure" in sql_type:
+                        cleaned_type += " measure"
             except Exception as e:
                 logger.debug(f"Could not extract variant type from field: {e}")
 
