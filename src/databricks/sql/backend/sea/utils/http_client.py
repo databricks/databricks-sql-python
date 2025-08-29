@@ -285,13 +285,19 @@ class SeaHttpClient:
             if method == "POST" and path.endswith("/statements"):
                 return CommandType.EXECUTE_STATEMENT
             elif "/cancel" in path:
-                return CommandType.OTHER  # Cancel operation
+                return CommandType.CANCEL_OPERATION
             elif method == "DELETE":
                 return CommandType.CLOSE_OPERATION
             elif method == "GET":
-                return CommandType.GET_OPERATION_STATUS
+                # For GET requests on statements, determine if it's fetching results or status
+                if "/result/chunks/" in path:
+                    return CommandType.FETCH_RESULTS
+                else:
+                    return CommandType.METADATA  # Statement status queries
         elif "/sessions" in path:
-            if method == "DELETE":
+            if method == "POST" and path.endswith("/sessions"):
+                return CommandType.OPEN_SESSION
+            elif method == "DELETE":
                 return CommandType.CLOSE_SESSION
 
-        return CommandType.OTHER
+        return CommandType.NOT_SET

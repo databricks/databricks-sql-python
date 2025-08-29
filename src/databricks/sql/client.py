@@ -25,6 +25,7 @@ from databricks.sql.exc import (
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
+from databricks.sql.auth.retry import CommandType
 from databricks.sql.utils import (
     ParamEscaper,
     inject_parameters,
@@ -774,6 +775,9 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+        # Set command type for volume PUT operation
+        self.connection.http_client.setRequestType(CommandType.VOLUME_PUT)
+
         with open(local_file, "rb") as fh:
             r = self.connection.http_client.request(
                 HttpMethod.PUT, presigned_url, body=fh.read(), headers=headers
@@ -830,6 +834,9 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
+        # Set command type for volume PUT stream operation
+        self.connection.http_client.setRequestType(CommandType.VOLUME_PUT)
+
         r = self.connection.http_client.request(
             HttpMethod.PUT, presigned_url, body=stream.read(), headers=headers
         )
@@ -850,6 +857,9 @@ class Cursor:
                 "Cannot perform GET without specifying a local_file",
                 session_id_hex=self.connection.get_session_id_hex(),
             )
+
+        # Set command type for volume GET operation
+        self.connection.http_client.setRequestType(CommandType.VOLUME_GET)
 
         r = self.connection.http_client.request(
             HttpMethod.GET, presigned_url, headers=headers
@@ -873,6 +883,9 @@ class Cursor:
         self, presigned_url: str, headers: Optional[dict] = None
     ):
         """Make an HTTP DELETE request to the presigned_url"""
+
+        # Set command type for volume DELETE operation
+        self.connection.http_client.setRequestType(CommandType.VOLUME_DELETE)
 
         r = self.connection.http_client.request(
             HttpMethod.DELETE, presigned_url, headers=headers
