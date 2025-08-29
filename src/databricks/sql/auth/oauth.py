@@ -12,6 +12,7 @@ import oauthlib.oauth2
 from oauthlib.oauth2.rfc6749.errors import OAuth2Error
 from databricks.sql.common.http import HttpMethod, HttpHeader
 from databricks.sql.common.http import OAuthResponse
+from databricks.sql.auth.retry import CommandType
 from databricks.sql.auth.oauth_http_handler import OAuthHttpSingleRequestHandler
 from databricks.sql.auth.endpoint import OAuthEndpointCollection
 from abc import abstractmethod, ABC
@@ -87,6 +88,8 @@ class OAuthManager:
         known_config_url = self.idp_endpoint.get_openid_config_url(hostname)
 
         try:
+            # Set command type for OAuth configuration request
+            self.http_client.setRequestType(CommandType.AUTH)
             response = self.http_client.request(HttpMethod.GET, url=known_config_url)
             # Convert urllib3 response to requests-like response for compatibility
             response.status_code = response.status
@@ -195,6 +198,8 @@ class OAuthManager:
             "Accept": "application/json",
             "Content-Type": "application/x-www-form-urlencoded",
         }
+        # Set command type for OAuth token request
+        self.http_client.setRequestType(CommandType.AUTH)
         # Use unified HTTP client
         response = self.http_client.request(
             HttpMethod.POST, url=token_request_url, body=data, headers=headers
@@ -337,6 +342,8 @@ class ClientCredentialsTokenSource(RefreshableTokenSource):
             }
         )
 
+        # Set command type for OAuth client credentials request
+        self._http_client.setRequestType(CommandType.AUTH)
         response = self._http_client.request(
             method=HttpMethod.POST, url=self.token_url, headers=headers, body=data
         )
