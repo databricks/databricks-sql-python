@@ -15,6 +15,9 @@ from databricks.sql.types import SSLOptions
 from databricks.sql.exc import (
     RequestError,
 )
+from databricks.sql.common.http_utils import (
+    detect_and_parse_proxy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +33,9 @@ class SeaHttpClient:
     retry_policy: Union[DatabricksRetryPolicy, int]
     _pool: Optional[Union[HTTPConnectionPool, HTTPSConnectionPool]]
     proxy_uri: Optional[str]
-    proxy_host: Optional[str]
-    proxy_port: Optional[int]
     proxy_auth: Optional[Dict[str, str]]
+    realhost: Optional[str]
+    realport: Optional[int]
 
     def __init__(
         self,
@@ -121,43 +124,26 @@ class SeaHttpClient:
             )
             self.retry_policy = 0
 
-        # Handle proxy settings
-        try:
-            # returns a dictionary of scheme -> proxy server URL mappings.
-            # https://docs.python.org/3/library/urllib.request.html#urllib.request.getproxies
-            proxy = urllib.request.getproxies().get(self.scheme)
-        except (KeyError, AttributeError):
-            # No proxy found or getproxies() failed - disable proxy
-            proxy = None
-        else:
-            # Proxy found, but check if this host should bypass proxy
-            if self.host and urllib.request.proxy_bypass(self.host):
-                proxy = None  # Host bypasses proxy per system rules
+        # Handle proxy settings using shared utility
+        proxy_auth_method = kwargs.get("_proxy_auth_method")
+        proxy_uri, proxy_auth = detect_and_parse_proxy(
+            self.scheme, self.host, proxy_auth_method=proxy_auth_method
+        )
 
-        if proxy:
-            parsed_proxy = urllib.parse.urlparse(proxy)
-            self.proxy_host = self.host
-            self.proxy_port = self.port
-            self.proxy_uri = proxy
+        if proxy_uri:
+            parsed_proxy = urllib.parse.urlparse(proxy_uri)
+            self.realhost = self.host
+            self.realport = self.port
+            self.proxy_uri = proxy_uri
             self.host = parsed_proxy.hostname
             self.port = parsed_proxy.port or (443 if self.scheme == "https" else 80)
-            self.proxy_auth = self._basic_proxy_auth_headers(parsed_proxy)
+            self.proxy_auth = proxy_auth
         else:
-            self.proxy_host = None
-            self.proxy_port = None
-            self.proxy_auth = None
-            self.proxy_uri = None
+            self.realhost = self.realport = self.proxy_auth = self.proxy_uri = None
 
         # Initialize connection pool
         self._pool = None
         self._open()
-
-    def _basic_proxy_auth_headers(self, proxy_parsed) -> Optional[Dict[str, str]]:
-        """Create basic auth headers for proxy if credentials are provided."""
-        if proxy_parsed is None or not proxy_parsed.username:
-            return None
-        ap = f"{urllib.parse.unquote(proxy_parsed.username)}:{urllib.parse.unquote(proxy_parsed.password)}"
-        return make_headers(proxy_basic_auth=ap)
 
     def _open(self):
         """Initialize the connection pool."""
@@ -186,8 +172,8 @@ class SeaHttpClient:
                 proxy_headers=self.proxy_auth,
             )
             self._pool = proxy_manager.connection_from_host(
-                host=self.proxy_host,
-                port=self.proxy_port,
+                host=self.realhost,
+                port=self.realport,
                 scheme=self.scheme,
                 pool_kwargs=pool_kwargs,
             )
@@ -201,7 +187,7 @@ class SeaHttpClient:
 
     def using_proxy(self) -> bool:
         """Check if proxy is being used."""
-        return self.proxy_host is not None
+        return self.realhost is not None
 
     def set_retry_command_type(self, command_type: CommandType):
         """Set the command type for retry policy decision making."""
@@ -269,7 +255,10 @@ class SeaHttpClient:
             ) as response:
                 # Handle successful responses
                 if 200 <= response.status < 300:
-                    return response.json()
+                    if response.data:
+                        return json.loads(response.data.decode())
+                    else:
+                        return {}
 
                 error_message = f"SEA HTTP request failed with status {response.status}"
                 raise Exception(error_message)

@@ -1,5 +1,5 @@
 import time
-from typing import Dict, Tuple, List, Optional, Any, Union, Sequence
+from typing import Dict, Tuple, List, Optional, Any, Union, Sequence, BinaryIO
 import pandas
 
 try:
@@ -662,7 +662,9 @@ class Cursor:
             )
 
     def _handle_staging_operation(
-        self, staging_allowed_local_path: Union[None, str, List[str]]
+        self,
+        staging_allowed_local_path: Union[None, str, List[str]],
+        input_stream: Optional[BinaryIO] = None,
     ):
         """Fetch the HTTP request instruction from a staging ingestion command
         and call the designated handler.
@@ -671,6 +673,28 @@ class Cursor:
         is not descended from staging_allowed_local_path.
         """
 
+        assert self.active_result_set is not None
+        row = self.active_result_set.fetchone()
+        assert row is not None
+
+        # May be real headers, or could be json string
+        headers = (
+            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
+        )
+        headers = dict(headers) if headers else {}
+
+        # Handle __input_stream__ token for PUT operations
+        if (
+            row.operation == "PUT"
+            and getattr(row, "localFile", None) == "__input_stream__"
+        ):
+            return self._handle_staging_put_stream(
+                presigned_url=row.presignedUrl,
+                stream=input_stream,
+                headers=headers,
+            )
+
+        # For non-streaming operations, validate staging_allowed_local_path
         if isinstance(staging_allowed_local_path, type(str())):
             _staging_allowed_local_paths = [staging_allowed_local_path]
         elif isinstance(staging_allowed_local_path, type(list())):
@@ -684,10 +708,6 @@ class Cursor:
         abs_staging_allowed_local_paths = [
             os.path.abspath(i) for i in _staging_allowed_local_paths
         ]
-
-        assert self.active_result_set is not None
-        row = self.active_result_set.fetchone()
-        assert row is not None
 
         # Must set to None in cases where server response does not include localFile
         abs_localFile = None
@@ -711,19 +731,16 @@ class Cursor:
                     session_id_hex=self.connection.get_session_id_hex(),
                 )
 
-        # May be real headers, or could be json string
-        headers = (
-            json.loads(row.headers) if isinstance(row.headers, str) else row.headers
-        )
-
         handler_args = {
             "presigned_url": row.presignedUrl,
             "local_file": abs_localFile,
-            "headers": dict(headers) or {},
+            "headers": headers,
         }
 
         logger.debug(
-            f"Attempting staging operation indicated by server: {row.operation} - {getattr(row, 'localFile', '')}"
+            "Attempting staging operation indicated by server: %s - %s",
+            row.operation,
+            getattr(row, "localFile", ""),
         )
 
         # TODO: Create a retry loop here to re-attempt if the request times out or fails
@@ -762,6 +779,10 @@ class Cursor:
                 HttpMethod.PUT, presigned_url, body=fh.read(), headers=headers
             )
 
+        self._handle_staging_http_response(r)
+
+    def _handle_staging_http_response(self, r):
+
         # fmt: off
         # HTTP status codes
         OK = 200
@@ -783,6 +804,37 @@ class Cursor:
                 f"Response code {ACCEPTED} from server indicates ingestion command was accepted "
                 + "but not yet applied on the server. It's possible this command may fail later."
             )
+
+    @log_latency(StatementType.SQL)
+    def _handle_staging_put_stream(
+        self,
+        presigned_url: str,
+        stream: BinaryIO,
+        headers: dict = {},
+    ) -> None:
+        """Handle PUT operation with streaming data.
+
+        Args:
+            presigned_url: The presigned URL for upload
+            stream: Binary stream to upload
+            headers: HTTP headers
+
+        Raises:
+            ProgrammingError: If no input stream is provided
+            OperationalError: If the upload fails
+        """
+
+        if not stream:
+            raise ProgrammingError(
+                "No input stream provided for streaming operation",
+                session_id_hex=self.connection.get_session_id_hex(),
+            )
+
+        r = self.connection.http_client.request(
+            HttpMethod.PUT, presigned_url, body=stream.read(), headers=headers
+        )
+
+        self._handle_staging_http_response(r)
 
     @log_latency(StatementType.SQL)
     def _handle_staging_get(
@@ -840,6 +892,7 @@ class Cursor:
         operation: str,
         parameters: Optional[TParameterCollection] = None,
         enforce_embedded_schema_correctness=False,
+        input_stream: Optional[BinaryIO] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -914,7 +967,8 @@ class Cursor:
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
             self._handle_staging_operation(
-                staging_allowed_local_path=self.connection.staging_allowed_local_path
+                staging_allowed_local_path=self.connection.staging_allowed_local_path,
+                input_stream=input_stream,
             )
 
         return self

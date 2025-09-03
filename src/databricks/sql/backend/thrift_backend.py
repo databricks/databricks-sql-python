@@ -191,6 +191,12 @@ class ThriftDatabricksClient(DatabricksClient):
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
 
         additional_transport_args = {}
+
+        # Add proxy authentication method if specified
+        proxy_auth_method = kwargs.get("_proxy_auth_method")
+        if proxy_auth_method:
+            additional_transport_args["_proxy_auth_method"] = proxy_auth_method
+
         _max_redirects: Union[None, int] = kwargs.get("_retry_max_redirects")
 
         if _max_redirects:
@@ -729,7 +735,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return pyarrow.schema([convert_col(col) for col in t_table_schema.columns])
 
     @staticmethod
-    def _col_to_description(col, session_id_hex=None):
+    def _col_to_description(col, field=None, session_id_hex=None):
         type_entry = col.typeDesc.types[0]
 
         if type_entry.primitiveEntry:
@@ -758,12 +764,39 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             precision, scale = None, None
 
+        # Extract variant type from field if available
+        if field is not None:
+            try:
+                # Check for variant type in metadata
+                if field.metadata and b"Spark:DataType:SqlName" in field.metadata:
+                    sql_type = field.metadata.get(b"Spark:DataType:SqlName")
+                    if sql_type == b"VARIANT":
+                        cleaned_type = "variant"
+            except Exception as e:
+                logger.debug(f"Could not extract variant type from field: {e}")
+
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
-    def _hive_schema_to_description(t_table_schema, session_id_hex=None):
+    def _hive_schema_to_description(
+        t_table_schema, schema_bytes=None, session_id_hex=None
+    ):
+        field_dict = {}
+        if pyarrow and schema_bytes:
+            try:
+                arrow_schema = pyarrow.ipc.read_schema(pyarrow.py_buffer(schema_bytes))
+                # Build a dictionary mapping column names to fields
+                for field in arrow_schema:
+                    field_dict[field.name] = field
+            except Exception as e:
+                logger.debug(f"Could not parse arrow schema: {e}")
+
         return [
-            ThriftDatabricksClient._col_to_description(col, session_id_hex)
+            ThriftDatabricksClient._col_to_description(
+                col,
+                field_dict.get(col.columnName) if field_dict else None,
+                session_id_hex,
+            )
             for col in t_table_schema.columns
         ]
 
@@ -796,11 +829,6 @@ class ThriftDatabricksClient(DatabricksClient):
             or direct_results.resultSet.hasMoreRows
         )
 
-        description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema,
-            self._session_id_hex,
-        )
-
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
@@ -812,6 +840,12 @@ class ThriftDatabricksClient(DatabricksClient):
             )
         else:
             schema_bytes = None
+
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema,
+            schema_bytes,
+            self._session_id_hex,
+        )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         command_id = CommandId.from_thrift_handle(resp.operationHandle)
@@ -857,11 +891,6 @@ class ThriftDatabricksClient(DatabricksClient):
 
         t_result_set_metadata_resp = resp.resultSetMetadata
 
-        description = self._hive_schema_to_description(
-            t_result_set_metadata_resp.schema,
-            self._session_id_hex,
-        )
-
         if pyarrow:
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
@@ -873,6 +902,12 @@ class ThriftDatabricksClient(DatabricksClient):
             )
         else:
             schema_bytes = None
+
+        description = self._hive_schema_to_description(
+            t_result_set_metadata_resp.schema,
+            schema_bytes,
+            self._session_id_hex,
+        )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
         is_staging_operation = t_result_set_metadata_resp.isStagingOperation

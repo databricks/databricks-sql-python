@@ -298,7 +298,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             num_rows -= table_slice.num_rows
 
         logger.debug("CloudFetchQueue: collected {} next rows".format(results.num_rows))
-        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
+        return concat_table_chunks(partial_result_chunks)
 
     def remaining_rows(self) -> "pyarrow.Table":
         """
@@ -321,7 +321,7 @@ class CloudFetchQueue(ResultSetQueue, ABC):
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0
-        return pyarrow.concat_tables(partial_result_chunks, use_threads=True)
+        return concat_table_chunks(partial_result_chunks)
 
     def _create_table_at_offset(self, offset: int) -> Union["pyarrow.Table", None]:
         """Create next table at the given row offset"""
@@ -880,7 +880,7 @@ def concat_table_chunks(
                 result_table[j].extend(table_chunks[i].column_table[j])
         return ColumnTable(result_table, table_chunks[0].column_names)
     else:
-        return pyarrow.concat_tables(table_chunks, use_threads=True)
+        return pyarrow.concat_tables(table_chunks)
 
 
 def build_client_context(server_hostname: str, version: str, **kwargs):
@@ -919,9 +919,7 @@ def build_client_context(server_hostname: str, version: str, **kwargs):
         ),
         retry_delay_default=kwargs.get("_retry_delay_default"),
         retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
-        http_proxy=kwargs.get("_http_proxy"),
-        proxy_username=kwargs.get("_proxy_username"),
-        proxy_password=kwargs.get("_proxy_password"),
+        proxy_auth_method=kwargs.get("_proxy_auth_method"),
         pool_connections=kwargs.get("_pool_connections"),
         pool_maxsize=kwargs.get("_pool_maxsize"),
     )

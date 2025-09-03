@@ -50,6 +50,7 @@ from tests.e2e.common.staging_ingestion_tests import PySQLStagingIngestionTestSu
 from tests.e2e.common.retry_test_mixins import PySQLRetryTestsMixin
 
 from tests.e2e.common.uc_volume_tests import PySQLUCVolumeTestSuiteMixin
+from tests.e2e.common.streaming_put_tests import PySQLStreamingPutTestSuiteMixin
 
 from databricks.sql.exc import SessionAlreadyClosedError
 
@@ -290,6 +291,7 @@ class TestPySQLCoreSuite(
     PySQLStagingIngestionTestSuiteMixin,
     PySQLRetryTestsMixin,
     PySQLUCVolumeTestSuiteMixin,
+    PySQLStreamingPutTestSuiteMixin,
 ):
     validate_row_value_type = True
     validate_result = True
@@ -899,7 +901,7 @@ class TestPySQLCoreSuite(
     )
     def test_multi_timestamps_arrow(self, extra_params):
         with self.cursor(
-            {"session_configuration": {"ansi_mode": False}, **extra_params}
+            {"session_configuration": {"ansi_mode": False, "query_tags": "test:multi-timestamps,driver:python"}, **extra_params}
         ) as cursor:
             query, expected = self.multi_query()
             expected = [

@@ -1,5 +1,37 @@
 # Release History
 
+# 4.1.2 (2025-08-22)
+- Streaming ingestion support for PUT operation (databricks/databricks-sql-python#643 by @sreekanth-db)
+- Removed use_threads argument on concat_tables for compatibility with pyarrow<14 (databricks/databricks-sql-python#684 by @jprakash-db)
+
+# 4.1.1 (2025-08-21)
+- Add documentation for proxy support (databricks/databricks-sql-python#680 by @vikrantpuppala)
+- Fix compatibility with urllib3<2 and add CI actions to improve dependency checks (databricks/databricks-sql-python#678 by @vikrantpuppala)
+
+# 4.1.0 (2025-08-18)
+- Removed Codeowners (databricks/databricks-sql-python#623 by @jprakash-db)
+- Azure Service Principal Credential Provider (databricks/databricks-sql-python#621 by @jprakash-db)
+- Add optional telemetry support to the python connector (databricks/databricks-sql-python#628 by @saishreeeee)
+- Fix potential resource leak in `CloudFetchQueue` (databricks/databricks-sql-python#624 by @varun-edachali-dbx)
+- Generalise Backend Layer (databricks/databricks-sql-python#604 by @varun-edachali-dbx)
+- Arrow performance optimizations (databricks/databricks-sql-python#638 by @jprakash-db)
+- Connection errors to unauthenticated telemetry endpoint (databricks/databricks-sql-python#619 by @saishreeeee)
+- SEA: Execution Phase (databricks/databricks-sql-python#645 by @varun-edachali-dbx)
+- Add retry mechanism to telemetry requests (databricks/databricks-sql-python#617 by @saishreeeee)
+- SEA: Fetch Phase (databricks/databricks-sql-python#650 by @varun-edachali-dbx)
+- added logs for cloud fetch speed (databricks/databricks-sql-python#654 by @shivam2680)
+- Make telemetry batch size configurable and add time-based flush (databricks/databricks-sql-python#622 by @saishreeeee)
+- Normalise type code (databricks/databricks-sql-python#652 by @varun-edachali-dbx)
+- Testing for telemetry (databricks/databricks-sql-python#616 by @saishreeeee)
+- Bug fixes in telemetry (databricks/databricks-sql-python#659 by @saishreeeee)
+- Telemetry server-side flag integration (databricks/databricks-sql-python#646 by @saishreeeee)
+- Enhance SEA HTTP Client (databricks/databricks-sql-python#618 by @varun-edachali-dbx)
+- SEA: Allow large metadata responses (databricks/databricks-sql-python#653 by @varun-edachali-dbx)
+- Added code coverage workflow to test the code coverage from unit and e2e tests (databricks/databricks-sql-python#657 by @msrathore-db)
+- Concat tables to be backward compatible (databricks/databricks-sql-python#647 by @jprakash-db)
+- Refactor codebase to use a unified http client (databricks/databricks-sql-python#673 by @vikrantpuppala)
+- Add kerberos support for proxy auth (databricks/databricks-sql-python#675 by @vikrantpuppala)
+
 # 4.0.5 (2025-06-24)
 - Fix: Reverted change in cursor close handling which led to errors impacting users (databricks/databricks-sql-python#613 by @madhav-db)
 
