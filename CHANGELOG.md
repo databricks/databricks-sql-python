@@ -3,7 +3,6 @@
 # 4.1.3 (2025-09-17)
 - Query tags integration (databricks/databricks-sql-python#663 by @sreekanth-db)
 - Add variant support (databricks/databricks-sql-python#560 by @shivam2680)
-- Increased the limit for long running query (databricks/databricks-sql-python#686 by @jprakash-db)
 
 # 4.1.2 (2025-08-22)
 - Streaming ingestion support for PUT operation (databricks/databricks-sql-python#643 by @sreekanth-db)
