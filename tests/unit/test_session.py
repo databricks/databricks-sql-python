@@ -164,6 +164,17 @@ class TestSession:
         assert call_kwargs["session_configuration"] == mock_session_config
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
+    def test_enable_metric_view_metadata_parameter(self, mock_client_class):
+        """Test that enable_metric_view_metadata parameter sets the correct session configuration."""
+        databricks.sql.connect(
+            enable_metric_view_metadata=True, **self.DUMMY_CONNECTION_ARGS
+        )
+
+        call_kwargs = mock_client_class.return_value.open_session.call_args[1]
+        expected_config = {"spark.sql.thriftserver.metadata.metricview.enabled": "true"}
+        assert call_kwargs["session_configuration"] == expected_config
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_initial_namespace_passthrough(self, mock_client_class):
         mock_cat = Mock()
         mock_schem = Mock()

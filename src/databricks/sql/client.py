@@ -200,6 +200,12 @@ class Connection:
                     STRUCT is returned as Dict[str, Any]
                     ARRAY is returned as numpy.ndarray
                 When False, complex types are returned as a strings. These are generally deserializable as JSON.
+            :param enable_metric_view_metadata: `bool`, optional (default is False)
+                When True, enables metric view metadata support by setting the
+                spark.sql.thriftserver.metadata.metricview.enabled session configuration.
+                This allows
+                1. cursor.tables() to return METRIC_VIEW table type
+                2. cursor.columns() to return "measure" column type
         """
 
         # Internal arguments in **kwargs:
@@ -247,6 +253,15 @@ class Connection:
         if access_token:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
+
+        # Handle enable_metric_view_metadata parameter
+        enable_metric_view_metadata = kwargs.get("enable_metric_view_metadata", False)
+        if enable_metric_view_metadata:
+            if session_configuration is None:
+                session_configuration = {}
+            session_configuration[
+                "spark.sql.thriftserver.metadata.metricview.enabled"
+            ] = "true"
 
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
