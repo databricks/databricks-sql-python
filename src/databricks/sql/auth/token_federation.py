@@ -56,6 +56,20 @@ class TokenFederationProvider(AuthProvider):
 
     def add_headers(self, request_headers: Dict[str, str]):
         """Add authentication headers to the request."""
+
+        if self._cached_token and not self._cached_token.is_expired():
+            request_headers["Authorization"] = f"{self._cached_token.token_type} {self._cached_token.access_token}"
+            return
+
+        # Get the external headers first to check if we need token federation
+        self._external_headers = {}
+        self.external_provider.add_headers(self._external_headers)
+
+        # If no Authorization header from external provider, pass through all headers
+        if "Authorization" not in self._external_headers:
+            request_headers.update(self._external_headers)
+            return
+
         token = self._get_token()
         request_headers["Authorization"] = f"{token.token_type} {token.access_token}"
 
@@ -65,11 +79,7 @@ class TokenFederationProvider(AuthProvider):
         if self._cached_token and not self._cached_token.is_expired():
             return self._cached_token
 
-        # Get the external token
-        self._external_headers = {}
-        self.external_provider.add_headers(self._external_headers)
-
-        # Extract token from Authorization header
+        # Extract token from already-fetched headers
         auth_header = self._external_headers.get("Authorization", "")
         token_type, access_token = self._extract_token_from_header(auth_header)
 
