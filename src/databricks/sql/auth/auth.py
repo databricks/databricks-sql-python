@@ -8,13 +8,13 @@ from databricks.sql.auth.authenticators import (
     AzureServicePrincipalCredentialProvider,
 )
 from databricks.sql.auth.common import AuthType, ClientContext
-from databricks.sql.auth.token_federation import TokenFederationProvider, ExternalTokenProvider
+from databricks.sql.auth.token_federation import TokenFederationProvider
 
 
 def get_auth_provider(cfg: ClientContext, http_client):
     # Determine the base auth provider
     base_provider = None
-    
+
     if cfg.credentials_provider:
         base_provider = ExternalAuthProvider(cfg.credentials_provider)
     elif cfg.auth_type == AuthType.AZURE_SP_M2M.value:
@@ -64,16 +64,16 @@ def get_auth_provider(cfg: ClientContext, http_client):
             )
         else:
             raise RuntimeError("No valid authentication settings!")
-    
-    # Wrap with token federation if enabled
-    if cfg.enable_token_federation and base_provider:
+
+    # Always wrap with token federation (falls back gracefully if not needed)
+    if base_provider:
         return TokenFederationProvider(
             hostname=cfg.hostname,
             external_provider=base_provider,
             http_client=http_client,
             identity_federation_client_id=cfg.identity_federation_client_id,
         )
-    
+
     return base_provider
 
 
@@ -129,8 +129,6 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
-        # Token federation parameters
-        enable_token_federation=kwargs.get("enable_token_federation", False),
         identity_federation_client_id=kwargs.get("identity_federation_client_id"),
     )
     return get_auth_provider(cfg, http_client)

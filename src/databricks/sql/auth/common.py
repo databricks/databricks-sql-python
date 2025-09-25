@@ -37,8 +37,6 @@ class ClientContext:
         tls_client_cert_file: Optional[str] = None,
         oauth_persistence=None,
         credentials_provider=None,
-        # Token federation parameters
-        enable_token_federation: bool = False,
         identity_federation_client_id: Optional[str] = None,
         # HTTP client configuration parameters
         ssl_options=None,  # SSLOptions type
@@ -68,8 +66,6 @@ class ClientContext:
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
         self.credentials_provider = credentials_provider
-        # Token federation
-        self.enable_token_federation = enable_token_federation
         self.identity_federation_client_id = identity_federation_client_id
 
         # HTTP client configuration
