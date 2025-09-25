@@ -254,7 +254,6 @@ class Connection:
             access_token_kv = {"access_token": access_token}
             kwargs = {**kwargs, **access_token_kv}
 
-        # Handle enable_metric_view_metadata parameter
         enable_metric_view_metadata = kwargs.get("enable_metric_view_metadata", False)
         if enable_metric_view_metadata:
             if session_configuration is None:
