@@ -58,7 +58,9 @@ class TokenFederationProvider(AuthProvider):
         """Add authentication headers to the request."""
 
         if self._cached_token and not self._cached_token.is_expired():
-            request_headers["Authorization"] = f"{self._cached_token.token_type} {self._cached_token.access_token}"
+            request_headers[
+                "Authorization"
+            ] = f"{self._cached_token.token_type} {self._cached_token.access_token}"
             return
 
         # Get the external headers first to check if we need token federation
