@@ -81,7 +81,7 @@ class PySQLUCVolumeTestSuiteMixin:
             # GET after REMOVE should fail
 
             with pytest.raises(
-                Error, match="too many 404 error responses"
+                Error, match="Staging operation over HTTP was unsuccessful: 404"
             ):
                 cursor = conn.cursor()
                 query = f"GET '/Volumes/{catalog}/{schema}/e2etests/file1.csv' TO '{new_temp_path}'"
