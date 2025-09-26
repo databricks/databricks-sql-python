@@ -37,6 +37,7 @@ class ClientContext:
         tls_client_cert_file: Optional[str] = None,
         oauth_persistence=None,
         credentials_provider=None,
+        identity_federation_client_id: Optional[str] = None,
         # HTTP client configuration parameters
         ssl_options=None,  # SSLOptions type
         socket_timeout: Optional[float] = None,
@@ -65,6 +66,7 @@ class ClientContext:
         self.tls_client_cert_file = tls_client_cert_file
         self.oauth_persistence = oauth_persistence
         self.credentials_provider = credentials_provider
+        self.identity_federation_client_id = identity_federation_client_id
 
         # HTTP client configuration
         self.ssl_options = ssl_options
