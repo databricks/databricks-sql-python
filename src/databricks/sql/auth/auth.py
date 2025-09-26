@@ -13,7 +13,7 @@ from databricks.sql.auth.token_federation import TokenFederationProvider
 
 def get_auth_provider(cfg: ClientContext, http_client):
     # Determine the base auth provider
-    base_provider = None
+    base_provider: Optional[AuthProvider] = None
 
     if cfg.credentials_provider:
         base_provider = ExternalAuthProvider(cfg.credentials_provider)

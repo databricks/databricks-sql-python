@@ -52,7 +52,7 @@ class TokenFederationProvider(AuthProvider):
         self.identity_federation_client_id = identity_federation_client_id
 
         self._cached_token: Optional[Token] = None
-        self._external_headers = {}
+        self._external_headers: Dict[str, str] = {}
 
     def add_headers(self, request_headers: Dict[str, str]):
         """Add authentication headers to the request."""
