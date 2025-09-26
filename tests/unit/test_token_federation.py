@@ -4,9 +4,8 @@ import json
 import jwt
 from datetime import datetime, timedelta
 
-from databricks.sql.auth.token_federation import TokenFederationProvider
+from databricks.sql.auth.token_federation import TokenFederationProvider, Token
 from databricks.sql.auth.auth_utils import (
-    Token,
     parse_hostname,
     decode_token,
     is_same_host,
