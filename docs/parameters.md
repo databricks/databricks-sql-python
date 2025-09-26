@@ -254,3 +254,73 @@ You should only set `use_inline_params=True` in the following cases:
 4. Your client code uses [sequences as parameter values](#passing-sequences-as-parameter-values)
 
 We expect limitations (1) and (2) to be addressed in a future Databricks Runtime release.
+
+# Telemetry Circuit Breaker Configuration
+
+The Databricks SQL connector includes a circuit breaker pattern for telemetry requests to prevent telemetry failures from impacting main SQL operations. This feature is enabled by default and can be controlled through a connection parameter.
+
+## Overview
+
+The circuit breaker monitors telemetry request failures and automatically blocks telemetry requests when the failure rate exceeds a configured threshold. This prevents telemetry service issues from affecting your main SQL operations.
+
+## Configuration Parameter
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `telemetry_circuit_breaker_enabled` | bool | `True` | Enable or disable the telemetry circuit breaker |
+
+## Usage Examples
+
+### Default Configuration (Circuit Breaker Enabled)
+
+```python
+from databricks import sql
+
+# Circuit breaker is enabled by default
+with sql.connect(
+    server_hostname="your-host.cloud.databricks.com",
+    http_path="/sql/1.0/warehouses/your-warehouse-id",
+    access_token="your-token"
+) as conn:
+    # Your SQL operations here
+    pass
+```
+
+### Disable Circuit Breaker
+
+```python
+from databricks import sql
+
+# Disable circuit breaker entirely
+with sql.connect(
+    server_hostname="your-host.cloud.databricks.com",
+    http_path="/sql/1.0/warehouses/your-warehouse-id",
+    access_token="your-token",
+    telemetry_circuit_breaker_enabled=False
+) as conn:
+    # Your SQL operations here
+    pass
+```
+
+## Circuit Breaker States
+
+The circuit breaker operates in three states:
+
+1. **Closed**: Normal operation, telemetry requests are allowed
+2. **Open**: Circuit breaker is open, telemetry requests are blocked
+3. **Half-Open**: Testing state, limited telemetry requests are allowed
+
+
+## Performance Impact
+
+The circuit breaker has minimal performance impact on SQL operations:
+
+- Circuit breaker only affects telemetry requests, not SQL queries
+- When circuit breaker is open, telemetry requests are simply skipped
+- No additional latency is added to successful operations
+
+## Best Practices
+
+1. **Keep circuit breaker enabled**: The default configuration works well for most use cases
+2. **Don't disable unless necessary**: Circuit breaker provides important protection against telemetry failures
+3. **Monitor application logs**: Circuit breaker state changes are logged for troubleshooting
