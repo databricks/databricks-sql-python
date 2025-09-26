@@ -1,11 +1,11 @@
 import logging
 import json
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple
 from urllib.parse import urlencode
 
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.auth.auth_utils import (
-    Token,
     parse_hostname,
     decode_token,
     is_same_host,
@@ -13,6 +13,59 @@ from databricks.sql.auth.auth_utils import (
 from databricks.sql.common.http import HttpMethod
 
 logger = logging.getLogger(__name__)
+
+
+class Token:
+    """
+    Represents an OAuth token with expiration management.
+    """
+
+    def __init__(self, access_token: str, token_type: str = "Bearer"):
+        """
+        Initialize a token.
+
+        Args:
+            access_token: The access token string
+            token_type: The token type (default: Bearer)
+        """
+        self.access_token = access_token
+        self.token_type = token_type
+        self.expiry_time = self._calculate_expiry()
+
+    def _calculate_expiry(self) -> datetime:
+        """
+        Calculate the token expiry time from JWT claims.
+
+        Returns:
+            The token expiry datetime
+        """
+        decoded = decode_token(self.access_token)
+        if decoded and "exp" in decoded:
+            # Use JWT exp claim with 1 minute buffer
+            return datetime.fromtimestamp(decoded["exp"]) - timedelta(minutes=1)
+        # Default to 1 hour if no expiry info
+        return datetime.now() + timedelta(hours=1)
+
+    def is_expired(self) -> bool:
+        """
+        Check if the token is expired.
+
+        Returns:
+            True if token is expired, False otherwise
+        """
+        return datetime.now() >= self.expiry_time
+
+    def to_dict(self) -> Dict[str, str]:
+        """
+        Convert token to dictionary format.
+
+        Returns:
+            Dictionary with access_token and token_type
+        """
+        return {
+            "access_token": self.access_token,
+            "token_type": self.token_type,
+        }
 
 
 class TokenFederationProvider(AuthProvider):
