@@ -11,7 +11,10 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from contextlib import contextmanager
 
-from urllib3 import BaseHTTPResponse
+try:
+    from urllib3 import BaseHTTPResponse
+except ImportError:
+    from urllib3 import HTTPResponse as BaseHTTPResponse
 from pybreaker import CircuitBreakerError
 
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
