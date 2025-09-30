@@ -16,7 +16,12 @@ from pybreaker import CircuitBreakerError
 
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
-from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerConfig, is_circuit_breaker_error
+from databricks.sql.telemetry.circuit_breaker_manager import (
+    CircuitBreakerConfig, 
+    CircuitBreakerManager, 
+    is_circuit_breaker_error,
+    CIRCUIT_BREAKER_STATE_OPEN
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +138,6 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
         self._config = config
         
         # Initialize circuit breaker manager with config
-        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
         CircuitBreakerManager.initialize(config)
         
         # Get circuit breaker for this host
@@ -200,14 +204,14 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
     
     def get_circuit_breaker_state(self) -> str:
         """Get the current state of the circuit breaker."""
-        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
         return CircuitBreakerManager.get_circuit_breaker_state(self._host)
     
     def is_circuit_breaker_open(self) -> bool:
         """Check if the circuit breaker is currently open."""
-        return self.get_circuit_breaker_state() == "open"
+        return self.get_circuit_breaker_state() == CIRCUIT_BREAKER_STATE_OPEN
     
     def reset_circuit_breaker(self) -> None:
         """Reset the circuit breaker to closed state."""
-        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
         CircuitBreakerManager.reset_circuit_breaker(self._host)
+
+
