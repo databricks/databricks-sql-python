@@ -78,7 +78,7 @@ class TestCircuitBreakerManager:
         
         # Should return a no-op circuit breaker
         assert breaker.name == "noop-circuit-breaker"
-        assert breaker.failure_threshold == 1.0
+        assert breaker.fail_max == 1000000  # Very high threshold for no-op
     
     def test_get_circuit_breaker_enabled(self):
         """Test getting circuit breaker when enabled."""
