@@ -12,7 +12,7 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass
 
 import pybreaker
-from pybreaker import CircuitBreaker, CircuitBreakerError
+from pybreaker import CircuitBreaker, CircuitBreakerError, CircuitBreakerListener
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,48 @@ LOG_CIRCUIT_BREAKER_STATE_CHANGED = "Circuit breaker state changed from %s to %s
 LOG_CIRCUIT_BREAKER_OPENED = "Circuit breaker opened for %s - telemetry requests will be blocked"
 LOG_CIRCUIT_BREAKER_CLOSED = "Circuit breaker closed for %s - telemetry requests will be allowed"
 LOG_CIRCUIT_BREAKER_HALF_OPEN = "Circuit breaker half-open for %s - testing telemetry requests"
+
+
+class CircuitBreakerStateListener(CircuitBreakerListener):
+    """Listener for circuit breaker state changes."""
+    
+    def before_call(self, cb: CircuitBreaker, func, *args, **kwargs) -> None:
+        """Called before the circuit breaker calls a function."""
+        pass
+    
+    def failure(self, cb: CircuitBreaker, exc: BaseException) -> None:
+        """Called when a function called by the circuit breaker fails."""
+        pass
+    
+    def success(self, cb: CircuitBreaker) -> None:
+        """Called when a function called by the circuit breaker succeeds."""
+        pass
+    
+    def state_change(self, cb: CircuitBreaker, old_state, new_state) -> None:
+        """Called when the circuit breaker state changes."""
+        old_state_name = old_state.name if old_state else "None"
+        new_state_name = new_state.name if new_state else "None"
+        
+        logger.info(
+            LOG_CIRCUIT_BREAKER_STATE_CHANGED,
+            old_state_name, new_state_name, cb.name
+        )
+        
+        if new_state_name == CIRCUIT_BREAKER_STATE_OPEN:
+            logger.warning(
+                LOG_CIRCUIT_BREAKER_OPENED,
+                cb.name
+            )
+        elif new_state_name == CIRCUIT_BREAKER_STATE_CLOSED:
+            logger.info(
+                LOG_CIRCUIT_BREAKER_CLOSED,
+                cb.name
+            )
+        elif new_state_name == CIRCUIT_BREAKER_STATE_HALF_OPEN:
+            logger.info(
+                LOG_CIRCUIT_BREAKER_HALF_OPEN,
+                cb.name
+            )
 
 
 @dataclass(frozen=True)
@@ -126,16 +168,13 @@ class CircuitBreakerManager:
         
         # Create circuit breaker with configuration
         breaker = CircuitBreaker(
-            fail_max=config.minimum_calls,
+            fail_max=config.minimum_calls,  # Number of failures before circuit opens
             reset_timeout=config.reset_timeout,
             name=f"{config.name}-{host}"
         )
         
-        # Set failure threshold
-        breaker.failure_threshold = config.failure_threshold
-        
         # Add state change listeners for logging
-        breaker.add_listener(cls._on_state_change)
+        breaker.add_listener(CircuitBreakerStateListener())
         
         return breaker
     
@@ -156,36 +195,6 @@ class CircuitBreakerManager:
         breaker.failure_threshold = 1.0  # 100% failure threshold
         return breaker
     
-    @classmethod
-    def _on_state_change(cls, old_state: str, new_state: str, breaker: CircuitBreaker) -> None:
-        """
-        Handle circuit breaker state changes.
-        
-        Args:
-            old_state: Previous state of the circuit breaker
-            new_state: New state of the circuit breaker
-            breaker: The circuit breaker instance
-        """
-        logger.info(
-            LOG_CIRCUIT_BREAKER_STATE_CHANGED,
-            old_state, new_state, breaker.name
-        )
-        
-        if new_state == CIRCUIT_BREAKER_STATE_OPEN:
-            logger.warning(
-                LOG_CIRCUIT_BREAKER_OPENED,
-                breaker.name
-            )
-        elif new_state == CIRCUIT_BREAKER_STATE_CLOSED:
-            logger.info(
-                LOG_CIRCUIT_BREAKER_CLOSED,
-                breaker.name
-            )
-        elif new_state == CIRCUIT_BREAKER_STATE_HALF_OPEN:
-            logger.info(
-                LOG_CIRCUIT_BREAKER_HALF_OPEN,
-                breaker.name
-            )
     
     @classmethod
     def get_circuit_breaker_state(cls, host: str) -> str:

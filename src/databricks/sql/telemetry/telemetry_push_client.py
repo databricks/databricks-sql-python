@@ -158,8 +158,9 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
         """Make an HTTP request with circuit breaker protection."""
         try:
             # Use circuit breaker to protect the request
-            with self._circuit_breaker:
-                return self._delegate.request(method, url, headers, **kwargs)
+            return self._circuit_breaker.call(
+                lambda: self._delegate.request(method, url, headers, **kwargs)
+            )
         except CircuitBreakerError as e:
             logger.warning(
                 "Circuit breaker is open for host %s, blocking telemetry request to %s: %s",
@@ -185,9 +186,12 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
         """Context manager for making HTTP requests with circuit breaker protection."""
         try:
             # Use circuit breaker to protect the request
-            with self._circuit_breaker:
+            def _make_request():
                 with self._delegate.request_context(method, url, headers, **kwargs) as response:
-                    yield response
+                    return response
+            
+            response = self._circuit_breaker.call(_make_request)
+            yield response
         except CircuitBreakerError as e:
             logger.warning(
                 "Circuit breaker is open for host %s, blocking telemetry request to %s: %s",
