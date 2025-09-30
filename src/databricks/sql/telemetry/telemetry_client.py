@@ -44,9 +44,12 @@ from databricks.sql.common.http import HttpMethod
 from databricks.sql.telemetry.telemetry_push_client import (
     ITelemetryPushClient,
     TelemetryPushClient,
-    CircuitBreakerTelemetryPushClient
+    CircuitBreakerTelemetryPushClient,
 )
-from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerConfig, is_circuit_breaker_error
+from databricks.sql.telemetry.circuit_breaker_manager import (
+    CircuitBreakerConfig,
+    is_circuit_breaker_error,
+)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -194,28 +197,32 @@ class TelemetryClient(BaseTelemetryClient):
 
         # Create own HTTP client from client context
         self._http_client = UnifiedHttpClient(client_context)
-        
+
         # Create telemetry push client based on circuit breaker enabled flag
         if client_context.telemetry_circuit_breaker_enabled:
             # Create circuit breaker configuration with hardcoded values
             # These values are optimized for telemetry batching and network resilience
             circuit_breaker_config = CircuitBreakerConfig(
-                failure_threshold=0.5,        # Opens if 50%+ of calls fail
-                minimum_calls=20,             # Minimum sample size before circuit can open
-                timeout=30,                   # Time window for counting failures (seconds)
-                reset_timeout=30,             # Cool-down period before retrying (seconds)
-                name=f"telemetry-circuit-breaker-{session_id_hex}"
+                failure_threshold=0.5,  # Opens if 50%+ of calls fail
+                minimum_calls=20,  # Minimum sample size before circuit can open
+                timeout=30,  # Time window for counting failures (seconds)
+                reset_timeout=30,  # Cool-down period before retrying (seconds)
+                name=f"telemetry-circuit-breaker-{session_id_hex}",
             )
-            
+
             # Create circuit breaker telemetry push client
-            self._telemetry_push_client: ITelemetryPushClient = CircuitBreakerTelemetryPushClient(
-                TelemetryPushClient(self._http_client),
-                host_url,
-                circuit_breaker_config
+            self._telemetry_push_client: ITelemetryPushClient = (
+                CircuitBreakerTelemetryPushClient(
+                    TelemetryPushClient(self._http_client),
+                    host_url,
+                    circuit_breaker_config,
+                )
             )
         else:
             # Circuit breaker disabled - use direct telemetry push client
-            self._telemetry_push_client: ITelemetryPushClient = TelemetryPushClient(self._http_client)
+            self._telemetry_push_client: ITelemetryPushClient = TelemetryPushClient(
+                self._http_client
+            )
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -290,7 +297,8 @@ class TelemetryClient(BaseTelemetryClient):
             if is_circuit_breaker_error(e):
                 logger.warning(
                     "Telemetry request blocked by circuit breaker for connection %s: %s",
-                    self._session_id_hex, e
+                    self._session_id_hex,
+                    e,
                 )
             else:
                 logger.error("Failed to send telemetry: %s", e)
