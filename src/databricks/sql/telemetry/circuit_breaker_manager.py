@@ -16,28 +16,53 @@ from pybreaker import CircuitBreaker, CircuitBreakerError
 
 logger = logging.getLogger(__name__)
 
+# Circuit Breaker Configuration Constants
+DEFAULT_FAILURE_THRESHOLD = 0.5
+DEFAULT_MINIMUM_CALLS = 20
+DEFAULT_TIMEOUT = 30
+DEFAULT_RESET_TIMEOUT = 30
+DEFAULT_EXPECTED_EXCEPTION = (Exception,)
+DEFAULT_NAME = "telemetry-circuit-breaker"
 
-@dataclass
+# Circuit Breaker State Constants
+CIRCUIT_BREAKER_STATE_OPEN = "open"
+CIRCUIT_BREAKER_STATE_CLOSED = "closed"
+CIRCUIT_BREAKER_STATE_HALF_OPEN = "half-open"
+CIRCUIT_BREAKER_STATE_DISABLED = "disabled"
+CIRCUIT_BREAKER_STATE_NOT_INITIALIZED = "not_initialized"
+
+# Logging Message Constants
+LOG_CIRCUIT_BREAKER_STATE_CHANGED = "Circuit breaker state changed from %s to %s for %s"
+LOG_CIRCUIT_BREAKER_OPENED = "Circuit breaker opened for %s - telemetry requests will be blocked"
+LOG_CIRCUIT_BREAKER_CLOSED = "Circuit breaker closed for %s - telemetry requests will be allowed"
+LOG_CIRCUIT_BREAKER_HALF_OPEN = "Circuit breaker half-open for %s - testing telemetry requests"
+
+
+@dataclass(frozen=True)
 class CircuitBreakerConfig:
-    """Configuration for circuit breaker behavior."""
+    """Configuration for circuit breaker behavior.
+    
+    This class is immutable to prevent modification of circuit breaker settings.
+    All configuration values are set to constants defined at the module level.
+    """
     
     # Failure threshold percentage (0.0 to 1.0)
-    failure_threshold: float = 0.5
+    failure_threshold: float = DEFAULT_FAILURE_THRESHOLD
     
     # Minimum number of calls before circuit can open
-    minimum_calls: int = 20
+    minimum_calls: int = DEFAULT_MINIMUM_CALLS
     
     # Time window for counting failures (in seconds)
-    timeout: int = 30
+    timeout: int = DEFAULT_TIMEOUT
     
     # Time to wait before trying to close circuit (in seconds)
-    reset_timeout: int = 30
+    reset_timeout: int = DEFAULT_RESET_TIMEOUT
     
     # Expected exception types that should trigger circuit breaker
-    expected_exception: tuple = (Exception,)
+    expected_exception: tuple = DEFAULT_EXPECTED_EXCEPTION
     
     # Name for the circuit breaker (for logging)
-    name: str = "telemetry-circuit-breaker"
+    name: str = DEFAULT_NAME
 
 
 class CircuitBreakerManager:
@@ -142,23 +167,23 @@ class CircuitBreakerManager:
             breaker: The circuit breaker instance
         """
         logger.info(
-            "Circuit breaker state changed from %s to %s for %s",
+            LOG_CIRCUIT_BREAKER_STATE_CHANGED,
             old_state, new_state, breaker.name
         )
         
-        if new_state == "open":
+        if new_state == CIRCUIT_BREAKER_STATE_OPEN:
             logger.warning(
-                "Circuit breaker opened for %s - telemetry requests will be blocked",
+                LOG_CIRCUIT_BREAKER_OPENED,
                 breaker.name
             )
-        elif new_state == "closed":
+        elif new_state == CIRCUIT_BREAKER_STATE_CLOSED:
             logger.info(
-                "Circuit breaker closed for %s - telemetry requests will be allowed",
+                LOG_CIRCUIT_BREAKER_CLOSED,
                 breaker.name
             )
-        elif new_state == "half-open":
+        elif new_state == CIRCUIT_BREAKER_STATE_HALF_OPEN:
             logger.info(
-                "Circuit breaker half-open for %s - testing telemetry requests",
+                LOG_CIRCUIT_BREAKER_HALF_OPEN,
                 breaker.name
             )
     
@@ -174,11 +199,11 @@ class CircuitBreakerManager:
             Current state of the circuit breaker
         """
         if not cls._config:
-            return "disabled"
+            return CIRCUIT_BREAKER_STATE_DISABLED
         
         with cls._lock:
             if host not in cls._instances:
-                return "not_initialized"
+                return CIRCUIT_BREAKER_STATE_NOT_INITIALIZED
             
             breaker = cls._instances[host]
             return breaker.current_state

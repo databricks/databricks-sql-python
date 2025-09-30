@@ -50,7 +50,6 @@ class ClientContext:
         pool_connections: Optional[int] = None,
         pool_maxsize: Optional[int] = None,
         user_agent: Optional[str] = None,
-        # Telemetry circuit breaker configuration
         telemetry_circuit_breaker_enabled: Optional[bool] = None,
     ):
         self.hostname = hostname
@@ -83,9 +82,7 @@ class ClientContext:
         self.pool_connections = pool_connections or 10
         self.pool_maxsize = pool_maxsize or 20
         self.user_agent = user_agent
-        
-        # Telemetry circuit breaker configuration
-        self.telemetry_circuit_breaker_enabled = telemetry_circuit_breaker_enabled if telemetry_circuit_breaker_enabled is not None else True
+        self.telemetry_circuit_breaker_enabled = telemetry_circuit_breaker_enabled if telemetry_circuit_breaker_enabled is not None else False
 
 
 def get_effective_azure_login_app_id(hostname) -> str:

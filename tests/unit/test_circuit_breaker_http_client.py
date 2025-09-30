@@ -4,7 +4,6 @@ Unit tests for telemetry push client functionality.
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-import urllib.parse
 
 from databricks.sql.telemetry.telemetry_push_client import (
     ITelemetryPushClient,

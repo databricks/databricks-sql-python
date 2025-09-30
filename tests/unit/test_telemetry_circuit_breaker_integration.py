@@ -279,3 +279,5 @@ class TestTelemetryCircuitBreakerThreadSafety:
         assert len(results) + len(errors) == 5
         # Some should be CircuitBreakerError after circuit opens
         assert "CircuitBreakerError" in errors or len(errors) == 0
+
+
