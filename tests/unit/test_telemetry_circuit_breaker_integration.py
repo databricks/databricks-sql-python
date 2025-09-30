@@ -27,6 +27,21 @@ class TestTelemetryCircuitBreakerIntegration:
         self.client_context.telemetry_circuit_breaker_timeout = 30
         self.client_context.telemetry_circuit_breaker_reset_timeout = 1  # 1 second for testing
         
+        # Add required attributes for UnifiedHttpClient
+        self.client_context.ssl_options = None
+        self.client_context.socket_timeout = None
+        self.client_context.retry_stop_after_attempts_count = 5
+        self.client_context.retry_delay_min = 1.0
+        self.client_context.retry_delay_max = 10.0
+        self.client_context.retry_stop_after_attempts_duration = 300.0
+        self.client_context.retry_delay_default = 5.0
+        self.client_context.retry_dangerous_codes = []
+        self.client_context.proxy_auth_method = None
+        self.client_context.pool_connections = 10
+        self.client_context.pool_maxsize = 20
+        self.client_context.user_agent = None
+        self.client_context.hostname = "test-host.example.com"
+        
         # Create mock auth provider
         self.auth_provider = Mock(spec=AccessTokenAuthProvider)
         
@@ -53,8 +68,9 @@ class TestTelemetryCircuitBreakerIntegration:
     def test_telemetry_client_initialization(self):
         """Test that telemetry client initializes with circuit breaker."""
         assert self.telemetry_client._circuit_breaker_config is not None
-        assert self.telemetry_client._circuit_breaker_http_client is not None
-        assert self.telemetry_client._circuit_breaker_config.enabled is True
+        assert self.telemetry_client._telemetry_push_client is not None
+        # If config exists, circuit breaker is enabled
+        assert self.telemetry_client._circuit_breaker_config is not None
     
     def test_telemetry_client_circuit_breaker_disabled(self):
         """Test telemetry client with circuit breaker disabled."""
@@ -70,7 +86,7 @@ class TestTelemetryCircuitBreakerIntegration:
             client_context=self.client_context
         )
         
-        assert telemetry_client._circuit_breaker_config.enabled is False
+        assert telemetry_client._circuit_breaker_config is None
     
     def test_get_circuit_breaker_state(self):
         """Test getting circuit breaker state from telemetry client."""
@@ -94,7 +110,7 @@ class TestTelemetryCircuitBreakerIntegration:
         mock_response.status = 200
         mock_response.data = b'{"numProtoSuccess": 1, "errors": []}'
         
-        with patch.object(self.telemetry_client._circuit_breaker_http_client, 'request', return_value=mock_response):
+        with patch.object(self.telemetry_client._telemetry_push_client, 'request', return_value=mock_response):
             # Mock the callback to avoid actual processing
             with patch.object(self.telemetry_client, '_telemetry_request_callback'):
                 self.telemetry_client._send_with_unified_client(
@@ -106,7 +122,7 @@ class TestTelemetryCircuitBreakerIntegration:
     def test_telemetry_request_with_circuit_breaker_error(self):
         """Test telemetry request when circuit breaker is open."""
         # Mock circuit breaker error
-        with patch.object(self.telemetry_client._circuit_breaker_http_client, 'request', side_effect=CircuitBreakerError("Circuit is open")):
+        with patch.object(self.telemetry_client._telemetry_push_client, 'request', side_effect=CircuitBreakerError("Circuit is open")):
             with pytest.raises(CircuitBreakerError):
                 self.telemetry_client._send_with_unified_client(
                     "https://test.com/telemetry",
@@ -117,7 +133,7 @@ class TestTelemetryCircuitBreakerIntegration:
     def test_telemetry_request_with_other_error(self):
         """Test telemetry request with other network error."""
         # Mock network error
-        with patch.object(self.telemetry_client._circuit_breaker_http_client, 'request', side_effect=ValueError("Network error")):
+        with patch.object(self.telemetry_client._telemetry_push_client, 'request', side_effect=ValueError("Network error")):
             with pytest.raises(ValueError):
                 self.telemetry_client._send_with_unified_client(
                     "https://test.com/telemetry",
@@ -128,7 +144,7 @@ class TestTelemetryCircuitBreakerIntegration:
     def test_circuit_breaker_opens_after_telemetry_failures(self):
         """Test that circuit breaker opens after repeated telemetry failures."""
         # Mock failures
-        with patch.object(self.telemetry_client._circuit_breaker_http_client, 'request', side_effect=Exception("Network error")):
+        with patch.object(self.telemetry_client._telemetry_push_client, 'request', side_effect=Exception("Network error")):
             # Simulate multiple failures
             for _ in range(3):
                 try:
@@ -200,7 +216,7 @@ class TestTelemetryCircuitBreakerIntegration:
         """Test that circuit breaker events are properly logged."""
         with patch('databricks.sql.telemetry.telemetry_client.logger') as mock_logger:
             # Mock circuit breaker error
-            with patch.object(self.telemetry_client._circuit_breaker_http_client, 'request', side_effect=CircuitBreakerError("Circuit is open")):
+            with patch.object(self.telemetry_client._telemetry_push_client, 'request', side_effect=CircuitBreakerError("Circuit is open")):
                 try:
                     self.telemetry_client._send_with_unified_client(
                         "https://test.com/telemetry",
@@ -212,9 +228,9 @@ class TestTelemetryCircuitBreakerIntegration:
             
             # Check that warning was logged
             mock_logger.warning.assert_called()
-            warning_call = mock_logger.warning.call_args[0][0]
-            assert "Telemetry request blocked by circuit breaker" in warning_call
-            assert "test-session" in warning_call
+            warning_call = mock_logger.warning.call_args[0]
+            assert "Telemetry request blocked by circuit breaker" in warning_call[0]
+            assert "test-session" in warning_call[1]  # session_id_hex is the second argument
 
 
 class TestTelemetryCircuitBreakerThreadSafety:
@@ -229,6 +245,21 @@ class TestTelemetryCircuitBreakerThreadSafety:
         self.client_context.telemetry_circuit_breaker_timeout = 30
         self.client_context.telemetry_circuit_breaker_reset_timeout = 1
         
+        # Add required attributes for UnifiedHttpClient
+        self.client_context.ssl_options = None
+        self.client_context.socket_timeout = None
+        self.client_context.retry_stop_after_attempts_count = 5
+        self.client_context.retry_delay_min = 1.0
+        self.client_context.retry_delay_max = 10.0
+        self.client_context.retry_stop_after_attempts_duration = 300.0
+        self.client_context.retry_delay_default = 5.0
+        self.client_context.retry_dangerous_codes = []
+        self.client_context.proxy_auth_method = None
+        self.client_context.pool_connections = 10
+        self.client_context.pool_maxsize = 20
+        self.client_context.user_agent = None
+        self.client_context.hostname = "test-host.example.com"
+        
         self.auth_provider = Mock(spec=AccessTokenAuthProvider)
         self.executor = Mock()
     
@@ -239,6 +270,10 @@ class TestTelemetryCircuitBreakerThreadSafety:
     
     def test_concurrent_telemetry_requests(self):
         """Test concurrent telemetry requests with circuit breaker."""
+        # Clear any existing circuit breaker state
+        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
+        CircuitBreakerManager.clear_all_circuit_breakers()
+        
         telemetry_client = TelemetryClient(
             telemetry_enabled=True,
             session_id_hex="concurrent-test-session",
@@ -254,7 +289,8 @@ class TestTelemetryCircuitBreakerThreadSafety:
         
         def make_request():
             try:
-                with patch.object(telemetry_client._circuit_breaker_http_client, 'request', side_effect=Exception("Network error")):
+                # Mock the underlying HTTP client to fail, not the telemetry push client
+                with patch.object(telemetry_client._http_client, 'request', side_effect=Exception("Network error")):
                     telemetry_client._send_with_unified_client(
                         "https://test.com/telemetry",
                         '{"test": "data"}',
