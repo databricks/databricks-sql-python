@@ -112,7 +112,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.retry_policy and self.retry_policy.start_retry_timer()
 
     def open(self):
-
         # self.__pool replaces the self.__http used by the original THttpClient
         _pool_kwargs = {"maxsize": self.max_connections}
 
@@ -147,10 +146,13 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         else:
             self.__pool = pool_class(self.host, self.port, **_pool_kwargs)
 
-    def close(self):
+    def release_connection(self):
         self.__resp and self.__resp.drain_conn()
         self.__resp and self.__resp.release_conn()
         self.__resp = None
+
+    def close(self):
+        self.__pool.close()
 
     def read(self, sz):
         return self.__resp.read(sz)
@@ -159,7 +161,6 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         return self.__resp is not None
 
     def flush(self):
-
         # Pull data out of buffer that will be sent in this request
         data = self.__wbuf.getvalue()
         self.__wbuf = BytesIO()
