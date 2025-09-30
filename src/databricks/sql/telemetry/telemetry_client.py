@@ -41,6 +41,15 @@ from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
+from databricks.sql.telemetry.telemetry_push_client import (
+    ITelemetryPushClient,
+    TelemetryPushClient,
+    CircuitBreakerTelemetryPushClient,
+)
+from databricks.sql.telemetry.circuit_breaker_manager import (
+    CircuitBreakerConfig,
+    is_circuit_breaker_error,
+)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -189,6 +198,40 @@ class TelemetryClient(BaseTelemetryClient):
         # Create own HTTP client from client context
         self._http_client = UnifiedHttpClient(client_context)
 
+        # Create telemetry push client based on circuit breaker enabled flag
+        if client_context.telemetry_circuit_breaker_enabled:
+            # Create circuit breaker configuration from client context or use defaults
+            self._circuit_breaker_config = CircuitBreakerConfig(
+                failure_threshold=getattr(
+                    client_context, "telemetry_circuit_breaker_failure_threshold", 0.5
+                ),
+                minimum_calls=getattr(
+                    client_context, "telemetry_circuit_breaker_minimum_calls", 20
+                ),
+                timeout=getattr(
+                    client_context, "telemetry_circuit_breaker_timeout", 30
+                ),
+                reset_timeout=getattr(
+                    client_context, "telemetry_circuit_breaker_reset_timeout", 30
+                ),
+                name=f"telemetry-circuit-breaker-{session_id_hex}",
+            )
+
+            # Create circuit breaker telemetry push client
+            self._telemetry_push_client: ITelemetryPushClient = (
+                CircuitBreakerTelemetryPushClient(
+                    TelemetryPushClient(self._http_client),
+                    host_url,
+                    self._circuit_breaker_config,
+                )
+            )
+        else:
+            # Circuit breaker disabled - use direct telemetry push client
+            self._circuit_breaker_config = None
+            self._telemetry_push_client: ITelemetryPushClient = TelemetryPushClient(
+                self._http_client
+            )
+
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
         logger.debug("Exporting event for connection %s", self._session_id_hex)
@@ -252,14 +295,21 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug("Failed to submit telemetry request: %s", e)
 
     def _send_with_unified_client(self, url, data, headers, timeout=900):
-        """Helper method to send telemetry using the unified HTTP client."""
+        """Helper method to send telemetry using the telemetry push client."""
         try:
-            response = self._http_client.request(
+            response = self._telemetry_push_client.request(
                 HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
             )
             return response
         except Exception as e:
-            logger.error("Failed to send telemetry with unified client: %s", e)
+            if is_circuit_breaker_error(e):
+                logger.warning(
+                    "Telemetry request blocked by circuit breaker for connection %s: %s",
+                    self._session_id_hex,
+                    e,
+                )
+            else:
+                logger.error("Failed to send telemetry: %s", e)
             raise
 
     def _telemetry_request_callback(self, future, sent_count: int):
@@ -359,6 +409,18 @@ class TelemetryClient(BaseTelemetryClient):
         """Flush remaining events before closing"""
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._flush()
+
+    def get_circuit_breaker_state(self) -> str:
+        """Get the current state of the circuit breaker."""
+        return self._telemetry_push_client.get_circuit_breaker_state()
+
+    def is_circuit_breaker_open(self) -> bool:
+        """Check if the circuit breaker is currently open."""
+        return self._telemetry_push_client.is_circuit_breaker_open()
+
+    def reset_circuit_breaker(self) -> None:
+        """Reset the circuit breaker."""
+        self._telemetry_push_client.reset_circuit_breaker()
 
 
 class TelemetryClientFactory:
