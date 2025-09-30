@@ -164,7 +164,9 @@ class Auth(unittest.TestCase):
         kwargs = {"credentials_provider": MyProvider()}
         mock_http_client = MagicMock()
         auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client, **kwargs)
-        self.assertTrue(type(auth_provider).__name__, "ExternalAuthProvider")
+
+        self.assertEqual(type(auth_provider).__name__, "TokenFederationProvider")
+        self.assertEqual(type(auth_provider.external_provider).__name__, "ExternalAuthProvider")
 
         headers = {}
         auth_provider.add_headers(headers)
@@ -199,8 +201,11 @@ class Auth(unittest.TestCase):
         hostname = "foo.cloud.databricks.com"
         mock_http_client = MagicMock()
         auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client)
-        self.assertTrue(type(auth_provider).__name__, "DatabricksOAuthProvider")
-        self.assertTrue(auth_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
+
+        self.assertEqual(type(auth_provider).__name__, "TokenFederationProvider")
+        self.assertEqual(type(auth_provider.external_provider).__name__, "DatabricksOAuthProvider")
+
+        self.assertEqual(auth_provider.external_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
 
 
 class TestClientCredentialsTokenSource:
