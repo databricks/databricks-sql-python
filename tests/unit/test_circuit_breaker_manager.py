@@ -299,3 +299,95 @@ class TestCircuitBreakerIntegration:
         
         # Circuit breaker should be closed again (or at least not open)
         assert breaker.current_state in ["closed", "half-open"]
+
+    def test_circuit_breaker_state_listener_half_open(self):
+        """Test circuit breaker state listener logs half-open state."""
+        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerStateListener, CIRCUIT_BREAKER_STATE_HALF_OPEN
+        from unittest.mock import patch
+        
+        listener = CircuitBreakerStateListener()
+        
+        # Mock circuit breaker with half-open state
+        mock_cb = Mock()
+        mock_cb.name = "test-breaker"
+        
+        # Mock old and new states
+        mock_old_state = Mock()
+        mock_old_state.name = "open"
+        
+        mock_new_state = Mock()
+        mock_new_state.name = CIRCUIT_BREAKER_STATE_HALF_OPEN
+        
+        with patch('databricks.sql.telemetry.circuit_breaker_manager.logger') as mock_logger:
+            listener.state_change(mock_cb, mock_old_state, mock_new_state)
+            
+            # Check that half-open state was logged
+            mock_logger.info.assert_called()
+            calls = mock_logger.info.call_args_list
+            half_open_logged = any("half-open" in str(call) for call in calls)
+            assert half_open_logged
+
+    def test_circuit_breaker_state_listener_all_states(self):
+        """Test circuit breaker state listener logs all possible state transitions."""
+        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerStateListener, CIRCUIT_BREAKER_STATE_HALF_OPEN, CIRCUIT_BREAKER_STATE_OPEN, CIRCUIT_BREAKER_STATE_CLOSED
+        from unittest.mock import patch
+        
+        listener = CircuitBreakerStateListener()
+        mock_cb = Mock()
+        mock_cb.name = "test-breaker"
+        
+        # Test all state transitions with exact constants
+        state_transitions = [
+            (CIRCUIT_BREAKER_STATE_CLOSED, CIRCUIT_BREAKER_STATE_OPEN),
+            (CIRCUIT_BREAKER_STATE_OPEN, CIRCUIT_BREAKER_STATE_HALF_OPEN),
+            (CIRCUIT_BREAKER_STATE_HALF_OPEN, CIRCUIT_BREAKER_STATE_CLOSED),
+            (CIRCUIT_BREAKER_STATE_CLOSED, CIRCUIT_BREAKER_STATE_HALF_OPEN),
+        ]
+        
+        with patch('databricks.sql.telemetry.circuit_breaker_manager.logger') as mock_logger:
+            for old_state_name, new_state_name in state_transitions:
+                mock_old_state = Mock()
+                mock_old_state.name = old_state_name
+                
+                mock_new_state = Mock()
+                mock_new_state.name = new_state_name
+                
+                listener.state_change(mock_cb, mock_old_state, mock_new_state)
+            
+            # Verify that logging was called for each transition
+            assert mock_logger.info.call_count >= len(state_transitions)
+
+    def test_create_circuit_breaker_not_initialized(self):
+        """Test that _create_circuit_breaker raises RuntimeError when not initialized."""
+        # Clear any existing config
+        CircuitBreakerManager._config = None
+        
+        with pytest.raises(RuntimeError, match="CircuitBreakerManager not initialized"):
+            CircuitBreakerManager._create_circuit_breaker("test-host")
+
+    def test_get_circuit_breaker_state_not_initialized(self):
+        """Test get_circuit_breaker_state when host is not in instances."""
+        config = CircuitBreakerConfig()
+        CircuitBreakerManager.initialize(config)
+        
+        # Test with a host that doesn't exist in instances
+        state = CircuitBreakerManager.get_circuit_breaker_state("nonexistent-host")
+        assert state == "not_initialized"
+
+    def test_reset_circuit_breaker_nonexistent_host(self):
+        """Test reset_circuit_breaker when host doesn't exist in instances."""
+        config = CircuitBreakerConfig()
+        CircuitBreakerManager.initialize(config)
+        
+        # Reset a host that doesn't exist - should not raise an error
+        CircuitBreakerManager.reset_circuit_breaker("nonexistent-host")
+        # No assertion needed - just ensuring no exception is raised
+
+    def test_clear_circuit_breaker_nonexistent_host(self):
+        """Test clear_circuit_breaker when host doesn't exist in instances."""
+        config = CircuitBreakerConfig()
+        CircuitBreakerManager.initialize(config)
+        
+        # Clear a host that doesn't exist - should not raise an error
+        CircuitBreakerManager.clear_circuit_breaker("nonexistent-host")
+        # No assertion needed - just ensuring no exception is raised
