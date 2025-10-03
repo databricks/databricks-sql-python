@@ -236,11 +236,18 @@ jobs:
 
   common-tests:
     runs-on: ubuntu-latest
+    environment: azure-prod
     needs: discover-tests
     if: ${{ needs.discover-tests.outputs.common-test-files != '[]' }}
     strategy:
       matrix:
         test_file: ${{ fromJson(needs.discover-tests.outputs.common-test-files) }}
+    env:
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_CATALOG: peco
+      DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -287,7 +294,7 @@ jobs:
           rm -f .coverage*
           
           echo "Running common tests with coverage..."
-          poetry run pytest "${{ matrix.test_file }}" --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term -v
+          poetry run pytest "${{ matrix.test_file }}" --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term -v || [ $? -eq 5 ]
           
           # Save coverage data with unique name
           if [ -f ".coverage" ]; then
