@@ -1,4 +1,4 @@
-name: Code Coverage (Dynamic E2E Tests - SEA & Thrift)
+name: Parallel Code Coverage 
 
 permissions:
   contents: read
@@ -92,7 +92,7 @@ jobs:
           poetry run pytest "${{ matrix.test_file }}" $TEST_FILTER \
             --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term \
             -v
-        continue-on-error: true
+        continue-on-error: false
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
