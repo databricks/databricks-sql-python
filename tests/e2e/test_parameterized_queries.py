@@ -4,6 +4,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Type, Union
 from unittest.mock import patch
+from uuid import uuid4
 
 import time
 import numpy as np
@@ -130,9 +131,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         Note that this fixture doesn't clean itself up. So the table will remain
         in the schema for use by subsequent test runs.
         """
+        
+        # Generate unique table name to avoid conflicts in parallel execution
+        table_name = f"pysql_e2e_inline_param_test_table_{str(uuid4()).replace('-', '_')}"
+        self.inline_table_name = table_name
 
-        query = """
-            CREATE TABLE IF NOT EXISTS pysql_e2e_inline_param_test_table (
+        query = f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
             null_col INT,
             int_col INT,
             bigint_col BIGINT,
@@ -179,9 +184,10 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         :paramstyle:
             This is a no-op but is included to make the test-code easier to read.
         """
-        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
-        DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
+        table_name = self.inline_table_name
+        INSERT_QUERY = f"INSERT INTO {table_name} (`{target_column}`) VALUES (%(p)s)"
+        SELECT_QUERY = f"SELECT {target_column} `col` FROM {table_name} LIMIT 1"
+        DELETE_QUERY = f"DELETE FROM {table_name}"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
             with conn.cursor() as cursor:

@@ -1,6 +1,7 @@
 import pytest
 from datetime import datetime
 import json
+from uuid import uuid4
 
 try:
     import pyarrow
@@ -19,14 +20,14 @@ class TestVariantTypes(PySQLPytestTestCase):
     def variant_table(self, connection_details):
         """A pytest fixture that creates a test table and cleans up after tests"""
         self.arguments = connection_details.copy()
-        table_name = "pysql_test_variant_types_table"
+        table_name = f"pysql_test_variant_types_table_{str(uuid4()).replace('-', '_')}"
 
         with self.cursor() as cursor:
             try:
                 # Create the table with variant columns
                 cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS pysql_test_variant_types_table (
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {table_name} (
                         id INTEGER,
                         variant_col VARIANT,
                         regular_string_col STRING
@@ -36,8 +37,8 @@ class TestVariantTypes(PySQLPytestTestCase):
 
                 # Insert test records with different variant values
                 cursor.execute(
-                    """
-                    INSERT INTO pysql_test_variant_types_table
+                    f"""
+                    INSERT INTO {table_name}
                     VALUES 
                     (1, PARSE_JSON('{"name": "John", "age": 30}'), 'regular string'),
                     (2, PARSE_JSON('[1, 2, 3, 4]'), 'another string')
