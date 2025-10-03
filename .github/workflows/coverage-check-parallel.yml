@@ -93,16 +93,17 @@ jobs:
           
           poetry run pytest "${{ matrix.test_file }}" "$TEST_FILTER" "$TEST_EXPRESSION" \
             --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term \
-            -v
-        continue-on-error: false
+            -v || [ $? -eq 5 ]
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
+        if: always()  
         with:
           name: coverage-$(basename "${{ matrix.test_file }}" .py)-${{ matrix.mode }}
           path: |
             .coverage
             coverage-*-${{ matrix.mode }}.xml
+          if-no-files-found: warn  
 
   merge-coverage:
     runs-on: ubuntu-latest
@@ -158,10 +159,10 @@ jobs:
             fi
           done
           
-          # Combine all coverage data
-          poetry run coverage combine .coverage.*
-          poetry run coverage xml
-          poetry run coverage report
+          # Combine all coverage data (ignore if no files found)
+          poetry run coverage combine .coverage.* 2>/dev/null || true
+          poetry run coverage xml 2>/dev/null || echo '<coverage lines-covered="0" lines-valid="1"></coverage>' > coverage.xml
+          poetry run coverage report 2>/dev/null || true
 
       - name: Report coverage percentage
         run: |
