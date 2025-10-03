@@ -40,7 +40,7 @@ class TestVariantTypes(PySQLPytestTestCase):
                     f"""
                     INSERT INTO {table_name}
                     VALUES 
-                    (1, PARSE_JSON('{"name": "John", "age": 30}'), 'regular string'),
+                    (1, PARSE_JSON('{{\"name\": \"John\", \"age\": 30}}'), 'regular string'),
                     (2, PARSE_JSON('[1, 2, 3, 4]'), 'another string')
                     """
                 )
