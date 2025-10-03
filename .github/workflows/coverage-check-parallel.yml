@@ -22,24 +22,40 @@ jobs:
         id: discover
         run: |
           # Find all test files in e2e directory
-          E2E_FILES=$(find tests/e2e -name "test_*.py" -type f | sort | jq -R -s -c 'split("\n")[:-1]')
-          echo "e2e-test-files=$E2E_FILES" >> $GITHUB_OUTPUT
-          echo "Discovered E2E test files: $E2E_FILES"
+          E2E_FILES=$(find tests/e2e -name "test_*.py" -type f | sort)
+          if [ -n "$E2E_FILES" ]; then
+            E2E_JSON=$(echo "$E2E_FILES" | jq -R -s -c 'split("\n")[:-1]')
+          else
+            E2E_JSON="[]"
+          fi
+          echo "e2e-test-files=$E2E_JSON" >> $GITHUB_OUTPUT
+          echo "Discovered E2E test files: $E2E_JSON"
           
           # Find all test files in unit directory
-          UNIT_FILES=$(find tests/unit -name "test_*.py" -type f | sort | jq -R -s -c 'split("\n")[:-1]')
-          echo "unit-test-files=$UNIT_FILES" >> $GITHUB_OUTPUT
-          echo "Discovered unit test files: $UNIT_FILES"
+          UNIT_FILES=$(find tests/unit -name "test_*.py" -type f | sort)
+          if [ -n "$UNIT_FILES" ]; then
+            UNIT_JSON=$(echo "$UNIT_FILES" | jq -R -s -c 'split("\n")[:-1]')
+          else
+            UNIT_JSON="[]"
+          fi
+          echo "unit-test-files=$UNIT_JSON" >> $GITHUB_OUTPUT
+          echo "Discovered unit test files: $UNIT_JSON"
           
           # Find all test files in common directory
-          COMMON_FILES=$(find tests/e2e/common -name "*.py" -type f | grep -v __init__ | sort | jq -R -s -c 'split("\n")[:-1]')
-          echo "common-test-files=$COMMON_FILES" >> $GITHUB_OUTPUT
-          echo "Discovered common test files: $COMMON_FILES"
+          COMMON_FILES=$(find tests/e2e/common -name "*.py" -type f | grep -v __init__ | sort)
+          if [ -n "$COMMON_FILES" ]; then
+            COMMON_JSON=$(echo "$COMMON_FILES" | jq -R -s -c 'split("\n")[:-1]')
+          else
+            COMMON_JSON="[]"
+          fi
+          echo "common-test-files=$COMMON_JSON" >> $GITHUB_OUTPUT
+          echo "Discovered common test files: $COMMON_JSON"
 
   e2e-tests:
     runs-on: ubuntu-latest
     environment: azure-prod
     needs: discover-tests
+    if: ${{ fromJson(needs.discover-tests.outputs.e2e-test-files)[0] != null }}
     strategy:
       matrix:
         test_file: ${{ fromJson(needs.discover-tests.outputs.e2e-test-files) }}
@@ -138,6 +154,7 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     needs: discover-tests
+    if: ${{ fromJson(needs.discover-tests.outputs.unit-test-files)[0] != null }}
     strategy:
       matrix:
         test_file: ${{ fromJson(needs.discover-tests.outputs.unit-test-files) }}
@@ -218,6 +235,7 @@ jobs:
   common-tests:
     runs-on: ubuntu-latest
     needs: discover-tests
+    if: ${{ fromJson(needs.discover-tests.outputs.common-test-files)[0] != null }}
     strategy:
       matrix:
         test_file: ${{ fromJson(needs.discover-tests.outputs.common-test-files) }}
@@ -298,6 +316,7 @@ jobs:
   merge-coverage:
     runs-on: ubuntu-latest
     needs: [e2e-tests, unit-tests, common-tests]
+    if: always()
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
