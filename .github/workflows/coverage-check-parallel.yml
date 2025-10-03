@@ -95,6 +95,11 @@ jobs:
           poetry run pytest "${{ matrix.test_file }}" "$TEST_FILTER" "$TEST_EXPRESSION" \
             --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term \
             -v || [ $? -eq 5 ]
+          
+          # Ensure .coverage file exists for merging (even if empty)
+          if [ ! -f ".coverage" ]; then
+            touch .coverage
+          fi
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -153,12 +158,23 @@ jobs:
           fi
           
           # Copy all coverage files with unique names
+          echo "📁 Checking for coverage files in artifacts..."
           for artifact_dir in coverage_files/*/; do
-            if [ -f "$artifact_dir/.coverage" ]; then
-              artifact_name=$(basename "$artifact_dir")
-              cp "$artifact_dir/.coverage" ".coverage.$artifact_name"
+            if [ -d "$artifact_dir" ]; then
+              echo "Artifact: $(basename "$artifact_dir")"
+              ls -la "$artifact_dir" || echo "  (empty or inaccessible)"
+              if [ -f "$artifact_dir/.coverage" ]; then
+                artifact_name=$(basename "$artifact_dir")
+                cp "$artifact_dir/.coverage" ".coverage.$artifact_name"
+                echo "  ✅ Copied .coverage file"
+              else
+                echo "  ⚠️ No .coverage file found"
+              fi
             fi
           done
+          
+          echo "Available .coverage files for merging:"
+          ls -la .coverage.* 2>/dev/null || echo "No .coverage.* files found"
           
           # Combine all coverage data (ignore if no files found)
           poetry run coverage combine .coverage.* 2>/dev/null || true
