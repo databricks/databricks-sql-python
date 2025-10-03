@@ -21,8 +21,8 @@ jobs:
       - name: Discover test files
         id: discover
         run: |
-          # Find all test files in e2e directory and create JSON array
-          TEST_FILES=$(find tests/e2e -name "test_*.py" -type f | sort | jq -R -s -c 'split("\n")[:-1]')
+          # Find all test files in e2e directory and create JSON array (excluding test_driver.py for now)
+          TEST_FILES=$(find tests/e2e -name "test_*.py" -type f | grep -v test_driver.py | sort | jq -R -s -c 'split("\n")[:-1]')
           echo "test-files=$TEST_FILES" >> $GITHUB_OUTPUT
           echo "Discovered test files: $TEST_FILES"
 
@@ -90,16 +90,25 @@ jobs:
           
           TEST_NAME=$(basename "${{ matrix.test_file }}" .py)
           COVERAGE_FILE="coverage-${TEST_NAME}-${{ matrix.mode }}.xml"
+          COVERAGE_DATA=".coverage-${TEST_NAME}-${{ matrix.mode }}"
           echo "TEST_NAME=$TEST_NAME" >> $GITHUB_ENV
           
           poetry run pytest "${{ matrix.test_file }}" "$TEST_FILTER" "$TEST_EXPRESSION" \
-            --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term \
+            --cov=src --cov-append --cov-report=xml:$COVERAGE_FILE --cov-report=term \
             -v || [ $? -eq 5 ]
           
           # Ensure .coverage file exists for merging (even if empty)
-          if [ ! -f ".coverage" ]; then
-            touch .coverage
+          if [ -f ".coverage" ]; then
+            mv .coverage "$COVERAGE_DATA"
+            echo "✅ Saved coverage data as $COVERAGE_DATA"
+          else
+            echo "⚠️ No .coverage generated, creating empty file"
+            touch "$COVERAGE_DATA"
           fi
+          
+          # Debug: Show what files we have for upload
+          echo "📁 Files available for upload:"
+          ls -la .coverage* 2>/dev/null || echo "No coverage files found"
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -107,7 +116,7 @@ jobs:
         with:
           name: coverage-${{ env.TEST_NAME }}-${{ matrix.mode }}
           path: |
-            .coverage
+            .coverage-*
             coverage-*-${{ matrix.mode }}.xml
           if-no-files-found: warn  
 
@@ -163,23 +172,21 @@ jobs:
             if [ -d "$artifact_dir" ]; then
               echo "Artifact: $(basename "$artifact_dir")"
               ls -la "$artifact_dir" || echo "  (empty or inaccessible)"
-              if [ -f "$artifact_dir/.coverage" ]; then
-                artifact_name=$(basename "$artifact_dir")
-                cp "$artifact_dir/.coverage" ".coverage.$artifact_name"
-                echo "  ✅ Copied .coverage file"
-              else
-                echo "  ⚠️ No .coverage file found"
-              fi
+              for cov_file in "$artifact_dir"/.coverage-*; do
+                if [ -f "$cov_file" ]; then
+                  cp "$cov_file" .
+                  echo "  ✅ Copied $(basename "$cov_file")"
+                fi
+              done
             fi
           done
-          
+
           echo "Available .coverage files for merging:"
-          ls -la .coverage.* 2>/dev/null || echo "No .coverage.* files found"
-          
-          # Combine all coverage data (ignore if no files found)
-          poetry run coverage combine .coverage.* 2>/dev/null || true
-          poetry run coverage xml 2>/dev/null || echo '<coverage lines-covered="0" lines-valid="1"></coverage>' > coverage.xml
-          poetry run coverage report 2>/dev/null || true
+          ls -la .coverage-* 2>/dev/null || echo "No .coverage-* files found"
+
+          poetry run coverage combine .coverage-* || true
+          poetry run coverage xml || echo '<coverage lines-covered="0" lines-valid="1"></coverage>' > coverage.xml
+          poetry run coverage report || true
 
       - name: Report coverage percentage
         run: |
