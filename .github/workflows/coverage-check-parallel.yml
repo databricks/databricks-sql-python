@@ -89,7 +89,7 @@ jobs:
           
           TEST_NAME=$(basename "${{ matrix.test_file }}" .py)
           COVERAGE_FILE="coverage-${TEST_NAME}-${{ matrix.mode }}.xml"
-          COVERAGE_DATA=".coverage-${TEST_NAME}-${{ matrix.mode }}"
+          COVERAGE_DATA="coverage-data-${TEST_NAME}-${{ matrix.mode }}"
           echo "TEST_NAME=$TEST_NAME" >> $GITHUB_ENV
           
           # Clean any previous coverage data to avoid conflicts
@@ -139,14 +139,14 @@ jobs:
           ls -la .coverage* coverage-* 2>/dev/null || echo "No coverage files found"
           
           echo "🔍 Specifically checking for files to upload:"
-          echo "  .coverage-* files:"
-          ls -la .coverage-* 2>/dev/null || echo "    None found"
+          echo "  coverage-data-* files:"
+          ls -la coverage-data-* 2>/dev/null || echo "    None found"
           echo "  coverage-*-${{ matrix.mode }}.xml files:"
           ls -la coverage-*-${{ matrix.mode }}.xml 2>/dev/null || echo "    None found"
           
           echo "🔍 CRITICAL DEBUG: Checking exact upload patterns:"
-          echo "  Pattern '.coverage-*' matches:"
-          find . -maxdepth 1 -name ".coverage-*" -type f 2>/dev/null || echo "    No matches"
+          echo "  Pattern 'coverage-data-*' matches:"
+          find . -maxdepth 1 -name "coverage-data-*" -type f 2>/dev/null || echo "    No matches"
           echo "  Pattern 'coverage-*-${{ matrix.mode }}.xml' matches:"
           find . -maxdepth 1 -name "coverage-*-${{ matrix.mode }}.xml" -type f 2>/dev/null || echo "    No matches"
           
@@ -160,7 +160,7 @@ jobs:
         with:
           name: coverage-${{ env.TEST_NAME }}-${{ matrix.mode }}
           path: |
-            .coverage-*
+            coverage-data-*
             coverage-*-${{ matrix.mode }}.xml
           if-no-files-found: warn  
 
@@ -222,8 +222,8 @@ jobs:
               echo "  Contents:"
               ls -la "$artifact_dir" || echo "  (empty or inaccessible)"
               
-              # Copy .coverage files
-              for cov_file in "$artifact_dir"/.coverage-*; do
+              # Copy coverage data files
+              for cov_file in "$artifact_dir"/coverage-data-*; do
                 if [ -f "$cov_file" ]; then
                   cp "$cov_file" .
                   COVERAGE_FILES_FOUND=$((COVERAGE_FILES_FOUND + 1))
@@ -241,18 +241,29 @@ jobs:
             fi
           done
 
-          echo "📊 SUMMARY: Found $COVERAGE_FILES_FOUND .coverage files"
-          echo "Available .coverage files for merging:"
-          ls -la .coverage-* 2>/dev/null || echo "❌ No .coverage-* files found"
+          echo "📊 SUMMARY: Found $COVERAGE_FILES_FOUND coverage data files"
+          echo "Available coverage data files for merging:"
+          ls -la coverage-data-* 2>/dev/null || echo "❌ No coverage-data-* files found"
           
           echo "Available XML files:"
           ls -la coverage-*.xml 2>/dev/null || echo "❌ No XML files found"
 
           if [ $COVERAGE_FILES_FOUND -gt 0 ]; then
             echo "🔄 Combining coverage data..."
-            poetry run coverage combine .coverage-* || {
+            
+            # Rename coverage-data-* files to .coverage format for combining
+            for f in coverage-data-*; do
+              if [ -f "$f" ]; then
+                # Extract the suffix and create .coverage.suffix format
+                suffix=$(echo "$f" | sed 's/coverage-data-/.coverage./')
+                mv "$f" "$suffix"
+                echo "  📝 Renamed $f to $suffix"
+              fi
+            done
+            
+            poetry run coverage combine .coverage.* || {
               echo "❌ Coverage combine failed, checking individual files:"
-              for f in .coverage-*; do
+              for f in .coverage.*; do
                 if [ -f "$f" ]; then
                   echo "  File: $f ($(stat -c%s "$f" 2>/dev/null || stat -f%z "$f") bytes)"
                   file "$f" 2>/dev/null || echo "    Cannot determine file type"
