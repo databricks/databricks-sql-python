@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: azure-prod
     needs: discover-tests
-    if: ${{ fromJson(needs.discover-tests.outputs.e2e-test-files)[0] != null }}
+    if: ${{ needs.discover-tests.outputs.e2e-test-files != '[]' }}
     strategy:
       matrix:
         test_file: ${{ fromJson(needs.discover-tests.outputs.e2e-test-files) }}
@@ -154,7 +154,7 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     needs: discover-tests
-    if: ${{ fromJson(needs.discover-tests.outputs.unit-test-files)[0] != null }}
+    if: ${{ needs.discover-tests.outputs.unit-test-files != '[]' }}
     strategy:
       matrix:
         test_file: ${{ fromJson(needs.discover-tests.outputs.unit-test-files) }}
@@ -235,7 +235,7 @@ jobs:
   common-tests:
     runs-on: ubuntu-latest
     needs: discover-tests
-    if: ${{ fromJson(needs.discover-tests.outputs.common-test-files)[0] != null }}
+    if: ${{ needs.discover-tests.outputs.common-test-files != '[]' }}
     strategy:
       matrix:
         test_file: ${{ fromJson(needs.discover-tests.outputs.common-test-files) }}
