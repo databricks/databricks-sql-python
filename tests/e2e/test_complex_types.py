@@ -1,6 +1,7 @@
 import pytest
 from numpy import ndarray
 from typing import Sequence
+from uuid import uuid4
 
 from tests.e2e.test_driver import PySQLPytestTestCase
 
@@ -10,12 +11,15 @@ class TestComplexTypes(PySQLPytestTestCase):
     def table_fixture(self, connection_details):
         self.arguments = connection_details.copy()
         """A pytest fixture that creates a table with a complex type, inserts a record, yields, and then drops the table"""
+         
+        table_name = f"pysql_test_complex_types_table_{str(uuid4()).replace('-', '_')}"
+        self.table_name = table_name
 
         with self.cursor() as cursor:
             # Create the table
             cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pysql_test_complex_types_table (
+                f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
                     array_col ARRAY<STRING>,
                     map_col MAP<STRING, INTEGER>,
                     struct_col STRUCT<field1: STRING, field2: INTEGER>,
@@ -27,8 +31,8 @@ class TestComplexTypes(PySQLPytestTestCase):
             )
             # Insert a record
             cursor.execute(
-                """
-                INSERT INTO pysql_test_complex_types_table
+                f"""
+                INSERT INTO {table_name}
                 VALUES (
                     ARRAY('a', 'b', 'c'),
                     MAP('a', 1, 'b', 2, 'c', 3),
@@ -40,10 +44,10 @@ class TestComplexTypes(PySQLPytestTestCase):
                 """
             )
             try:
-                yield
+                yield table_name
             finally:
                 # Clean up the table after the test
-                cursor.execute("DELETE FROM pysql_test_complex_types_table")
+                cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
 
     @pytest.mark.parametrize(
         "field,expected_type",
@@ -61,7 +65,7 @@ class TestComplexTypes(PySQLPytestTestCase):
 
         with self.cursor() as cursor:
             result = cursor.execute(
-                "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
+                f"SELECT * FROM {table_fixture} LIMIT 1"
             ).fetchone()
 
         assert isinstance(result[field], expected_type)
@@ -83,7 +87,7 @@ class TestComplexTypes(PySQLPytestTestCase):
             extra_params={"_use_arrow_native_complex_types": False}
         ) as cursor:
             result = cursor.execute(
-                "SELECT * FROM pysql_test_complex_types_table LIMIT 1"
+                f"SELECT * FROM {table_fixture} LIMIT 1"
             ).fetchone()
 
         assert isinstance(result[field], str)
