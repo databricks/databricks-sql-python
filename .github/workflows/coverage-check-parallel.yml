@@ -81,15 +81,17 @@ jobs:
           
           # Set test filter based on mode
           if [ "${{ matrix.mode }}" = "sea" ]; then
-            TEST_FILTER="-k 'extra_params1 or extra_params2'"
+            TEST_FILTER="-k"
+            TEST_EXPRESSION="extra_params1 or extra_params2"
           else
-            TEST_FILTER="-k 'extra_params0 or not extra_params'"
+            TEST_FILTER="-k"
+            TEST_EXPRESSION="extra_params0 or not extra_params"
           fi
           
           TEST_NAME=$(basename "${{ matrix.test_file }}" .py)
           COVERAGE_FILE="coverage-${TEST_NAME}-${{ matrix.mode }}.xml"
           
-          poetry run pytest "${{ matrix.test_file }}" $TEST_FILTER \
+          poetry run pytest "${{ matrix.test_file }}" "$TEST_FILTER" "$TEST_EXPRESSION" \
             --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term \
             -v
         continue-on-error: false
