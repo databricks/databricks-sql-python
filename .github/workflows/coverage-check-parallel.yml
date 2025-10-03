@@ -9,7 +9,9 @@ jobs:
   discover-tests:
     runs-on: ubuntu-latest
     outputs:
-      test-files: ${{ steps.discover.outputs.test-files }}
+      e2e-test-files: ${{ steps.discover.outputs.e2e-test-files }}
+      unit-test-files: ${{ steps.discover.outputs.unit-test-files }}
+      common-test-files: ${{ steps.discover.outputs.common-test-files }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
