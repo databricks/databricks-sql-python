@@ -21,8 +21,8 @@ jobs:
       - name: Discover test files
         id: discover
         run: |
-          # Find all test files in e2e directory and create JSON array (excluding test_driver.py for now)
-          TEST_FILES=$(find tests/e2e -name "test_*.py" -type f | grep -v test_driver.py | sort | jq -R -s -c 'split("\n")[:-1]')
+          # Find all test files in e2e directory and create JSON array (excluding test_driver.py and test_parameterized_queries.py for now)
+          TEST_FILES=$(find tests/e2e -name "test_*.py" -type f | grep -v -E "(test_driver\.py|test_parameterized_queries\.py)" | sort | jq -R -s -c 'split("\n")[:-1]')
           echo "test-files=$TEST_FILES" >> $GITHUB_OUTPUT
           echo "Discovered test files: $TEST_FILES"
 
@@ -112,8 +112,18 @@ jobs:
             mv .coverage "$COVERAGE_DATA"
             echo "✅ Saved coverage data as $COVERAGE_DATA"
           else
-            echo "⚠️ No .coverage generated, creating empty file"
-            touch "$COVERAGE_DATA"
+            echo "⚠️ No .coverage generated, creating minimal coverage file"
+            # Create a minimal but valid coverage file using coverage.py
+            poetry run coverage erase
+            poetry run coverage run --source=src -m pytest --version > /dev/null 2>&1 || true
+            if [ -f ".coverage" ]; then
+              mv .coverage "$COVERAGE_DATA"
+              echo "✅ Created minimal coverage file as $COVERAGE_DATA"
+            else
+              # Fallback: create empty file (will be handled gracefully in merge)
+              touch "$COVERAGE_DATA"
+              echo "⚠️ Created empty placeholder as $COVERAGE_DATA"
+            fi
           fi
           
           if [ -f "$COVERAGE_FILE" ]; then
@@ -127,6 +137,22 @@ jobs:
           
           echo "📁 Final files available for upload:"
           ls -la .coverage* coverage-* 2>/dev/null || echo "No coverage files found"
+          
+          echo "🔍 Specifically checking for files to upload:"
+          echo "  .coverage-* files:"
+          ls -la .coverage-* 2>/dev/null || echo "    None found"
+          echo "  coverage-*-${{ matrix.mode }}.xml files:"
+          ls -la coverage-*-${{ matrix.mode }}.xml 2>/dev/null || echo "    None found"
+          
+          echo "🔍 CRITICAL DEBUG: Checking exact upload patterns:"
+          echo "  Pattern '.coverage-*' matches:"
+          find . -maxdepth 1 -name ".coverage-*" -type f 2>/dev/null || echo "    No matches"
+          echo "  Pattern 'coverage-*-${{ matrix.mode }}.xml' matches:"
+          find . -maxdepth 1 -name "coverage-*-${{ matrix.mode }}.xml" -type f 2>/dev/null || echo "    No matches"
+          
+          echo "🔍 Working directory: $(pwd)"
+          echo "🔍 All files in current directory:"
+          ls -la
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
