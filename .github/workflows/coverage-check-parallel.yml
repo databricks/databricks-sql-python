@@ -22,9 +22,19 @@ jobs:
         id: discover
         run: |
           # Find all test files in e2e directory
-          TEST_FILES=$(find tests/e2e -name "test_*.py" -type f | sort | jq -R -s -c 'split("\n")[:-1]')
-          echo "test-files=$TEST_FILES" >> $GITHUB_OUTPUT
-          echo "Discovered test files: $TEST_FILES"
+          E2E_FILES=$(find tests/e2e -name "test_*.py" -type f | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "e2e-test-files=$E2E_FILES" >> $GITHUB_OUTPUT
+          echo "Discovered E2E test files: $E2E_FILES"
+          
+          # Find all test files in unit directory
+          UNIT_FILES=$(find tests/unit -name "test_*.py" -type f | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "unit-test-files=$UNIT_FILES" >> $GITHUB_OUTPUT
+          echo "Discovered unit test files: $UNIT_FILES"
+          
+          # Find all test files in common directory
+          COMMON_FILES=$(find tests/e2e/common -name "*.py" -type f | grep -v __init__ | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "common-test-files=$COMMON_FILES" >> $GITHUB_OUTPUT
+          echo "Discovered common test files: $COMMON_FILES"
 
   e2e-tests:
     runs-on: ubuntu-latest
@@ -32,7 +42,7 @@ jobs:
     needs: discover-tests
     strategy:
       matrix:
-        test_file: ${{ fromJson(needs.discover-tests.outputs.test-files) }}
+        test_file: ${{ fromJson(needs.discover-tests.outputs.e2e-test-files) }}
         mode: ["thrift", "sea"]
     env:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
@@ -125,9 +135,169 @@ jobs:
             coverage-*-${{ matrix.mode }}.xml
           if-no-files-found: warn  
 
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs: discover-tests
+    strategy:
+      matrix:
+        test_file: ${{ fromJson(needs.discover-tests.outputs.unit-test-files) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install library
+        run: poetry install --no-interaction --all-extras
+
+      - name: Run unit tests with coverage
+        run: |
+          TEST_NAME=$(basename "${{ matrix.test_file }}" .py)
+          COVERAGE_FILE="coverage-${TEST_NAME}-unit.xml"
+          COVERAGE_DATA="coverage-data-${TEST_NAME}-unit"
+          echo "TEST_NAME=$TEST_NAME" >> $GITHUB_ENV
+          
+          # Clean any previous coverage data to avoid conflicts
+          rm -f .coverage*
+          
+          echo "Running unit tests with coverage..."
+          poetry run pytest "${{ matrix.test_file }}" --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term -v
+          
+          # Save coverage data with unique name
+          if [ -f ".coverage" ]; then
+            mv .coverage "$COVERAGE_DATA"
+            echo "Coverage data saved as $COVERAGE_DATA"
+          else
+            # Create minimal coverage file for cases where no tests run
+            poetry run coverage erase
+            poetry run coverage run --source=src -m pytest --version > /dev/null 2>&1 || true
+            if [ -f ".coverage" ]; then
+              mv .coverage "$COVERAGE_DATA"
+            else
+              touch "$COVERAGE_DATA"
+            fi
+            echo "Created minimal coverage file as $COVERAGE_DATA"
+          fi
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()  
+        with:
+          name: coverage-${{ env.TEST_NAME }}-unit
+          path: |
+            coverage-data-*
+            coverage-*-unit.xml
+          if-no-files-found: warn  
+
+  common-tests:
+    runs-on: ubuntu-latest
+    needs: discover-tests
+    strategy:
+      matrix:
+        test_file: ${{ fromJson(needs.discover-tests.outputs.common-test-files) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install library
+        run: poetry install --no-interaction --all-extras
+
+      - name: Run common tests with coverage
+        run: |
+          TEST_NAME=$(basename "${{ matrix.test_file }}" .py)
+          COVERAGE_FILE="coverage-${TEST_NAME}-common.xml"
+          COVERAGE_DATA="coverage-data-${TEST_NAME}-common"
+          echo "TEST_NAME=$TEST_NAME" >> $GITHUB_ENV
+          
+          # Clean any previous coverage data to avoid conflicts
+          rm -f .coverage*
+          
+          echo "Running common tests with coverage..."
+          poetry run pytest "${{ matrix.test_file }}" --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term -v
+          
+          # Save coverage data with unique name
+          if [ -f ".coverage" ]; then
+            mv .coverage "$COVERAGE_DATA"
+            echo "Coverage data saved as $COVERAGE_DATA"
+          else
+            # Create minimal coverage file for cases where no tests run
+            poetry run coverage erase
+            poetry run coverage run --source=src -m pytest --version > /dev/null 2>&1 || true
+            if [ -f ".coverage" ]; then
+              mv .coverage "$COVERAGE_DATA"
+            else
+              touch "$COVERAGE_DATA"
+            fi
+            echo "Created minimal coverage file as $COVERAGE_DATA"
+          fi
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()  
+        with:
+          name: coverage-${{ env.TEST_NAME }}-common
+          path: |
+            coverage-data-*
+            coverage-*-common.xml
+          if-no-files-found: warn  
+
   merge-coverage:
     runs-on: ubuntu-latest
-    needs: [e2e-tests]
+    needs: [e2e-tests, unit-tests, common-tests]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
