@@ -79,7 +79,6 @@ jobs:
         run: |
           echo "Running ${{ matrix.mode }} tests for ${{ matrix.test_file }}"
           
-          # Set test filter based on mode
           if [ "${{ matrix.mode }}" = "sea" ]; then
             TEST_FILTER="-k"
             TEST_EXPRESSION="extra_params1 or extra_params2"
@@ -93,12 +92,23 @@ jobs:
           COVERAGE_DATA=".coverage-${TEST_NAME}-${{ matrix.mode }}"
           echo "TEST_NAME=$TEST_NAME" >> $GITHUB_ENV
           
-          poetry run pytest "${{ matrix.test_file }}" "$TEST_FILTER" "$TEST_EXPRESSION" \
-            --cov=src --cov-append --cov-report=xml:$COVERAGE_FILE --cov-report=term \
-            -v || [ $? -eq 5 ]
+          # Clean any previous coverage data to avoid conflicts
+          rm -f .coverage*
           
-          # Ensure .coverage file exists for merging (even if empty)
+          echo "🧪 Running pytest with coverage..."
+          poetry run pytest "${{ matrix.test_file }}" "$TEST_FILTER" "$TEST_EXPRESSION" \
+            --cov=src --cov-report=xml:$COVERAGE_FILE --cov-report=term -v || [ $? -eq 5 ]
+          
+          echo "🔍 DEBUG: Post-test file analysis..."
+          echo "Current directory contents:"
+          ls -la
+          
+          echo "Coverage-related files:"
+          ls -la .coverage* coverage-* 2>/dev/null || echo "No coverage files found"
+          
           if [ -f ".coverage" ]; then
+            COVERAGE_SIZE=$(stat -c%s .coverage 2>/dev/null || stat -f%z .coverage)
+            echo "✅ .coverage file found (${COVERAGE_SIZE} bytes)"
             mv .coverage "$COVERAGE_DATA"
             echo "✅ Saved coverage data as $COVERAGE_DATA"
           else
@@ -106,9 +116,17 @@ jobs:
             touch "$COVERAGE_DATA"
           fi
           
-          # Debug: Show what files we have for upload
-          echo "📁 Files available for upload:"
-          ls -la .coverage* 2>/dev/null || echo "No coverage files found"
+          if [ -f "$COVERAGE_FILE" ]; then
+            XML_SIZE=$(stat -c%s "$COVERAGE_FILE" 2>/dev/null || stat -f%z "$COVERAGE_FILE")
+            echo "✅ XML coverage file found: $COVERAGE_FILE (${XML_SIZE} bytes)"
+            echo "XML preview:"
+            head -3 "$COVERAGE_FILE" 2>/dev/null || echo "Cannot read XML file"
+          else
+            echo "❌ No XML coverage file generated: $COVERAGE_FILE"
+          fi
+          
+          echo "📁 Final files available for upload:"
+          ls -la .coverage* coverage-* 2>/dev/null || echo "No coverage files found"
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -161,32 +179,78 @@ jobs:
 
       - name: Merge coverage
         run: |
-          # Install xmllint if not available
+          echo "🔧 Installing xmllint..."
           if ! command -v xmllint &> /dev/null; then
             sudo apt-get update && sudo apt-get install -y libxml2-utils
           fi
           
-          # Copy all coverage files with unique names
+          echo "📁 DEBUG: Checking downloaded artifacts structure..."
+          find coverage_files -type f -name "*" | head -20
+          echo "Total files found: $(find coverage_files -type f | wc -l)"
+          
           echo "📁 Checking for coverage files in artifacts..."
+          COVERAGE_FILES_FOUND=0
           for artifact_dir in coverage_files/*/; do
             if [ -d "$artifact_dir" ]; then
-              echo "Artifact: $(basename "$artifact_dir")"
+              echo "🔍 Artifact: $(basename "$artifact_dir")"
+              echo "  Contents:"
               ls -la "$artifact_dir" || echo "  (empty or inaccessible)"
+              
+              # Copy .coverage files
               for cov_file in "$artifact_dir"/.coverage-*; do
                 if [ -f "$cov_file" ]; then
                   cp "$cov_file" .
-                  echo "  ✅ Copied $(basename "$cov_file")"
+                  COVERAGE_FILES_FOUND=$((COVERAGE_FILES_FOUND + 1))
+                  echo "  ✅ Copied $(basename "$cov_file") ($(stat -c%s "$cov_file" 2>/dev/null || stat -f%z "$cov_file") bytes)"
+                fi
+              done
+              
+              # Copy XML files for debugging
+              for xml_file in "$artifact_dir"/coverage-*.xml; do
+                if [ -f "$xml_file" ]; then
+                  cp "$xml_file" .
+                  echo "  📄 Copied $(basename "$xml_file") ($(stat -c%s "$xml_file" 2>/dev/null || stat -f%z "$xml_file") bytes)"
                 fi
               done
             fi
           done
 
+          echo "📊 SUMMARY: Found $COVERAGE_FILES_FOUND .coverage files"
           echo "Available .coverage files for merging:"
-          ls -la .coverage-* 2>/dev/null || echo "No .coverage-* files found"
+          ls -la .coverage-* 2>/dev/null || echo "❌ No .coverage-* files found"
+          
+          echo "Available XML files:"
+          ls -la coverage-*.xml 2>/dev/null || echo "❌ No XML files found"
 
-          poetry run coverage combine .coverage-* || true
-          poetry run coverage xml || echo '<coverage lines-covered="0" lines-valid="1"></coverage>' > coverage.xml
-          poetry run coverage report || true
+          if [ $COVERAGE_FILES_FOUND -gt 0 ]; then
+            echo "🔄 Combining coverage data..."
+            poetry run coverage combine .coverage-* || {
+              echo "❌ Coverage combine failed, checking individual files:"
+              for f in .coverage-*; do
+                if [ -f "$f" ]; then
+                  echo "  File: $f ($(stat -c%s "$f" 2>/dev/null || stat -f%z "$f") bytes)"
+                  file "$f" 2>/dev/null || echo "    Cannot determine file type"
+                fi
+              done
+              echo "⚠️ Using fallback approach..."
+              touch .coverage
+            }
+            
+            echo "📊 Generating XML report..."
+            poetry run coverage xml || {
+              echo "❌ XML generation failed, using fallback"
+              echo '<coverage lines-covered="0" lines-valid="1"></coverage>' > coverage.xml
+            }
+            
+            echo "📋 Generating text report..."
+            poetry run coverage report || echo "⚠️ Text report failed"
+          else
+            echo "⚠️ No coverage data files found, creating empty report"
+            echo '<coverage lines-covered="0" lines-valid="1"></coverage>' > coverage.xml
+          fi
+          
+          echo "📄 Final coverage.xml preview:"
+          head -5 coverage.xml 2>/dev/null || echo "Cannot read coverage.xml"
 
       - name: Report coverage percentage
         run: |
@@ -199,7 +263,6 @@ jobs:
           COVERED=$(xmllint --xpath "string(//coverage/@lines-covered)" "$COVERAGE_FILE")
           TOTAL=$(xmllint --xpath "string(//coverage/@lines-valid)" "$COVERAGE_FILE")
 
-          # Calculate percentage using Python for precision
           PERCENTAGE=$(python3 -c "covered=${COVERED}; total=${TOTAL}; print(round((covered/total)*100, 2))")
 
           echo "📊 Combined Coverage: ${PERCENTAGE}%"
