@@ -27,7 +27,9 @@ def mock_telemetry_client():
     client_context = MagicMock()
 
     # Patch the _setup_pool_manager method to avoid SSL file loading
-    with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers'):
+    with patch(
+        "databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers"
+    ):
         return TelemetryClient(
             telemetry_enabled=True,
             session_id_hex=session_id,
@@ -85,7 +87,7 @@ class TestTelemetryClient:
         mock_response.status = 200
         mock_response.status_code = 200
         mock_http_request.return_value = mock_response
-        
+
         client = mock_telemetry_client
 
         # Create mock events
@@ -221,7 +223,9 @@ class TestTelemetryFactory:
         client_context = MagicMock()
 
         # Initialize enabled client
-        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers'):
+        with patch(
+            "databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers"
+        ):
             TelemetryClientFactory.initialize_telemetry_client(
                 telemetry_enabled=True,
                 session_id_hex=session_id_hex,
@@ -289,7 +293,9 @@ class TestTelemetryFactory:
         client_context = MagicMock()
 
         # Initialize multiple clients
-        with patch('databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers'):
+        with patch(
+            "databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers"
+        ):
             for session in [session1, session2]:
                 TelemetryClientFactory.initialize_telemetry_client(
                     telemetry_enabled=True,
@@ -372,8 +378,10 @@ class TestTelemetryFeatureFlag:
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-true"
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
-        mock_session_instance.is_open = False  # Connection starts closed for test cleanup
-        
+        mock_session_instance.is_open = (
+            False  # Connection starts closed for test cleanup
+        )
+
         # Set up mock HTTP client on the session
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
@@ -400,8 +408,10 @@ class TestTelemetryFeatureFlag:
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-false"
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
-        mock_session_instance.is_open = False  # Connection starts closed for test cleanup
-        
+        mock_session_instance.is_open = (
+            False  # Connection starts closed for test cleanup
+        )
+
         # Set up mock HTTP client on the session
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request
@@ -428,8 +438,10 @@ class TestTelemetryFeatureFlag:
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-fail"
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
-        mock_session_instance.is_open = False  # Connection starts closed for test cleanup
-        
+        mock_session_instance.is_open = (
+            False  # Connection starts closed for test cleanup
+        )
+
         # Set up mock HTTP client on the session
         mock_http_client = MagicMock()
         mock_http_client.request = mock_http_request

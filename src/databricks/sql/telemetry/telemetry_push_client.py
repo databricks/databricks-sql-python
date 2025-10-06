@@ -20,10 +20,8 @@ from pybreaker import CircuitBreakerError
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.telemetry.circuit_breaker_manager import (
-    CircuitBreakerConfig,
     CircuitBreakerManager,
     is_circuit_breaker_error,
-    CIRCUIT_BREAKER_STATE_OPEN,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,21 +51,6 @@ class ITelemetryPushClient(ABC):
         **kwargs
     ):
         """Context manager for making HTTP requests."""
-        pass
-
-    @abstractmethod
-    def get_circuit_breaker_state(self) -> str:
-        """Get the current state of the circuit breaker."""
-        pass
-
-    @abstractmethod
-    def is_circuit_breaker_open(self) -> bool:
-        """Check if the circuit breaker is currently open."""
-        pass
-
-    @abstractmethod
-    def reset_circuit_breaker(self) -> None:
-        """Reset the circuit breaker to closed state."""
         pass
 
 
@@ -108,47 +91,27 @@ class TelemetryPushClient(ITelemetryPushClient):
         ) as response:
             yield response
 
-    def get_circuit_breaker_state(self) -> str:
-        """Circuit breaker is not available in direct implementation."""
-        return "not_available"
-
-    def is_circuit_breaker_open(self) -> bool:
-        """Circuit breaker is not available in direct implementation."""
-        return False
-
-    def reset_circuit_breaker(self) -> None:
-        """Circuit breaker is not available in direct implementation."""
-        pass
-
 
 class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
     """Circuit breaker wrapper implementation for telemetry requests."""
 
-    def __init__(
-        self, delegate: ITelemetryPushClient, host: str, config: CircuitBreakerConfig
-    ):
+    def __init__(self, delegate: ITelemetryPushClient, host: str):
         """
         Initialize the circuit breaker telemetry push client.
 
         Args:
             delegate: The underlying telemetry push client to wrap
             host: The hostname for circuit breaker identification
-            config: Circuit breaker configuration
         """
         self._delegate = delegate
         self._host = host
-        self._config = config
 
-        # Initialize circuit breaker manager with config
-        CircuitBreakerManager.initialize(config)
-
-        # Get circuit breaker for this host
+        # Get circuit breaker for this host (creates if doesn't exist)
         self._circuit_breaker = CircuitBreakerManager.get_circuit_breaker(host)
 
         logger.debug(
-            "CircuitBreakerTelemetryPushClient initialized for host %s with config: %s",
+            "CircuitBreakerTelemetryPushClient initialized for host %s",
             host,
-            config,
         )
 
     def request(
@@ -208,15 +171,3 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
             # Re-raise non-circuit breaker exceptions
             logger.debug("Telemetry request failed for host %s: %s", self._host, e)
             raise
-
-    def get_circuit_breaker_state(self) -> str:
-        """Get the current state of the circuit breaker."""
-        return CircuitBreakerManager.get_circuit_breaker_state(self._host)
-
-    def is_circuit_breaker_open(self) -> bool:
-        """Check if the circuit breaker is currently open."""
-        return self.get_circuit_breaker_state() == CIRCUIT_BREAKER_STATE_OPEN
-
-    def reset_circuit_breaker(self) -> None:
-        """Reset the circuit breaker to closed state."""
-        CircuitBreakerManager.reset_circuit_breaker(self._host)

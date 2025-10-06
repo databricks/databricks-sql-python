@@ -17,19 +17,15 @@ from pybreaker import CircuitBreaker, CircuitBreakerError, CircuitBreakerListene
 logger = logging.getLogger(__name__)
 
 # Circuit Breaker Configuration Constants
-DEFAULT_FAILURE_THRESHOLD = 0.5
-DEFAULT_MINIMUM_CALLS = 20
-DEFAULT_TIMEOUT = 30
-DEFAULT_RESET_TIMEOUT = 30
-DEFAULT_EXPECTED_EXCEPTION = (Exception,)
-DEFAULT_NAME = "telemetry-circuit-breaker"
+MINIMUM_CALLS = 20
+RESET_TIMEOUT = 30
+CIRCUIT_BREAKER_NAME = "telemetry-circuit-breaker"
 
 # Circuit Breaker State Constants
 CIRCUIT_BREAKER_STATE_OPEN = "open"
 CIRCUIT_BREAKER_STATE_CLOSED = "closed"
 CIRCUIT_BREAKER_STATE_HALF_OPEN = "half-open"
 CIRCUIT_BREAKER_STATE_DISABLED = "disabled"
-CIRCUIT_BREAKER_STATE_NOT_INITIALIZED = "not_initialized"
 
 # Logging Message Constants
 LOG_CIRCUIT_BREAKER_STATE_CHANGED = "Circuit breaker state changed from %s to %s for %s"
@@ -76,56 +72,18 @@ class CircuitBreakerStateListener(CircuitBreakerListener):
             logger.info(LOG_CIRCUIT_BREAKER_HALF_OPEN, cb.name)
 
 
-@dataclass(frozen=True)
-class CircuitBreakerConfig:
-    """Configuration for circuit breaker behavior.
-
-    This class is immutable to prevent modification of circuit breaker settings.
-    All configuration values are set to constants defined at the module level.
-    """
-
-    # Failure threshold percentage (0.0 to 1.0)
-    failure_threshold: float = DEFAULT_FAILURE_THRESHOLD
-
-    # Minimum number of calls before circuit can open
-    minimum_calls: int = DEFAULT_MINIMUM_CALLS
-
-    # Time window for counting failures (in seconds)
-    timeout: int = DEFAULT_TIMEOUT
-
-    # Time to wait before trying to close circuit (in seconds)
-    reset_timeout: int = DEFAULT_RESET_TIMEOUT
-
-    # Expected exception types that should trigger circuit breaker
-    expected_exception: tuple = DEFAULT_EXPECTED_EXCEPTION
-
-    # Name for the circuit breaker (for logging)
-    name: str = DEFAULT_NAME
-
-
 class CircuitBreakerManager:
     """
     Manages circuit breaker instances for telemetry requests.
 
     This class provides a singleton pattern to manage circuit breaker instances
     per host, ensuring that telemetry failures don't impact main SQL operations.
+
+    Circuit breaker configuration is fixed and cannot be overridden.
     """
 
     _instances: Dict[str, CircuitBreaker] = {}
     _lock = threading.RLock()
-    _config: Optional[CircuitBreakerConfig] = None
-
-    @classmethod
-    def initialize(cls, config: CircuitBreakerConfig) -> None:
-        """
-        Initialize the circuit breaker manager with configuration.
-
-        Args:
-            config: Circuit breaker configuration
-        """
-        with cls._lock:
-            cls._config = config
-            logger.debug("CircuitBreakerManager initialized with config: %s", config)
 
     @classmethod
     def get_circuit_breaker(cls, host: str) -> CircuitBreaker:
@@ -138,10 +96,6 @@ class CircuitBreakerManager:
         Returns:
             CircuitBreaker instance for the host
         """
-        if not cls._config:
-            # Return a no-op circuit breaker if not initialized
-            return cls._create_noop_circuit_breaker()
-
         with cls._lock:
             if host not in cls._instances:
                 cls._instances[host] = cls._create_circuit_breaker(host)
@@ -160,92 +114,15 @@ class CircuitBreakerManager:
         Returns:
             New CircuitBreaker instance
         """
-        config = cls._config
-        if config is None:
-            raise RuntimeError("CircuitBreakerManager not initialized")
-
-        # Create circuit breaker with configuration
+        # Create circuit breaker with fixed configuration
         breaker = CircuitBreaker(
-            fail_max=config.minimum_calls,  # Number of failures before circuit opens
-            reset_timeout=config.reset_timeout,
-            name=f"{config.name}-{host}",
+            fail_max=MINIMUM_CALLS,
+            reset_timeout=RESET_TIMEOUT,
+            name=f"{CIRCUIT_BREAKER_NAME}-{host}",
         )
-
-        # Add state change listeners for logging
         breaker.add_listener(CircuitBreakerStateListener())
 
         return breaker
-
-    @classmethod
-    def _create_noop_circuit_breaker(cls) -> CircuitBreaker:
-        """
-        Create a no-op circuit breaker that always allows calls.
-
-        Returns:
-            CircuitBreaker that never opens
-        """
-        # Create a circuit breaker with very high thresholds so it never opens
-        breaker = CircuitBreaker(
-            fail_max=1000000,  # Very high threshold
-            reset_timeout=1,  # Short reset time
-            name="noop-circuit-breaker",
-        )
-        return breaker
-
-    @classmethod
-    def get_circuit_breaker_state(cls, host: str) -> str:
-        """
-        Get the current state of the circuit breaker for a host.
-
-        Args:
-            host: The hostname
-
-        Returns:
-            Current state of the circuit breaker
-        """
-        if not cls._config:
-            return CIRCUIT_BREAKER_STATE_DISABLED
-
-        with cls._lock:
-            if host not in cls._instances:
-                return CIRCUIT_BREAKER_STATE_NOT_INITIALIZED
-
-            breaker = cls._instances[host]
-            return breaker.current_state
-
-    @classmethod
-    def reset_circuit_breaker(cls, host: str) -> None:
-        """
-        Reset the circuit breaker for a host to closed state.
-
-        Args:
-            host: The hostname
-        """
-        with cls._lock:
-            if host in cls._instances:
-                # pybreaker doesn't have a reset method, we need to recreate the breaker
-                del cls._instances[host]
-                logger.info("Reset circuit breaker for host: %s", host)
-
-    @classmethod
-    def clear_circuit_breaker(cls, host: str) -> None:
-        """
-        Remove the circuit breaker instance for a host.
-
-        Args:
-            host: The hostname
-        """
-        with cls._lock:
-            if host in cls._instances:
-                del cls._instances[host]
-                logger.debug("Cleared circuit breaker for host: %s", host)
-
-    @classmethod
-    def clear_all_circuit_breakers(cls) -> None:
-        """Clear all circuit breaker instances."""
-        with cls._lock:
-            cls._instances.clear()
-            logger.debug("Cleared all circuit breakers")
 
 
 def is_circuit_breaker_error(exception: Exception) -> bool:
