@@ -8,13 +8,17 @@ from databricks.sql.auth.authenticators import (
     AzureServicePrincipalCredentialProvider,
 )
 from databricks.sql.auth.common import AuthType, ClientContext
+from databricks.sql.auth.token_federation import TokenFederationProvider
 
 
 def get_auth_provider(cfg: ClientContext, http_client):
+    # Determine the base auth provider
+    base_provider: Optional[AuthProvider] = None
+
     if cfg.credentials_provider:
-        return ExternalAuthProvider(cfg.credentials_provider)
+        base_provider = ExternalAuthProvider(cfg.credentials_provider)
     elif cfg.auth_type == AuthType.AZURE_SP_M2M.value:
-        return ExternalAuthProvider(
+        base_provider = ExternalAuthProvider(
             AzureServicePrincipalCredentialProvider(
                 cfg.hostname,
                 cfg.azure_client_id,
@@ -29,7 +33,7 @@ def get_auth_provider(cfg: ClientContext, http_client):
         assert cfg.oauth_client_id is not None
         assert cfg.oauth_scopes is not None
 
-        return DatabricksOAuthProvider(
+        base_provider = DatabricksOAuthProvider(
             cfg.hostname,
             cfg.oauth_persistence,
             cfg.oauth_redirect_port_range,
@@ -39,17 +43,17 @@ def get_auth_provider(cfg: ClientContext, http_client):
             cfg.auth_type,
         )
     elif cfg.access_token is not None:
-        return AccessTokenAuthProvider(cfg.access_token)
+        base_provider = AccessTokenAuthProvider(cfg.access_token)
     elif cfg.use_cert_as_auth and cfg.tls_client_cert_file:
         # no op authenticator. authentication is performed using ssl certificate outside of headers
-        return AuthProvider()
+        base_provider = AuthProvider()
     else:
         if (
             cfg.oauth_redirect_port_range is not None
             and cfg.oauth_client_id is not None
             and cfg.oauth_scopes is not None
         ):
-            return DatabricksOAuthProvider(
+            base_provider = DatabricksOAuthProvider(
                 cfg.hostname,
                 cfg.oauth_persistence,
                 cfg.oauth_redirect_port_range,
@@ -60,6 +64,17 @@ def get_auth_provider(cfg: ClientContext, http_client):
             )
         else:
             raise RuntimeError("No valid authentication settings!")
+
+    # Always wrap with token federation (falls back gracefully if not needed)
+    if base_provider:
+        return TokenFederationProvider(
+            hostname=cfg.hostname,
+            external_provider=base_provider,
+            http_client=http_client,
+            identity_federation_client_id=cfg.identity_federation_client_id,
+        )
+
+    return base_provider
 
 
 PYSQL_OAUTH_SCOPES = ["sql", "offline_access"]
@@ -114,5 +129,6 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         else redirect_port_range,
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
+        identity_federation_client_id=kwargs.get("identity_federation_client_id"),
     )
     return get_auth_provider(cfg, http_client)
