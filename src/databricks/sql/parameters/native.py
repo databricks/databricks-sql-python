@@ -64,8 +64,7 @@ TAllowedParameterValue = Union[
     decimal.Decimal,
     None,
     list["TAllowedParameterValue"],
-    # Should the dict key type be str or "TAllowedParameterValue"? Not 100% sure.
-    dict[str, "TAllowedParameterValue"],
+    "TParameterDict",
     tuple["TAllowedParameterValue", ...],
 ]
 
