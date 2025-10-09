@@ -13,7 +13,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import, List, Union
+from typing import List, Union
 
 
 class ParameterApproach(Enum):
