@@ -61,9 +61,9 @@ jobs:
       - name: Install library
         run: poetry install --no-interaction --all-extras
       #----------------------------------------------
-      #    run all tests in parallel with xdist
+      #    run all tests with coverage
       #----------------------------------------------
-      - name: Run all tests with coverage using pytest-xdist
+      - name: Run all tests with coverage 
         continue-on-error: false
         run: |
           poetry run pytest tests/unit tests/e2e \
