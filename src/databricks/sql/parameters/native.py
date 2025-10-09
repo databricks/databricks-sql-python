@@ -13,7 +13,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
 import datetime
 import decimal
 from enum import Enum, auto
-from typing import Dict, List, Union
+from typing import, List, Union
 
 
 class ParameterApproach(Enum):
@@ -699,7 +699,7 @@ TDbsqlParameter = Union[
 
 
 TParameterSequence = Sequence[Union[TDbsqlParameter, TAllowedParameterValue]]
-TParameterDict = Dict[str, TAllowedParameterValue]
+TParameterDict = dict[str, TAllowedParameterValue]
 TParameterCollection = Union[TParameterSequence, TParameterDict]
 
 
