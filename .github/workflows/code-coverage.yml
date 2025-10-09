@@ -64,7 +64,7 @@ jobs:
       #    run all tests in parallel with xdist
       #----------------------------------------------
       - name: Run all tests with coverage using pytest-xdist
-        continue-on-error: true
+        continue-on-error: false
         run: |
           poetry run pytest tests/unit tests/e2e \
             -n auto \
