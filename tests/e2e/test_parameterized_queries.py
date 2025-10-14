@@ -198,12 +198,14 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         DELETE_QUERY = f"DELETE FROM {table_name}"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(INSERT_QUERY, parameters=params)
-            with conn.cursor() as cursor:
-                to_return = cursor.execute(SELECT_QUERY).fetchone()
-            with conn.cursor() as cursor:
-                cursor.execute(DELETE_QUERY)
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(INSERT_QUERY, parameters=params)
+                with conn.cursor() as cursor:
+                    to_return = cursor.execute(SELECT_QUERY).fetchone()
+            finally:
+                with conn.cursor() as cursor:
+                    cursor.execute(DELETE_QUERY)
 
         return to_return
 
