@@ -153,10 +153,10 @@ class DriverErrorInfo(JsonSerializableMixin):
 class ChunkDetails(JsonSerializableMixin):
     """
     Contains detailed metrics about chunk downloads during result fetching.
-    
+
     These metrics are accumulated across all chunk downloads for a single statement.
     In Java, this is populated by the StatementTelemetryDetails tracker as chunks are downloaded.
-    
+
     Tracking approach:
     - Initialize total_chunks_present from result manifest
     - For each chunk downloaded:
@@ -184,7 +184,7 @@ class ChunkDetails(JsonSerializableMixin):
 class ResultLatency(JsonSerializableMixin):
     """
     Contains latency metrics for different phases of query execution.
-    
+
     This tracks two distinct phases:
     1. result_set_ready_latency_millis: Time from query submission until results are available (execute phase)
        - Set when execute() completes
@@ -196,7 +196,7 @@ class ResultLatency(JsonSerializableMixin):
     Attributes:
         result_set_ready_latency_millis (int): Time until query results are ready (execution phase)
         result_set_consumption_latency_millis (int): Time spent fetching/consuming results (fetch phase)
-        
+
     Note:
         Java implementation includes private field 'startTimeOfResultSetIterationNano' for internal
         tracking (not serialized to JSON). When implementing tracking in Python, use similar approach:
@@ -212,20 +212,20 @@ class ResultLatency(JsonSerializableMixin):
 class OperationDetail(JsonSerializableMixin):
     """
     Contains detailed information about the operation being performed.
-    
+
     This provides more granular operation tracking than statement_type, allowing
     differentiation between similar operations (e.g., EXECUTE_STATEMENT vs EXECUTE_STATEMENT_ASYNC).
-    
+
     Tracking approach:
     - operation_type: Map method name to operation type enum
       * Java maps: executeStatement -> EXECUTE_STATEMENT
       * Java maps: listTables -> LIST_TABLES
       * Python could use similar mapping from method names
-    
+
     - is_internal_call: Track if operation is initiated by driver internally
       * Set to true for driver-initiated metadata calls
       * Set to false for user-initiated operations
-    
+
     - Status polling: For async operations
       * Increment n_operation_status_calls for each status check
       * Accumulate operation_status_latency_millis across all status calls
