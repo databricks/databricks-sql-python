@@ -38,6 +38,25 @@ class DriverConnectionParameters(JsonSerializableMixin):
         auth_mech (AuthMech): The authentication mechanism used
         auth_flow (AuthFlow): The authentication flow type
         socket_timeout (int): Connection timeout in milliseconds
+        azure_workspace_resource_id (str): Azure workspace resource ID
+        azure_tenant_id (str): Azure tenant ID
+        use_proxy (bool): Whether proxy is being used
+        use_system_proxy (bool): Whether system proxy is being used
+        proxy_host_info (HostDetails): Proxy host details if configured
+        use_cf_proxy (bool): Whether CloudFlare proxy is being used
+        cf_proxy_host_info (HostDetails): CloudFlare proxy host details if configured
+        non_proxy_hosts (list): List of hosts that bypass proxy
+        allow_self_signed_support (bool): Whether self-signed certificates are allowed
+        use_system_trust_store (bool): Whether system trust store is used
+        enable_arrow (bool): Whether Arrow format is enabled
+        enable_direct_results (bool): Whether direct results are enabled
+        enable_sea_hybrid_results (bool): Whether SEA hybrid results are enabled
+        http_connection_pool_size (int): HTTP connection pool size
+        rows_fetched_per_block (int): Number of rows fetched per block
+        async_poll_interval_millis (int): Async polling interval in milliseconds
+        support_many_parameters (bool): Whether many parameters are supported
+        enable_complex_datatype_support (bool): Whether complex datatypes are supported
+        allowed_volume_ingestion_paths (str): Allowed paths for volume ingestion
     """
 
     http_path: str
@@ -46,6 +65,25 @@ class DriverConnectionParameters(JsonSerializableMixin):
     auth_mech: Optional[AuthMech] = None
     auth_flow: Optional[AuthFlow] = None
     socket_timeout: Optional[int] = None
+    azure_workspace_resource_id: Optional[str] = None
+    azure_tenant_id: Optional[str] = None
+    use_proxy: Optional[bool] = None
+    use_system_proxy: Optional[bool] = None
+    proxy_host_info: Optional[HostDetails] = None
+    use_cf_proxy: Optional[bool] = None
+    cf_proxy_host_info: Optional[HostDetails] = None
+    non_proxy_hosts: Optional[list] = None
+    allow_self_signed_support: Optional[bool] = None
+    use_system_trust_store: Optional[bool] = None
+    enable_arrow: Optional[bool] = None
+    enable_direct_results: Optional[bool] = None
+    enable_sea_hybrid_results: Optional[bool] = None
+    http_connection_pool_size: Optional[int] = None
+    rows_fetched_per_block: Optional[int] = None
+    async_poll_interval_millis: Optional[int] = None
+    support_many_parameters: Optional[bool] = None
+    enable_complex_datatype_support: Optional[bool] = None
+    allowed_volume_ingestion_paths: Optional[str] = None
 
 
 @dataclass
@@ -112,6 +150,100 @@ class DriverErrorInfo(JsonSerializableMixin):
 
 
 @dataclass
+class ChunkDetails(JsonSerializableMixin):
+    """
+    Contains detailed metrics about chunk downloads during result fetching.
+
+    These metrics are accumulated across all chunk downloads for a single statement.
+    In Java, this is populated by the StatementTelemetryDetails tracker as chunks are downloaded.
+
+    Tracking approach:
+    - Initialize total_chunks_present from result manifest
+    - For each chunk downloaded:
+      * Increment total_chunks_iterated
+      * Add chunk latency to sum_chunks_download_time_millis
+      * Update initial_chunk_latency_millis (first chunk only)
+      * Update slowest_chunk_latency_millis (if current chunk is slower)
+
+    Attributes:
+        initial_chunk_latency_millis (int): Latency of the first chunk download
+        slowest_chunk_latency_millis (int): Latency of the slowest chunk download
+        total_chunks_present (int): Total number of chunks available
+        total_chunks_iterated (int): Number of chunks actually downloaded
+        sum_chunks_download_time_millis (int): Total time spent downloading all chunks
+    """
+
+    initial_chunk_latency_millis: Optional[int] = None
+    slowest_chunk_latency_millis: Optional[int] = None
+    total_chunks_present: Optional[int] = None
+    total_chunks_iterated: Optional[int] = None
+    sum_chunks_download_time_millis: Optional[int] = None
+
+
+@dataclass
+class ResultLatency(JsonSerializableMixin):
+    """
+    Contains latency metrics for different phases of query execution.
+
+    This tracks two distinct phases:
+    1. result_set_ready_latency_millis: Time from query submission until results are available (execute phase)
+       - Set when execute() completes
+    2. result_set_consumption_latency_millis: Time spent iterating/fetching results (fetch phase)
+       - Measured from first fetch call until no more rows available
+       - In Java: tracked via markResultSetConsumption(hasNext) method
+       - Records start time on first fetch, calculates total on last fetch
+
+    Attributes:
+        result_set_ready_latency_millis (int): Time until query results are ready (execution phase)
+        result_set_consumption_latency_millis (int): Time spent fetching/consuming results (fetch phase)
+
+    Note:
+        Java implementation includes private field 'startTimeOfResultSetIterationNano' for internal
+        tracking (not serialized to JSON). When implementing tracking in Python, use similar approach:
+        - Record start time on first fetchone/fetchmany/fetchall call
+        - Calculate total consumption latency when iteration completes or cursor closes
+    """
+
+    result_set_ready_latency_millis: Optional[int] = None
+    result_set_consumption_latency_millis: Optional[int] = None
+
+
+@dataclass
+class OperationDetail(JsonSerializableMixin):
+    """
+    Contains detailed information about the operation being performed.
+
+    This provides more granular operation tracking than statement_type, allowing
+    differentiation between similar operations (e.g., EXECUTE_STATEMENT vs EXECUTE_STATEMENT_ASYNC).
+
+    Tracking approach:
+    - operation_type: Map method name to operation type enum
+      * Java maps: executeStatement -> EXECUTE_STATEMENT
+      * Java maps: listTables -> LIST_TABLES
+      * Python could use similar mapping from method names
+
+    - is_internal_call: Track if operation is initiated by driver internally
+      * Set to true for driver-initiated metadata calls
+      * Set to false for user-initiated operations
+
+    - Status polling: For async operations
+      * Increment n_operation_status_calls for each status check
+      * Accumulate operation_status_latency_millis across all status calls
+
+    Attributes:
+        n_operation_status_calls (int): Number of status polling calls made
+        operation_status_latency_millis (int): Total latency of all status calls
+        operation_type (str): Specific operation type (e.g., EXECUTE_STATEMENT, LIST_TABLES, CANCEL_STATEMENT)
+        is_internal_call (bool): Whether this is an internal driver operation
+    """
+
+    n_operation_status_calls: Optional[int] = None
+    operation_status_latency_millis: Optional[int] = None
+    operation_type: Optional[str] = None
+    is_internal_call: Optional[bool] = None
+
+
+@dataclass
 class SqlExecutionEvent(JsonSerializableMixin):
     """
     Represents a SQL query execution event.
@@ -122,7 +254,10 @@ class SqlExecutionEvent(JsonSerializableMixin):
         is_compressed (bool): Whether the result is compressed
         execution_result (ExecutionResultFormat): Format of the execution result
         retry_count (int): Number of retry attempts made
-        chunk_id (int): ID of the chunk if applicable
+        chunk_id (int): ID of the chunk if applicable (used for error tracking)
+        chunk_details (ChunkDetails): Aggregated chunk download metrics
+        result_latency (ResultLatency): Latency breakdown by execution phase
+        operation_detail (OperationDetail): Detailed operation information
     """
 
     statement_type: StatementType
@@ -130,6 +265,9 @@ class SqlExecutionEvent(JsonSerializableMixin):
     execution_result: ExecutionResultFormat
     retry_count: Optional[int]
     chunk_id: Optional[int]
+    chunk_details: Optional[ChunkDetails] = None
+    result_latency: Optional[ResultLatency] = None
+    operation_detail: Optional[OperationDetail] = None
 
 
 @dataclass

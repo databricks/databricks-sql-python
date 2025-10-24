@@ -50,7 +50,7 @@ class UnifiedHttpClient:
         """
         self.config = client_context
         # Since the unified http client is used for all requests, we need to have proxy and direct pool managers
-        # for per-request proxy decisions.
+        # for per-reques ̰ˇt proxy decisions.
         self._direct_pool_manager = None
         self._proxy_pool_manager = None
         self._retry_policy = None
@@ -300,6 +300,11 @@ class UnifiedHttpClient:
     def using_proxy(self) -> bool:
         """Check if proxy support is available (not whether it's being used for a specific request)."""
         return self._proxy_pool_manager is not None
+
+    @property
+    def proxy_uri(self) -> Optional[str]:
+        """Get the configured proxy URI, if any."""
+        return self._proxy_uri
 
     def close(self):
         """Close the underlying connection pools."""
