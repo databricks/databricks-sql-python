@@ -4,6 +4,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Type, Union
 from unittest.mock import patch
+from uuid import uuid4
 
 import time
 import numpy as np
@@ -118,21 +119,10 @@ class TestParameterizedQueries(PySQLPytestTestCase):
     def _get_inline_table_column(self, value):
         return self.inline_type_map[Primitive(value)]
 
-    @pytest.fixture(scope="class")
-    def inline_table(self, connection_details):
-        self.arguments = connection_details.copy()
-        """This table is necessary to verify that a parameter sent with INLINE
-        approach can actually write to its analogous data type.
-
-        For example, a Python Decimal(), when rendered inline, should be able
-        to read/write into a DECIMAL column in Databricks
-
-        Note that this fixture doesn't clean itself up. So the table will remain
-        in the schema for use by subsequent test runs.
-        """
-
-        query = """
-            CREATE TABLE IF NOT EXISTS pysql_e2e_inline_param_test_table (
+    def _create_inline_table(self, table_name):
+        """Create the inline test table with all necessary columns"""
+        query = f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
             null_col INT,
             int_col INT,
             bigint_col BIGINT,
@@ -154,6 +144,24 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         with self.connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(query)
+
+    @pytest.fixture(scope="class")
+    def inline_table(self, connection_details):
+        self.arguments = connection_details.copy()
+        """This table is necessary to verify that a parameter sent with INLINE
+        approach can actually write to its analogous data type.
+
+        For example, a Python Decimal(), when rendered inline, should be able
+        to read/write into a DECIMAL column in Databricks
+
+        Note that this fixture doesn't clean itself up. So the table will remain
+        in the schema for use by subsequent test runs.
+        """
+        
+        # Generate unique table name to avoid conflicts in parallel execution
+        table_name = f"pysql_e2e_inline_param_test_table_{str(uuid4()).replace('-', '_')}"
+        self.inline_table_name = table_name
+        self._create_inline_table(table_name)
 
     @contextmanager
     def patch_server_supports_native_params(self, supports_native_params: bool = True):
@@ -179,17 +187,25 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         :paramstyle:
             This is a no-op but is included to make the test-code easier to read.
         """
-        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
-        DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
+        if not hasattr(self, 'inline_table_name'):
+            table_name = f"pysql_e2e_inline_param_test_table_{str(uuid4()).replace('-', '_')}"
+            self.inline_table_name = table_name
+            self._create_inline_table(table_name)
+        
+        table_name = self.inline_table_name
+        INSERT_QUERY = f"INSERT INTO {table_name} (`{target_column}`) VALUES (%(p)s)"
+        SELECT_QUERY = f"SELECT {target_column} `col` FROM {table_name} LIMIT 1"
+        DELETE_QUERY = f"DELETE FROM {table_name}"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(INSERT_QUERY, parameters=params)
-            with conn.cursor() as cursor:
-                to_return = cursor.execute(SELECT_QUERY).fetchone()
-            with conn.cursor() as cursor:
-                cursor.execute(DELETE_QUERY)
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(INSERT_QUERY, parameters=params)
+                with conn.cursor() as cursor:
+                    to_return = cursor.execute(SELECT_QUERY).fetchone()
+            finally:
+                with conn.cursor() as cursor:
+                    cursor.execute(DELETE_QUERY)
 
         return to_return
 
