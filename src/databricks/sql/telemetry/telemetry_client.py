@@ -380,7 +380,7 @@ class TelemetryClientFactory:
     # Shared flush thread for all clients
     _flush_thread = None
     _flush_event = threading.Event()
-    _flush_interval_seconds = 90
+    _flush_interval_seconds = 300  # 5 minutes
 
     DEFAULT_BATCH_SIZE = 100
 
