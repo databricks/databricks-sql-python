@@ -9,6 +9,7 @@ except ImportError:
 import json
 import os
 import decimal
+from urllib.parse import urlparse
 from uuid import UUID
 
 from databricks.sql import __version__
@@ -322,6 +323,16 @@ class Connection:
             session_id_hex=self.get_session_id_hex()
         )
 
+        # Determine proxy usage
+        use_proxy = self.http_client.using_proxy()
+        proxy_host_info = None
+        if use_proxy and self.http_client.proxy_uri:
+            parsed = urlparse(self.http_client.proxy_uri)
+            proxy_host_info = HostDetails(
+                host_url=parsed.hostname or self.http_client.proxy_uri,
+                port=parsed.port or 8080
+            )
+        
         driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
             mode=DatabricksClientType.SEA
@@ -331,13 +342,31 @@ class Connection:
             auth_mech=TelemetryHelper.get_auth_mechanism(self.session.auth_provider),
             auth_flow=TelemetryHelper.get_auth_flow(self.session.auth_provider),
             socket_timeout=kwargs.get("_socket_timeout", None),
+            azure_workspace_resource_id=kwargs.get("azure_workspace_resource_id", None),
+            azure_tenant_id=kwargs.get("azure_tenant_id", None),
+            use_proxy=use_proxy,
+            use_system_proxy=use_proxy,
+            proxy_host_info=proxy_host_info,
+            use_cf_proxy=False,  # CloudFlare proxy not yet supported in Python
+            cf_proxy_host_info=None,  # CloudFlare proxy not yet supported in Python
+            non_proxy_hosts=None,
+            allow_self_signed_support=kwargs.get("_tls_no_verify", False),
+            use_system_trust_store=True,  # Python uses system SSL by default
+            enable_arrow=pyarrow is not None,
+            enable_direct_results=True,  # Always enabled in Python
+            enable_sea_hybrid_results=kwargs.get("use_hybrid_disposition", False),
+            http_connection_pool_size=kwargs.get("pool_maxsize", None),
+            rows_fetched_per_block=DEFAULT_ARRAY_SIZE,
+            async_poll_interval_millis=2000,  # Default polling interval
+            support_many_parameters=True,  # Native parameters supported
+            enable_complex_datatype_support=_use_arrow_native_complex_types,
+            allowed_volume_ingestion_paths=self.staging_allowed_local_path,
         )
 
         self._telemetry_client.export_initial_telemetry_log(
             driver_connection_params=driver_connection_params,
             user_agent=self.session.useragent_header,
         )
-        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"

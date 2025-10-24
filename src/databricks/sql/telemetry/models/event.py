@@ -38,6 +38,25 @@ class DriverConnectionParameters(JsonSerializableMixin):
         auth_mech (AuthMech): The authentication mechanism used
         auth_flow (AuthFlow): The authentication flow type
         socket_timeout (int): Connection timeout in milliseconds
+        azure_workspace_resource_id (str): Azure workspace resource ID
+        azure_tenant_id (str): Azure tenant ID
+        use_proxy (bool): Whether proxy is being used
+        use_system_proxy (bool): Whether system proxy is being used
+        proxy_host_info (HostDetails): Proxy host details if configured
+        use_cf_proxy (bool): Whether CloudFlare proxy is being used
+        cf_proxy_host_info (HostDetails): CloudFlare proxy host details if configured
+        non_proxy_hosts (list): List of hosts that bypass proxy
+        allow_self_signed_support (bool): Whether self-signed certificates are allowed
+        use_system_trust_store (bool): Whether system trust store is used
+        enable_arrow (bool): Whether Arrow format is enabled
+        enable_direct_results (bool): Whether direct results are enabled
+        enable_sea_hybrid_results (bool): Whether SEA hybrid results are enabled
+        http_connection_pool_size (int): HTTP connection pool size
+        rows_fetched_per_block (int): Number of rows fetched per block
+        async_poll_interval_millis (int): Async polling interval in milliseconds
+        support_many_parameters (bool): Whether many parameters are supported
+        enable_complex_datatype_support (bool): Whether complex datatypes are supported
+        allowed_volume_ingestion_paths (str): Allowed paths for volume ingestion
     """
 
     http_path: str
@@ -46,6 +65,25 @@ class DriverConnectionParameters(JsonSerializableMixin):
     auth_mech: Optional[AuthMech] = None
     auth_flow: Optional[AuthFlow] = None
     socket_timeout: Optional[int] = None
+    azure_workspace_resource_id: Optional[str] = None
+    azure_tenant_id: Optional[str] = None
+    use_proxy: Optional[bool] = None
+    use_system_proxy: Optional[bool] = None
+    proxy_host_info: Optional[HostDetails] = None
+    use_cf_proxy: Optional[bool] = None
+    cf_proxy_host_info: Optional[HostDetails] = None
+    non_proxy_hosts: Optional[list] = None
+    allow_self_signed_support: Optional[bool] = None
+    use_system_trust_store: Optional[bool] = None
+    enable_arrow: Optional[bool] = None
+    enable_direct_results: Optional[bool] = None
+    enable_sea_hybrid_results: Optional[bool] = None
+    http_connection_pool_size: Optional[int] = None
+    rows_fetched_per_block: Optional[int] = None
+    async_poll_interval_millis: Optional[int] = None
+    support_many_parameters: Optional[bool] = None
+    enable_complex_datatype_support: Optional[bool] = None
+    allowed_volume_ingestion_paths: Optional[str] = None
 
 
 @dataclass
