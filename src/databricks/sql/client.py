@@ -326,13 +326,13 @@ class Connection:
         # Determine proxy usage
         use_proxy = self.http_client.using_proxy()
         proxy_host_info = None
-        if use_proxy and self.http_client.proxy_uri:
+        if use_proxy and self.http_client.proxy_uri and isinstance(self.http_client.proxy_uri, str):
             parsed = urlparse(self.http_client.proxy_uri)
             proxy_host_info = HostDetails(
                 host_url=parsed.hostname or self.http_client.proxy_uri,
-                port=parsed.port or 8080
+                port=parsed.port or 8080,
             )
-        
+
         driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
             mode=DatabricksClientType.SEA
