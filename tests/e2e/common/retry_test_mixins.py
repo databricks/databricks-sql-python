@@ -278,7 +278,7 @@ class PySQLRetryTestsMixin:
         THEN the connector issues six request (original plus five retries)
             before raising an exception
         """
-        with mocked_server_response(status=404) as mock_obj:
+        with mocked_server_response(status=429) as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
                 extra_params = {**extra_params, **self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
