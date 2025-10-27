@@ -326,7 +326,11 @@ class Connection:
         # Determine proxy usage
         use_proxy = self.http_client.using_proxy()
         proxy_host_info = None
-        if use_proxy and self.http_client.proxy_uri and isinstance(self.http_client.proxy_uri, str):
+        if (
+            use_proxy
+            and self.http_client.proxy_uri
+            and isinstance(self.http_client.proxy_uri, str)
+        ):
             parsed = urlparse(self.http_client.proxy_uri)
             proxy_host_info = HostDetails(
                 host_url=parsed.hostname or self.http_client.proxy_uri,
