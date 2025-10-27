@@ -50,7 +50,7 @@ class UnifiedHttpClient:
         """
         self.config = client_context
         # Since the unified http client is used for all requests, we need to have proxy and direct pool managers
-        # for per-reques ̰ˇt proxy decisions.
+        # for per-request proxy decisions.
         self._direct_pool_manager = None
         self._proxy_pool_manager = None
         self._retry_policy = None
