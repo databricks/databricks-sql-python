@@ -1,5 +1,10 @@
 # Release History
 
+# 4.1.4 (2025-10-15)
+- Add support for Token Federation (databricks/databricks-sql-python#691 by @madhav-db)
+- Add metric view support (databricks/databricks-sql-python#688 by @shivam2680)
+- Increased time limit for long running queries (databricks/databricks-sql-python#686 by @jprakash-db)
+
 # 4.1.3 (2025-09-17)
 - Query tags integration (databricks/databricks-sql-python#663 by @sreekanth-db)
 - Add variant support (databricks/databricks-sql-python#560 by @shivam2680)

@@ -6,7 +6,7 @@ permissions:
 on: [pull_request, workflow_dispatch]
 
 jobs:
-  coverage:
+  test-with-coverage:
     runs-on: ubuntu-latest
     environment: azure-prod
     env:
@@ -22,9 +22,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed for coverage comparison
+          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          repository: ${{ github.event.pull_request.head.repo.full_name ||  github.repository }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       - name: Set up python
         id: setup-python
         uses: actions/setup-python@v5
@@ -61,14 +61,18 @@ jobs:
       - name: Install library
         run: poetry install --no-interaction --all-extras
       #----------------------------------------------
-      #              run all tests
+      #    run all tests with coverage
       #----------------------------------------------
-      - name: Run tests with coverage
-        continue-on-error: true
+      - name: Run all tests with coverage 
+        continue-on-error: false
         run: |
-          poetry run python -m pytest \
-            tests/unit tests/e2e \
-            --cov=src --cov-report=xml --cov-report=term -v
+          poetry run pytest tests/unit tests/e2e \
+            -n auto \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term \
+            -v
+          
       #----------------------------------------------
       #         check for coverage override
       #----------------------------------------------
@@ -129,3 +133,4 @@ jobs:
           else
             echo "✅ Coverage checks enforced - minimum 85% required"
           fi
+
