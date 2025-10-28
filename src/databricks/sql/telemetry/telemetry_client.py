@@ -364,9 +364,9 @@ class TelemetryClient(BaseTelemetryClient):
         )
 
     def close(self):
-        """Schedules client closure."""
+        """Schedule client closure."""
         logger.debug(
-            "Scheduling background closure for TelemetryClient of connection %s",
+            "Scheduling closure for TelemetryClient of connection %s",
             self._session_id_hex,
         )
         self._executor.submit(self._close_and_wait)
