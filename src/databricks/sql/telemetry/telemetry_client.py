@@ -486,6 +486,7 @@ class TelemetryClientFactory:
     ):
         """Initialize a telemetry client for a specific connection if telemetry is enabled"""
         try:
+
             with TelemetryClientFactory._lock:
                 TelemetryClientFactory._initialize()
 
