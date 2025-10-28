@@ -273,7 +273,7 @@ class SeaDatabricksClient(DatabricksClient):
 
         return SessionId.from_sea_session_id(session_id)
 
-    def _close_session(self, session_id: SessionId) -> None:
+    def close_session(self, session_id: SessionId) -> None:
         """
         Closes an existing session with the Databricks SQL service.
 
@@ -285,9 +285,9 @@ class SeaDatabricksClient(DatabricksClient):
             OperationalError: If there's an error closing the session
         """
 
-        if session_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
+        if sea_session_id is None:
+            raise ValueError("Not a valid SEA session ID")
 
         request_data = DeleteSessionRequest(
             warehouse_id=self.warehouse_id,
@@ -300,21 +300,7 @@ class SeaDatabricksClient(DatabricksClient):
             data=request_data.to_dict(),
         )
 
-    def close_session(self, session_id: SessionId) -> None:
-        """
-        Closes the session and the underlying HTTP client.
-
-        Args:
-            session_id: The session identifier returned by open_session()
-
-        Raises:
-            ValueError: If the session ID is invalid
-            OperationalError: If there's an error closing the session
-        """
-
-        logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
-
-        self._close_session(session_id)
+        # close the HTTP client
         self._http_client.close()
 
     def _extract_description_from_manifest(
