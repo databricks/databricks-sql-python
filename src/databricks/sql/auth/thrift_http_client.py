@@ -147,10 +147,13 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         else:
             self.__pool = pool_class(self.host, self.port, **_pool_kwargs)
 
-    def close(self):
+    def release_connection(self):
         self.__resp and self.__resp.drain_conn()
         self.__resp and self.__resp.release_conn()
         self.__resp = None
+
+    def close(self):
+        self.__pool.close()
 
     def read(self, sz):
         return self.__resp.read(sz)
