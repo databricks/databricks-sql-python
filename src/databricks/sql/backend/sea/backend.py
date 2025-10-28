@@ -285,6 +285,8 @@ class SeaDatabricksClient(DatabricksClient):
             OperationalError: If there's an error closing the session
         """
 
+        logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
+
         sea_session_id = session_id.to_sea_session_id()
         if sea_session_id is None:
             raise ValueError("Not a valid SEA session ID")

@@ -112,6 +112,7 @@ class THttpClient(thrift.transport.THttpClient.THttpClient):
         self.retry_policy and self.retry_policy.start_retry_timer()
 
     def open(self):
+
         # self.__pool replaces the self.__http used by the original THttpClient
         _pool_kwargs = {"maxsize": self.max_connections}
 

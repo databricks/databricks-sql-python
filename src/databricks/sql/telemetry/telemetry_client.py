@@ -364,7 +364,7 @@ class TelemetryClient(BaseTelemetryClient):
         )
 
     def close(self):
-        """Schedules the client to be closed in the background."""
+        """Schedules client closure."""
         logger.debug(
             "Scheduling background closure for TelemetryClient of connection %s",
             self._session_id_hex,
@@ -376,14 +376,14 @@ class TelemetryClient(BaseTelemetryClient):
         self._flush()
 
         with self._lock:
-            futures_to_wait_on = list(self._pending_futures)
+            pending_events = list(self._pending_futures)
 
-        if futures_to_wait_on:
+        if pending_events:
             logger.debug(
                 "Waiting for %s pending telemetry requests to complete.",
-                len(futures_to_wait_on),
+                len(pending_events),
             )
-            wait(futures_to_wait_on)
+            wait(pending_events)
 
         self._http_client.close()
 
