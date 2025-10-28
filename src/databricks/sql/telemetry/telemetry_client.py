@@ -2,9 +2,7 @@ import threading
 import time
 import logging
 import json
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import Future
-from concurrent.futures import wait
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from databricks.sql.telemetry.models.event import (
@@ -385,6 +383,7 @@ class TelemetryClient(BaseTelemetryClient):
             )
             wait(pending_events)
 
+        logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._http_client.close()
 
 
