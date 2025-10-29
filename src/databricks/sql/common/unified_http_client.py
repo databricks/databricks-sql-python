@@ -301,6 +301,11 @@ class UnifiedHttpClient:
         """Check if proxy support is available (not whether it's being used for a specific request)."""
         return self._proxy_pool_manager is not None
 
+    @property
+    def proxy_uri(self) -> Optional[str]:
+        """Get the configured proxy URI, if any."""
+        return self._proxy_uri
+
     def close(self):
         """Close the underlying connection pools."""
         if self._direct_pool_manager:
