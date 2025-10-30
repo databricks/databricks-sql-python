@@ -48,6 +48,40 @@ class CommandType(Enum):
             return cls.OTHER
 
 
+class CommandIdempotency(Enum):
+    IDEMPOTENT = "idempotent"
+    NON_IDEMPOTENT = "non_idempotent"
+
+
+# Mapping of CommandType to CommandIdempotency
+# Only EXECUTE_STATEMENT is non-idempotent, all others are idempotent
+COMMAND_IDEMPOTENCY_MAP = {
+    CommandType.EXECUTE_STATEMENT: CommandIdempotency.NON_IDEMPOTENT,
+    CommandType.CLOSE_SESSION: CommandIdempotency.IDEMPOTENT,
+    CommandType.CLOSE_OPERATION: CommandIdempotency.IDEMPOTENT,
+    CommandType.GET_OPERATION_STATUS: CommandIdempotency.IDEMPOTENT,
+    CommandType.OTHER: CommandIdempotency.IDEMPOTENT,
+}
+
+# HTTP status codes that should never be retried, even for idempotent requests
+# These are client error codes that indicate permanent issues
+NON_RETRYABLE_STATUS_CODES = {
+    400,  # Bad Request
+    401,  # Unauthorized
+    403,  # Forbidden
+    404,  # Not Found
+    405,  # Method Not Allowed
+    409,  # Conflict
+    410,  # Gone
+    411,  # Length Required
+    412,  # Precondition Failed
+    413,  # Payload Too Large
+    414,  # URI Too Long
+    415,  # Unsupported Media Type
+    416,  # Range Not Satisfiable
+}
+
+
 class DatabricksRetryPolicy(Retry):
     """
     Implements our v3 retry policy by extending urllib3's robust default retry behaviour.
@@ -358,20 +392,12 @@ class DatabricksRetryPolicy(Retry):
         if status_code // 100 <= 3:
             return False, "2xx/3xx codes are not retried"
 
-        if status_code == 400:
+        # Check for non-retryable status codes that should never be retried
+        if status_code in NON_RETRYABLE_STATUS_CODES:
             return (
                 False,
-                "Received 400 - BAD_REQUEST. Please check the request parameters.",
+                f"{self.command_type.value if self.command_type else 'Unknown'} received {status_code} - Client error codes are not retried",
             )
-
-        if status_code == 401:
-            return (
-                False,
-                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials.",
-            )
-
-        if status_code == 403:
-            return False, "403 codes are not retried"
 
         # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
         if status_code == 501:
@@ -381,50 +407,28 @@ class DatabricksRetryPolicy(Retry):
         if not self._is_method_retryable(method):
             return False, "Only POST requests are retried"
 
-        # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
-        if status_code == 404 and self.command_type == CommandType.GET_OPERATION_STATUS:
-            return (
-                False,
-                "GetOperationStatus received 404 code from Databricks. Operation was canceled.",
-            )
+        # Get command idempotency for use in multiple conditions below
+        command_idempotency = COMMAND_IDEMPOTENCY_MAP.get(
+            self.command_type or CommandType.OTHER, CommandIdempotency.IDEMPOTENT
+        )
 
-        # Request failed with 404 because CloseSession returns 404 if you repeat the request.
+        # Request failed, was a non-idempotent command and the command may have reached the server
         if (
-            status_code == 404
-            and self.command_type == CommandType.CLOSE_SESSION
-            and len(self.history) > 0
-        ):
-            raise SessionAlreadyClosedError(
-                "CloseSession received 404 code from Databricks. Session is already closed."
-            )
-
-        # Request failed with 404 because CloseOperation returns 404 if you repeat the request.
-        if (
-            status_code == 404
-            and self.command_type == CommandType.CLOSE_OPERATION
-            and len(self.history) > 0
-        ):
-            raise CursorAlreadyClosedError(
-                "CloseOperation received 404 code from Databricks. Cursor is already closed."
-            )
-
-        # Request failed, was an ExecuteStatement and the command may have reached the server
-        if (
-            self.command_type == CommandType.EXECUTE_STATEMENT
+            command_idempotency == CommandIdempotency.NON_IDEMPOTENT
             and status_code not in self.status_forcelist
             and status_code not in self.force_dangerous_codes
         ):
             return (
                 False,
-                "ExecuteStatement command can only be retried for codes 429 and 503",
+                f"{self.command_type.value if self.command_type else 'Unknown'} command can only be retried for codes 429 and 503",
             )
 
-        # Request failed with a dangerous code, was an ExecuteStatement, but user forced retries for this
+        # Request failed with a dangerous code, was a non-idempotent command, but user forced retries for this
         # dangerous code. Note that these lines _are not required_ to make these requests retry. They would
         # retry automatically. This code is included only so that we can log the exact reason for the retry.
         # This gives users signal that their _retry_dangerous_codes setting actually did something.
         if (
-            self.command_type == CommandType.EXECUTE_STATEMENT
+            command_idempotency == CommandIdempotency.NON_IDEMPOTENT
             and status_code in self.force_dangerous_codes
         ):
             return (
