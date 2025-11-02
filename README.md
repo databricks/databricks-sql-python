@@ -67,6 +67,37 @@ or to a Databricks Runtime interactive cluster (e.g. /sql/protocolv1/o/123456789
 > to authenticate the target Databricks user account and needs to open the browser for authentication. So it 
 > can only run on the user's machine.
 
+## Transaction Support
+
+The connector supports multi-statement transactions with manual commit/rollback control:
+
+```python
+import os
+from databricks import sql
+
+connection = sql.connect(
+    server_hostname=os.getenv("DATABRICKS_HOST"),
+    http_path=os.getenv("DATABRICKS_HTTP_PATH")
+)
+
+# Disable autocommit to use explicit transactions
+connection.autocommit = False
+
+cursor = connection.cursor()
+try:
+    cursor.execute("INSERT INTO table1 VALUES (1, 'a')")
+    cursor.execute("INSERT INTO table2 VALUES (2, 'b')")
+    connection.commit()  # Commit both inserts atomically
+except Exception as e:
+    connection.rollback()  # Rollback on error
+    raise
+
+cursor.close()
+connection.close()
+```
+
+For detailed information about transaction behavior, isolation levels, error handling, and best practices, see [TRANSACTIONS.md](TRANSACTIONS.md).
+
 ## SQLAlchemy
 Starting from `databricks-sql-connector` version 4.0.0 SQLAlchemy support has been extracted to a new library `databricks-sqlalchemy`.
 
