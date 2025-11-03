@@ -32,6 +32,9 @@ from databricks.sql import TransactionError, NotSupportedError, InterfaceError
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skip(
+    reason="Test environment does not yet support multi-statement transactions"
+)
 class TestTransactions:
     """E2E tests for transaction control methods (MST support)."""
 
