@@ -21,9 +21,6 @@ class TestTelemetryCircuitBreakerIntegration:
         # Create mock client context with circuit breaker config
         self.client_context = Mock(spec=ClientContext)
         self.client_context.telemetry_circuit_breaker_enabled = True
-        self.client_context.telemetry_circuit_breaker_failure_threshold = (
-            0.1  # 10% failure rate
-        )
         self.client_context.telemetry_circuit_breaker_minimum_calls = 2
         self.client_context.telemetry_circuit_breaker_timeout = 30
         self.client_context.telemetry_circuit_breaker_reset_timeout = (
@@ -274,7 +271,6 @@ class TestTelemetryCircuitBreakerThreadSafety:
         """Set up test fixtures."""
         self.client_context = Mock(spec=ClientContext)
         self.client_context.telemetry_circuit_breaker_enabled = True
-        self.client_context.telemetry_circuit_breaker_failure_threshold = 0.1
         self.client_context.telemetry_circuit_breaker_minimum_calls = 2
         self.client_context.telemetry_circuit_breaker_timeout = 30
         self.client_context.telemetry_circuit_breaker_reset_timeout = 1

@@ -155,7 +155,7 @@ class TestCircuitBreakerIntegration:
         assert breaker.current_state == "open"
 
         # Wait for reset timeout
-        time.sleep(RESET_TIMEOUT + 0.1)
+        time.sleep(RESET_TIMEOUT + 1.0)
 
         # Try successful call to close circuit breaker
         def successful_func():

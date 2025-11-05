@@ -256,7 +256,7 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
             client.request(HttpMethod.POST, "https://test.com", {})
 
         # Wait for reset timeout
-        time.sleep(RESET_TIMEOUT + 0.1)
+        time.sleep(RESET_TIMEOUT + 1.0)
 
         # Simulate successful calls
         self.mock_delegate.request.side_effect = None
