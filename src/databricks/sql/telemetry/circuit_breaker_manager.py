@@ -181,7 +181,6 @@ class CircuitBreakerManager:
         return breaker
 
 
-
 def is_circuit_breaker_error(exception: Exception) -> bool:
     """
     Check if an exception is a circuit breaker error.

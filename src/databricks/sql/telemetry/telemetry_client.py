@@ -274,7 +274,7 @@ class TelemetryClient(BaseTelemetryClient):
     def _send_with_unified_client(self, url, data, headers, timeout=900):
         """
         Helper method to send telemetry using the telemetry push client.
-        
+
         The push client implementation handles circuit breaker logic internally,
         so this method just forwards the request and handles any errors generically.
         """

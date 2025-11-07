@@ -131,4 +131,5 @@ class CursorAlreadyClosedError(RequestError):
 class TelemetryRateLimitError(Exception):
     """Raised when telemetry endpoint returns 429 or 503, indicating rate limiting or service unavailable.
     This exception is used exclusively by the circuit breaker to track telemetry rate limiting events."""
+
     pass

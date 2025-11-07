@@ -264,25 +264,22 @@ class UnifiedHttpClient:
             yield response
         except MaxRetryError as e:
             logger.error("HTTP request failed after retries: %s", e)
-            
+
             # Try to extract HTTP status code from the MaxRetryError
             http_code = None
-            if hasattr(e, 'reason') and hasattr(e.reason, 'response'):
+            if hasattr(e, "reason") and hasattr(e.reason, "response"):
                 # The reason may contain a response object with status
-                http_code = getattr(e.reason.response, 'status', None)
-            elif hasattr(e, 'response') and hasattr(e.response, 'status'):
+                http_code = getattr(e.reason.response, "status", None)
+            elif hasattr(e, "response") and hasattr(e.response, "status"):
                 # Or the error itself may have a response
                 http_code = e.response.status
-            
+
             context = {}
             if http_code is not None:
                 context["http-code"] = http_code
                 logger.error("HTTP request failed with status code: %d", http_code)
-            
-            raise RequestError(
-                f"HTTP request failed: {e}",
-                context=context
-            )
+
+            raise RequestError(f"HTTP request failed: {e}", context=context)
         except Exception as e:
             logger.error("HTTP request error: %s", e)
             raise RequestError(f"HTTP request error: {e}")
