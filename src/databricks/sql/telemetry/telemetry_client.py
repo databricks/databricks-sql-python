@@ -46,9 +46,6 @@ from databricks.sql.telemetry.telemetry_push_client import (
     TelemetryPushClient,
     CircuitBreakerTelemetryPushClient,
 )
-from databricks.sql.telemetry.circuit_breaker_manager import (
-    is_circuit_breaker_error,
-)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -275,21 +272,23 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug("Failed to submit telemetry request: %s", e)
 
     def _send_with_unified_client(self, url, data, headers, timeout=900):
-        """Helper method to send telemetry using the telemetry push client."""
+        """
+        Helper method to send telemetry using the telemetry push client.
+        
+        The push client implementation handles circuit breaker logic internally,
+        so this method just forwards the request and handles any errors generically.
+        """
         try:
             response = self._telemetry_push_client.request(
                 HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
             )
             return response
         except Exception as e:
-            if is_circuit_breaker_error(e):
-                logger.warning(
-                    "Telemetry request blocked by circuit breaker for connection %s: %s",
-                    self._session_id_hex,
-                    e,
-                )
-            else:
-                logger.error("Failed to send telemetry: %s", e)
+            logger.debug(
+                "Failed to send telemetry for connection %s: %s",
+                self._session_id_hex,
+                e,
+            )
             raise
 
     def _telemetry_request_callback(self, future, sent_count: int):

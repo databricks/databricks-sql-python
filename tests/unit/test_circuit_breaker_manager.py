@@ -10,9 +10,9 @@ from unittest.mock import Mock, patch
 from databricks.sql.telemetry.circuit_breaker_manager import (
     CircuitBreakerManager,
     is_circuit_breaker_error,
-    MINIMUM_CALLS,
-    RESET_TIMEOUT,
-    CIRCUIT_BREAKER_NAME,
+    DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
+    DEFAULT_RESET_TIMEOUT as RESET_TIMEOUT,
+    DEFAULT_NAME as CIRCUIT_BREAKER_NAME,
 )
 from pybreaker import CircuitBreakerError
 

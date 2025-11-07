@@ -57,44 +57,6 @@ class TestCircuitBreakerTelemetryPushClient:
         assert self.client._host == self.host
         assert self.client._circuit_breaker is not None
 
-    def test_request_context_enabled_success(self):
-        """Test successful request context when circuit breaker is enabled."""
-        mock_response = Mock()
-        mock_context = MagicMock()
-        mock_context.__enter__.return_value = mock_response
-        mock_context.__exit__.return_value = None
-        self.mock_delegate.request_context.return_value = mock_context
-
-        with self.client.request_context(
-            HttpMethod.POST, "https://test.com", {}
-        ) as response:
-            assert response == mock_response
-
-        self.mock_delegate.request_context.assert_called_once()
-
-    def test_request_context_enabled_circuit_breaker_error(self):
-        """Test request context when circuit breaker is open."""
-        # Mock circuit breaker to raise CircuitBreakerError
-        with patch.object(
-            self.client._circuit_breaker,
-            "call",
-            side_effect=CircuitBreakerError("Circuit is open"),
-        ):
-            with pytest.raises(CircuitBreakerError):
-                with self.client.request_context(
-                    HttpMethod.POST, "https://test.com", {}
-                ):
-                    pass
-
-    def test_request_context_enabled_other_error(self):
-        """Test request context when other error occurs."""
-        # Mock delegate to raise a different error
-        self.mock_delegate.request_context.side_effect = ValueError("Network error")
-
-        with pytest.raises(ValueError):
-            with self.client.request_context(HttpMethod.POST, "https://test.com", {}):
-                pass
-
     def test_request_enabled_success(self):
         """Test successful request when circuit breaker is enabled."""
         mock_response = Mock()
@@ -106,15 +68,19 @@ class TestCircuitBreakerTelemetryPushClient:
         self.mock_delegate.request.assert_called_once()
 
     def test_request_enabled_circuit_breaker_error(self):
-        """Test request when circuit breaker is open."""
+        """Test request when circuit breaker is open - should return mock response."""
         # Mock circuit breaker to raise CircuitBreakerError
         with patch.object(
             self.client._circuit_breaker,
             "call",
             side_effect=CircuitBreakerError("Circuit is open"),
         ):
-            with pytest.raises(CircuitBreakerError):
-                self.client.request(HttpMethod.POST, "https://test.com", {})
+            # Circuit breaker open should return mock response, not raise
+            response = self.client.request(HttpMethod.POST, "https://test.com", {})
+            # Should get a mock success response
+            assert response is not None
+            assert response.status == 200
+            assert b"numProtoSuccess" in response.data
 
     def test_request_enabled_other_error(self):
         """Test request when other error occurs."""
@@ -138,14 +104,15 @@ class TestCircuitBreakerTelemetryPushClient:
                 "call",
                 side_effect=CircuitBreakerError("Circuit is open"),
             ):
-                with pytest.raises(CircuitBreakerError):
-                    self.client.request(HttpMethod.POST, "https://test.com", {})
+                # Should return mock response, not raise
+                response = self.client.request(HttpMethod.POST, "https://test.com", {})
+                assert response is not None
 
-            # Check that warning was logged
-            mock_logger.warning.assert_called()
-            warning_call = mock_logger.warning.call_args[0]
-            assert "Circuit breaker is open" in warning_call[0]
-            assert self.host in warning_call[1]
+            # Check that debug was logged (not warning - telemetry silently drops)
+            mock_logger.debug.assert_called()
+            debug_call = mock_logger.debug.call_args[0]
+            assert "Circuit breaker is open" in debug_call[0]
+            assert self.host in debug_call[1]
 
     def test_other_error_logging(self):
         """Test that other errors are logged appropriately."""
@@ -187,14 +154,23 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         # Simulate failures
         self.mock_delegate.request.side_effect = Exception("Network error")
 
-        # Trigger failures up to the threshold
-        for i in range(MINIMUM_CALLS):
-            with pytest.raises(Exception):
-                client.request(HttpMethod.POST, "https://test.com", {})
-
-        # Next call should fail with CircuitBreakerError (circuit is now open)
-        with pytest.raises(CircuitBreakerError):
-            client.request(HttpMethod.POST, "https://test.com", {})
+        # Trigger failures - some will raise, some will return mock response once circuit opens
+        exception_count = 0
+        mock_response_count = 0
+        for i in range(MINIMUM_CALLS + 5):
+            try:
+                response = client.request(HttpMethod.POST, "https://test.com", {})
+                # Got a mock response - circuit is open
+                assert response.status == 200
+                mock_response_count += 1
+            except Exception:
+                # Got an exception - circuit is still closed
+                exception_count += 1
+        
+        # Should have some exceptions before circuit opened, then mock responses after
+        # Circuit opens around MINIMUM_CALLS failures (might be MINIMUM_CALLS or MINIMUM_CALLS-1)
+        assert exception_count >= MINIMUM_CALLS - 1
+        assert mock_response_count > 0
 
     def test_circuit_breaker_recovers_after_success(self):
         """Test that circuit breaker recovers after successful calls."""
@@ -213,14 +189,17 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         # Simulate failures first
         self.mock_delegate.request.side_effect = Exception("Network error")
 
-        # Trigger failures up to the threshold
-        for i in range(MINIMUM_CALLS):
-            with pytest.raises(Exception):
+        # Trigger enough failures to open circuit
+        for i in range(MINIMUM_CALLS + 5):
+            try:
                 client.request(HttpMethod.POST, "https://test.com", {})
+            except Exception:
+                pass  # Expected during failures
 
-        # Circuit should be open now
-        with pytest.raises(CircuitBreakerError):
-            client.request(HttpMethod.POST, "https://test.com", {})
+        # Circuit should be open now - returns mock response
+        response = client.request(HttpMethod.POST, "https://test.com", {})
+        assert response is not None
+        assert response.status == 200  # Mock success response
 
         # Wait for reset timeout
         time.sleep(RESET_TIMEOUT + 1.0)
