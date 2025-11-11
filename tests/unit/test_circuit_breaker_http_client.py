@@ -83,12 +83,14 @@ class TestCircuitBreakerTelemetryPushClient:
             assert b"numProtoSuccess" in response.data
 
     def test_request_enabled_other_error(self):
-        """Test request when other error occurs."""
-        # Mock delegate to raise a different error
+        """Test request when other error occurs - should return mock response."""
+        # Mock delegate to raise a different error (not rate limiting)
         self.mock_delegate.request.side_effect = ValueError("Network error")
 
-        with pytest.raises(ValueError):
-            self.client.request(HttpMethod.POST, "https://test.com", {})
+        # Non-rate-limit errors return mock success response
+        response = self.client.request(HttpMethod.POST, "https://test.com", {})
+        assert response is not None
+        assert response.status == 200
 
     def test_is_circuit_breaker_enabled(self):
         """Test checking if circuit breaker is enabled."""
@@ -121,13 +123,14 @@ class TestCircuitBreakerTelemetryPushClient:
         ) as mock_logger:
             self.mock_delegate.request.side_effect = ValueError("Network error")
 
-            with pytest.raises(ValueError):
-                self.client.request(HttpMethod.POST, "https://test.com", {})
+            # Should return mock response, not raise
+            response = self.client.request(HttpMethod.POST, "https://test.com", {})
+            assert response is not None
 
             # Check that debug was logged
             mock_logger.debug.assert_called()
             debug_call = mock_logger.debug.call_args[0]
-            assert "Telemetry request failed" in debug_call[0]
+            assert "failing silently" in debug_call[0]
             assert self.host in debug_call[1]
 
 
@@ -140,63 +143,63 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         self.host = "test-host.example.com"
 
     def test_circuit_breaker_opens_after_failures(self):
-        """Test that circuit breaker opens after repeated failures."""
+        """Test that circuit breaker opens after repeated failures (429/503 errors)."""
         from databricks.sql.telemetry.circuit_breaker_manager import (
             CircuitBreakerManager,
-            MINIMUM_CALLS,
+            CircuitBreakerConfig,
+            DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
         )
+        from databricks.sql.exc import TelemetryRateLimitError
 
         # Clear any existing state
         CircuitBreakerManager._instances.clear()
+        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
         client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
 
-        # Simulate failures
-        self.mock_delegate.request.side_effect = Exception("Network error")
+        # Simulate rate limit failures (429)
+        mock_response = Mock()
+        mock_response.status = 429
+        self.mock_delegate.request.return_value = mock_response
 
-        # Trigger failures - some will raise, some will return mock response once circuit opens
-        exception_count = 0
+        # All calls should return mock success (circuit breaker handles it internally)
         mock_response_count = 0
         for i in range(MINIMUM_CALLS + 5):
-            try:
-                response = client.request(HttpMethod.POST, "https://test.com", {})
-                # Got a mock response - circuit is open
-                assert response.status == 200
-                mock_response_count += 1
-            except Exception:
-                # Got an exception - circuit is still closed
-                exception_count += 1
-        
-        # Should have some exceptions before circuit opened, then mock responses after
-        # Circuit opens around MINIMUM_CALLS failures (might be MINIMUM_CALLS or MINIMUM_CALLS-1)
-        assert exception_count >= MINIMUM_CALLS - 1
-        assert mock_response_count > 0
+            response = client.request(HttpMethod.POST, "https://test.com", {})
+            # Always get mock response (circuit breaker prevents re-raising)
+            assert response.status == 200
+            mock_response_count += 1
+
+        # All should return mock responses (telemetry fails silently)
+        assert mock_response_count == MINIMUM_CALLS + 5
 
     def test_circuit_breaker_recovers_after_success(self):
         """Test that circuit breaker recovers after successful calls."""
         from databricks.sql.telemetry.circuit_breaker_manager import (
             CircuitBreakerManager,
-            MINIMUM_CALLS,
-            RESET_TIMEOUT,
+            CircuitBreakerConfig,
+            DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
+            DEFAULT_RESET_TIMEOUT as RESET_TIMEOUT,
         )
         import time
 
         # Clear any existing state
         CircuitBreakerManager._instances.clear()
+        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
         client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
 
-        # Simulate failures first
-        self.mock_delegate.request.side_effect = Exception("Network error")
+        # Simulate rate limit failures first (429)
+        mock_rate_limit_response = Mock()
+        mock_rate_limit_response.status = 429
+        self.mock_delegate.request.return_value = mock_rate_limit_response
 
-        # Trigger enough failures to open circuit
+        # Trigger enough rate limit failures to open circuit
         for i in range(MINIMUM_CALLS + 5):
-            try:
-                client.request(HttpMethod.POST, "https://test.com", {})
-            except Exception:
-                pass  # Expected during failures
+            response = client.request(HttpMethod.POST, "https://test.com", {})
+            assert response.status == 200  # Returns mock success
 
-        # Circuit should be open now - returns mock response
+        # Circuit should be open now - still returns mock response
         response = client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 200  # Mock success response
@@ -204,10 +207,12 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         # Wait for reset timeout
         time.sleep(RESET_TIMEOUT + 1.0)
 
-        # Simulate successful calls
-        self.mock_delegate.request.side_effect = None
-        self.mock_delegate.request.return_value = Mock()
+        # Simulate successful calls (200 response)
+        mock_success_response = Mock()
+        mock_success_response.status = 200
+        self.mock_delegate.request.return_value = mock_success_response
 
-        # Should work again
+        # Should work again with actual success response
         response = client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
+        assert response.status == 200

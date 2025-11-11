@@ -239,29 +239,26 @@ class TestTelemetryCircuitBreakerIntegration:
 
     def test_circuit_breaker_logging(self):
         """Test that circuit breaker events are properly logged."""
-        with patch("databricks.sql.telemetry.telemetry_client.logger") as mock_logger:
+        with patch(
+            "databricks.sql.telemetry.telemetry_push_client.logger"
+        ) as mock_logger:
             # Mock circuit breaker error
             with patch.object(
-                self.telemetry_client._telemetry_push_client,
-                "request",
+                self.telemetry_client._telemetry_push_client._circuit_breaker,
+                "call",
                 side_effect=CircuitBreakerError("Circuit is open"),
             ):
-                try:
-                    self.telemetry_client._send_with_unified_client(
-                        "https://test.com/telemetry",
-                        '{"test": "data"}',
-                        {"Content-Type": "application/json"},
-                    )
-                except CircuitBreakerError:
-                    pass
+                # CircuitBreakerError is caught and returns mock response
+                self.telemetry_client._send_with_unified_client(
+                    "https://test.com/telemetry",
+                    '{"test": "data"}',
+                    {"Content-Type": "application/json"},
+                )
 
-            # Check that warning was logged
-            mock_logger.warning.assert_called()
-            warning_call = mock_logger.warning.call_args[0]
-            assert "Telemetry request blocked by circuit breaker" in warning_call[0]
-            assert (
-                "test-session" in warning_call[1]
-            )  # session_id_hex is the second argument
+            # Check that debug was logged (not warning - telemetry silently drops)
+            mock_logger.debug.assert_called()
+            debug_call = mock_logger.debug.call_args[0]
+            assert "Circuit breaker is open" in debug_call[0]
 
 
 class TestTelemetryCircuitBreakerThreadSafety:
@@ -341,7 +338,9 @@ class TestTelemetryCircuitBreakerThreadSafety:
                 errors.append(type(e).__name__)
 
         # Create multiple threads (enough to trigger circuit breaker)
-        from databricks.sql.telemetry.circuit_breaker_manager import MINIMUM_CALLS
+        from databricks.sql.telemetry.circuit_breaker_manager import (
+            DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
+        )
 
         num_threads = MINIMUM_CALLS + 5  # Enough to open the circuit
         threads = []
