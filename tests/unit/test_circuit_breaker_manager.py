@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from databricks.sql.telemetry.circuit_breaker_manager import (
     CircuitBreakerManager,
-    is_circuit_breaker_error,
+    CircuitBreakerConfig,
     DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
     DEFAULT_RESET_TIMEOUT as RESET_TIMEOUT,
     DEFAULT_NAME as CIRCUIT_BREAKER_NAME,
@@ -24,10 +24,13 @@ class TestCircuitBreakerManager:
         """Set up test fixtures."""
         # Clear any existing instances
         CircuitBreakerManager._instances.clear()
+        # Initialize with default config
+        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
     def teardown_method(self):
         """Clean up after tests."""
         CircuitBreakerManager._instances.clear()
+        CircuitBreakerManager._config = None
 
     def test_get_circuit_breaker_creates_instance(self):
         """Test getting circuit breaker creates instance with correct config."""
@@ -83,37 +86,19 @@ class TestCircuitBreakerManager:
         assert all(b is host0_breakers[0] for b in host0_breakers)
 
 
-class TestCircuitBreakerErrorDetection:
-    """Test cases for circuit breaker error detection."""
-
-    def test_is_circuit_breaker_error_true(self):
-        """Test detecting circuit breaker errors."""
-        error = CircuitBreakerError("Circuit breaker is open")
-        assert is_circuit_breaker_error(error) is True
-
-    def test_is_circuit_breaker_error_false(self):
-        """Test detecting non-circuit breaker errors."""
-        error = ValueError("Some other error")
-        assert is_circuit_breaker_error(error) is False
-
-        error = RuntimeError("Another error")
-        assert is_circuit_breaker_error(error) is False
-
-    def test_is_circuit_breaker_error_none(self):
-        """Test with None input."""
-        assert is_circuit_breaker_error(None) is False
-
-
 class TestCircuitBreakerIntegration:
     """Integration tests for circuit breaker functionality."""
 
     def setup_method(self):
         """Set up test fixtures."""
         CircuitBreakerManager._instances.clear()
+        # Initialize with default config
+        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
     def teardown_method(self):
         """Clean up after tests."""
         CircuitBreakerManager._instances.clear()
+        CircuitBreakerManager._config = None
 
     def test_circuit_breaker_state_transitions(self):
         """Test circuit breaker state transitions."""

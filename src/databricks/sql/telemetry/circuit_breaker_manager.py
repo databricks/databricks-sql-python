@@ -179,16 +179,3 @@ class CircuitBreakerManager:
             name="noop-circuit-breaker",
         )
         return breaker
-
-
-def is_circuit_breaker_error(exception: Exception) -> bool:
-    """
-    Check if an exception is a circuit breaker error.
-
-    Args:
-        exception: The exception to check
-
-    Returns:
-        True if the exception is a circuit breaker error
-    """
-    return isinstance(exception, CircuitBreakerError)

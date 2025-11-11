@@ -272,23 +272,14 @@ class TelemetryClient(BaseTelemetryClient):
             logger.debug("Failed to submit telemetry request: %s", e)
 
     def _send_with_unified_client(self, url, data, headers, timeout=900):
-        """
-        Helper method to send telemetry using the telemetry push client.
-
-        The push client implementation handles circuit breaker logic internally,
-        so this method just forwards the request and handles any errors generically.
-        """
+        """Helper method to send telemetry using the unified HTTP client."""
         try:
             response = self._telemetry_push_client.request(
                 HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
             )
             return response
         except Exception as e:
-            logger.debug(
-                "Failed to send telemetry for connection %s: %s",
-                self._session_id_hex,
-                e,
-            )
+            logger.error("Failed to send telemetry with unified client: %s", e)
             raise
 
     def _telemetry_request_callback(self, future, sent_count: int):

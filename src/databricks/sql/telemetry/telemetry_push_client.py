@@ -19,10 +19,7 @@ from pybreaker import CircuitBreakerError
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.exc import TelemetryRateLimitError, RequestError
-from databricks.sql.telemetry.circuit_breaker_manager import (
-    CircuitBreakerManager,
-    is_circuit_breaker_error,
-)
+from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
 
 logger = logging.getLogger(__name__)
 
