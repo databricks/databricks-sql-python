@@ -267,10 +267,19 @@ class UnifiedHttpClient:
 
             # Try to extract HTTP status code from the MaxRetryError
             http_code = None
-            if hasattr(e, "reason") and hasattr(e.reason, "response"):
+            if (
+                hasattr(e, "reason")
+                and e.reason is not None
+                and hasattr(e.reason, "response")
+                and e.reason.response is not None
+            ):
                 # The reason may contain a response object with status
                 http_code = getattr(e.reason.response, "status", None)
-            elif hasattr(e, "response") and hasattr(e.response, "status"):
+            elif (
+                hasattr(e, "response")
+                and e.response is not None
+                and hasattr(e.response, "status")
+            ):
                 # Or the error itself may have a response
                 http_code = e.response.status
 

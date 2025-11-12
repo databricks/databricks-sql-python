@@ -171,21 +171,21 @@ class TelemetryClient(BaseTelemetryClient):
 
     def __init__(
         self,
-        telemetry_enabled,
-        session_id_hex,
+        telemetry_enabled: bool,
+        session_id_hex: str,
         auth_provider,
-        host_url,
+        host_url: str,
         executor,
-        batch_size,
+        batch_size: int,
         client_context,
-    ):
+    ) -> None:
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
         self._batch_size = batch_size
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
-        self._events_batch = []
+        self._events_batch: list = []
         self._lock = threading.RLock()
         self._driver_connection_params = None
         self._host_url = host_url
@@ -205,9 +205,7 @@ class TelemetryClient(BaseTelemetryClient):
             )
         else:
             # Circuit breaker disabled - use direct telemetry push client
-            self._telemetry_push_client: ITelemetryPushClient = TelemetryPushClient(
-                self._http_client
-            )
+            self._telemetry_push_client = TelemetryPushClient(self._http_client)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
