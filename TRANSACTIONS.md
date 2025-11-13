@@ -53,6 +53,8 @@ try:
 except Exception as e:
     connection.rollback()  # Neither insert is saved
     raise
+finally:
+    connection.autocommit = True  # Restore default state
 ```
 
 ### Rolling Back Changes
@@ -106,6 +108,8 @@ try:
 except Exception as e:
     connection.rollback()  # All three inserts are discarded
     raise
+finally:
+    connection.autocommit = True  # Restore default state
 ```
 
 This is particularly useful for maintaining data consistency across related tables.
@@ -175,14 +179,19 @@ You cannot change autocommit mode while a transaction is active:
 
 ```python
 connection.autocommit = False
-cursor.execute("INSERT INTO logs VALUES (1, 'data')")
+cursor = connection.cursor()
 
-# This will raise TransactionError
 try:
-    connection.autocommit = True
+    cursor.execute("INSERT INTO logs VALUES (1, 'data')")
+    
+    # This will raise TransactionError
+    connection.autocommit = True  # Error: transaction is active
+    
 except sql.TransactionError as e:
     print(f"Cannot change autocommit: {e}")
-    connection.rollback()  # Clean up
+    connection.rollback()  # Clean up the transaction
+finally:
+    connection.autocommit = True  # Now it's safe to restore
 ```
 
 ### Committing Without an Active Transaction
@@ -215,14 +224,19 @@ try:
 except Exception as e:
     connection.rollback()  # Discard the partial transaction
     
-    # Now you can start a fresh transaction
-    cursor.execute("INSERT INTO error_log VALUES (1, 'Query failed')")
-    connection.commit()
+    # Log the error (with autocommit still disabled)
+    try:
+        cursor.execute("INSERT INTO error_log VALUES (1, 'Query failed')")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+finally:
+    connection.autocommit = True  # Restore default state
 ```
 
 ## Querying Server State
 
-By default, the `autocommit` property returns a cached value for performance. If you need to query the server each time (for example, if you're debugging or the state might change externally):
+By default, the `autocommit` property returns a cached value for performance. If you need to query the server each time (for instance, when strong consistency is required):
 
 ```python
 connection = sql.connect(
@@ -291,7 +305,7 @@ conn2.commit()  # Also OK
 
 1. **Keep transactions short**: Long-running transactions can cause conflicts with other connections. Commit as soon as your atomic unit of work is complete.
 
-2. **Always handle exceptions**: Wrap transaction code in try/except and call `rollback()` on errors.
+2. **Always handle exceptions**: Wrap transaction code in try/except/finally and call `rollback()` on errors.
 
 ```python
 connection.autocommit = False
@@ -305,6 +319,8 @@ except Exception as e:
     connection.rollback()
     logger.error(f"Transaction failed: {e}")
     raise
+finally:
+    connection.autocommit = True  # Restore default state
 ```
 
 3. **Use context managers**: If you're writing helper functions, consider using a context manager pattern:
@@ -331,15 +347,18 @@ with transaction(connection):
     # Auto-commits on success, auto-rolls back on exception
 ```
 
-4. **Reset autocommit when done**: After using explicit transactions, consider resetting autocommit to True for subsequent operations:
+4. **Reset autocommit when done**: Use a `finally` block to restore autocommit to `True`. This is especially important if the connection is reused or part of a connection pool:
 
 ```python
 connection.autocommit = False
 try:
     # ... transaction code ...
     connection.commit()
+except Exception:
+    connection.rollback()
+    raise
 finally:
-    connection.autocommit = True  # Reset to default
+    connection.autocommit = True  # Restore to default state
 ```
 
 5. **Be aware of isolation semantics**: Remember that repeatable read means you see a snapshot from the start of your transaction. If you need to see recent changes from other transactions, commit your current transaction and start a new one.
