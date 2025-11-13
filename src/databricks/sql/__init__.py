@@ -8,6 +8,9 @@ threadsafety = 1  # Threads may share the module, but not connections.
 
 paramstyle = "named"
 
+# Transaction isolation level constants (extension to PEP 249)
+TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ = "REPEATABLE_READ"
+
 import re
 
 from typing import TYPE_CHECKING
