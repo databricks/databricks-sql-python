@@ -115,7 +115,7 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
 
         def _make_request_and_check_status():
             """
-            Inner function that makes the request and checks response status.
+            Function that makes the request and checks response status.
 
             Raises TelemetryRateLimitError ONLY for 429/503 so circuit breaker counts them as failures.
             For all other errors, returns mock success response so circuit breaker does NOT count them.
