@@ -143,3 +143,8 @@ class SessionAlreadyClosedError(RequestError):
 
 class CursorAlreadyClosedError(RequestError):
     """Thrown if CancelOperation receives a code 404. ThriftBackend should gracefully proceed as this is expected."""
+
+
+class TelemetryRateLimitError(Exception):
+    """Raised when telemetry endpoint returns 429 or 503, indicating rate limiting or service unavailable.
+    This exception is used exclusively by the circuit breaker to track telemetry rate limiting events."""
