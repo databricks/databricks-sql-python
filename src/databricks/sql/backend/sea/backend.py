@@ -287,9 +287,9 @@ class SeaDatabricksClient(DatabricksClient):
 
         logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
-        if session_id.backend_type != BackendType.SEA:
-            raise ValueError("Not a valid SEA session ID")
         sea_session_id = session_id.to_sea_session_id()
+        if sea_session_id is None:
+            raise ValueError("Not a valid SEA session ID")
 
         request_data = DeleteSessionRequest(
             warehouse_id=self.warehouse_id,
@@ -301,6 +301,9 @@ class SeaDatabricksClient(DatabricksClient):
             path=self.SESSION_PATH_WITH_ID.format(sea_session_id),
             data=request_data.to_dict(),
         )
+
+        # close the HTTP client
+        self._http_client.close()
 
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
