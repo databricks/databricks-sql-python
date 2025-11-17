@@ -238,27 +238,23 @@ class TestTelemetryCircuitBreakerIntegration:
         # The config is used internally but not exposed as an attribute anymore
 
     def test_circuit_breaker_logging(self):
-        """Test that circuit breaker events are properly logged."""
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.logger"
-        ) as mock_logger:
-            # Mock circuit breaker error
-            with patch.object(
-                self.telemetry_client._telemetry_push_client._circuit_breaker,
-                "call",
-                side_effect=CircuitBreakerError("Circuit is open"),
-            ):
-                # CircuitBreakerError is caught and returns mock response
+        """Test that circuit breaker exceptions are raised (callback handles them)."""
+        from pybreaker import CircuitBreakerError
+
+        # Mock circuit breaker error
+        with patch.object(
+            self.telemetry_client._telemetry_push_client._circuit_breaker,
+            "call",
+            side_effect=CircuitBreakerError("Circuit is open"),
+        ):
+            # CircuitBreakerError is raised from _send_with_unified_client
+            # (callback will catch it when called via executor)
+            with pytest.raises(CircuitBreakerError):
                 self.telemetry_client._send_with_unified_client(
                     "https://test.com/telemetry",
                     '{"test": "data"}',
                     {"Content-Type": "application/json"},
                 )
-
-            # Check that debug was logged (not warning - telemetry silently drops)
-            mock_logger.debug.assert_called()
-            debug_call = mock_logger.debug.call_args[0]
-            assert "Circuit breaker is open" in debug_call[0]
 
 
 class TestTelemetryCircuitBreakerThreadSafety:
@@ -322,11 +318,14 @@ class TestTelemetryCircuitBreakerThreadSafety:
 
         def make_request():
             try:
-                # Mock the underlying HTTP client to fail, not the telemetry push client
+                # Mock the underlying HTTP client to return 429 (rate limiting)
+                # This will trigger circuit breaker after MINIMUM_CALLS failures
+                mock_response = Mock()
+                mock_response.status = 429
                 with patch.object(
                     telemetry_client._http_client,
                     "request",
-                    side_effect=Exception("Network error"),
+                    return_value=mock_response,
                 ):
                     telemetry_client._send_with_unified_client(
                         "https://test.com/telemetry",
@@ -351,7 +350,8 @@ class TestTelemetryCircuitBreakerThreadSafety:
         for thread in threads:
             thread.join()
 
-        # Should have some results and some errors
-        assert len(results) + len(errors) == num_threads
-        # Some should be CircuitBreakerError after circuit opens
-        assert "CircuitBreakerError" in errors or len(errors) == 0
+        # All requests should result in errors (no successes)
+        assert len(results) == 0  # No successes
+        assert len(errors) == num_threads  # All fail
+        # Should have TelemetryRateLimitError (before circuit opens) and CircuitBreakerError (after)
+        assert "TelemetryRateLimitError" in errors or "CircuitBreakerError" in errors
