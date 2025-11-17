@@ -18,7 +18,11 @@ from pybreaker import CircuitBreakerError
 
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
-from databricks.sql.exc import TelemetryRateLimitError, RequestError
+from databricks.sql.exc import (
+    TelemetryRateLimitError,
+    TelemetryNonRateLimitError,
+    RequestError,
+)
 from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
 
 logger = logging.getLogger(__name__)
@@ -85,24 +89,79 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
             host,
         )
 
-    def _create_mock_success_response(self) -> BaseHTTPResponse:
+    def _make_request_and_check_status(
+        self,
+        method: HttpMethod,
+        url: str,
+        headers: Optional[Dict[str, str]],
+        **kwargs,
+    ) -> BaseHTTPResponse:
         """
-        Create a mock success response for when circuit breaker is open.
+        Make the request and check response status.
 
-        This allows telemetry to fail silently without raising exceptions.
+        Raises TelemetryRateLimitError for 429/503 (circuit breaker counts these).
+        Wraps other errors in TelemetryNonRateLimitError (circuit breaker excludes these).
+
+        Args:
+            method: HTTP method
+            url: Request URL
+            headers: Request headers
+            **kwargs: Additional request parameters
+
+        Returns:
+            HTTP response
+
+        Raises:
+            TelemetryRateLimitError: For 429/503 status codes (circuit breaker counts)
+            TelemetryNonRateLimitError: For other errors (circuit breaker excludes)
         """
-        # Create a simple object that mimics BaseHTTPResponse interface
-        class _MockTelemetryResponse:
-            """Simple response object for silently handling circuit breaker state."""
+        try:
+            response = self._delegate.request(method, url, headers, **kwargs)
 
-            status = 200
-            # Include all required fields for TelemetryResponse dataclass
-            data = b'{"numProtoSuccess": 0, "numSuccess": 0, "numRealtimeSuccess": 0, "errors": []}'
+            # Check for rate limiting or service unavailable
+            if response.status in [429, 503]:
+                logger.warning(
+                    "Telemetry endpoint returned %d for host %s, triggering circuit breaker",
+                    response.status,
+                    self._host,
+                )
+                raise TelemetryRateLimitError(
+                    f"Telemetry endpoint rate limited or unavailable: {response.status}"
+                )
 
-            def close(self):
-                pass
+            return response
 
-        return _MockTelemetryResponse()
+        except Exception as e:
+            # Don't catch TelemetryRateLimitError - let it propagate to circuit breaker
+            if isinstance(e, TelemetryRateLimitError):
+                raise
+
+            # Check if it's a RequestError with rate limiting status code (exhausted retries)
+            if isinstance(e, RequestError):
+                http_code = (
+                    e.context.get("http-code")
+                    if hasattr(e, "context") and e.context
+                    else None
+                )
+
+                if http_code in [429, 503]:
+                    logger.warning(
+                        "Telemetry retries exhausted with status %d for host %s, triggering circuit breaker",
+                        http_code,
+                        self._host,
+                    )
+                    raise TelemetryRateLimitError(
+                        f"Telemetry rate limited after retries: {http_code}"
+                    )
+
+            # NOT rate limiting (500 errors, network errors, timeouts, etc.)
+            # Wrap in TelemetryNonRateLimitError so circuit breaker excludes it
+            logger.debug(
+                "Non-rate-limit telemetry error for host %s: %s, wrapping to exclude from circuit breaker",
+                self._host,
+                e,
+            )
+            raise TelemetryNonRateLimitError(e) from e
 
     def request(
         self,
@@ -114,95 +173,29 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
         """
         Make an HTTP request with circuit breaker protection.
 
-        Circuit breaker only opens for 429/503 responses (rate limiting).
-        If circuit breaker is open, silently drops the telemetry request.
-        Other errors fail silently without triggering circuit breaker.
+        Circuit breaker only opens for TelemetryRateLimitError (429/503 responses).
+        Other errors are wrapped in TelemetryNonRateLimitError and excluded from circuit breaker.
+        All exceptions propagate to caller (TelemetryClient callback handles them).
         """
-
-        def _make_request_and_check_status():
-            """
-            Function that makes the request and checks response status.
-
-            Raises TelemetryRateLimitError ONLY for 429/503 so circuit breaker counts them as failures.
-            For all other errors, returns mock success response so circuit breaker does NOT count them.
-
-            This ensures circuit breaker only opens for rate limiting, not for network errors,
-            timeouts, or server errors.
-            """
-            try:
-                response = self._delegate.request(method, url, headers, **kwargs)
-
-                # Check for rate limiting or service unavailable in successful response
-                # (case where urllib3 returns response without exhausting retries)
-                if response.status in [429, 503]:
-                    logger.warning(
-                        "Telemetry endpoint returned %d for host %s, triggering circuit breaker",
-                        response.status,
-                        self._host,
-                    )
-                    raise TelemetryRateLimitError(
-                        f"Telemetry endpoint rate limited or unavailable: {response.status}"
-                    )
-
-                return response
-
-            except Exception as e:
-                # Don't catch TelemetryRateLimitError - let it propagate to circuit breaker
-                if isinstance(e, TelemetryRateLimitError):
-                    raise
-
-                # Check if it's a RequestError with rate limiting status code (exhausted retries)
-                if isinstance(e, RequestError):
-                    http_code = (
-                        e.context.get("http-code")
-                        if hasattr(e, "context") and e.context
-                        else None
-                    )
-
-                    if http_code in [429, 503]:
-                        logger.warning(
-                            "Telemetry retries exhausted with status %d for host %s, triggering circuit breaker",
-                            http_code,
-                            self._host,
-                        )
-                        raise TelemetryRateLimitError(
-                            f"Telemetry rate limited after retries: {http_code}"
-                        )
-
-                # NOT rate limiting (500 errors, network errors, timeouts, etc.)
-                # Return mock success response so circuit breaker does NOT see this as a failure
-                logger.debug(
-                    "Non-rate-limit telemetry error for host %s: %s, failing silently",
-                    self._host,
-                    e,
-                )
-                return self._create_mock_success_response()
-
         try:
             # Use circuit breaker to protect the request
-            # The inner function will raise TelemetryRateLimitError for 429/503
-            # which the circuit breaker will count as a failure
-            return self._circuit_breaker.call(_make_request_and_check_status)
+            # TelemetryRateLimitError will trigger circuit breaker
+            # TelemetryNonRateLimitError is excluded from circuit breaker
+            return self._circuit_breaker.call(
+                self._make_request_and_check_status,
+                method,
+                url,
+                headers,
+                **kwargs,
+            )
 
-        except Exception as e:
-            # All telemetry errors are consumed and return mock success
-            # Log appropriate message based on exception type
-            if isinstance(e, CircuitBreakerError):
-                logger.debug(
-                    "Circuit breaker is open for host %s, dropping telemetry request",
-                    self._host,
-                )
-            elif isinstance(e, TelemetryRateLimitError):
-                logger.debug(
-                    "Telemetry rate limited for host %s (already counted by circuit breaker): %s",
-                    self._host,
-                    e,
-                )
-            else:
-                logger.debug(
-                    "Unexpected telemetry error for host %s: %s, failing silently",
-                    self._host,
-                    e,
-                )
-
-            return self._create_mock_success_response()
+        except TelemetryNonRateLimitError as e:
+            # Unwrap and re-raise original exception
+            # Circuit breaker didn't count this, but caller should handle it
+            logger.debug(
+                "Non-rate-limit telemetry error for host %s, re-raising original: %s",
+                self._host,
+                e.original_exception,
+            )
+            raise e.original_exception from e
+        # All other exceptions (TelemetryRateLimitError, CircuitBreakerError) propagate as-is

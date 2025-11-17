@@ -13,7 +13,7 @@ from typing import Dict
 import pybreaker
 from pybreaker import CircuitBreaker, CircuitBreakerError, CircuitBreakerListener
 
-from databricks.sql.exc import TelemetryRateLimitError
+from databricks.sql.exc import TelemetryNonRateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,9 @@ class CircuitBreakerManager:
                     fail_max=MINIMUM_CALLS,
                     reset_timeout=RESET_TIMEOUT,
                     name=f"{NAME_PREFIX}-{host}",
+                    exclude=[
+                        TelemetryNonRateLimitError
+                    ],  # Don't count these as failures
                 )
                 # Add state change listener for logging
                 breaker.add_listener(CircuitBreakerStateListener())
