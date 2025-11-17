@@ -12,10 +12,7 @@ from databricks.sql.telemetry.telemetry_push_client import (
 )
 from databricks.sql.common.http import HttpMethod
 from databricks.sql.exc import RequestError, TelemetryRateLimitError
-from databricks.sql.telemetry.circuit_breaker_manager import (
-    CircuitBreakerManager,
-    CircuitBreakerConfig,
-)
+from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
 
 
 class TestTelemetryPushClientRequestErrorHandling:
@@ -25,10 +22,8 @@ class TestTelemetryPushClientRequestErrorHandling:
     def setup_circuit_breaker(self):
         """Setup circuit breaker for testing."""
         CircuitBreakerManager._instances.clear()
-        CircuitBreakerManager.initialize(CircuitBreakerConfig())
         yield
         CircuitBreakerManager._instances.clear()
-        CircuitBreakerManager._config = None
 
     @pytest.fixture
     def mock_delegate(self):

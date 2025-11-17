@@ -91,6 +91,7 @@ class TestCircuitBreakerTelemetryPushClient:
         response = self.client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 200
+        assert b"numProtoSuccess" in response.data
 
     def test_is_circuit_breaker_enabled(self):
         """Test checking if circuit breaker is enabled."""
@@ -146,14 +147,12 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         """Test that circuit breaker opens after repeated failures (429/503 errors)."""
         from databricks.sql.telemetry.circuit_breaker_manager import (
             CircuitBreakerManager,
-            CircuitBreakerConfig,
-            DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
+            MINIMUM_CALLS,
         )
         from databricks.sql.exc import TelemetryRateLimitError
 
         # Clear any existing state
         CircuitBreakerManager._instances.clear()
-        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
         client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
 
@@ -177,15 +176,13 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         """Test that circuit breaker recovers after successful calls."""
         from databricks.sql.telemetry.circuit_breaker_manager import (
             CircuitBreakerManager,
-            CircuitBreakerConfig,
-            DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
-            DEFAULT_RESET_TIMEOUT as RESET_TIMEOUT,
+            MINIMUM_CALLS,
+            RESET_TIMEOUT,
         )
         import time
 
         # Clear any existing state
         CircuitBreakerManager._instances.clear()
-        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
         client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
 
@@ -198,11 +195,13 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         for i in range(MINIMUM_CALLS + 5):
             response = client.request(HttpMethod.POST, "https://test.com", {})
             assert response.status == 200  # Returns mock success
+            assert b"numProtoSuccess" in response.data
 
         # Circuit should be open now - still returns mock response
         response = client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 200  # Mock success response
+        assert b"numProtoSuccess" in response.data
 
         # Wait for reset timeout
         time.sleep(RESET_TIMEOUT + 1.0)

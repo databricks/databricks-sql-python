@@ -196,7 +196,7 @@ class TelemetryClient(BaseTelemetryClient):
 
         # Create telemetry push client based on circuit breaker enabled flag
         if client_context.telemetry_circuit_breaker_enabled:
-            # Create circuit breaker telemetry push client with fixed configuration
+            # Create circuit breaker telemetry push client (circuit breakers created on-demand)
             self._telemetry_push_client: ITelemetryPushClient = (
                 CircuitBreakerTelemetryPushClient(
                     TelemetryPushClient(self._http_client),

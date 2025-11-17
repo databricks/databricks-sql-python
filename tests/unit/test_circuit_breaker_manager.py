@@ -9,10 +9,9 @@ from unittest.mock import Mock, patch
 
 from databricks.sql.telemetry.circuit_breaker_manager import (
     CircuitBreakerManager,
-    CircuitBreakerConfig,
-    DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
-    DEFAULT_RESET_TIMEOUT as RESET_TIMEOUT,
-    DEFAULT_NAME as CIRCUIT_BREAKER_NAME,
+    MINIMUM_CALLS,
+    RESET_TIMEOUT,
+    NAME_PREFIX as CIRCUIT_BREAKER_NAME,
 )
 from pybreaker import CircuitBreakerError
 
@@ -24,13 +23,10 @@ class TestCircuitBreakerManager:
         """Set up test fixtures."""
         # Clear any existing instances
         CircuitBreakerManager._instances.clear()
-        # Initialize with default config
-        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
     def teardown_method(self):
         """Clean up after tests."""
         CircuitBreakerManager._instances.clear()
-        CircuitBreakerManager._config = None
 
     def test_get_circuit_breaker_creates_instance(self):
         """Test getting circuit breaker creates instance with correct config."""
@@ -59,6 +55,16 @@ class TestCircuitBreakerManager:
         breaker = CircuitBreakerManager.get_circuit_breaker("test-host")
         assert breaker is not None
         assert breaker.current_state in ["closed", "open", "half-open"]
+
+    def test_circuit_breaker_reused_for_same_host(self):
+        """Test that circuit breakers are reused for the same host."""
+        # Get circuit breaker for a host
+        breaker1 = CircuitBreakerManager.get_circuit_breaker("host1.example.com")
+        assert breaker1 is not None
+
+        # Get circuit breaker again for the same host - should be SAME instance
+        breaker2 = CircuitBreakerManager.get_circuit_breaker("host1.example.com")
+        assert breaker2 is breaker1  # Same instance, state preserved across calls
 
     def test_thread_safety(self):
         """Test thread safety of circuit breaker manager."""
@@ -92,13 +98,10 @@ class TestCircuitBreakerIntegration:
     def setup_method(self):
         """Set up test fixtures."""
         CircuitBreakerManager._instances.clear()
-        # Initialize with default config
-        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
     def teardown_method(self):
         """Clean up after tests."""
         CircuitBreakerManager._instances.clear()
-        CircuitBreakerManager._config = None
 
     def test_circuit_breaker_state_transitions(self):
         """Test circuit breaker state transitions."""

@@ -111,6 +111,7 @@ class TestCircuitBreakerTelemetryPushClient:
         response = self.client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 200
+        assert b"numProtoSuccess" in response.data
 
     def test_is_circuit_breaker_enabled(self):
         """Test checking if circuit breaker is enabled."""
@@ -130,6 +131,8 @@ class TestCircuitBreakerTelemetryPushClient:
                 # Should return mock response, not raise
                 response = self.client.request(HttpMethod.POST, "https://test.com", {})
                 assert response is not None
+                assert response.status == 200
+                assert b"numProtoSuccess" in response.data
 
             # Check that debug was logged (not warning - telemetry silently drops)
             mock_logger.debug.assert_called()
@@ -148,6 +151,7 @@ class TestCircuitBreakerTelemetryPushClient:
             response = self.client.request(HttpMethod.POST, "https://test.com", {})
             assert response is not None
             assert response.status == 200
+            assert b"numProtoSuccess" in response.data
 
             # Check that debug was logged
             mock_logger.debug.assert_called()
@@ -166,6 +170,7 @@ class TestCircuitBreakerTelemetryPushClient:
         response = self.client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 200  # Mock success
+        assert b"numProtoSuccess" in response.data
 
     def test_request_503_returns_mock_success(self):
         """Test that 503 response triggers circuit breaker but returns mock success."""
@@ -178,6 +183,7 @@ class TestCircuitBreakerTelemetryPushClient:
         response = self.client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 200  # Mock success
+        assert b"numProtoSuccess" in response.data
 
     def test_request_500_returns_response(self):
         """Test that 500 response returns the response without raising."""
@@ -220,15 +226,10 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         """Set up test fixtures."""
         self.mock_delegate = Mock()
         self.host = "test-host.example.com"
-        # Clear any existing circuit breaker state and initialize with config
-        from databricks.sql.telemetry.circuit_breaker_manager import (
-            CircuitBreakerManager,
-            CircuitBreakerConfig,
-        )
+        # Clear any existing circuit breaker state
+        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
 
         CircuitBreakerManager._instances.clear()
-        # Initialize with default config for testing
-        CircuitBreakerManager.initialize(CircuitBreakerConfig())
 
     @pytest.mark.skip(reason="TODO: pybreaker needs custom filtering logic to only count TelemetryRateLimitError")
     def test_circuit_breaker_opens_after_failures(self):
@@ -238,7 +239,7 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         We need to implement custom filtering to only count TelemetryRateLimitError.
         Unit tests verify the component behavior correctly.
         """
-        from databricks.sql.telemetry.circuit_breaker_manager import DEFAULT_MINIMUM_CALLS
+        from databricks.sql.telemetry.circuit_breaker_manager import MINIMUM_CALLS
 
         client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
 
@@ -250,7 +251,7 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         # Trigger failures - some will raise TelemetryRateLimitError, some will return mock response once circuit opens
         exception_count = 0
         mock_response_count = 0
-        for i in range(DEFAULT_MINIMUM_CALLS + 5):
+        for i in range(MINIMUM_CALLS + 5):
             try:
                 response = client.request(HttpMethod.POST, "https://test.com", {})
                 # Got a mock response - circuit is open or it's a non-rate-limit response
@@ -261,8 +262,8 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
                 exception_count += 1
         
         # Should have some rate limit exceptions before circuit opened, then mock responses after
-        # Circuit opens around DEFAULT_MINIMUM_CALLS failures (might be DEFAULT_MINIMUM_CALLS or DEFAULT_MINIMUM_CALLS-1)
-        assert exception_count >= DEFAULT_MINIMUM_CALLS - 1
+        # Circuit opens around MINIMUM_CALLS failures (might be MINIMUM_CALLS or MINIMUM_CALLS-1)
+        assert exception_count >= MINIMUM_CALLS - 1
         assert mock_response_count > 0
 
     @pytest.mark.skip(reason="TODO: pybreaker needs custom filtering logic to only count TelemetryRateLimitError")
@@ -274,8 +275,8 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         Unit tests verify the component behavior correctly.
         """
         from databricks.sql.telemetry.circuit_breaker_manager import (
-            DEFAULT_MINIMUM_CALLS,
-            DEFAULT_RESET_TIMEOUT,
+            MINIMUM_CALLS,
+            RESET_TIMEOUT,
         )
         import time
 
@@ -287,7 +288,7 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         self.mock_delegate.request.return_value = mock_429_response
 
         # Trigger enough failures to open circuit
-        for i in range(DEFAULT_MINIMUM_CALLS + 5):
+        for i in range(MINIMUM_CALLS + 5):
             try:
                 client.request(HttpMethod.POST, "https://test.com", {})
             except TelemetryRateLimitError:
@@ -299,7 +300,7 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         assert response.status == 200  # Mock success response
 
         # Wait for reset timeout
-        time.sleep(DEFAULT_RESET_TIMEOUT + 1.0)
+        time.sleep(RESET_TIMEOUT + 1.0)
 
         # Simulate successful calls (200 response)
         mock_success_response = Mock()

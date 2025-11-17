@@ -338,9 +338,7 @@ class TestTelemetryCircuitBreakerThreadSafety:
                 errors.append(type(e).__name__)
 
         # Create multiple threads (enough to trigger circuit breaker)
-        from databricks.sql.telemetry.circuit_breaker_manager import (
-            DEFAULT_MINIMUM_CALLS as MINIMUM_CALLS,
-        )
+        from databricks.sql.telemetry.circuit_breaker_manager import MINIMUM_CALLS
 
         num_threads = MINIMUM_CALLS + 5  # Enough to open the circuit
         threads = []

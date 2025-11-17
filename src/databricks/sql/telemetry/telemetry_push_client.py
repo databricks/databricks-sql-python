@@ -91,12 +91,18 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
 
         This allows telemetry to fail silently without raising exceptions.
         """
-        from unittest.mock import Mock
+        # Create a simple object that mimics BaseHTTPResponse interface
+        class _MockTelemetryResponse:
+            """Simple response object for silently handling circuit breaker state."""
 
-        mock_response = Mock(spec=BaseHTTPResponse)
-        mock_response.status = 200
-        mock_response.data = b'{"numProtoSuccess": 0, "errors": []}'
-        return mock_response
+            status = 200
+            # Include all required fields for TelemetryResponse dataclass
+            data = b'{"numProtoSuccess": 0, "numSuccess": 0, "numRealtimeSuccess": 0, "errors": []}'
+
+            def close(self):
+                pass
+
+        return _MockTelemetryResponse()
 
     def request(
         self,

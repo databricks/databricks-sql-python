@@ -3,13 +3,12 @@ Circuit breaker implementation for telemetry requests.
 
 This module provides circuit breaker functionality to prevent telemetry failures
 from impacting the main SQL operations. It uses pybreaker library to implement
-the circuit breaker pattern with configurable thresholds and timeouts.
+the circuit breaker pattern.
 """
 
 import logging
 import threading
-from typing import Dict, Optional, Any
-from dataclasses import dataclass
+from typing import Dict
 
 import pybreaker
 from pybreaker import CircuitBreaker, CircuitBreakerError, CircuitBreakerListener
@@ -18,10 +17,10 @@ from databricks.sql.exc import TelemetryRateLimitError
 
 logger = logging.getLogger(__name__)
 
-# Circuit Breaker Configuration Constants
-DEFAULT_MINIMUM_CALLS = 20
-DEFAULT_RESET_TIMEOUT = 30
-DEFAULT_NAME = "telemetry-circuit-breaker"
+# Circuit Breaker Constants
+MINIMUM_CALLS = 20  # Number of failures before circuit opens
+RESET_TIMEOUT = 30  # Seconds to wait before trying to close circuit
+NAME_PREFIX = "telemetry-circuit-breaker"
 
 # Circuit Breaker State Constants (used in logging)
 CIRCUIT_BREAKER_STATE_OPEN = "open"
@@ -73,47 +72,16 @@ class CircuitBreakerStateListener(CircuitBreakerListener):
             logger.info(LOG_CIRCUIT_BREAKER_HALF_OPEN, cb.name)
 
 
-@dataclass(frozen=True)
-class CircuitBreakerConfig:
-    """Configuration for circuit breaker behavior.
-
-    This class is immutable to prevent modification of circuit breaker settings.
-    All configuration values are set to constants defined at the module level.
-    """
-
-    # Minimum number of calls before circuit can open
-    minimum_calls: int = DEFAULT_MINIMUM_CALLS
-
-    # Time to wait before trying to close circuit (in seconds)
-    reset_timeout: int = DEFAULT_RESET_TIMEOUT
-
-    # Name for the circuit breaker (for logging)
-    name: str = DEFAULT_NAME
-
-
 class CircuitBreakerManager:
     """
     Manages circuit breaker instances for telemetry requests.
 
-    This class provides a singleton pattern to manage circuit breaker instances
-    per host, ensuring that telemetry failures don't impact main SQL operations.
+    Creates and caches circuit breaker instances per host to ensure telemetry
+    failures don't impact main SQL operations.
     """
 
     _instances: Dict[str, CircuitBreaker] = {}
     _lock = threading.RLock()
-    _config: Optional[CircuitBreakerConfig] = None
-
-    @classmethod
-    def initialize(cls, config: CircuitBreakerConfig) -> None:
-        """
-        Initialize the circuit breaker manager with configuration.
-
-        Args:
-            config: Circuit breaker configuration
-        """
-        with cls._lock:
-            cls._config = config
-            logger.debug("CircuitBreakerManager initialized with config: %s", config)
 
     @classmethod
     def get_circuit_breaker(cls, host: str) -> CircuitBreaker:
@@ -126,56 +94,16 @@ class CircuitBreakerManager:
         Returns:
             CircuitBreaker instance for the host
         """
-        if not cls._config:
-            # Return a no-op circuit breaker if not initialized
-            return cls._create_noop_circuit_breaker()
-
         with cls._lock:
             if host not in cls._instances:
-                cls._instances[host] = cls._create_circuit_breaker(host)
+                breaker = CircuitBreaker(
+                    fail_max=MINIMUM_CALLS,
+                    reset_timeout=RESET_TIMEOUT,
+                    name=f"{NAME_PREFIX}-{host}",
+                )
+                # Add state change listener for logging
+                breaker.add_listener(CircuitBreakerStateListener())
+                cls._instances[host] = breaker
                 logger.debug("Created circuit breaker for host: %s", host)
 
             return cls._instances[host]
-
-    @classmethod
-    def _create_circuit_breaker(cls, host: str) -> CircuitBreaker:
-        """
-        Create a new circuit breaker instance for the specified host.
-
-        Args:
-            host: The hostname for the circuit breaker
-
-        Returns:
-            New CircuitBreaker instance
-        """
-        config = cls._config
-        if config is None:
-            raise RuntimeError("CircuitBreakerManager not initialized")
-
-        # Create circuit breaker with configuration
-        breaker = CircuitBreaker(
-            fail_max=config.minimum_calls,  # Number of failures before circuit opens
-            reset_timeout=config.reset_timeout,
-            name=f"{config.name}-{host}",
-        )
-
-        # Add state change listeners for logging
-        breaker.add_listener(CircuitBreakerStateListener())
-
-        return breaker
-
-    @classmethod
-    def _create_noop_circuit_breaker(cls) -> CircuitBreaker:
-        """
-        Create a no-op circuit breaker that always allows calls.
-
-        Returns:
-            CircuitBreaker that never opens
-        """
-        # Create a circuit breaker with very high thresholds so it never opens
-        breaker = CircuitBreaker(
-            fail_max=1000000,  # Very high threshold
-            reset_timeout=1,  # Short reset time
-            name="noop-circuit-breaker",
-        )
-        return breaker

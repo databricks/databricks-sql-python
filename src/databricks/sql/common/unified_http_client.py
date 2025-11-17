@@ -28,6 +28,42 @@ from databricks.sql.common.http_utils import (
 logger = logging.getLogger(__name__)
 
 
+def _extract_http_status_from_max_retry_error(e: MaxRetryError) -> Optional[int]:
+    """
+    Extract HTTP status code from MaxRetryError if available.
+
+    urllib3 structures MaxRetryError in different ways depending on the failure scenario:
+    - e.reason.response.status: Most common case when retries are exhausted
+    - e.response.status: Alternate structure in some scenarios
+
+    Args:
+        e: MaxRetryError exception from urllib3
+
+    Returns:
+        HTTP status code as int if found, None otherwise
+    """
+    # Try primary structure: e.reason.response.status
+    if (
+        hasattr(e, "reason")
+        and e.reason is not None
+        and hasattr(e.reason, "response")
+        and e.reason.response is not None
+    ):
+        http_code = getattr(e.reason.response, "status", None)
+        if http_code is not None:
+            return http_code
+
+    # Try alternate structure: e.response.status
+    if (
+        hasattr(e, "response")
+        and e.response is not None
+        and hasattr(e.response, "status")
+    ):
+        return e.response.status
+
+    return None
+
+
 class UnifiedHttpClient:
     """
     Unified HTTP client for all Databricks SQL connector HTTP operations.
@@ -265,23 +301,8 @@ class UnifiedHttpClient:
         except MaxRetryError as e:
             logger.error("HTTP request failed after retries: %s", e)
 
-            # Try to extract HTTP status code from the MaxRetryError
-            http_code = None
-            if (
-                hasattr(e, "reason")
-                and e.reason is not None
-                and hasattr(e.reason, "response")
-                and e.reason.response is not None
-            ):
-                # The reason may contain a response object with status
-                http_code = getattr(e.reason.response, "status", None)
-            elif (
-                hasattr(e, "response")
-                and e.response is not None
-                and hasattr(e.response, "status")
-            ):
-                # Or the error itself may have a response
-                http_code = e.response.status
+            # Extract HTTP status code from MaxRetryError if available
+            http_code = _extract_http_status_from_max_retry_error(e)
 
             context = {}
             if http_code is not None:
