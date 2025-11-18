@@ -320,7 +320,9 @@ class Connection:
         )
 
         self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
-        self.enable_telemetry = kwargs.get("enable_telemetry", True)  # Default to True for telemetry
+        self.enable_telemetry = kwargs.get(
+            "enable_telemetry", True
+        )  # Default to True for telemetry
         self.telemetry_enabled = TelemetryHelper.is_telemetry_enabled(self)
 
         TelemetryClientFactory.initialize_telemetry_client(

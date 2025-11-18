@@ -107,8 +107,9 @@ class FeatureFlagsContext:
     def _refresh_flags(self):
         """Performs a synchronous network request to fetch and update flags."""
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         headers = {}
         try:
             # Authenticate the request
@@ -130,13 +131,17 @@ class FeatureFlagsContext:
                 logger.info(f"Feature flags loaded: {self._flags}")
             else:
                 # On failure, initialize with an empty dictionary to prevent re-blocking.
-                logger.info(f"Feature flag fetch failed with status {response.status}, initializing empty flags")
+                logger.info(
+                    f"Feature flag fetch failed with status {response.status}, initializing empty flags"
+                )
                 if self._flags is None:
                     self._flags = {}
 
         except Exception as e:
             # On exception, initialize with an empty dictionary to prevent re-blocking.
-            logger.info(f"Feature flag fetch exception: {type(e).__name__}: {e}, initializing empty flags")
+            logger.info(
+                f"Feature flag fetch exception: {type(e).__name__}: {e}, initializing empty flags"
+            )
             if self._flags is None:
                 self._flags = {}
 

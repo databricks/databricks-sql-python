@@ -114,7 +114,9 @@ class TelemetryHelper:
             return True
 
         if connection.enable_telemetry:
-            logger.info(f"Telemetry: enable_telemetry=True, checking feature flag: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}")
+            logger.info(
+                f"Telemetry: enable_telemetry=True, checking feature flag: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}"
+            )
             context = FeatureFlagsContextFactory.get_instance(connection)
             flag_value = context.get_flag_value(
                 TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
@@ -200,7 +202,9 @@ class TelemetryClient(BaseTelemetryClient):
         logger.info(f"Exporting telemetry event for connection {self._session_id_hex}")
         with self._lock:
             self._events_batch.append(event)
-        logger.info(f"Event added to batch, batch size now: {len(self._events_batch)}/{self._batch_size}")
+        logger.info(
+            f"Event added to batch, batch size now: {len(self._events_batch)}/{self._batch_size}"
+        )
         if len(self._events_batch) >= self._batch_size:
             logger.info(f"Batch size reached ({self._batch_size}), flushing events")
             self._flush()
@@ -485,17 +489,25 @@ class TelemetryClientFactory:
                             batch_size=batch_size,
                             client_context=client_context,
                         )
-                        logger.info(f"Created TelemetryClient for connection {session_id_hex}")
+                        logger.info(
+                            f"Created TelemetryClient for connection {session_id_hex}"
+                        )
                     else:
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
-                        logger.info(f"Created NoopTelemetryClient for connection {session_id_hex}")
+                        logger.info(
+                            f"Created NoopTelemetryClient for connection {session_id_hex}"
+                        )
         except Exception as e:
-            logger.info(f"Failed to initialize telemetry client: {type(e).__name__}: {e}")
+            logger.info(
+                f"Failed to initialize telemetry client: {type(e).__name__}: {e}"
+            )
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
             TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
-            logger.info(f"Fallback to NoopTelemetryClient for connection {session_id_hex}")
+            logger.info(
+                f"Fallback to NoopTelemetryClient for connection {session_id_hex}"
+            )
 
     @staticmethod
     def get_telemetry_client(session_id_hex):

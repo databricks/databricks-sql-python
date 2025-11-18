@@ -97,7 +97,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         sys_config = event.entry.sql_driver_log.system_configuration
 
         assert sys_config is not None, "system_configuration should not be None"
-        
+
         # Driver information
         assert (
             sys_config.driver_name == "Databricks SQL Python Connector"
@@ -105,7 +105,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         assert (
             sys_config.driver_version is not None and len(sys_config.driver_version) > 0
         ), "driver_version should not be None or empty"
-        
+
         # OS information
         assert (
             sys_config.os_name is not None and len(sys_config.os_name) > 0
@@ -116,7 +116,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         assert (
             sys_config.os_arch is not None and len(sys_config.os_arch) > 0
         ), "os_arch should not be None or empty"
-        
+
         # Runtime information
         assert (
             sys_config.runtime_name is not None and len(sys_config.runtime_name) > 0
@@ -126,10 +126,9 @@ class TestTelemetryE2E(TelemetryTestBase):
             and len(sys_config.runtime_version) > 0
         ), "runtime_version should not be None or empty"
         assert (
-            sys_config.runtime_vendor is not None
-            and len(sys_config.runtime_vendor) > 0
+            sys_config.runtime_vendor is not None and len(sys_config.runtime_vendor) > 0
         ), "runtime_vendor should not be None or empty"
-        
+
         # Locale and encoding
         assert (
             sys_config.locale_name is not None and len(sys_config.locale_name) > 0
@@ -151,7 +150,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         conn_params = event.entry.sql_driver_log.driver_connection_params
 
         assert conn_params is not None, "driver_connection_params should not be None"
-        
+
         # HTTP Path
         if expected_http_path:
             assert (
@@ -160,31 +159,31 @@ class TestTelemetryE2E(TelemetryTestBase):
         assert (
             conn_params.http_path is not None and len(conn_params.http_path) > 0
         ), "http_path should not be None or empty"
-        
+
         # Mode
         if expected_mode:
             assert (
                 conn_params.mode == expected_mode
             ), f"Expected mode '{expected_mode}', got '{conn_params.mode}'"
         # Mode is optional, so don't assert it must exist
-        
+
         # Host Info (HostDetails object)
         assert conn_params.host_info is not None, "host_info should not be None"
-        
+
         # Auth Mechanism (AuthMech object)
         if expected_auth_mech:
             assert (
                 conn_params.auth_mech == expected_auth_mech
             ), f"Expected auth_mech '{expected_auth_mech}', got '{conn_params.auth_mech}'"
         assert conn_params.auth_mech is not None, "auth_mech should not be None"
-        
+
         # Auth Flow (optional string)
         if expected_auth_flow:
             assert (
                 conn_params.auth_flow == expected_auth_flow
             ), f"Expected auth_flow '{expected_auth_flow}', got '{conn_params.auth_flow}'"
         # auth_flow is optional, so don't assert it must exist
-        
+
         # Socket Timeout
         # socket_timeout is optional and can be None
         if conn_params.socket_timeout is not None:
@@ -199,7 +198,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         sql_op = event.entry.sql_driver_log.sql_operation
 
         assert sql_op is not None, "sql_operation should not be None for SQL execution"
-        
+
         # Statement Type
         if statement_type:
             assert (
@@ -210,7 +209,7 @@ class TestTelemetryE2E(TelemetryTestBase):
             assert (
                 sql_op.statement_type is not None
             ), "statement_type should not be None"
-        
+
         # Execution Result
         if execution_result:
             assert (
@@ -221,25 +220,27 @@ class TestTelemetryE2E(TelemetryTestBase):
             assert (
                 sql_op.execution_result is not None
             ), "execution_result should not be None"
-        
+
         # Retry Count
         assert hasattr(sql_op, "retry_count"), "sql_operation should have retry_count"
         if sql_op.retry_count is not None:
             assert (
                 sql_op.retry_count >= 0
             ), f"retry_count should be non-negative, got {sql_op.retry_count}"
-        
+
         # Operation Latency
         latency = event.entry.sql_driver_log.operation_latency_ms
         assert latency is not None, "operation_latency_ms should not be None"
-        assert latency >= 0, f"operation_latency_ms should be non-negative, got {latency}"
+        assert (
+            latency >= 0
+        ), f"operation_latency_ms should be non-negative, got {latency}"
 
     def assertErrorInfo(self, event, expected_error_name=None):
         """Assert error information"""
         error_info = event.entry.sql_driver_log.error_info
 
         assert error_info is not None, "error_info should not be None for error events"
-        
+
         # Error Name
         assert (
             error_info.error_name is not None and len(error_info.error_name) > 0
@@ -248,7 +249,7 @@ class TestTelemetryE2E(TelemetryTestBase):
             assert (
                 error_info.error_name == expected_error_name
             ), f"Expected error_name '{expected_error_name}', got '{error_info.error_name}'"
-        
+
         # Stack Trace
         assert (
             error_info.stack_trace is not None and len(error_info.stack_trace) > 0
@@ -278,12 +279,14 @@ class TestTelemetryE2E(TelemetryTestBase):
         Expected: 2 events (initial_log + latency_log)
         """
         from databricks.sql.telemetry.telemetry_client import TelemetryHelper
-        
+
         print(f"\n{'='*80}")
         print(f"TEST: test_enable_telemetry_on_with_server_on_sends_events")
-        print(f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}")
+        print(
+            f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}"
+        )
         print(f"{'='*80}\n")
-        
+
         (
             captured_events,
             captured_futures,
@@ -307,7 +310,9 @@ class TestTelemetryE2E(TelemetryTestBase):
                 print(f"  enable_telemetry: {conn.enable_telemetry}")
                 print(f"  force_enable_telemetry: {conn.force_enable_telemetry}")
                 print(f"  telemetry_enabled (computed): {conn.telemetry_enabled}")
-                print(f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n")
+                print(
+                    f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n"
+                )
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT 1")
                     cursor.fetchone()
@@ -339,9 +344,7 @@ class TestTelemetryE2E(TelemetryTestBase):
 
             print(f"\nStatement ID: {statement_id}")
 
-    def test_force_enable_on_with_enable_off_sends_events(
-        self, telemetry_interceptors
-    ):
+    def test_force_enable_on_with_enable_off_sends_events(self, telemetry_interceptors):
         """
         Scenario: enable_telemetry=OFF, force_enable_telemetry=ON, server=ON
         Expected: 2 events (initial_log + latency_log)
@@ -442,20 +445,22 @@ class TestTelemetryE2E(TelemetryTestBase):
         """
         Scenario: Neither enable_telemetry nor force_enable_telemetry passed (uses defaults)
         Expected: 2 events (initial_log + latency_log) when server feature flag is ON
-        
+
         Default behavior:
         - enable_telemetry defaults to True
         - force_enable_telemetry defaults to False
         - Telemetry will be sent if server feature flag is enabled
         """
         from databricks.sql.telemetry.telemetry_client import TelemetryHelper
-        
+
         print(f"\n{'='*80}")
         print(f"TEST: test_default_behavior_sends_events_with_server_flag_on")
-        print(f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}")
+        print(
+            f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}"
+        )
         print(f"Testing DEFAULT behavior (no flags passed explicitly)")
         print(f"{'='*80}\n")
-        
+
         (
             captured_events,
             captured_futures,
@@ -477,10 +482,14 @@ class TestTelemetryE2E(TelemetryTestBase):
                 # Verify defaults are as expected
                 print(f"\nConnection created with DEFAULT settings:")
                 print(f"  enable_telemetry (default): {conn.enable_telemetry}")
-                print(f"  force_enable_telemetry (default): {conn.force_enable_telemetry}")
+                print(
+                    f"  force_enable_telemetry (default): {conn.force_enable_telemetry}"
+                )
                 print(f"  telemetry_enabled (computed): {conn.telemetry_enabled}")
-                print(f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n")
-                
+                print(
+                    f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n"
+                )
+
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT 99")
                     cursor.fetchone()
@@ -564,7 +573,9 @@ class TestTelemetryE2E(TelemetryTestBase):
                     print(f"\nFound error_info in event {idx}")
                     break
 
-            assert error_event is not None, "Expected at least one event with error_info"
+            assert (
+                error_event is not None
+            ), "Expected at least one event with error_info"
 
             # Assert system configuration
             self.assertSystemConfiguration(error_event)
@@ -575,9 +586,13 @@ class TestTelemetryE2E(TelemetryTestBase):
             )
 
             # Assert error info with ServerOperationError
-            self.assertErrorInfo(error_event, expected_error_name="ServerOperationError")
+            self.assertErrorInfo(
+                error_event, expected_error_name="ServerOperationError"
+            )
 
-            print(f"✅ Error telemetry successfully captured with error_name and stack_trace")
+            print(
+                f"✅ Error telemetry successfully captured with error_name and stack_trace"
+            )
 
     def test_non_existent_table_error_sends_telemetry(self, telemetry_interceptors):
         """
@@ -632,7 +647,9 @@ class TestTelemetryE2E(TelemetryTestBase):
                     print(f"\nFound error_info in event {idx}")
                     break
 
-            assert error_event is not None, "Expected at least one event with error_info"
+            assert (
+                error_event is not None
+            ), "Expected at least one event with error_info"
 
             # Assert system configuration
             self.assertSystemConfiguration(error_event)
@@ -785,7 +802,9 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events for cloudfetch (auto close)")
+            print(
+                f"\nCaptured {len(captured_events)} events for cloudfetch (auto close)"
+            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -839,7 +858,9 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events for cloudfetch (statement close)")
+            print(
+                f"\nCaptured {len(captured_events)} events for cloudfetch (statement close)"
+            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -892,7 +913,9 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events for cloudfetch (connection close)")
+            print(
+                f"\nCaptured {len(captured_events)} events for cloudfetch (connection close)"
+            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -907,7 +930,9 @@ class TestTelemetryE2E(TelemetryTestBase):
 
             print(f"✅ Cloudfetch (connection close) telemetry captured")
 
-    def test_cloudfetch_only_resultset_closed_sends_telemetry(self, telemetry_interceptors):
+    def test_cloudfetch_only_resultset_closed_sends_telemetry(
+        self, telemetry_interceptors
+    ):
         """
         Scenario: ResultSet created with cloudfetch, only ResultSet closed (implicit via fetchall)
         Expected: Telemetry events sent (batch_size=1 ensures immediate flush)
@@ -946,7 +971,9 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events for cloudfetch (resultset close)")
+            print(
+                f"\nCaptured {len(captured_events)} events for cloudfetch (resultset close)"
+            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
