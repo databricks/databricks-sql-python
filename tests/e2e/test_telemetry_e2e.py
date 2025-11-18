@@ -277,6 +277,13 @@ class TestTelemetryE2E(TelemetryTestBase):
         Scenario: enable_telemetry=ON, force_enable_telemetry=OFF, server=ON
         Expected: 2 events (initial_log + latency_log)
         """
+        from databricks.sql.telemetry.telemetry_client import TelemetryHelper
+        
+        print(f"\n{'='*80}")
+        print(f"TEST: test_enable_telemetry_on_with_server_on_sends_events")
+        print(f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}")
+        print(f"{'='*80}\n")
+        
         (
             captured_events,
             captured_futures,
@@ -296,6 +303,11 @@ class TestTelemetryE2E(TelemetryTestBase):
                     "telemetry_batch_size": 1,
                 }
             ) as conn:
+                print(f"\nConnection created:")
+                print(f"  enable_telemetry: {conn.enable_telemetry}")
+                print(f"  force_enable_telemetry: {conn.force_enable_telemetry}")
+                print(f"  telemetry_enabled (computed): {conn.telemetry_enabled}")
+                print(f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n")
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT 1")
                     cursor.fetchone()
@@ -421,6 +433,82 @@ class TestTelemetryE2E(TelemetryTestBase):
             assert (
                 len(captured_futures) == 0
             ), f"Expected 0 responses, got {len(captured_futures)}"
+
+            print(f"\nStatement ID: {statement_id}")
+
+    def test_default_behavior_sends_events_with_server_flag_on(
+        self, telemetry_interceptors
+    ):
+        """
+        Scenario: Neither enable_telemetry nor force_enable_telemetry passed (uses defaults)
+        Expected: 2 events (initial_log + latency_log) when server feature flag is ON
+        
+        Default behavior:
+        - enable_telemetry defaults to True
+        - force_enable_telemetry defaults to False
+        - Telemetry will be sent if server feature flag is enabled
+        """
+        from databricks.sql.telemetry.telemetry_client import TelemetryHelper
+        
+        print(f"\n{'='*80}")
+        print(f"TEST: test_default_behavior_sends_events_with_server_flag_on")
+        print(f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}")
+        print(f"Testing DEFAULT behavior (no flags passed explicitly)")
+        print(f"{'='*80}\n")
+        
+        (
+            captured_events,
+            captured_futures,
+            export_wrapper,
+            callback_wrapper,
+        ) = telemetry_interceptors
+
+        with patch.object(
+            TelemetryClient, "_export_event", export_wrapper
+        ), patch.object(
+            TelemetryClient, "_telemetry_request_callback", callback_wrapper
+        ):
+            # Connection without explicit telemetry flags - relies on defaults
+            with self.connection(
+                extra_params={
+                    "telemetry_batch_size": 1,
+                }
+            ) as conn:
+                # Verify defaults are as expected
+                print(f"\nConnection created with DEFAULT settings:")
+                print(f"  enable_telemetry (default): {conn.enable_telemetry}")
+                print(f"  force_enable_telemetry (default): {conn.force_enable_telemetry}")
+                print(f"  telemetry_enabled (computed): {conn.telemetry_enabled}")
+                print(f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n")
+                
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 99")
+                    cursor.fetchone()
+                    statement_id = cursor.query_id
+
+            time.sleep(2)
+            done, not_done = wait(captured_futures, timeout=10)
+
+            # With default enable_telemetry=True and server flag ON, expect 2 events
+            assert (
+                len(captured_events) == 2
+            ), f"Expected exactly 2 events with default settings, got {len(captured_events)}"
+            assert len(done) == 2, f"Expected exactly 2 responses, got {len(done)}"
+
+            # Verify HTTP responses
+            for future in done:
+                response = future.result()
+                assert 200 <= response.status < 300
+
+            # Assert payload for all events
+            for event in captured_events:
+                self.assertSystemConfiguration(event)
+                self.assertConnectionParams(
+                    event, expected_http_path=self.arguments["http_path"]
+                )
+
+            # Assert latency event (second event)
+            self.assertStatementExecution(captured_events[1])
 
             print(f"\nStatement ID: {statement_id}")
 

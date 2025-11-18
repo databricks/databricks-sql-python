@@ -106,28 +106,37 @@ class FeatureFlagsContext:
 
     def _refresh_flags(self):
         """Performs a synchronous network request to fetch and update flags."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         headers = {}
         try:
             # Authenticate the request
             self._connection.session.auth_provider.add_headers(headers)
             headers["User-Agent"] = self._connection.session.useragent_header
 
+            logger.info(f"Fetching feature flags from: {self._feature_flag_endpoint}")
             response = self._http_client.request(
                 HttpMethod.GET, self._feature_flag_endpoint, headers=headers, timeout=30
             )
 
+            logger.info(f"Feature flag response status: {response.status}")
             if response.status == 200:
                 # Parse JSON response from urllib3 response data
                 response_data = json.loads(response.data.decode())
+                logger.info(f"Feature flag response data: {response_data}")
                 ff_response = FeatureFlagsResponse.from_dict(response_data)
                 self._update_cache_from_response(ff_response)
+                logger.info(f"Feature flags loaded: {self._flags}")
             else:
                 # On failure, initialize with an empty dictionary to prevent re-blocking.
+                logger.info(f"Feature flag fetch failed with status {response.status}, initializing empty flags")
                 if self._flags is None:
                     self._flags = {}
 
         except Exception as e:
             # On exception, initialize with an empty dictionary to prevent re-blocking.
+            logger.info(f"Feature flag fetch exception: {type(e).__name__}: {e}, initializing empty flags")
             if self._flags is None:
                 self._flags = {}
 

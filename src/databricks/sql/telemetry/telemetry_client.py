@@ -110,15 +110,21 @@ class TelemetryHelper:
     @staticmethod
     def is_telemetry_enabled(connection: "Connection") -> bool:
         if connection.force_enable_telemetry:
+            logger.info("Telemetry: force_enable_telemetry=True, telemetry ENABLED")
             return True
 
         if connection.enable_telemetry:
+            logger.info(f"Telemetry: enable_telemetry=True, checking feature flag: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}")
             context = FeatureFlagsContextFactory.get_instance(connection)
             flag_value = context.get_flag_value(
                 TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
             )
-            return str(flag_value).lower() == "true"
+            logger.info(f"Telemetry: feature flag value = '{flag_value}'")
+            enabled = str(flag_value).lower() == "true"
+            logger.info(f"Telemetry: feature flag check result = {enabled}")
+            return enabled
         else:
+            logger.info("Telemetry: enable_telemetry=False, telemetry DISABLED")
             return False
 
 
@@ -191,13 +197,12 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
-        logger.debug("Exporting event for connection %s", self._session_id_hex)
+        logger.info(f"Exporting telemetry event for connection {self._session_id_hex}")
         with self._lock:
             self._events_batch.append(event)
+        logger.info(f"Event added to batch, batch size now: {len(self._events_batch)}/{self._batch_size}")
         if len(self._events_batch) >= self._batch_size:
-            logger.debug(
-                "Batch size limit reached (%s), flushing events", self._batch_size
-            )
+            logger.info(f"Batch size reached ({self._batch_size}), flushing events")
             self._flush()
 
     def _flush(self):
@@ -465,9 +470,8 @@ class TelemetryClientFactory:
                 TelemetryClientFactory._initialize()
 
                 if session_id_hex not in TelemetryClientFactory._clients:
-                    logger.debug(
-                        "Creating new TelemetryClient for connection %s",
-                        session_id_hex,
+                    logger.info(
+                        f"Creating telemetry client for connection {session_id_hex}, telemetry_enabled={telemetry_enabled}"
                     )
                     if telemetry_enabled:
                         TelemetryClientFactory._clients[
@@ -481,14 +485,17 @@ class TelemetryClientFactory:
                             batch_size=batch_size,
                             client_context=client_context,
                         )
+                        logger.info(f"Created TelemetryClient for connection {session_id_hex}")
                     else:
                         TelemetryClientFactory._clients[
                             session_id_hex
                         ] = NoopTelemetryClient()
+                        logger.info(f"Created NoopTelemetryClient for connection {session_id_hex}")
         except Exception as e:
-            logger.debug("Failed to initialize telemetry client: %s", e)
+            logger.info(f"Failed to initialize telemetry client: {type(e).__name__}: {e}")
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
             TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
+            logger.info(f"Fallback to NoopTelemetryClient for connection {session_id_hex}")
 
     @staticmethod
     def get_telemetry_client(session_id_hex):
