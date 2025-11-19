@@ -114,17 +114,42 @@ class TelemetryHelper:
             return True
 
         if connection.enable_telemetry:
+            from databricks.sql import __version__
+
+            endpoint = f"https://{connection.session.host}/api/2.0/connector-service/feature-flags/PYTHON/{__version__}"
             logger.info(
-                f"Telemetry: enable_telemetry=True, checking feature flag: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}"
+                f"Telemetry: enable_telemetry=True, checking server-side feature flag"
             )
-            context = FeatureFlagsContextFactory.get_instance(connection)
-            flag_value = context.get_flag_value(
-                TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
+            logger.info(f"Telemetry: Feature flag endpoint: {endpoint}")
+            logger.info(
+                f"Telemetry: Looking for flag: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}"
             )
-            logger.info(f"Telemetry: feature flag value = '{flag_value}'")
-            enabled = str(flag_value).lower() == "true"
-            logger.info(f"Telemetry: feature flag check result = {enabled}")
-            return enabled
+
+            try:
+                context = FeatureFlagsContextFactory.get_instance(connection)
+                flag_value = context.get_flag_value(
+                    TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
+                )
+                logger.info(
+                    f"Telemetry: Feature flag fetch SUCCESS - received value: '{flag_value}'"
+                )
+
+                enabled = str(flag_value).lower() == "true"
+                if enabled:
+                    logger.info(
+                        f"Telemetry: ✓ Server flag is 'true', telemetry ENABLED"
+                    )
+                else:
+                    logger.info(
+                        f"Telemetry: ✗ Server flag is '{flag_value}' (not 'true'), telemetry DISABLED"
+                    )
+                return enabled
+            except Exception as e:
+                logger.info(
+                    f"Telemetry: Feature flag fetch FAILED with exception: {type(e).__name__}: {e}"
+                )
+                logger.info("Telemetry: Defaulting to DISABLED due to fetch failure")
+                return False
         else:
             logger.info("Telemetry: enable_telemetry=False, telemetry DISABLED")
             return False
