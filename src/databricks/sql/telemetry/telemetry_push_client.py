@@ -145,7 +145,7 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
                 )
 
                 if http_code in [429, 503]:
-                    logger.warning(
+                    logger.debug(
                         "Telemetry retries exhausted with status %d for host %s, triggering circuit breaker",
                         http_code,
                         self._host,
