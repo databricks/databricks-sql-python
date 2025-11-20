@@ -1,0 +1,35 @@
+{
+  "telemetry_off": {
+    "mode": "Telemetry DISABLED",
+    "enable_telemetry": false,
+    "test_count": 50,
+    "error_count": 0,
+    "baseline_current": 0,
+    "baseline_peak": 0,
+    "final_current": 32588470,
+    "final_peak": 32749792,
+    "net_current": 32588470,
+    "net_peak": 32749792,
+    "telemetry_locations": 63,
+    "telemetry_bytes": 35173
+  },
+  "telemetry_on": {
+    "mode": "Telemetry ENABLED",
+    "enable_telemetry": true,
+    "test_count": 50,
+    "error_count": 0,
+    "baseline_current": 0,
+    "baseline_peak": 0,
+    "final_current": 480486,
+    "final_peak": 586023,
+    "net_current": 480486,
+    "net_peak": 586023,
+    "telemetry_locations": 48,
+    "telemetry_bytes": 24801
+  },
+  "comparison": {
+    "peak_diff_bytes": -32163769,
+    "current_diff_bytes": -32107984,
+    "telemetry_bytes": 24801
+  }
+}

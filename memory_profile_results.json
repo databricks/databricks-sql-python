@@ -1,0 +1,35 @@
+{
+  "telemetry_off": {
+    "mode": "Telemetry DISABLED",
+    "enable_telemetry": false,
+    "force_enable": false,
+    "test_count": 15,
+    "error_count": 0,
+    "initial_current_bytes": 0,
+    "initial_peak_bytes": 0,
+    "final_current_bytes": 41504663,
+    "final_peak_bytes": 41628934,
+    "growth_bytes": 41504663,
+    "telemetry_allocations_count": 0,
+    "telemetry_allocations_size": 0
+  },
+  "telemetry_on": {
+    "mode": "Telemetry ENABLED",
+    "enable_telemetry": true,
+    "force_enable": false,
+    "test_count": 15,
+    "error_count": 0,
+    "initial_current_bytes": 0,
+    "initial_peak_bytes": 0,
+    "final_current_bytes": 265050,
+    "final_peak_bytes": 337490,
+    "growth_bytes": 265050,
+    "telemetry_allocations_count": 0,
+    "telemetry_allocations_size": 0
+  },
+  "comparison": {
+    "peak_diff_bytes": -41291444,
+    "current_diff_bytes": -41239613,
+    "telemetry_specific_bytes": 0
+  }
+}
