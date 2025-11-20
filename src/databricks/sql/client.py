@@ -104,6 +104,7 @@ class Connection:
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
         _use_arrow_native_complex_types: Optional[bool] = True,
+        ignore_transactions: bool = True,
         **kwargs,
     ) -> None:
         """
@@ -217,6 +218,12 @@ class Connection:
                 using SET AUTOCOMMIT instead of returning cached value.
                 Set to True if autocommit might be changed by external means (e.g., external SQL commands).
                 When False (default), uses cached state for better performance.
+            :param ignore_transactions: `bool`, optional (default is True)
+                When True, transaction-related operations behave as follows:
+                - commit(): no-op (does nothing)
+                - rollback(): raises NotSupportedError
+                - autocommit setter: no-op (does nothing)
+                When False, transaction operations execute normally.
         """
 
         # Internal arguments in **kwargs:
@@ -318,6 +325,7 @@ class Connection:
         self._fetch_autocommit_from_server = kwargs.get(
             "fetch_autocommit_from_server", False
         )
+        self.ignore_transactions = ignore_transactions
 
         self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
         self.enable_telemetry = kwargs.get("enable_telemetry", False)
@@ -556,10 +564,17 @@ class Connection:
         Args:
             value: True to enable auto-commit, False to disable
 
+        When ignore_transactions is True:
+        - This method is a no-op (does nothing)
+
         Raises:
             InterfaceError: If connection is closed
             TransactionError: If server rejects the change
         """
+        # No-op when ignore_transactions is True
+        if self.ignore_transactions:
+            return
+
         if not self.open:
             raise InterfaceError(
                 "Cannot set autocommit on closed connection",
@@ -651,10 +666,17 @@ class Connection:
         When autocommit is True:
         - Server may throw error if no active transaction
 
+        When ignore_transactions is True:
+        - This method is a no-op (does nothing)
+
         Raises:
             InterfaceError: If connection is closed
             TransactionError: If commit fails (e.g., no active transaction)
         """
+        # No-op when ignore_transactions is True
+        if self.ignore_transactions:
+            return
+
         if not self.open:
             raise InterfaceError(
                 "Cannot commit on closed connection",
@@ -689,12 +711,23 @@ class Connection:
         When autocommit is True:
         - ROLLBACK is forgiving (no-op, doesn't throw exception)
 
+        When ignore_transactions is True:
+        - Raises NotSupportedError
+
         Note: ROLLBACK is safe to call even without active transaction.
 
         Raises:
             InterfaceError: If connection is closed
+            NotSupportedError: If ignore_transactions is True
             TransactionError: If rollback fails
         """
+        # Raise NotSupportedError when ignore_transactions is True
+        if self.ignore_transactions:
+            raise NotSupportedError(
+                "Transactions are not supported on Databricks",
+                session_id_hex=self.get_session_id_hex(),
+            )
+
         if not self.open:
             raise InterfaceError(
                 "Cannot rollback on closed connection",
