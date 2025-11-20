@@ -48,6 +48,7 @@ class TestTransactions:
             "server_hostname": connection_details["host"],
             "http_path": connection_details["http_path"],
             "access_token": connection_details.get("access_token"),
+            "ignore_transactions": False,  # Enable actual transaction functionality for these tests
         }
 
         # Get catalog and schema from environment or use defaults
