@@ -1,5 +1,8 @@
 # Release History
 
+# 4.2.1 (2025-11-20)
+- Ignore transactions by default (databricks/databricks-sql-python#711 by @jayantsing-db)
+
 # 4.2.0 (2025-11-14)
 - Add multi-statement transaction support (databricks/databricks-sql-python#704 by @jayantsing-db)
 - Add a workflow to parallelise the E2E tests (databricks/databricks-sql-python#697 by @msrathore-db)
