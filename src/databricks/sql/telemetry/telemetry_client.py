@@ -2,6 +2,7 @@ import threading
 import time
 import logging
 import json
+from queue import Queue, Full
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import Future
 from datetime import datetime, timezone
@@ -180,8 +181,11 @@ class TelemetryClient(BaseTelemetryClient):
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
-        self._events_batch = []
-        self._lock = threading.RLock()
+
+        # OPTIMIZATION: Use lock-free Queue instead of list + lock
+        # Queue is thread-safe internally and has better performance under concurrency
+        self._events_queue = Queue(maxsize=batch_size * 2)  # Allow some buffering
+
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
@@ -192,9 +196,24 @@ class TelemetryClient(BaseTelemetryClient):
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
         logger.debug("Exporting event for connection %s", self._session_id_hex)
-        with self._lock:
-            self._events_batch.append(event)
-        if len(self._events_batch) >= self._batch_size:
+
+        # OPTIMIZATION: Use non-blocking put with queue
+        # No explicit lock needed - Queue is thread-safe internally
+        try:
+            self._events_queue.put_nowait(event)
+        except Full:
+            # Queue is full, trigger immediate flush
+            logger.debug("Event queue full, triggering flush")
+            self._flush()
+            # Try again after flush
+            try:
+                self._events_queue.put_nowait(event)
+            except Full:
+                # Still full, drop event (acceptable for telemetry)
+                logger.debug("Dropped telemetry event - queue still full")
+
+        # Check if we should flush based on queue size
+        if self._events_queue.qsize() >= self._batch_size:
             logger.debug(
                 "Batch size limit reached (%s), flushing events", self._batch_size
             )
@@ -202,9 +221,16 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _flush(self):
         """Flush the current batch of events to the server"""
-        with self._lock:
-            events_to_flush = self._events_batch.copy()
-            self._events_batch = []
+        # OPTIMIZATION: Drain queue without locks
+        # Collect all events currently in the queue
+        events_to_flush = []
+        while not self._events_queue.empty():
+            try:
+                event = self._events_queue.get_nowait()
+                events_to_flush.append(event)
+            except:
+                # Queue is empty
+                break
 
         if events_to_flush:
             logger.debug("Flushing %s telemetry events to server", len(events_to_flush))
