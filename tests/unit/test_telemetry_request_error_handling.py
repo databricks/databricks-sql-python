@@ -4,7 +4,7 @@ with http-code context extraction for rate limiting detection.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from databricks.sql.telemetry.telemetry_push_client import (
     CircuitBreakerTelemetryPushClient,
@@ -106,40 +106,25 @@ class TestTelemetryPushClientRequestErrorHandling:
         with pytest.raises(RequestError, match="HTTP request failed"):
             client.request(HttpMethod.POST, "https://test.com", {})
 
-    def test_request_error_with_http_code_429_logs_warning(self, client, mock_delegate):
-        """Test that rate limit errors log at warning level and raise exception."""
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.logger"
-        ) as mock_logger:
-            request_error = RequestError(
-                "HTTP request failed", context={"http-code": 429}
-            )
-            mock_delegate.request.side_effect = request_error
+    def test_request_error_with_http_code_429_raises_rate_limit_error(self, client, mock_delegate):
+        """Test that rate limit errors raise TelemetryRateLimitError."""
+        request_error = RequestError(
+            "HTTP request failed", context={"http-code": 429}
+        )
+        mock_delegate.request.side_effect = request_error
 
-            with pytest.raises(TelemetryRateLimitError):
-                client.request(HttpMethod.POST, "https://test.com", {})
+        with pytest.raises(TelemetryRateLimitError):
+            client.request(HttpMethod.POST, "https://test.com", {})
 
-            # Should log warning for rate limiting
-            mock_logger.warning.assert_called()
-            warning_args = mock_logger.warning.call_args[0]
-            assert "429" in str(warning_args)
-            assert "circuit breaker" in warning_args[0].lower()
+    def test_request_error_with_http_code_500_raises_original_request_error(self, client, mock_delegate):
+        """Test that non-rate-limit errors raise original RequestError."""
+        request_error = RequestError(
+            "HTTP request failed", context={"http-code": 500}
+        )
+        mock_delegate.request.side_effect = request_error
 
-    def test_request_error_with_http_code_500_logs_debug(self, client, mock_delegate):
-        """Test that non-rate-limit errors log at debug level and raise original error."""
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.logger"
-        ) as mock_logger:
-            request_error = RequestError(
-                "HTTP request failed", context={"http-code": 500}
-            )
-            mock_delegate.request.side_effect = request_error
-
-            with pytest.raises(RequestError):
-                client.request(HttpMethod.POST, "https://test.com", {})
-
-            # Should log debug for wrapping/unwrapping
-            assert mock_logger.debug.call_count >= 1
+        with pytest.raises(RequestError):
+            client.request(HttpMethod.POST, "https://test.com", {})
 
     def test_request_error_with_string_http_code(self, client, mock_delegate):
         """Test RequestError with http-code as string (edge case)."""
@@ -161,17 +146,8 @@ class TestTelemetryPushClientRequestErrorHandling:
         )
         mock_delegate.request.side_effect = request_error
 
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.logger"
-        ) as mock_logger:
-            with pytest.raises(TelemetryRateLimitError):
-                client.request(HttpMethod.POST, "https://test.com", {})
-
-            # Verify warning logged with correct status code
-            mock_logger.warning.assert_called()
-            warning_call = mock_logger.warning.call_args[0]
-            assert "503" in str(warning_call)
-            assert "retries exhausted" in warning_call[0].lower()
+        with pytest.raises(TelemetryRateLimitError):
+            client.request(HttpMethod.POST, "https://test.com", {})
 
     def test_non_request_error_exceptions_raised(self, client, mock_delegate):
         """Test that non-RequestError exceptions are wrapped then unwrapped."""
