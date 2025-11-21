@@ -278,15 +278,6 @@ class TestTelemetryE2E(TelemetryTestBase):
         Scenario: enable_telemetry=ON, force_enable_telemetry=OFF, server=ON
         Expected: 2 events (initial_log + latency_log)
         """
-        from databricks.sql.telemetry.telemetry_client import TelemetryHelper
-
-        print(f"\n{'='*80}")
-        print(f"TEST: test_enable_telemetry_on_with_server_on_sends_events")
-        print(
-            f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}"
-        )
-        print(f"{'='*80}\n")
-
         (
             captured_events,
             captured_futures,
@@ -306,13 +297,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                     "telemetry_batch_size": 1,
                 }
             ) as conn:
-                print(f"\nConnection created:")
-                print(f"  enable_telemetry: {conn.enable_telemetry}")
-                print(f"  force_enable_telemetry: {conn.force_enable_telemetry}")
-                print(f"  telemetry_enabled (computed): {conn.telemetry_enabled}")
-                print(
-                    f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n"
-                )
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT 1")
                     cursor.fetchone()
@@ -341,8 +325,6 @@ class TestTelemetryE2E(TelemetryTestBase):
 
             # Assert latency event (second event)
             self.assertStatementExecution(captured_events[1])
-
-            print(f"\nStatement ID: {statement_id}")
 
     def test_force_enable_on_with_enable_off_sends_events(self, telemetry_interceptors):
         """
@@ -396,7 +378,6 @@ class TestTelemetryE2E(TelemetryTestBase):
 
             self.assertStatementExecution(captured_events[1])
 
-            print(f"\nStatement ID: {statement_id}")
 
     def test_both_flags_off_does_not_send_events(self, telemetry_interceptors):
         """
@@ -437,30 +418,19 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_futures) == 0
             ), f"Expected 0 responses, got {len(captured_futures)}"
 
-            print(f"\nStatement ID: {statement_id}")
 
-    def test_default_behavior_sends_events_with_server_flag_on(
+    def test_default_behavior_does_not_send_events(
         self, telemetry_interceptors
     ):
         """
         Scenario: Neither enable_telemetry nor force_enable_telemetry passed (uses defaults)
-        Expected: 2 events (initial_log + latency_log) when server feature flag is ON
+        Expected: 0 events (telemetry disabled by default)
 
         Default behavior:
-        - enable_telemetry defaults to True
+        - enable_telemetry defaults to False
         - force_enable_telemetry defaults to False
-        - Telemetry will be sent if server feature flag is enabled
+        - Telemetry will NOT be sent (NoopTelemetryClient used)
         """
-        from databricks.sql.telemetry.telemetry_client import TelemetryHelper
-
-        print(f"\n{'='*80}")
-        print(f"TEST: test_default_behavior_sends_events_with_server_flag_on")
-        print(
-            f"Feature flag being checked: {TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME}"
-        )
-        print(f"Testing DEFAULT behavior (no flags passed explicitly)")
-        print(f"{'='*80}\n")
-
         (
             captured_events,
             captured_futures,
@@ -479,47 +449,19 @@ class TestTelemetryE2E(TelemetryTestBase):
                     "telemetry_batch_size": 1,
                 }
             ) as conn:
-                # Verify defaults are as expected
-                print(f"\nConnection created with DEFAULT settings:")
-                print(f"  enable_telemetry (default): {conn.enable_telemetry}")
-                print(
-                    f"  force_enable_telemetry (default): {conn.force_enable_telemetry}"
-                )
-                print(f"  telemetry_enabled (computed): {conn.telemetry_enabled}")
-                print(
-                    f"  telemetry_client type: {type(conn._telemetry_client).__name__}\n"
-                )
-
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT 99")
                     cursor.fetchone()
-                    statement_id = cursor.query_id
 
             time.sleep(2)
-            done, not_done = wait(captured_futures, timeout=10)
 
-            # With default enable_telemetry=True and server flag ON, expect 2 events
+            # With default enable_telemetry=False, expect 0 events
             assert (
-                len(captured_events) == 2
-            ), f"Expected exactly 2 events with default settings, got {len(captured_events)}"
-            assert len(done) == 2, f"Expected exactly 2 responses, got {len(done)}"
-
-            # Verify HTTP responses
-            for future in done:
-                response = future.result()
-                assert 200 <= response.status < 300
-
-            # Assert payload for all events
-            for event in captured_events:
-                self.assertSystemConfiguration(event)
-                self.assertConnectionParams(
-                    event, expected_http_path=self.arguments["http_path"]
-                )
-
-            # Assert latency event (second event)
-            self.assertStatementExecution(captured_events[1])
-
-            print(f"\nStatement ID: {statement_id}")
+                len(captured_events) == 0
+            ), f"Expected 0 events with default settings, got {len(captured_events)}"
+            assert (
+                len(captured_futures) == 0
+            ), f"Expected 0 responses with default settings, got {len(captured_futures)}"
 
     def test_sql_error_sends_telemetry_with_error_info(self, telemetry_interceptors):
         """
@@ -552,7 +494,7 @@ class TestTelemetryE2E(TelemetryTestBase):
                         assert False, "Query should have failed"
                     except Exception as e:
                         # Expected to fail
-                        print(f"\nExpected error occurred: {type(e).__name__}")
+                        pass
 
             time.sleep(2)
             done, not_done = wait(captured_futures, timeout=10)
@@ -562,7 +504,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 1
             ), f"Expected at least 1 event, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events")
 
             # Find event with error_info (typically the middle event)
             error_event = None
@@ -570,7 +511,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 error_info = event.entry.sql_driver_log.error_info
                 if error_info:
                     error_event = event
-                    print(f"\nFound error_info in event {idx}")
                     break
 
             assert (
@@ -590,9 +530,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 error_event, expected_error_name="ServerOperationError"
             )
 
-            print(
-                f"✅ Error telemetry successfully captured with error_name and stack_trace"
-            )
 
     def test_non_existent_table_error_sends_telemetry(self, telemetry_interceptors):
         """
@@ -626,7 +563,7 @@ class TestTelemetryE2E(TelemetryTestBase):
                         assert False, "Query should have failed"
                     except Exception as e:
                         # Expected to fail
-                        print(f"\nExpected error occurred: {type(e).__name__}")
+                        pass
 
             time.sleep(2)
             done, not_done = wait(captured_futures, timeout=10)
@@ -636,7 +573,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 1
             ), f"Expected at least 1 event, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events")
 
             # Find event with error_info
             error_event = None
@@ -644,7 +580,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 error_info = event.entry.sql_driver_log.error_info
                 if error_info:
                     error_event = event
-                    print(f"\nFound error_info in event {idx}")
                     break
 
             assert (
@@ -662,7 +597,6 @@ class TestTelemetryE2E(TelemetryTestBase):
             # Assert error info exists
             self.assertErrorInfo(error_event)
 
-            print(f"✅ Non-existent table error telemetry captured")
 
     def test_metadata_get_catalogs_sends_telemetry(self, telemetry_interceptors):
         """
@@ -700,7 +634,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 1
             ), f"Expected at least 1 event, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events for getCatalogs")
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -709,7 +642,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                     event, expected_http_path=self.arguments["http_path"]
                 )
 
-            print(f"✅ Metadata getCatalogs telemetry captured")
 
     def test_direct_results_sends_telemetry(self, telemetry_interceptors):
         """
@@ -749,7 +681,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(f"\nCaptured {len(captured_events)} events for direct results")
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -762,7 +693,6 @@ class TestTelemetryE2E(TelemetryTestBase):
             latency_event = captured_events[-1]
             self.assertStatementExecution(latency_event)
 
-            print(f"✅ Direct results telemetry captured")
 
     def test_cloudfetch_no_explicit_close_sends_telemetry(self, telemetry_interceptors):
         """
@@ -802,9 +732,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(
-                f"\nCaptured {len(captured_events)} events for cloudfetch (auto close)"
-            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -817,7 +744,6 @@ class TestTelemetryE2E(TelemetryTestBase):
             latency_event = captured_events[-1]
             self.assertStatementExecution(latency_event)
 
-            print(f"✅ Cloudfetch (auto close) telemetry captured")
 
     def test_cloudfetch_statement_closed_sends_telemetry(self, telemetry_interceptors):
         """
@@ -858,9 +784,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(
-                f"\nCaptured {len(captured_events)} events for cloudfetch (statement close)"
-            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -873,7 +796,6 @@ class TestTelemetryE2E(TelemetryTestBase):
             latency_event = captured_events[-1]
             self.assertStatementExecution(latency_event)
 
-            print(f"✅ Cloudfetch (statement close) telemetry captured")
 
     def test_cloudfetch_connection_closed_sends_telemetry(self, telemetry_interceptors):
         """
@@ -913,9 +835,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(
-                f"\nCaptured {len(captured_events)} events for cloudfetch (connection close)"
-            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -928,7 +847,6 @@ class TestTelemetryE2E(TelemetryTestBase):
             latency_event = captured_events[-1]
             self.assertStatementExecution(latency_event)
 
-            print(f"✅ Cloudfetch (connection close) telemetry captured")
 
     def test_cloudfetch_only_resultset_closed_sends_telemetry(
         self, telemetry_interceptors
@@ -971,9 +889,6 @@ class TestTelemetryE2E(TelemetryTestBase):
                 len(captured_events) >= 2
             ), f"Expected at least 2 events, got {len(captured_events)}"
 
-            print(
-                f"\nCaptured {len(captured_events)} events for cloudfetch (resultset close)"
-            )
 
             # Assert system configuration and connection params for all events
             for event in captured_events:
@@ -986,4 +901,3 @@ class TestTelemetryE2E(TelemetryTestBase):
             latency_event = captured_events[-1]
             self.assertStatementExecution(latency_event)
 
-            print(f"✅ Cloudfetch (resultset close) telemetry captured")
