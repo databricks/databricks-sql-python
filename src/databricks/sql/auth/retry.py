@@ -32,10 +32,20 @@ logger = logging.getLogger(__name__)
 
 
 class CommandType(Enum):
-    EXECUTE_STATEMENT = "ExecuteStatement"
+    NOT_SET = "NotSet"
+    OPEN_SESSION = "OpenSession"
     CLOSE_SESSION = "CloseSession"
+    METADATA = "Metadata"
     CLOSE_OPERATION = "CloseOperation"
-    GET_OPERATION_STATUS = "GetOperationStatus"
+    CANCEL_OPERATION = "CancelOperation"
+    EXECUTE_STATEMENT = "ExecuteStatement"
+    FETCH_RESULTS = "FetchResults"
+    CLOUD_FETCH = "CloudFetch"
+    AUTH = "Auth"
+    TELEMETRY_PUSH = "TelemetryPush"
+    VOLUME_GET = "VolumeGet"
+    VOLUME_PUT = "VolumePut"
+    VOLUME_DELETE = "VolumeDelete"
     OTHER = "Other"
 
     @classmethod
@@ -45,7 +55,64 @@ class CommandType(Enum):
         if valid_command:
             return getattr(cls, str(valid_command))
         else:
+            # Map Thrift metadata operations to METADATA type
+            metadata_operations = {
+                "GetOperationStatus", "GetResultSetMetadata", "GetTables", 
+                "GetColumns", "GetSchemas", "GetCatalogs", "GetFunctions",
+                "GetPrimaryKeys", "GetTypeInfo", "GetCrossReference",
+                "GetImportedKeys", "GetExportedKeys", "GetTableTypes"
+            }
+            if value in metadata_operations:
+                return cls.METADATA
             return cls.OTHER
+
+
+class CommandIdempotency(Enum):
+    IDEMPOTENT = "idempotent"
+    NON_IDEMPOTENT = "non_idempotent"
+
+
+# Mapping of CommandType to CommandIdempotency
+# Based on the official idempotency classification
+COMMAND_IDEMPOTENCY_MAP = {
+    # NON-IDEMPOTENT operations (safety first - unknown types are not retried)
+    CommandType.NOT_SET: CommandIdempotency.NON_IDEMPOTENT,
+    CommandType.EXECUTE_STATEMENT: CommandIdempotency.NON_IDEMPOTENT,
+    CommandType.FETCH_RESULTS: CommandIdempotency.NON_IDEMPOTENT,
+    CommandType.VOLUME_PUT: CommandIdempotency.NON_IDEMPOTENT,  # PUT can overwrite files
+    
+    # IDEMPOTENT operations
+    CommandType.OPEN_SESSION: CommandIdempotency.IDEMPOTENT,
+    CommandType.CLOSE_SESSION: CommandIdempotency.IDEMPOTENT,
+    CommandType.METADATA: CommandIdempotency.IDEMPOTENT,
+    CommandType.CLOSE_OPERATION: CommandIdempotency.IDEMPOTENT,
+    CommandType.CANCEL_OPERATION: CommandIdempotency.IDEMPOTENT,
+    CommandType.CLOUD_FETCH: CommandIdempotency.IDEMPOTENT,
+    CommandType.AUTH: CommandIdempotency.IDEMPOTENT,
+    CommandType.TELEMETRY_PUSH: CommandIdempotency.IDEMPOTENT,
+    CommandType.VOLUME_GET: CommandIdempotency.IDEMPOTENT,
+    CommandType.VOLUME_DELETE: CommandIdempotency.IDEMPOTENT,
+    CommandType.OTHER: CommandIdempotency.IDEMPOTENT,
+}
+
+# HTTP status codes that should never be retried, even for idempotent requests
+# These are client error codes that indicate permanent issues
+NON_RETRYABLE_STATUS_CODES = {
+    400,  # Bad Request
+    401,  # Unauthorized
+    403,  # Forbidden
+    404,  # Not Found
+    405,  # Method Not Allowed
+    409,  # Conflict
+    410,  # Gone
+    411,  # Length Required
+    412,  # Precondition Failed
+    413,  # Payload Too Large
+    414,  # URI Too Long
+    415,  # Unsupported Media Type
+    416,  # Range Not Satisfiable
+    501,  # Not Implemented
+}
 
 
 class DatabricksRetryPolicy(Retry):
@@ -354,38 +421,25 @@ class DatabricksRetryPolicy(Retry):
 
         logger.info(f"Received status code {status_code} for {method} request")
 
+        # Get command idempotency for use in multiple conditions below
+        command_idempotency = COMMAND_IDEMPOTENCY_MAP.get(
+            self.command_type, CommandIdempotency.NON_IDEMPOTENT
+        )
+
         # Request succeeded. Don't retry.
         if status_code // 100 <= 3:
             return False, "2xx/3xx codes are not retried"
 
-        if status_code == 400:
-            return (
-                False,
-                "Received 400 - BAD_REQUEST. Please check the request parameters.",
-            )
-
-        if status_code == 401:
-            return (
-                False,
-                "Received 401 - UNAUTHORIZED. Confirm your authentication credentials.",
-            )
-
-        if status_code == 403:
-            return False, "403 codes are not retried"
-
-        # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
-        if status_code == 501:
-            return False, "Received code 501 from server."
 
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):
             return False, "Only POST requests are retried"
 
         # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
-        if status_code == 404 and self.command_type == CommandType.GET_OPERATION_STATUS:
+        if status_code == 404 and self.command_type == CommandType.METADATA:
             return (
                 False,
-                "GetOperationStatus received 404 code from Databricks. Operation was canceled.",
+                "Metadata request received 404 code from Databricks. Operation was canceled.",
             )
 
         # Request failed with 404 because CloseSession returns 404 if you repeat the request.
@@ -408,15 +462,18 @@ class DatabricksRetryPolicy(Retry):
                 "CloseOperation received 404 code from Databricks. Cursor is already closed."
             )
 
+        if status_code in NON_RETRYABLE_STATUS_CODES:
+            return False, f"Received {status_code} code from Databricks. Operation was canceled."
+
         # Request failed, was an ExecuteStatement and the command may have reached the server
         if (
-            self.command_type == CommandType.EXECUTE_STATEMENT
+            command_idempotency == CommandIdempotency.NON_IDEMPOTENT
             and status_code not in self.status_forcelist
             and status_code not in self.force_dangerous_codes
         ):
             return (
                 False,
-                "ExecuteStatement command can only be retried for codes 429 and 503",
+                "Non Idempotent requests can only be retried for codes 429 and 503",
             )
 
         # Request failed with a dangerous code, was an ExecuteStatement, but user forced retries for this
@@ -424,7 +481,7 @@ class DatabricksRetryPolicy(Retry):
         # retry automatically. This code is included only so that we can log the exact reason for the retry.
         # This gives users signal that their _retry_dangerous_codes setting actually did something.
         if (
-            self.command_type == CommandType.EXECUTE_STATEMENT
+            command_idempotency == CommandIdempotency.NON_IDEMPOTENT
             and status_code in self.force_dangerous_codes
         ):
             return (
