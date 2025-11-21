@@ -655,8 +655,10 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session.get_autocommit.return_value = True
         mock_session_class.return_value = mock_session
 
-        # Create connection
-        conn = client.Connection(**self.DUMMY_CONNECTION_ARGS)
+        # Create connection with ignore_transactions=False to test actual transaction functionality
+        conn = client.Connection(
+            ignore_transactions=False, **self.DUMMY_CONNECTION_ARGS
+        )
         return conn
 
     @patch("%s.client.Session" % PACKAGE_NAME)
@@ -928,7 +930,9 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
-            fetch_autocommit_from_server=True, **self.DUMMY_CONNECTION_ARGS
+            fetch_autocommit_from_server=True,
+            ignore_transactions=False,
+            **self.DUMMY_CONNECTION_ARGS,
         )
 
         mock_cursor = Mock()
@@ -958,7 +962,9 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
-            fetch_autocommit_from_server=True, **self.DUMMY_CONNECTION_ARGS
+            fetch_autocommit_from_server=True,
+            ignore_transactions=False,
+            **self.DUMMY_CONNECTION_ARGS,
         )
 
         mock_cursor = Mock()
@@ -983,7 +989,9 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
-            fetch_autocommit_from_server=True, **self.DUMMY_CONNECTION_ARGS
+            fetch_autocommit_from_server=True,
+            ignore_transactions=False,
+            **self.DUMMY_CONNECTION_ARGS,
         )
 
         mock_cursor = Mock()
@@ -995,6 +1003,90 @@ class TransactionTestSuite(unittest.TestCase):
 
             self.assertIn("No result returned", str(ctx.exception))
             mock_cursor.close.assert_called_once()
+
+        conn.close()
+
+    # ==================== IGNORE_TRANSACTIONS TESTS ====================
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_commit_is_noop_when_ignore_transactions_true(self, mock_session_class):
+        """Test that commit() is a no-op when ignore_transactions=True."""
+
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        # Create connection with ignore_transactions=True (default)
+        conn = client.Connection(**self.DUMMY_CONNECTION_ARGS)
+
+        # Verify ignore_transactions is True by default
+        self.assertTrue(conn.ignore_transactions)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            # Call commit - should be no-op
+            conn.commit()
+
+            # Verify that execute was NOT called (no-op)
+            mock_cursor.execute.assert_not_called()
+            mock_cursor.close.assert_not_called()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_rollback_raises_not_supported_when_ignore_transactions_true(
+        self, mock_session_class
+    ):
+        """Test that rollback() raises NotSupportedError when ignore_transactions=True."""
+
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        # Create connection with ignore_transactions=True (default)
+        conn = client.Connection(**self.DUMMY_CONNECTION_ARGS)
+
+        # Verify ignore_transactions is True by default
+        self.assertTrue(conn.ignore_transactions)
+
+        # Call rollback - should raise NotSupportedError
+        with self.assertRaises(NotSupportedError) as ctx:
+            conn.rollback()
+
+        self.assertIn("Transactions are not supported", str(ctx.exception))
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_setter_is_noop_when_ignore_transactions_true(
+        self, mock_session_class
+    ):
+        """Test that autocommit setter is a no-op when ignore_transactions=True."""
+
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        # Create connection with ignore_transactions=True (default)
+        conn = client.Connection(**self.DUMMY_CONNECTION_ARGS)
+
+        # Verify ignore_transactions is True by default
+        self.assertTrue(conn.ignore_transactions)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            # Set autocommit - should be no-op
+            conn.autocommit = False
+
+            # Verify that execute was NOT called (no-op)
+            mock_cursor.execute.assert_not_called()
+            mock_cursor.close.assert_not_called()
+
+            # Session set_autocommit should also not be called
+            conn.session.set_autocommit.assert_not_called()
 
         conn.close()
 
