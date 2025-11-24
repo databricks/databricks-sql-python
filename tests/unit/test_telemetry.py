@@ -80,12 +80,12 @@ class TestTelemetryClient:
             client._export_event("event1")
             client._export_event("event2")
             mock_send.assert_not_called()
-            assert len(client._events_batch) == 2
+            assert client._events_queue.qsize() == 2
 
             # Third event should trigger flush
             client._export_event("event3")
             mock_send.assert_called_once()
-            assert len(client._events_batch) == 0  # Batch cleared after flush
+            assert client._events_queue.qsize() == 0  # Queue cleared after flush
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
     def test_network_request_flow(self, mock_http_request, mock_telemetry_client):
