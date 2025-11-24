@@ -110,17 +110,20 @@ class TelemetryHelper:
 
     @staticmethod
     def is_telemetry_enabled(connection: "Connection") -> bool:
+        # Fast path: force enabled - skip feature flag fetch entirely
         if connection.force_enable_telemetry:
             return True
 
-        if connection.enable_telemetry:
-            context = FeatureFlagsContextFactory.get_instance(connection)
-            flag_value = context.get_flag_value(
-                TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
-            )
-            return str(flag_value).lower() == "true"
-        else:
+        # Fast path: disabled - no need to check feature flag
+        if not connection.enable_telemetry:
             return False
+
+        # Only fetch feature flags when enable_telemetry=True and not forced
+        context = FeatureFlagsContextFactory.get_instance(connection)
+        flag_value = context.get_flag_value(
+            TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
+        )
+        return str(flag_value).lower() == "true"
 
 
 class NoopTelemetryClient(BaseTelemetryClient):
