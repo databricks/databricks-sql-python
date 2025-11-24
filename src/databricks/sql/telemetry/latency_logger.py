@@ -182,42 +182,44 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            # Use monotonic clock for faster timing, sufficient for telemetry
             start_time = time.monotonic()
-            result = None
             try:
-                result = func(self, *args, **kwargs)
-                return result
+                return func(self, *args, **kwargs)
             finally:
-                # Calculate duration once
-                end_time = time.monotonic()
-                duration_ms = int((end_time - start_time) * 1000)
+                duration_ms = int((time.monotonic() - start_time) * 1000)
 
-                # Extract telemetry data directly without creating extractor objects
+                # Always log for debugging
+                logger.debug("%s completed in %dms", func.__name__, duration_ms)
+
+                # Fast check: use cached telemetry_enabled flag from connection
+                # Avoids dictionary lookup + instance check on every operation
+                connection = getattr(self, 'connection', None)
+                if not connection or not getattr(connection, 'telemetry_enabled', False):
+                    return
+
+                session_id_hex = connection.get_session_id_hex()
+                if not session_id_hex:
+                    return
+
+                # Telemetry enabled - extract and send
                 telemetry_data = _extract_telemetry_data(self)
+                if not telemetry_data:
+                    return
 
-                if telemetry_data is not None:
-                    session_id_hex = telemetry_data.get('session_id_hex')
-                    statement_id = telemetry_data.get('statement_id')
+                sql_exec_event = SqlExecutionEvent(
+                    statement_type=statement_type,
+                    is_compressed=telemetry_data.get('is_compressed'),
+                    execution_result=telemetry_data.get('execution_result'),
+                    retry_count=telemetry_data.get('retry_count'),
+                    chunk_id=telemetry_data.get('chunk_id'),
+                )
 
-                    # Create event from extracted data
-                    sql_exec_event = SqlExecutionEvent(
-                        statement_type=statement_type,
-                        is_compressed=telemetry_data.get('is_compressed'),
-                        execution_result=telemetry_data.get('execution_result'),
-                        retry_count=telemetry_data.get('retry_count'),
-                        chunk_id=telemetry_data.get('chunk_id'),
-                    )
-
-                    # Send telemetry asynchronously
-                    telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                        session_id_hex
-                    )
-                    telemetry_client.export_latency_log(
-                        latency_ms=duration_ms,
-                        sql_execution_event=sql_exec_event,
-                        sql_statement_id=statement_id,
-                    )
+                telemetry_client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+                telemetry_client.export_latency_log(
+                    latency_ms=duration_ms,
+                    sql_execution_event=sql_exec_event,
+                    sql_statement_id=telemetry_data.get('statement_id'),
+                )
 
         return wrapper
 
