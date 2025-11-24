@@ -28,52 +28,52 @@ def _extract_cursor_data(cursor) -> Dict[str, Any]:
 
     # Extract statement_id (query_id) - direct attribute access
     try:
-        data['statement_id'] = cursor.query_id
+        data["statement_id"] = cursor.query_id
     except (AttributeError, Exception):
-        data['statement_id'] = None
+        data["statement_id"] = None
 
     # Extract session_id_hex - direct method call
     try:
-        data['session_id_hex'] = cursor.connection.get_session_id_hex()
+        data["session_id_hex"] = cursor.connection.get_session_id_hex()
     except (AttributeError, Exception):
-        data['session_id_hex'] = None
+        data["session_id_hex"] = None
 
     # Extract is_compressed - direct attribute access
     try:
-        data['is_compressed'] = cursor.connection.lz4_compression
+        data["is_compressed"] = cursor.connection.lz4_compression
     except (AttributeError, Exception):
-        data['is_compressed'] = False
+        data["is_compressed"] = False
 
     # Extract execution_result_format - inline logic
     try:
         if cursor.active_result_set is None:
-            data['execution_result'] = ExecutionResultFormat.FORMAT_UNSPECIFIED
+            data["execution_result"] = ExecutionResultFormat.FORMAT_UNSPECIFIED
         else:
             from databricks.sql.utils import ColumnQueue, CloudFetchQueue, ArrowQueue
 
             results = cursor.active_result_set.results
             if isinstance(results, ColumnQueue):
-                data['execution_result'] = ExecutionResultFormat.COLUMNAR_INLINE
+                data["execution_result"] = ExecutionResultFormat.COLUMNAR_INLINE
             elif isinstance(results, CloudFetchQueue):
-                data['execution_result'] = ExecutionResultFormat.EXTERNAL_LINKS
+                data["execution_result"] = ExecutionResultFormat.EXTERNAL_LINKS
             elif isinstance(results, ArrowQueue):
-                data['execution_result'] = ExecutionResultFormat.INLINE_ARROW
+                data["execution_result"] = ExecutionResultFormat.INLINE_ARROW
             else:
-                data['execution_result'] = ExecutionResultFormat.FORMAT_UNSPECIFIED
+                data["execution_result"] = ExecutionResultFormat.FORMAT_UNSPECIFIED
     except (AttributeError, Exception):
-        data['execution_result'] = ExecutionResultFormat.FORMAT_UNSPECIFIED
+        data["execution_result"] = ExecutionResultFormat.FORMAT_UNSPECIFIED
 
     # Extract retry_count - direct attribute access
     try:
         if hasattr(cursor.backend, "retry_policy") and cursor.backend.retry_policy:
-            data['retry_count'] = len(cursor.backend.retry_policy.history)
+            data["retry_count"] = len(cursor.backend.retry_policy.history)
         else:
-            data['retry_count'] = 0
+            data["retry_count"] = 0
     except (AttributeError, Exception):
-        data['retry_count'] = 0
+        data["retry_count"] = 0
 
     # chunk_id is always None for Cursor
-    data['chunk_id'] = None
+    data["chunk_id"] = None
 
     return data
 
@@ -94,33 +94,33 @@ def _extract_result_set_handler_data(handler) -> Dict[str, Any]:
 
     # Extract session_id_hex - direct attribute access
     try:
-        data['session_id_hex'] = handler.session_id_hex
+        data["session_id_hex"] = handler.session_id_hex
     except (AttributeError, Exception):
-        data['session_id_hex'] = None
+        data["session_id_hex"] = None
 
     # Extract statement_id - direct attribute access
     try:
-        data['statement_id'] = handler.statement_id
+        data["statement_id"] = handler.statement_id
     except (AttributeError, Exception):
-        data['statement_id'] = None
+        data["statement_id"] = None
 
     # Extract is_compressed - direct attribute access
     try:
-        data['is_compressed'] = handler.settings.is_lz4_compressed
+        data["is_compressed"] = handler.settings.is_lz4_compressed
     except (AttributeError, Exception):
-        data['is_compressed'] = False
+        data["is_compressed"] = False
 
     # execution_result is always EXTERNAL_LINKS for result set handlers
-    data['execution_result'] = ExecutionResultFormat.EXTERNAL_LINKS
+    data["execution_result"] = ExecutionResultFormat.EXTERNAL_LINKS
 
     # retry_count is not available for result set handlers
-    data['retry_count'] = None
+    data["retry_count"] = None
 
     # Extract chunk_id - direct attribute access
     try:
-        data['chunk_id'] = handler.chunk_id
+        data["chunk_id"] = handler.chunk_id
     except (AttributeError, Exception):
-        data['chunk_id'] = None
+        data["chunk_id"] = None
 
     return data
 
@@ -193,9 +193,9 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
 
                 # Fast check: use cached telemetry_enabled flag from connection
                 # Avoids dictionary lookup + instance check on every operation
-                connection = getattr(self, 'connection', None)
+                connection = getattr(self, "connection", None)
                 if not connection or not getattr(
-                    connection, 'telemetry_enabled', False
+                    connection, "telemetry_enabled", False
                 ):
                     return
 
@@ -210,10 +210,10 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
 
                 sql_exec_event = SqlExecutionEvent(
                     statement_type=statement_type,
-                    is_compressed=telemetry_data.get('is_compressed'),
-                    execution_result=telemetry_data.get('execution_result'),
-                    retry_count=telemetry_data.get('retry_count'),
-                    chunk_id=telemetry_data.get('chunk_id'),
+                    is_compressed=telemetry_data.get("is_compressed"),
+                    execution_result=telemetry_data.get("execution_result"),
+                    retry_count=telemetry_data.get("retry_count"),
+                    chunk_id=telemetry_data.get("chunk_id"),
                 )
 
                 telemetry_client = TelemetryClientFactory.get_telemetry_client(
@@ -222,7 +222,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 telemetry_client.export_latency_log(
                     latency_ms=duration_ms,
                     sql_execution_event=sql_exec_event,
-                    sql_statement_id=telemetry_data.get('statement_id'),
+                    sql_statement_id=telemetry_data.get("statement_id"),
                 )
 
         return wrapper
