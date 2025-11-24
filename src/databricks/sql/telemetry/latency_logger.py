@@ -203,9 +203,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                             sql_exec_event = SqlExecutionEvent(
                                 statement_type=statement_type,
                                 is_compressed=telemetry_data.get("is_compressed"),
-                                execution_result=telemetry_data.get(
-                                    "execution_result"
-                                ),
+                                execution_result=telemetry_data.get("execution_result"),
                                 retry_count=telemetry_data.get("retry_count"),
                                 chunk_id=telemetry_data.get("chunk_id"),
                             )
