@@ -194,36 +194,32 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 # Fast check: use cached telemetry_enabled flag from connection
                 # Avoids dictionary lookup + instance check on every operation
                 connection = getattr(self, "connection", None)
-                if not connection or not getattr(
-                    connection, "telemetry_enabled", False
-                ):
-                    return
+                if connection and getattr(connection, "telemetry_enabled", False):
+                    session_id_hex = connection.get_session_id_hex()
+                    if session_id_hex:
+                        # Telemetry enabled - extract and send
+                        telemetry_data = _extract_telemetry_data(self)
+                        if telemetry_data:
+                            sql_exec_event = SqlExecutionEvent(
+                                statement_type=statement_type,
+                                is_compressed=telemetry_data.get("is_compressed"),
+                                execution_result=telemetry_data.get(
+                                    "execution_result"
+                                ),
+                                retry_count=telemetry_data.get("retry_count"),
+                                chunk_id=telemetry_data.get("chunk_id"),
+                            )
 
-                session_id_hex = connection.get_session_id_hex()
-                if not session_id_hex:
-                    return
-
-                # Telemetry enabled - extract and send
-                telemetry_data = _extract_telemetry_data(self)
-                if not telemetry_data:
-                    return
-
-                sql_exec_event = SqlExecutionEvent(
-                    statement_type=statement_type,
-                    is_compressed=telemetry_data.get("is_compressed"),
-                    execution_result=telemetry_data.get("execution_result"),
-                    retry_count=telemetry_data.get("retry_count"),
-                    chunk_id=telemetry_data.get("chunk_id"),
-                )
-
-                telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                    session_id_hex
-                )
-                telemetry_client.export_latency_log(
-                    latency_ms=duration_ms,
-                    sql_execution_event=sql_exec_event,
-                    sql_statement_id=telemetry_data.get("statement_id"),
-                )
+                            telemetry_client = (
+                                TelemetryClientFactory.get_telemetry_client(
+                                    session_id_hex
+                                )
+                            )
+                            telemetry_client.export_latency_log(
+                                latency_ms=duration_ms,
+                                sql_execution_event=sql_exec_event,
+                                sql_statement_id=telemetry_data.get("statement_id"),
+                            )
 
         return wrapper
 
