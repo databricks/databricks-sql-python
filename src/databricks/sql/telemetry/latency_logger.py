@@ -194,7 +194,9 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                 # Fast check: use cached telemetry_enabled flag from connection
                 # Avoids dictionary lookup + instance check on every operation
                 connection = getattr(self, 'connection', None)
-                if not connection or not getattr(connection, 'telemetry_enabled', False):
+                if not connection or not getattr(
+                    connection, 'telemetry_enabled', False
+                ):
                     return
 
                 session_id_hex = connection.get_session_id_hex()
@@ -214,7 +216,9 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                     chunk_id=telemetry_data.get('chunk_id'),
                 )
 
-                telemetry_client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+                telemetry_client = TelemetryClientFactory.get_telemetry_client(
+                    session_id_hex
+                )
                 telemetry_client.export_latency_log(
                     latency_ms=duration_ms,
                     sql_execution_event=sql_exec_event,
