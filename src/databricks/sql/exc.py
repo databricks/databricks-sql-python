@@ -143,3 +143,24 @@ class SessionAlreadyClosedError(RequestError):
 
 class CursorAlreadyClosedError(RequestError):
     """Thrown if CancelOperation receives a code 404. ThriftBackend should gracefully proceed as this is expected."""
+
+
+class TelemetryRateLimitError(Exception):
+    """Raised when telemetry endpoint returns 429 or 503, indicating rate limiting or service unavailable.
+    This exception is used exclusively by the circuit breaker to track telemetry rate limiting events."""
+
+
+class TelemetryNonRateLimitError(Exception):
+    """Wrapper for telemetry errors that should NOT trigger circuit breaker.
+
+    This exception wraps non-rate-limiting errors (network errors, timeouts, server errors, etc.)
+    and is excluded from circuit breaker failure counting. Only TelemetryRateLimitError should
+    open the circuit breaker.
+
+    Attributes:
+        original_exception: The actual exception that occurred
+    """
+
+    def __init__(self, original_exception: Exception):
+        self.original_exception = original_exception
+        super().__init__(f"Non-rate-limit telemetry error: {original_exception}")
