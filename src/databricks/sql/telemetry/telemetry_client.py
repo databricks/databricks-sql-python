@@ -192,7 +192,9 @@ class TelemetryClient(BaseTelemetryClient):
 
         # OPTIMIZATION: Use lock-free Queue instead of list + lock
         # Queue is thread-safe internally and has better performance under concurrency
-        self._events_queue: Queue[TelemetryFrontendLog] = Queue(maxsize=batch_size * 2)  # Allow some buffering
+        self._events_queue: Queue[TelemetryFrontendLog] = Queue(
+            maxsize=batch_size * 2
+        )
 
         self._driver_connection_params = None
         self._host_url = host_url
