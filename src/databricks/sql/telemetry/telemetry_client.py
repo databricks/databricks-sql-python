@@ -415,9 +415,9 @@ class TelemetryClientFactory:
     It uses a thread pool to handle asynchronous operations and a single flush thread for all clients.
     """
 
-    _clients: Dict[str, BaseTelemetryClient] = (
-        {}
-    )  # Map of session_id_hex -> BaseTelemetryClient
+    _clients: Dict[
+        str, BaseTelemetryClient
+    ] = {}  # Map of session_id_hex -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.RLock()  # Thread safety for factory operations
@@ -518,21 +518,21 @@ class TelemetryClientFactory:
                         session_id_hex,
                     )
                     if telemetry_enabled:
-                        TelemetryClientFactory._clients[session_id_hex] = (
-                            TelemetryClient(
-                                telemetry_enabled=telemetry_enabled,
-                                session_id_hex=session_id_hex,
-                                auth_provider=auth_provider,
-                                host_url=host_url,
-                                executor=TelemetryClientFactory._executor,
-                                batch_size=batch_size,
-                                client_context=client_context,
-                            )
+                        TelemetryClientFactory._clients[
+                            session_id_hex
+                        ] = TelemetryClient(
+                            telemetry_enabled=telemetry_enabled,
+                            session_id_hex=session_id_hex,
+                            auth_provider=auth_provider,
+                            host_url=host_url,
+                            executor=TelemetryClientFactory._executor,
+                            batch_size=batch_size,
+                            client_context=client_context,
                         )
                     else:
-                        TelemetryClientFactory._clients[session_id_hex] = (
-                            NoopTelemetryClient()
-                        )
+                        TelemetryClientFactory._clients[
+                            session_id_hex
+                        ] = NoopTelemetryClient()
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
