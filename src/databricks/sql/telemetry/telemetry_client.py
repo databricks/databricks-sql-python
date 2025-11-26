@@ -41,6 +41,11 @@ from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
+from databricks.sql.telemetry.telemetry_push_client import (
+    ITelemetryPushClient,
+    TelemetryPushClient,
+    CircuitBreakerTelemetryPushClient,
+)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -166,21 +171,21 @@ class TelemetryClient(BaseTelemetryClient):
 
     def __init__(
         self,
-        telemetry_enabled,
-        session_id_hex,
+        telemetry_enabled: bool,
+        session_id_hex: str,
         auth_provider,
-        host_url,
+        host_url: str,
         executor,
-        batch_size,
+        batch_size: int,
         client_context,
-    ):
+    ) -> None:
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
         self._batch_size = batch_size
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
-        self._events_batch = []
+        self._events_batch: list = []
         self._lock = threading.RLock()
         self._driver_connection_params = None
         self._host_url = host_url
@@ -188,6 +193,19 @@ class TelemetryClient(BaseTelemetryClient):
 
         # Create own HTTP client from client context
         self._http_client = UnifiedHttpClient(client_context)
+
+        # Create telemetry push client based on circuit breaker enabled flag
+        if client_context.telemetry_circuit_breaker_enabled:
+            # Create circuit breaker telemetry push client (circuit breakers created on-demand)
+            self._telemetry_push_client: ITelemetryPushClient = (
+                CircuitBreakerTelemetryPushClient(
+                    TelemetryPushClient(self._http_client),
+                    host_url,
+                )
+            )
+        else:
+            # Circuit breaker disabled - use direct telemetry push client
+            self._telemetry_push_client = TelemetryPushClient(self._http_client)
 
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
@@ -254,7 +272,7 @@ class TelemetryClient(BaseTelemetryClient):
     def _send_with_unified_client(self, url, data, headers, timeout=900):
         """Helper method to send telemetry using the unified HTTP client."""
         try:
-            response = self._http_client.request(
+            response = self._telemetry_push_client.request(
                 HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
             )
             return response
