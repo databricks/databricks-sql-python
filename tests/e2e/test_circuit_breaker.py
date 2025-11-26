@@ -4,10 +4,9 @@ E2E tests for circuit breaker functionality in telemetry.
 This test suite verifies:
 1. Circuit breaker opens after rate limit failures (429/503)
 2. Circuit breaker blocks subsequent calls while open
-3. Circuit breaker transitions through states correctly
-4. Circuit breaker does not trigger for non-rate-limit errors
-5. Circuit breaker can be disabled via configuration flag
-6. Circuit breaker closes after reset timeout
+3. Circuit breaker does not trigger for non-rate-limit errors
+4. Circuit breaker can be disabled via configuration flag
+5. Circuit breaker closes after reset timeout
 
 Run with:
     pytest tests/e2e/test_circuit_breaker.py -v -s
@@ -32,20 +31,16 @@ def aggressive_circuit_breaker_config():
     """
     from databricks.sql.telemetry import circuit_breaker_manager
 
-    # Store original values
     original_minimum_calls = circuit_breaker_manager.MINIMUM_CALLS
     original_reset_timeout = circuit_breaker_manager.RESET_TIMEOUT
 
-    # Patch with aggressive test values
     circuit_breaker_manager.MINIMUM_CALLS = 2
     circuit_breaker_manager.RESET_TIMEOUT = 5
 
-    # Reset all circuit breakers before test
     CircuitBreakerManager._instances.clear()
 
     yield
 
-    # Cleanup: restore original values and reset breakers
     circuit_breaker_manager.MINIMUM_CALLS = original_minimum_calls
     circuit_breaker_manager.RESET_TIMEOUT = original_reset_timeout
     CircuitBreakerManager._instances.clear()
@@ -59,23 +54,35 @@ class TestCircuitBreakerTelemetry:
         """Get connection details from pytest fixture"""
         self.arguments = connection_details.copy()
 
-    def test_circuit_breaker_opens_after_rate_limit_errors(self):
+    def create_mock_response(self, status_code):
+        """Helper to create mock HTTP response."""
+        response = MagicMock(spec=HTTPResponse)
+        response.status = status_code
+        response.data = {
+            429: b"Too Many Requests",
+            503: b"Service Unavailable",
+            500: b"Internal Server Error",
+        }.get(status_code, b"Response")
+        return response
+
+    @pytest.mark.parametrize("status_code,should_trigger", [
+        (429, True),
+        (503, True),
+        (500, False),
+    ])
+    def test_circuit_breaker_triggers_for_rate_limit_codes(self, status_code, should_trigger):
         """
-        Verify circuit breaker opens after 429/503 errors and blocks subsequent calls.
+        Verify circuit breaker opens for rate-limit codes (429/503) but not others (500).
         """
         request_count = {"count": 0}
 
-        def mock_rate_limited_request(*args, **kwargs):
-            """Mock that returns 429 rate limit response"""
+        def mock_request(*args, **kwargs):
             request_count["count"] += 1
-            response = MagicMock(spec=HTTPResponse)
-            response.status = 429
-            response.data = b"Too Many Requests"
-            return response
+            return self.create_mock_response(status_code)
 
         with patch(
             "databricks.sql.telemetry.telemetry_push_client.TelemetryPushClient.request",
-            side_effect=mock_rate_limited_request,
+            side_effect=mock_request,
         ):
             with sql.connect(
                 server_hostname=self.arguments["host"],
@@ -89,88 +96,34 @@ class TestCircuitBreakerTelemetry:
                     self.arguments["host"]
                 )
 
-                # Initial state should be CLOSED
                 assert circuit_breaker.current_state == STATE_CLOSED
 
                 cursor = conn.cursor()
 
-                # Execute queries to trigger telemetry failures
-                cursor.execute("SELECT 1")
-                cursor.fetchone()
-                time.sleep(1)
-
-                cursor.execute("SELECT 2")
-                cursor.fetchone()
-                time.sleep(2)
-
-                # Circuit should now be OPEN after 2 failures
-                assert circuit_breaker.current_state == STATE_OPEN
-                assert circuit_breaker.fail_counter == 2
-
-                # Track requests before executing another query
-                requests_before = request_count["count"]
-
-                # Execute another query - circuit breaker should block telemetry
-                cursor.execute("SELECT 3")
-                cursor.fetchone()
-                time.sleep(1)
-
-                requests_after = request_count["count"]
-
-                # No new telemetry requests should be made (circuit is open)
-                assert (
-                    requests_after == requests_before
-                ), "Circuit breaker should block requests while OPEN"
-
-    def test_circuit_breaker_does_not_trigger_for_non_rate_limit_errors(self):
-        """
-        Verify circuit breaker does NOT open for errors other than 429/503.
-        Only rate limit errors should trigger the circuit breaker.
-        """
-        request_count = {"count": 0}
-
-        def mock_server_error_request(*args, **kwargs):
-            """Mock that returns 500 server error (not rate limit)"""
-            request_count["count"] += 1
-            response = MagicMock(spec=HTTPResponse)
-            response.status = 500  # Server error - should NOT trigger CB
-            response.data = b"Internal Server Error"
-            return response
-
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.TelemetryPushClient.request",
-            side_effect=mock_server_error_request,
-        ):
-            with sql.connect(
-                server_hostname=self.arguments["host"],
-                http_path=self.arguments["http_path"],
-                access_token=self.arguments.get("access_token"),
-                force_enable_telemetry=True,
-                telemetry_batch_size=1,
-                _telemetry_circuit_breaker_enabled=True,
-            ) as conn:
-                circuit_breaker = CircuitBreakerManager.get_circuit_breaker(
-                    self.arguments["host"]
-                )
-
-                cursor = conn.cursor()
-
-                # Execute multiple queries with 500 errors
-                for i in range(5):
+                # Execute queries to trigger telemetry
+                for i in range(1, 6):
                     cursor.execute(f"SELECT {i}")
                     cursor.fetchone()
                     time.sleep(0.5)
 
-                # Circuit should remain CLOSED (500 errors don't trigger CB)
-                assert (
-                    circuit_breaker.current_state == STATE_CLOSED
-                ), "Circuit should stay CLOSED for non-rate-limit errors"
-                assert (
-                    circuit_breaker.fail_counter == 0
-                ), "Non-rate-limit errors should not increment fail counter"
+                if should_trigger:
+                    # Circuit should be OPEN after 2 rate-limit failures
+                    assert circuit_breaker.current_state == STATE_OPEN
+                    assert circuit_breaker.fail_counter == 2
 
-                # Requests should still go through
-                assert request_count["count"] >= 5, "Requests should not be blocked"
+                    # Track requests before another query
+                    requests_before = request_count["count"]
+                    cursor.execute("SELECT 99")
+                    cursor.fetchone()
+                    time.sleep(1)
+
+                    # No new telemetry requests (circuit is open)
+                    assert request_count["count"] == requests_before
+                else:
+                    # Circuit should remain CLOSED for non-rate-limit errors
+                    assert circuit_breaker.current_state == STATE_CLOSED
+                    assert circuit_breaker.fail_counter == 0
+                    assert request_count["count"] >= 5
 
     def test_circuit_breaker_disabled_allows_all_calls(self):
         """
@@ -180,12 +133,8 @@ class TestCircuitBreakerTelemetry:
         request_count = {"count": 0}
 
         def mock_rate_limited_request(*args, **kwargs):
-            """Mock that returns 429"""
             request_count["count"] += 1
-            response = MagicMock(spec=HTTPResponse)
-            response.status = 429
-            response.data = b"Too Many Requests"
-            return response
+            return self.create_mock_response(429)
 
         with patch(
             "databricks.sql.telemetry.telemetry_push_client.TelemetryPushClient.request",
@@ -201,16 +150,12 @@ class TestCircuitBreakerTelemetry:
             ) as conn:
                 cursor = conn.cursor()
 
-                # Execute multiple queries
                 for i in range(5):
                     cursor.execute(f"SELECT {i}")
                     cursor.fetchone()
                     time.sleep(0.3)
 
-                # All requests should go through (no circuit breaker)
-                assert (
-                    request_count["count"] >= 5
-                ), "All requests should go through when CB disabled"
+                assert request_count["count"] >= 5
 
     def test_circuit_breaker_recovers_after_reset_timeout(self):
         """
@@ -221,20 +166,9 @@ class TestCircuitBreakerTelemetry:
         fail_requests = {"enabled": True}
 
         def mock_conditional_request(*args, **kwargs):
-            """Mock that fails initially, then succeeds"""
             request_count["count"] += 1
-            response = MagicMock(spec=HTTPResponse)
-
-            if fail_requests["enabled"]:
-                # Return 429 to trigger circuit breaker
-                response.status = 429
-                response.data = b"Too Many Requests"
-            else:
-                # Return success
-                response.status = 200
-                response.data = b"OK"
-
-            return response
+            status = 429 if fail_requests["enabled"] else 200
+            return self.create_mock_response(status)
 
         with patch(
             "databricks.sql.telemetry.telemetry_push_client.TelemetryPushClient.request",
@@ -263,7 +197,6 @@ class TestCircuitBreakerTelemetry:
                 cursor.fetchone()
                 time.sleep(2)
 
-                # Circuit should be OPEN
                 assert circuit_breaker.current_state == STATE_OPEN
 
                 # Wait for reset timeout (5 seconds in test)
@@ -277,7 +210,7 @@ class TestCircuitBreakerTelemetry:
                 cursor.fetchone()
                 time.sleep(1)
 
-                # Circuit should be HALF_OPEN or CLOSED (testing recovery)
+                # Circuit should be recovering
                 assert circuit_breaker.current_state in [
                     STATE_HALF_OPEN,
                     STATE_CLOSED,
@@ -288,60 +221,11 @@ class TestCircuitBreakerTelemetry:
                 cursor.fetchone()
                 time.sleep(1)
 
-                # Eventually should be CLOSED if requests succeed
-                # (may take a few successful requests to close from HALF_OPEN)
                 current_state = circuit_breaker.current_state
                 assert current_state in [
                     STATE_CLOSED,
                     STATE_HALF_OPEN,
                 ], f"Circuit should recover to CLOSED or HALF_OPEN, got {current_state}"
-
-    def test_circuit_breaker_503_also_triggers_circuit(self):
-        """
-        Verify circuit breaker opens for 503 Service Unavailable errors
-        in addition to 429 rate limit errors.
-        """
-        request_count = {"count": 0}
-
-        def mock_service_unavailable_request(*args, **kwargs):
-            """Mock that returns 503 service unavailable"""
-            request_count["count"] += 1
-            response = MagicMock(spec=HTTPResponse)
-            response.status = 503  # Service unavailable - should trigger CB
-            response.data = b"Service Unavailable"
-            return response
-
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.TelemetryPushClient.request",
-            side_effect=mock_service_unavailable_request,
-        ):
-            with sql.connect(
-                server_hostname=self.arguments["host"],
-                http_path=self.arguments["http_path"],
-                access_token=self.arguments.get("access_token"),
-                force_enable_telemetry=True,
-                telemetry_batch_size=1,
-                _telemetry_circuit_breaker_enabled=True,
-            ) as conn:
-                circuit_breaker = CircuitBreakerManager.get_circuit_breaker(
-                    self.arguments["host"]
-                )
-
-                cursor = conn.cursor()
-
-                # Execute queries to trigger 503 failures
-                cursor.execute("SELECT 1")
-                cursor.fetchone()
-                time.sleep(1)
-
-                cursor.execute("SELECT 2")
-                cursor.fetchone()
-                time.sleep(2)
-
-                # Circuit should be OPEN after 2 x 503 errors
-                assert (
-                    circuit_breaker.current_state == STATE_OPEN
-                ), "503 errors should trigger circuit breaker"
 
 
 if __name__ == "__main__":

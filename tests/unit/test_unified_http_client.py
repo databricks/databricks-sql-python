@@ -4,9 +4,8 @@ and HTTP status code extraction.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from urllib3.exceptions import MaxRetryError
-from urllib3 import HTTPResponse
 
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
@@ -49,78 +48,48 @@ class TestUnifiedHttpClientMaxRetryError:
         """Create UnifiedHttpClient instance."""
         return UnifiedHttpClient(client_context)
 
-    def test_max_retry_error_with_reason_response_status_429(self, http_client):
-        """Test MaxRetryError with reason.response.status = 429."""
-        # Create a MaxRetryError with nested response containing status code
+    @pytest.mark.parametrize("status_code,path", [
+        (429, "reason.response"),
+        (503, "reason.response"),
+        (500, "direct_response"),
+    ])
+    def test_max_retry_error_with_status_codes(self, http_client, status_code, path):
+        """Test MaxRetryError with various status codes and response paths."""
         mock_pool = Mock()
         max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
         
-        # Set up the nested structure: e.reason.response.status
-        max_retry_error.reason = Mock()
-        max_retry_error.reason.response = Mock()
-        max_retry_error.reason.response.status = 429
+        if path == "reason.response":
+            max_retry_error.reason = Mock()
+            max_retry_error.reason.response = Mock()
+            max_retry_error.reason.response.status = status_code
+        else:  # direct_response
+            max_retry_error.response = Mock()
+            max_retry_error.response.status = status_code
 
-        # Mock the pool manager to raise our error
         with patch.object(
             http_client._direct_pool_manager, "request", side_effect=max_retry_error
         ):
-            # Verify RequestError is raised with http-code in context
             with pytest.raises(RequestError) as exc_info:
                 http_client.request(
                     HttpMethod.POST, "http://test.com", headers={"test": "header"}
                 )
 
-            # Verify the context contains the HTTP status code
             error = exc_info.value
             assert hasattr(error, "context")
             assert "http-code" in error.context
-            assert error.context["http-code"] == 429
+            assert error.context["http-code"] == status_code
 
-    def test_max_retry_error_with_reason_response_status_503(self, http_client):
-        """Test MaxRetryError with reason.response.status = 503."""
+    @pytest.mark.parametrize("setup_func", [
+        lambda e: None,  # No setup - error with no attributes
+        lambda e: setattr(e, "reason", None),  # reason=None
+        lambda e: (setattr(e, "reason", Mock()), setattr(e.reason, "response", None)),  # reason.response=None
+        lambda e: (setattr(e, "reason", Mock()), setattr(e.reason, "response", Mock(spec=[]))),  # No status attr
+    ])
+    def test_max_retry_error_missing_status(self, http_client, setup_func):
+        """Test MaxRetryError without status code (no crash, empty context)."""
         mock_pool = Mock()
         max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        
-        # Set up the nested structure for 503
-        max_retry_error.reason = Mock()
-        max_retry_error.reason.response = Mock()
-        max_retry_error.reason.response.status = 503
-
-        with patch.object(
-            http_client._direct_pool_manager, "request", side_effect=max_retry_error
-        ):
-            with pytest.raises(RequestError) as exc_info:
-                http_client.request(
-                    HttpMethod.GET, "http://test.com", headers={"test": "header"}
-                )
-
-            error = exc_info.value
-            assert error.context["http-code"] == 503
-
-    def test_max_retry_error_with_direct_response_status(self, http_client):
-        """Test MaxRetryError with e.response.status (alternate structure)."""
-        mock_pool = Mock()
-        max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        
-        # Set up direct response on error (e.response.status)
-        max_retry_error.response = Mock()
-        max_retry_error.response.status = 500
-
-        with patch.object(
-            http_client._direct_pool_manager, "request", side_effect=max_retry_error
-        ):
-            with pytest.raises(RequestError) as exc_info:
-                http_client.request(HttpMethod.POST, "http://test.com")
-
-            error = exc_info.value
-            assert error.context["http-code"] == 500
-
-    def test_max_retry_error_without_status_code(self, http_client):
-        """Test MaxRetryError without any status code (no crash)."""
-        mock_pool = Mock()
-        max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        
-        # No reason or response set - should not crash
+        setup_func(max_retry_error)
 
         with patch.object(
             http_client._direct_pool_manager, "request", side_effect=max_retry_error
@@ -129,62 +98,9 @@ class TestUnifiedHttpClientMaxRetryError:
                 http_client.request(HttpMethod.GET, "http://test.com")
 
             error = exc_info.value
-            # Context should be empty (no http-code)
             assert error.context == {}
 
-    def test_max_retry_error_with_none_reason(self, http_client):
-        """Test MaxRetryError with reason=None (no crash)."""
-        mock_pool = Mock()
-        max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        max_retry_error.reason = None  # Explicitly None
-
-        with patch.object(
-            http_client._direct_pool_manager, "request", side_effect=max_retry_error
-        ):
-            with pytest.raises(RequestError) as exc_info:
-                http_client.request(HttpMethod.POST, "http://test.com")
-
-            error = exc_info.value
-            # Should not crash, context should be empty
-            assert error.context == {}
-
-    def test_max_retry_error_with_none_response(self, http_client):
-        """Test MaxRetryError with reason.response=None (no crash)."""
-        mock_pool = Mock()
-        max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        max_retry_error.reason = Mock()
-        max_retry_error.reason.response = None  # Explicitly None
-
-        with patch.object(
-            http_client._direct_pool_manager, "request", side_effect=max_retry_error
-        ):
-            with pytest.raises(RequestError) as exc_info:
-                http_client.request(HttpMethod.GET, "http://test.com")
-
-            error = exc_info.value
-            # Should not crash, context should be empty
-            assert error.context == {}
-
-    def test_max_retry_error_missing_status_attribute(self, http_client):
-        """Test MaxRetryError when response exists but has no status attribute."""
-        mock_pool = Mock()
-        max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        max_retry_error.reason = Mock()
-        max_retry_error.reason.response = Mock(spec=[])  # Mock with no attributes
-
-        with patch.object(
-            http_client._direct_pool_manager, "request", side_effect=max_retry_error
-        ):
-            with pytest.raises(RequestError) as exc_info:
-                http_client.request(HttpMethod.POST, "http://test.com")
-
-            error = exc_info.value
-            # getattr with default should return None, context should be empty
-            assert error.context == {}
-
-    def test_max_retry_error_prefers_reason_response_over_direct_response(
-        self, http_client
-    ):
+    def test_max_retry_error_prefers_reason_response(self, http_client):
         """Test that e.reason.response.status is preferred over e.response.status."""
         mock_pool = Mock()
         max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
@@ -192,7 +108,7 @@ class TestUnifiedHttpClientMaxRetryError:
         # Set both structures with different status codes
         max_retry_error.reason = Mock()
         max_retry_error.reason.response = Mock()
-        max_retry_error.reason.response.status = 429  # Should use this one
+        max_retry_error.reason.response.status = 429  # Should use this
         
         max_retry_error.response = Mock()
         max_retry_error.response.status = 500  # Should be ignored
@@ -204,7 +120,6 @@ class TestUnifiedHttpClientMaxRetryError:
                 http_client.request(HttpMethod.GET, "http://test.com")
 
             error = exc_info.value
-            # Should prefer reason.response.status (429) over response.status (500)
             assert error.context["http-code"] == 429
 
     def test_generic_exception_no_crash(self, http_client):
@@ -218,6 +133,4 @@ class TestUnifiedHttpClientMaxRetryError:
                 http_client.request(HttpMethod.POST, "http://test.com")
 
             error = exc_info.value
-            # Should raise RequestError but not crash trying to extract status
             assert "HTTP request error" in str(error)
-

@@ -3,8 +3,7 @@ Unit tests for telemetry push client functionality.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import urllib.parse
+from unittest.mock import Mock, patch
 
 from databricks.sql.telemetry.telemetry_push_client import (
     ITelemetryPushClient,
@@ -38,11 +37,6 @@ class TestTelemetryPushClient:
         assert response == mock_response
         self.mock_http_client.request.assert_called_once()
 
-    def test_direct_client_has_no_circuit_breaker(self):
-        """Test that direct client does not have circuit breaker functionality."""
-        # Direct client should work without circuit breaker
-        assert isinstance(self.client, TelemetryPushClient)
-
 
 class TestCircuitBreakerTelemetryPushClient:
     """Test cases for CircuitBreakerTelemetryPushClient."""
@@ -59,25 +53,7 @@ class TestCircuitBreakerTelemetryPushClient:
         assert self.client._host == self.host
         assert self.client._circuit_breaker is not None
 
-    def test_initialization_disabled(self):
-        """Test client initialization with circuit breaker disabled."""
-        client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
-
-        assert client._circuit_breaker is not None
-
-    def test_request_disabled(self):
-        """Test request method when circuit breaker is disabled."""
-        client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
-
-        mock_response = Mock()
-        self.mock_delegate.request.return_value = mock_response
-
-        response = client.request(HttpMethod.POST, "https://test.com", {})
-
-        assert response == mock_response
-        self.mock_delegate.request.assert_called_once()
-
-    def test_request_enabled_success(self):
+    def test_request_success(self):
         """Test successful request when circuit breaker is enabled."""
         mock_response = Mock()
         self.mock_delegate.request.return_value = mock_response
@@ -87,116 +63,71 @@ class TestCircuitBreakerTelemetryPushClient:
         assert response == mock_response
         self.mock_delegate.request.assert_called_once()
 
-    def test_request_enabled_circuit_breaker_error(self):
-        """Test request when circuit breaker is open - should raise CircuitBreakerError."""
-        # Mock circuit breaker to raise CircuitBreakerError
+    def test_request_circuit_breaker_open(self):
+        """Test request when circuit breaker is open raises CircuitBreakerError."""
         with patch.object(
             self.client._circuit_breaker,
             "call",
             side_effect=CircuitBreakerError("Circuit is open"),
         ):
-            # Circuit breaker open should raise (caller will handle it)
             with pytest.raises(CircuitBreakerError):
                 self.client.request(HttpMethod.POST, "https://test.com", {})
 
-    def test_request_enabled_other_error(self):
-        """Test request when other error occurs - should raise original error."""
-        # Mock delegate to raise a different error
+    def test_request_other_error(self):
+        """Test request when other error occurs raises original exception."""
         self.mock_delegate.request.side_effect = ValueError("Network error")
 
-        # Should raise the original ValueError (wrapped then unwrapped)
         with pytest.raises(ValueError, match="Network error"):
             self.client.request(HttpMethod.POST, "https://test.com", {})
 
-    def test_is_circuit_breaker_enabled(self):
-        """Test checking if circuit breaker is enabled."""
-        # Circuit breaker is always enabled in this implementation
-        assert self.client._circuit_breaker is not None
-
-    def test_circuit_breaker_state_logging(self):
-        """Test that circuit breaker errors are raised (no longer silent)."""
-        with patch.object(
-            self.client._circuit_breaker,
-            "call",
-            side_effect=CircuitBreakerError("Circuit is open"),
-        ):
-            # Should raise CircuitBreakerError (caller will handle it)
-            with pytest.raises(CircuitBreakerError):
-                self.client.request(HttpMethod.POST, "https://test.com", {})
-
-    def test_other_error_logging(self):
-        """Test that other errors are wrapped, logged, then unwrapped and raised."""
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.logger"
-        ) as mock_logger:
-            self.mock_delegate.request.side_effect = ValueError("Network error")
-
-            # Should raise the original ValueError
-            with pytest.raises(ValueError, match="Network error"):
-                self.client.request(HttpMethod.POST, "https://test.com", {})
-
-            # Check that debug was logged (for wrapping and/or unwrapping)
-            assert mock_logger.debug.call_count >= 1
-
-    def test_request_429_raises_rate_limit_error(self):
-        """Test that 429 response raises TelemetryRateLimitError."""
-        # Mock delegate to return 429
+    @pytest.mark.parametrize("status_code,expected_error", [
+        (429, TelemetryRateLimitError),
+        (503, TelemetryRateLimitError),
+    ])
+    def test_request_rate_limit_codes(self, status_code, expected_error):
+        """Test that rate-limit status codes raise TelemetryRateLimitError."""
         mock_response = Mock()
-        mock_response.status = 429
+        mock_response.status = status_code
         self.mock_delegate.request.return_value = mock_response
 
-        # Should raise TelemetryRateLimitError (circuit breaker counts it)
-        from databricks.sql.exc import TelemetryRateLimitError
-
-        with pytest.raises(TelemetryRateLimitError):
+        with pytest.raises(expected_error):
             self.client.request(HttpMethod.POST, "https://test.com", {})
 
-    def test_request_503_raises_rate_limit_error(self):
-        """Test that 503 response raises TelemetryRateLimitError."""
-        # Mock delegate to return 503
-        mock_response = Mock()
-        mock_response.status = 503
-        self.mock_delegate.request.return_value = mock_response
-
-        # Should raise TelemetryRateLimitError (circuit breaker counts it)
-        from databricks.sql.exc import TelemetryRateLimitError
-
-        with pytest.raises(TelemetryRateLimitError):
-            self.client.request(HttpMethod.POST, "https://test.com", {})
-
-    def test_request_500_returns_response(self):
-        """Test that 500 response returns the response without raising."""
-        # Mock delegate to return 500
+    def test_request_non_rate_limit_code(self):
+        """Test that non-rate-limit status codes return response."""
         mock_response = Mock()
         mock_response.status = 500
         mock_response.data = b'Server error'
         self.mock_delegate.request.return_value = mock_response
 
-        # Should return the actual response since 500 is not rate limiting
         response = self.client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 500
 
     def test_rate_limit_error_logging(self):
-        """Test that rate limit errors are logged at warning level and exception is raised."""
-        with patch(
-            "databricks.sql.telemetry.telemetry_push_client.logger"
-        ) as mock_logger:
+        """Test that rate limit errors are logged with circuit breaker context."""
+        with patch("databricks.sql.telemetry.telemetry_push_client.logger") as mock_logger:
             mock_response = Mock()
             mock_response.status = 429
             self.mock_delegate.request.return_value = mock_response
 
-            # Should raise TelemetryRateLimitError
-            from databricks.sql.exc import TelemetryRateLimitError
-
             with pytest.raises(TelemetryRateLimitError):
                 self.client.request(HttpMethod.POST, "https://test.com", {})
 
-            # Check that warning was logged
             mock_logger.warning.assert_called()
             warning_args = mock_logger.warning.call_args[0]
             assert "429" in str(warning_args)
             assert "circuit breaker" in warning_args[0]
+
+    def test_other_error_logging(self):
+        """Test that other errors are logged during wrapping/unwrapping."""
+        with patch("databricks.sql.telemetry.telemetry_push_client.logger") as mock_logger:
+            self.mock_delegate.request.side_effect = ValueError("Network error")
+
+            with pytest.raises(ValueError, match="Network error"):
+                self.client.request(HttpMethod.POST, "https://test.com", {})
+
+            assert mock_logger.debug.call_count >= 1
 
 
 class TestCircuitBreakerTelemetryPushClientIntegration:
@@ -206,98 +137,77 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         """Set up test fixtures."""
         self.mock_delegate = Mock()
         self.host = "test-host.example.com"
-        # Clear any existing circuit breaker state
         from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
-
         CircuitBreakerManager._instances.clear()
 
-    @pytest.mark.skip(reason="TODO: pybreaker needs custom filtering logic to only count TelemetryRateLimitError")
     def test_circuit_breaker_opens_after_failures(self):
-        """Test that circuit breaker opens after repeated 429 failures.
-        
-        NOTE: pybreaker currently counts ALL exceptions as failures.
-        We need to implement custom filtering to only count TelemetryRateLimitError.
-        Unit tests verify the component behavior correctly.
-        """
-        from databricks.sql.telemetry.circuit_breaker_manager import MINIMUM_CALLS
+        """Test that circuit breaker opens after repeated failures (429/503 errors)."""
+        from databricks.sql.telemetry.circuit_breaker_manager import (
+            CircuitBreakerManager,
+            MINIMUM_CALLS,
+        )
 
+        CircuitBreakerManager._instances.clear()
         client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
 
-        # Simulate 429 responses (rate limiting)
         mock_response = Mock()
         mock_response.status = 429
         self.mock_delegate.request.return_value = mock_response
 
-        # Trigger failures - some will raise TelemetryRateLimitError, some will return mock response once circuit opens
-        exception_count = 0
-        mock_response_count = 0
-        for i in range(MINIMUM_CALLS + 5):
-            try:
-                response = client.request(HttpMethod.POST, "https://test.com", {})
-                # Got a mock response - circuit is open or it's a non-rate-limit response
-                assert response.status == 200
-                mock_response_count += 1
-            except TelemetryRateLimitError:
-                # Got rate limit error - circuit is still closed
-                exception_count += 1
-        
-        # Should have some rate limit exceptions before circuit opened, then mock responses after
-        # Circuit opens around MINIMUM_CALLS failures (might be MINIMUM_CALLS or MINIMUM_CALLS-1)
-        assert exception_count >= MINIMUM_CALLS - 1
-        assert mock_response_count > 0
+        rate_limit_error_count = 0
+        circuit_breaker_error_count = 0
 
-    @pytest.mark.skip(reason="TODO: pybreaker needs custom filtering logic to only count TelemetryRateLimitError")
-    def test_circuit_breaker_recovers_after_success(self):
-        """Test that circuit breaker recovers after successful calls.
-        
-        NOTE: pybreaker currently counts ALL exceptions as failures.
-        We need to implement custom filtering to only count TelemetryRateLimitError.
-        Unit tests verify the component behavior correctly.
-        """
-        from databricks.sql.telemetry.circuit_breaker_manager import (
-            MINIMUM_CALLS,
-            RESET_TIMEOUT,
-        )
-        import time
-
-        client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
-
-        # Simulate 429 responses (rate limiting)
-        mock_429_response = Mock()
-        mock_429_response.status = 429
-        self.mock_delegate.request.return_value = mock_429_response
-
-        # Trigger enough failures to open circuit
-        for i in range(MINIMUM_CALLS + 5):
+        for _ in range(MINIMUM_CALLS + 5):
             try:
                 client.request(HttpMethod.POST, "https://test.com", {})
             except TelemetryRateLimitError:
-                pass  # Expected during rate limiting
+                rate_limit_error_count += 1
+            except CircuitBreakerError:
+                circuit_breaker_error_count += 1
 
-        # Circuit should be open now - returns mock response
-        response = client.request(HttpMethod.POST, "https://test.com", {})
-        assert response is not None
-        assert response.status == 200  # Mock success response
+        assert rate_limit_error_count >= MINIMUM_CALLS - 1
+        assert circuit_breaker_error_count > 0
+
+    def test_circuit_breaker_recovers_after_success(self):
+        """Test that circuit breaker recovers after successful calls."""
+        import time
+        from databricks.sql.telemetry.circuit_breaker_manager import (
+            CircuitBreakerManager,
+            MINIMUM_CALLS,
+            RESET_TIMEOUT,
+        )
+
+        CircuitBreakerManager._instances.clear()
+        client = CircuitBreakerTelemetryPushClient(self.mock_delegate, self.host)
+
+        # Trigger failures
+        mock_rate_limit_response = Mock()
+        mock_rate_limit_response.status = 429
+        self.mock_delegate.request.return_value = mock_rate_limit_response
+
+        for _ in range(MINIMUM_CALLS + 5):
+            try:
+                client.request(HttpMethod.POST, "https://test.com", {})
+            except (TelemetryRateLimitError, CircuitBreakerError):
+                pass
+
+        # Circuit should be open
+        with pytest.raises(CircuitBreakerError):
+            client.request(HttpMethod.POST, "https://test.com", {})
 
         # Wait for reset timeout
         time.sleep(RESET_TIMEOUT + 1.0)
 
-        # Simulate successful calls (200 response)
+        # Simulate success
         mock_success_response = Mock()
         mock_success_response.status = 200
-        mock_success_response.data = b'{"success": true}'
         self.mock_delegate.request.return_value = mock_success_response
 
-        # Should work again
         response = client.request(HttpMethod.POST, "https://test.com", {})
         assert response is not None
         assert response.status == 200
 
     def test_urllib3_import_fallback(self):
         """Test that the urllib3 import fallback works correctly."""
-        # This test verifies that the import fallback mechanism exists
-        # The actual fallback is tested by the fact that the module imports successfully
-        # even when BaseHTTPResponse is not available
         from databricks.sql.telemetry.telemetry_push_client import BaseHTTPResponse
-
         assert BaseHTTPResponse is not None
