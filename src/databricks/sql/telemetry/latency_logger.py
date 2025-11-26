@@ -158,9 +158,10 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
     execution context.
 
     OPTIMIZATIONS APPLIED:
-    - Uses time.monotonic() instead of time.perf_counter() for faster timing
+    - Uses time.monotonic() for timing measurements
     - Direct attribute access instead of wrapper extractor objects
     - Dict-based data collection to minimize object creation overhead
+    - Early exit with cached telemetry flag to skip processing when disabled
 
     Args:
         statement_type (StatementType): The type of SQL statement being executed.
