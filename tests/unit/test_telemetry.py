@@ -10,6 +10,10 @@ from databricks.sql.telemetry.telemetry_client import (
     TelemetryClientFactory,
     TelemetryHelper,
 )
+from databricks.sql.common.feature_flag import (
+    FeatureFlagsContextFactory,
+    FeatureFlagsContext,
+)
 from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow, DatabricksClientType
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
@@ -82,12 +86,12 @@ class TestTelemetryClient:
             client._export_event("event1")
             client._export_event("event2")
             mock_send.assert_not_called()
-            assert len(client._events_batch) == 2
+            assert client._events_queue.qsize() == 2
 
             # Third event should trigger flush
             client._export_event("event3")
             mock_send.assert_called_once()
-            assert len(client._events_batch) == 0  # Batch cleared after flush
+            assert client._events_queue.qsize() == 0  # Queue cleared after flush
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
     def test_network_request_flow(self, mock_http_request, mock_telemetry_client):
@@ -817,7 +821,67 @@ class TestConnectionParameterTelemetry:
             
             mock_export.assert_called_once()
             driver_params = mock_export.call_args.kwargs.get("driver_connection_params")
-            
+
             # CF proxy not yet supported - should be False/None
             assert driver_params.use_cf_proxy is False
             assert driver_params.cf_proxy_host_info is None
+
+
+class TestFeatureFlagsContextFactory:
+    """Tests for FeatureFlagsContextFactory host-level caching."""
+
+    @pytest.fixture(autouse=True)
+    def reset_factory(self):
+        """Reset factory state before/after each test."""
+        FeatureFlagsContextFactory._context_map.clear()
+        if FeatureFlagsContextFactory._executor:
+            FeatureFlagsContextFactory._executor.shutdown(wait=False)
+        FeatureFlagsContextFactory._executor = None
+        yield
+        FeatureFlagsContextFactory._context_map.clear()
+        if FeatureFlagsContextFactory._executor:
+            FeatureFlagsContextFactory._executor.shutdown(wait=False)
+        FeatureFlagsContextFactory._executor = None
+
+    @pytest.mark.parametrize(
+        "hosts,expected_contexts",
+        [
+            (["host1.com", "host1.com"], 1),  # Same host shares context
+            (["host1.com", "host2.com"], 2),  # Different hosts get separate contexts
+            (["host1.com", "host1.com", "host2.com"], 2),  # Mixed scenario
+        ],
+    )
+    def test_host_level_caching(self, hosts, expected_contexts):
+        """Test that contexts are cached by host correctly."""
+        contexts = []
+        for host in hosts:
+            conn = MagicMock()
+            conn.session.host = host
+            conn.session.http_client = MagicMock()
+            contexts.append(FeatureFlagsContextFactory.get_instance(conn))
+
+        assert len(FeatureFlagsContextFactory._context_map) == expected_contexts
+        if expected_contexts == 1:
+            assert all(ctx is contexts[0] for ctx in contexts)
+
+    def test_remove_instance_and_executor_cleanup(self):
+        """Test removal uses host key and cleans up executor when empty."""
+        conn1 = MagicMock()
+        conn1.session.host = "host1.com"
+        conn1.session.http_client = MagicMock()
+
+        conn2 = MagicMock()
+        conn2.session.host = "host2.com"
+        conn2.session.http_client = MagicMock()
+
+        FeatureFlagsContextFactory.get_instance(conn1)
+        FeatureFlagsContextFactory.get_instance(conn2)
+        assert FeatureFlagsContextFactory._executor is not None
+
+        FeatureFlagsContextFactory.remove_instance(conn1)
+        assert len(FeatureFlagsContextFactory._context_map) == 1
+        assert FeatureFlagsContextFactory._executor is not None
+
+        FeatureFlagsContextFactory.remove_instance(conn2)
+        assert len(FeatureFlagsContextFactory._context_map) == 0
+        assert FeatureFlagsContextFactory._executor is None
