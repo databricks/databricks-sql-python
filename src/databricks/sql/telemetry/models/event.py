@@ -57,6 +57,7 @@ class DriverConnectionParameters(JsonSerializableMixin):
         support_many_parameters (bool): Whether many parameters are supported
         enable_complex_datatype_support (bool): Whether complex datatypes are supported
         allowed_volume_ingestion_paths (str): Allowed paths for volume ingestion
+        query_tags (str): Query tags for tracking and attribution
     """
 
     http_path: str
@@ -84,6 +85,7 @@ class DriverConnectionParameters(JsonSerializableMixin):
     support_many_parameters: Optional[bool] = None
     enable_complex_datatype_support: Optional[bool] = None
     allowed_volume_ingestion_paths: Optional[str] = None
+    query_tags: Optional[str] = None
 
 
 @dataclass

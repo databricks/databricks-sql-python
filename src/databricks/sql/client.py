@@ -35,6 +35,7 @@ from databricks.sql.utils import (
     ColumnTable,
     ColumnQueue,
     build_client_context,
+    get_session_config_value,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -386,6 +387,7 @@ class Connection:
             support_many_parameters=True,  # Native parameters supported
             enable_complex_datatype_support=_use_arrow_native_complex_types,
             allowed_volume_ingestion_paths=self.staging_allowed_local_path,
+            query_tags=get_session_config_value(session_configuration, 'query_tags'),
         )
 
         self._telemetry_client.export_initial_telemetry_log(
