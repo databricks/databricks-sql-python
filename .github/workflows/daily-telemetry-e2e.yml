@@ -1,32 +1,42 @@
-name: Integration Tests
+name: Daily Telemetry E2E Tests
 
 on:
-  push:            
-    branches:
-      - main
-  pull_request:   
+  schedule:
+    - cron: '0 0 * * 0'  # Run every Sunday at midnight UTC
+  
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      test_pattern:
+        description: 'Test pattern to run (default: tests/e2e/test_telemetry_e2e.py)'
+        required: false
+        default: 'tests/e2e/test_telemetry_e2e.py'
+        type: string
 
 jobs:
-  run-e2e-tests:
+  telemetry-e2e-tests:
     runs-on: ubuntu-latest
     environment: azure-prod
+    
     env:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
       DATABRICKS_CATALOG: peco
       DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
+    
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@v4
+      
       - name: Set up python
         id: setup-python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+      
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
@@ -46,17 +56,32 @@ jobs:
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+      
       #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
       - name: Install dependencies
         run: poetry install --no-interaction --all-extras
+      
       #----------------------------------------------
-      #              run test suite
+      #         run telemetry E2E tests
       #----------------------------------------------
-      - name: Run e2e tests (excluding daily-only tests)
+      - name: Run telemetry E2E tests
         run: |
-          # Exclude telemetry E2E tests from PR runs (run daily instead)
-          poetry run python -m pytest tests/e2e \
-            --ignore=tests/e2e/test_telemetry_e2e.py \
-            -n auto
+          TEST_PATTERN="${{ github.event.inputs.test_pattern || 'tests/e2e/test_telemetry_e2e.py' }}"
+          echo "Running tests: $TEST_PATTERN"
+          poetry run python -m pytest $TEST_PATTERN -v -s
+        
+      #----------------------------------------------
+      #       upload test results on failure
+      #----------------------------------------------
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemetry-test-results
+          path: |
+            .pytest_cache/
+            tests-unsafe.log
+          retention-days: 7
+
