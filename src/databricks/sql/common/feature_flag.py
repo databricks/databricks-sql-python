@@ -165,9 +165,8 @@ class FeatureFlagsContextFactory:
             cls._initialize()
             assert cls._executor is not None
 
-            # Cache at HOST level - share feature flags across connections to same host
-            # Feature flags are per-host, not per-session
-            key = connection.session.host
+            # Use the unique session ID as the key
+            key = connection.get_session_id_hex()
             if key not in cls._context_map:
                 cls._context_map[key] = FeatureFlagsContext(
                     connection, cls._executor, connection.session.http_client
@@ -178,8 +177,7 @@ class FeatureFlagsContextFactory:
     def remove_instance(cls, connection: "Connection"):
         """Removes the context for a given connection and shuts down the executor if no clients remain."""
         with cls._lock:
-            # Use host as key to match get_instance
-            key = connection.session.host
+            key = connection.get_session_id_hex()
             if key in cls._context_map:
                 cls._context_map.pop(key, None)
 

@@ -54,9 +54,5 @@ jobs:
       #----------------------------------------------
       #              run test suite
       #----------------------------------------------
-      - name: Run e2e tests (excluding daily-only tests)
-        run: |
-          # Exclude telemetry E2E tests from PR runs (run daily instead)
-          poetry run python -m pytest tests/e2e \
-            --ignore=tests/e2e/test_telemetry_e2e.py \
-            -n auto
+      - name: Run e2e tests
+        run: poetry run python -m pytest tests/e2e -n auto

@@ -45,9 +45,6 @@ class Session:
         self.schema = schema
         self.http_path = http_path
 
-        # Initialize autocommit state (JDBC default is True)
-        self._autocommit = True
-
         user_agent_entry = kwargs.get("user_agent_entry")
         if user_agent_entry is None:
             user_agent_entry = kwargs.get("_user_agent_entry")
@@ -170,24 +167,6 @@ class Session:
     def guid_hex(self) -> str:
         """Get the session ID in hex format"""
         return self._session_id.hex_guid
-
-    def get_autocommit(self) -> bool:
-        """
-        Get the cached autocommit state for this session.
-
-        Returns:
-            bool: True if autocommit is enabled, False otherwise
-        """
-        return self._autocommit
-
-    def set_autocommit(self, value: bool) -> None:
-        """
-        Update the cached autocommit state for this session.
-
-        Args:
-            value: True to cache autocommit as enabled, False as disabled
-        """
-        self._autocommit = value
 
     def close(self) -> None:
         """Close the underlying session."""

@@ -51,7 +51,6 @@ class ClientContext:
         pool_connections: Optional[int] = None,
         pool_maxsize: Optional[int] = None,
         user_agent: Optional[str] = None,
-        telemetry_circuit_breaker_enabled: Optional[bool] = None,
     ):
         self.hostname = hostname
         self.access_token = access_token
@@ -84,7 +83,6 @@ class ClientContext:
         self.pool_connections = pool_connections or 10
         self.pool_maxsize = pool_maxsize or 20
         self.user_agent = user_agent
-        self.telemetry_circuit_breaker_enabled = bool(telemetry_circuit_breaker_enabled)
 
 
 def get_effective_azure_login_app_id(hostname) -> str:

@@ -922,7 +922,4 @@ def build_client_context(server_hostname: str, version: str, **kwargs):
         proxy_auth_method=kwargs.get("_proxy_auth_method"),
         pool_connections=kwargs.get("_pool_connections"),
         pool_maxsize=kwargs.get("_pool_maxsize"),
-        telemetry_circuit_breaker_enabled=kwargs.get(
-            "_telemetry_circuit_breaker_enabled"
-        ),
     )

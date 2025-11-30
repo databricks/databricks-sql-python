@@ -3,9 +3,6 @@ import time
 import logging
 import json
 from concurrent.futures import ThreadPoolExecutor, wait
-from queue import Queue, Full
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import Future
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from databricks.sql.telemetry.models.event import (
@@ -43,11 +40,6 @@ from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
-from databricks.sql.telemetry.telemetry_push_client import (
-    ITelemetryPushClient,
-    TelemetryPushClient,
-    CircuitBreakerTelemetryPushClient,
-)
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -116,20 +108,17 @@ class TelemetryHelper:
 
     @staticmethod
     def is_telemetry_enabled(connection: "Connection") -> bool:
-        # Fast path: force enabled - skip feature flag fetch entirely
         if connection.force_enable_telemetry:
             return True
 
-        # Fast path: disabled - no need to check feature flag
-        if not connection.enable_telemetry:
+        if connection.enable_telemetry:
+            context = FeatureFlagsContextFactory.get_instance(connection)
+            flag_value = context.get_flag_value(
+                TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
+            )
+            return str(flag_value).lower() == "true"
+        else:
             return False
-
-        # Only fetch feature flags when enable_telemetry=True and not forced
-        context = FeatureFlagsContextFactory.get_instance(connection)
-        flag_value = context.get_flag_value(
-            TelemetryHelper.TELEMETRY_FEATURE_FLAG_NAME, default_value=False
-        )
-        return str(flag_value).lower() == "true"
 
 
 class NoopTelemetryClient(BaseTelemetryClient):
@@ -176,26 +165,23 @@ class TelemetryClient(BaseTelemetryClient):
 
     def __init__(
         self,
-        telemetry_enabled: bool,
-        session_id_hex: str,
+        telemetry_enabled,
+        session_id_hex,
         auth_provider,
-        host_url: str,
+        host_url,
         executor,
-        batch_size: int,
+        batch_size,
         client_context,
-    ) -> None:
+    ):
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
         self._batch_size = batch_size
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
+        self._events_batch = []
+        self._lock = threading.RLock()
         self._pending_futures = set()
-
-        # OPTIMIZATION: Use lock-free Queue instead of list + lock
-        # Queue is thread-safe internally and has better performance under concurrency
-        self._events_queue: Queue[TelemetryFrontendLog] = Queue(maxsize=batch_size * 2)
-
         self._driver_connection_params = None
         self._host_url = host_url
         self._executor = executor
@@ -203,41 +189,12 @@ class TelemetryClient(BaseTelemetryClient):
         # Create own HTTP client from client context
         self._http_client = UnifiedHttpClient(client_context)
 
-        # Create telemetry push client based on circuit breaker enabled flag
-        if client_context.telemetry_circuit_breaker_enabled:
-            # Create circuit breaker telemetry push client
-            # (circuit breakers created on-demand)
-            self._telemetry_push_client: ITelemetryPushClient = (
-                CircuitBreakerTelemetryPushClient(
-                    TelemetryPushClient(self._http_client),
-                    host_url,
-                )
-            )
-        else:
-            # Circuit breaker disabled - use direct telemetry push client
-            self._telemetry_push_client = TelemetryPushClient(self._http_client)
-
     def _export_event(self, event):
         """Add an event to the batch queue and flush if batch is full"""
         logger.debug("Exporting event for connection %s", self._session_id_hex)
-
-        # OPTIMIZATION: Use non-blocking put with queue
-        # No explicit lock needed - Queue is thread-safe internally
-        try:
-            self._events_queue.put_nowait(event)
-        except Full:
-            # Queue is full, trigger immediate flush
-            logger.debug("Event queue full, triggering flush")
-            self._flush()
-            # Try again after flush
-            try:
-                self._events_queue.put_nowait(event)
-            except Full:
-                # Still full, drop event (acceptable for telemetry)
-                logger.debug("Dropped telemetry event - queue still full")
-
-        # Check if we should flush based on queue size
-        if self._events_queue.qsize() >= self._batch_size:
+        with self._lock:
+            self._events_batch.append(event)
+        if len(self._events_batch) >= self._batch_size:
             logger.debug(
                 "Batch size limit reached (%s), flushing events", self._batch_size
             )
@@ -245,16 +202,9 @@ class TelemetryClient(BaseTelemetryClient):
 
     def _flush(self):
         """Flush the current batch of events to the server"""
-        # OPTIMIZATION: Drain queue without locks
-        # Collect all events currently in the queue
-        events_to_flush = []
-        while not self._events_queue.empty():
-            try:
-                event = self._events_queue.get_nowait()
-                events_to_flush.append(event)
-            except:
-                # Queue is empty
-                break
+        with self._lock:
+            events_to_flush = self._events_batch.copy()
+            self._events_batch = []
 
         if events_to_flush:
             logger.debug("Flushing %s telemetry events to server", len(events_to_flush))
@@ -307,7 +257,7 @@ class TelemetryClient(BaseTelemetryClient):
     def _send_with_unified_client(self, url, data, headers, timeout=900):
         """Helper method to send telemetry using the unified HTTP client."""
         try:
-            response = self._telemetry_push_client.request(
+            response = self._http_client.request(
                 HttpMethod.POST, url, body=data, headers=headers, timeout=timeout
             )
             return response
@@ -443,9 +393,9 @@ class TelemetryClientFactory:
     It uses a thread pool to handle asynchronous operations and a single flush thread for all clients.
     """
 
-    _clients: Dict[str, BaseTelemetryClient] = (
-        {}
-    )  # Map of session_id_hex -> BaseTelemetryClient
+    _clients: Dict[
+        str, BaseTelemetryClient
+    ] = {}  # Map of session_id_hex -> BaseTelemetryClient
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.RLock()  # Thread safety for factory operations
@@ -456,7 +406,7 @@ class TelemetryClientFactory:
     # Shared flush thread for all clients
     _flush_thread = None
     _flush_event = threading.Event()
-    _flush_interval_seconds = 300  # 5 minutes
+    _flush_interval_seconds = 90
 
     DEFAULT_BATCH_SIZE = 100
 
@@ -546,21 +496,21 @@ class TelemetryClientFactory:
                         session_id_hex,
                     )
                     if telemetry_enabled:
-                        TelemetryClientFactory._clients[session_id_hex] = (
-                            TelemetryClient(
-                                telemetry_enabled=telemetry_enabled,
-                                session_id_hex=session_id_hex,
-                                auth_provider=auth_provider,
-                                host_url=host_url,
-                                executor=TelemetryClientFactory._executor,
-                                batch_size=batch_size,
-                                client_context=client_context,
-                            )
+                        TelemetryClientFactory._clients[
+                            session_id_hex
+                        ] = TelemetryClient(
+                            telemetry_enabled=telemetry_enabled,
+                            session_id_hex=session_id_hex,
+                            auth_provider=auth_provider,
+                            host_url=host_url,
+                            executor=TelemetryClientFactory._executor,
+                            batch_size=batch_size,
+                            client_context=client_context,
                         )
                     else:
-                        TelemetryClientFactory._clients[session_id_hex] = (
-                            NoopTelemetryClient()
-                        )
+                        TelemetryClientFactory._clients[
+                            session_id_hex
+                        ] = NoopTelemetryClient()
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail

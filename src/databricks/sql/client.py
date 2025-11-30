@@ -9,7 +9,6 @@ except ImportError:
 import json
 import os
 import decimal
-from urllib.parse import urlparse
 from uuid import UUID
 
 from databricks.sql import __version__
@@ -21,8 +20,6 @@ from databricks.sql.exc import (
     InterfaceError,
     NotSupportedError,
     ProgrammingError,
-    TransactionError,
-    DatabaseError,
 )
 
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -89,9 +86,6 @@ DEFAULT_ARRAY_SIZE = 100000
 
 NO_NATIVE_PARAMS: List = []
 
-# Transaction isolation level constants (extension to PEP 249)
-TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ = "REPEATABLE_READ"
-
 
 class Connection:
     def __init__(
@@ -104,7 +98,6 @@ class Connection:
         catalog: Optional[str] = None,
         schema: Optional[str] = None,
         _use_arrow_native_complex_types: Optional[bool] = True,
-        ignore_transactions: bool = True,
         **kwargs,
     ) -> None:
         """
@@ -213,17 +206,6 @@ class Connection:
                 This allows
                 1. cursor.tables() to return METRIC_VIEW table type
                 2. cursor.columns() to return "measure" column type
-            :param fetch_autocommit_from_server: `bool`, optional (default is False)
-                When True, the connection.autocommit property queries the server for current state
-                using SET AUTOCOMMIT instead of returning cached value.
-                Set to True if autocommit might be changed by external means (e.g., external SQL commands).
-                When False (default), uses cached state for better performance.
-            :param ignore_transactions: `bool`, optional (default is True)
-                When True, transaction-related operations behave as follows:
-                - commit(): no-op (does nothing)
-                - rollback(): raises NotSupportedError
-                - autocommit setter: no-op (does nothing)
-                When False, transaction operations execute normally.
         """
 
         # Internal arguments in **kwargs:
@@ -322,10 +304,6 @@ class Connection:
             kwargs.get("use_inline_params", False)
         )
         self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
-        self._fetch_autocommit_from_server = kwargs.get(
-            "fetch_autocommit_from_server", False
-        )
-        self.ignore_transactions = ignore_transactions
 
         self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
         self.enable_telemetry = kwargs.get("enable_telemetry", False)
@@ -344,20 +322,6 @@ class Connection:
             session_id_hex=self.get_session_id_hex()
         )
 
-        # Determine proxy usage
-        use_proxy = self.http_client.using_proxy()
-        proxy_host_info = None
-        if (
-            use_proxy
-            and self.http_client.proxy_uri
-            and isinstance(self.http_client.proxy_uri, str)
-        ):
-            parsed = urlparse(self.http_client.proxy_uri)
-            proxy_host_info = HostDetails(
-                host_url=parsed.hostname or self.http_client.proxy_uri,
-                port=parsed.port or 8080,
-            )
-
         driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
             mode=DatabricksClientType.SEA
@@ -367,31 +331,13 @@ class Connection:
             auth_mech=TelemetryHelper.get_auth_mechanism(self.session.auth_provider),
             auth_flow=TelemetryHelper.get_auth_flow(self.session.auth_provider),
             socket_timeout=kwargs.get("_socket_timeout", None),
-            azure_workspace_resource_id=kwargs.get("azure_workspace_resource_id", None),
-            azure_tenant_id=kwargs.get("azure_tenant_id", None),
-            use_proxy=use_proxy,
-            use_system_proxy=use_proxy,
-            proxy_host_info=proxy_host_info,
-            use_cf_proxy=False,  # CloudFlare proxy not yet supported in Python
-            cf_proxy_host_info=None,  # CloudFlare proxy not yet supported in Python
-            non_proxy_hosts=None,
-            allow_self_signed_support=kwargs.get("_tls_no_verify", False),
-            use_system_trust_store=True,  # Python uses system SSL by default
-            enable_arrow=pyarrow is not None,
-            enable_direct_results=True,  # Always enabled in Python
-            enable_sea_hybrid_results=kwargs.get("use_hybrid_disposition", False),
-            http_connection_pool_size=kwargs.get("pool_maxsize", None),
-            rows_fetched_per_block=DEFAULT_ARRAY_SIZE,
-            async_poll_interval_millis=2000,  # Default polling interval
-            support_many_parameters=True,  # Native parameters supported
-            enable_complex_datatype_support=_use_arrow_native_complex_types,
-            allowed_volume_ingestion_paths=self.staging_allowed_local_path,
         )
 
         self._telemetry_client.export_initial_telemetry_log(
             driver_connection_params=driver_connection_params,
             user_agent=self.session.useragent_header,
         )
+        self.staging_allowed_local_path = kwargs.get("staging_allowed_local_path", None)
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
         """Valid values are True, False, and "silent"
@@ -527,286 +473,15 @@ class Connection:
         if self.http_client:
             self.http_client.close()
 
-    @property
-    def autocommit(self) -> bool:
-        """
-        Get auto-commit mode for this connection.
+    def commit(self):
+        """No-op because Databricks does not support transactions"""
+        pass
 
-        Extension to PEP 249. Returns cached value by default.
-        If fetch_autocommit_from_server=True was set during connection,
-        queries server for current state.
-
-        Returns:
-            bool: True if auto-commit is enabled, False otherwise
-
-        Raises:
-            InterfaceError: If connection is closed
-            TransactionError: If fetch_autocommit_from_server=True and query fails
-        """
-        if not self.open:
-            raise InterfaceError(
-                "Cannot get autocommit on closed connection",
-                session_id_hex=self.get_session_id_hex(),
-            )
-
-        if self._fetch_autocommit_from_server:
-            return self._fetch_autocommit_state_from_server()
-
-        return self.session.get_autocommit()
-
-    @autocommit.setter
-    def autocommit(self, value: bool) -> None:
-        """
-        Set auto-commit mode for this connection.
-
-        Extension to PEP 249. Executes SET AUTOCOMMIT command on server.
-
-        Args:
-            value: True to enable auto-commit, False to disable
-
-        When ignore_transactions is True:
-        - This method is a no-op (does nothing)
-
-        Raises:
-            InterfaceError: If connection is closed
-            TransactionError: If server rejects the change
-        """
-        # No-op when ignore_transactions is True
-        if self.ignore_transactions:
-            return
-
-        if not self.open:
-            raise InterfaceError(
-                "Cannot set autocommit on closed connection",
-                session_id_hex=self.get_session_id_hex(),
-            )
-
-        # Create internal cursor for transaction control
-        cursor = None
-        try:
-            cursor = self.cursor()
-            sql = f"SET AUTOCOMMIT = {'TRUE' if value else 'FALSE'}"
-            cursor.execute(sql)
-
-            # Update cached state on success
-            self.session.set_autocommit(value)
-
-        except DatabaseError as e:
-            # Wrap in TransactionError with context
-            raise TransactionError(
-                f"Failed to set autocommit to {value}: {e.message}",
-                context={
-                    **e.context,
-                    "operation": "set_autocommit",
-                    "autocommit_value": value,
-                },
-                session_id_hex=self.get_session_id_hex(),
-            ) from e
-        finally:
-            if cursor:
-                cursor.close()
-
-    def _fetch_autocommit_state_from_server(self) -> bool:
-        """
-        Query server for current autocommit state using SET AUTOCOMMIT.
-
-        Returns:
-            bool: Server's autocommit state
-
-        Raises:
-            TransactionError: If query fails
-        """
-        cursor = None
-        try:
-            cursor = self.cursor()
-            cursor.execute("SET AUTOCOMMIT")
-
-            # Fetch result: should return row with value column
-            result = cursor.fetchone()
-            if result is None:
-                raise TransactionError(
-                    "No result returned from SET AUTOCOMMIT query",
-                    context={"operation": "fetch_autocommit"},
-                    session_id_hex=self.get_session_id_hex(),
-                )
-
-            # Parse value (first column should be "true" or "false")
-            value_str = str(result[0]).lower()
-            autocommit_state = value_str == "true"
-
-            # Update cache
-            self.session.set_autocommit(autocommit_state)
-
-            return autocommit_state
-
-        except TransactionError:
-            # Re-raise TransactionError as-is
-            raise
-        except DatabaseError as e:
-            # Wrap other DatabaseErrors
-            raise TransactionError(
-                f"Failed to fetch autocommit state from server: {e.message}",
-                context={**e.context, "operation": "fetch_autocommit"},
-                session_id_hex=self.get_session_id_hex(),
-            ) from e
-        finally:
-            if cursor:
-                cursor.close()
-
-    def commit(self) -> None:
-        """
-        Commit the current transaction.
-
-        Per PEP 249. Should be called only when autocommit is disabled.
-
-        When autocommit is False:
-        - Commits the current transaction
-        - Server automatically starts new transaction
-
-        When autocommit is True:
-        - Server may throw error if no active transaction
-
-        When ignore_transactions is True:
-        - This method is a no-op (does nothing)
-
-        Raises:
-            InterfaceError: If connection is closed
-            TransactionError: If commit fails (e.g., no active transaction)
-        """
-        # No-op when ignore_transactions is True
-        if self.ignore_transactions:
-            return
-
-        if not self.open:
-            raise InterfaceError(
-                "Cannot commit on closed connection",
-                session_id_hex=self.get_session_id_hex(),
-            )
-
-        cursor = None
-        try:
-            cursor = self.cursor()
-            cursor.execute("COMMIT")
-
-        except DatabaseError as e:
-            raise TransactionError(
-                f"Failed to commit transaction: {e.message}",
-                context={**e.context, "operation": "commit"},
-                session_id_hex=self.get_session_id_hex(),
-            ) from e
-        finally:
-            if cursor:
-                cursor.close()
-
-    def rollback(self) -> None:
-        """
-        Rollback the current transaction.
-
-        Per PEP 249. Should be called only when autocommit is disabled.
-
-        When autocommit is False:
-        - Rolls back the current transaction
-        - Server automatically starts new transaction
-
-        When autocommit is True:
-        - ROLLBACK is forgiving (no-op, doesn't throw exception)
-
-        When ignore_transactions is True:
-        - Raises NotSupportedError
-
-        Note: ROLLBACK is safe to call even without active transaction.
-
-        Raises:
-            InterfaceError: If connection is closed
-            NotSupportedError: If ignore_transactions is True
-            TransactionError: If rollback fails
-        """
-        # Raise NotSupportedError when ignore_transactions is True
-        if self.ignore_transactions:
-            raise NotSupportedError(
-                "Transactions are not supported on Databricks",
-                session_id_hex=self.get_session_id_hex(),
-            )
-
-        if not self.open:
-            raise InterfaceError(
-                "Cannot rollback on closed connection",
-                session_id_hex=self.get_session_id_hex(),
-            )
-
-        cursor = None
-        try:
-            cursor = self.cursor()
-            cursor.execute("ROLLBACK")
-
-        except DatabaseError as e:
-            raise TransactionError(
-                f"Failed to rollback transaction: {e.message}",
-                context={**e.context, "operation": "rollback"},
-                session_id_hex=self.get_session_id_hex(),
-            ) from e
-        finally:
-            if cursor:
-                cursor.close()
-
-    def get_transaction_isolation(self) -> str:
-        """
-        Get the transaction isolation level.
-
-        Extension to PEP 249.
-
-        Databricks supports REPEATABLE_READ isolation level (Snapshot Isolation),
-        which is the default and only supported level.
-
-        Returns:
-            str: "REPEATABLE_READ" - the transaction isolation level constant
-
-        Raises:
-            InterfaceError: If connection is closed
-        """
-        if not self.open:
-            raise InterfaceError(
-                "Cannot get transaction isolation on closed connection",
-                session_id_hex=self.get_session_id_hex(),
-            )
-
-        return TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ
-
-    def set_transaction_isolation(self, level: str) -> None:
-        """
-        Set transaction isolation level.
-
-        Extension to PEP 249.
-
-        Databricks supports only REPEATABLE_READ isolation level (Snapshot Isolation).
-        This method validates that the requested level is supported but does not
-        execute any SQL, as REPEATABLE_READ is the default server behavior.
-
-        Args:
-            level: Isolation level. Must be "REPEATABLE_READ" or "REPEATABLE READ"
-                   (case-insensitive, underscores and spaces are interchangeable)
-
-        Raises:
-            InterfaceError: If connection is closed
-            NotSupportedError: If isolation level not supported
-        """
-        if not self.open:
-            raise InterfaceError(
-                "Cannot set transaction isolation on closed connection",
-                session_id_hex=self.get_session_id_hex(),
-            )
-
-        # Normalize and validate isolation level
-        normalized_level = level.upper().replace("_", " ")
-
-        if normalized_level != TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ.replace(
-            "_", " "
-        ):
-            raise NotSupportedError(
-                f"Setting transaction isolation level '{level}' is not supported. "
-                f"Only {TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ} is supported.",
-                session_id_hex=self.get_session_id_hex(),
-            )
+    def rollback(self):
+        raise NotSupportedError(
+            "Transactions are not supported on Databricks",
+            session_id_hex=self.get_session_id_hex(),
+        )
 
 
 class Cursor:
