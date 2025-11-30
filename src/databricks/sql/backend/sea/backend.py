@@ -287,9 +287,9 @@ class SeaDatabricksClient(DatabricksClient):
 
         logger.debug("SeaDatabricksClient.close_session(session_id=%s)", session_id)
 
-        sea_session_id = session_id.to_sea_session_id()
-        if sea_session_id is None:
+        if session_id.backend_type != BackendType.SEA:
             raise ValueError("Not a valid SEA session ID")
+        sea_session_id = session_id.to_sea_session_id()
 
         request_data = DeleteSessionRequest(
             warehouse_id=self.warehouse_id,
