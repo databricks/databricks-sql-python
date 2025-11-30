@@ -22,7 +22,13 @@ from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 
 import databricks.sql
 import databricks.sql.client as client
-from databricks.sql import InterfaceError, DatabaseError, Error, NotSupportedError
+from databricks.sql import (
+    InterfaceError,
+    DatabaseError,
+    Error,
+    NotSupportedError,
+    TransactionError,
+)
 from databricks.sql.types import Row
 from databricks.sql.result_set import ResultSet, ThriftResultSet
 from databricks.sql.backend.types import CommandId, CommandState
@@ -439,11 +445,6 @@ class ClientTestSuite(unittest.TestCase):
             "last operation",
         )
 
-    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_commit_a_noop(self, mock_thrift_backend_class):
-        c = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
-        c.commit()
-
     def test_setinputsizes_a_noop(self):
         cursor = client.Cursor(Mock(), Mock())
         cursor.setinputsizes(1)
@@ -451,12 +452,6 @@ class ClientTestSuite(unittest.TestCase):
     def test_setoutputsizes_a_noop(self):
         cursor = client.Cursor(Mock(), Mock())
         cursor.setoutputsize(1)
-
-    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_rollback_not_supported(self, mock_thrift_backend_class):
-        c = databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
-        with self.assertRaises(NotSupportedError):
-            c.rollback()
 
     @unittest.skip("JDW: skipping winter 2024 as we're about to rewrite this interface")
     @patch("%s.client.ThriftDatabricksClient" % PACKAGE_NAME)
@@ -639,11 +634,469 @@ class ClientTestSuite(unittest.TestCase):
         )
 
 
+class TransactionTestSuite(unittest.TestCase):
+    """
+    Unit tests for transaction control methods (MST support).
+    """
+
+    PACKAGE_NAME = "databricks.sql"
+    DUMMY_CONNECTION_ARGS = {
+        "server_hostname": "foo",
+        "http_path": "dummy_path",
+        "access_token": "tok",
+    }
+
+    def _create_mock_connection(self, mock_session_class):
+        """Helper to create a mocked connection for transaction tests."""
+        # Mock session
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session.get_autocommit.return_value = True
+        mock_session_class.return_value = mock_session
+
+        # Create connection with ignore_transactions=False to test actual transaction functionality
+        conn = client.Connection(
+            ignore_transactions=False, **self.DUMMY_CONNECTION_ARGS
+        )
+        return conn
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_getter_returns_cached_value(self, mock_session_class):
+        """Test that autocommit property returns cached session value by default."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        # Get autocommit (should use cached value)
+        result = conn.autocommit
+
+        conn.session.get_autocommit.assert_called_once()
+        self.assertTrue(result)
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_setter_executes_sql(self, mock_session_class):
+        """Test that setting autocommit executes SET AUTOCOMMIT command."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            conn.autocommit = False
+
+            # Verify SQL was executed
+            mock_cursor.execute.assert_called_once_with("SET AUTOCOMMIT = FALSE")
+            mock_cursor.close.assert_called_once()
+
+            conn.session.set_autocommit.assert_called_once_with(False)
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_setter_with_true_value(self, mock_session_class):
+        """Test setting autocommit to True."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            conn.autocommit = True
+
+            mock_cursor.execute.assert_called_once_with("SET AUTOCOMMIT = TRUE")
+            conn.session.set_autocommit.assert_called_once_with(True)
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_setter_wraps_database_error(self, mock_session_class):
+        """Test that autocommit setter wraps DatabaseError in TransactionError."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        server_error = DatabaseError(
+            "AUTOCOMMIT_SET_DURING_ACTIVE_TRANSACTION",
+            context={"sql_state": "25000"},
+            session_id_hex="test-session-id",
+        )
+        mock_cursor.execute.side_effect = server_error
+
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            with self.assertRaises(TransactionError) as ctx:
+                conn.autocommit = False
+
+            self.assertIn("Failed to set autocommit", str(ctx.exception))
+            self.assertEqual(ctx.exception.context["operation"], "set_autocommit")
+            self.assertEqual(ctx.exception.context["autocommit_value"], False)
+
+            mock_cursor.close.assert_called_once()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_setter_preserves_exception_chain(self, mock_session_class):
+        """Test that exception chaining is preserved."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        original_error = DatabaseError(
+            "Original error", session_id_hex="test-session-id"
+        )
+        mock_cursor.execute.side_effect = original_error
+
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            with self.assertRaises(TransactionError) as ctx:
+                conn.autocommit = False
+
+            self.assertEqual(ctx.exception.__cause__, original_error)
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_commit_executes_sql(self, mock_session_class):
+        """Test that commit() executes COMMIT command."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            conn.commit()
+
+            mock_cursor.execute.assert_called_once_with("COMMIT")
+            mock_cursor.close.assert_called_once()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_commit_wraps_database_error(self, mock_session_class):
+        """Test that commit() wraps DatabaseError in TransactionError."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        server_error = DatabaseError(
+            "MULTI_STATEMENT_TRANSACTION_NO_ACTIVE_TRANSACTION",
+            context={"sql_state": "25000"},
+            session_id_hex="test-session-id",
+        )
+        mock_cursor.execute.side_effect = server_error
+
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            with self.assertRaises(TransactionError) as ctx:
+                conn.commit()
+
+            self.assertIn("Failed to commit", str(ctx.exception))
+            self.assertEqual(ctx.exception.context["operation"], "commit")
+            mock_cursor.close.assert_called_once()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_commit_on_closed_connection_raises_interface_error(
+        self, mock_session_class
+    ):
+        """Test that commit() on closed connection raises InterfaceError."""
+        conn = self._create_mock_connection(mock_session_class)
+        conn.session.is_open = False
+
+        with self.assertRaises(InterfaceError) as ctx:
+            conn.commit()
+
+        self.assertIn("Cannot commit on closed connection", str(ctx.exception))
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_rollback_executes_sql(self, mock_session_class):
+        """Test that rollback() executes ROLLBACK command."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            conn.rollback()
+
+            mock_cursor.execute.assert_called_once_with("ROLLBACK")
+            mock_cursor.close.assert_called_once()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_rollback_wraps_database_error(self, mock_session_class):
+        """Test that rollback() wraps DatabaseError in TransactionError."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        server_error = DatabaseError(
+            "Unexpected rollback error",
+            context={"sql_state": "HY000"},
+            session_id_hex="test-session-id",
+        )
+        mock_cursor.execute.side_effect = server_error
+
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            with self.assertRaises(TransactionError) as ctx:
+                conn.rollback()
+
+            self.assertIn("Failed to rollback", str(ctx.exception))
+            self.assertEqual(ctx.exception.context["operation"], "rollback")
+            mock_cursor.close.assert_called_once()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_rollback_on_closed_connection_raises_interface_error(
+        self, mock_session_class
+    ):
+        """Test that rollback() on closed connection raises InterfaceError."""
+        conn = self._create_mock_connection(mock_session_class)
+        conn.session.is_open = False
+
+        with self.assertRaises(InterfaceError) as ctx:
+            conn.rollback()
+
+        self.assertIn("Cannot rollback on closed connection", str(ctx.exception))
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_get_transaction_isolation_returns_repeatable_read(
+        self, mock_session_class
+    ):
+        """Test that get_transaction_isolation() returns REPEATABLE_READ."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        result = conn.get_transaction_isolation()
+
+        self.assertEqual(result, "REPEATABLE_READ")
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_get_transaction_isolation_on_closed_connection_raises_interface_error(
+        self, mock_session_class
+    ):
+        """Test that get_transaction_isolation() on closed connection raises InterfaceError."""
+        conn = self._create_mock_connection(mock_session_class)
+        conn.session.is_open = False
+
+        with self.assertRaises(InterfaceError) as ctx:
+            conn.get_transaction_isolation()
+
+        self.assertIn(
+            "Cannot get transaction isolation on closed connection", str(ctx.exception)
+        )
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_set_transaction_isolation_accepts_repeatable_read(
+        self, mock_session_class
+    ):
+        """Test that set_transaction_isolation() accepts REPEATABLE_READ."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        # Should not raise
+        conn.set_transaction_isolation("REPEATABLE_READ")
+        conn.set_transaction_isolation("REPEATABLE READ")  # With space
+        conn.set_transaction_isolation("repeatable_read")  # Lowercase with underscore
+        conn.set_transaction_isolation("repeatable read")  # Lowercase with space
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_set_transaction_isolation_rejects_other_levels(self, mock_session_class):
+        """Test that set_transaction_isolation() rejects non-REPEATABLE_READ levels."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        with self.assertRaises(NotSupportedError) as ctx:
+            conn.set_transaction_isolation("READ_COMMITTED")
+
+        self.assertIn("not supported", str(ctx.exception))
+        self.assertIn("READ_COMMITTED", str(ctx.exception))
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_set_transaction_isolation_on_closed_connection_raises_interface_error(
+        self, mock_session_class
+    ):
+        """Test that set_transaction_isolation() on closed connection raises InterfaceError."""
+        conn = self._create_mock_connection(mock_session_class)
+        conn.session.is_open = False
+
+        with self.assertRaises(InterfaceError) as ctx:
+            conn.set_transaction_isolation("REPEATABLE_READ")
+
+        self.assertIn(
+            "Cannot set transaction isolation on closed connection", str(ctx.exception)
+        )
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_fetch_autocommit_from_server_queries_server(self, mock_session_class):
+        """Test that fetch_autocommit_from_server=True queries server."""
+        # Create connection with fetch_autocommit_from_server=True
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        conn = client.Connection(
+            fetch_autocommit_from_server=True,
+            ignore_transactions=False,
+            **self.DUMMY_CONNECTION_ARGS,
+        )
+
+        mock_cursor = Mock()
+        mock_row = Mock()
+        mock_row.__getitem__ = Mock(return_value="true")
+        mock_cursor.fetchone.return_value = mock_row
+
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            result = conn.autocommit
+
+            mock_cursor.execute.assert_called_once_with("SET AUTOCOMMIT")
+            mock_cursor.fetchone.assert_called_once()
+            mock_cursor.close.assert_called_once()
+
+            conn.session.set_autocommit.assert_called_once_with(True)
+
+            self.assertTrue(result)
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_fetch_autocommit_from_server_handles_false_value(self, mock_session_class):
+        """Test that fetch_autocommit_from_server correctly parses false value."""
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        conn = client.Connection(
+            fetch_autocommit_from_server=True,
+            ignore_transactions=False,
+            **self.DUMMY_CONNECTION_ARGS,
+        )
+
+        mock_cursor = Mock()
+        mock_row = Mock()
+        mock_row.__getitem__ = Mock(return_value="false")
+        mock_cursor.fetchone.return_value = mock_row
+
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            result = conn.autocommit
+
+            conn.session.set_autocommit.assert_called_once_with(False)
+            self.assertFalse(result)
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_fetch_autocommit_from_server_raises_on_no_result(self, mock_session_class):
+        """Test that fetch_autocommit_from_server raises error when no result."""
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        conn = client.Connection(
+            fetch_autocommit_from_server=True,
+            ignore_transactions=False,
+            **self.DUMMY_CONNECTION_ARGS,
+        )
+
+        mock_cursor = Mock()
+        mock_cursor.fetchone.return_value = None
+
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            with self.assertRaises(TransactionError) as ctx:
+                _ = conn.autocommit
+
+            self.assertIn("No result returned", str(ctx.exception))
+            mock_cursor.close.assert_called_once()
+
+        conn.close()
+
+    # ==================== IGNORE_TRANSACTIONS TESTS ====================
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_commit_is_noop_when_ignore_transactions_true(self, mock_session_class):
+        """Test that commit() is a no-op when ignore_transactions=True."""
+
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        # Create connection with ignore_transactions=True (default)
+        conn = client.Connection(**self.DUMMY_CONNECTION_ARGS)
+
+        # Verify ignore_transactions is True by default
+        self.assertTrue(conn.ignore_transactions)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            # Call commit - should be no-op
+            conn.commit()
+
+            # Verify that execute was NOT called (no-op)
+            mock_cursor.execute.assert_not_called()
+            mock_cursor.close.assert_not_called()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_rollback_raises_not_supported_when_ignore_transactions_true(
+        self, mock_session_class
+    ):
+        """Test that rollback() raises NotSupportedError when ignore_transactions=True."""
+
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        # Create connection with ignore_transactions=True (default)
+        conn = client.Connection(**self.DUMMY_CONNECTION_ARGS)
+
+        # Verify ignore_transactions is True by default
+        self.assertTrue(conn.ignore_transactions)
+
+        # Call rollback - should raise NotSupportedError
+        with self.assertRaises(NotSupportedError) as ctx:
+            conn.rollback()
+
+        self.assertIn("Transactions are not supported", str(ctx.exception))
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_setter_is_noop_when_ignore_transactions_true(
+        self, mock_session_class
+    ):
+        """Test that autocommit setter is a no-op when ignore_transactions=True."""
+
+        mock_session = Mock()
+        mock_session.is_open = True
+        mock_session.guid_hex = "test-session-id"
+        mock_session_class.return_value = mock_session
+
+        # Create connection with ignore_transactions=True (default)
+        conn = client.Connection(**self.DUMMY_CONNECTION_ARGS)
+
+        # Verify ignore_transactions is True by default
+        self.assertTrue(conn.ignore_transactions)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            # Set autocommit - should be no-op
+            conn.autocommit = False
+
+            # Verify that execute was NOT called (no-op)
+            mock_cursor.execute.assert_not_called()
+            mock_cursor.close.assert_not_called()
+
+            # Session set_autocommit should also not be called
+            conn.session.set_autocommit.assert_not_called()
+
+        conn.close()
+
+
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
     loader = unittest.TestLoader()
     test_classes = [
         ClientTestSuite,
+        TransactionTestSuite,
         FetchTests,
         ThriftBackendTestSuite,
         ArrowQueueSuite,
