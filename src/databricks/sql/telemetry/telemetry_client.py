@@ -2,7 +2,7 @@ import threading
 import time
 import logging
 import json
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import wait
 from queue import Queue, Full
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import Future
