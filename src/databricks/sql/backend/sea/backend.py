@@ -157,7 +157,7 @@ class SeaDatabricksClient(DatabricksClient):
             "_use_arrow_native_complex_types", True
         )
 
-        self.use_hybrid_disposition = kwargs.get("use_hybrid_disposition", True)
+        self.use_hybrid_disposition = kwargs.get("use_hybrid_disposition", False)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
 
         # Extract warehouse ID from http_path
