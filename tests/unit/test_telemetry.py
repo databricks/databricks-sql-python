@@ -249,13 +249,13 @@ class TestTelemetryFactory:
                 client_context=client_context,
             )
 
-            client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+            client = TelemetryClientFactory.get_telemetry_client("test-host.com")
             assert isinstance(client, TelemetryClient)
             assert client._session_id_hex == session_id_hex
 
             # Close client
             with patch.object(client, "close") as mock_close:
-                TelemetryClientFactory.close(session_id_hex)
+                TelemetryClientFactory.close(host_url="test-host.com")
                 mock_close.assert_called_once()
 
             # Should get NoopTelemetryClient after close
@@ -274,7 +274,7 @@ class TestTelemetryFactory:
             client_context=client_context,
         )
 
-        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+        client = TelemetryClientFactory.get_telemetry_client("test-host.com")
         assert isinstance(client, NoopTelemetryClient)
 
     def test_factory_error_handling(self):
@@ -297,7 +297,7 @@ class TestTelemetryFactory:
             )
 
         # Should fall back to NoopTelemetryClient
-        client = TelemetryClientFactory.get_telemetry_client(session_id)
+        client = TelemetryClientFactory.get_telemetry_client("test-host.com")
         assert isinstance(client, NoopTelemetryClient)
 
     def test_factory_shutdown_flow(self):
@@ -325,11 +325,11 @@ class TestTelemetryFactory:
             assert TelemetryClientFactory._executor is not None
 
             # Close first client - factory should stay initialized
-            TelemetryClientFactory.close(session1)
+            TelemetryClientFactory.close(host_url="test-host.com")
             assert TelemetryClientFactory._initialized is True
 
             # Close second client - factory should shut down
-            TelemetryClientFactory.close(session2)
+            TelemetryClientFactory.close(host_url="test-host.com")
             assert TelemetryClientFactory._initialized is False
             assert TelemetryClientFactory._executor is None
 
@@ -410,7 +410,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is True
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-true")
+        client = TelemetryClientFactory.get_telemetry_client("test")
         assert isinstance(client, TelemetryClient)
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
@@ -440,7 +440,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is False
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-false")
+        client = TelemetryClientFactory.get_telemetry_client("test")
         assert isinstance(client, NoopTelemetryClient)
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
@@ -470,7 +470,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is False
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-fail")
+        client = TelemetryClientFactory.get_telemetry_client("test")
         assert isinstance(client, NoopTelemetryClient)
 
 
