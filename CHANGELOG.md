@@ -1,7 +1,6 @@
 # Release History
 
-# 4.2.1 (2025-11-20)
-
+# 4.2.2 (2025-12-01)
 - Change default use_hybrid_disposition to False by @samikshya-db in https://github.com/databricks/databricks-sql-python/pull/714
 - Circuit breaker changes using pybreaker by @nikhilsuri-db in https://github.com/databricks/databricks-sql-python/pull/705
 - perf: Optimize telemetry latency logging to reduce overhead by @samikshya-db in https://github.com/databricks/databricks-sql-python/pull/715

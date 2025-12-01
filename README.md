@@ -1,4 +1,3 @@
-
 # Databricks SQL Connector for Python
 
 [![PyPI](https://img.shields.io/pypi/v/databricks-sql-connector?style=flat-square)](https://pypi.org/project/databricks-sql-connector/)
