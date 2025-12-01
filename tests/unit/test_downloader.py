@@ -57,7 +57,7 @@ class DownloaderTests(unittest.TestCase):
             result_link,
             ssl_options=SSLOptions(),
             chunk_id=0,
-            host_url=Mock(),
+            session_id_hex=Mock(),
             statement_id=Mock(),
             http_client=mock_http_client,
         )
@@ -80,7 +80,7 @@ class DownloaderTests(unittest.TestCase):
             result_link,
             ssl_options=SSLOptions(),
             chunk_id=0,
-            host_url=Mock(),
+            session_id_hex=Mock(),
             statement_id=Mock(),
             http_client=mock_http_client,
         )
@@ -107,7 +107,7 @@ class DownloaderTests(unittest.TestCase):
             result_link,
             ssl_options=SSLOptions(),
             chunk_id=0,
-            host_url=Mock(),
+            session_id_hex=Mock(),
             statement_id=Mock(),
             http_client=mock_http_client,
         )
@@ -137,7 +137,7 @@ class DownloaderTests(unittest.TestCase):
                 result_link,
                 ssl_options=SSLOptions(),
                 chunk_id=0,
-                host_url=Mock(),
+                session_id_hex=Mock(),
                 statement_id=Mock(),
                 http_client=mock_http_client,
             )
@@ -170,7 +170,7 @@ class DownloaderTests(unittest.TestCase):
                 result_link,
                 ssl_options=SSLOptions(),
                 chunk_id=0,
-                host_url=Mock(),
+                session_id_hex=Mock(),
                 statement_id=Mock(),
                 http_client=mock_http_client,
             )
@@ -194,7 +194,7 @@ class DownloaderTests(unittest.TestCase):
             result_link,
             ssl_options=SSLOptions(),
             chunk_id=0,
-            host_url=Mock(),
+            session_id_hex=Mock(),
             statement_id=Mock(),
             http_client=mock_http_client,
         )
@@ -216,7 +216,7 @@ class DownloaderTests(unittest.TestCase):
             result_link,
             ssl_options=SSLOptions(),
             chunk_id=0,
-            host_url=Mock(),
+            session_id_hex=Mock(),
             statement_id=Mock(),
             http_client=mock_http_client,
         )

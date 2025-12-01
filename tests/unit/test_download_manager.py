@@ -20,7 +20,7 @@ class DownloadManagerTests(unittest.TestCase):
             max_download_threads,
             lz4_compressed,
             ssl_options=SSLOptions(),
-            host_url=Mock(),
+            session_id_hex=Mock(),
             statement_id=Mock(),
             chunk_id=0,
             http_client=mock_http_client,
