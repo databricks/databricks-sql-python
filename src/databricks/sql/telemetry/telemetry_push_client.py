@@ -120,7 +120,7 @@ class CircuitBreakerTelemetryPushClient(ITelemetryPushClient):
 
             # Check for rate limiting or service unavailable
             if response.status in [429, 503]:
-                logger.warning(
+                logger.debug(
                     "Telemetry endpoint returned %d for host %s, triggering circuit breaker",
                     response.status,
                     self._host,
