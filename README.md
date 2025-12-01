@@ -1,3 +1,4 @@
+
 # Databricks SQL Connector for Python
 
 [![PyPI](https://img.shields.io/pypi/v/databricks-sql-connector?style=flat-square)](https://pypi.org/project/databricks-sql-connector/)
@@ -13,7 +14,7 @@ You are welcome to file an issue here for general use cases. You can also contac
 
 ## Requirements
 
-Python 3.8 or above is required.
+Python 3.9 or above is required.
 
 ## Documentation
 

@@ -51,7 +51,7 @@ class ClientContext:
         pool_connections: Optional[int] = None,
         pool_maxsize: Optional[int] = None,
         user_agent: Optional[str] = None,
-        telemetry_circuit_breaker_enabled: Optional[bool] = None,
+        telemetry_circuit_breaker_enabled: Optional[bool] = True,
     ):
         self.hostname = hostname
         self.access_token = access_token
