@@ -391,6 +391,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=True)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-true"
+        mock_session_instance.host = "test"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
             False  # Connection starts closed for test cleanup
@@ -421,6 +422,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=False)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-false"
+        mock_session_instance.host = "test"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
             False  # Connection starts closed for test cleanup
@@ -451,6 +453,7 @@ class TestTelemetryFeatureFlag:
         mock_http_request.side_effect = Exception("Network is down")
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-fail"
+        mock_session_instance.host = "test"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
             False  # Connection starts closed for test cleanup
