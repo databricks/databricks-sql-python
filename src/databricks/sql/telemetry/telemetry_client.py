@@ -307,7 +307,7 @@ class TelemetryClient(BaseTelemetryClient):
             )
             return response
         except Exception as e:
-            logger.error("Failed to send telemetry with unified client: %s", e)
+            logger.debug("Failed to send telemetry with unified client: %s", e)
             raise
 
     def _telemetry_request_callback(self, future, sent_count: int):

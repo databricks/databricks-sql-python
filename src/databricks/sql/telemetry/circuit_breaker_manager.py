@@ -60,16 +60,16 @@ class CircuitBreakerStateListener(CircuitBreakerListener):
         old_state_name = old_state.name if old_state else "None"
         new_state_name = new_state.name if new_state else "None"
 
-        logger.info(
+        logger.debug(
             LOG_CIRCUIT_BREAKER_STATE_CHANGED, old_state_name, new_state_name, cb.name
         )
 
         if new_state_name == CIRCUIT_BREAKER_STATE_OPEN:
-            logger.warning(LOG_CIRCUIT_BREAKER_OPENED, cb.name)
+            logger.debug(LOG_CIRCUIT_BREAKER_OPENED, cb.name)
         elif new_state_name == CIRCUIT_BREAKER_STATE_CLOSED:
-            logger.info(LOG_CIRCUIT_BREAKER_CLOSED, cb.name)
+            logger.debug(LOG_CIRCUIT_BREAKER_CLOSED, cb.name)
         elif new_state_name == CIRCUIT_BREAKER_STATE_HALF_OPEN:
-            logger.info(LOG_CIRCUIT_BREAKER_HALF_OPEN, cb.name)
+            logger.debug(LOG_CIRCUIT_BREAKER_HALF_OPEN, cb.name)
 
 
 class CircuitBreakerManager:
