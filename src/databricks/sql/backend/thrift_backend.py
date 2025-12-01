@@ -462,13 +462,12 @@ class ThriftDatabricksClient(DatabricksClient):
                     errno.ECONNRESET,   # |   104  |   54   |
                     errno.ETIMEDOUT,    # |   110  |   60   |
                 ]
+                # fmt: on
 
                 gos_name = TCLIServiceClient.GetOperationStatus.__name__
                 # retry on timeout. Happens a lot in Azure and it is safe as data has not been sent to server yet
                 if method.__name__ == gos_name or err.errno == errno.ETIMEDOUT:
                     retry_delay = bound_retry_delay(attempt, self._retry_delay_default)
-
-                    # fmt: on
                     log_string = f"{gos_name} failed with code {err.errno} and will attempt to retry"
                     if err.errno in info_errs:
                         logger.info(log_string)
@@ -517,9 +516,7 @@ class ThriftDatabricksClient(DatabricksClient):
             if not isinstance(response_or_error_info, RequestErrorInfo):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
-                ThriftDatabricksClient._check_response_for_error(
-                    response, self._host
-                )
+                ThriftDatabricksClient._check_response_for_error(response, self._host)
                 return response
 
             error_info = response_or_error_info
@@ -779,9 +776,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return col.columnName, cleaned_type, None, None, precision, scale, None
 
     @staticmethod
-    def _hive_schema_to_description(
-        t_table_schema, schema_bytes=None, host_url=None
-    ):
+    def _hive_schema_to_description(t_table_schema, schema_bytes=None, host_url=None):
         field_dict = {}
         if pyarrow and schema_bytes:
             try:
