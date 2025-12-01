@@ -163,6 +163,7 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             raise ValueError("No valid connection settings.")
 
+        self._host = server_hostname
         self._initialize_retry_args(kwargs)
         self._use_arrow_native_complex_types = kwargs.get(
             "_use_arrow_native_complex_types", True
@@ -279,14 +280,14 @@ class ThriftDatabricksClient(DatabricksClient):
             )
 
     @staticmethod
-    def _check_response_for_error(response, session_id_hex=None):
+    def _check_response_for_error(response, host_url=None):
         if response.status and response.status.statusCode in [
             ttypes.TStatusCode.ERROR_STATUS,
             ttypes.TStatusCode.INVALID_HANDLE_STATUS,
         ]:
             raise DatabaseError(
                 response.status.errorMessage,
-                session_id_hex=session_id_hex,
+                host_url=host_url,
             )
 
     @staticmethod
@@ -340,7 +341,7 @@ class ThriftDatabricksClient(DatabricksClient):
             network_request_error = RequestError(
                 user_friendly_error_message,
                 full_error_info_context,
-                self._session_id_hex,
+                self._host,
                 error_info.error,
             )
             logger.info(network_request_error.message_with_context())
@@ -517,7 +518,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 # log nothing here, presume that main request logging covers
                 response = response_or_error_info
                 ThriftDatabricksClient._check_response_for_error(
-                    response, self._session_id_hex
+                    response, self._host
                 )
                 return response
 
@@ -533,7 +534,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 "Error: expected server to use a protocol version >= "
                 "SPARK_CLI_SERVICE_PROTOCOL_V2, "
                 "instead got: {}".format(protocol_version),
-                session_id_hex=self._session_id_hex,
+                host_url=self._host,
             )
 
     def _check_initial_namespace(self, catalog, schema, response):
@@ -547,7 +548,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise InvalidServerResponseError(
                 "Setting initial namespace not supported by the DBR version, "
                 "Please use a Databricks SQL endpoint or a cluster with DBR >= 9.0.",
-                session_id_hex=self._session_id_hex,
+                host_url=self._host,
             )
 
         if catalog:
@@ -555,7 +556,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 raise InvalidServerResponseError(
                     "Unexpected response from server: Trying to set initial catalog to {}, "
                     + "but server does not support multiple catalogs.".format(catalog),  # type: ignore
-                    session_id_hex=self._session_id_hex,
+                    host_url=self._host,
                 )
 
     def _check_session_configuration(self, session_configuration):
@@ -570,7 +571,7 @@ class ThriftDatabricksClient(DatabricksClient):
                     TIMESTAMP_AS_STRING_CONFIG,
                     session_configuration[TIMESTAMP_AS_STRING_CONFIG],
                 ),
-                session_id_hex=self._session_id_hex,
+                host_url=self._host,
             )
 
     def open_session(self, session_configuration, catalog, schema) -> SessionId:
@@ -639,7 +640,7 @@ class ThriftDatabricksClient(DatabricksClient):
                         and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": get_operations_resp.diagnosticInfo,
                     },
-                    session_id_hex=self._session_id_hex,
+                    host_url=self._host,
                 )
             else:
                 raise ServerOperationError(
@@ -649,7 +650,7 @@ class ThriftDatabricksClient(DatabricksClient):
                         and guid_to_hex_id(op_handle.operationId.guid),
                         "diagnostic-info": None,
                     },
-                    session_id_hex=self._session_id_hex,
+                    host_url=self._host,
                 )
         elif get_operations_resp.operationState == ttypes.TOperationState.CLOSED_STATE:
             raise DatabaseError(
@@ -660,7 +661,7 @@ class ThriftDatabricksClient(DatabricksClient):
                     "operation-id": op_handle
                     and guid_to_hex_id(op_handle.operationId.guid)
                 },
-                session_id_hex=self._session_id_hex,
+                host_url=self._host,
             )
 
     def _poll_for_status(self, op_handle):
@@ -683,7 +684,7 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             raise OperationalError(
                 "Unsupported TRowSet instance {}".format(t_row_set),
-                session_id_hex=self._session_id_hex,
+                host_url=self._host,
             )
         return convert_decimals_in_arrow_table(arrow_table, description), num_rows
 
@@ -692,7 +693,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return self.make_request(self._client.GetResultSetMetadata, req)
 
     @staticmethod
-    def _hive_schema_to_arrow_schema(t_table_schema, session_id_hex=None):
+    def _hive_schema_to_arrow_schema(t_table_schema, host_url=None):
         def map_type(t_type_entry):
             if t_type_entry.primitiveEntry:
                 return {
@@ -724,7 +725,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 # even for complex types
                 raise OperationalError(
                     "Thrift protocol error: t_type_entry not a primitiveEntry",
-                    session_id_hex=session_id_hex,
+                    host_url=host_url,
                 )
 
         def convert_col(t_column_desc):
@@ -735,7 +736,7 @@ class ThriftDatabricksClient(DatabricksClient):
         return pyarrow.schema([convert_col(col) for col in t_table_schema.columns])
 
     @staticmethod
-    def _col_to_description(col, field=None, session_id_hex=None):
+    def _col_to_description(col, field=None, host_url=None):
         type_entry = col.typeDesc.types[0]
 
         if type_entry.primitiveEntry:
@@ -745,7 +746,7 @@ class ThriftDatabricksClient(DatabricksClient):
         else:
             raise OperationalError(
                 "Thrift protocol error: t_type_entry not a primitiveEntry",
-                session_id_hex=session_id_hex,
+                host_url=host_url,
             )
 
         if type_entry.primitiveEntry.type == ttypes.TTypeId.DECIMAL_TYPE:
@@ -759,7 +760,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 raise OperationalError(
                     "Decimal type did not provide typeQualifier precision, scale in "
                     "primitiveEntry {}".format(type_entry.primitiveEntry),
-                    session_id_hex=session_id_hex,
+                    host_url=host_url,
                 )
         else:
             precision, scale = None, None
@@ -779,7 +780,7 @@ class ThriftDatabricksClient(DatabricksClient):
 
     @staticmethod
     def _hive_schema_to_description(
-        t_table_schema, schema_bytes=None, session_id_hex=None
+        t_table_schema, schema_bytes=None, host_url=None
     ):
         field_dict = {}
         if pyarrow and schema_bytes:
@@ -795,7 +796,7 @@ class ThriftDatabricksClient(DatabricksClient):
             ThriftDatabricksClient._col_to_description(
                 col,
                 field_dict.get(col.columnName) if field_dict else None,
-                session_id_hex,
+                host_url,
             )
             for col in t_table_schema.columns
         ]
@@ -818,7 +819,7 @@ class ThriftDatabricksClient(DatabricksClient):
                         t_result_set_metadata_resp.resultFormat
                     ]
                 ),
-                session_id_hex=self._session_id_hex,
+                host_url=self._host,
             )
         direct_results = resp.directResults
         has_been_closed_server_side = direct_results and direct_results.closeOperation
@@ -833,7 +834,7 @@ class ThriftDatabricksClient(DatabricksClient):
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
                 or self._hive_schema_to_arrow_schema(
-                    t_result_set_metadata_resp.schema, self._session_id_hex
+                    t_result_set_metadata_resp.schema, self._host
                 )
                 .serialize()
                 .to_pybytes()
@@ -844,7 +845,7 @@ class ThriftDatabricksClient(DatabricksClient):
         description = self._hive_schema_to_description(
             t_result_set_metadata_resp.schema,
             schema_bytes,
-            self._session_id_hex,
+            self._host,
         )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
@@ -895,7 +896,7 @@ class ThriftDatabricksClient(DatabricksClient):
             schema_bytes = (
                 t_result_set_metadata_resp.arrowSchema
                 or self._hive_schema_to_arrow_schema(
-                    t_result_set_metadata_resp.schema, self._session_id_hex
+                    t_result_set_metadata_resp.schema, self._host
                 )
                 .serialize()
                 .to_pybytes()
@@ -906,7 +907,7 @@ class ThriftDatabricksClient(DatabricksClient):
         description = self._hive_schema_to_description(
             t_result_set_metadata_resp.schema,
             schema_bytes,
-            self._session_id_hex,
+            self._host,
         )
 
         lz4_compressed = t_result_set_metadata_resp.lz4Compressed
@@ -971,27 +972,27 @@ class ThriftDatabricksClient(DatabricksClient):
         return state
 
     @staticmethod
-    def _check_direct_results_for_error(t_spark_direct_results, session_id_hex=None):
+    def _check_direct_results_for_error(t_spark_direct_results, host_url=None):
         if t_spark_direct_results:
             if t_spark_direct_results.operationStatus:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.operationStatus,
-                    session_id_hex,
+                    host_url,
                 )
             if t_spark_direct_results.resultSetMetadata:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.resultSetMetadata,
-                    session_id_hex,
+                    host_url,
                 )
             if t_spark_direct_results.resultSet:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.resultSet,
-                    session_id_hex,
+                    host_url,
                 )
             if t_spark_direct_results.closeOperation:
                 ThriftDatabricksClient._check_response_for_error(
                     t_spark_direct_results.closeOperation,
-                    session_id_hex,
+                    host_url,
                 )
 
     def execute_command(
@@ -1260,7 +1261,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
 
         cursor.active_command_id = command_id
-        self._check_direct_results_for_error(resp.directResults, self._session_id_hex)
+        self._check_direct_results_for_error(resp.directResults, self._host)
 
         final_operation_state = self._wait_until_command_done(
             resp.operationHandle,
@@ -1275,7 +1276,7 @@ class ThriftDatabricksClient(DatabricksClient):
             raise ValueError(f"Invalid Thrift handle: {resp.operationHandle}")
 
         cursor.active_command_id = command_id
-        self._check_direct_results_for_error(resp.directResults, self._session_id_hex)
+        self._check_direct_results_for_error(resp.directResults, self._host)
 
     def fetch_results(
         self,
@@ -1313,7 +1314,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 "fetch_results failed due to inconsistency in the state between the client and the server. Expected results to start from {} but they instead start at {}, some result batches must have been skipped".format(
                     expected_row_start_offset, resp.results.startRowOffset
                 ),
-                session_id_hex=self._session_id_hex,
+                host_url=self._host,
             )
 
         queue = ThriftResultSetQueueFactory.build_queue(
