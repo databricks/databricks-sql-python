@@ -157,4 +157,4 @@ class TestCircuitBreakerIntegration:
 
         with patch("databricks.sql.telemetry.circuit_breaker_manager.logger") as mock_logger:
             listener.state_change(mock_cb, mock_old_state, mock_new_state)
-            mock_logger.info.assert_called()
+            mock_logger.debug.assert_called()

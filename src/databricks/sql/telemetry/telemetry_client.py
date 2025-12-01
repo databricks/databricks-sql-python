@@ -586,13 +586,13 @@ class TelemetryClientFactory:
                             batch_size=batch_size,
                             client_context=client_context,
                         )
-                        TelemetryClientFactory._clients[host_url] = _TelemetryClientHolder(
-                            client
-                        )
+                        TelemetryClientFactory._clients[
+                            host_url
+                        ] = _TelemetryClientHolder(client)
                     else:
-                        TelemetryClientFactory._clients[host_url] = _TelemetryClientHolder(
-                            NoopTelemetryClient()
-                        )
+                        TelemetryClientFactory._clients[
+                            host_url
+                        ] = _TelemetryClientHolder(NoopTelemetryClient())
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
@@ -648,7 +648,8 @@ class TelemetryClientFactory:
             # Only close if no more references
             if remaining_refs <= 0:
                 logger.debug(
-                    "Closing telemetry client for host %s (no more references)", host_url
+                    "Closing telemetry client for host %s (no more references)",
+                    host_url,
                 )
                 TelemetryClientFactory._clients.pop(host_url, None)
                 holder.client.close()

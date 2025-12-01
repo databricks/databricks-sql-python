@@ -11,9 +11,7 @@ class Error(Exception):
     `context`: Optional extra context about the error. MUST be JSON serializable
     """
 
-    def __init__(
-        self, message=None, context=None, host_url=None, *args, **kwargs
-    ):
+    def __init__(self, message=None, context=None, host_url=None, *args, **kwargs):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}

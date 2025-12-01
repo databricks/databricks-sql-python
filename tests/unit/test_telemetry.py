@@ -46,7 +46,7 @@ def mock_telemetry_client():
     ):
         return TelemetryClient(
             telemetry_enabled=True,
-            session_id_hex=session_id,
+            host_url=session_id,
             auth_provider=auth_provider,
             host_url="test-host.com",
             executor=executor,
@@ -242,7 +242,7 @@ class TestTelemetryFactory:
         ):
             TelemetryClientFactory.initialize_telemetry_client(
                 telemetry_enabled=True,
-                session_id_hex=session_id_hex,
+                host_url=session_id_hex,
                 auth_provider=auth_provider,
                 host_url="test-host.com",
                 batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
@@ -267,7 +267,7 @@ class TestTelemetryFactory:
 
         TelemetryClientFactory.initialize_telemetry_client(
             telemetry_enabled=False,
-            session_id_hex=session_id_hex,
+            host_url=session_id_hex,
             auth_provider=None,
             host_url="test-host.com",
             batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
@@ -289,7 +289,7 @@ class TestTelemetryFactory:
         ):
             TelemetryClientFactory.initialize_telemetry_client(
                 telemetry_enabled=True,
-                session_id_hex=session_id,
+                host_url=session_id,
                 auth_provider=AccessTokenAuthProvider("token"),
                 host_url="test-host.com",
                 batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
@@ -313,7 +313,7 @@ class TestTelemetryFactory:
             for session in [session1, session2]:
                 TelemetryClientFactory.initialize_telemetry_client(
                     telemetry_enabled=True,
-                    session_id_hex=session,
+                    host_url=session,
                     auth_provider=AccessTokenAuthProvider("token"),
                     host_url="test-host.com",
                     batch_size=TelemetryClientFactory.DEFAULT_BATCH_SIZE,
