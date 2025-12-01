@@ -409,15 +409,39 @@ class TelemetryClient(BaseTelemetryClient):
         self._flush()
 
 
+class _TelemetryClientHolder:
+    """
+    Holds a telemetry client with reference counting.
+    Multiple connections to the same host share one client.
+    """
+
+    def __init__(self, client: BaseTelemetryClient):
+        self.client = client
+        self.refcount = 1
+
+    def increment(self):
+        """Increment reference count when a new connection uses this client"""
+        self.refcount += 1
+
+    def decrement(self):
+        """Decrement reference count when a connection closes"""
+        self.refcount -= 1
+        return self.refcount
+
+
 class TelemetryClientFactory:
     """
     Static factory class for creating and managing telemetry clients.
     It uses a thread pool to handle asynchronous operations and a single flush thread for all clients.
+
+    Clients are shared at the HOST level - multiple connections to the same host
+    share a single TelemetryClient to enable efficient batching and reduce load
+    on the telemetry endpoint.
     """
 
     _clients: Dict[
-        str, BaseTelemetryClient
-    ] = {}  # Map of session_id_hex -> BaseTelemetryClient
+        str, _TelemetryClientHolder
+    ] = {}  # Map of host_url -> TelemetryClientHolder
     _executor: Optional[ThreadPoolExecutor] = None
     _initialized: bool = False
     _lock = threading.RLock()  # Thread safety for factory operations
@@ -431,6 +455,22 @@ class TelemetryClientFactory:
     _flush_interval_seconds = 300  # 5 minutes
 
     DEFAULT_BATCH_SIZE = 100
+    UNKNOWN_HOST = "unknown-host"
+
+    @staticmethod
+    def getHostUrlSafely(host_url):
+        """
+        Safely get host URL with fallback to UNKNOWN_HOST.
+
+        Args:
+            host_url: The host URL to validate
+
+        Returns:
+            The host_url if valid, otherwise UNKNOWN_HOST
+        """
+        if not host_url or not isinstance(host_url, str) or not host_url.strip():
+            return TelemetryClientFactory.UNKNOWN_HOST
+        return host_url
 
     @classmethod
     def _initialize(cls):
@@ -506,21 +546,38 @@ class TelemetryClientFactory:
         batch_size,
         client_context,
     ):
-        """Initialize a telemetry client for a specific connection if telemetry is enabled"""
+        """
+        Initialize a telemetry client for a specific connection if telemetry is enabled.
+
+        Clients are shared at the HOST level - multiple connections to the same host
+        will share a single TelemetryClient with reference counting.
+        """
         try:
+            # Safely get host_url with fallback to UNKNOWN_HOST
+            host_url = TelemetryClientFactory.getHostUrlSafely(host_url)
 
             with TelemetryClientFactory._lock:
                 TelemetryClientFactory._initialize()
 
-                if session_id_hex not in TelemetryClientFactory._clients:
+                if host_url in TelemetryClientFactory._clients:
+                    # Reuse existing client for this host
+                    holder = TelemetryClientFactory._clients[host_url]
+                    holder.increment()
                     logger.debug(
-                        "Creating new TelemetryClient for connection %s",
+                        "Reusing TelemetryClient for host %s (session %s, refcount=%d)",
+                        host_url,
+                        session_id_hex,
+                        holder.refcount,
+                    )
+                else:
+                    # Create new client for this host
+                    logger.debug(
+                        "Creating new TelemetryClient for host %s (session %s)",
+                        host_url,
                         session_id_hex,
                     )
                     if telemetry_enabled:
-                        TelemetryClientFactory._clients[
-                            session_id_hex
-                        ] = TelemetryClient(
+                        client = TelemetryClient(
                             telemetry_enabled=telemetry_enabled,
                             session_id_hex=session_id_hex,
                             auth_provider=auth_provider,
@@ -529,36 +586,72 @@ class TelemetryClientFactory:
                             batch_size=batch_size,
                             client_context=client_context,
                         )
+                        TelemetryClientFactory._clients[host_url] = _TelemetryClientHolder(
+                            client
+                        )
                     else:
-                        TelemetryClientFactory._clients[
-                            session_id_hex
-                        ] = NoopTelemetryClient()
+                        TelemetryClientFactory._clients[host_url] = _TelemetryClientHolder(
+                            NoopTelemetryClient()
+                        )
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail
-            TelemetryClientFactory._clients[session_id_hex] = NoopTelemetryClient()
+            TelemetryClientFactory._clients[host_url] = _TelemetryClientHolder(
+                NoopTelemetryClient()
+            )
 
     @staticmethod
-    def get_telemetry_client(session_id_hex):
-        """Get the telemetry client for a specific connection"""
-        return TelemetryClientFactory._clients.get(
-            session_id_hex, NoopTelemetryClient()
-        )
+    def get_telemetry_client(host_url):
+        """
+        Get the shared telemetry client for a specific host.
+
+        Args:
+            host_url: The host URL to look up the client. If None/empty, uses UNKNOWN_HOST.
+
+        Returns:
+            The shared TelemetryClient for this host, or NoopTelemetryClient if not found
+        """
+        host_url = TelemetryClientFactory.getHostUrlSafely(host_url)
+
+        if host_url in TelemetryClientFactory._clients:
+            return TelemetryClientFactory._clients[host_url].client
+        return NoopTelemetryClient()
 
     @staticmethod
-    def close(session_id_hex):
-        """Close and remove the telemetry client for a specific connection"""
+    def close(host_url):
+        """
+        Close the telemetry client for a specific host.
+
+        Decrements the reference count for the host's client. Only actually closes
+        the client when the reference count reaches zero (all connections to this host closed).
+
+        Args:
+            host_url: The host URL whose client to close. If None/empty, uses UNKNOWN_HOST.
+        """
+        host_url = TelemetryClientFactory.getHostUrlSafely(host_url)
 
         with TelemetryClientFactory._lock:
-            if (
-                telemetry_client := TelemetryClientFactory._clients.pop(
-                    session_id_hex, None
-                )
-            ) is not None:
+            # Get the holder for this host
+            holder = TelemetryClientFactory._clients.get(host_url)
+            if holder is None:
+                logger.debug("No telemetry client found for host %s", host_url)
+                return
+
+            # Decrement refcount
+            remaining_refs = holder.decrement()
+            logger.debug(
+                "Decremented refcount for host %s (refcount=%d)",
+                host_url,
+                remaining_refs,
+            )
+
+            # Only close if no more references
+            if remaining_refs <= 0:
                 logger.debug(
-                    "Removing telemetry client for connection %s", session_id_hex
+                    "Closing telemetry client for host %s (no more references)", host_url
                 )
-                telemetry_client.close()
+                TelemetryClientFactory._clients.pop(host_url, None)
+                holder.client.close()
 
             # Shutdown executor if no more clients
             if not TelemetryClientFactory._clients and TelemetryClientFactory._executor:
@@ -597,7 +690,7 @@ class TelemetryClientFactory:
         )
 
         telemetry_client = TelemetryClientFactory.get_telemetry_client(
-            UNAUTH_DUMMY_SESSION_ID
+            host_url=host_url
         )
         telemetry_client._driver_connection_params = DriverConnectionParameters(
             http_path=http_path,

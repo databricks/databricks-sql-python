@@ -341,7 +341,7 @@ class Connection:
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(
-            session_id_hex=self.get_session_id_hex()
+            host_url=self.session.host
         )
 
         # Determine proxy usage
@@ -521,7 +521,7 @@ class Connection:
         except Exception as e:
             logger.error(f"Attempt to close session raised a local exception: {e}")
 
-        TelemetryClientFactory.close(self.get_session_id_hex())
+        TelemetryClientFactory.close(host_url=self.session.host)
 
         # Close HTTP client that was created by this connection
         if self.http_client:

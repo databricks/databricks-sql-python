@@ -205,7 +205,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
 
                             telemetry_client = (
                                 TelemetryClientFactory.get_telemetry_client(
-                                    session_id_hex
+                                    host_url=connection.session.host
                                 )
                             )
                             telemetry_client.export_latency_log(
