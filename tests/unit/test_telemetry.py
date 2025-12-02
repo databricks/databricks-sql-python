@@ -367,6 +367,10 @@ class TestTelemetryFactory:
 class TestTelemetryFeatureFlag:
     """Tests the interaction between the telemetry feature flag and connection parameters."""
 
+    def teardown_method(self):
+        """Clean up telemetry factory state after each test to prevent test pollution."""
+        TelemetryClientFactory._clients.clear()
+
     def _mock_ff_response(self, mock_http_request, enabled: bool):
         """Helper method to mock feature flag response for unified HTTP client."""
         mock_response = MagicMock()
