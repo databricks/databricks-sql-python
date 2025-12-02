@@ -16,8 +16,8 @@ class Error(Exception):
         message=None,
         context=None,
         host_url=None,
-        session_id_hex=None,
         *args,
+        session_id_hex=None,
         **kwargs,
     ):
         super().__init__(message, *args, **kwargs)
