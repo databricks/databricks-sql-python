@@ -147,13 +147,13 @@ class NoopTelemetryClient(BaseTelemetryClient):
                     cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
         return cls._instance
 
-    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
+    def export_initial_telemetry_log(self, driver_connection_params, user_agent, session_id=None):
         pass
 
-    def export_failure_log(self, error_name, error_message):
+    def export_failure_log(self, error_name, error_message, session_id=None):
         pass
 
-    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id, session_id=None):
         pass
 
     def close(self):
@@ -352,19 +352,22 @@ class TelemetryClient(BaseTelemetryClient):
         except Exception as e:
             logger.debug("Telemetry request failed with exception: %s", e)
 
-    def _export_telemetry_log(self, **telemetry_event_kwargs):
+    def _export_telemetry_log(self, session_id=None, **telemetry_event_kwargs):
         """
         Common helper method for exporting telemetry logs.
 
         Args:
+            session_id: Optional session ID for this event. If not provided, uses the client's session ID.
             **telemetry_event_kwargs: Keyword arguments to pass to TelemetryEvent constructor
         """
-        logger.debug("Exporting telemetry log for connection %s", self._session_id_hex)
+        # Use provided session_id or fall back to client's session_id
+        actual_session_id = session_id or self._session_id_hex
+        logger.debug("Exporting telemetry log for connection %s", actual_session_id)
 
         try:
             # Set common fields for all telemetry events
             event_kwargs = {
-                "session_id": self._session_id_hex,
+                "session_id": actual_session_id,
                 "system_configuration": TelemetryHelper.get_driver_system_configuration(),
                 "driver_connection_params": self._driver_connection_params,
             }
@@ -387,17 +390,18 @@ class TelemetryClient(BaseTelemetryClient):
         except Exception as e:
             logger.debug("Failed to export telemetry log: %s", e)
 
-    def export_initial_telemetry_log(self, driver_connection_params, user_agent):
+    def export_initial_telemetry_log(self, driver_connection_params, user_agent, session_id=None):
         self._driver_connection_params = driver_connection_params
         self._user_agent = user_agent
-        self._export_telemetry_log()
+        self._export_telemetry_log(session_id=session_id)
 
-    def export_failure_log(self, error_name, error_message):
+    def export_failure_log(self, error_name, error_message, session_id=None):
         error_info = DriverErrorInfo(error_name=error_name, stack_trace=error_message)
-        self._export_telemetry_log(error_info=error_info)
+        self._export_telemetry_log(session_id=session_id, error_info=error_info)
 
-    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id):
+    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id, session_id=None):
         self._export_telemetry_log(
+            session_id=session_id,
             sql_statement_id=sql_statement_id,
             sql_operation=sql_execution_event,
             operation_latency_ms=latency_ms,

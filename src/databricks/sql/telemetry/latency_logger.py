@@ -212,6 +212,7 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
                                 latency_ms=duration_ms,
                                 sql_execution_event=sql_exec_event,
                                 sql_statement_id=telemetry_data.get("statement_id"),
+                                session_id=session_id_hex,
                             )
 
         return wrapper

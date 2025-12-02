@@ -11,7 +11,15 @@ class Error(Exception):
     `context`: Optional extra context about the error. MUST be JSON serializable
     """
 
-    def __init__(self, message=None, context=None, host_url=None, *args, **kwargs):
+    def __init__(
+        self,
+        message=None,
+        context=None,
+        host_url=None,
+        session_id_hex=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}
@@ -23,7 +31,9 @@ class Error(Exception):
             telemetry_client = TelemetryClientFactory.get_telemetry_client(
                 host_url=host_url
             )
-            telemetry_client.export_failure_log(error_name, self.message)
+            telemetry_client.export_failure_log(
+                error_name, self.message, session_id=session_id_hex
+            )
 
     def __str__(self):
         return self.message

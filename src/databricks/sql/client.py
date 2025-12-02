@@ -391,6 +391,7 @@ class Connection:
         self._telemetry_client.export_initial_telemetry_log(
             driver_connection_params=driver_connection_params,
             user_agent=self.session.useragent_header,
+            session_id=self.get_session_id_hex(),
         )
 
     def _set_use_inline_params_with_warning(self, value: Union[bool, str]):
@@ -495,6 +496,7 @@ class Connection:
             raise InterfaceError(
                 "Cannot create cursor from closed connection",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         cursor = Cursor(
@@ -547,6 +549,7 @@ class Connection:
             raise InterfaceError(
                 "Cannot get autocommit on closed connection",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         if self._fetch_autocommit_from_server:
@@ -579,6 +582,7 @@ class Connection:
             raise InterfaceError(
                 "Cannot set autocommit on closed connection",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         # Create internal cursor for transaction control
@@ -601,6 +605,7 @@ class Connection:
                     "autocommit_value": value,
                 },
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             ) from e
         finally:
             if cursor:
@@ -628,6 +633,7 @@ class Connection:
                     "No result returned from SET AUTOCOMMIT query",
                     context={"operation": "fetch_autocommit"},
                     host_url=self.session.host,
+                    session_id_hex=self.get_session_id_hex(),
                 )
 
             # Parse value (first column should be "true" or "false")
@@ -648,6 +654,7 @@ class Connection:
                 f"Failed to fetch autocommit state from server: {e.message}",
                 context={**e.context, "operation": "fetch_autocommit"},
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             ) from e
         finally:
             if cursor:
@@ -681,6 +688,7 @@ class Connection:
             raise InterfaceError(
                 "Cannot commit on closed connection",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         cursor = None
@@ -693,6 +701,7 @@ class Connection:
                 f"Failed to commit transaction: {e.message}",
                 context={**e.context, "operation": "commit"},
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             ) from e
         finally:
             if cursor:
@@ -726,12 +735,14 @@ class Connection:
             raise NotSupportedError(
                 "Transactions are not supported on Databricks",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         if not self.open:
             raise InterfaceError(
                 "Cannot rollback on closed connection",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         cursor = None
@@ -744,6 +755,7 @@ class Connection:
                 f"Failed to rollback transaction: {e.message}",
                 context={**e.context, "operation": "rollback"},
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             ) from e
         finally:
             if cursor:
@@ -768,6 +780,7 @@ class Connection:
             raise InterfaceError(
                 "Cannot get transaction isolation on closed connection",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         return TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ
@@ -794,6 +807,7 @@ class Connection:
             raise InterfaceError(
                 "Cannot set transaction isolation on closed connection",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
         # Normalize and validate isolation level
@@ -806,6 +820,7 @@ class Connection:
                 f"Setting transaction isolation level '{level}' is not supported. "
                 f"Only {TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ} is supported.",
                 host_url=self.session.host,
+                session_id_hex=self.get_session_id_hex(),
             )
 
 
@@ -858,6 +873,7 @@ class Cursor:
             raise ProgrammingError(
                 "There is no active result set",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def _determine_parameter_approach(
@@ -998,6 +1014,7 @@ class Cursor:
             raise InterfaceError(
                 "Attempting operation on closed cursor",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def _handle_staging_operation(
@@ -1042,6 +1059,7 @@ class Cursor:
             raise ProgrammingError(
                 "You must provide at least one staging_allowed_local_path when initialising a connection to perform ingestion commands",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         abs_staging_allowed_local_paths = [
@@ -1068,6 +1086,7 @@ class Cursor:
                 raise ProgrammingError(
                     "Local file operations are restricted to paths within the configured staging_allowed_local_path",
                     host_url=self.connection.session.host,
+                    session_id_hex=self.connection.get_session_id_hex(),
                 )
 
         handler_args = {
@@ -1096,6 +1115,7 @@ class Cursor:
                 f"Operation {row.operation} is not supported. "
                 + "Supported operations are GET, PUT, and REMOVE",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     @log_latency(StatementType.SQL)
@@ -1111,6 +1131,7 @@ class Cursor:
             raise ProgrammingError(
                 "Cannot perform PUT without specifying a local_file",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         with open(local_file, "rb") as fh:
@@ -1136,6 +1157,7 @@ class Cursor:
             raise OperationalError(
                 f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         if r.status == ACCEPTED:
@@ -1167,6 +1189,7 @@ class Cursor:
             raise ProgrammingError(
                 "No input stream provided for streaming operation",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         r = self.connection.http_client.request(
@@ -1188,6 +1211,7 @@ class Cursor:
             raise ProgrammingError(
                 "Cannot perform GET without specifying a local_file",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         r = self.connection.http_client.request(
@@ -1202,6 +1226,7 @@ class Cursor:
             raise OperationalError(
                 f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
         with open(local_file, "wb") as fp:
@@ -1223,6 +1248,7 @@ class Cursor:
             raise OperationalError(
                 f"Staging operation over HTTP was unsuccessful: {r.status}-{error_text}",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     @log_latency(StatementType.QUERY)
@@ -1414,6 +1440,7 @@ class Cursor:
             raise OperationalError(
                 f"get_execution_result failed with Operation status {operation_state}",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def executemany(self, operation, seq_of_parameters):
@@ -1542,6 +1569,7 @@ class Cursor:
             raise ProgrammingError(
                 "There is no active result set",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def fetchone(self) -> Optional[Row]:
@@ -1559,6 +1587,7 @@ class Cursor:
             raise ProgrammingError(
                 "There is no active result set",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def fetchmany(self, size: int) -> List[Row]:
@@ -1584,6 +1613,7 @@ class Cursor:
             raise ProgrammingError(
                 "There is no active result set",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def fetchall_arrow(self) -> "pyarrow.Table":
@@ -1594,6 +1624,7 @@ class Cursor:
             raise ProgrammingError(
                 "There is no active result set",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def fetchmany_arrow(self, size) -> "pyarrow.Table":
@@ -1604,6 +1635,7 @@ class Cursor:
             raise ProgrammingError(
                 "There is no active result set",
                 host_url=self.connection.session.host,
+                session_id_hex=self.connection.get_session_id_hex(),
             )
 
     def cancel(self) -> None:
