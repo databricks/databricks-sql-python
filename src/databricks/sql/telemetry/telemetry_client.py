@@ -504,8 +504,8 @@ class TelemetryClientFactory:
             with cls._lock:
                 clients_to_flush = list(cls._clients.values())
 
-                for client in clients_to_flush:
-                    client._flush()
+                for holder in clients_to_flush:
+                    holder.client._flush()
 
     @classmethod
     def _stop_flush_thread(cls):
