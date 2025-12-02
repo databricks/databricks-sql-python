@@ -41,6 +41,7 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
+            TelemetryClientFactory._clients.clear()
             TelemetryClientFactory._initialized = False
 
     def test_concurrent_queries_sends_telemetry(self):
