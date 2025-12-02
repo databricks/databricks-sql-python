@@ -369,7 +369,10 @@ class TestTelemetryFeatureFlag:
 
     def teardown_method(self):
         """Clean up telemetry factory state after each test to prevent test pollution."""
+        from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+
         TelemetryClientFactory._clients.clear()
+        FeatureFlagsContextFactory._context_map.clear()
 
     def _mock_ff_response(self, mock_http_request, enabled: bool):
         """Helper method to mock feature flag response for unified HTTP client."""
