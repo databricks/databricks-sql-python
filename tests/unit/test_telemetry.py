@@ -418,7 +418,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is True
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test")
+        client = TelemetryClientFactory.get_telemetry_client("test-host")
         assert isinstance(client, TelemetryClient)
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
@@ -449,7 +449,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is False
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test")
+        client = TelemetryClientFactory.get_telemetry_client("test-host")
         assert isinstance(client, NoopTelemetryClient)
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
@@ -480,7 +480,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is False
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test")
+        client = TelemetryClientFactory.get_telemetry_client("test-host")
         assert isinstance(client, NoopTelemetryClient)
 
 
