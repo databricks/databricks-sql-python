@@ -147,13 +147,17 @@ class NoopTelemetryClient(BaseTelemetryClient):
                     cls._instance = super(NoopTelemetryClient, cls).__new__(cls)
         return cls._instance
 
-    def export_initial_telemetry_log(self, driver_connection_params, user_agent, session_id=None):
+    def export_initial_telemetry_log(
+        self, driver_connection_params, user_agent, session_id=None
+    ):
         pass
 
     def export_failure_log(self, error_name, error_message, session_id=None):
         pass
 
-    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id, session_id=None):
+    def export_latency_log(
+        self, latency_ms, sql_execution_event, sql_statement_id, session_id=None
+    ):
         pass
 
     def close(self):
@@ -390,7 +394,9 @@ class TelemetryClient(BaseTelemetryClient):
         except Exception as e:
             logger.debug("Failed to export telemetry log: %s", e)
 
-    def export_initial_telemetry_log(self, driver_connection_params, user_agent, session_id=None):
+    def export_initial_telemetry_log(
+        self, driver_connection_params, user_agent, session_id=None
+    ):
         self._driver_connection_params = driver_connection_params
         self._user_agent = user_agent
         self._export_telemetry_log(session_id=session_id)
@@ -399,7 +405,9 @@ class TelemetryClient(BaseTelemetryClient):
         error_info = DriverErrorInfo(error_name=error_name, stack_trace=error_message)
         self._export_telemetry_log(session_id=session_id, error_info=error_info)
 
-    def export_latency_log(self, latency_ms, sql_execution_event, sql_statement_id, session_id=None):
+    def export_latency_log(
+        self, latency_ms, sql_execution_event, sql_statement_id, session_id=None
+    ):
         self._export_telemetry_log(
             session_id=session_id,
             sql_statement_id=sql_statement_id,
