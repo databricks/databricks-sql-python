@@ -58,6 +58,14 @@ class TestTelemetryE2E(TelemetryTestBase):
             TelemetryClientFactory._stop_flush_thread()
             TelemetryClientFactory._initialized = False
 
+            # Clear feature flags cache to prevent state leakage between tests
+            from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+            with FeatureFlagsContextFactory._lock:
+                FeatureFlagsContextFactory._context_map.clear()
+                if FeatureFlagsContextFactory._executor:
+                    FeatureFlagsContextFactory._executor.shutdown(wait=False)
+                    FeatureFlagsContextFactory._executor = None
+
     @pytest.fixture
     def telemetry_interceptors(self):
         """Setup reusable telemetry interceptors as a fixture"""
@@ -163,7 +171,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         (True, False, 2, "enable_on_force_off"),
         (False, True, 2, "enable_off_force_on"),
         (False, False, 0, "both_off"),
-        (None, None, 0, "default_behavior"),
+        (None, None, 2, "default_behavior"),
     ])
     def test_telemetry_flags(self, telemetry_interceptors, enable_telemetry, 
                             force_enable, expected_count, test_id):
