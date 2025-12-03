@@ -205,13 +205,14 @@ def log_latency(statement_type: StatementType = StatementType.NONE):
 
                             telemetry_client = (
                                 TelemetryClientFactory.get_telemetry_client(
-                                    session_id_hex
+                                    host_url=connection.session.host
                                 )
                             )
                             telemetry_client.export_latency_log(
                                 latency_ms=duration_ms,
                                 sql_execution_event=sql_exec_event,
                                 sql_statement_id=telemetry_data.get("statement_id"),
+                                session_id=session_id_hex,
                             )
 
         return wrapper

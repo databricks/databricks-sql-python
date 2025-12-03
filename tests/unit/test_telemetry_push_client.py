@@ -114,10 +114,10 @@ class TestCircuitBreakerTelemetryPushClient:
             with pytest.raises(TelemetryRateLimitError):
                 self.client.request(HttpMethod.POST, "https://test.com", {})
 
-            mock_logger.warning.assert_called()
-            warning_args = mock_logger.warning.call_args[0]
-            assert "429" in str(warning_args)
-            assert "circuit breaker" in warning_args[0]
+            mock_logger.debug.assert_called()
+            debug_args = mock_logger.debug.call_args[0]
+            assert "429" in str(debug_args)
+            assert "circuit breaker" in debug_args[0]
 
     def test_other_error_logging(self):
         """Test that other errors are logged during wrapping/unwrapping."""

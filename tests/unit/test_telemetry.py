@@ -249,13 +249,13 @@ class TestTelemetryFactory:
                 client_context=client_context,
             )
 
-            client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+            client = TelemetryClientFactory.get_telemetry_client("test-host.com")
             assert isinstance(client, TelemetryClient)
             assert client._session_id_hex == session_id_hex
 
             # Close client
             with patch.object(client, "close") as mock_close:
-                TelemetryClientFactory.close(session_id_hex)
+                TelemetryClientFactory.close(host_url="test-host.com")
                 mock_close.assert_called_once()
 
             # Should get NoopTelemetryClient after close
@@ -274,7 +274,7 @@ class TestTelemetryFactory:
             client_context=client_context,
         )
 
-        client = TelemetryClientFactory.get_telemetry_client(session_id_hex)
+        client = TelemetryClientFactory.get_telemetry_client("test-host.com")
         assert isinstance(client, NoopTelemetryClient)
 
     def test_factory_error_handling(self):
@@ -297,7 +297,7 @@ class TestTelemetryFactory:
             )
 
         # Should fall back to NoopTelemetryClient
-        client = TelemetryClientFactory.get_telemetry_client(session_id)
+        client = TelemetryClientFactory.get_telemetry_client("test-host.com")
         assert isinstance(client, NoopTelemetryClient)
 
     def test_factory_shutdown_flow(self):
@@ -325,11 +325,11 @@ class TestTelemetryFactory:
             assert TelemetryClientFactory._executor is not None
 
             # Close first client - factory should stay initialized
-            TelemetryClientFactory.close(session1)
+            TelemetryClientFactory.close(host_url="test-host.com")
             assert TelemetryClientFactory._initialized is True
 
             # Close second client - factory should shut down
-            TelemetryClientFactory.close(session2)
+            TelemetryClientFactory.close(host_url="test-host.com")
             assert TelemetryClientFactory._initialized is False
             assert TelemetryClientFactory._executor is None
 
@@ -367,6 +367,13 @@ class TestTelemetryFactory:
 class TestTelemetryFeatureFlag:
     """Tests the interaction between the telemetry feature flag and connection parameters."""
 
+    def teardown_method(self):
+        """Clean up telemetry factory state after each test to prevent test pollution."""
+        from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+
+        TelemetryClientFactory._clients.clear()
+        FeatureFlagsContextFactory._context_map.clear()
+
     def _mock_ff_response(self, mock_http_request, enabled: bool):
         """Helper method to mock feature flag response for unified HTTP client."""
         mock_response = MagicMock()
@@ -391,6 +398,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=True)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-true"
+        mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
             False  # Connection starts closed for test cleanup
@@ -410,7 +418,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is True
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-true")
+        client = TelemetryClientFactory.get_telemetry_client("test-host")
         assert isinstance(client, TelemetryClient)
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
@@ -421,6 +429,7 @@ class TestTelemetryFeatureFlag:
         self._mock_ff_response(mock_http_request, enabled=False)
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-false"
+        mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
             False  # Connection starts closed for test cleanup
@@ -440,7 +449,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is False
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-false")
+        client = TelemetryClientFactory.get_telemetry_client("test-host")
         assert isinstance(client, NoopTelemetryClient)
 
     @patch("databricks.sql.common.unified_http_client.UnifiedHttpClient.request")
@@ -451,6 +460,7 @@ class TestTelemetryFeatureFlag:
         mock_http_request.side_effect = Exception("Network is down")
         mock_session_instance = MockSession.return_value
         mock_session_instance.guid_hex = "test-session-ff-fail"
+        mock_session_instance.host = "test-host"  # Set host for telemetry client lookup
         mock_session_instance.auth_provider = AccessTokenAuthProvider("token")
         mock_session_instance.is_open = (
             False  # Connection starts closed for test cleanup
@@ -470,7 +480,7 @@ class TestTelemetryFeatureFlag:
 
         assert conn.telemetry_enabled is False
         mock_http_request.assert_called_once()
-        client = TelemetryClientFactory.get_telemetry_client("test-session-ff-fail")
+        client = TelemetryClientFactory.get_telemetry_client("test-host")
         assert isinstance(client, NoopTelemetryClient)
 
 

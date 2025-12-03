@@ -12,20 +12,28 @@ class Error(Exception):
     """
 
     def __init__(
-        self, message=None, context=None, session_id_hex=None, *args, **kwargs
+        self,
+        message=None,
+        context=None,
+        host_url=None,
+        *args,
+        session_id_hex=None,
+        **kwargs,
     ):
         super().__init__(message, *args, **kwargs)
         self.message = message
         self.context = context or {}
 
         error_name = self.__class__.__name__
-        if session_id_hex:
+        if host_url:
             from databricks.sql.telemetry.telemetry_client import TelemetryClientFactory
 
             telemetry_client = TelemetryClientFactory.get_telemetry_client(
-                session_id_hex
+                host_url=host_url
             )
-            telemetry_client.export_failure_log(error_name, self.message)
+            telemetry_client.export_failure_log(
+                error_name, self.message, session_id=session_id_hex
+            )
 
     def __str__(self):
         return self.message

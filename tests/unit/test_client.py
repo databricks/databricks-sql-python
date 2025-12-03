@@ -714,7 +714,7 @@ class TransactionTestSuite(unittest.TestCase):
         server_error = DatabaseError(
             "AUTOCOMMIT_SET_DURING_ACTIVE_TRANSACTION",
             context={"sql_state": "25000"},
-            session_id_hex="test-session-id",
+            host_url="test-host",
         )
         mock_cursor.execute.side_effect = server_error
 
@@ -737,7 +737,7 @@ class TransactionTestSuite(unittest.TestCase):
 
         mock_cursor = Mock()
         original_error = DatabaseError(
-            "Original error", session_id_hex="test-session-id"
+            "Original error", host_url="test-host"
         )
         mock_cursor.execute.side_effect = original_error
 
@@ -772,7 +772,7 @@ class TransactionTestSuite(unittest.TestCase):
         server_error = DatabaseError(
             "MULTI_STATEMENT_TRANSACTION_NO_ACTIVE_TRANSACTION",
             context={"sql_state": "25000"},
-            session_id_hex="test-session-id",
+            host_url="test-host",
         )
         mock_cursor.execute.side_effect = server_error
 
@@ -822,7 +822,7 @@ class TransactionTestSuite(unittest.TestCase):
         server_error = DatabaseError(
             "Unexpected rollback error",
             context={"sql_state": "HY000"},
-            session_id_hex="test-session-id",
+            host_url="test-host",
         )
         mock_cursor.execute.side_effect = server_error
 
