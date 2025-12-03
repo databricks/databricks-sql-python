@@ -193,6 +193,8 @@ class TestTelemetryE2E(TelemetryTestBase):
                     cursor.execute("SELECT 1")
                     cursor.fetchone()
 
+            # Give time for async telemetry submission after connection closes
+            time.sleep(0.5)
             self.verify_events(captured_events, captured_futures, expected_count)
             
             # Assert statement execution on latency event (if events exist)
