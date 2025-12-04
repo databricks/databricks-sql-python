@@ -150,7 +150,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         else:
             assert len(captured_events) == expected_count, \
                 f"Expected {expected_count} events, got {len(captured_events)}"
-            
+
             time.sleep(2)
             done, _ = wait(captured_futures, timeout=10)
             assert len(done) == expected_count, \
