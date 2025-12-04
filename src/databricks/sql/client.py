@@ -328,7 +328,7 @@ class Connection:
         self.ignore_transactions = ignore_transactions
 
         self.force_enable_telemetry = kwargs.get("force_enable_telemetry", False)
-        self.enable_telemetry = kwargs.get("enable_telemetry", False)
+        self.enable_telemetry = kwargs.get("enable_telemetry", True)
         self.telemetry_enabled = TelemetryHelper.is_telemetry_enabled(self)
 
         TelemetryClientFactory.initialize_telemetry_client(

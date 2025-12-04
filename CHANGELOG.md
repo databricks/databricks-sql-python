@@ -1,5 +1,12 @@
 # Release History
 
+# 4.2.2 (2025-12-01)
+- Change default use_hybrid_disposition to False (databricks/databricks-sql-python#714 by @samikshya-db)
+- Circuit breaker changes using pybreaker (databricks/databricks-sql-python#705 by @nikhilsuri-db)
+- perf: Optimize telemetry latency logging to reduce overhead (databricks/databricks-sql-python#715 by @samikshya-db)
+- basic e2e test for force telemetry verification (databricks/databricks-sql-python#708 by @nikhilsuri-db)
+- Telemetry is ON by default to track connection stats. (Note : This strictly excludes PII, query text, and results) (databricks/databricks-sql-python#717 by @samikshya-db)
+
 # 4.2.1 (2025-11-20)
 - Ignore transactions by default (databricks/databricks-sql-python#711 by @jayantsing-db)
 

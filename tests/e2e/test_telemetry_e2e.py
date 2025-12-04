@@ -43,8 +43,9 @@ class TelemetryTestBase:
             conn.close()
 
 
+@pytest.mark.serial
 class TestTelemetryE2E(TelemetryTestBase):
-    """E2E tests for telemetry scenarios"""
+    """E2E tests for telemetry scenarios - must run serially due to shared host-level telemetry client"""
 
     @pytest.fixture(autouse=True)
     def telemetry_setup_teardown(self):
@@ -57,6 +58,14 @@ class TestTelemetryE2E(TelemetryTestBase):
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
             TelemetryClientFactory._initialized = False
+
+            # Clear feature flags cache to prevent state leakage between tests
+            from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+            with FeatureFlagsContextFactory._lock:
+                FeatureFlagsContextFactory._context_map.clear()
+                if FeatureFlagsContextFactory._executor:
+                    FeatureFlagsContextFactory._executor.shutdown(wait=False)
+                    FeatureFlagsContextFactory._executor = None
 
     @pytest.fixture
     def telemetry_interceptors(self):
@@ -142,7 +151,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         else:
             assert len(captured_events) == expected_count, \
                 f"Expected {expected_count} events, got {len(captured_events)}"
-            
+
             time.sleep(2)
             done, _ = wait(captured_futures, timeout=10)
             assert len(done) == expected_count, \
@@ -163,7 +172,7 @@ class TestTelemetryE2E(TelemetryTestBase):
         (True, False, 2, "enable_on_force_off"),
         (False, True, 2, "enable_off_force_on"),
         (False, False, 0, "both_off"),
-        (None, None, 0, "default_behavior"),
+        (None, None, 2, "default_behavior"),
     ])
     def test_telemetry_flags(self, telemetry_interceptors, enable_telemetry, 
                             force_enable, expected_count, test_id):
@@ -185,6 +194,8 @@ class TestTelemetryE2E(TelemetryTestBase):
                     cursor.execute("SELECT 1")
                     cursor.fetchone()
 
+            # Give time for async telemetry submission after connection closes
+            time.sleep(0.5)
             self.verify_events(captured_events, captured_futures, expected_count)
             
             # Assert statement execution on latency event (if events exist)
