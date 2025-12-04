@@ -43,8 +43,9 @@ class TelemetryTestBase:
             conn.close()
 
 
+@pytest.mark.serial
 class TestTelemetryE2E(TelemetryTestBase):
-    """E2E tests for telemetry scenarios"""
+    """E2E tests for telemetry scenarios - must run serially due to shared host-level telemetry client"""
 
     @pytest.fixture(autouse=True)
     def telemetry_setup_teardown(self):
