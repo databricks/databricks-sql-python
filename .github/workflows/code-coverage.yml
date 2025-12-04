@@ -61,14 +61,29 @@ jobs:
       - name: Install library
         run: poetry install --no-interaction --all-extras
       #----------------------------------------------
-      #    run all tests with coverage
+      #    run parallel tests with coverage
       #----------------------------------------------
-      - name: Run all tests with coverage 
+      - name: Run parallel tests with coverage
         continue-on-error: false
         run: |
           poetry run pytest tests/unit tests/e2e \
+            -m "not serial" \
             -n auto \
             --cov=src \
+            --cov-report=xml \
+            --cov-report=term \
+            -v
+
+      #----------------------------------------------
+      #    run serial tests with coverage
+      #----------------------------------------------
+      - name: Run serial tests with coverage
+        continue-on-error: false
+        run: |
+          poetry run pytest tests/e2e \
+            -m "serial" \
+            --cov=src \
+            --cov-append \
             --cov-report=xml \
             --cov-report=term \
             -v
