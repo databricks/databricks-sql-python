@@ -39,7 +39,24 @@ class DependencyManager:
         if isinstance(constraint, str):
             return constraint, False  # version_constraint, is_optional
         elif isinstance(constraint, list):
-            # Handle complex constraints like pandas/pyarrow
+            # Handle complex constraints like pandas/pyarrow with Python version markers
+            current_python = sys.version_info
+            current_version = f"{current_python.major}.{current_python.minor}"
+
+            # Find the constraint that matches the current Python version
+            for item in constraint:
+                if 'python' in item:
+                    python_spec = item['python']
+                    # Parse the Python version specifier
+                    spec_set = SpecifierSet(python_spec)
+
+                    # Check if current Python version matches this constraint
+                    if current_version in spec_set:
+                        version = item['version']
+                        is_optional = item.get('optional', False)
+                        return version, is_optional
+
+            # Fallback to first constraint if no Python version match
             first_constraint = constraint[0]
             version = first_constraint['version']
             is_optional = first_constraint.get('optional', False)
