@@ -15,6 +15,24 @@ from databricks.sql.common.http import HttpMethod
 logger = logging.getLogger(__name__)
 
 
+class TokenFederationError(Exception):
+    """Base exception for token federation errors."""
+
+    pass
+
+
+class TokenExchangeNotAvailableError(TokenFederationError):
+    """Raised when token exchange endpoint is not available (404)."""
+
+    pass
+
+
+class TokenExchangeAuthenticationError(TokenFederationError):
+    """Raised when token exchange fails due to authentication issues (401/403)."""
+
+    pass
+
+
 class Token:
     """
     Represents an OAuth token with expiration management.
@@ -72,8 +90,20 @@ class TokenFederationProvider(AuthProvider):
     """
     Implementation of Token Federation for Databricks SQL Python driver.
 
-    This provider exchanges third-party access tokens for Databricks in-house tokens
-    when the token issuer is different from the Databricks host.
+    This provider exchanges third-party access tokens (e.g., Azure AD, AWS IAM) for
+    Databricks-native tokens when the token issuer differs from the Databricks host.
+
+    Token federation is useful for:
+    - Cross-cloud authentication scenarios
+    - Unity Catalog access across Azure subscriptions
+    - Service principal authentication with external identity providers
+
+    The provider automatically detects when token exchange is needed by comparing the
+    token issuer with the Databricks workspace hostname. If exchange fails, it gracefully
+    falls back to using the external token directly.
+
+    Note: Token federation must be explicitly enabled by providing the
+    identity_federation_client_id parameter during connection setup.
     """
 
     TOKEN_EXCHANGE_ENDPOINT = "/oidc/v1/token"
@@ -92,9 +122,17 @@ class TokenFederationProvider(AuthProvider):
 
         Args:
             hostname: The Databricks workspace hostname
-            external_provider: The external authentication provider
+            external_provider: The external authentication provider that provides the initial token
             http_client: HTTP client for making requests (required)
-            identity_federation_client_id: Optional client ID for token federation
+            identity_federation_client_id: Client ID for identity federation (required for token exchange).
+                This parameter enables token federation and should be provided when:
+                - Using Service Principal authentication across Azure subscriptions
+                - Accessing Unity Catalog resources in different Azure tenants
+                - Configured with your workspace administrator
+
+                Without this parameter, the external token will be used directly without exchange.
+                Contact your Databricks workspace administrator to obtain the appropriate client ID
+                for your authentication scenario.
         """
         if not http_client:
             raise ValueError("http_client is required for TokenFederationProvider")
@@ -143,9 +181,33 @@ class TokenFederationProvider(AuthProvider):
             try:
                 token = self._exchange_token(access_token)
                 self._cached_token = token
+                logger.info(
+                    "Successfully exchanged external token for Databricks token"
+                )
                 return token
+            except TokenExchangeNotAvailableError:
+                logger.debug(
+                    "Token exchange endpoint not available. Using external token directly. "
+                    "This is expected when token federation is not configured for this workspace."
+                )
+            except TokenExchangeAuthenticationError as e:
+                logger.warning(
+                    "Token exchange failed due to authentication error. Using external token directly. "
+                    "Error: %s. If this persists, verify your identity_federation_client_id configuration.",
+                    e,
+                )
+            except TokenFederationError as e:
+                logger.info(
+                    "Token exchange not performed, using external token directly. "
+                    "Error: %s",
+                    e,
+                )
             except Exception as e:
-                logger.warning("Token exchange failed, using external token: %s", e)
+                logger.debug(
+                    "Token exchange failed with unexpected error, using external token directly. "
+                    "Error: %s",
+                    e,
+                )
 
         # Use external token directly
         token = Token(access_token, token_type)
@@ -163,7 +225,20 @@ class TokenFederationProvider(AuthProvider):
         return not is_same_host(issuer, self.hostname)
 
     def _exchange_token(self, access_token: str) -> Token:
-        """Exchange the external token for a Databricks token."""
+        """
+        Exchange the external token for a Databricks token.
+
+        Args:
+            access_token: The external access token to exchange
+
+        Returns:
+            Token: The exchanged Databricks token
+
+        Raises:
+            TokenExchangeNotAvailableError: If the endpoint is not available (404)
+            TokenExchangeAuthenticationError: If authentication fails (401/403)
+            TokenFederationError: For other token exchange errors
+        """
         token_url = f"{self.hostname.rstrip('/')}{self.TOKEN_EXCHANGE_ENDPOINT}"
 
         data = {
@@ -184,15 +259,45 @@ class TokenFederationProvider(AuthProvider):
 
         body = urlencode(data)
 
-        response = self.http_client.request(
-            HttpMethod.POST, url=token_url, body=body, headers=headers
-        )
+        try:
+            response = self.http_client.request(
+                HttpMethod.POST, url=token_url, body=body, headers=headers
+            )
 
-        token_response = json.loads(response.data.decode())
+            # Check response status code
+            if response.status == 404:
+                raise TokenExchangeNotAvailableError(
+                    "Token exchange endpoint not found. Token federation may not be enabled for this workspace."
+                )
+            elif response.status in (401, 403):
+                error_detail = (
+                    response.data.decode() if response.data else "No error details"
+                )
+                raise TokenExchangeAuthenticationError(
+                    f"Authentication failed during token exchange (HTTP {response.status}): {error_detail}"
+                )
+            elif response.status != 200:
+                error_detail = (
+                    response.data.decode() if response.data else "No error details"
+                )
+                raise TokenFederationError(
+                    f"Token exchange failed with HTTP {response.status}: {error_detail}"
+                )
 
-        return Token(
-            token_response["access_token"], token_response.get("token_type", "Bearer")
-        )
+            token_response = json.loads(response.data.decode())
+
+            return Token(
+                token_response["access_token"],
+                token_response.get("token_type", "Bearer"),
+            )
+        except TokenFederationError:
+            # Re-raise our custom exceptions
+            raise
+        except Exception as e:
+            # Handle unexpected errors (network errors, JSON parsing errors, etc.)
+            raise TokenFederationError(
+                f"Unexpected error during token exchange: {str(e)}"
+            ) from e
 
     def _extract_token_from_header(self, auth_header: str) -> Tuple[str, str]:
         """Extract token type and access token from Authorization header."""
