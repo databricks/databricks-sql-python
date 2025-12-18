@@ -1,5 +1,9 @@
 # Release History
 
+# 4.2.3 (2025-12-18)
+- added pandas < 2.4.0 support and tests for py 3.14 (databricks/databricks-sql-python#720 by @sreekanth-db)
+- pandas 2.3.3 support for py < 3.14 (databricks/databricks-sql-python#721 by @sreekanth-db)
+
 # 4.2.2 (2025-12-01)
 - Change default use_hybrid_disposition to False (databricks/databricks-sql-python#714 by @samikshya-db)
 - Circuit breaker changes using pybreaker (databricks/databricks-sql-python#705 by @nikhilsuri-db)
