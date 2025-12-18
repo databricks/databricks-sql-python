@@ -145,7 +145,9 @@ class Auth(unittest.TestCase):
         hostname = "moderakh-test.cloud.databricks.com"
         kwargs = {"access_token": "dpi123"}
         mock_http_client = MagicMock()
-        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client, **kwargs)
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
         self.assertTrue(type(auth_provider).__name__, "AccessTokenAuthProvider")
 
         headers = {}
@@ -163,10 +165,41 @@ class Auth(unittest.TestCase):
         hostname = "moderakh-test.cloud.databricks.com"
         kwargs = {"credentials_provider": MyProvider()}
         mock_http_client = MagicMock()
-        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client, **kwargs)
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
 
+        # Without identity_federation_client_id, should return ExternalAuthProvider directly
+        self.assertEqual(type(auth_provider).__name__, "ExternalAuthProvider")
+
+        headers = {}
+        auth_provider.add_headers(headers)
+        self.assertEqual(headers["foo"], "bar")
+
+    def test_get_python_sql_connector_auth_provider_with_token_federation(self):
+        class MyProvider(CredentialsProvider):
+            def auth_type(self) -> str:
+                return "mine"
+
+            def __call__(self, *args, **kwargs) -> HeaderFactory:
+                return lambda: {"foo": "bar"}
+
+        hostname = "moderakh-test.cloud.databricks.com"
+        kwargs = {
+            "credentials_provider": MyProvider(),
+            "identity_federation_client_id": "test-client-id",
+        }
+        mock_http_client = MagicMock()
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
+
+        # With identity_federation_client_id, should wrap with TokenFederationProvider
         self.assertEqual(type(auth_provider).__name__, "TokenFederationProvider")
-        self.assertEqual(type(auth_provider.external_provider).__name__, "ExternalAuthProvider")
+        self.assertEqual(
+            type(auth_provider.external_provider).__name__, "ExternalAuthProvider"
+        )
+        self.assertEqual(auth_provider.identity_federation_client_id, "test-client-id")
 
         headers = {}
         auth_provider.add_headers(headers)
@@ -181,7 +214,9 @@ class Auth(unittest.TestCase):
             "_use_cert_as_auth": use_cert_as_auth,
         }
         mock_http_client = MagicMock()
-        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client, **kwargs)
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client, **kwargs
+        )
         self.assertTrue(type(auth_provider).__name__, "CredentialProvider")
 
     def test_get_python_sql_connector_basic_auth(self):
@@ -191,7 +226,9 @@ class Auth(unittest.TestCase):
         }
         mock_http_client = MagicMock()
         with self.assertRaises(ValueError) as e:
-            get_python_sql_connector_auth_provider("foo.cloud.databricks.com", mock_http_client, **kwargs)
+            get_python_sql_connector_auth_provider(
+                "foo.cloud.databricks.com", mock_http_client, **kwargs
+            )
         self.assertIn(
             "Username/password authentication is no longer supported", str(e.exception)
         )
@@ -200,12 +237,13 @@ class Auth(unittest.TestCase):
     def test_get_python_sql_connector_default_auth(self, mock__initial_get_token):
         hostname = "foo.cloud.databricks.com"
         mock_http_client = MagicMock()
-        auth_provider = get_python_sql_connector_auth_provider(hostname, mock_http_client)
+        auth_provider = get_python_sql_connector_auth_provider(
+            hostname, mock_http_client
+        )
 
-        self.assertEqual(type(auth_provider).__name__, "TokenFederationProvider")
-        self.assertEqual(type(auth_provider.external_provider).__name__, "DatabricksOAuthProvider")
-
-        self.assertEqual(auth_provider.external_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
+        # Without identity_federation_client_id, should return DatabricksOAuthProvider directly
+        self.assertEqual(type(auth_provider).__name__, "DatabricksOAuthProvider")
+        self.assertEqual(auth_provider._client_id, PYSQL_OAUTH_CLIENT_ID)
 
 
 class TestClientCredentialsTokenSource:
@@ -264,16 +302,16 @@ class TestClientCredentialsTokenSource:
 
     def test_get_token_success(self, token_source, http_response):
         mock_http_client = MagicMock()
-        
+
         with patch.object(token_source, "_http_client", mock_http_client):
             # Create a mock response with the expected format
             mock_response = MagicMock()
             mock_response.status = 200
             mock_response.data.decode.return_value = '{"access_token": "abc123", "token_type": "Bearer", "refresh_token": null}'
-            
+
             # Mock the request method to return the response directly
             mock_http_client.request.return_value = mock_response
-            
+
             token = token_source.get_token()
 
             # Assert
@@ -284,16 +322,16 @@ class TestClientCredentialsTokenSource:
 
     def test_get_token_failure(self, token_source, http_response):
         mock_http_client = MagicMock()
-        
+
         with patch.object(token_source, "_http_client", mock_http_client):
             # Create a mock response with error
             mock_response = MagicMock()
             mock_response.status = 400
             mock_response.data.decode.return_value = "Bad Request"
-            
+
             # Mock the request method to return the response directly
             mock_http_client.request.return_value = mock_response
-            
+
             with pytest.raises(Exception) as e:
                 token_source.get_token()
             assert "Failed to get token: 400" in str(e.value)
