@@ -530,6 +530,7 @@ class TestTelemetryEventModels:
             support_many_parameters=True,
             enable_complex_datatype_support=True,
             allowed_volume_ingestion_paths="/Volumes/catalog/schema/volume",
+            query_tags="team:engineering,project:telemetry",
         )
         
         # Serialize to JSON and parse back
@@ -562,6 +563,7 @@ class TestTelemetryEventModels:
         assert json_dict["support_many_parameters"] is True
         assert json_dict["enable_complex_datatype_support"] is True
         assert json_dict["allowed_volume_ingestion_paths"] == "/Volumes/catalog/schema/volume"
+        assert json_dict["query_tags"] == "team:engineering,project:telemetry"
 
     def test_driver_connection_parameters_minimal_fields(self):
         """Test DriverConnectionParameters with only required fields."""

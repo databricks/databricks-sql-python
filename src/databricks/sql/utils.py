@@ -38,6 +38,22 @@ DEFAULT_ERROR_CONTEXT = "Unknown error"
 logger = logging.getLogger(__name__)
 
 
+def get_session_config_value(
+    session_configuration: Optional[Dict[str, Any]],
+    key: str
+) -> Optional[str]:
+    """ Get a session configuration value with case-insensitive key matching """
+    if not session_configuration:
+        return None
+
+    key_upper = key.upper()
+    for k, v in session_configuration.items():
+        if k.upper() == key_upper:
+            return str(v) if v is not None else None
+
+    return None
+
+
 class ResultSetQueue(ABC):
     @abstractmethod
     def next_n_rows(self, num_rows: int):
