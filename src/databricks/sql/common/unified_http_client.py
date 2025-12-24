@@ -254,10 +254,36 @@ class UnifiedHttpClient:
     def _prepare_retry_policy(self):
         """Set up the retry policy for the current request."""
         if isinstance(self._retry_policy, DatabricksRetryPolicy):
-            # Set command type for HTTP requests to OTHER (not database commands)
-            self._retry_policy.command_type = CommandType.OTHER
+            # Only set command type to NOT_SET if it hasn't been explicitly set via setRequestType()
+            if self._retry_policy.command_type is None:
+                self._retry_policy.command_type = CommandType.NOT_SET
             # Start the retry timer for duration-based retry limits
             self._retry_policy.start_retry_timer()
+
+    def setRequestType(self, request_type: CommandType):
+        """
+        Set the specific request type for the next HTTP request.
+        
+        This allows clients to specify what type of operation they're performing
+        so the retry policy can make appropriate idempotency decisions.
+        
+        Args:
+            request_type: The CommandType enum value for this operation
+            
+        Example:
+            # For authentication requests (OAuth, etc.)
+            http_client.setRequestType(CommandType.AUTH)
+            response = http_client.request(HttpMethod.POST, url, body=data)
+            
+            # For cloud fetch operations
+            http_client.setRequestType(CommandType.CLOUD_FETCH)
+            response = http_client.request(HttpMethod.GET, cloud_url)
+        """
+        if isinstance(self._retry_policy, DatabricksRetryPolicy):
+            self._retry_policy.command_type = request_type
+            logger.debug(f"Set request type to: {request_type.value}")
+        else:
+            logger.warning(f"Cannot set request type {request_type.value}: retry policy is not DatabricksRetryPolicy")
 
     @contextmanager
     def request_context(
@@ -314,6 +340,11 @@ class UnifiedHttpClient:
             logger.error("HTTP request error: %s", e)
             raise RequestError(f"HTTP request error: {e}")
         finally:
+            # Reset command type after request completion to prevent it from affecting subsequent requests
+            if isinstance(self._retry_policy, DatabricksRetryPolicy):
+                self._retry_policy.command_type = None
+                logger.debug("Reset command type after request completion")
+            
             if response:
                 response.close()
 

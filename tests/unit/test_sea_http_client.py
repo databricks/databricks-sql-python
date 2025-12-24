@@ -57,7 +57,7 @@ class TestSeaHttpClient:
             sea_http_client._get_command_type_from_path(
                 "/statements/123/cancel", "POST"
             )
-            == CommandType.OTHER
+            == CommandType.CANCEL_OPERATION
         )
 
         # Test statement deletion (close operation)
@@ -69,7 +69,13 @@ class TestSeaHttpClient:
         # Test get statement status
         assert (
             sea_http_client._get_command_type_from_path("/statements/123", "GET")
-            == CommandType.GET_OPERATION_STATUS
+            == CommandType.METADATA
+        )
+
+        # Test session creation
+        assert (
+            sea_http_client._get_command_type_from_path("/sessions", "POST")
+            == CommandType.OPEN_SESSION
         )
 
         # Test session close
@@ -78,14 +84,20 @@ class TestSeaHttpClient:
             == CommandType.CLOSE_SESSION
         )
 
+        # Test result chunk fetching
+        assert (
+            sea_http_client._get_command_type_from_path("/statements/123/result/chunks/0", "GET")
+            == CommandType.FETCH_RESULTS
+        )
+
         # Test other paths
         assert (
             sea_http_client._get_command_type_from_path("/other/endpoint", "GET")
-            == CommandType.OTHER
+            == CommandType.NOT_SET
         )
         assert (
             sea_http_client._get_command_type_from_path("/other/endpoint", "POST")
-            == CommandType.OTHER
+            == CommandType.NOT_SET
         )
 
     @patch(
