@@ -2,6 +2,7 @@ import threading
 import time
 import logging
 import json
+from concurrent.futures import wait
 from queue import Queue, Full
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import Future
@@ -193,6 +194,8 @@ class TelemetryClient(BaseTelemetryClient):
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
+        self._lock = threading.RLock()
+        self._pending_futures = set()
 
         # OPTIMIZATION: Use lock-free Queue instead of list + lock
         # Queue is thread-safe internally and has better performance under concurrency
@@ -297,6 +300,9 @@ class TelemetryClient(BaseTelemetryClient):
                 timeout=900,
             )
 
+            with self._lock:
+                self._pending_futures.add(future)
+
             future.add_done_callback(
                 lambda fut: self._telemetry_request_callback(fut, sent_count=sent_count)
             )
@@ -355,6 +361,9 @@ class TelemetryClient(BaseTelemetryClient):
 
         except Exception as e:
             logger.debug("Telemetry request failed with exception: %s", e)
+        finally:
+            with self._lock:
+                self._pending_futures.discard(future)
 
     def _export_telemetry_log(self, session_id=None, **telemetry_event_kwargs):
         """
@@ -416,9 +425,29 @@ class TelemetryClient(BaseTelemetryClient):
         )
 
     def close(self):
-        """Flush remaining events before closing"""
-        logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
+        """Schedule client closure."""
+        logger.debug(
+            "Scheduling closure for TelemetryClient of connection %s",
+            self._session_id_hex,
+        )
+        self._executor.submit(self._close_and_wait)
+
+    def _close_and_wait(self):
+        """Flush remaining events and wait for them to complete before closing."""
         self._flush()
+
+        with self._lock:
+            pending_events = list(self._pending_futures)
+
+        if pending_events:
+            logger.debug(
+                "Waiting for %s pending telemetry requests to complete.",
+                len(pending_events),
+            )
+            wait(pending_events)
+
+        logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
+        self._http_client.close()
 
 
 class _TelemetryClientHolder:
