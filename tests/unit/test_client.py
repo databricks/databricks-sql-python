@@ -652,6 +652,7 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+        mock_session.host = "foo"  # Match server_hostname from DUMMY_CONNECTION_ARGS
         mock_session.get_autocommit.return_value = True
         mock_session_class.return_value = mock_session
 
@@ -927,6 +928,7 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+        mock_session.host = "foo"
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
@@ -959,6 +961,7 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+        mock_session.host = "foo"
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
@@ -986,6 +989,7 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+        mock_session.host = "foo"
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
@@ -1015,6 +1019,7 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+        mock_session.host = "foo"
         mock_session_class.return_value = mock_session
 
         # Create connection with ignore_transactions=True (default)
@@ -1043,6 +1048,7 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+        mock_session.host = "foo"
         mock_session_class.return_value = mock_session
 
         # Create connection with ignore_transactions=True (default)
@@ -1068,6 +1074,7 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+        mock_session.host = "foo"
         mock_session_class.return_value = mock_session
 
         # Create connection with ignore_transactions=True (default)
