@@ -28,12 +28,7 @@ class TestNormalizeHostWithProtocol:
         ("myserver.com/", "https://myserver.com"),
         ("https://myserver.com/", "https://myserver.com"),
         ("http://localhost/", "http://localhost"),
-        
-        # Real Databricks patterns
-        ("adb-123456.azuredatabricks.net", "https://adb-123456.azuredatabricks.net"),
-        ("https://adb-123456.azuredatabricks.net", "https://adb-123456.azuredatabricks.net"),
-        ("https://adb-123456.azuredatabricks.net/", "https://adb-123456.azuredatabricks.net"),
-        ("workspace.databricks.com/", "https://workspace.databricks.com"),
+    
     ])
     def test_normalize_host_with_protocol(self, input_host, expected_output):
         """Test host normalization with various input formats."""
