@@ -68,7 +68,8 @@ class FeatureFlagsContext:
 
         endpoint_suffix = FEATURE_FLAGS_ENDPOINT_SUFFIX_FORMAT.format(__version__)
         self._feature_flag_endpoint = (
-            normalize_host_with_protocol(self._connection.session.host) + endpoint_suffix
+            normalize_host_with_protocol(self._connection.session.host)
+            + endpoint_suffix
         )
 
         # Use the provided HTTP client
