@@ -20,12 +20,25 @@ def normalize_host_with_protocol(host: str) -> str:
     Examples:
         normalize_host_with_protocol("myserver.com") -> "https://myserver.com"
         normalize_host_with_protocol("https://myserver.com") -> "https://myserver.com"
+        normalize_host_with_protocol("HTTPS://myserver.com") -> "https://myserver.com"
+    
+    Raises:
+        ValueError: If host is None or empty string
     """
+    # Handle None or empty host
+    if not host or not host.strip():
+        raise ValueError("Host cannot be None or empty")
+    
     # Remove trailing slash
     host = host.rstrip("/")
 
-    # Add protocol if not present
-    if not host.startswith("https://") and not host.startswith("http://"):
+    # Add protocol if not present (case-insensitive check)
+    host_lower = host.lower()
+    if not host_lower.startswith("https://") and not host_lower.startswith("http://"):
         host = f"https://{host}"
+    elif host_lower.startswith("https://") or host_lower.startswith("http://"):
+        # Normalize protocol to lowercase
+        protocol_end = host.index("://") + 3
+        host = host[:protocol_end].lower() + host[protocol_end:]
 
     return host
