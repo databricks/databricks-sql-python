@@ -23,43 +23,31 @@ import databricks.sql as sql
 from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
 
 
-def wait_for_circuit_state(circuit_breaker, expected_state, timeout=5):
+def wait_for_circuit_state(circuit_breaker, expected_states, timeout=5):
     """
-    Wait for circuit breaker to reach expected state with polling.
-    
-    Args:
-        circuit_breaker: The circuit breaker instance to monitor
-        expected_state: The expected state (STATE_OPEN, STATE_CLOSED, STATE_HALF_OPEN)
-        timeout: Maximum time to wait in seconds
-        
-    Returns:
-        True if state reached, False if timeout
-    """
-    start = time.time()
-    while time.time() - start < timeout:
-        if circuit_breaker.current_state == expected_state:
-            return True
-        time.sleep(0.1)  # Poll every 100ms
-    return False
+    Wait for circuit breaker to reach one of the expected states with polling.
 
-
-def wait_for_circuit_state_multiple(circuit_breaker, expected_states, timeout=5):
-    """
-    Wait for circuit breaker to reach one of multiple expected states.
-    
     Args:
         circuit_breaker: The circuit breaker instance to monitor
         expected_states: List of acceptable states
+                        (STATE_OPEN, STATE_CLOSED, STATE_HALF_OPEN)
         timeout: Maximum time to wait in seconds
-        
+
     Returns:
-        True if any state reached, False if timeout
+        True if state reached, False if timeout
+
+    Examples:
+        # Single state - pass list with one element
+        wait_for_circuit_state(cb, [STATE_OPEN])
+
+        # Multiple states
+        wait_for_circuit_state(cb, [STATE_CLOSED, STATE_HALF_OPEN])
     """
     start = time.time()
     while time.time() - start < timeout:
         if circuit_breaker.current_state in expected_states:
             return True
-        time.sleep(0.1)
+        time.sleep(0.1)  # Poll every 100ms
     return False
 
 
@@ -105,12 +93,17 @@ class TestCircuitBreakerTelemetry:
         }.get(status_code, b"Response")
         return response
 
-    @pytest.mark.parametrize("status_code,should_trigger", [
-        (429, True),
-        (503, True),
-        (500, False),
-    ])
-    def test_circuit_breaker_triggers_for_rate_limit_codes(self, status_code, should_trigger):
+    @pytest.mark.parametrize(
+        "status_code,should_trigger",
+        [
+            (429, True),
+            (503, True),
+            (500, False),
+        ],
+    )
+    def test_circuit_breaker_triggers_for_rate_limit_codes(
+        self, status_code, should_trigger
+    ):
         """
         Verify circuit breaker opens for rate-limit codes (429/503) but not others (500).
         """
@@ -148,9 +141,10 @@ class TestCircuitBreakerTelemetry:
 
                 if should_trigger:
                     # Wait for circuit to open (async telemetry may take time)
-                    assert wait_for_circuit_state(circuit_breaker, STATE_OPEN, timeout=5), \
-                        f"Circuit didn't open within 5s, state: {circuit_breaker.current_state}"
-                    
+                    assert wait_for_circuit_state(
+                        circuit_breaker, [STATE_OPEN], timeout=5
+                    ), f"Circuit didn't open within 5s, state: {circuit_breaker.current_state}"
+
                     # Circuit should be OPEN after rate-limit failures
                     assert circuit_breaker.current_state == STATE_OPEN
                     assert circuit_breaker.fail_counter >= 2  # At least 2 failures
@@ -242,8 +236,9 @@ class TestCircuitBreakerTelemetry:
                 time.sleep(2)
 
                 # Wait for circuit to open
-                assert wait_for_circuit_state(circuit_breaker, STATE_OPEN, timeout=5), \
-                    f"Circuit didn't open, state: {circuit_breaker.current_state}"
+                assert wait_for_circuit_state(
+                    circuit_breaker, [STATE_OPEN], timeout=5
+                ), f"Circuit didn't open, state: {circuit_breaker.current_state}"
 
                 # Wait for reset timeout (5 seconds in test)
                 time.sleep(6)
@@ -256,7 +251,7 @@ class TestCircuitBreakerTelemetry:
                 cursor.fetchone()
 
                 # Wait for circuit to start recovering
-                assert wait_for_circuit_state_multiple(
+                assert wait_for_circuit_state(
                     circuit_breaker, [STATE_HALF_OPEN, STATE_CLOSED], timeout=5
                 ), f"Circuit didn't recover, state: {circuit_breaker.current_state}"
 
@@ -265,7 +260,7 @@ class TestCircuitBreakerTelemetry:
                 cursor.fetchone()
 
                 # Wait for full recovery
-                assert wait_for_circuit_state_multiple(
+                assert wait_for_circuit_state(
                     circuit_breaker, [STATE_CLOSED, STATE_HALF_OPEN], timeout=5
                 ), f"Circuit didn't fully recover, state: {circuit_breaker.current_state}"
 
