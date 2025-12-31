@@ -21,14 +21,14 @@ def normalize_host_with_protocol(host: str) -> str:
         normalize_host_with_protocol("myserver.com") -> "https://myserver.com"
         normalize_host_with_protocol("https://myserver.com") -> "https://myserver.com"
         normalize_host_with_protocol("HTTPS://myserver.com") -> "https://myserver.com"
-    
+
     Raises:
         ValueError: If host is None or empty string
     """
     # Handle None or empty host
     if not host or not host.strip():
         raise ValueError("Host cannot be None or empty")
-    
+
     # Remove trailing slash
     host = host.rstrip("/")
 

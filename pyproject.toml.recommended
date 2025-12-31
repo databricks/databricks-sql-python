@@ -1,0 +1,156 @@
+[tool.poetry]
+name = "databricks-sql-connector"
+version = "4.2.3"
+description = "Databricks SQL Connector for Python"
+authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{ include = "databricks", from = "src" }]
+include = ["CHANGELOG.md"]
+
+[tool.poetry.dependencies]
+python = "^3.8.0"
+thrift = ">=0.16.0,<0.21.0"
+pandas = [
+    { version = ">=1.2.5,<2.4.0", python = ">=3.8,<3.13" },
+    { version = ">=2.2.3,<2.4.0", python = ">=3.13" }
+]
+lz4 = [
+    { version = "^4.0.2", python = ">=3.8,<3.14" },
+    { version = "^4.4.5", python = ">=3.14" }
+]
+requests = "^2.18.1"
+oauthlib = "^3.1.0"
+openpyxl = "^3.0.10"
+urllib3 = ">=1.26"
+python-dateutil = "^2.8.0"
+pyarrow = [
+    { version = ">=14.0.1", python = ">=3.8,<3.13", optional=true },
+    { version = ">=18.0.0", python = ">=3.13,<3.14", optional=true },
+    { version = ">=22.0.0", python = ">=3.14", optional=true }
+]
+pyjwt = "^2.0.0"
+pybreaker = "^1.0.0"
+requests-kerberos = {version = "^0.15.0", optional = true}
+
+
+[tool.poetry.extras]
+pyarrow = ["pyarrow"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.1.2"
+mypy = "^1.10.1"
+pylint = ">=2.12.0"
+black = "^22.3.0"
+pytest-dotenv = "^0.5.2"
+pytest-cov = "^4.0.0"
+pytest-xdist = "^3.0.0"
+numpy = [
+    { version = ">=1.16.6", python = ">=3.8,<3.11" },
+    { version = ">=1.23.4", python = ">=3.11" },
+]
+
+[tool.poetry.urls]
+"Homepage" = "https://github.com/databricks/databricks-sql-python"
+"Bug Tracker" = "https://github.com/databricks/databricks-sql-python/issues"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+###############################################################################
+# UPDATED MYPY CONFIGURATION - PHASE 1 (ESSENTIAL CHECKS)
+# This configuration catches obvious bugs like attribute errors while
+# maintaining backwards compatibility with third-party libraries.
+###############################################################################
+[tool.mypy]
+# Core settings
+python_version = "3.8"
+ignore_missing_imports = false
+follow_imports = "normal"
+exclude = ['ttypes\.py$', 'TCLIService\.py$', 'venv/', 'build/', 'dist/']
+
+# Attribute and name checking - CATCHES BUGS LIKE telemetry_client.py:547
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+
+# Warnings that catch common mistakes
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+# Strict equality (prevents == None instead of is None)
+strict_equality = true
+
+# Better error reporting
+show_error_codes = true
+show_error_context = true
+show_column_numbers = true
+pretty = true
+
+# Per-module overrides for third-party libraries without type stubs
+[mypy-thrift.*]
+ignore_missing_imports = true
+
+[mypy-pandas.*]
+ignore_missing_imports = true
+
+[mypy-pyarrow.*]
+ignore_missing_imports = true
+
+[mypy-oauthlib.*]
+ignore_missing_imports = true
+
+[mypy-openpyxl.*]
+ignore_missing_imports = true
+
+[mypy-pybreaker.*]
+ignore_missing_imports = true
+
+[mypy-requests_kerberos.*]
+ignore_missing_imports = true
+
+[mypy-pytest.*]
+ignore_missing_imports = true
+
+[mypy-lz4.*]
+ignore_missing_imports = true
+
+###############################################################################
+# END MYPY CONFIGURATION
+###############################################################################
+
+[tool.black]
+exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
+
+[tool.pytest.ini_options]
+markers = [
+    "reviewed: Test case has been reviewed by Databricks",
+    "serial: Tests that must run serially (not parallelized)"
+]
+minversion = "6.0"
+log_cli = "false"
+log_cli_level = "INFO"
+testpaths = ["tests"]
+env_files = ["test.env"]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/thrift_api/*",  
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
