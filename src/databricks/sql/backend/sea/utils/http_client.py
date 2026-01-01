@@ -18,6 +18,7 @@ from databricks.sql.exc import (
 from databricks.sql.common.http_utils import (
     detect_and_parse_proxy,
 )
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +67,9 @@ class SeaHttpClient:
         self.auth_provider = auth_provider
         self.ssl_options = ssl_options
 
-        # Build base URL
-        self.base_url = f"https://{server_hostname}:{self.port}"
+        # Build base URL using url_utils for consistent normalization
+        normalized_host = normalize_host_with_protocol(server_hostname)
+        self.base_url = f"{normalized_host}:{self.port}"
 
         # Parse URL for proxy handling
         parsed_url = urllib.parse.urlparse(self.base_url)

@@ -7,23 +7,6 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 
-def parse_hostname(hostname: str) -> str:
-    """
-    Normalize the hostname to include scheme and trailing slash.
-
-    Args:
-        hostname: The hostname to normalize
-
-    Returns:
-        Normalized hostname with scheme and trailing slash
-    """
-    if not hostname.startswith("http://") and not hostname.startswith("https://"):
-        hostname = f"https://{hostname}"
-    if not hostname.endswith("/"):
-        hostname = f"{hostname}/"
-    return hostname
-
-
 def decode_token(access_token: str) -> Optional[Dict]:
     """
     Decode a JWT token without verification to extract claims.

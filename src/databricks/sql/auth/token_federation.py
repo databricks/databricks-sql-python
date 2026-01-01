@@ -6,10 +6,10 @@ from urllib.parse import urlencode
 
 from databricks.sql.auth.authenticators import AuthProvider
 from databricks.sql.auth.auth_utils import (
-    parse_hostname,
     decode_token,
     is_same_host,
 )
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 from databricks.sql.common.http import HttpMethod
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ class TokenFederationProvider(AuthProvider):
         if not http_client:
             raise ValueError("http_client is required for TokenFederationProvider")
 
-        self.hostname = parse_hostname(hostname)
+        self.hostname = normalize_host_with_protocol(hostname)
         self.external_provider = external_provider
         self.http_client = http_client
         self.identity_federation_client_id = identity_federation_client_id
@@ -164,7 +164,7 @@ class TokenFederationProvider(AuthProvider):
 
     def _exchange_token(self, access_token: str) -> Token:
         """Exchange the external token for a Databricks token."""
-        token_url = f"{self.hostname.rstrip('/')}{self.TOKEN_EXCHANGE_ENDPOINT}"
+        token_url = f"{self.hostname}{self.TOKEN_EXCHANGE_ENDPOINT}"
 
         data = {
             "grant_type": self.TOKEN_EXCHANGE_GRANT_TYPE,

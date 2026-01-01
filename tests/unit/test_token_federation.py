@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 
 from databricks.sql.auth.token_federation import TokenFederationProvider, Token
 from databricks.sql.auth.auth_utils import (
-    parse_hostname,
     decode_token,
     is_same_host,
 )
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 from databricks.sql.common.http import HttpMethod
 
 
@@ -78,10 +78,10 @@ class TestTokenFederationProvider:
     @pytest.mark.parametrize(
         "input_hostname,expected",
         [
-            ("test.databricks.com", "https://test.databricks.com/"),
-            ("https://test.databricks.com", "https://test.databricks.com/"),
-            ("https://test.databricks.com/", "https://test.databricks.com/"),
-            ("test.databricks.com/", "https://test.databricks.com/"),
+            ("test.databricks.com", "https://test.databricks.com"),
+            ("https://test.databricks.com", "https://test.databricks.com"),
+            ("https://test.databricks.com/", "https://test.databricks.com"),
+            ("test.databricks.com/", "https://test.databricks.com"),
         ],
     )
     def test_hostname_normalization(
@@ -305,15 +305,15 @@ class TestUtilityFunctions:
     @pytest.mark.parametrize(
         "input_hostname,expected",
         [
-            ("test.databricks.com", "https://test.databricks.com/"),
-            ("https://test.databricks.com", "https://test.databricks.com/"),
-            ("https://test.databricks.com/", "https://test.databricks.com/"),
-            ("test.databricks.com/", "https://test.databricks.com/"),
+            ("test.databricks.com", "https://test.databricks.com"),
+            ("https://test.databricks.com", "https://test.databricks.com"),
+            ("https://test.databricks.com/", "https://test.databricks.com"),
+            ("test.databricks.com/", "https://test.databricks.com"),
         ],
     )
-    def test_parse_hostname(self, input_hostname, expected):
-        """Test hostname parsing."""
-        assert parse_hostname(input_hostname) == expected
+    def test_normalize_hostname(self, input_hostname, expected):
+        """Test hostname normalization."""
+        assert normalize_host_with_protocol(input_hostname) == expected
 
     @pytest.mark.parametrize(
         "url1,url2,expected",
