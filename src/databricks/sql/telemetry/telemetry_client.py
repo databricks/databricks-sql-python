@@ -542,8 +542,8 @@ class TelemetryClientFactory:
         logger.debug("Handling unhandled exception: %s", exc_type.__name__)
 
         clients_to_close = list(cls._clients.values())
-        for client in clients_to_close:
-            client.close()
+        for holder in clients_to_close:
+            holder.client.close()
 
         # Call the original exception handler to maintain normal behavior
         if cls._original_excepthook:
