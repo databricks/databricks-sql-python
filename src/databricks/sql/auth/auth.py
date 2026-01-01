@@ -65,8 +65,8 @@ def get_auth_provider(cfg: ClientContext, http_client):
         else:
             raise RuntimeError("No valid authentication settings!")
 
-    # Always wrap with token federation (falls back gracefully if not needed)
-    if base_provider:
+    # Wrap with token federation only if explicitly enabled via identity_federation_client_id
+    if base_provider and cfg.identity_federation_client_id:
         return TokenFederationProvider(
             hostname=cfg.hostname,
             external_provider=base_provider,

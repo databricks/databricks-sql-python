@@ -4,7 +4,13 @@ import json
 import jwt
 from datetime import datetime, timedelta
 
-from databricks.sql.auth.token_federation import TokenFederationProvider, Token
+from databricks.sql.auth.token_federation import (
+    TokenFederationProvider,
+    Token,
+    TokenFederationError,
+    TokenExchangeNotAvailableError,
+    TokenExchangeAuthenticationError,
+)
 from databricks.sql.auth.auth_utils import (
     parse_hostname,
     decode_token,
@@ -200,8 +206,50 @@ class TestTokenFederationProvider:
         mock_response.status = 400
         mock_http_client.request.return_value = mock_response
 
-        with pytest.raises(KeyError):  # Will raise KeyError due to missing access_token
+        with pytest.raises(TokenFederationError):
             token_federation_provider._exchange_token("external-token-123")
+
+    def test_exchange_token_404_error(
+        self, token_federation_provider, mock_http_client
+    ):
+        """Test token exchange with 404 error raises TokenExchangeNotAvailableError."""
+        mock_response = Mock()
+        mock_response.status = 404
+        mock_response.data = b"Not Found"
+        mock_http_client.request.return_value = mock_response
+
+        with pytest.raises(TokenExchangeNotAvailableError) as exc_info:
+            token_federation_provider._exchange_token("external-token-123")
+
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_exchange_token_401_error(
+        self, token_federation_provider, mock_http_client
+    ):
+        """Test token exchange with 401 error raises TokenExchangeAuthenticationError."""
+        mock_response = Mock()
+        mock_response.status = 401
+        mock_response.data = b"Unauthorized"
+        mock_http_client.request.return_value = mock_response
+
+        with pytest.raises(TokenExchangeAuthenticationError) as exc_info:
+            token_federation_provider._exchange_token("external-token-123")
+
+        assert "authentication failed" in str(exc_info.value).lower()
+
+    def test_exchange_token_403_error(
+        self, token_federation_provider, mock_http_client
+    ):
+        """Test token exchange with 403 error raises TokenExchangeAuthenticationError."""
+        mock_response = Mock()
+        mock_response.status = 403
+        mock_response.data = b"Forbidden"
+        mock_http_client.request.return_value = mock_response
+
+        with pytest.raises(TokenExchangeAuthenticationError) as exc_info:
+            token_federation_provider._exchange_token("external-token-123")
+
+        assert "authentication failed" in str(exc_info.value).lower()
 
     @pytest.mark.parametrize(
         "external_issuer,should_exchange",
@@ -297,6 +345,54 @@ class TestTokenFederationProvider:
         assert mock_external_provider.add_headers.call_count == 2
         # Tokens should be different
         assert first_token != second_token
+
+    def test_token_exchange_fallback_on_404(
+        self, token_federation_provider, mock_external_provider, mock_http_client
+    ):
+        """Test that token exchange falls back gracefully on 404 error."""
+        # Setup external provider to return an external token
+        external_token = create_jwt_token(issuer="https://login.microsoftonline.com")
+        mock_external_provider.add_headers = Mock(
+            side_effect=lambda headers: headers.update(
+                {"Authorization": f"Bearer {external_token}"}
+            )
+        )
+
+        # Mock 404 error on token exchange
+        mock_response = Mock()
+        mock_response.status = 404
+        mock_response.data = b"Not Found"
+        mock_http_client.request.return_value = mock_response
+
+        headers = {}
+        token_federation_provider.add_headers(headers)
+
+        # Should fall back to external token
+        assert headers["Authorization"] == f"Bearer {external_token}"
+
+    def test_token_exchange_fallback_on_auth_error(
+        self, token_federation_provider, mock_external_provider, mock_http_client
+    ):
+        """Test that token exchange falls back gracefully on authentication error."""
+        # Setup external provider to return an external token
+        external_token = create_jwt_token(issuer="https://login.microsoftonline.com")
+        mock_external_provider.add_headers = Mock(
+            side_effect=lambda headers: headers.update(
+                {"Authorization": f"Bearer {external_token}"}
+            )
+        )
+
+        # Mock 401 error on token exchange
+        mock_response = Mock()
+        mock_response.status = 401
+        mock_response.data = b"Unauthorized"
+        mock_http_client.request.return_value = mock_response
+
+        headers = {}
+        token_federation_provider.add_headers(headers)
+
+        # Should fall back to external token
+        assert headers["Authorization"] == f"Bearer {external_token}"
 
 
 class TestUtilityFunctions:
