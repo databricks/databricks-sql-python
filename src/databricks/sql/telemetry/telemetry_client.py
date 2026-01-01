@@ -47,6 +47,7 @@ from databricks.sql.telemetry.telemetry_push_client import (
     TelemetryPushClient,
     CircuitBreakerTelemetryPushClient,
 )
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -278,7 +279,7 @@ class TelemetryClient(BaseTelemetryClient):
             if self._auth_provider
             else self.TELEMETRY_UNAUTHENTICATED_PATH
         )
-        url = f"https://{self._host_url}{path}"
+        url = normalize_host_with_protocol(self._host_url) + path
 
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
 

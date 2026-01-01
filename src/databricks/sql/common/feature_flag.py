@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Optional, List, Any, TYPE_CHECKING
 
 from databricks.sql.common.http import HttpMethod
+from databricks.sql.common.url_utils import normalize_host_with_protocol
 
 if TYPE_CHECKING:
     from databricks.sql.client import Connection
@@ -67,7 +68,8 @@ class FeatureFlagsContext:
 
         endpoint_suffix = FEATURE_FLAGS_ENDPOINT_SUFFIX_FORMAT.format(__version__)
         self._feature_flag_endpoint = (
-            f"https://{self._connection.session.host}{endpoint_suffix}"
+            normalize_host_with_protocol(self._connection.session.host)
+            + endpoint_suffix
         )
 
         # Use the provided HTTP client

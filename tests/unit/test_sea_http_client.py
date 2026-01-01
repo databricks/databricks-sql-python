@@ -44,6 +44,40 @@ class TestSeaHttpClient:
             client._pool = Mock()
             return client
 
+    @pytest.mark.parametrize(
+        "server_hostname,port,expected_base_url",
+        [
+            # Basic hostname without protocol
+            ("myserver.com", 443, "https://myserver.com:443"),
+            # Hostname with trailing slash
+            ("myserver.com/", 443, "https://myserver.com:443"),
+            # Hostname with https:// protocol
+            ("https://myserver.com", 443, "https://myserver.com:443"),
+            # Hostname with http:// protocol (preserved as-is)
+            ("http://myserver.com", 443, "http://myserver.com:443"),
+            # Hostname with protocol and trailing slash
+            ("https://myserver.com/", 443, "https://myserver.com:443"),
+            # Custom port
+            ("myserver.com", 8080, "https://myserver.com:8080"),
+            # Protocol with custom port
+            ("https://myserver.com", 8080, "https://myserver.com:8080"),
+        ],
+    )
+    def test_base_url_construction(
+        self, server_hostname, port, expected_base_url, mock_auth_provider, ssl_options
+    ):
+        """Test that base_url is constructed correctly from various hostname inputs."""
+        with patch("databricks.sql.backend.sea.utils.http_client.HTTPSConnectionPool"):
+            client = SeaHttpClient(
+                server_hostname=server_hostname,
+                port=port,
+                http_path="/sql/1.0/warehouses/test",
+                http_headers=[],
+                auth_provider=mock_auth_provider,
+                ssl_options=ssl_options,
+            )
+            assert client.base_url == expected_base_url
+
     def test_get_command_type_from_path(self, sea_http_client):
         """Test the _get_command_type_from_path method with various paths and methods."""
         # Test statement execution

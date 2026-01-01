@@ -646,13 +646,31 @@ class TransactionTestSuite(unittest.TestCase):
         "access_token": "tok",
     }
 
+    def _setup_mock_session_with_http_client(self, mock_session):
+        """
+        Helper to configure a mock session with HTTP client mocks.
+        This prevents feature flag network requests during Connection initialization.
+        """
+        mock_session.host = "foo"
+
+        # Mock HTTP client to prevent feature flag network requests
+        mock_http_client = Mock()
+        mock_session.http_client = mock_http_client
+
+        # Mock feature flag response to prevent blocking HTTP calls
+        mock_ff_response = Mock()
+        mock_ff_response.status = 200
+        mock_ff_response.data = b'{"flags": [], "ttl_seconds": 900}'
+        mock_http_client.request.return_value = mock_ff_response
+
     def _create_mock_connection(self, mock_session_class):
         """Helper to create a mocked connection for transaction tests."""
-        # Mock session
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
         mock_session.get_autocommit.return_value = True
+
+        self._setup_mock_session_with_http_client(mock_session)
         mock_session_class.return_value = mock_session
 
         # Create connection with ignore_transactions=False to test actual transaction functionality
@@ -736,9 +754,7 @@ class TransactionTestSuite(unittest.TestCase):
         conn = self._create_mock_connection(mock_session_class)
 
         mock_cursor = Mock()
-        original_error = DatabaseError(
-            "Original error", host_url="test-host"
-        )
+        original_error = DatabaseError("Original error", host_url="test-host")
         mock_cursor.execute.side_effect = original_error
 
         with patch.object(conn, "cursor", return_value=mock_cursor):
@@ -927,6 +943,8 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+
+        self._setup_mock_session_with_http_client(mock_session)
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
@@ -959,6 +977,8 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+
+        self._setup_mock_session_with_http_client(mock_session)
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
@@ -986,6 +1006,8 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+
+        self._setup_mock_session_with_http_client(mock_session)
         mock_session_class.return_value = mock_session
 
         conn = client.Connection(
@@ -1015,6 +1037,8 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+
+        self._setup_mock_session_with_http_client(mock_session)
         mock_session_class.return_value = mock_session
 
         # Create connection with ignore_transactions=True (default)
@@ -1043,6 +1067,8 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+
+        self._setup_mock_session_with_http_client(mock_session)
         mock_session_class.return_value = mock_session
 
         # Create connection with ignore_transactions=True (default)
@@ -1068,6 +1094,8 @@ class TransactionTestSuite(unittest.TestCase):
         mock_session = Mock()
         mock_session.is_open = True
         mock_session.guid_hex = "test-session-id"
+
+        self._setup_mock_session_with_http_client(mock_session)
         mock_session_class.return_value = mock_session
 
         # Create connection with ignore_transactions=True (default)
