@@ -1,5 +1,9 @@
 # Release History
 
+# 4.2.4 (2026-01-07)
+- Fixed the exception handler close() on _TelemetryClientHolder (databricks/databricks-sql-python#723 by @msrathore-db)
+- Created util method to normalise http protocol in http path (databricks/databricks-sql-python#724 by @nikhilsuri-db)
+
 # 4.2.3 (2025-12-18)
 - added pandas < 2.4.0 support and tests for py 3.14 (databricks/databricks-sql-python#720 by @sreekanth-db)
 - pandas 2.3.3 support for py < 3.14 (databricks/databricks-sql-python#721 by @sreekanth-db)
