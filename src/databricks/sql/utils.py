@@ -39,10 +39,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_session_config_value(
-    session_configuration: Optional[Dict[str, Any]],
-    key: str
+    session_configuration: Optional[Dict[str, Any]], key: str
 ) -> Optional[str]:
-    """ Get a session configuration value with case-insensitive key matching """
+    """Get a session configuration value with case-insensitive key matching"""
     if not session_configuration:
         return None
 
