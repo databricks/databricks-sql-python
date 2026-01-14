@@ -302,6 +302,9 @@ class SeaDatabricksClient(DatabricksClient):
             data=request_data.to_dict(),
         )
 
+        # close the HTTP client
+        self._http_client.close()
+
     def _extract_description_from_manifest(
         self, manifest: ResultManifest
     ) -> List[Tuple]:
