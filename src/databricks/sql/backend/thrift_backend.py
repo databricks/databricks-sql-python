@@ -87,7 +87,7 @@ _retry_policy = {  # (type, default, min, max)
     "_retry_delay_default": (float, 5, 1, 60),
 }
 
-
+# Checks
 class ThriftDatabricksClient(DatabricksClient):
     CLOSED_OP_STATE = CommandState.CLOSED
     ERROR_OP_STATE = CommandState.FAILED
