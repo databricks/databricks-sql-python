@@ -157,9 +157,11 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         Note that this fixture doesn't clean itself up. So the table will remain
         in the schema for use by subsequent test runs.
         """
-        
+
         # Generate unique table name to avoid conflicts in parallel execution
-        table_name = f"pysql_e2e_inline_param_test_table_{str(uuid4()).replace('-', '_')}"
+        table_name = (
+            f"pysql_e2e_inline_param_test_table_{str(uuid4()).replace('-', '_')}"
+        )
         self.inline_table_name = table_name
         self._create_inline_table(table_name)
 
@@ -187,11 +189,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         :paramstyle:
             This is a no-op but is included to make the test-code easier to read.
         """
-        if not hasattr(self, 'inline_table_name'):
-            table_name = f"pysql_e2e_inline_param_test_table_{str(uuid4()).replace('-', '_')}"
+        if not hasattr(self, "inline_table_name"):
+            table_name = (
+                f"pysql_e2e_inline_param_test_table_{str(uuid4()).replace('-', '_')}"
+            )
             self.inline_table_name = table_name
             self._create_inline_table(table_name)
-        
+
         table_name = self.inline_table_name
         INSERT_QUERY = f"INSERT INTO {table_name} (`{target_column}`) VALUES (%(p)s)"
         SELECT_QUERY = f"SELECT {target_column} `col` FROM {table_name} LIMIT 1"
@@ -412,13 +416,13 @@ class TestParameterizedQueries(PySQLPytestTestCase):
                 ):
                     cursor.execute("SELECT %(p)s", parameters={"p": 1})
                     if use_inline_params is True:
-                        assert (
-                            "Consider using native parameters." in caplog.text
-                        ), "Log message should be suppressed"
+                        assert "Consider using native parameters." in caplog.text, (
+                            "Log message should be suppressed"
+                        )
                     elif use_inline_params == "silent":
-                        assert (
-                            "Consider using native parameters." not in caplog.text
-                        ), "Log message should not be supressed"
+                        assert "Consider using native parameters." not in caplog.text, (
+                            "Log message should not be supressed"
+                        )
 
     def test_positional_native_params_with_defaults(self):
         query = "SELECT ? col"

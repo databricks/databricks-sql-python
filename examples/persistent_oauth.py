@@ -51,7 +51,6 @@ with sql.connect(
     auth_type="databricks-oauth",
     experimental_oauth_persistence=DevOnlyFilePersistence("./sample.json"),
 ) as connection:
-
     for x in range(1, 100):
         cursor = connection.cursor()
         cursor.execute("SELECT 1+1")

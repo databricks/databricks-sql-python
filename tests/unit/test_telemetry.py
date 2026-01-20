@@ -14,7 +14,11 @@ from databricks.sql.common.feature_flag import (
     FeatureFlagsContextFactory,
     FeatureFlagsContext,
 )
-from databricks.sql.telemetry.models.enums import AuthMech, AuthFlow, DatabricksClientType
+from databricks.sql.telemetry.models.enums import (
+    AuthMech,
+    AuthFlow,
+    DatabricksClientType,
+)
 from databricks.sql.telemetry.models.event import (
     TelemetryEvent,
     DriverConnectionParameters,
@@ -490,7 +494,7 @@ class TestTelemetryEventModels:
     def test_host_details_serialization(self):
         """Test HostDetails model serialization."""
         host = HostDetails(host_url="test-host.com", port=443)
-        
+
         # Test JSON string generation
         json_str = host.to_json()
         assert isinstance(json_str, str)
@@ -503,7 +507,7 @@ class TestTelemetryEventModels:
         host_info = HostDetails(host_url="workspace.databricks.com", port=443)
         proxy_info = HostDetails(host_url="proxy.company.com", port=8080)
         cf_proxy_info = HostDetails(host_url="cf-proxy.company.com", port=8080)
-        
+
         params = DriverConnectionParameters(
             http_path="/sql/1.0/warehouses/abc123",
             mode=DatabricksClientType.SEA,
@@ -532,11 +536,11 @@ class TestTelemetryEventModels:
             allowed_volume_ingestion_paths="/Volumes/catalog/schema/volume",
             query_tags="team:engineering,project:telemetry",
         )
-        
+
         # Serialize to JSON and parse back
         json_str = params.to_json()
         json_dict = json.loads(json_str)
-        
+
         # Verify all new fields are in JSON
         assert json_dict["http_path"] == "/sql/1.0/warehouses/abc123"
         assert json_dict["mode"] == "SEA"
@@ -544,7 +548,10 @@ class TestTelemetryEventModels:
         assert json_dict["auth_mech"] == "OAUTH"
         assert json_dict["auth_flow"] == "BROWSER_BASED_AUTHENTICATION"
         assert json_dict["socket_timeout"] == 30000
-        assert json_dict["azure_workspace_resource_id"] == "/subscriptions/test/resourceGroups/test"
+        assert (
+            json_dict["azure_workspace_resource_id"]
+            == "/subscriptions/test/resourceGroups/test"
+        )
         assert json_dict["azure_tenant_id"] == "tenant-123"
         assert json_dict["use_proxy"] is True
         assert json_dict["use_system_proxy"] is True
@@ -562,28 +569,31 @@ class TestTelemetryEventModels:
         assert json_dict["async_poll_interval_millis"] == 2000
         assert json_dict["support_many_parameters"] is True
         assert json_dict["enable_complex_datatype_support"] is True
-        assert json_dict["allowed_volume_ingestion_paths"] == "/Volumes/catalog/schema/volume"
+        assert (
+            json_dict["allowed_volume_ingestion_paths"]
+            == "/Volumes/catalog/schema/volume"
+        )
         assert json_dict["query_tags"] == "team:engineering,project:telemetry"
 
     def test_driver_connection_parameters_minimal_fields(self):
         """Test DriverConnectionParameters with only required fields."""
         host_info = HostDetails(host_url="workspace.databricks.com", port=443)
-        
+
         params = DriverConnectionParameters(
             http_path="/sql/1.0/warehouses/abc123",
             mode=DatabricksClientType.THRIFT,
             host_info=host_info,
         )
-        
+
         # Note: to_json() filters out None values, so we need to check asdict for complete structure
         json_str = params.to_json()
         json_dict = json.loads(json_str)
-        
+
         # Required fields should be present
         assert json_dict["http_path"] == "/sql/1.0/warehouses/abc123"
         assert json_dict["mode"] == "THRIFT"
         assert json_dict["host_info"]["host_url"] == "workspace.databricks.com"
-        
+
         # Optional fields with None are filtered out by to_json()
         # This is expected behavior - None values are excluded from JSON output
 
@@ -602,10 +612,10 @@ class TestTelemetryEventModels:
             locale_name="en_US",
             client_app_name="MyApp",
         )
-        
+
         json_str = sys_config.to_json()
         json_dict = json.loads(json_str)
-        
+
         assert json_dict["driver_name"] == "Databricks SQL Connector for Python"
         assert json_dict["driver_version"] == "3.0.0"
         assert json_dict["runtime_name"] == "CPython"
@@ -622,7 +632,7 @@ class TestTelemetryEventModels:
         """Test complete TelemetryEvent serialization with all nested objects."""
         host_info = HostDetails(host_url="workspace.databricks.com", port=443)
         proxy_info = HostDetails(host_url="proxy.company.com", port=8080)
-        
+
         connection_params = DriverConnectionParameters(
             http_path="/sql/1.0/warehouses/abc123",
             mode=DatabricksClientType.SEA,
@@ -633,7 +643,7 @@ class TestTelemetryEventModels:
             enable_arrow=True,
             rows_fetched_per_block=100000,
         )
-        
+
         sys_config = DriverSystemConfiguration(
             driver_name="Databricks SQL Connector for Python",
             driver_version="3.0.0",
@@ -645,12 +655,12 @@ class TestTelemetryEventModels:
             os_arch="arm64",
             char_set_encoding="utf-8",
         )
-        
+
         error_info = DriverErrorInfo(
             error_name="ConnectionError",
             stack_trace="Traceback...",
         )
-        
+
         event = TelemetryEvent(
             session_id="test-session-123",
             sql_statement_id="test-stmt-456",
@@ -660,42 +670,51 @@ class TestTelemetryEventModels:
             driver_connection_params=connection_params,
             error_info=error_info,
         )
-        
+
         # Test JSON serialization
         json_str = event.to_json()
         assert isinstance(json_str, str)
-        
+
         # Parse and verify structure
         parsed = json.loads(json_str)
         assert parsed["session_id"] == "test-session-123"
         assert parsed["sql_statement_id"] == "test-stmt-456"
         assert parsed["operation_latency_ms"] == 1500
         assert parsed["auth_type"] == "OAUTH"
-        
+
         # Verify nested objects
-        assert parsed["system_configuration"]["driver_name"] == "Databricks SQL Connector for Python"
-        assert parsed["driver_connection_params"]["http_path"] == "/sql/1.0/warehouses/abc123"
+        assert (
+            parsed["system_configuration"]["driver_name"]
+            == "Databricks SQL Connector for Python"
+        )
+        assert (
+            parsed["driver_connection_params"]["http_path"]
+            == "/sql/1.0/warehouses/abc123"
+        )
         assert parsed["driver_connection_params"]["use_proxy"] is True
-        assert parsed["driver_connection_params"]["proxy_host_info"]["host_url"] == "proxy.company.com"
+        assert (
+            parsed["driver_connection_params"]["proxy_host_info"]["host_url"]
+            == "proxy.company.com"
+        )
         assert parsed["error_info"]["error_name"] == "ConnectionError"
 
     def test_json_serialization_excludes_none_values(self):
         """Test that JSON serialization properly excludes None values."""
         host_info = HostDetails(host_url="workspace.databricks.com", port=443)
-        
+
         params = DriverConnectionParameters(
             http_path="/sql/1.0/warehouses/abc123",
             mode=DatabricksClientType.SEA,
             host_info=host_info,
             # All optional fields left as None
         )
-        
+
         json_str = params.to_json()
         parsed = json.loads(json_str)
-        
+
         # Required fields present
         assert parsed["http_path"] == "/sql/1.0/warehouses/abc123"
-        
+
         # None values should be EXCLUDED from JSON (not included as null)
         # This is the behavior of JsonSerializableMixin
         assert "auth_mech" not in parsed
@@ -704,11 +723,15 @@ class TestTelemetryEventModels:
 
 
 @patch("databricks.sql.client.Session")
-@patch("databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers")
+@patch(
+    "databricks.sql.common.unified_http_client.UnifiedHttpClient._setup_pool_managers"
+)
 class TestConnectionParameterTelemetry:
     """Tests for connection parameter population in telemetry."""
 
-    def test_connection_with_proxy_populates_telemetry(self, mock_setup_pools, mock_session):
+    def test_connection_with_proxy_populates_telemetry(
+        self, mock_setup_pools, mock_session
+    ):
         """Test that proxy configuration is captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-proxy"
@@ -718,8 +741,10 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
-        
-        with patch("databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log") as mock_export:
+
+        with patch(
+            "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log"
+        ) as mock_export:
             conn = sql.connect(
                 server_hostname="workspace.databricks.com",
                 http_path="/sql/1.0/warehouses/test",
@@ -727,23 +752,25 @@ class TestConnectionParameterTelemetry:
                 enable_telemetry=True,
                 force_enable_telemetry=True,
             )
-            
+
             # Verify export was called
             mock_export.assert_called_once()
             call_args = mock_export.call_args
-            
+
             # Extract driver_connection_params
             driver_params = call_args.kwargs.get("driver_connection_params")
             assert driver_params is not None
             assert isinstance(driver_params, DriverConnectionParameters)
-            
+
             # Verify fields are populated
             assert driver_params.http_path == "/sql/1.0/warehouses/test"
             assert driver_params.mode == DatabricksClientType.SEA
             assert driver_params.host_info.host_url == "workspace.databricks.com"
             assert driver_params.host_info.port == 443
 
-    def test_connection_with_azure_params_populates_telemetry(self, mock_setup_pools, mock_session):
+    def test_connection_with_azure_params_populates_telemetry(
+        self, mock_setup_pools, mock_session
+    ):
         """Test that Azure-specific parameters are captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-azure"
@@ -753,8 +780,10 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.azuredatabricks.net"
         mock_session.return_value = mock_session_instance
-        
-        with patch("databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log") as mock_export:
+
+        with patch(
+            "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log"
+        ) as mock_export:
             conn = sql.connect(
                 server_hostname="workspace.azuredatabricks.net",
                 http_path="/sql/1.0/warehouses/test",
@@ -764,15 +793,20 @@ class TestConnectionParameterTelemetry:
                 enable_telemetry=True,
                 force_enable_telemetry=True,
             )
-            
+
             mock_export.assert_called_once()
             driver_params = mock_export.call_args.kwargs.get("driver_connection_params")
-            
+
             # Verify Azure fields
-            assert driver_params.azure_workspace_resource_id == "/subscriptions/test/resourceGroups/test"
+            assert (
+                driver_params.azure_workspace_resource_id
+                == "/subscriptions/test/resourceGroups/test"
+            )
             assert driver_params.azure_tenant_id == "tenant-123"
 
-    def test_connection_populates_arrow_and_performance_params(self, mock_setup_pools, mock_session):
+    def test_connection_populates_arrow_and_performance_params(
+        self, mock_setup_pools, mock_session
+    ):
         """Test that Arrow and performance parameters are captured in telemetry."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-perf"
@@ -782,15 +816,18 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
-        
-        with patch("databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log") as mock_export:
+
+        with patch(
+            "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log"
+        ) as mock_export:
             # Import pyarrow availability check
             try:
                 import pyarrow
+
                 arrow_available = True
             except ImportError:
                 arrow_available = False
-            
+
             conn = sql.connect(
                 server_hostname="workspace.databricks.com",
                 http_path="/sql/1.0/warehouses/test",
@@ -799,10 +836,10 @@ class TestConnectionParameterTelemetry:
                 enable_telemetry=True,
                 force_enable_telemetry=True,
             )
-            
+
             mock_export.assert_called_once()
             driver_params = mock_export.call_args.kwargs.get("driver_connection_params")
-            
+
             # Verify performance fields
             assert driver_params.enable_arrow == arrow_available
             assert driver_params.enable_direct_results is True
@@ -811,7 +848,9 @@ class TestConnectionParameterTelemetry:
             assert driver_params.async_poll_interval_millis == 2000
             assert driver_params.support_many_parameters is True
 
-    def test_cf_proxy_fields_default_to_false_none(self, mock_setup_pools, mock_session):
+    def test_cf_proxy_fields_default_to_false_none(
+        self, mock_setup_pools, mock_session
+    ):
         """Test that CloudFlare proxy fields default to False/None (not yet supported)."""
         mock_session_instance = MagicMock()
         mock_session_instance.guid_hex = "test-session-cfproxy"
@@ -821,8 +860,10 @@ class TestConnectionParameterTelemetry:
         mock_session_instance.port = 443
         mock_session_instance.host = "workspace.databricks.com"
         mock_session.return_value = mock_session_instance
-        
-        with patch("databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log") as mock_export:
+
+        with patch(
+            "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log"
+        ) as mock_export:
             conn = sql.connect(
                 server_hostname="workspace.databricks.com",
                 http_path="/sql/1.0/warehouses/test",
@@ -830,7 +871,7 @@ class TestConnectionParameterTelemetry:
                 enable_telemetry=True,
                 force_enable_telemetry=True,
             )
-            
+
             mock_export.assert_called_once()
             driver_params = mock_export.call_args.kwargs.get("driver_connection_params")
 

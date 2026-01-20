@@ -169,7 +169,7 @@ jobs:
 
       -   name: Run tests
           run: poetry run python -m pytest tests/unit
-  check-linting:
+  code-format-check:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -216,10 +216,10 @@ jobs:
       - name: Install library
         run: poetry install --no-interaction
       #----------------------------------------------
-      #              black the code
+      #              Run Ruff format check
       #----------------------------------------------
-      - name: Black
-        run: poetry run black --check src
+      - name: Ruff format check
+        run: poetry run ruff format --check
 
   check-types:
     runs-on: ubuntu-latest

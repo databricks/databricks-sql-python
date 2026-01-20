@@ -33,12 +33,10 @@ class CredentialsProvider(abc.ABC):
     for authenticating requests to Databricks REST APIs"""
 
     @abc.abstractmethod
-    def auth_type(self) -> str:
-        ...
+    def auth_type(self) -> str: ...
 
     @abc.abstractmethod
-    def __call__(self, *args, **kwargs) -> HeaderFactory:
-        ...
+    def __call__(self, *args, **kwargs) -> HeaderFactory: ...
 
 
 # Private API: this is an evolving interface and it will change in the future.
@@ -231,9 +229,9 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
             }
 
             if self.azure_workspace_resource_id:
-                headers[
-                    self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER
-                ] = self.azure_workspace_resource_id
+                headers[self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER] = (
+                    self.azure_workspace_resource_id
+                )
 
             return headers
 

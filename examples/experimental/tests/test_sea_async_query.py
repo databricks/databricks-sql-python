@@ -1,6 +1,7 @@
 """
 Test for SEA asynchronous query execution functionality.
 """
+
 import os
 import sys
 import logging

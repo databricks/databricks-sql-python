@@ -433,8 +433,9 @@ class Connection:
     def __del__(self):
         if self.open:
             logger.debug(
-                "Closing unclosed connection for session "
-                "{}".format(self.get_session_id_hex())
+                "Closing unclosed connection for session {}".format(
+                    self.get_session_id_hex()
+                )
             )
             try:
                 self._close(close_cursors=False)
@@ -1144,7 +1145,6 @@ class Cursor:
         self._handle_staging_http_response(r)
 
     def _handle_staging_http_response(self, r):
-
         # fmt: off
         # HTTP status codes
         OK = 200

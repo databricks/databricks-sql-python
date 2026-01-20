@@ -36,7 +36,6 @@ class TestThriftFieldIds:
                 and hasattr(obj, "thrift_spec")
                 and obj.thrift_spec is not None
             ):
-
                 self._check_class_field_ids(obj, name, violations)
 
         if violations:

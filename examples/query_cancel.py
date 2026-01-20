@@ -10,7 +10,6 @@ with sql.connect(
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
 ) as connection:
-
     with connection.cursor() as cursor:
 
         def execute_really_long_query():

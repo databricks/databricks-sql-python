@@ -136,16 +136,16 @@ class TestTransactions:
 
     def test_default_autocommit_is_true(self):
         """Test that new connection defaults to autocommit=true."""
-        assert (
-            self.connection.autocommit is True
-        ), "New connection should have autocommit=true by default"
+        assert self.connection.autocommit is True, (
+            "New connection should have autocommit=true by default"
+        )
 
     def test_set_autocommit_to_false(self):
         """Test successfully setting autocommit to false."""
         self.connection.autocommit = False
-        assert (
-            self.connection.autocommit is False
-        ), "autocommit should be false after setting to false"
+        assert self.connection.autocommit is False, (
+            "autocommit should be false after setting to false"
+        )
 
     def test_set_autocommit_to_true(self):
         """Test successfully setting autocommit back to true."""
@@ -155,9 +155,9 @@ class TestTransactions:
 
         # Then enable
         self.connection.autocommit = True
-        assert (
-            self.connection.autocommit is True
-        ), "autocommit should be true after setting to true"
+        assert self.connection.autocommit is True, (
+            "autocommit should be true after setting to true"
+        )
 
     # ==================== COMMIT TESTS ====================
 
@@ -536,9 +536,9 @@ class TestTransactions:
 
         # Verify error message mentions autocommit or active transaction
         error_msg = str(exc_info.value).lower()
-        assert (
-            "autocommit" in error_msg or "active transaction" in error_msg
-        ), "Error should mention autocommit or active transaction"
+        assert "autocommit" in error_msg or "active transaction" in error_msg, (
+            "Error should mention autocommit or active transaction"
+        )
 
         # Cleanup - rollback the transaction
         self.connection.rollback()
@@ -576,9 +576,9 @@ class TestTransactions:
     def test_get_transaction_isolation_returns_repeatable_read(self):
         """Test that get_transaction_isolation() returns REPEATABLE_READ."""
         isolation_level = self.connection.get_transaction_isolation()
-        assert (
-            isolation_level == "REPEATABLE_READ"
-        ), "Databricks MST should use REPEATABLE_READ (Snapshot Isolation)"
+        assert isolation_level == "REPEATABLE_READ", (
+            "Databricks MST should use REPEATABLE_READ (Snapshot Isolation)"
+        )
 
     def test_set_transaction_isolation_accepts_repeatable_read(self):
         """Test that set_transaction_isolation() accepts REPEATABLE_READ."""

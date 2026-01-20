@@ -65,9 +65,9 @@ test_loader = loader.TestLoader()
 for name in test_loader.getTestCaseNames(DecimalTestsMixin):
     if name.startswith("test_"):
         fn = getattr(DecimalTestsMixin, name)
-        decorated = skipUnless(pysql_supports_arrow(), "Decimal tests need arrow support")(
-            fn
-        )
+        decorated = skipUnless(
+            pysql_supports_arrow(), "Decimal tests need arrow support"
+        )(fn)
         setattr(DecimalTestsMixin, name, decorated)
 
 
@@ -195,7 +195,6 @@ class TestPySQLAsyncQueriesSuite(PySQLPytestTestCase):
         ],
     )
     def test_execute_async__long_running(self, extra_params):
-
         long_running_query = "SELECT COUNT(*) FROM RANGE(10000 * 16) x JOIN RANGE(10000) y ON FROM_UNIXTIME(x.id * y.id, 'yyyy-MM-dd') LIKE '%not%a%date%'"
         with self.cursor(extra_params) as cursor:
             cursor.execute_async(long_running_query)
@@ -901,7 +900,13 @@ class TestPySQLCoreSuite(
     )
     def test_multi_timestamps_arrow(self, extra_params):
         with self.cursor(
-            {"session_configuration": {"ansi_mode": False, "query_tags": "test:multi-timestamps,driver:python"}, **extra_params}
+            {
+                "session_configuration": {
+                    "ansi_mode": False,
+                    "query_tags": "test:multi-timestamps,driver:python",
+                },
+                **extra_params,
+            }
         ) as cursor:
             query, expected = self.multi_query()
             expected = [
@@ -1015,9 +1020,9 @@ class TestPySQLCoreSuite(
             rows = cursor.fetchall()
 
             # Check if all rows are returned (not limited by row_limit)
-            assert (
-                len(rows) == expected_rows
-            ), f"Expected {expected_rows} rows, got {len(rows)}"
+            assert len(rows) == expected_rows, (
+                f"Expected {expected_rows} rows, got {len(rows)}"
+            )
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
     def test_row_limit_with_arrow_larger_result(self):
@@ -1029,9 +1034,9 @@ class TestPySQLCoreSuite(
             arrow_table = cursor.fetchall_arrow()
 
             # Check if the number of rows in the arrow table is limited to row_limit
-            assert (
-                arrow_table.num_rows == row_limit
-            ), f"Expected {row_limit} rows, got {arrow_table.num_rows}"
+            assert arrow_table.num_rows == row_limit, (
+                f"Expected {row_limit} rows, got {arrow_table.num_rows}"
+            )
 
     @skipUnless(pysql_supports_arrow(), "arrow test needs arrow support")
     def test_row_limit_with_arrow_smaller_result(self):
@@ -1044,9 +1049,9 @@ class TestPySQLCoreSuite(
             arrow_table = cursor.fetchall_arrow()
 
             # Check if all rows are returned (not limited by row_limit)
-            assert (
-                arrow_table.num_rows == expected_rows
-            ), f"Expected {expected_rows} rows, got {arrow_table.num_rows}"
+            assert arrow_table.num_rows == expected_rows, (
+                f"Expected {expected_rows} rows, got {arrow_table.num_rows}"
+            )
 
 
 # use a RetrySuite to encapsulate these tests which we'll typically want to run together; however keep

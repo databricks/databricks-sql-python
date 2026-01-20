@@ -3,6 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 ### PEP-249 Mandated ###
 # https://peps.python.org/pep-0249/#exceptions
 class Error(Exception):

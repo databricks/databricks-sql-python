@@ -44,7 +44,6 @@ class PySQLStagingIngestionTestSuiteMixin:
         with self.connection(
             extra_params={"staging_allowed_local_path": temp_path}
         ) as conn:
-
             cursor = conn.cursor()
             query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
             cursor.execute(query)
@@ -80,9 +79,7 @@ class PySQLStagingIngestionTestSuiteMixin:
 
             # GET after REMOVE should fail
 
-            with pytest.raises(
-                Error, match="too many 404 error responses"
-            ):
+            with pytest.raises(Error, match="too many 404 error responses"):
                 cursor = conn.cursor()
                 query = f"GET 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' TO '{new_temp_path}'"
                 cursor.execute(query)
@@ -115,7 +112,6 @@ class PySQLStagingIngestionTestSuiteMixin:
     def test_staging_ingestion_put_fails_if_localFile_not_in_staging_allowed_local_path(
         self, ingestion_user
     ):
-
         fh, temp_path = tempfile.mkstemp()
 
         original_text = "hello world!".encode("utf-8")

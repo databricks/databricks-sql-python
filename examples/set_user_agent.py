@@ -7,7 +7,6 @@ with sql.connect(
     access_token=os.getenv("DATABRICKS_TOKEN"),
     user_agent_entry="ExamplePartnerTag",
 ) as connection:
-
     with connection.cursor() as cursor:
         cursor.execute("SELECT * FROM default.diamonds LIMIT 2")
         result = cursor.fetchall()

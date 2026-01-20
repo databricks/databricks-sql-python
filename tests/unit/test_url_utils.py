@@ -1,4 +1,5 @@
 """Tests for URL utility functions."""
+
 import pytest
 from databricks.sql.common.url_utils import normalize_host_with_protocol
 

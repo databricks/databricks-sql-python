@@ -14,21 +14,20 @@ with sql.connect(
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
 ) as connection:
-
     with connection.cursor() as cursor:
         # Create a simple data stream
         data = b"Hello, streaming world!"
         stream = io.BytesIO(data)
-        
+
         # Get catalog, schema, and volume from environment variables
         catalog = os.getenv("DATABRICKS_CATALOG")
         schema = os.getenv("DATABRICKS_SCHEMA")
         volume = os.getenv("DATABRICKS_VOLUME")
-        
+
         # Upload to Unity Catalog volume
         cursor.execute(
             f"PUT '__input_stream__' INTO '/Volumes/{catalog}/{schema}/{volume}/hello.txt' OVERWRITE",
-            input_stream=stream
+            input_stream=stream,
         )
-        
-        print("File uploaded successfully!") 
+
+        print("File uploaded successfully!")

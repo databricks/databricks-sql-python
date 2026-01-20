@@ -121,7 +121,7 @@ class Row(tuple):
 
     def __new__(cls, *args: Optional[str], **kwargs: Optional[Any]) -> "Row":
         if args and kwargs:
-            raise ValueError("Can not use both args " "and kwargs to create Row")
+            raise ValueError("Can not use both args and kwargs to create Row")
         if kwargs:
             # create row objects
             row = tuple.__new__(cls, list(kwargs.values()))

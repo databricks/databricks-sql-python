@@ -599,13 +599,13 @@ class TelemetryClientFactory:
                             batch_size=batch_size,
                             client_context=client_context,
                         )
-                        TelemetryClientFactory._clients[
-                            host_url
-                        ] = _TelemetryClientHolder(client)
+                        TelemetryClientFactory._clients[host_url] = (
+                            _TelemetryClientHolder(client)
+                        )
                     else:
-                        TelemetryClientFactory._clients[
-                            host_url
-                        ] = _TelemetryClientHolder(NoopTelemetryClient())
+                        TelemetryClientFactory._clients[host_url] = (
+                            _TelemetryClientHolder(NoopTelemetryClient())
+                        )
         except Exception as e:
             logger.debug("Failed to initialize telemetry client: %s", e)
             # Fallback to NoopTelemetryClient to ensure connection doesn't fail

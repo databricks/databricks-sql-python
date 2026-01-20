@@ -36,7 +36,6 @@ with sql.connect(
     _retry_dangerous_codes=[502, 400],
     _retry_max_redirects=2,
 ) as connection:
-
     with connection.cursor() as cursor:
         cursor.execute("SELECT * FROM default.diamonds LIMIT 2")
         result = cursor.fetchall()

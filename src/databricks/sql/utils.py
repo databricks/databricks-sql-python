@@ -761,7 +761,6 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
 
 
 def convert_to_assigned_datatypes_in_column_table(column_table, description):
-
     converted_column_table = []
     for i, col in enumerate(column_table):
         if description[i][1] == "decimal":
@@ -877,7 +876,7 @@ def _create_python_tuple(t_col_value_wrapper):
 
 
 def concat_table_chunks(
-    table_chunks: List[Union["pyarrow.Table", ColumnTable]]
+    table_chunks: List[Union["pyarrow.Table", ColumnTable]],
 ) -> Union["pyarrow.Table", ColumnTable]:
     if len(table_chunks) == 0:
         return table_chunks

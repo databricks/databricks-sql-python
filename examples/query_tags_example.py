@@ -17,11 +17,10 @@ with sql.connect(
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
     session_configuration={
-        'QUERY_TAGS': 'team:engineering,test:query-tags',
-        'ansi_mode': False
-    }
+        "QUERY_TAGS": "team:engineering,test:query-tags",
+        "ansi_mode": False,
+    },
 ) as connection:
-    
     with connection.cursor() as cursor:
         cursor.execute("SELECT 1")
         result = cursor.fetchone()

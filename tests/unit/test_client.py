@@ -509,7 +509,7 @@ class ClientTestSuite(unittest.TestCase):
 
         expected_values = [["val1", 321, 52.32], ["val2", 2321, 252.32]]
 
-        for (row, expected) in zip(data, expected_values):
+        for row, expected in zip(data, expected_values):
             self.assertEqual(row.first_col, expected[0])
             self.assertEqual(row.second_col, expected[1])
             self.assertEqual(row.third_col, expected[2])

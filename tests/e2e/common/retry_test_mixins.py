@@ -94,16 +94,18 @@ class Client503ResponseMixin:
 
 class SimpleHttpResponse:
     """A simple HTTP response mock that works with both urllib3 v1.x and v2.x"""
-    
-    def __init__(self, status: int, headers: dict, redirect_location: Optional[str] = None):
+
+    def __init__(
+        self, status: int, headers: dict, redirect_location: Optional[str] = None
+    ):
         # Import the correct HTTP message type that urllib3 v1.x expects
         try:
             from http.client import HTTPMessage
         except ImportError:
             from httplib import HTTPMessage
-            
+
         self.status = status
-        # Create proper HTTPMessage for urllib3 v1.x compatibility  
+        # Create proper HTTPMessage for urllib3 v1.x compatibility
         self.headers = HTTPMessage()
         for key, value in headers.items():
             self.headers[key] = str(value)
@@ -116,41 +118,41 @@ class SimpleHttpResponse:
         self._body = b""
         self._fp = io.BytesIO(self._body)
         self._url = "https://example.com"
-        
+
     def get_redirect_location(self, *args, **kwargs):
         """Return the redirect location or False"""
         return False if self._redirect_location is None else self._redirect_location
-        
+
     def read(self, amt=None):
         """Mock read method for file-like behavior"""
         return self._body
-        
+
     def close(self):
         """Mock close method"""
         pass
-        
+
     def drain_conn(self):
         """Mock drain_conn method for urllib3 v2.x"""
         pass
-        
+
     def isclosed(self):
         """Mock isclosed method for urllib3 v1.x"""
         return False
-        
+
     def release_conn(self):
         """Mock release_conn method for thrift HTTP client"""
         pass
-        
+
     @property
     def data(self):
         """Mock data property for urllib3 v2.x"""
         return self._body
-        
+
     @property
     def url(self):
         """Mock url property"""
         return self._url
-        
+
     @url.setter
     def url(self, value):
         """Mock url setter"""
@@ -162,7 +164,7 @@ def mocked_server_response(
     status: int = 200, headers: dict = {}, redirect_location: Optional[str] = None
 ):
     """Context manager for patching urllib3 responses with version compatibility"""
-    
+
     mock_response = SimpleHttpResponse(status, headers, redirect_location)
 
     with patch("urllib3.connectionpool.HTTPSConnectionPool._get_conn") as getconn_mock:
@@ -188,7 +190,7 @@ def mock_sequential_server_responses(responses: List[dict]):
         SimpleHttpResponse(
             status=resp["status"],
             headers=resp["headers"],
-            redirect_location=resp["redirect_location"]
+            redirect_location=resp["redirect_location"],
         )
         for resp in responses
     ]
@@ -539,12 +541,12 @@ class PySQLRetryTestsMixin:
         max_redirects, expected_call_count = 1, 1
 
         # Code 302 is a redirect, but 3xx codes are not retried per policy
-        # Note: We don't set redirect_location because that would cause urllib3 v2.x 
+        # Note: We don't set redirect_location because that would cause urllib3 v2.x
         # to follow redirects internally, bypassing our retry policy test
-        with mocked_server_response(
-            status=302, redirect_location=None
-        ) as mock_obj:
-            with pytest.raises(RequestError):  # Should get RequestError, not MaxRetryError
+        with mocked_server_response(status=302, redirect_location=None) as mock_obj:
+            with pytest.raises(
+                RequestError
+            ):  # Should get RequestError, not MaxRetryError
                 with self.connection(
                     extra_params={
                         **extra_params,
@@ -575,12 +577,12 @@ class PySQLRetryTestsMixin:
         according to the DatabricksRetryPolicy regardless of redirect settings.
         """
         # Code 302 is a redirect, but 3xx codes are not retried per policy
-        # Note: We don't set redirect_location because that would cause urllib3 v2.x 
+        # Note: We don't set redirect_location because that would cause urllib3 v2.x
         # to follow redirects internally, bypassing our retry policy test
-        with mocked_server_response(
-            status=302, redirect_location=None
-        ) as mock_obj:
-            with pytest.raises(RequestError):  # Should get RequestError, not MaxRetryError
+        with mocked_server_response(status=302, redirect_location=None) as mock_obj:
+            with pytest.raises(
+                RequestError
+            ):  # Should get RequestError, not MaxRetryError
                 with self.connection(
                     extra_params={
                         **extra_params,
@@ -599,9 +601,7 @@ class PySQLRetryTestsMixin:
             {"use_sea": True},
         ],
     )
-    def test_3xx_codes_stop_request_immediately_no_retry_attempts(
-        self, extra_params
-    ):
+    def test_3xx_codes_stop_request_immediately_no_retry_attempts(self, extra_params):
         # Since 3xx codes are not retried per policy, we only ever see the first 302 response
         responses = [
             {"status": 302, "headers": {}, "redirect_location": "/foo.bar"},

@@ -7,7 +7,6 @@ with sql.connect(
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
 ) as connection:
-
     with connection.cursor() as cursor:
         long_running_query = """
             SELECT COUNT(*) FROM RANGE(10000 * 16) x 
