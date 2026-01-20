@@ -4,13 +4,11 @@ from collections import namedtuple
 
 TypeFailure = namedtuple(
     "TypeFailure",
-    "query,columnType,resultType,resultValue,"
-    "actualValue,actualType,description,conf",
+    "query,columnType,resultType,resultValue,actualValue,actualType,description,conf",
 )
 ResultFailure = namedtuple(
     "ResultFailure",
-    "query,columnType,resultType,resultValue,"
-    "actualValue,actualType,description,conf",
+    "query,columnType,resultType,resultValue,actualValue,actualType,description,conf",
 )
 ExecFailure = namedtuple(
     "ExecFailure",
@@ -81,8 +79,9 @@ class CoreTestMixin:
 
         if failures:
             self.fail(
-                "Failed testing result set with Arrow. "
-                "Failed queries: {}".format("\n\n".join([str(f) for f in failures]))
+                "Failed testing result set with Arrow. Failed queries: {}".format(
+                    "\n\n".join([str(f) for f in failures])
+                )
             )
 
     def run_query(self, cursor, query, columnType, rowValueType, answer, conf):

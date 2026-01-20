@@ -31,7 +31,6 @@ def pysql_has_version(compare, version):
 
 
 def is_endpoint_test(cli_args=None):
-
     # Currently only supporting tests against DBSQL Endpoints
     # So we don't read `is_endpoint_test` from the CLI args
     return True

@@ -11,7 +11,7 @@ class TestComplexTypes(PySQLPytestTestCase):
     def table_fixture(self, connection_details):
         self.arguments = connection_details.copy()
         """A pytest fixture that creates a table with a complex type, inserts a record, yields, and then drops the table"""
-         
+
         table_name = f"pysql_test_complex_types_table_{str(uuid4()).replace('-', '_')}"
         self.table_name = table_name
 
@@ -64,9 +64,7 @@ class TestComplexTypes(PySQLPytestTestCase):
         """Confirms the return types of a complex type field when reading as arrow"""
 
         with self.cursor() as cursor:
-            result = cursor.execute(
-                f"SELECT * FROM {table_fixture} LIMIT 1"
-            ).fetchone()
+            result = cursor.execute(f"SELECT * FROM {table_fixture} LIMIT 1").fetchone()
 
         assert isinstance(result[field], expected_type)
 
@@ -86,8 +84,6 @@ class TestComplexTypes(PySQLPytestTestCase):
         with self.cursor(
             extra_params={"_use_arrow_native_complex_types": False}
         ) as cursor:
-            result = cursor.execute(
-                f"SELECT * FROM {table_fixture} LIMIT 1"
-            ).fetchone()
+            result = cursor.execute(f"SELECT * FROM {table_fixture} LIMIT 1").fetchone()
 
         assert isinstance(result[field], str)

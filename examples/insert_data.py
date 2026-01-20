@@ -6,7 +6,6 @@ with sql.connect(
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
 ) as connection:
-
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS squares (x int, x_squared int)")
 

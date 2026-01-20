@@ -229,16 +229,15 @@ class TestInlineToNativeTransformer(object):
             ),
             (
                 "query with doubled wildcards",
-                "select 1 where " ' like "%%"',
+                'select 1 where  like "%%"',
                 {"param": None},
-                "select 1 where " ' like "%%"',
+                'select 1 where  like "%%"',
             ),
         ),
     )
     def test_transformer(
         self, label: str, query: str, params: Dict[str, Any], expected: str
     ):
-
         _params = [
             dbsql_parameter_from_primitive(value=value, name=name)
             for name, value in params.items()

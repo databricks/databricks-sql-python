@@ -221,9 +221,10 @@ class TestSeaResultSetQueueFactory:
 
         mock_http_client = MagicMock()
 
-        with patch(
-            "databricks.sql.backend.sea.queue.ResultFileDownloadManager"
-        ), patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None):
+        with (
+            patch("databricks.sql.backend.sea.queue.ResultFileDownloadManager"),
+            patch.object(SeaCloudFetchQueue, "_create_next_table", return_value=None),
+        ):
             queue = SeaResultSetQueueFactory.build_queue(
                 result_data=result_data,
                 manifest=arrow_manifest,
@@ -520,7 +521,7 @@ class TestHybridDisposition:
         # Create result data with external links but no attachment
         result_data = ResultData(external_links=external_links, attachment=None)
 
-        # Build queue   
+        # Build queue
         mock_http_client = MagicMock()
         queue = SeaResultSetQueueFactory.build_queue(
             result_data=result_data,

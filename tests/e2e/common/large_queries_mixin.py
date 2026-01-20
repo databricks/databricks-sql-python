@@ -125,9 +125,7 @@ class LargeQueriesMixin:
                         FROM RANGE({scale}) x
                         JOIN RANGE({scale0}) y
                         ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%"
-                        """.format(
-                        scale=scale_factor * scale0, scale0=scale0
-                    )
+                        """.format(scale=scale_factor * scale0, scale0=scale0)
                 )
 
                 (n,) = cursor.fetchone()

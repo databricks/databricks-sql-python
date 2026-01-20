@@ -6,7 +6,6 @@ with sql.connect(
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
 ) as connection:
-
     # Disable autocommit to use explicit transactions
     connection.autocommit = False
 

@@ -1,6 +1,7 @@
 """
 Test for SEA session management functionality.
 """
+
 import os
 import sys
 import logging

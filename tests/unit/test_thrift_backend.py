@@ -205,7 +205,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
     def test_proxy_headers_are_set(self):
-
         from databricks.sql.common.http_utils import create_basic_proxy_auth_headers
         from urllib.parse import urlparse
 
@@ -618,7 +617,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -662,7 +661,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                http_client=MagicMock(),
             )
 
             execute_response, _ = thrift_backend._handle_execute_response(
@@ -707,7 +706,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
 
                 with self.assertRaises(DatabaseError) as cm:
@@ -859,7 +858,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                         [],
                         auth_provider=AuthProvider(),
                         ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                        http_client=MagicMock(),
                     )
 
                     with self.assertRaises(DatabaseError) as cm:
@@ -875,7 +874,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
         for resp_type in self.execute_response_types:
             with self.subTest(resp_type=resp_type):
-
                 execute_resp = resp_type(
                     status=self.okay_status,
                     directResults=None,
@@ -912,7 +910,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
                 (
                     execute_response,
@@ -951,7 +949,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                     [],
                     auth_provider=AuthProvider(),
                     ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                    http_client=MagicMock(),
                 )
                 thrift_backend._results_message_to_execute_response = Mock()
 
@@ -1750,7 +1748,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_make_request_will_retry_GetOperationStatus(
         self, mock_retry_policy, mock_GetOperationStatus, t_transport_class
     ):
-
         import thrift, errno
         from databricks.sql.thrift_api.TCLIService.TCLIService import Client
         from databricks.sql.exc import RequestError
@@ -1827,7 +1824,6 @@ class ThriftBackendTestSuite(unittest.TestCase):
     def test_make_request_will_retry_GetOperationStatus_for_http_error(
         self, mock_retry_policy, mock_gos
     ):
-
         import urllib3.exceptions
 
         mock_gos.side_effect = urllib3.exceptions.HTTPError("Read timed out")
@@ -2108,7 +2104,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [],
                 auth_provider=AuthProvider(),
                 ssl_options=SSLOptions(),
-            http_client=MagicMock(),
+                http_client=MagicMock(),
                 **retry_delay_args,
             )
             retry_delay_expected_vals = {
@@ -2361,10 +2357,14 @@ class ThriftBackendTestSuite(unittest.TestCase):
         test_cases = [
             ("variant_col", {b"Spark:DataType:SqlName": b"VARIANT"}, "variant"),
             ("normal_col", {}, "string"),
-            ("weird_field", {b"Spark:DataType:SqlName": b"Some unexpected value"}, "string"),
+            (
+                "weird_field",
+                {b"Spark:DataType:SqlName": b"Some unexpected value"},
+                "string",
+            ),
             ("missing_field", None, "string"),  # None field case
         ]
-        
+
         for column_name, field_metadata, expected_type in test_cases:
             with self.subTest(column_name=column_name, expected_type=expected_type):
                 col = ttypes.TColumnDesc(
@@ -2375,7 +2375,9 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 field = (
                     None
                     if field_metadata is None
-                    else pyarrow.field(column_name, pyarrow.string(), metadata=field_metadata)
+                    else pyarrow.field(
+                        column_name, pyarrow.string(), metadata=field_metadata
+                    )
                 )
 
                 result = ThriftDatabricksClient._col_to_description(col, field)
@@ -2408,7 +2410,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 [("regular_col", "string")],
             ),
         ]
-        
+
         for columns, arrow_fields, expected_types in test_cases:
             with self.subTest(arrow_fields=arrow_fields is not None):
                 t_table_schema = ttypes.TTableSchema(

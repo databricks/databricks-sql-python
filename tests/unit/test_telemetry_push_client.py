@@ -80,10 +80,13 @@ class TestCircuitBreakerTelemetryPushClient:
         with pytest.raises(ValueError, match="Network error"):
             self.client.request(HttpMethod.POST, "https://test.com", {})
 
-    @pytest.mark.parametrize("status_code,expected_error", [
-        (429, TelemetryRateLimitError),
-        (503, TelemetryRateLimitError),
-    ])
+    @pytest.mark.parametrize(
+        "status_code,expected_error",
+        [
+            (429, TelemetryRateLimitError),
+            (503, TelemetryRateLimitError),
+        ],
+    )
     def test_request_rate_limit_codes(self, status_code, expected_error):
         """Test that rate-limit status codes raise TelemetryRateLimitError."""
         mock_response = Mock()
@@ -97,7 +100,7 @@ class TestCircuitBreakerTelemetryPushClient:
         """Test that non-rate-limit status codes return response."""
         mock_response = Mock()
         mock_response.status = 500
-        mock_response.data = b'Server error'
+        mock_response.data = b"Server error"
         self.mock_delegate.request.return_value = mock_response
 
         response = self.client.request(HttpMethod.POST, "https://test.com", {})
@@ -106,7 +109,9 @@ class TestCircuitBreakerTelemetryPushClient:
 
     def test_rate_limit_error_logging(self):
         """Test that rate limit errors are logged with circuit breaker context."""
-        with patch("databricks.sql.telemetry.telemetry_push_client.logger") as mock_logger:
+        with patch(
+            "databricks.sql.telemetry.telemetry_push_client.logger"
+        ) as mock_logger:
             mock_response = Mock()
             mock_response.status = 429
             self.mock_delegate.request.return_value = mock_response
@@ -121,7 +126,9 @@ class TestCircuitBreakerTelemetryPushClient:
 
     def test_other_error_logging(self):
         """Test that other errors are logged during wrapping/unwrapping."""
-        with patch("databricks.sql.telemetry.telemetry_push_client.logger") as mock_logger:
+        with patch(
+            "databricks.sql.telemetry.telemetry_push_client.logger"
+        ) as mock_logger:
             self.mock_delegate.request.side_effect = ValueError("Network error")
 
             with pytest.raises(ValueError, match="Network error"):
@@ -137,7 +144,10 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
         """Set up test fixtures."""
         self.mock_delegate = Mock()
         self.host = "test-host.example.com"
-        from databricks.sql.telemetry.circuit_breaker_manager import CircuitBreakerManager
+        from databricks.sql.telemetry.circuit_breaker_manager import (
+            CircuitBreakerManager,
+        )
+
         CircuitBreakerManager._instances.clear()
 
     def test_circuit_breaker_opens_after_failures(self):
@@ -210,4 +220,5 @@ class TestCircuitBreakerTelemetryPushClientIntegration:
     def test_urllib3_import_fallback(self):
         """Test that the urllib3 import fallback works correctly."""
         from databricks.sql.telemetry.telemetry_push_client import BaseHTTPResponse
+
         assert BaseHTTPResponse is not None

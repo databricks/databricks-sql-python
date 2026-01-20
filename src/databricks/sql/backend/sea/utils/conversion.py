@@ -35,7 +35,7 @@ def _convert_decimal(
     # Apply scale (quantize to specific number of decimal places) if specified
     quantizer = None
     if scale is not None:
-        quantizer = decimal.Decimal(f'0.{"0" * scale}')
+        quantizer = decimal.Decimal(f"0.{'0' * scale}")
 
     # Apply precision (total number of significant digits) if specified
     context = None

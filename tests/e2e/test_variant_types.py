@@ -54,15 +54,15 @@ class TestVariantTypes(PySQLPytestTestCase):
             cursor.execute(f"SELECT * FROM {variant_table} LIMIT 0")
 
             # Verify column types in description
-            assert (
-                cursor.description[0][1] == "int"
-            ), "Integer column type not correctly identified"
-            assert (
-                cursor.description[1][1] == "variant"
-            ), "VARIANT column type not correctly identified"
-            assert (
-                cursor.description[2][1] == "string"
-            ), "String column type not correctly identified"
+            assert cursor.description[0][1] == "int", (
+                "Integer column type not correctly identified"
+            )
+            assert cursor.description[1][1] == "variant", (
+                "VARIANT column type not correctly identified"
+            )
+            assert cursor.description[2][1] == "string", (
+                "String column type not correctly identified"
+            )
 
     def test_variant_data_retrieval(self, variant_table):
         """Test that VARIANT data is properly retrieved and can be accessed as JSON"""
@@ -72,9 +72,9 @@ class TestVariantTypes(PySQLPytestTestCase):
 
             # First row should have a JSON object
             json_obj = rows[0][1]
-            assert isinstance(
-                json_obj, str
-            ), "VARIANT column should be returned as string"
+            assert isinstance(json_obj, str), (
+                "VARIANT column should be returned as string"
+            )
 
             parsed = json.loads(json_obj)
             assert parsed.get("name") == "John"
@@ -82,9 +82,9 @@ class TestVariantTypes(PySQLPytestTestCase):
 
             # Second row should have a JSON array
             json_array = rows[1][1]
-            assert isinstance(
-                json_array, str
-            ), "VARIANT array should be returned as string"
+            assert isinstance(json_array, str), (
+                "VARIANT array should be returned as string"
+            )
 
             # Parsing to verify it's valid JSON array
             parsed_array = json.loads(json_array)

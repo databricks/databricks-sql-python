@@ -133,12 +133,15 @@ class TestCircuitBreakerIntegration:
 
         assert breaker.current_state in ["closed", "half-open", "open"]
 
-    @pytest.mark.parametrize("old_state,new_state", [
-        ("closed", "open"),
-        ("open", "half-open"),
-        ("half-open", "closed"),
-        ("closed", "half-open"),
-    ])
+    @pytest.mark.parametrize(
+        "old_state,new_state",
+        [
+            ("closed", "open"),
+            ("open", "half-open"),
+            ("half-open", "closed"),
+            ("closed", "half-open"),
+        ],
+    )
     def test_circuit_breaker_state_listener_transitions(self, old_state, new_state):
         """Test circuit breaker state listener logs all state transitions."""
         from databricks.sql.telemetry.circuit_breaker_manager import (
@@ -155,6 +158,8 @@ class TestCircuitBreakerIntegration:
         mock_new_state = Mock()
         mock_new_state.name = new_state
 
-        with patch("databricks.sql.telemetry.circuit_breaker_manager.logger") as mock_logger:
+        with patch(
+            "databricks.sql.telemetry.circuit_breaker_manager.logger"
+        ) as mock_logger:
             listener.state_change(mock_cb, mock_old_state, mock_new_state)
             mock_logger.debug.assert_called()

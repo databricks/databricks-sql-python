@@ -185,7 +185,7 @@ class TestSeaBackend:
         session_config = {
             "ANSI_MODE": "FALSE",  # Supported parameter
             "STATEMENT_TIMEOUT": "3600",  # Supported parameter
-            "QUERY_TAGS": "team:marketing,dashboard:abc123", # Supported parameter
+            "QUERY_TAGS": "team:marketing,dashboard:abc123",  # Supported parameter
             "unsupported_param": "value",  # Unsupported parameter
         }
         catalog = "test_catalog"
@@ -197,7 +197,7 @@ class TestSeaBackend:
             "session_confs": {
                 "ansi_mode": "FALSE",
                 "statement_timeout": "3600",
-                "query_tags": "team:marketing,dashboard:abc123", 
+                "query_tags": "team:marketing,dashboard:abc123",
             },
             "catalog": catalog,
             "schema": schema,
@@ -655,9 +655,9 @@ class TestSeaBackend:
 
         # Verify all returned values are strings
         for key, value in result.items():
-            assert isinstance(
-                value, str
-            ), f"Value for key '{key}' is not a string: {type(value)}"
+            assert isinstance(value, str), (
+                f"Value for key '{key}' is not a string: {type(value)}"
+            )
 
         # Verify specific conversions
         expected_result = {
@@ -700,9 +700,9 @@ class TestSeaBackend:
 
         # Verify all values are strings in case insensitive test
         for key, value in result.items():
-            assert isinstance(
-                value, str
-            ), f"Value for key '{key}' is not a string: {type(value)}"
+            assert isinstance(value, str), (
+                f"Value for key '{key}' is not a string: {type(value)}"
+            )
 
     def test_results_message_to_execute_response_is_staging_operation(self, sea_client):
         """Test that is_staging_operation is correctly set from manifest.is_volume_operation."""

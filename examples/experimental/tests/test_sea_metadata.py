@@ -1,6 +1,7 @@
 """
 Test for SEA metadata functionality.
 """
+
 import os
 import sys
 import logging

@@ -41,7 +41,6 @@ FILEPATH = "example.csv"
 _complete_path = os.path.realpath(FILEPATH)
 
 if not os.path.exists(_complete_path):
-
     # It's easiest to save a file in the same directory as this script. But any path to a file will work.
     raise Exception(
         "You need to set FILEPATH in this script to a file that actually exists."
@@ -56,9 +55,7 @@ with sql.connect(
     access_token=os.getenv("DATABRICKS_TOKEN"),
     staging_allowed_local_path=staging_allowed_local_path,
 ) as connection:
-
     with connection.cursor() as cursor:
-
         # Ingestion commands are executed like any other SQL.
         # Here's a sample PUT query. You can remove OVERWRITE at the end to avoid silently overwriting data.
         query = f"PUT '{_complete_path}' INTO 'stage://tmp/{INGESTION_USER}/pysql_examples/demo.csv' OVERWRITE"

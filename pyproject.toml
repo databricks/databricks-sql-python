@@ -41,7 +41,6 @@ pyarrow = ["pyarrow"]
 pytest = "^7.1.2"
 mypy = "^1.10.1"
 pylint = ">=2.12.0"
-black = "^22.3.0"
 pytest-dotenv = "^0.5.2"
 pytest-cov = "^4.0.0"
 pytest-xdist = "^3.0.0"
@@ -49,6 +48,7 @@ numpy = [
     { version = ">=1.16.6", python = ">=3.8,<3.11" },
     { version = ">=1.23.4", python = ">=3.11" },
 ]
+ruff = "^0.14.13"
 
 [tool.poetry.urls]
 "Homepage" = "https://github.com/databricks/databricks-sql-python"
@@ -62,8 +62,22 @@ build-backend = "poetry.core.masonry.api"
 ignore_missing_imports = "true"
 exclude = ['ttypes\.py$', 'TCLIService\.py$']
 
-[tool.black]
-exclude = '/(\.eggs|\.git|\.hg|\.mypy_cache|\.nox|\.tox|\.venv|\.svn|_build|buck-out|build|dist|thrift_api)/'
+[tool.ruff.format]
+exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".tox",
+    ".venv",
+    ".svn",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "**/thrift_api/**"
+]
 
 [tool.pytest.ini_options]
 markers = [

@@ -21,7 +21,6 @@ with sql.connect(
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     credentials_provider=creds,
 ) as connection:
-
     for x in range(1, 5):
         cursor = connection.cursor()
         cursor.execute("SELECT 1+1")

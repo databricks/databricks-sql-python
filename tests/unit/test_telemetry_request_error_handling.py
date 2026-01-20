@@ -36,18 +36,26 @@ class TestTelemetryPushClientRequestErrorHandling:
         return CircuitBreakerTelemetryPushClient(mock_delegate, "test-host.example.com")
 
     @pytest.mark.parametrize("status_code", [429, 503])
-    def test_request_error_with_rate_limit_codes(self, client, mock_delegate, status_code):
+    def test_request_error_with_rate_limit_codes(
+        self, client, mock_delegate, status_code
+    ):
         """Test that RequestError with rate-limit codes raises TelemetryRateLimitError."""
-        request_error = RequestError("HTTP request failed", context={"http-code": status_code})
+        request_error = RequestError(
+            "HTTP request failed", context={"http-code": status_code}
+        )
         mock_delegate.request.side_effect = request_error
 
         with pytest.raises(TelemetryRateLimitError):
             client.request(HttpMethod.POST, "https://test.com", {})
 
     @pytest.mark.parametrize("status_code", [500, 400, 404])
-    def test_request_error_with_non_rate_limit_codes(self, client, mock_delegate, status_code):
+    def test_request_error_with_non_rate_limit_codes(
+        self, client, mock_delegate, status_code
+    ):
         """Test that RequestError with non-rate-limit codes raises original RequestError."""
-        request_error = RequestError("HTTP request failed", context={"http-code": status_code})
+        request_error = RequestError(
+            "HTTP request failed", context={"http-code": status_code}
+        )
         mock_delegate.request.side_effect = request_error
 
         with pytest.raises(RequestError, match="HTTP request failed"):

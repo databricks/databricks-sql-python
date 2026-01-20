@@ -17,7 +17,6 @@ with sql.connect(
     server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
 ) as connection:
-
     for x in range(1, 100):
         cursor = connection.cursor()
         cursor.execute("SELECT 1+1")

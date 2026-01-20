@@ -143,7 +143,9 @@ class TestCircuitBreakerTelemetry:
                     # Wait for circuit to open (async telemetry may take time)
                     assert wait_for_circuit_state(
                         circuit_breaker, [STATE_OPEN], timeout=5
-                    ), f"Circuit didn't open within 5s, state: {circuit_breaker.current_state}"
+                    ), (
+                        f"Circuit didn't open within 5s, state: {circuit_breaker.current_state}"
+                    )
 
                     # Circuit should be OPEN after rate-limit failures
                     assert circuit_breaker.current_state == STATE_OPEN
@@ -262,7 +264,9 @@ class TestCircuitBreakerTelemetry:
                 # Wait for full recovery
                 assert wait_for_circuit_state(
                     circuit_breaker, [STATE_CLOSED, STATE_HALF_OPEN], timeout=5
-                ), f"Circuit didn't fully recover, state: {circuit_breaker.current_state}"
+                ), (
+                    f"Circuit didn't fully recover, state: {circuit_breaker.current_state}"
+                )
 
 
 if __name__ == "__main__":
