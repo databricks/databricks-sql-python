@@ -306,6 +306,8 @@ class Connection:
             )
             self.session.open()
         except Exception as e:
+            # Respect user's telemetry preference even during connection failure
+            enable_telemetry = kwargs.get("enable_telemetry", True)
             TelemetryClientFactory.connection_failure_log(
                 error_name="Exception",
                 error_message=str(e),
@@ -316,6 +318,7 @@ class Connection:
                 user_agent=self.session.useragent_header
                 if hasattr(self, "session")
                 else None,
+                enable_telemetry=enable_telemetry,
             )
             raise e
 
