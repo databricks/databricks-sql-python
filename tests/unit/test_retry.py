@@ -83,3 +83,23 @@ class TestRetry:
                 retry_policy.sleep(HTTPResponse(status=503))
                 # Internally urllib3 calls the increment function generating a new instance for every retry
                 retry_policy = retry_policy.increment()
+
+    def test_feature_flags_404_does_not_retry(self, retry_policy):
+        """Test that FEATURE_FLAGS CommandType with 404 should not retry"""
+        retry_policy._retry_start_time = time.time()
+        retry_policy.command_type = CommandType.FEATURE_FLAGS
+
+        should_retry, msg = retry_policy.should_retry("POST", 404)
+
+        assert should_retry is False
+        assert "FeatureFlags endpoint returned 404" in msg
+        assert "optional" in msg
+
+    def test_feature_flags_503_does_retry(self, retry_policy):
+        """Test that FEATURE_FLAGS CommandType with 503 should retry normally"""
+        retry_policy._retry_start_time = time.time()
+        retry_policy.command_type = CommandType.FEATURE_FLAGS
+
+        should_retry, msg = retry_policy.should_retry("POST", 503)
+
+        assert should_retry is True

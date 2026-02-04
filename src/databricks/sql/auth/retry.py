@@ -36,6 +36,7 @@ class CommandType(Enum):
     CLOSE_SESSION = "CloseSession"
     CLOSE_OPERATION = "CloseOperation"
     GET_OPERATION_STATUS = "GetOperationStatus"
+    FEATURE_FLAGS = "FeatureFlags"
     OTHER = "Other"
 
     @classmethod
@@ -406,6 +407,14 @@ class DatabricksRetryPolicy(Retry):
         ):
             raise CursorAlreadyClosedError(
                 "CloseOperation received 404 code from Databricks. Cursor is already closed."
+            )
+
+        # Request failed with 404 for feature flags endpoint (not available in Gov Cloud)
+        # Feature flags are optional, so gracefully degrade without retrying
+        if status_code == 404 and self.command_type == CommandType.FEATURE_FLAGS:
+            return (
+                False,
+                "FeatureFlags endpoint returned 404. Feature flags are optional and will be disabled."
             )
 
         # Request failed, was an ExecuteStatement and the command may have reached the server

@@ -251,11 +251,15 @@ class UnifiedHttpClient:
 
         return request_headers
 
-    def _prepare_retry_policy(self):
+    def _prepare_retry_policy(self, url: str = ""):
         """Set up the retry policy for the current request."""
         if isinstance(self._retry_policy, DatabricksRetryPolicy):
-            # Set command type for HTTP requests to OTHER (not database commands)
-            self._retry_policy.command_type = CommandType.OTHER
+            # Detect feature flags endpoint by URL pattern
+            if "/connector-service/feature-flags/" in url:
+                self._retry_policy.command_type = CommandType.FEATURE_FLAGS
+            else:
+                # Set command type for HTTP requests to OTHER (not database commands)
+                self._retry_policy.command_type = CommandType.OTHER
             # Start the retry timer for duration-based retry limits
             self._retry_policy.start_retry_timer()
 
@@ -285,8 +289,8 @@ class UnifiedHttpClient:
 
         request_headers = self._prepare_headers(headers)
 
-        # Prepare retry policy for this request
-        self._prepare_retry_policy()
+        # Prepare retry policy for this request (pass url for detection)
+        self._prepare_retry_policy(url)
 
         # Select appropriate pool manager based on target URL
         pool_manager = self._get_pool_manager_for_url(url)
