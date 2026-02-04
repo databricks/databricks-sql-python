@@ -59,11 +59,12 @@ jobs:
       - name: Update pyproject.toml
         run: poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
       #----------------------------------------------
+      # Build the package (before publish action)
+      #----------------------------------------------
+      - name: Build package
+        run: poetry build
+      #----------------------------------------------
       # Attempt push to test-pypi
       #----------------------------------------------
-      - name: Build and publish to pypi
-        uses: JRubics/poetry-publish@v1.10
-        with:
-          pypi_token: ${{ secrets.TEST_PYPI_TOKEN }}
-          repository_name: "testpypi"
-          repository_url: "https://test.pypi.org/legacy/"
+      - name: Publish to pypi
+        run: poetry publish --username __token__ --password ${{ secrets.TEST_PYPI_TOKEN }} --repository testpypi --repository-url https://test.pypi.org/legacy/

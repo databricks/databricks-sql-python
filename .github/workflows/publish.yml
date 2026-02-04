@@ -61,9 +61,12 @@ jobs:
       - name: Update pyproject.toml
         run: poetry version ${{ steps.version.outputs.current-version }}
       #----------------------------------------------
-      # Attempt push to test-pypi
+      # Build the package (before publish)
       #----------------------------------------------
-      - name: Build and publish to pypi
-        uses: JRubics/poetry-publish@v1.10
-        with:
-          pypi_token: ${{ secrets.PROD_PYPI_TOKEN }}
+      - name: Build package
+        run: poetry build
+      #----------------------------------------------
+      # Publish to pypi
+      #----------------------------------------------
+      - name: Publish to pypi
+        run: poetry publish --username __token__ --password ${{ secrets.PROD_PYPI_TOKEN }}
