@@ -36,6 +36,14 @@ jobs:
           virtualenvs-in-project: true
           installer-parallel: true
 
+      #----------------------------------------------
+      # Step 3.5: Install Kerberos system dependencies
+      #----------------------------------------------
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+
 #      #----------------------------------------------
 #      # Step 4: Load cached virtual environment (if available)
 #      #----------------------------------------------
