@@ -49,6 +49,10 @@ jobs:
       #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
       - name: Install dependencies
         run: poetry install --no-interaction --all-extras
       #----------------------------------------------
