@@ -64,7 +64,12 @@ jobs:
       - name: Build package
         run: poetry build
       #----------------------------------------------
+      # Configure test-pypi repository
+      #----------------------------------------------
+      - name: Configure test-pypi repository
+        run: poetry config repositories.testpypi https://test.pypi.org/legacy/
+      #----------------------------------------------
       # Attempt push to test-pypi
       #----------------------------------------------
-      - name: Publish to pypi
-        run: poetry publish --username __token__ --password ${{ secrets.TEST_PYPI_TOKEN }} --repository testpypi --repository-url https://test.pypi.org/legacy/
+      - name: Publish to test-pypi
+        run: poetry publish --username __token__ --password ${{ secrets.TEST_PYPI_TOKEN }} --repository testpypi
