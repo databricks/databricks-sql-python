@@ -12,7 +12,6 @@ from databricks.sql.common.http import HttpMethod
 from databricks.sql.exc import RequestError
 from databricks.sql.auth.common import ClientContext
 from databricks.sql.types import SSLOptions
-from databricks.sql.auth.retry import CommandType
 
 
 class TestUnifiedHttpClientMaxRetryError:
@@ -135,66 +134,3 @@ class TestUnifiedHttpClientMaxRetryError:
 
             error = exc_info.value
             assert "HTTP request error" in str(error)
-
-
-class TestUnifiedHttpClientFeatureFlagsDetection:
-    """Test feature flags URL detection and CommandType setting."""
-
-    @pytest.fixture
-    def client_context(self):
-        """Create a minimal ClientContext for testing."""
-        context = Mock(spec=ClientContext)
-        context.hostname = "https://test.databricks.com"
-        context.ssl_options = SSLOptions(
-            tls_verify=True,
-            tls_verify_hostname=True,
-            tls_trusted_ca_file=None,
-            tls_client_cert_file=None,
-            tls_client_cert_key_file=None,
-            tls_client_cert_key_password=None,
-        )
-        context.socket_timeout = 30
-        context.retry_stop_after_attempts_count = 3
-        context.retry_delay_min = 1.0
-        context.retry_delay_max = 10.0
-        context.retry_stop_after_attempts_duration = 300.0
-        context.retry_delay_default = 5.0
-        context.retry_dangerous_codes = []
-        context.proxy_auth_method = None
-        context.pool_connections = 10
-        context.pool_maxsize = 20
-        context.user_agent = "test-agent"
-        return context
-
-    @pytest.fixture
-    def http_client(self, client_context):
-        """Create UnifiedHttpClient instance."""
-        return UnifiedHttpClient(client_context)
-
-    def test_feature_flags_url_sets_feature_flags_command_type(self, http_client):
-        """Test that feature flags URL sets CommandType.FEATURE_FLAGS"""
-        feature_flags_url = "https://test.databricks.com/connector-service/feature-flags/v1"
-
-        # Call _prepare_retry_policy with feature flags URL
-        http_client._prepare_retry_policy(feature_flags_url)
-
-        # Verify CommandType is set to FEATURE_FLAGS
-        assert http_client._retry_policy.command_type == CommandType.FEATURE_FLAGS
-
-    def test_non_feature_flags_url_sets_other_command_type(self, http_client):
-        """Test that non-feature-flags URLs set CommandType.OTHER"""
-        normal_url = "https://test.databricks.com/api/2.0/sql/statements"
-
-        # Call _prepare_retry_policy with normal URL
-        http_client._prepare_retry_policy(normal_url)
-
-        # Verify CommandType is set to OTHER
-        assert http_client._retry_policy.command_type == CommandType.OTHER
-
-    def test_empty_url_sets_other_command_type(self, http_client):
-        """Test that empty URL defaults to CommandType.OTHER"""
-        # Call _prepare_retry_policy with empty URL
-        http_client._prepare_retry_policy("")
-
-        # Verify CommandType is set to OTHER
-        assert http_client._retry_policy.command_type == CommandType.OTHER
