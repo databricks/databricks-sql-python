@@ -296,7 +296,7 @@ class TelemetryClient(BaseTelemetryClient):
                 url,
                 data=request.to_json(),
                 headers=headers,
-                timeout=30,
+                timeout=900,
             )
 
             future.add_done_callback(
@@ -731,7 +731,7 @@ class TelemetryClientFactory:
         UNAUTH_DUMMY_SESSION_ID = "unauth_session_id"
 
         TelemetryClientFactory.initialize_telemetry_client(
-            telemetry_enabled=enable_telemetry,
+            telemetry_enabled=True,
             session_id_hex=UNAUTH_DUMMY_SESSION_ID,
             auth_provider=None,
             host_url=host_url,
