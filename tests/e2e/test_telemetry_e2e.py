@@ -44,6 +44,7 @@ class TelemetryTestBase:
 
 
 @pytest.mark.serial
+@pytest.mark.xdist_group(name="serial_telemetry")
 class TestTelemetryE2E(TelemetryTestBase):
     """E2E tests for telemetry scenarios - must run serially due to shared host-level telemetry client"""
 

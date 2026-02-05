@@ -27,6 +27,7 @@ def run_in_threads(target, num_threads, pass_index=False):
 
 
 @pytest.mark.serial
+@pytest.mark.xdist_group(name="serial_telemetry")
 class TestE2ETelemetry(PySQLPytestTestCase):
     @pytest.fixture(autouse=True)
     def telemetry_setup_teardown(self):
