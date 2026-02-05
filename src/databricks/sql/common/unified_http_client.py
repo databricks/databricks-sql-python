@@ -294,7 +294,9 @@ class UnifiedHttpClient:
         # DEFENSIVE: Check if pool_manager is None (client closing/closed)
         # This prevents AttributeError race condition when telemetry cleanup happens
         if pool_manager is None:
-            logger.debug("HTTP client closing or closed, cannot make request to %s", url)
+            logger.debug(
+                "HTTP client closing or closed, cannot make request to %s", url
+            )
             raise RequestError("HTTP client is closing or has been closed")
 
         response = None

@@ -445,7 +445,7 @@ class TelemetryClient(BaseTelemetryClient):
         close the http client.
         """
         try:
-            if hasattr(self, '_http_client') and self._http_client:
+            if hasattr(self, "_http_client") and self._http_client:
                 self._http_client.close()
         except Exception:
             pass
