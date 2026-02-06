@@ -37,8 +37,10 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         this robust and automatic.
         """
         # Clean up BEFORE test starts to ensure no leftover state from previous tests
+        # Use wait=True to ensure all pending telemetry from previous tests completes
+        # This prevents those events from being captured by this test's mock
         if TelemetryClientFactory._executor:
-            TelemetryClientFactory._executor.shutdown(wait=True)
+            TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for pending telemetry
             TelemetryClientFactory._executor = None
         TelemetryClientFactory._stop_flush_thread()
         TelemetryClientFactory._flush_event.clear()  # Clear the event flag
@@ -49,8 +51,9 @@ class TestE2ETelemetry(PySQLPytestTestCase):
             yield
         finally:
             # Clean up AFTER test ends
+            # Use wait=True to ensure this test's telemetry completes before next test starts
             if TelemetryClientFactory._executor:
-                TelemetryClientFactory._executor.shutdown(wait=True)
+                TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for this test's telemetry
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
             TelemetryClientFactory._flush_event.clear()  # Clear the event flag
@@ -62,6 +65,14 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         An E2E test where concurrent threads execute real queries against
         the staging endpoint, while we capture and verify the generated telemetry.
         """
+        # Extra flush right before test starts to clear any events that accumulated
+        # between fixture cleanup and now (e.g., from other tests on same worker)
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)
+            TelemetryClientFactory._executor = None
+        TelemetryClientFactory._clients.clear()
+        TelemetryClientFactory._initialized = False
+
         num_threads = 30
         capture_lock = threading.Lock()
         captured_telemetry = []

@@ -52,8 +52,9 @@ class TestTelemetryE2E(TelemetryTestBase):
     def telemetry_setup_teardown(self):
         """Clean up telemetry client state before and after each test"""
         # Clean up BEFORE test starts
+        # Use wait=True to ensure all pending telemetry from previous tests completes
         if TelemetryClientFactory._executor:
-            TelemetryClientFactory._executor.shutdown(wait=True)
+            TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for pending telemetry
             TelemetryClientFactory._executor = None
         TelemetryClientFactory._stop_flush_thread()
         TelemetryClientFactory._flush_event.clear()  # Clear the event flag
@@ -72,8 +73,9 @@ class TestTelemetryE2E(TelemetryTestBase):
             yield
         finally:
             # Clean up AFTER test ends
+            # Use wait=True to ensure this test's telemetry completes
             if TelemetryClientFactory._executor:
-                TelemetryClientFactory._executor.shutdown(wait=True)
+                TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for this test's telemetry
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
             TelemetryClientFactory._flush_event.clear()  # Clear the event flag
