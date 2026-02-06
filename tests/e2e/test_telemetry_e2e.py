@@ -51,17 +51,34 @@ class TestTelemetryE2E(TelemetryTestBase):
     @pytest.fixture(autouse=True)
     def telemetry_setup_teardown(self):
         """Clean up telemetry client state before and after each test"""
+        # Clean up BEFORE test starts
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)
+            TelemetryClientFactory._executor = None
+        TelemetryClientFactory._stop_flush_thread()
+        TelemetryClientFactory._clients.clear()
+        TelemetryClientFactory._initialized = False
+
+        # Clear feature flags cache before test starts
+        from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+        with FeatureFlagsContextFactory._lock:
+            FeatureFlagsContextFactory._context_map.clear()
+            if FeatureFlagsContextFactory._executor:
+                FeatureFlagsContextFactory._executor.shutdown(wait=False)
+                FeatureFlagsContextFactory._executor = None
+
         try:
             yield
         finally:
+            # Clean up AFTER test ends
             if TelemetryClientFactory._executor:
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
+            TelemetryClientFactory._clients.clear()
             TelemetryClientFactory._initialized = False
 
-            # Clear feature flags cache to prevent state leakage between tests
-            from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+            # Clear feature flags cache after test ends
             with FeatureFlagsContextFactory._lock:
                 FeatureFlagsContextFactory._context_map.clear()
                 if FeatureFlagsContextFactory._executor:
