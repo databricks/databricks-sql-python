@@ -56,6 +56,7 @@ class TestTelemetryE2E(TelemetryTestBase):
             TelemetryClientFactory._executor.shutdown(wait=True)
             TelemetryClientFactory._executor = None
         TelemetryClientFactory._stop_flush_thread()
+        TelemetryClientFactory._flush_event.clear()  # Clear the event flag
         TelemetryClientFactory._clients.clear()
         TelemetryClientFactory._initialized = False
 
@@ -75,6 +76,7 @@ class TestTelemetryE2E(TelemetryTestBase):
                 TelemetryClientFactory._executor.shutdown(wait=True)
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
+            TelemetryClientFactory._flush_event.clear()  # Clear the event flag
             TelemetryClientFactory._clients.clear()
             TelemetryClientFactory._initialized = False
 
