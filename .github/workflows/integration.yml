@@ -60,7 +60,7 @@ jobs:
           poetry run python -m pytest tests/e2e \
             --ignore=tests/e2e/test_telemetry_e2e.py \
             --ignore=tests/e2e/test_concurrent_telemetry.py \
-            -n auto --dist=loadgroup
+            -n auto
 
   run-telemetry-tests:
     runs-on: ubuntu-latest
@@ -100,7 +100,7 @@ jobs:
         run: poetry install --no-interaction --all-extras
       - name: Run telemetry tests in isolation
         run: |
-          # Run telemetry tests in fresh Python process with complete isolation
+          # Run test_concurrent_telemetry.py in isolation with complete process separation
           # Use --dist=loadgroup to respect @pytest.mark.xdist_group markers
-          poetry run python -m pytest tests/e2e/test_concurrent_telemetry.py tests/e2e/test_telemetry_e2e.py \
+          poetry run python -m pytest tests/e2e/test_concurrent_telemetry.py \
             -n auto --dist=loadgroup -v
