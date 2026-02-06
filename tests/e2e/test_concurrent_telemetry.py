@@ -163,17 +163,6 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 if "numProtoSuccess" in response:
                     total_successful_events += response["numProtoSuccess"]
 
-            # DEBUG: Print detailed counts to understand CI vs local difference
-            print(f"\n{'='*60}")
-            print(f"TELEMETRY DEBUG - Understanding 88 vs 60 discrepancy")
-            print(f"{'='*60}")
-            print(f"Client side captured_telemetry: {len(captured_telemetry)} events")
-            print(f"Client side captured_futures: {len(captured_futures)} futures")
-            print(f"Server side captured_responses: {len(captured_responses)} responses")
-            print(f"Server reported total_successful_events: {total_successful_events}")
-            print(f"Expected events: {num_threads * 2}")
-            print(f"{'='*60}\n")
-
             assert total_successful_events == num_threads * 2
 
             assert (

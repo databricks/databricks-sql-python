@@ -31,6 +31,13 @@ jobs:
         with:
           python-version: "3.10"
       #----------------------------------------------
+      #  -----  install system dependencies  -----
+      #----------------------------------------------
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+      #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       - name: Install Poetry
@@ -75,13 +82,29 @@ jobs:
             -v
 
       #----------------------------------------------
-      #    run serial tests with coverage
+      #    run serial tests (excluding telemetry) with coverage
       #----------------------------------------------
-      - name: Run serial tests with coverage
+      - name: Run serial tests (excluding telemetry) with coverage
         continue-on-error: false
         run: |
           poetry run pytest tests/e2e \
             -m "serial" \
+            --ignore=tests/e2e/test_telemetry_e2e.py \
+            --ignore=tests/e2e/test_concurrent_telemetry.py \
+            --cov=src \
+            --cov-append \
+            --cov-report=xml \
+            --cov-report=term \
+            -v
+
+      #----------------------------------------------
+      #    run telemetry tests with coverage (isolated)
+      #----------------------------------------------
+      - name: Run telemetry tests with coverage (isolated)
+        continue-on-error: false
+        run: |
+          # Run telemetry tests separately for isolation
+          poetry run pytest tests/e2e/test_concurrent_telemetry.py tests/e2e/test_telemetry_e2e.py \
             --cov=src \
             --cov-append \
             --cov-report=xml \
