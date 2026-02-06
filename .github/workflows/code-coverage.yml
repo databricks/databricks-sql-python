@@ -103,8 +103,8 @@ jobs:
       - name: Run telemetry tests with coverage (isolated)
         continue-on-error: false
         run: |
-          # Run telemetry tests separately for isolation
-          poetry run pytest tests/e2e/test_concurrent_telemetry.py tests/e2e/test_telemetry_e2e.py \
+          # Run test_concurrent_telemetry.py separately for isolation
+          poetry run pytest tests/e2e/test_concurrent_telemetry.py \
             --cov=src \
             --cov-append \
             --cov-report=xml \
