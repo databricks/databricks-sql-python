@@ -41,10 +41,9 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
       #----------------------------------------------
-      # install dependencies if cache does not exist
+      # install dependencies
       #----------------------------------------------
       - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
       #----------------------------------------------
       # Get the current version and increment it (test-pypi requires a unique version number)
