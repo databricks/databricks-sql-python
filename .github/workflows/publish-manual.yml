@@ -31,9 +31,18 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1  # Install Poetry, the Python package manager
         with:
+          version: "2.2.1"
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
+
+      #----------------------------------------------
+      # Step 3.5: Install Kerberos system dependencies
+      #----------------------------------------------
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
 
 #      #----------------------------------------------
 #      # Step 4: Load cached virtual environment (if available)

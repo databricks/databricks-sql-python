@@ -373,6 +373,13 @@ class DatabricksRetryPolicy(Retry):
         if status_code == 403:
             return False, "403 codes are not retried"
 
+        # Request failed with 404. Don't retry for any command type.
+        if status_code == 404:
+            return (
+                False,
+                "Received 404 - NOT_FOUND. The requested resource does not exist.",
+            )
+
         # Request failed and server said NotImplemented. This isn't recoverable. Don't retry.
         if status_code == 501:
             return False, "Received code 501 from server."
@@ -380,33 +387,6 @@ class DatabricksRetryPolicy(Retry):
         # Request failed and this method is not retryable. We only retry POST requests.
         if not self._is_method_retryable(method):
             return False, "Only POST requests are retried"
-
-        # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
-        if status_code == 404 and self.command_type == CommandType.GET_OPERATION_STATUS:
-            return (
-                False,
-                "GetOperationStatus received 404 code from Databricks. Operation was canceled.",
-            )
-
-        # Request failed with 404 because CloseSession returns 404 if you repeat the request.
-        if (
-            status_code == 404
-            and self.command_type == CommandType.CLOSE_SESSION
-            and len(self.history) > 0
-        ):
-            raise SessionAlreadyClosedError(
-                "CloseSession received 404 code from Databricks. Session is already closed."
-            )
-
-        # Request failed with 404 because CloseOperation returns 404 if you repeat the request.
-        if (
-            status_code == 404
-            and self.command_type == CommandType.CLOSE_OPERATION
-            and len(self.history) > 0
-        ):
-            raise CursorAlreadyClosedError(
-                "CloseOperation received 404 code from Databricks. Cursor is already closed."
-            )
 
         # Request failed, was an ExecuteStatement and the command may have reached the server
         if (
