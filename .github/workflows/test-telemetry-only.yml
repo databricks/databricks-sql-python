@@ -53,4 +53,5 @@ jobs:
 
       - name: Run telemetry test only (with xdist auto to mimic real CI)
         run: |
-          poetry run python -m pytest tests/e2e/test_concurrent_telemetry.py::TestE2ETelemetry::test_concurrent_queries_sends_telemetry -n auto -v -s
+          # Use --dist=loadgroup to respect @pytest.mark.xdist_group markers
+          poetry run python -m pytest tests/e2e/test_concurrent_telemetry.py::TestE2ETelemetry::test_concurrent_queries_sends_telemetry -n auto --dist=loadgroup -v -s

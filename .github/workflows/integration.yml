@@ -57,6 +57,7 @@ jobs:
       - name: Run e2e tests (excluding daily-only tests)
         run: |
           # Exclude telemetry E2E tests from PR runs (run daily instead)
+          # Use --dist=loadgroup to respect @pytest.mark.xdist_group markers
           poetry run python -m pytest tests/e2e \
             --ignore=tests/e2e/test_telemetry_e2e.py \
-            -n auto
+            -n auto --dist=loadgroup
