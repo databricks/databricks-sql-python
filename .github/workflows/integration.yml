@@ -7,7 +7,7 @@ on:
   pull_request:   
 
 jobs:
-  run-e2e-tests:
+  run-non-telemetry-tests:
     runs-on: ubuntu-latest
     environment: azure-prod
     env:
@@ -54,10 +54,49 @@ jobs:
       #----------------------------------------------
       #              run test suite
       #----------------------------------------------
-      - name: Run e2e tests (excluding daily-only tests)
+      - name: Run non-telemetry e2e tests
         run: |
-          # Exclude telemetry E2E tests from PR runs (run daily instead)
-          # Use --dist=loadgroup to respect @pytest.mark.xdist_group markers
+          # Exclude all telemetry tests - they run in separate job for isolation
           poetry run python -m pytest tests/e2e \
             --ignore=tests/e2e/test_telemetry_e2e.py \
+            --ignore=tests/e2e/test_concurrent_telemetry.py \
             -n auto --dist=loadgroup
+
+  run-telemetry-tests:
+    runs-on: ubuntu-latest
+    needs: run-non-telemetry-tests  # Run after non-telemetry tests complete
+    environment: azure-prod
+    env:
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      DATABRICKS_CATALOG: peco
+      DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Install dependencies
+        run: poetry install --no-interaction --all-extras
+      - name: Run telemetry tests in isolation
+        run: |
+          # Run telemetry tests in fresh Python process with complete isolation
+          # Use --dist=loadgroup to respect @pytest.mark.xdist_group markers
+          poetry run python -m pytest tests/e2e/test_concurrent_telemetry.py tests/e2e/test_telemetry_e2e.py \
+            -n auto --dist=loadgroup -v
