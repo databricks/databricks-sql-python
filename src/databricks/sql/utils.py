@@ -898,6 +898,46 @@ def concat_table_chunks(
         return pyarrow.concat_tables(table_chunks)
 
 
+def serialize_query_tags(query_tags: Optional[Dict[str, Optional[str]]]) -> Optional[str]:
+    """
+    Serialize query_tags dictionary to a string format.
+
+    Format: "key1:value1,key2:value2"
+    Special cases:
+    - If value is None, omit the colon and value (e.g., "key1:value1,key2,key3:value3")
+    - Escape special characters (:, ,, \\) in values with a leading backslash
+    - Keys are not escaped (assumed to be controlled identifiers)
+
+    Args:
+        query_tags: Dictionary of query tags where keys are strings and values are optional strings
+
+    Returns:
+        Serialized string or None if query_tags is None or empty
+    """
+    if not query_tags:
+        return None
+
+    def escape_value(value: str) -> str:
+        """Escape special characters in tag values."""
+        # Escape backslash first to avoid double-escaping
+        value = value.replace("\\", "\\\\")
+        # Escape colon and comma
+        value = value.replace(":", "\\:")
+        value = value.replace(",", "\\,")
+        return value
+
+    serialized_parts = []
+    for key, value in query_tags.items():
+        if value is None:
+            # No colon or value when value is None
+            serialized_parts.append(key)
+        else:
+            escaped_value = escape_value(value)
+            serialized_parts.append(f"{key}:{escaped_value}")
+
+    return ",".join(serialized_parts)
+
+
 def build_client_context(server_hostname: str, version: str, **kwargs):
     """Build ClientContext for HTTP client configuration."""
     from databricks.sql.auth.common import ClientContext
