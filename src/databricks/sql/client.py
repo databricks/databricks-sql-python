@@ -1459,7 +1459,12 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    def executemany(self, operation, seq_of_parameters):
+    def executemany(
+        self,
+        operation,
+        seq_of_parameters,
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
+    ):
         """
         Execute the operation once for every set of passed in parameters.
 
@@ -1468,10 +1473,14 @@ class Cursor:
 
         Only the final result set is retained.
 
+        :param query_tags: Optional dictionary of query tags to apply for all queries in this batch.
+            Tags are key-value pairs that can be used to identify and categorize queries.
+            Example: {"team": "data-eng", "application": "etl"}
+
         :returns self
         """
         for parameters in seq_of_parameters:
-            self.execute(operation, parameters)
+            self.execute(operation, parameters, query_tags=query_tags)
         return self
 
     @log_latency(StatementType.METADATA)

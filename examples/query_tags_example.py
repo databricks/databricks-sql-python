@@ -93,4 +93,24 @@ with sql.connect(
         result = cursor.fetchone()
         print(f"  Async Query Result: {result[0]}")
 
+print()
+
+# Example 4: executemany with query tags
+print("Example 4: executemany with query tags")
+with sql.connect(
+    server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
+    http_path=os.getenv("DATABRICKS_HTTP_PATH"),
+    access_token=os.getenv("DATABRICKS_TOKEN"),
+) as connection:
+
+    with connection.cursor() as cursor:
+        # Execute multiple queries with the same tags
+        cursor.executemany(
+            "SELECT ?",
+            [[5], [6], [7]],
+            query_tags={"team": "data-eng", "batch": "executemany"}
+        )
+        result = cursor.fetchone()
+        print(f"  Executemany Query Result (last): {result[0]}")
+
 print("\n=== Query Tags Example Complete ===")
