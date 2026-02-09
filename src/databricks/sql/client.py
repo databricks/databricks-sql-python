@@ -8,6 +8,7 @@ except ImportError:
     pyarrow = None
 import json
 import os
+import sys
 import decimal
 from urllib.parse import urlparse
 from uuid import UUID
@@ -519,20 +520,36 @@ class Connection:
         self._close()
 
     def _close(self, close_cursors=True) -> None:
+        # Check if Python is shutting down
+        shutting_down = sys.meta_path is None
+        
         if close_cursors:
             for cursor in self._cursors:
-                cursor.close()
+                try:
+                    cursor.close()
+                except Exception:
+                    if not shutting_down:
+                        logger.debug("Error closing cursor during connection close", exc_info=True)
 
         try:
             self.session.close()
         except Exception as e:
-            logger.error(f"Attempt to close session raised a local exception: {e}")
+            if not shutting_down:
+                logger.error(f"Attempt to close session raised a local exception: {e}")
 
-        TelemetryClientFactory.close(host_url=self.session.host)
+        try:
+            TelemetryClientFactory.close(host_url=self.session.host)
+        except Exception:
+            if not shutting_down:
+                logger.debug("Error closing telemetry client", exc_info=True)
 
         # Close HTTP client that was created by this connection
         if self.http_client:
-            self.http_client.close()
+            try:
+                self.http_client.close()
+            except Exception:
+                if not shutting_down:
+                    logger.debug("Error closing HTTP client", exc_info=True)
 
     @property
     def autocommit(self) -> bool:

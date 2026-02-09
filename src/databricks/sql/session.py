@@ -211,6 +211,7 @@ class Session:
                     "Attempt to close session raised an exception at the server: %s", e
                 )
         except Exception as e:
-            logger.error("Attempt to close session raised a local exception: %s", e)
+            if getattr(sys, "meta_path", None):
+                logger.error("Attempt to close session raised a local exception: %s", e)
 
         self.is_open = False
