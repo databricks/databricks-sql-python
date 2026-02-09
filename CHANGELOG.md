@@ -1,5 +1,9 @@
 # Release History
 
+# 4.2.5 (2026-02-09)
+- Fix feature-flag endpoint retries in gov region (databricks/databricks-sql-python#735 by @samikshya-db)
+- Improve telemetry lifecycle management (databricks/databricks-sql-python#734 by @msrathore-db)
+
 # 4.2.4 (2026-01-07)
 - Fixed the exception handler close() on _TelemetryClientHolder (databricks/databricks-sql-python#723 by @msrathore-db)
 - Created util method to normalise http protocol in http path (databricks/databricks-sql-python#724 by @nikhilsuri-db)
