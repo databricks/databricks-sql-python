@@ -74,6 +74,11 @@ with sql.connect(
         result = cursor.fetchone()
         print(f"  Special Chars Query Result: {result[0]}")
 
+        # Query 4: No tags (demonstrates tags don't persist from previous queries)
+        cursor.execute("SELECT 4")
+        result = cursor.fetchone()
+        print(f"  No Tags Query Result: {result[0]}")
+
 print()
 
 # Example 3: Async execution with query tags
@@ -86,7 +91,7 @@ with sql.connect(
 
     with connection.cursor() as cursor:
         cursor.execute_async(
-            "SELECT 4",
+            "SELECT 5",
             query_tags={"team": "data-eng", "mode": "async"}
         )
         cursor.get_async_execution_result()
@@ -107,7 +112,7 @@ with sql.connect(
         # Execute multiple queries with the same tags
         cursor.executemany(
             "SELECT ?",
-            [[5], [6], [7]],
+            [[6], [7], [8]],
             query_tags={"team": "data-eng", "batch": "executemany"}
         )
         result = cursor.fetchone()
