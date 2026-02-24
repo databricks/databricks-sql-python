@@ -914,11 +914,17 @@ def build_client_context(server_hostname: str, version: str, **kwargs):
     )
 
     # Build user agent
+    from databricks.sql.common.agent import detect as detect_agent
+
     user_agent_entry = kwargs.get("user_agent_entry", "")
     if user_agent_entry:
         user_agent = f"PyDatabricksSqlConnector/{version} ({user_agent_entry})"
     else:
         user_agent = f"PyDatabricksSqlConnector/{version}"
+
+    agent_product = detect_agent()
+    if agent_product:
+        user_agent += f" agent/{agent_product}"
 
     # Explicitly construct ClientContext with proper types
     return ClientContext(
