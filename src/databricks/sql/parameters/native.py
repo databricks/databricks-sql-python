@@ -659,7 +659,7 @@ def dbsql_parameter_from_primitive(
     elif isinstance(value, str):
         return StringParameter(value=value, name=name)
     elif isinstance(value, float):
-        return FloatParameter(value=value, name=name)
+        return DoubleParameter(value=value, name=name)
     elif isinstance(value, datetime.datetime):
         return TimestampParameter(value=value, name=name)
     elif isinstance(value, datetime.date):
