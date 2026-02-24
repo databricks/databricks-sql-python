@@ -13,6 +13,7 @@ from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
+from databricks.sql.common.agent import detect as detect_agent
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,10 @@ class Session:
             )
         else:
             self.useragent_header = "{}/{}".format(USER_AGENT_NAME, __version__)
+
+        agent_product = detect_agent()
+        if agent_product:
+            self.useragent_header += " agent/{}".format(agent_product)
 
         base_headers = [("User-Agent", self.useragent_header)]
         all_headers = (http_headers or []) + base_headers
