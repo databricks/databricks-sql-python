@@ -633,6 +633,61 @@ class ClientTestSuite(unittest.TestCase):
             cursors_closed, [1, 2], "Both cursors should have close called"
         )
 
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
+    @patch("databricks.sql.client.logger")
+    def test_unknown_connection_param_issues_warning(
+        self, mock_logger, mock_client_class
+    ):
+        """Unknown kwargs passed to Connection should trigger a warning."""
+        databricks.sql.connect(
+            **self.DUMMY_CONNECTION_ARGS, totally_unknown_param="value"
+        )
+        mock_logger.warning.assert_called_once()
+        warning_msg = mock_logger.warning.call_args[0][0]
+        self.assertIn("Unsupported connection parameter", warning_msg)
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
+    @patch("databricks.sql.client.logger")
+    def test_unknown_connection_param_warning_names_the_param(
+        self, mock_logger, mock_client_class
+    ):
+        """Warning message should include the name of the unknown parameter."""
+        databricks.sql.connect(
+            **self.DUMMY_CONNECTION_ARGS, totally_unknown_param="value"
+        )
+        # The unknown param name should appear in the warning args
+        call_args = mock_logger.warning.call_args
+        formatted_msg = call_args[0][0] % call_args[0][1:]
+        self.assertIn("totally_unknown_param", formatted_msg)
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
+    @patch("databricks.sql.client.logger")
+    def test_known_connection_params_do_not_issue_warning(
+        self, mock_logger, mock_client_class
+    ):
+        """Known kwargs passed to Connection should not trigger an unknown-param warning."""
+        databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, use_cloud_fetch=False)
+        for call in mock_logger.warning.call_args_list:
+            msg = call[0][0]
+            self.assertNotIn("Unsupported connection parameter", msg)
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
+    @patch("databricks.sql.client.logger")
+    def test_multiple_unknown_params_all_appear_in_warning(
+        self, mock_logger, mock_client_class
+    ):
+        """All unknown param names should appear in the warning message."""
+        databricks.sql.connect(
+            **self.DUMMY_CONNECTION_ARGS,
+            bad_param_one="a",
+            bad_param_two="b",
+        )
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        formatted_msg = call_args[0][0] % call_args[0][1:]
+        self.assertIn("bad_param_one", formatted_msg)
+        self.assertIn("bad_param_two", formatted_msg)
+
 
 class TransactionTestSuite(unittest.TestCase):
     """
