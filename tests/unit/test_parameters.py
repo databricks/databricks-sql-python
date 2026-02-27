@@ -295,6 +295,7 @@ class TestDbsqlParameter:
             (BigIntegerParameter, Primitive.BIGINT),
             (BooleanParameter, Primitive.BOOL),
             (DateParameter, Primitive.DATE),
+            (DoubleParameter, Primitive.DOUBLE),
             (DoubleParameter, Primitive.FLOAT),
             (VoidParameter, Primitive.NONE),
             (TimestampParameter, Primitive.TIMESTAMP),
