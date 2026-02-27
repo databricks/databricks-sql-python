@@ -180,19 +180,19 @@ class TestUtils:
         query_tags = {
             "key1": "value:with:colons",
             "key2": "value,with,commas",
-            "key3": "value\\with\\backslashes",
+            "key3": r"value\with\backslashes",
         }
         result = serialize_query_tags(query_tags)
         assert (
             result
-            == "key1:value\\:with\\:colons,key2:value\\,with\\,commas,key3:value\\\\with\\\\backslashes"
+            == r"key1:value\:with\:colons,key2:value\,with\,commas,key3:value\\with\\backslashes"
         )
 
     def test_serialize_query_tags_with_mixed_special_chars(self):
         """Test query tags with mixed special characters"""
-        query_tags = {"key1": "a:b,c\\d"}
+        query_tags = {"key1": r"a:b,c\d"}
         result = serialize_query_tags(query_tags)
-        assert result == "key1:a\\:b\\,c\\\\d"
+        assert result == r"key1:a\:b\,c\\d"
 
     def test_serialize_query_tags_empty_dict(self):
         """Test serialization with empty dictionary"""
@@ -206,17 +206,17 @@ class TestUtils:
         assert result is None
 
     def test_serialize_query_tags_with_special_chars_in_key(self):
-        """Test query tags with special characters in keys (keys are not escaped)"""
+        """Test query tags with special characters in keys (only backslashes are escaped in keys)"""
         query_tags = {
             "key:with:colons": "value1",
             "key,with,commas": "value2",
-            "key\\with\\backslashes": "value3",
+            r"key\with\backslashes": "value3",
         }
         result = serialize_query_tags(query_tags)
-        # Keys are not escaped, only values are
+        # Only backslashes are escaped in keys; colons and commas in keys are not escaped
         assert (
             result
-            == "key:with:colons:value1,key,with,commas:value2,key\\with\\backslashes:value3"
+            == r"key:with:colons:value1,key,with,commas:value2,key\\with\\backslashes:value3"
         )
 
     def test_serialize_query_tags_all_none_values(self):

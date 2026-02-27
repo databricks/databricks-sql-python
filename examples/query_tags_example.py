@@ -16,7 +16,7 @@ Example: {"team": "engineering", "application": "etl", "priority": "high"}
 
 Special cases:
 - If a value is None, only the key is included (no colon or value)
-- Special characters (:, ,, \\) in values are automatically escaped
+- Special characters (comma, colon and backslash) in values are automatically escaped
 - Keys are not escaped (should be controlled identifiers)
 """
 

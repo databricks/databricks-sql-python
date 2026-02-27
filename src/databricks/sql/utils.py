@@ -908,7 +908,7 @@ def serialize_query_tags(
     Special cases:
     - If value is None, omit the colon and value (e.g., "key1:value1,key2,key3:value3")
     - Escape special characters (:, ,, \\) in values with a leading backslash
-    - Keys are not escaped (assumed to be controlled identifiers)
+    - Backslashes in keys are escaped; other special characters in keys are not escaped
 
     Args:
         query_tags: Dictionary of query tags where keys are strings and values are optional strings
@@ -922,20 +922,21 @@ def serialize_query_tags(
     def escape_value(value: str) -> str:
         """Escape special characters in tag values."""
         # Escape backslash first to avoid double-escaping
-        value = value.replace("\\", "\\\\")
+        value = value.replace("\\", r"\\")
         # Escape colon and comma
-        value = value.replace(":", "\\:")
-        value = value.replace(",", "\\,")
+        value = value.replace(":", r"\:")
+        value = value.replace(",", r"\,")
         return value
 
     serialized_parts = []
     for key, value in query_tags.items():
+        escaped_key = key.replace("\\", r"\\")
         if value is None:
             # No colon or value when value is None
-            serialized_parts.append(key)
+            serialized_parts.append(escaped_key)
         else:
             escaped_value = escape_value(value)
-            serialized_parts.append(f"{key}:{escaped_value}")
+            serialized_parts.append(f"{escaped_key}:{escaped_value}")
 
     return ",".join(serialized_parts)
 
