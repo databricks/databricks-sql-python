@@ -898,7 +898,9 @@ def concat_table_chunks(
         return pyarrow.concat_tables(table_chunks)
 
 
-def serialize_query_tags(query_tags: Optional[Dict[str, Optional[str]]]) -> Optional[str]:
+def serialize_query_tags(
+    query_tags: Optional[Dict[str, Optional[str]]]
+) -> Optional[str]:
     """
     Serialize query_tags dictionary to a string format.
 
