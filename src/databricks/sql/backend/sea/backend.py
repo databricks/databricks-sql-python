@@ -463,7 +463,9 @@ class SeaDatabricksClient(DatabricksClient):
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
         row_limit: Optional[int] = None,
-        query_tags: Optional[Dict[str, Optional[str]]] = None,  # TODO: implement query_tags for SEA backend
+        query_tags: Optional[
+            Dict[str, Optional[str]]
+        ] = None,  # TODO: implement query_tags for SEA backend
     ) -> Union[SeaResultSet, None]:
         """
         Execute a SQL command using the SEA backend.
