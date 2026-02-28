@@ -50,6 +50,11 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
       #----------------------------------------------
+      # install system dependencies for kerberos
+      #----------------------------------------------
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
+      #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
       - name: Install dependencies
@@ -134,6 +139,11 @@ jobs:
             path: .venv-pyarrow
             key: venv-pyarrow-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
       #----------------------------------------------
+      # install system dependencies for kerberos
+      #----------------------------------------------
+      -   name: Install system dependencies
+          run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
+      #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
       -   name: Install dependencies
@@ -212,6 +222,11 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
       #----------------------------------------------
+      # install system dependencies for kerberos
+      #----------------------------------------------
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
+      #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
       - name: Install dependencies
@@ -264,6 +279,11 @@ jobs:
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
+      #----------------------------------------------
+      # install system dependencies for kerberos
+      #----------------------------------------------
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev
       #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
