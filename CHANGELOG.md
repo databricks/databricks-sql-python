@@ -1,5 +1,9 @@
 # Release History
 
+# 3.7.5 (2026-03-02)
+
+- Fix: Pyarrow concat to now merge with promote options as default (databricks/databricks-sql-python#745 by @jprakash-db)
+
 # 3.7.4 (2025-04-21)
 
 - Fix: compatibility with urllib3 versions less than 2.x (databricks/databricks-sql-python#545 by @jprakash-db)
