@@ -123,7 +123,7 @@ class TestParameterizedQueries(PySQLPytestTestCase):
         """
 
         query = """
-            CREATE TABLE IF NOT EXISTS pysql_e2e_inline_param_test_table (
+            CREATE TABLE IF NOT EXISTS pysql_e2e_inline_param_test_table_deprecated (
             null_col INT,
             int_col INT,
             bigint_col BIGINT,
@@ -167,9 +167,9 @@ class TestParameterizedQueries(PySQLPytestTestCase):
             This is a no-op but is included to make the test-code easier to read.
         """
         target_column = self._get_inline_table_column(params.get("p"))
-        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table (`{target_column}`) VALUES (%(p)s)"
-        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table LIMIT 1"
-        DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table"
+        INSERT_QUERY = f"INSERT INTO pysql_e2e_inline_param_test_table_deprecated (`{target_column}`) VALUES (%(p)s)"
+        SELECT_QUERY = f"SELECT {target_column} `col` FROM pysql_e2e_inline_param_test_table_deprecated LIMIT 1"
+        DELETE_QUERY = "DELETE FROM pysql_e2e_inline_param_test_table_deprecated"
 
         with self.connection(extra_params={"use_inline_params": True}) as conn:
             with conn.cursor() as cursor:
