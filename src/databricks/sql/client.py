@@ -1263,6 +1263,7 @@ class Cursor:
         parameters: Optional[TParameterCollection] = None,
         enforce_embedded_schema_correctness=False,
         input_stream: Optional[BinaryIO] = None,
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
     ) -> "Cursor":
         """
         Execute a query and wait for execution to complete.
@@ -1292,6 +1293,10 @@ class Cursor:
 
         Both will result in the query equivalent to "SELECT * FROM table WHERE field = 'foo'
         being sent to the server
+
+        :param query_tags: Optional dictionary of query tags to apply for this query only.
+            Tags are key-value pairs that can be used to identify and categorize queries.
+            Example: {"team": "data-eng", "application": "etl"}
 
         :returns self
         """
@@ -1333,6 +1338,7 @@ class Cursor:
             async_op=False,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
             row_limit=self.row_limit,
+            query_tags=query_tags,
         )
 
         if self.active_result_set and self.active_result_set.is_staging_operation:
@@ -1349,6 +1355,7 @@ class Cursor:
         operation: str,
         parameters: Optional[TParameterCollection] = None,
         enforce_embedded_schema_correctness=False,
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
     ) -> "Cursor":
         """
 
@@ -1356,6 +1363,9 @@ class Cursor:
 
         :param operation:
         :param parameters:
+        :param query_tags: Optional dictionary of query tags to apply for this query only.
+            Tags are key-value pairs that can be used to identify and categorize queries.
+            Example: {"team": "data-eng", "application": "etl"}
         :return:
         """
 
@@ -1392,6 +1402,7 @@ class Cursor:
             async_op=True,
             enforce_embedded_schema_correctness=enforce_embedded_schema_correctness,
             row_limit=self.row_limit,
+            query_tags=query_tags,
         )
 
         return self
@@ -1448,7 +1459,12 @@ class Cursor:
                 session_id_hex=self.connection.get_session_id_hex(),
             )
 
-    def executemany(self, operation, seq_of_parameters):
+    def executemany(
+        self,
+        operation,
+        seq_of_parameters,
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
+    ):
         """
         Execute the operation once for every set of passed in parameters.
 
@@ -1457,10 +1473,14 @@ class Cursor:
 
         Only the final result set is retained.
 
+        :param query_tags: Optional dictionary of query tags to apply for all queries in this batch.
+            Tags are key-value pairs that can be used to identify and categorize queries.
+            Example: {"team": "data-eng", "application": "etl"}
+
         :returns self
         """
         for parameters in seq_of_parameters:
-            self.execute(operation, parameters)
+            self.execute(operation, parameters, query_tags=query_tags)
         return self
 
     @log_latency(StatementType.METADATA)

@@ -5,7 +5,7 @@ import logging
 import math
 import time
 import threading
-from typing import List, Optional, Union, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from uuid import UUID
 
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
@@ -53,6 +53,7 @@ from databricks.sql.utils import (
     convert_arrow_based_set_to_arrow_table,
     convert_decimals_in_arrow_table,
     convert_column_based_set_to_arrow_table,
+    serialize_query_tags,
 )
 from databricks.sql.types import SSLOptions
 from databricks.sql.backend.databricks_client import DatabricksClient
@@ -1003,6 +1004,7 @@ class ThriftDatabricksClient(DatabricksClient):
         async_op=False,
         enforce_embedded_schema_correctness=False,
         row_limit: Optional[int] = None,
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
     ) -> Union["ResultSet", None]:
         thrift_handle = session_id.to_thrift_handle()
         if not thrift_handle:
@@ -1022,6 +1024,19 @@ class ThriftDatabricksClient(DatabricksClient):
             # DBR should be changed to use month_day_nano_interval
             intervalTypesAsArrow=False,
         )
+
+        # Build confOverlay with default configs and query_tags
+        merged_conf_overlay = {
+            # We want to receive proper Timestamp arrow types.
+            "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
+        }
+
+        # Serialize and add query_tags to confOverlay if provided
+        if query_tags:
+            serialized_tags = serialize_query_tags(query_tags)
+            if serialized_tags:
+                merged_conf_overlay["query_tags"] = serialized_tags
+
         req = ttypes.TExecuteStatementReq(
             sessionHandle=thrift_handle,
             statement=operation,
@@ -1036,10 +1051,7 @@ class ThriftDatabricksClient(DatabricksClient):
             canReadArrowResult=True if pyarrow else False,
             canDecompressLZ4Result=lz4_compression,
             canDownloadResult=use_cloud_fetch,
-            confOverlay={
-                # We want to receive proper Timestamp arrow types.
-                "spark.thriftserver.arrowBasedRowSet.timestampAsString": "false"
-            },
+            confOverlay=merged_conf_overlay,
             useArrowNativeTypes=spark_arrow_types,
             parameters=parameters,
             enforceEmbeddedSchemaCorrectness=enforce_embedded_schema_correctness,

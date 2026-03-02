@@ -83,6 +83,7 @@ class DatabricksClient(ABC):
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
         row_limit: Optional[int] = None,
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
     ) -> Union[ResultSet, None]:
         """
         Executes a SQL command or query within the specified session.
@@ -102,6 +103,7 @@ class DatabricksClient(ABC):
             async_op: Whether to execute the command asynchronously
             enforce_embedded_schema_correctness: Whether to enforce schema correctness
             row_limit: Maximum number of rows in the response.
+            query_tags: Optional dictionary of query tags to apply for this query only.
 
         Returns:
             If async_op is False, returns a ResultSet object containing the

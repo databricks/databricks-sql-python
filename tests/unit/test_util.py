@@ -6,6 +6,7 @@ from databricks.sql.utils import (
     convert_to_assigned_datatypes_in_column_table,
     ColumnTable,
     concat_table_chunks,
+    serialize_query_tags,
 )
 
 try:
@@ -161,3 +162,65 @@ class TestUtils:
 
         with pytest.raises(ValueError):
             concat_table_chunks([column_table1, column_table2])
+
+    def test_serialize_query_tags_basic(self):
+        """Test basic query tags serialization"""
+        query_tags = {"team": "data-eng", "application": "etl"}
+        result = serialize_query_tags(query_tags)
+        assert result == "team:data-eng,application:etl"
+
+    def test_serialize_query_tags_with_none_value(self):
+        """Test query tags with None value (should omit colon and value)"""
+        query_tags = {"key1": "value1", "key2": None, "key3": "value3"}
+        result = serialize_query_tags(query_tags)
+        assert result == "key1:value1,key2,key3:value3"
+
+    def test_serialize_query_tags_with_special_chars(self):
+        """Test query tags with special characters (colon, comma, backslash)"""
+        query_tags = {
+            "key1": "value:with:colons",
+            "key2": "value,with,commas",
+            "key3": r"value\with\backslashes",
+        }
+        result = serialize_query_tags(query_tags)
+        assert (
+            result
+            == r"key1:value\:with\:colons,key2:value\,with\,commas,key3:value\\with\\backslashes"
+        )
+
+    def test_serialize_query_tags_with_mixed_special_chars(self):
+        """Test query tags with mixed special characters"""
+        query_tags = {"key1": r"a:b,c\d"}
+        result = serialize_query_tags(query_tags)
+        assert result == r"key1:a\:b\,c\\d"
+
+    def test_serialize_query_tags_empty_dict(self):
+        """Test serialization with empty dictionary"""
+        query_tags = {}
+        result = serialize_query_tags(query_tags)
+        assert result is None
+
+    def test_serialize_query_tags_none(self):
+        """Test serialization with None input"""
+        result = serialize_query_tags(None)
+        assert result is None
+
+    def test_serialize_query_tags_with_special_chars_in_key(self):
+        """Test query tags with special characters in keys (only backslashes are escaped in keys)"""
+        query_tags = {
+            "key:with:colons": "value1",
+            "key,with,commas": "value2",
+            r"key\with\backslashes": "value3",
+        }
+        result = serialize_query_tags(query_tags)
+        # Only backslashes are escaped in keys; colons and commas in keys are not escaped
+        assert (
+            result
+            == r"key:with:colons:value1,key,with,commas:value2,key\\with\\backslashes:value3"
+        )
+
+    def test_serialize_query_tags_all_none_values(self):
+        """Test query tags where all values are None"""
+        query_tags = {"key1": None, "key2": None, "key3": None}
+        result = serialize_query_tags(query_tags)
+        assert result == "key1,key2,key3"
