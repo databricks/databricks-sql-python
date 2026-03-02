@@ -4,14 +4,13 @@ on:
     branches:
       - main
   pull_request:
-    branches:
-      - main
+
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8, 3.9, "3.10", "3.11"]
+        python-version: [3.9, "3.10", "3.11", "3.12"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -62,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8, 3.9, "3.10"]
+        python-version: [3.9, "3.10", "3.11", "3.12"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
@@ -114,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8, 3.9, "3.10"]
+        python-version: [3.9, "3.10", "3.11", "3.12"]
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
