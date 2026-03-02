@@ -265,7 +265,9 @@ class CloudFetchQueue(ResultSetQueue):
             # Get remaining of num_rows or the rest of the current table, whichever is smaller
             length = min(num_rows, self.table.num_rows - self.table_row_index)
             table_slice = self.table.slice(self.table_row_index, length)
-            results = pyarrow.concat_tables([results, table_slice],promote_options="default")
+            results = pyarrow.concat_tables(
+                [results, table_slice], promote_options="default"
+            )
             self.table_row_index += table_slice.num_rows
 
             # Replace current table with the next table if we are at the end of the current table
@@ -292,7 +294,9 @@ class CloudFetchQueue(ResultSetQueue):
             table_slice = self.table.slice(
                 self.table_row_index, self.table.num_rows - self.table_row_index
             )
-            results = pyarrow.concat_tables([results, table_slice],promote_options="default")
+            results = pyarrow.concat_tables(
+                [results, table_slice], promote_options="default"
+            )
             self.table_row_index += table_slice.num_rows
             self.table = self._create_next_table()
             self.table_row_index = 0

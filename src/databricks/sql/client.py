@@ -1335,7 +1335,9 @@ class ResultSet:
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables([results, partial_results],promote_options="default")
+            results = pyarrow.concat_tables(
+                [results, partial_results], promote_options="default"
+            )
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
@@ -1391,7 +1393,9 @@ class ResultSet:
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results = pyarrow.concat_tables([results, partial_results],promote_options="default")
+            results = pyarrow.concat_tables(
+                [results, partial_results], promote_options="default"
+            )
             self._next_row_index += partial_results.num_rows
 
         return results
