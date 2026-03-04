@@ -17,7 +17,7 @@ Example: {"team": "engineering", "application": "etl", "priority": "high"}
 Special cases:
 - If a value is None, only the key is included (no colon or value)
 - Special characters (comma, colon and backslash) in values are automatically escaped
-- Backslashes in keys are automatically escaped; other special characters in keys are not escaped
+- Backslashes in keys are automatically escaped; other special characters in keys are not allowed
 """
 
 print("=== Query Tags Example ===\n")
