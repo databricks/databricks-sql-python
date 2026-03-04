@@ -36,6 +36,7 @@ from databricks.sql.utils import (
     ColumnQueue,
     build_client_context,
     get_session_config_value,
+    serialize_query_tags,
 )
 from databricks.sql.parameters.native import (
     DbsqlParameterBase,
@@ -106,6 +107,7 @@ class Connection:
         schema: Optional[str] = None,
         _use_arrow_native_complex_types: Optional[bool] = True,
         ignore_transactions: bool = True,
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
         **kwargs,
     ) -> None:
         """
@@ -280,6 +282,15 @@ class Connection:
             session_configuration[
                 "spark.sql.thriftserver.metadata.metricview.enabled"
             ] = "true"
+
+        if query_tags is not None:
+            if session_configuration is None:
+                session_configuration = {}
+            serialized = serialize_query_tags(query_tags)
+            if serialized:
+                session_configuration["QUERY_TAGS"] = serialized
+            else:
+                session_configuration.pop("QUERY_TAGS", None)
 
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)

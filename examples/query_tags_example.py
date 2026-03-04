@@ -8,7 +8,7 @@ Query Tags are key-value pairs that can be attached to SQL executions and will a
 in the system.query.history table for analytical purposes.
 
 There are two ways to set query tags:
-1. Session-level: Set in session_configuration (applies to all queries in the session)
+1. Connection-level: Pass query_tags parameter to sql.connect() (applies to all queries in the session)
 2. Per-query level: Pass query_tags parameter to execute() or execute_async() (applies to specific query)
 
 Format: Dictionary with string keys and optional string values
@@ -17,21 +17,18 @@ Example: {"team": "engineering", "application": "etl", "priority": "high"}
 Special cases:
 - If a value is None, only the key is included (no colon or value)
 - Special characters (comma, colon and backslash) in values are automatically escaped
-- Keys are not escaped (should be controlled identifiers)
+- Backslashes in keys are automatically escaped; other special characters in keys are not escaped
 """
 
 print("=== Query Tags Example ===\n")
 
-# Example 1: Session-level query tags (old approach)
-print("Example 1: Session-level query tags")
+# Example 1: Connection-level query tags
+print("Example 1: Connection-level query tags")
 with sql.connect(
     server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
     http_path=os.getenv("DATABRICKS_HTTP_PATH"),
     access_token=os.getenv("DATABRICKS_TOKEN"),
-    session_configuration={
-        'QUERY_TAGS': 'team:engineering,test:query-tags',
-        'ansi_mode': False
-    }
+    query_tags={"team": "engineering", "application": "etl"},
 ) as connection:
 
     with connection.cursor() as cursor:
@@ -41,7 +38,7 @@ with sql.connect(
 
 print()
 
-# Example 2: Per-query query tags (new approach)
+# Example 2: Per-query query tags
 print("Example 2: Per-query query tags")
 with sql.connect(
     server_hostname=os.getenv("DATABRICKS_SERVER_HOSTNAME"),
