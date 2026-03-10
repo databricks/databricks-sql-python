@@ -509,7 +509,7 @@ class ClientTestSuite(unittest.TestCase):
 
         expected_values = [["val1", 321, 52.32], ["val2", 2321, 252.32]]
 
-        for (row, expected) in zip(data, expected_values):
+        for row, expected in zip(data, expected_values):
             self.assertEqual(row.first_col, expected[0])
             self.assertEqual(row.second_col, expected[1])
             self.assertEqual(row.third_col, expected[2])
@@ -632,6 +632,38 @@ class ClientTestSuite(unittest.TestCase):
         self.assertEqual(
             cursors_closed, [1, 2], "Both cursors should have close called"
         )
+
+    @patch("databricks.sql.session.ThriftDatabricksClient")
+    def test_unknown_connection_param_issues_warning(self, mock_client_class):
+        """Passing an unrecognized kwarg should trigger a logger.warning call."""
+        with patch("databricks.sql.client.logger") as mock_logger:
+            databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, unknown_param_xyz=True)
+            mock_logger.warning.assert_called()
+
+    @patch("databricks.sql.session.ThriftDatabricksClient")
+    def test_unknown_connection_param_warning_names_the_param(self, mock_client_class):
+        """The warning message should include the unknown parameter name."""
+        with patch("databricks.sql.client.logger") as mock_logger:
+            databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS, unknown_param_xyz=True)
+            warning_calls = mock_logger.warning.call_args_list
+            warning_messages = " ".join(str(call) for call in warning_calls)
+            self.assertIn("unknown_param_xyz", warning_messages)
+
+    @patch("databricks.sql.session.ThriftDatabricksClient")
+    def test_known_connection_params_do_not_issue_warning(self, mock_client_class):
+        """Passing only recognized kwargs should not trigger an unknown-param warning."""
+        with patch("databricks.sql.client.logger") as mock_logger:
+            databricks.sql.connect(
+                **self.DUMMY_CONNECTION_ARGS,
+                use_cloud_fetch=True,
+                _socket_timeout=30,
+            )
+            # Ensure no warning was issued about unrecognized parameters
+            for call in mock_logger.warning.call_args_list:
+                self.assertNotIn(
+                    "Unrecognized connection parameter",
+                    str(call),
+                )
 
 
 class TransactionTestSuite(unittest.TestCase):
