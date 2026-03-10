@@ -295,7 +295,8 @@ class TestDbsqlParameter:
             (BigIntegerParameter, Primitive.BIGINT),
             (BooleanParameter, Primitive.BOOL),
             (DateParameter, Primitive.DATE),
-            (FloatParameter, Primitive.FLOAT),
+            (DoubleParameter, Primitive.DOUBLE),
+            (DoubleParameter, Primitive.FLOAT),
             (VoidParameter, Primitive.NONE),
             (TimestampParameter, Primitive.TIMESTAMP),
             (MapParameter, Primitive.MAP),
@@ -305,7 +306,7 @@ class TestDbsqlParameter:
     def test_inference(self, _type: TDbsqlParameter, prim: Primitive):
         """This method only tests inferrable types.
 
-        Not tested are TinyIntParameter, SmallIntParameter DoubleParameter and TimestampNTZParameter
+        Not tested are TinyIntParameter, SmallIntParameter, FloatParameter and TimestampNTZParameter
         """
 
         inferred_type = dbsql_parameter_from_primitive(prim.value)
