@@ -895,7 +895,7 @@ def concat_table_chunks(
                 result_table[j].extend(table_chunks[i].column_table[j])
         return ColumnTable(result_table, table_chunks[0].column_names)
     else:
-        return pyarrow.concat_tables(table_chunks)
+        return pyarrow.concat_tables(table_chunks, promote_options="default")
 
 
 def serialize_query_tags(
