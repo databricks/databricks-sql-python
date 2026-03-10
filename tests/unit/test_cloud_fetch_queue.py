@@ -174,7 +174,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert (
             result
             == pyarrow.concat_tables(
-                [self.make_arrow_table(), self.make_arrow_table()]
+                [self.make_arrow_table(), self.make_arrow_table()],promote_options="default"
             )[:7]
         )
 
@@ -266,7 +266,7 @@ class CloudFetchQueueSuite(unittest.TestCase):
         assert (
             result
             == pyarrow.concat_tables(
-                [self.make_arrow_table(), self.make_arrow_table()]
+                [self.make_arrow_table(), self.make_arrow_table()], promote_options="default"
             )[3:]
         )
 
