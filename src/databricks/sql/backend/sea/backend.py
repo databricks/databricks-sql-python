@@ -463,9 +463,7 @@ class SeaDatabricksClient(DatabricksClient):
         async_op: bool,
         enforce_embedded_schema_correctness: bool,
         row_limit: Optional[int] = None,
-        query_tags: Optional[
-            Dict[str, Optional[str]]
-        ] = None,  # TODO: implement query_tags for SEA backend
+        query_tags: Optional[Dict[str, Optional[str]]] = None,
     ) -> Union[SeaResultSet, None]:
         """
         Execute a SQL command using the SEA backend.
@@ -532,6 +530,7 @@ class SeaDatabricksClient(DatabricksClient):
             row_limit=row_limit,
             parameters=sea_parameters if sea_parameters else None,
             result_compression=result_compression,
+            query_tags=query_tags,
         )
 
         response_data = self._http_client._make_request(
