@@ -473,7 +473,7 @@ class TestSeaBackend:
         _, kwargs = mock_http_client._make_request.call_args
         assert kwargs["data"]["query_tags"] == [
             {"key": "env", "value": "prod"},
-            {"key": "team"},
+            {"key": "team", "value": None},
         ]
 
     def test_execute_command_no_query_tags_omitted(

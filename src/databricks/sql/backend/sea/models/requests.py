@@ -62,11 +62,10 @@ class ExecuteStatementRequest:
             ]
 
         # SEA API expects query_tags as an array of {key, value} objects.
-        # None values are represented by omitting the "value" field.
+        # None/empty values are left to the server to handle as key-only tags.
         if self.query_tags:
             result["query_tags"] = [
-                {"key": k, "value": v} if v is not None else {"key": k}
-                for k, v in self.query_tags.items()
+                {"key": k, "value": v} for k, v in self.query_tags.items()
             ]
 
         return result
