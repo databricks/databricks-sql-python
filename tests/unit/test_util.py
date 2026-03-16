@@ -2,6 +2,7 @@ import decimal
 import datetime
 from datetime import timezone, timedelta
 import pytest
+import pytz
 from databricks.sql.utils import (
     convert_to_assigned_datatypes_in_column_table,
     parse_timestamp,
@@ -235,7 +236,7 @@ class TestParseTimestamp:
     def test_matching_format_uses_strptime(self):
         fmt = "%Y-%m-%d %H:%M:%S.%f"
         result = parse_timestamp("2023-12-31 12:30:00.123000", fmt)
-        assert result == datetime.datetime(2023, 12, 31, 12, 30, 0, 123000)
+        assert result == datetime.datetime(2023, 12, 31, 12, 30, 0, 123000, tzinfo=pytz.UTC)
 
     def test_non_matching_format_falls_back_to_dateutil(self):
         fmt = "%Y-%m-%d %H:%M:%S.%f"
@@ -252,7 +253,7 @@ class TestParseTimestamp:
         result = convert_to_assigned_datatypes_in_column_table(
             column_table, description, timestamp_format=fmt
         )
-        assert result[0][0] == datetime.datetime(2023, 12, 31, 12, 30, 0)
+        assert result[0][0] == datetime.datetime(2023, 12, 31, 12, 30, 0, tzinfo=pytz.UTC)
 
     def test_convert_column_table_without_timestamp_format(self):
         description = [

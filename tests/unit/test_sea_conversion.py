@@ -7,6 +7,7 @@ This module contains tests for the SqlType and SqlTypeConverter classes.
 import pytest
 import datetime
 import decimal
+import pytz
 from unittest.mock import Mock, patch
 
 from databricks.sql.backend.sea.utils.conversion import SqlType, SqlTypeConverter
@@ -158,7 +159,7 @@ class TestSqlTypeConverter:
             timestamp_format=fmt,
         )
         assert isinstance(result, datetime.datetime)
-        assert result == datetime.datetime(2023, 12, 31, 12, 30, 0, 123000)
+        assert result == datetime.datetime(2023, 12, 31, 12, 30, 0, 123000, tzinfo=pytz.UTC)
 
     def test_convert_timestamp_with_format_fallback(self):
         """Test that non-matching format falls back to dateutil."""
