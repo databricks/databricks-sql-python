@@ -31,6 +31,7 @@ class ExecuteStatementRequest:
     wait_timeout: str = "10s"
     on_wait_timeout: str = "CONTINUE"
     row_limit: Optional[int] = None
+    query_tags: Optional[Dict[str, Optional[str]]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the request to a dictionary for JSON serialization."""
@@ -58,6 +59,13 @@ class ExecuteStatementRequest:
                     "type": param.type,
                 }
                 for param in self.parameters
+            ]
+
+        # SEA API expects query_tags as an array of {key, value} objects.
+        # None/empty values are left to the server to handle as key-only tags.
+        if self.query_tags:
+            result["query_tags"] = [
+                {"key": k, "value": v} for k, v in self.query_tags.items()
             ]
 
         return result
