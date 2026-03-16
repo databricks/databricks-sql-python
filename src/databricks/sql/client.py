@@ -295,6 +295,7 @@ class Connection:
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
+        self.non_arrow_timestamp_format = kwargs.get("non_arrow_timestamp_format", None)
         self._cursors = []  # type: List[Cursor]
         self.telemetry_batch_size = kwargs.get(
             "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
