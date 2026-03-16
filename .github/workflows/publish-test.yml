@@ -14,13 +14,14 @@ jobs:
         id: setup-python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.9
+          python-version: "3.10"
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
+          version: "2.2.1"
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
@@ -36,6 +37,10 @@ jobs:
       #----------------------------------------------
       # install dependencies if cache does not exist
       #----------------------------------------------
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction --no-root
@@ -54,11 +59,17 @@ jobs:
       - name: Update pyproject.toml
         run: poetry version ${{ steps.version.outputs.major-version }}.${{ steps.version.outputs.minor-version }}.dev$(date +%s)
       #----------------------------------------------
+      # Build the package (before publish action)
+      #----------------------------------------------
+      - name: Build package
+        run: poetry build
+      #----------------------------------------------
+      # Configure test-pypi repository
+      #----------------------------------------------
+      - name: Configure test-pypi repository
+        run: poetry config repositories.testpypi https://test.pypi.org/legacy/
+      #----------------------------------------------
       # Attempt push to test-pypi
       #----------------------------------------------
-      - name: Build and publish to pypi
-        uses: JRubics/poetry-publish@v1.10
-        with:
-          pypi_token: ${{ secrets.TEST_PYPI_TOKEN }}
-          repository_name: "testpypi"
-          repository_url: "https://test.pypi.org/legacy/"
+      - name: Publish to test-pypi
+        run: poetry publish --username __token__ --password ${{ secrets.TEST_PYPI_TOKEN }} --repository testpypi

@@ -202,3 +202,24 @@ class TestSession:
         close_session_call_args = instance.close_session.call_args[0][0]
         assert close_session_call_args.guid == b"\x22"
         assert close_session_call_args.secret == b"\x33"
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
+    def test_query_tags_dict_sets_session_config(self, mock_client_class):
+        databricks.sql.connect(
+            query_tags={"team": "data-eng", "project": "etl"},
+            **self.DUMMY_CONNECTION_ARGS,
+        )
+
+        call_kwargs = mock_client_class.return_value.open_session.call_args[1]
+        assert call_kwargs["session_configuration"]["QUERY_TAGS"] == "team:data-eng,project:etl"
+
+    @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
+    def test_query_tags_dict_takes_precedence_over_session_config(self, mock_client_class):
+        databricks.sql.connect(
+            query_tags={"team": "new-team"},
+            session_configuration={"QUERY_TAGS": "team:old-team,other:value"},
+            **self.DUMMY_CONNECTION_ARGS,
+        )
+
+        call_kwargs = mock_client_class.return_value.open_session.call_args[1]
+        assert call_kwargs["session_configuration"]["QUERY_TAGS"] == "team:new-team"

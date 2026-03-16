@@ -31,11 +31,19 @@ jobs:
         with:
           python-version: "3.10"
       #----------------------------------------------
+      #  -----  install system dependencies  -----
+      #----------------------------------------------
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+      #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
+          version: "2.2.1"
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
@@ -58,6 +66,10 @@ jobs:
       #----------------------------------------------
       # install your root project, if required
       #----------------------------------------------
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
       - name: Install library
         run: poetry install --no-interaction --all-extras
       #----------------------------------------------
@@ -75,13 +87,13 @@ jobs:
             -v
 
       #----------------------------------------------
-      #    run serial tests with coverage
+      #    run telemetry tests with coverage (isolated)
       #----------------------------------------------
-      - name: Run serial tests with coverage
+      - name: Run telemetry tests with coverage (isolated)
         continue-on-error: false
         run: |
-          poetry run pytest tests/e2e \
-            -m "serial" \
+          # Run test_concurrent_telemetry.py separately for isolation
+          poetry run pytest tests/e2e/test_concurrent_telemetry.py \
             --cov=src \
             --cov-append \
             --cov-report=xml \

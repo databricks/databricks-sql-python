@@ -27,6 +27,7 @@ def run_in_threads(target, num_threads, pass_index=False):
 
 
 @pytest.mark.serial
+@pytest.mark.xdist_group(name="serial_telemetry")
 class TestE2ETelemetry(PySQLPytestTestCase):
     @pytest.fixture(autouse=True)
     def telemetry_setup_teardown(self):
@@ -35,13 +36,27 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         before each test and shuts it down afterward. Using a fixture makes
         this robust and automatic.
         """
+        # Clean up BEFORE test starts to ensure no leftover state from previous tests
+        # Use wait=True to ensure all pending telemetry from previous tests completes
+        # This prevents those events from being captured by this test's mock
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for pending telemetry
+            TelemetryClientFactory._executor = None
+        TelemetryClientFactory._stop_flush_thread()
+        TelemetryClientFactory._flush_event.clear()  # Clear the event flag
+        TelemetryClientFactory._clients.clear()
+        TelemetryClientFactory._initialized = False
+
         try:
             yield
         finally:
+            # Clean up AFTER test ends
+            # Use wait=True to ensure this test's telemetry completes before next test starts
             if TelemetryClientFactory._executor:
-                TelemetryClientFactory._executor.shutdown(wait=True)
+                TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for this test's telemetry
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
+            TelemetryClientFactory._flush_event.clear()  # Clear the event flag
             TelemetryClientFactory._clients.clear()
             TelemetryClientFactory._initialized = False
 
@@ -50,6 +65,14 @@ class TestE2ETelemetry(PySQLPytestTestCase):
         An E2E test where concurrent threads execute real queries against
         the staging endpoint, while we capture and verify the generated telemetry.
         """
+        # Extra flush right before test starts to clear any events that accumulated
+        # between fixture cleanup and now (e.g., from other tests on same worker)
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)
+            TelemetryClientFactory._executor = None
+        TelemetryClientFactory._clients.clear()
+        TelemetryClientFactory._initialized = False
+
         num_threads = 30
         capture_lock = threading.Lock()
         captured_telemetry = []
@@ -139,6 +162,7 @@ class TestE2ETelemetry(PySQLPytestTestCase):
                 assert "errors" not in response or not response["errors"]
                 if "numProtoSuccess" in response:
                     total_successful_events += response["numProtoSuccess"]
+
             assert total_successful_events == num_threads * 2
 
             assert (

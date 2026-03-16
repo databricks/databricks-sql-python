@@ -42,6 +42,7 @@ from databricks.sql.telemetry.utils import BaseTelemetryClient
 from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
 from databricks.sql.common.http import HttpMethod
+from databricks.sql.exc import RequestError
 from databricks.sql.telemetry.telemetry_push_client import (
     ITelemetryPushClient,
     TelemetryPushClient,
@@ -417,9 +418,37 @@ class TelemetryClient(BaseTelemetryClient):
         )
 
     def close(self):
-        """Flush remaining events before closing"""
+        """Flush remaining events before closing
+
+        IMPORTANT: This method does NOT close self._http_client.
+
+        Rationale:
+        - _flush() submits async work to the executor that uses _http_client
+        - If we closed _http_client here, async callbacks would fail with AttributeError
+        - Instead, we let _http_client live as long as needed:
+          * Pending futures hold references to self (via bound methods)
+          * This keeps self alive, which keeps self._http_client alive
+          * When all futures complete, Python GC will clean up naturally
+        - The __del__ method ensures eventual cleanup during garbage collection
+
+        This design prevents race conditions while keeping telemetry truly async.
+        """
         logger.debug("Closing TelemetryClient for connection %s", self._session_id_hex)
         self._flush()
+
+    def __del__(self):
+        """Cleanup when TelemetryClient is garbage collected
+
+        This ensures _http_client is eventually closed when the TelemetryClient
+        object is destroyed. By this point, all async work should be complete
+        (since the futures held references keeping us alive), so it's safe to
+        close the http client.
+        """
+        try:
+            if hasattr(self, "_http_client") and self._http_client:
+                self._http_client.close()
+        except Exception:
+            pass
 
 
 class _TelemetryClientHolder:
@@ -674,7 +703,8 @@ class TelemetryClientFactory:
                 )
                 try:
                     TelemetryClientFactory._stop_flush_thread()
-                    TelemetryClientFactory._executor.shutdown(wait=True)
+                    # Use wait=False to allow process to exit immediately
+                    TelemetryClientFactory._executor.shutdown(wait=False)
                 except Exception as e:
                     logger.debug("Failed to shutdown thread pool executor: %s", e)
                 TelemetryClientFactory._executor = None
@@ -689,8 +719,14 @@ class TelemetryClientFactory:
         port: int,
         client_context,
         user_agent: Optional[str] = None,
+        enable_telemetry: bool = True,
     ):
         """Send error telemetry when connection creation fails, using provided client context"""
+
+        # Respect user's telemetry preference - don't force-enable
+        if not enable_telemetry:
+            logger.debug("Telemetry disabled, skipping connection failure log")
+            return
 
         UNAUTH_DUMMY_SESSION_ID = "unauth_session_id"
 

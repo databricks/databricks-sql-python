@@ -217,7 +217,7 @@ class UnifiedHttpClient:
             logger.debug("Error checking proxy bypass for host %s: %s", target_host, e)
             return True
 
-    def _get_pool_manager_for_url(self, url: str) -> urllib3.PoolManager:
+    def _get_pool_manager_for_url(self, url: str) -> Optional[urllib3.PoolManager]:
         """
         Get the appropriate pool manager for the given URL.
 
@@ -225,7 +225,7 @@ class UnifiedHttpClient:
             url: The target URL
 
         Returns:
-            PoolManager instance (either direct or proxy)
+            PoolManager instance (either direct or proxy), or None if client is closed
         """
         parsed_url = urllib.parse.urlparse(url)
         target_host = parsed_url.hostname
@@ -290,6 +290,14 @@ class UnifiedHttpClient:
 
         # Select appropriate pool manager based on target URL
         pool_manager = self._get_pool_manager_for_url(url)
+
+        # DEFENSIVE: Check if pool_manager is None (client closing/closed)
+        # This prevents AttributeError race condition when telemetry cleanup happens
+        if pool_manager is None:
+            logger.debug(
+                "HTTP client closing or closed, cannot make request to %s", url
+            )
+            raise RequestError("HTTP client is closing or has been closed")
 
         response = None
 

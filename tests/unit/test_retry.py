@@ -83,3 +83,15 @@ class TestRetry:
                 retry_policy.sleep(HTTPResponse(status=503))
                 # Internally urllib3 calls the increment function generating a new instance for every retry
                 retry_policy = retry_policy.increment()
+
+    def test_404_does_not_retry_for_any_command_type(self, retry_policy):
+        """Test that 404 never retries for any CommandType"""
+        retry_policy._retry_start_time = time.time()
+
+        # Test for each CommandType
+        for command_type in CommandType:
+            retry_policy.command_type = command_type
+            should_retry, msg = retry_policy.should_retry("POST", 404)
+
+            assert should_retry is False, f"404 should not retry for {command_type}"
+            assert "404" in msg or "NOT_FOUND" in msg

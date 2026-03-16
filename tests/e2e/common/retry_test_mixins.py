@@ -278,7 +278,7 @@ class PySQLRetryTestsMixin:
         THEN the connector issues six request (original plus five retries)
             before raising an exception
         """
-        with mocked_server_response(status=404) as mock_obj:
+        with mocked_server_response(status=429, headers={"Retry-After": "0"}) as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
                 extra_params = {**extra_params, **self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
@@ -467,22 +467,21 @@ class PySQLRetryTestsMixin:
     )
     def test_retry_abort_close_session_on_404(self, extra_params, caplog):
         """GIVEN the connector sends a CloseSession command
-        WHEN server sends a 404 (which is normally retried)
-        THEN nothing is retried because 404 means the session already closed
+        WHEN server sends a 404 (which is not retried since commit 41b28159)
+        THEN nothing is retried because 404 is globally non-retryable
         """
 
-        # First response is a Bad Gateway -> Result is the command actually goes through
-        # Second response is a 404 because the session is no longer found
+        # With the idempotency-based retry refactor, 404 is now globally non-retryable
+        # regardless of command type. The close() method catches RequestError and proceeds.
         responses = [
-            {"status": 502, "headers": {"Retry-After": "1"}, "redirect_location": None},
             {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
         extra_params = {**extra_params, **self._retry_policy}
         with self.connection(extra_params=extra_params) as conn:
             with mock_sequential_server_responses(responses):
+                # Should not raise an exception, the error is caught internally
                 conn.close()
-                assert "Session was closed by a prior request" in caplog.text
 
     @pytest.mark.parametrize(
         "extra_params",
@@ -493,14 +492,13 @@ class PySQLRetryTestsMixin:
     )
     def test_retry_abort_close_operation_on_404(self, extra_params, caplog):
         """GIVEN the connector sends a CancelOperation command
-        WHEN server sends a 404 (which is normally retried)
-        THEN nothing is retried because 404 means the operation was already canceled
+        WHEN server sends a 404 (which is not retried since commit 41b28159)
+        THEN nothing is retried because 404 is globally non-retryable
         """
 
-        # First response is a Bad Gateway -> Result is the command actually goes through
-        # Second response is a 404 because the session is no longer found
+        # With the idempotency-based retry refactor, 404 is now globally non-retryable
+        # regardless of command type. The close() method catches RequestError and proceeds.
         responses = [
-            {"status": 502, "headers": {"Retry-After": "1"}, "redirect_location": None},
             {"status": 404, "headers": {}, "redirect_location": None},
         ]
 
@@ -515,10 +513,8 @@ class PySQLRetryTestsMixin:
                     # This call guarantees we have an open cursor at the server
                     curs.execute("SELECT 1")
                     with mock_sequential_server_responses(responses):
+                        # Should not raise an exception, the error is caught internally
                         curs.close()
-                        assert (
-                            "Operation was canceled by a prior request" in caplog.text
-                        )
 
     @pytest.mark.parametrize(
         "extra_params",

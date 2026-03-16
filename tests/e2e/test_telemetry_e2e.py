@@ -44,23 +44,45 @@ class TelemetryTestBase:
 
 
 @pytest.mark.serial
+@pytest.mark.xdist_group(name="serial_telemetry")
 class TestTelemetryE2E(TelemetryTestBase):
     """E2E tests for telemetry scenarios - must run serially due to shared host-level telemetry client"""
 
     @pytest.fixture(autouse=True)
     def telemetry_setup_teardown(self):
         """Clean up telemetry client state before and after each test"""
+        # Clean up BEFORE test starts
+        # Use wait=True to ensure all pending telemetry from previous tests completes
+        if TelemetryClientFactory._executor:
+            TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for pending telemetry
+            TelemetryClientFactory._executor = None
+        TelemetryClientFactory._stop_flush_thread()
+        TelemetryClientFactory._flush_event.clear()  # Clear the event flag
+        TelemetryClientFactory._clients.clear()
+        TelemetryClientFactory._initialized = False
+
+        # Clear feature flags cache before test starts
+        from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+        with FeatureFlagsContextFactory._lock:
+            FeatureFlagsContextFactory._context_map.clear()
+            if FeatureFlagsContextFactory._executor:
+                FeatureFlagsContextFactory._executor.shutdown(wait=False)
+                FeatureFlagsContextFactory._executor = None
+
         try:
             yield
         finally:
+            # Clean up AFTER test ends
+            # Use wait=True to ensure this test's telemetry completes
             if TelemetryClientFactory._executor:
-                TelemetryClientFactory._executor.shutdown(wait=True)
+                TelemetryClientFactory._executor.shutdown(wait=True)  # WAIT for this test's telemetry
                 TelemetryClientFactory._executor = None
             TelemetryClientFactory._stop_flush_thread()
+            TelemetryClientFactory._flush_event.clear()  # Clear the event flag
+            TelemetryClientFactory._clients.clear()
             TelemetryClientFactory._initialized = False
 
-            # Clear feature flags cache to prevent state leakage between tests
-            from databricks.sql.common.feature_flag import FeatureFlagsContextFactory
+            # Clear feature flags cache after test ends
             with FeatureFlagsContextFactory._lock:
                 FeatureFlagsContextFactory._context_map.clear()
                 if FeatureFlagsContextFactory._executor:
