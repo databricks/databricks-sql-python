@@ -7,9 +7,8 @@ from urllib3.exceptions import MaxRetryError
 
 
 class TestRetry:
-    @pytest.fixture()
-    def retry_policy(self) -> DatabricksRetryPolicy:
-        return DatabricksRetryPolicy(
+    def _make_retry_policy(self, **overrides) -> DatabricksRetryPolicy:
+        defaults = dict(
             delay_min=1,
             delay_max=30,
             stop_after_attempts_count=3,
@@ -17,6 +16,12 @@ class TestRetry:
             delay_default=2,
             force_dangerous_codes=[],
         )
+        defaults.update(overrides)
+        return DatabricksRetryPolicy(**defaults)
+
+    @pytest.fixture()
+    def retry_policy(self) -> DatabricksRetryPolicy:
+        return self._make_retry_policy()
 
     @pytest.fixture()
     def error_history(self) -> RequestHistory:
@@ -84,84 +89,56 @@ class TestRetry:
                 # Internally urllib3 calls the increment function generating a new instance for every retry
                 retry_policy = retry_policy.increment()
 
-    @pytest.fixture()
-    def server_directed_retry_policy(self) -> DatabricksRetryPolicy:
-        return DatabricksRetryPolicy(
-            delay_min=1,
-            delay_max=30,
-            stop_after_attempts_count=3,
-            stop_after_attempts_duration=900,
-            delay_default=2,
-            force_dangerous_codes=[],
-            server_directed_only=True,
-        )
-
-    def test_server_directed_only__retries_with_retry_after(
-        self, server_directed_retry_policy
-    ):
+    def test_respect_server_retry_after__retries_with_retry_after(self):
         """429 + Retry-After header → should retry"""
-        server_directed_retry_policy._retry_start_time = time.time()
-        server_directed_retry_policy.command_type = CommandType.OTHER
-        should_retry, msg = server_directed_retry_policy.should_retry(
-            "POST", 429, has_retry_after=True
-        )
+        policy = self._make_retry_policy(respect_server_retry_after_header=True)
+        policy._retry_start_time = time.time()
+        policy.command_type = CommandType.OTHER
+        should_retry, msg = policy.should_retry("POST", 429, has_retry_after=True)
         assert should_retry is True
 
-    def test_server_directed_only__no_retry_without_retry_after(
-        self, server_directed_retry_policy
-    ):
+    def test_respect_server_retry_after__no_retry_without_retry_after(self):
         """429 without Retry-After header → no retry"""
-        server_directed_retry_policy._retry_start_time = time.time()
-        server_directed_retry_policy.command_type = CommandType.OTHER
-        should_retry, msg = server_directed_retry_policy.should_retry(
-            "POST", 429, has_retry_after=False
-        )
+        policy = self._make_retry_policy(respect_server_retry_after_header=True)
+        policy._retry_start_time = time.time()
+        policy.command_type = CommandType.OTHER
+        should_retry, msg = policy.should_retry("POST", 429, has_retry_after=False)
         assert should_retry is False
-        assert "server_directed_only" in msg
+        assert "respect_server_retry_after_header" in msg
 
-    def test_server_directed_only__no_retry_503_without_header(
-        self, server_directed_retry_policy
-    ):
+    def test_respect_server_retry_after__no_retry_503_without_header(self):
         """503 without Retry-After header → no retry"""
-        server_directed_retry_policy._retry_start_time = time.time()
-        server_directed_retry_policy.command_type = CommandType.OTHER
-        should_retry, msg = server_directed_retry_policy.should_retry(
-            "POST", 503, has_retry_after=False
-        )
+        policy = self._make_retry_policy(respect_server_retry_after_header=True)
+        policy._retry_start_time = time.time()
+        policy.command_type = CommandType.OTHER
+        should_retry, msg = policy.should_retry("POST", 503, has_retry_after=False)
         assert should_retry is False
-        assert "server_directed_only" in msg
+        assert "respect_server_retry_after_header" in msg
 
-    def test_server_directed_only__overrides_dangerous_codes(self):
-        """force_dangerous_codes=[500] + no Retry-After → no retry in server_directed_only mode"""
-        policy = DatabricksRetryPolicy(
-            delay_min=1,
-            delay_max=30,
-            stop_after_attempts_count=3,
-            stop_after_attempts_duration=900,
-            delay_default=2,
-            force_dangerous_codes=[500],
-            server_directed_only=True,
+    def test_respect_server_retry_after__overrides_dangerous_codes(self):
+        """force_dangerous_codes=[500] + no Retry-After → no retry in respect_server_retry_after_header mode"""
+        policy = self._make_retry_policy(
+            force_dangerous_codes=[500], respect_server_retry_after_header=True
         )
         policy._retry_start_time = time.time()
         policy.command_type = CommandType.EXECUTE_STATEMENT
         should_retry, msg = policy.should_retry("POST", 500, has_retry_after=False)
         assert should_retry is False
-        assert "server_directed_only" in msg
+        assert "respect_server_retry_after_header" in msg
 
-    def test_server_directed_only__non_retryable_codes_unaffected(
-        self, server_directed_retry_policy
-    ):
+    def test_respect_server_retry_after__non_retryable_codes_unaffected(self):
         """401/403/501 still don't retry even with Retry-After header"""
-        server_directed_retry_policy._retry_start_time = time.time()
-        server_directed_retry_policy.command_type = CommandType.OTHER
+        policy = self._make_retry_policy(respect_server_retry_after_header=True)
+        policy._retry_start_time = time.time()
+        policy.command_type = CommandType.OTHER
         for code in [401, 403, 501]:
-            should_retry, msg = server_directed_retry_policy.should_retry(
+            should_retry, msg = policy.should_retry(
                 "POST", code, has_retry_after=True
             )
             assert should_retry is False, f"Code {code} should never retry"
 
     def test_default_mode_unchanged(self, retry_policy):
-        """server_directed_only=False preserves existing behavior — 429 retries without header"""
+        """respect_server_retry_after_header=False preserves existing behavior — 429 retries without header"""
         retry_policy._retry_start_time = time.time()
         retry_policy.command_type = CommandType.OTHER
         should_retry, msg = retry_policy.should_retry(
@@ -169,27 +146,25 @@ class TestRetry:
         )
         assert should_retry is True
 
-    def test_server_directed_only__survives_new(self, server_directed_retry_policy):
+    def test_respect_server_retry_after__survives_new(self):
         """urllib3 calls .new() between retries to create a fresh policy instance.
-        Verify that server_directed_only is carried over and still enforced."""
-        server_directed_retry_policy._retry_start_time = time.time()
-        server_directed_retry_policy.command_type = CommandType.OTHER
-        new_policy = server_directed_retry_policy.new()
-        assert new_policy.server_directed_only is True
+        Verify that respect_server_retry_after_header is carried over and still enforced."""
+        policy = self._make_retry_policy(respect_server_retry_after_header=True)
+        policy._retry_start_time = time.time()
+        policy.command_type = CommandType.OTHER
+        new_policy = policy.new()
+        assert new_policy.respect_server_retry_after_header is True
         # The new instance should still block retries without Retry-After
         should_retry, msg = new_policy.should_retry("POST", 429, has_retry_after=False)
         assert should_retry is False
-        assert "server_directed_only" in msg
+        assert "respect_server_retry_after_header" in msg
 
-    def test_server_directed_only__execute_statement_with_retry_after(
-        self, server_directed_retry_policy
-    ):
+    def test_respect_server_retry_after__execute_statement_with_retry_after(self):
         """EXECUTE_STATEMENT + 429 + Retry-After header → retry"""
-        server_directed_retry_policy._retry_start_time = time.time()
-        server_directed_retry_policy.command_type = CommandType.EXECUTE_STATEMENT
-        should_retry, msg = server_directed_retry_policy.should_retry(
-            "POST", 429, has_retry_after=True
-        )
+        policy = self._make_retry_policy(respect_server_retry_after_header=True)
+        policy._retry_start_time = time.time()
+        policy.command_type = CommandType.EXECUTE_STATEMENT
+        should_retry, msg = policy.should_retry("POST", 429, has_retry_after=True)
         assert should_retry is True
 
     def test_404_does_not_retry_for_any_command_type(self, retry_policy):
