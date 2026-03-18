@@ -99,6 +99,7 @@ class UnifiedHttpClient:
             stop_after_attempts_duration=self.config.retry_stop_after_attempts_duration,
             delay_default=self.config.retry_delay_default,
             force_dangerous_codes=self.config.retry_dangerous_codes,
+            server_directed_only=self.config.retry_server_directed_only,
         )
 
         # Initialize the required attributes that DatabricksRetryPolicy expects
