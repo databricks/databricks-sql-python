@@ -37,6 +37,7 @@ class TestUnifiedHttpClientMaxRetryError:
         context.retry_stop_after_attempts_duration = 300.0
         context.retry_delay_default = 5.0
         context.retry_dangerous_codes = []
+        context.retry_server_directed_only = False
         context.proxy_auth_method = None
         context.pool_connections = 10
         context.pool_maxsize = 20
@@ -48,16 +49,19 @@ class TestUnifiedHttpClientMaxRetryError:
         """Create UnifiedHttpClient instance."""
         return UnifiedHttpClient(client_context)
 
-    @pytest.mark.parametrize("status_code,path", [
-        (429, "reason.response"),
-        (503, "reason.response"),
-        (500, "direct_response"),
-    ])
+    @pytest.mark.parametrize(
+        "status_code,path",
+        [
+            (429, "reason.response"),
+            (503, "reason.response"),
+            (500, "direct_response"),
+        ],
+    )
     def test_max_retry_error_with_status_codes(self, http_client, status_code, path):
         """Test MaxRetryError with various status codes and response paths."""
         mock_pool = Mock()
         max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        
+
         if path == "reason.response":
             max_retry_error.reason = Mock()
             max_retry_error.reason.response = Mock()
@@ -79,12 +83,21 @@ class TestUnifiedHttpClientMaxRetryError:
             assert "http-code" in error.context
             assert error.context["http-code"] == status_code
 
-    @pytest.mark.parametrize("setup_func", [
-        lambda e: None,  # No setup - error with no attributes
-        lambda e: setattr(e, "reason", None),  # reason=None
-        lambda e: (setattr(e, "reason", Mock()), setattr(e.reason, "response", None)),  # reason.response=None
-        lambda e: (setattr(e, "reason", Mock()), setattr(e.reason, "response", Mock(spec=[]))),  # No status attr
-    ])
+    @pytest.mark.parametrize(
+        "setup_func",
+        [
+            lambda e: None,  # No setup - error with no attributes
+            lambda e: setattr(e, "reason", None),  # reason=None
+            lambda e: (
+                setattr(e, "reason", Mock()),
+                setattr(e.reason, "response", None),
+            ),  # reason.response=None
+            lambda e: (
+                setattr(e, "reason", Mock()),
+                setattr(e.reason, "response", Mock(spec=[])),
+            ),  # No status attr
+        ],
+    )
     def test_max_retry_error_missing_status(self, http_client, setup_func):
         """Test MaxRetryError without status code (no crash, empty context)."""
         mock_pool = Mock()
@@ -104,12 +117,12 @@ class TestUnifiedHttpClientMaxRetryError:
         """Test that e.reason.response.status is preferred over e.response.status."""
         mock_pool = Mock()
         max_retry_error = MaxRetryError(pool=mock_pool, url="http://test.com")
-        
+
         # Set both structures with different status codes
         max_retry_error.reason = Mock()
         max_retry_error.reason.response = Mock()
         max_retry_error.reason.response.status = 429  # Should use this
-        
+
         max_retry_error.response = Mock()
         max_retry_error.response.status = 500  # Should be ignored
 
