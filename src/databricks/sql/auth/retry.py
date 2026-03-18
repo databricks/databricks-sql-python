@@ -397,7 +397,10 @@ class DatabricksRetryPolicy(Retry):
         # server explicitly signals it's safe via a Retry-After header. This prevents
         # duplicate side effects for non-idempotent operations.
         if self.respect_server_retry_after_header and not has_retry_after:
-            return (False, "respect_server_retry_after_header mode: no Retry-After header present")
+            return (
+                False,
+                "respect_server_retry_after_header mode: no Retry-After header present",
+            )
 
         # Request failed, was an ExecuteStatement and the command may have reached the server
         if (
