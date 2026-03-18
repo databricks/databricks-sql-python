@@ -37,7 +37,7 @@ class TestUnifiedHttpClientMaxRetryError:
         context.retry_stop_after_attempts_duration = 300.0
         context.retry_delay_default = 5.0
         context.retry_dangerous_codes = []
-        context.retry_server_directed_only = False
+        context.respect_server_retry_after_header = False
         context.proxy_auth_method = None
         context.pool_connections = 10
         context.pool_maxsize = 20

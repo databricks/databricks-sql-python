@@ -47,7 +47,7 @@ class ClientContext:
         retry_stop_after_attempts_duration: Optional[float] = None,
         retry_delay_default: Optional[float] = None,
         retry_dangerous_codes: Optional[List[int]] = None,
-        retry_server_directed_only: Optional[bool] = None,
+        respect_server_retry_after_header: Optional[bool] = None,
         proxy_auth_method: Optional[str] = None,
         pool_connections: Optional[int] = None,
         pool_maxsize: Optional[int] = None,
@@ -81,7 +81,7 @@ class ClientContext:
         )
         self.retry_delay_default = retry_delay_default or 5.0
         self.retry_dangerous_codes = retry_dangerous_codes or []
-        self.retry_server_directed_only = bool(retry_server_directed_only)
+        self.respect_server_retry_after_header = bool(respect_server_retry_after_header)
         self.proxy_auth_method = proxy_auth_method
         self.pool_connections = pool_connections or 10
         self.pool_maxsize = pool_maxsize or 20

@@ -94,7 +94,7 @@ class DatabricksRetryPolicy(Retry):
         stop_after_attempts_duration: float,
         delay_default: float,
         force_dangerous_codes: List[int],
-        server_directed_only: bool = False,
+        respect_server_retry_after_header: bool = False,
         urllib3_kwargs: dict = {},
     ):
         # These values do not change from one command to the next
@@ -104,7 +104,7 @@ class DatabricksRetryPolicy(Retry):
         self.stop_after_attempts_duration = stop_after_attempts_duration
         self._delay_default = delay_default
         self.force_dangerous_codes = force_dangerous_codes
-        self.server_directed_only = server_directed_only
+        self.respect_server_retry_after_header = respect_server_retry_after_header
 
         # the urllib3 kwargs are a mix of configuration (some of which we override)
         # and counters like `total` or `connect` which may change between successive retries
@@ -204,7 +204,7 @@ class DatabricksRetryPolicy(Retry):
             stop_after_attempts_duration=self.stop_after_attempts_duration,
             delay_default=self.delay_default,
             force_dangerous_codes=self.force_dangerous_codes,
-            server_directed_only=self.server_directed_only,
+            respect_server_retry_after_header=self.respect_server_retry_after_header,
             urllib3_kwargs={},
         )
 
@@ -393,11 +393,11 @@ class DatabricksRetryPolicy(Retry):
         if not self._is_method_retryable(method):
             return False, "Only POST requests are retried"
 
-        # In server_directed_only mode, only retry when the server explicitly signals
-        # it's safe via a Retry-After header. This prevents duplicate side effects for
-        # non-idempotent operations.
-        if self.server_directed_only and not has_retry_after:
-            return (False, "server_directed_only mode: no Retry-After header present")
+        # When respect_server_retry_after_header is enabled, only retry when the
+        # server explicitly signals it's safe via a Retry-After header. This prevents
+        # duplicate side effects for non-idempotent operations.
+        if self.respect_server_retry_after_header and not has_retry_after:
+            return (False, "respect_server_retry_after_header mode: no Retry-After header present")
 
         # Request failed, was an ExecuteStatement and the command may have reached the server
         if (
