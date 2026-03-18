@@ -390,7 +390,10 @@ class DatabricksRetryPolicy(Retry):
         # server explicitly signals it's safe via a Retry-After header. This prevents
         # duplicate side effects for non-idempotent operations.
         if self.respect_server_retry_after_header and not has_retry_after:
-            return (False, "respect_server_retry_after_header mode: no Retry-After header present")
+            return (
+                False,
+                "respect_server_retry_after_header mode: no Retry-After header present",
+            )
 
         # Request failed with 404 and was a GetOperationStatus. This is not recoverable. Don't retry.
         if status_code == 404 and self.command_type == CommandType.GET_OPERATION_STATUS:

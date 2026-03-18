@@ -919,7 +919,9 @@ def build_client_context(server_hostname: str, version: str, **kwargs):
         ),
         retry_delay_default=kwargs.get("_retry_delay_default"),
         retry_dangerous_codes=kwargs.get("_retry_dangerous_codes"),
-        respect_server_retry_after_header=kwargs.get("_respect_server_retry_after_header"),
+        respect_server_retry_after_header=kwargs.get(
+            "_respect_server_retry_after_header"
+        ),
         proxy_auth_method=kwargs.get("_proxy_auth_method"),
         pool_connections=kwargs.get("_pool_connections"),
         pool_maxsize=kwargs.get("_pool_maxsize"),
