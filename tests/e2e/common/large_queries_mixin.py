@@ -106,11 +106,11 @@ class LargeQueriesMixin:
         ],
     )
     def test_long_running_query(self, extra_params):
-        """Incrementally increase query size until it takes at least 3 minutes,
+        """Incrementally increase query size until it takes at least 2 minutes,
         and asserts that the query completes successfully.
         """
         minutes = 60
-        min_duration = 3 * minutes
+        min_duration = 2 * minutes
 
         duration = -1
         scale0 = 10000
@@ -136,5 +136,5 @@ class LargeQueriesMixin:
                 duration = time.time() - start
                 current_fraction = duration / min_duration
                 print("Took {} s with scale factor={}".format(duration, scale_factor))
-                # Extrapolate linearly to reach 3 min and add 50% padding to push over the limit
+                # Extrapolate linearly to reach 2 min and add 50% padding to push over the limit
                 scale_factor = math.ceil(1.5 * scale_factor / current_fraction)

@@ -35,6 +35,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
+          version: "2.2.1"
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
@@ -106,10 +107,10 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       -   name: Check out repository
-          uses: actions/checkout@v2
+          uses: actions/checkout@v4
       -   name: Set up python ${{ matrix.python-version }}
           id: setup-python
-          uses: actions/setup-python@v2
+          uses: actions/setup-python@v5
           with:
             python-version: ${{ matrix.python-version }}
       #----------------------------------------------
@@ -118,6 +119,7 @@ jobs:
       -   name: Install Poetry
           uses: snok/install-poetry@v1
           with:
+            version: "2.2.1"
             virtualenvs-create: true
             virtualenvs-in-project: true
             installer-parallel: true
@@ -191,6 +193,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
+          version: "2.2.1"
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
@@ -243,6 +246,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
+          version: "2.2.1"
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
