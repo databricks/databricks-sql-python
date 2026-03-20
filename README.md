@@ -97,3 +97,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Testing new lines
 Added a new line describing the efforts
+
+## How to setup the Python Connector
+Python Connector needs to setup  using hatch
