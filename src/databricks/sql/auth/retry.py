@@ -139,7 +139,7 @@ class DatabricksRetryPolicy(Retry):
 
     @classmethod
     def __private_init__(
-        cls, retry_start_time: float, command_type: Optional[CommandType], **init_kwargs
+        cls, retry_start_time: float, command_type: CommandType, **init_kwargs
     ):
         """
         Returns a new instance of DatabricksRetryPolicy with the _retry_start_time and _command_type
@@ -238,7 +238,7 @@ class DatabricksRetryPolicy(Retry):
         )
 
     @property
-    def command_type(self) -> Optional[CommandType]:
+    def command_type(self) -> CommandType:
         return self._command_type
 
     @command_type.setter
