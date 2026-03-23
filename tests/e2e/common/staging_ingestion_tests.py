@@ -310,9 +310,9 @@ class PySQLStagingIngestionTestSuiteMixin:
             with open(fh, "wb") as fp:
                 original_text = "hello world!".encode("utf-8")
                 fp.write(original_text)
-            put_query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/{id(temp_path)}.csv' OVERWRITE"
+            put_query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/{id(temp_path)}.csv' OVERWRITE"
             remove_query = (
-                f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/15/{id(temp_path)}.csv'"
+                f"REMOVE 'stage://tmp/{ingestion_user}/tmp/11/16/{id(temp_path)}.csv'"
             )
             return fh, temp_path, put_query, remove_query
 
