@@ -189,6 +189,9 @@ class ThriftDatabricksClient(DatabricksClient):
                 " This behaviour is deprecated and will be removed in a future release."
             )
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
+        self._respect_server_retry_after_header = kwargs.get(
+            "_respect_server_retry_after_header", False
+        )
 
         additional_transport_args = {}
 
@@ -215,6 +218,7 @@ class ThriftDatabricksClient(DatabricksClient):
                 stop_after_attempts_duration=self._retry_stop_after_attempts_duration,
                 delay_default=self._retry_delay_default,
                 force_dangerous_codes=self.force_dangerous_codes,
+                respect_server_retry_after_header=self._respect_server_retry_after_header,
                 urllib3_kwargs=urllib3_kwargs,
             )
 
