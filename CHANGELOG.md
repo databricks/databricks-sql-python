@@ -1,5 +1,8 @@
 # Release History
 
+# 4.1.5 (2026-03-23)
+- Add _retry_server_directed_only mode for Retry-After header compliance (databricks/databricks-sql-python#757 by @sd-db)
+
 # 4.1.4 (2025-10-15)
 - Add support for Token Federation (databricks/databricks-sql-python#691 by @madhav-db)
 - Add metric view support (databricks/databricks-sql-python#688 by @shivam2680)
