@@ -109,7 +109,7 @@ class PySQLStagingIngestionTestSuiteMixin:
         ):
             with self.connection() as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_put_fails_if_localFile_not_in_staging_allowed_local_path(
@@ -136,7 +136,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 extra_params={"staging_allowed_local_path": base_path}
             ) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{temp_path}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_put_fails_if_file_exists_and_overwrite_not_set(
@@ -222,7 +222,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 extra_params={"staging_allowed_local_path": temp_path}
             ) as conn:
                 cursor = conn.cursor()
-                query = f"GET 'stage://tmp/{some_other_user}/tmp/11/15/file1.csv' TO '{temp_path}'"
+                query = f"GET 'stage://tmp/{some_other_user}/tmp/11/16/file1.csv' TO '{temp_path}'"
                 cursor.execute(query)
 
         # PUT should fail with permissions error
@@ -258,7 +258,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_empty_local_path_fails_to_parse_at_server(
@@ -272,7 +272,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{target_file}' INTO 'stage://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_invalid_staging_path_fails_at_server(
@@ -286,7 +286,7 @@ class PySQLStagingIngestionTestSuiteMixin:
                 extra_params={"staging_allowed_local_path": staging_allowed_local_path}
             ) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{ingestion_user}/tmp/11/15/file1.csv' OVERWRITE"
+                query = f"PUT '{target_file}' INTO 'stageRANDOMSTRINGOFCHARACTERS://tmp/{ingestion_user}/tmp/11/16/file1.csv' OVERWRITE"
                 cursor.execute(query)
 
     def test_staging_ingestion_supports_multiple_staging_allowed_local_path_values(
