@@ -2,6 +2,9 @@ name: Code Quality Checks
 
 on: [pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest
@@ -23,17 +26,17 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       - name: Install Poetry
-        uses: snok/install-poetry@v1
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
         with:
           version: "2.2.1"
           virtualenvs-create: true
@@ -45,7 +48,7 @@ jobs:
       #----------------------------------------------
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
@@ -107,17 +110,17 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       -   name: Check out repository
-          uses: actions/checkout@v2
+          uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
       -   name: Set up python ${{ matrix.python-version }}
           id: setup-python
-          uses: actions/setup-python@v2
+          uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
           with:
             python-version: ${{ matrix.python-version }}
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       -   name: Install Poetry
-          uses: snok/install-poetry@v1
+          uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
           with:
             version: "2.2.1"
             virtualenvs-create: true
@@ -129,7 +132,7 @@ jobs:
       #----------------------------------------------
       -   name: Load cached venv
           id: cached-poetry-dependencies
-          uses: actions/cache@v4
+          uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
           with:
             path: .venv-pyarrow
             key: venv-pyarrow-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
@@ -185,17 +188,17 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       - name: Install Poetry
-        uses: snok/install-poetry@v1
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
         with:
           version: "2.2.1"
           virtualenvs-create: true
@@ -207,7 +210,7 @@ jobs:
       #----------------------------------------------
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
@@ -238,17 +241,17 @@ jobs:
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
       #----------------------------------------------
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       - name: Install Poetry
-        uses: snok/install-poetry@v1
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
         with:
           version: "2.2.1"
           virtualenvs-create: true
@@ -260,7 +263,7 @@ jobs:
       #----------------------------------------------
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
