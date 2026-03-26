@@ -36,7 +36,7 @@ class TestTransactions:
     """E2E tests for transaction control methods (MST support)."""
 
     # Test table name
-    TEST_TABLE_NAME = "transaction_test_table"
+    TEST_TABLE_NAME = "pysql_transaction_test_table"
 
     @pytest.fixture(autouse=True)
     def setup_and_teardown(self, connection_details):
