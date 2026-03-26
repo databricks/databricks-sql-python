@@ -1118,6 +1118,90 @@ class TransactionTestSuite(unittest.TestCase):
 
         conn.close()
 
+    # ==================== ADDITIONAL TRANSACTION TESTS ====================
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_commit_on_closed_cursor_does_not_affect_transaction(
+        self, mock_session_class
+    ):
+        """Closing a cursor should not affect the transaction state."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        # Create and close a cursor
+        mock_cursor1 = Mock()
+        mock_cursor2 = Mock()
+
+        with patch.object(conn, "cursor", side_effect=[mock_cursor1, mock_cursor2]):
+            # Create cursor, close it
+            cursor1 = conn.cursor()
+            cursor1.close()
+
+            # Commit should still work (creates new cursor internally via commit)
+            # We need to patch cursor again for the commit call
+        mock_commit_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_commit_cursor):
+            conn.commit()
+
+            # Verify COMMIT SQL was executed
+            mock_commit_cursor.execute.assert_called_once_with("COMMIT")
+            mock_commit_cursor.close.assert_called_once()
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_executemany_wraps_database_error_in_transaction(
+        self, mock_session_class
+    ):
+        """executemany() should propagate DatabaseError from execute()."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        server_error = DatabaseError(
+            "MULTI_STATEMENT_TRANSACTION_ABORTED",
+            context={"sql_state": "25000"},
+            host_url="test-host",
+        )
+
+        # Get a real cursor object, then mock its execute method to raise
+        cursor = conn.cursor()
+        with patch.object(cursor, "execute", side_effect=server_error):
+            with self.assertRaises(DatabaseError):
+                cursor.executemany(
+                    "INSERT INTO test_table VALUES (%s, %s)",
+                    [(1, "a"), (2, "b")],
+                )
+
+        conn.close()
+
+    @patch("%s.client.Session" % PACKAGE_NAME)
+    def test_autocommit_toggle_multiple_times(self, mock_session_class):
+        """Toggling autocommit multiple times should maintain correct state."""
+        conn = self._create_mock_connection(mock_session_class)
+
+        mock_cursor = Mock()
+        with patch.object(conn, "cursor", return_value=mock_cursor):
+            # Set to False
+            conn.autocommit = False
+            mock_cursor.execute.assert_called_with("SET AUTOCOMMIT = FALSE")
+            conn.session.set_autocommit.assert_called_with(False)
+
+            mock_cursor.reset_mock()
+            conn.session.reset_mock()
+
+            # Set to True
+            conn.autocommit = True
+            mock_cursor.execute.assert_called_with("SET AUTOCOMMIT = TRUE")
+            conn.session.set_autocommit.assert_called_with(True)
+
+            mock_cursor.reset_mock()
+            conn.session.reset_mock()
+
+            # Set to False again
+            conn.autocommit = False
+            mock_cursor.execute.assert_called_with("SET AUTOCOMMIT = FALSE")
+            conn.session.set_autocommit.assert_called_with(False)
+
+        conn.close()
+
 
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
