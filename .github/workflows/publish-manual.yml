@@ -4,6 +4,9 @@ name: Publish to PyPI Manual [Production]
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   publish:
     name: Publish
@@ -14,14 +17,14 @@ jobs:
       # Step 1: Check out the repository code
       #----------------------------------------------
       - name: Check out repository
-        uses: actions/checkout@v2  # Check out the repository to access the code
+        uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
 
       #----------------------------------------------
       # Step 2: Set up Python environment
       #----------------------------------------------
       - name: Set up python
         id: setup-python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
         with:
           python-version: 3.9  # Specify the Python version to be used
 
@@ -29,7 +32,7 @@ jobs:
       # Step 3: Install and configure Poetry
       #----------------------------------------------
       - name: Install Poetry
-        uses: snok/install-poetry@v1  # Install Poetry, the Python package manager
+        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
         with:
           version: "2.2.1"
           virtualenvs-create: true
