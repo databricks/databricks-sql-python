@@ -67,6 +67,14 @@ class Session:
         base_headers = [("User-Agent", self.useragent_header)]
         all_headers = (http_headers or []) + base_headers
 
+        # Extract ?o=<workspaceId> from http_path for SPOG routing.
+        # On SPOG hosts, the httpPath contains ?o=<workspaceId> which routes Thrift
+        # requests via the URL. For SEA, telemetry, and feature flags (which use
+        # separate endpoints), we inject x-databricks-org-id as an HTTP header.
+        self._spog_headers = self._extract_spog_headers(http_path, all_headers)
+        if self._spog_headers:
+            all_headers = all_headers + list(self._spog_headers.items())
+
         self.ssl_options = SSLOptions(
             # Double negation is generally a bad thing, but we have to keep backward compatibility
             tls_verify=not kwargs.get(
@@ -130,6 +138,30 @@ class Session:
             **kwargs,
         }
         return databricks_client_class(**common_args)
+
+    @staticmethod
+    def _extract_spog_headers(http_path, existing_headers):
+        """Extract ?o=<workspaceId> from http_path and return as a header dict for SPOG routing."""
+        if not http_path or "?" not in http_path:
+            return {}
+
+        from urllib.parse import parse_qs
+
+        query_string = http_path.split("?", 1)[1]
+        params = parse_qs(query_string)
+        org_id = params.get("o", [None])[0]
+        if not org_id:
+            return {}
+
+        # Don't override if explicitly set
+        if any(k == "x-databricks-org-id" for k, _ in existing_headers):
+            return {}
+
+        return {"x-databricks-org-id": org_id}
+
+    def get_spog_headers(self):
+        """Returns SPOG routing headers (x-databricks-org-id) if ?o= was in http_path."""
+        return dict(self._spog_headers)
 
     def open(self):
         self._session_id = self.backend.open_session(

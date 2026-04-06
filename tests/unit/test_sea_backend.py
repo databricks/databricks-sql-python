@@ -143,6 +143,39 @@ class TestSeaBackend:
         )
         assert client2.warehouse_id == "def456"
 
+        # Test with SPOG query param ?o= in http_path
+        client_spog = SeaDatabricksClient(
+            server_hostname="test-server.databricks.com",
+            port=443,
+            http_path="/sql/1.0/warehouses/abc123?o=6051921418418893",
+            http_headers=[],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+        )
+        assert client_spog.warehouse_id == "abc123"
+
+        # Test with SPOG query param on endpoints path
+        client_spog_ep = SeaDatabricksClient(
+            server_hostname="test-server.databricks.com",
+            port=443,
+            http_path="/sql/1.0/endpoints/def456?o=6051921418418893",
+            http_headers=[],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+        )
+        assert client_spog_ep.warehouse_id == "def456"
+
+        # Test with multiple query params
+        client_spog_multi = SeaDatabricksClient(
+            server_hostname="test-server.databricks.com",
+            port=443,
+            http_path="/sql/1.0/warehouses/abc123?o=123&extra=val",
+            http_headers=[],
+            auth_provider=AuthProvider(),
+            ssl_options=SSLOptions(),
+        )
+        assert client_spog_multi.warehouse_id == "abc123"
+
         # Test with custom max_download_threads
         client3 = SeaDatabricksClient(
             server_hostname="test-server.databricks.com",

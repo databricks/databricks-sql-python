@@ -113,6 +113,7 @@ class FeatureFlagsContext:
             # Authenticate the request
             self._connection.session.auth_provider.add_headers(headers)
             headers["User-Agent"] = self._connection.session.useragent_header
+            headers.update(self._connection.session.get_spog_headers())
 
             response = self._http_client.request(
                 HttpMethod.GET, self._feature_flag_endpoint, headers=headers, timeout=30

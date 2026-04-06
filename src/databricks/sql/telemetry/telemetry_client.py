@@ -188,6 +188,7 @@ class TelemetryClient(BaseTelemetryClient):
         executor,
         batch_size: int,
         client_context,
+        extra_headers: Optional[Dict[str, str]] = None,
     ) -> None:
         logger.debug("Initializing TelemetryClient for connection: %s", session_id_hex)
         self._telemetry_enabled = telemetry_enabled
@@ -195,6 +196,7 @@ class TelemetryClient(BaseTelemetryClient):
         self._session_id_hex = session_id_hex
         self._auth_provider = auth_provider
         self._user_agent = None
+        self._extra_headers = extra_headers or {}
 
         # OPTIMIZATION: Use lock-free Queue instead of list + lock
         # Queue is thread-safe internally and has better performance under concurrency
@@ -286,6 +288,8 @@ class TelemetryClient(BaseTelemetryClient):
 
         if self._auth_provider:
             self._auth_provider.add_headers(headers)
+
+        headers.update(self._extra_headers)
 
         try:
             logger.debug("Submitting telemetry request to thread pool")
@@ -587,6 +591,7 @@ class TelemetryClientFactory:
         host_url,
         batch_size,
         client_context,
+        extra_headers=None,
     ):
         """
         Initialize a telemetry client for a specific connection if telemetry is enabled.
@@ -627,6 +632,7 @@ class TelemetryClientFactory:
                             executor=TelemetryClientFactory._executor,
                             batch_size=batch_size,
                             client_context=client_context,
+                            extra_headers=extra_headers,
                         )
                         TelemetryClientFactory._clients[
                             host_url

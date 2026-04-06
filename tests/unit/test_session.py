@@ -8,6 +8,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     THandleIdentifier,
 )
 from databricks.sql.backend.types import SessionId, BackendType
+from databricks.sql.session import Session
 
 import databricks.sql
 
@@ -223,3 +224,46 @@ class TestSession:
 
         call_kwargs = mock_client_class.return_value.open_session.call_args[1]
         assert call_kwargs["session_configuration"]["QUERY_TAGS"] == "team:new-team"
+
+
+class TestSpogHeaders:
+    """Unit tests for SPOG header extraction from http_path."""
+
+    def test_extracts_org_id_from_query_param(self):
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=6051921418418893", []
+        )
+        assert result == {"x-databricks-org-id": "6051921418418893"}
+
+    def test_no_query_param_returns_empty(self):
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123", []
+        )
+        assert result == {}
+
+    def test_no_o_param_returns_empty(self):
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?other=value", []
+        )
+        assert result == {}
+
+    def test_empty_http_path_returns_empty(self):
+        result = Session._extract_spog_headers("", [])
+        assert result == {}
+
+    def test_none_http_path_returns_empty(self):
+        result = Session._extract_spog_headers(None, [])
+        assert result == {}
+
+    def test_explicit_header_takes_precedence(self):
+        existing = [("x-databricks-org-id", "explicit-value")]
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=6051921418418893", existing
+        )
+        assert result == {}
+
+    def test_multiple_query_params(self):
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=12345&extra=val", []
+        )
+        assert result == {"x-databricks-org-id": "12345"}
