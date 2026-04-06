@@ -11,7 +11,9 @@ permissions:
 
 jobs:
   run-non-telemetry-tests:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     environment: azure-prod
     env:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
@@ -71,7 +73,9 @@ jobs:
             -n auto
 
   run-telemetry-tests:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     needs: run-non-telemetry-tests  # Run after non-telemetry tests complete
     environment: azure-prod
     env:
