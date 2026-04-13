@@ -39,7 +39,11 @@ from tests.e2e.common.predicates import (
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
-from tests.e2e.common.large_queries_mixin import LargeQueriesMixin
+from tests.e2e.common.large_queries_mixin import (
+    LargeWideResultSetMixin,
+    LargeNarrowResultSetMixin,
+    LongRunningQueryMixin,
+)
 from tests.e2e.common.timestamp_tests import TimestampTestsMixin
 from tests.e2e.common.decimal_tests import DecimalTestsMixin
 from tests.e2e.common.retry_test_mixins import (
@@ -138,7 +142,9 @@ class PySQLPytestTestCase:
                 assert act[i] == exp[i]
 
 
-class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
+class _LargeQueryRowHelper:
+    """Shared helper for fetching rows one at a time in large query tests."""
+
     def get_some_rows(self, cursor, fetchmany_size):
         row = cursor.fetchone()
         if row:
@@ -146,16 +152,26 @@ class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
         else:
             return None
 
+
+class TestPySQLLargeWideResultSet(PySQLPytestTestCase, _LargeQueryRowHelper, LargeWideResultSetMixin):
+    pass
+
+
+class TestPySQLLargeNarrowResultSet(PySQLPytestTestCase, _LargeQueryRowHelper, LargeNarrowResultSetMixin):
+    pass
+
+
+class TestPySQLLongRunningQuery(PySQLPytestTestCase, LongRunningQueryMixin):
+    pass
+
+
+class TestPySQLCloudFetch(PySQLPytestTestCase):
     @skipUnless(pysql_supports_arrow(), "needs arrow support")
     @pytest.mark.skip("This test requires a previously uploaded data set")
     def test_cloud_fetch(self):
-        # This test can take several minutes to run
         limits = [100000, 300000]
         threads = [10, 25]
         self.arraysize = 100000
-        # This test requires a large table with many rows to properly initiate cloud fetch.
-        # e2-dogfood host > hive_metastore catalog > main schema has such a table called store_sales.
-        # If this table is deleted or this test is run on a different host, a different table may need to be used.
         base_query = "SELECT * FROM store_sales WHERE ss_sold_date_sk = 2452234 "
         for num_limit, num_threads, lz4_compression in itertools.product(
             limits, threads, [True, False]

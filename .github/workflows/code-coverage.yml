@@ -1,10 +1,15 @@
-name: Code Coverage
+name: E2E Tests and Code Coverage
 
 permissions:
   contents: read
   id-token: write
 
-on: [pull_request, workflow_dispatch]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   test-with-coverage:
@@ -32,22 +37,13 @@ jobs:
         with:
           python-version: "3.10"
           install-args: "--all-extras"
-      - name: Run parallel tests with coverage
+      - name: Run all tests with coverage
         continue-on-error: false
         run: |
           poetry run pytest tests/unit tests/e2e \
-            -m "not serial" \
             -n auto \
+            --dist=loadgroup \
             --cov=src \
-            --cov-report=xml \
-            --cov-report=term \
-            -v
-      - name: Run telemetry tests with coverage (isolated)
-        continue-on-error: false
-        run: |
-          poetry run pytest tests/e2e/test_concurrent_telemetry.py \
-            --cov=src \
-            --cov-append \
             --cov-report=xml \
             --cov-report=term \
             -v
