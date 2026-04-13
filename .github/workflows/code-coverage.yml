@@ -41,7 +41,7 @@ jobs:
         continue-on-error: false
         run: |
           poetry run pytest tests/unit tests/e2e \
-            -n auto \
+            -n 4 \
             --dist=loadgroup \
             --cov=src \
             --cov-report=xml \

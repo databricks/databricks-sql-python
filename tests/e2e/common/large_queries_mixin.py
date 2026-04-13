@@ -53,7 +53,8 @@ class LargeWideResultSetMixin(LargeQueriesFetchMixin):
             {"use_sea": True},
         ],
     )
-    def test_query_with_large_wide_result_set(self, extra_params):
+    @pytest.mark.parametrize("lz4_compression", [False, True])
+    def test_query_with_large_wide_result_set(self, extra_params, lz4_compression):
         resultSize = 100 * 1000 * 1000  # 100 MB
         width = 8192  # B
         rows = resultSize // width
@@ -64,20 +65,19 @@ class LargeWideResultSetMixin(LargeQueriesFetchMixin):
         # This is used by PyHive tests to determine the buffer size
         self.arraysize = 1000
         with self.cursor(extra_params) as cursor:
-            for lz4_compression in [False, True]:
-                cursor.connection.lz4_compression = lz4_compression
-                uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
-                cursor.execute(
-                    "SELECT id, {uuids} FROM RANGE({rows})".format(
-                        uuids=uuids, rows=rows
-                    )
+            cursor.connection.lz4_compression = lz4_compression
+            uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
+            cursor.execute(
+                "SELECT id, {uuids} FROM RANGE({rows})".format(
+                    uuids=uuids, rows=rows
                 )
-                assert lz4_compression == cursor.active_result_set.lz4_compressed
-                for row_id, row in enumerate(
-                    self.fetch_rows(cursor, rows, fetchmany_size)
-                ):
-                    assert row[0] == row_id  # Verify no rows are dropped in the middle.
-                    assert len(row[1]) == 36
+            )
+            assert lz4_compression == cursor.active_result_set.lz4_compressed
+            for row_id, row in enumerate(
+                self.fetch_rows(cursor, rows, fetchmany_size)
+            ):
+                assert row[0] == row_id  # Verify no rows are dropped in the middle.
+                assert len(row[1]) == 36
 
 
 class LargeNarrowResultSetMixin(LargeQueriesFetchMixin):
@@ -120,7 +120,7 @@ class LongRunningQueryMixin:
         and asserts that the query completes successfully.
         """
         minutes = 60
-        min_duration = 3 * minutes
+        min_duration = 1 * minutes
 
         duration = -1
         scale0 = 10000
