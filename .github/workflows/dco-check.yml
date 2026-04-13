@@ -10,7 +10,9 @@ permissions:
 
 jobs:
   dco-check:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     name: Check DCO Sign-off
     steps:
       - name: Checkout
