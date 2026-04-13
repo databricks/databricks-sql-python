@@ -50,6 +50,11 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
+      - name: Configure Poetry for JFrog
+        run: |
+          poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
+          poetry config http-basic.jfrog gha-service-account "${JFROG_ACCESS_TOKEN}"
+          poetry source add --priority=primary jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
 
       #----------------------------------------------
       #       load cached venv if cache exists
