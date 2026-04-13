@@ -32,6 +32,11 @@ jobs:
         with:
           python-version: "3.10"
       #----------------------------------------------
+      #  -----  configure JFrog PyPI proxy  -----
+      #----------------------------------------------
+      - name: Setup JFrog
+        uses: ./.github/actions/setup-jfrog
+      #----------------------------------------------
       #  -----  install system dependencies  -----
       #----------------------------------------------
       - name: Install system dependencies
@@ -42,17 +47,11 @@ jobs:
       #  -----  install & configure poetry  -----
       #----------------------------------------------
       - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
-        with:
-          version: "2.2.1"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-      #----------------------------------------------
-      #  -----  configure JFrog PyPI proxy  -----
-      #----------------------------------------------
-      - name: Setup JFrog
-        uses: ./.github/actions/setup-jfrog
+        run: |
+          pip install poetry==2.2.1
+          poetry config virtualenvs.create true
+          poetry config virtualenvs.in-project true
+          poetry config installer.parallel true
       - name: Configure Poetry for JFrog
         run: |
           poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
