@@ -33,37 +33,15 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Setup JFrog
-        uses: ./.github/actions/setup-jfrog
-      - name: Set up python
-        id: setup-python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.10"
       - name: Install Kerberos system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libkrb5-dev
-      - name: Install Poetry
-        run: |
-          pip install poetry==2.2.1
-          poetry config virtualenvs.create true
-          poetry config virtualenvs.in-project true
-          poetry config installer.parallel true
-      - name: Configure Poetry for JFrog
-        run: |
-          poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
-          poetry config http-basic.jfrog gha-service-account "${JFROG_ACCESS_TOKEN}"
-          poetry source add --priority=primary jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
-          poetry lock
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
         with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-      - name: Install dependencies
-        run: poetry install --no-interaction --all-extras
+          python-version: "3.10"
+          install-args: "--all-extras"
       - name: Run telemetry E2E tests
         run: |
           TEST_PATTERN="${{ github.event.inputs.test_pattern || 'tests/e2e/test_telemetry_e2e.py' }}"
