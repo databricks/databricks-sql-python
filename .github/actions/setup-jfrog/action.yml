@@ -1,5 +1,5 @@
 name: Setup JFrog OIDC
-description: Obtain a JFrog access token via GitHub OIDC and configure pip and poetry to use JFrog PyPI proxy
+description: Obtain a JFrog access token via GitHub OIDC and configure pip to use JFrog PyPI proxy
 
 runs:
   using: composite
@@ -30,4 +30,3 @@ runs:
         set -euo pipefail
         echo "PIP_INDEX_URL=https://gha-service-account:${JFROG_ACCESS_TOKEN}@databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple" >> "$GITHUB_ENV"
         echo "pip configured to use JFrog registry"
-
