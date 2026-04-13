@@ -52,7 +52,7 @@ jobs:
           poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
           poetry config http-basic.jfrog gha-service-account "${JFROG_ACCESS_TOKEN}"
           poetry source add --priority=primary jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
-          poetry lock --no-update
+          poetry lock
 
       #----------------------------------------------
       #       load cached venv if cache exists
@@ -123,7 +123,7 @@ jobs:
           poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
           poetry config http-basic.jfrog gha-service-account "${JFROG_ACCESS_TOKEN}"
           poetry source add --priority=primary jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
-          poetry lock --no-update
+          poetry lock
       - name: Load cached venv
         id: cached-poetry-dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
