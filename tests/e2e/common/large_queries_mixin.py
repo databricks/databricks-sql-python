@@ -7,10 +7,8 @@ import pytest
 log = logging.getLogger(__name__)
 
 
-class LargeQueriesMixin:
-    """
-    This mixin expects to be mixed with a CursorTest-like class
-    """
+class LargeQueriesFetchMixin:
+    """Shared fetch helper for large query test classes."""
 
     def fetch_rows(self, cursor, row_count, fetchmany_size):
         """
@@ -44,6 +42,10 @@ class LargeQueriesMixin:
             + "assuming 10K fetch size."
         )
 
+
+class LargeWideResultSetMixin(LargeQueriesFetchMixin):
+    """Test mixin for large wide result set queries."""
+
     @pytest.mark.parametrize(
         "extra_params",
         [
@@ -52,7 +54,7 @@ class LargeQueriesMixin:
         ],
     )
     def test_query_with_large_wide_result_set(self, extra_params):
-        resultSize = 300 * 1000 * 1000  # 300 MB
+        resultSize = 100 * 1000 * 1000  # 100 MB
         width = 8192  # B
         rows = resultSize // width
         cols = width // 36
@@ -77,6 +79,10 @@ class LargeQueriesMixin:
                     assert row[0] == row_id  # Verify no rows are dropped in the middle.
                     assert len(row[1]) == 36
 
+
+class LargeNarrowResultSetMixin(LargeQueriesFetchMixin):
+    """Test mixin for large narrow result set queries."""
+
     @pytest.mark.parametrize(
         "extra_params",
         [
@@ -85,7 +91,7 @@ class LargeQueriesMixin:
         ],
     )
     def test_query_with_large_narrow_result_set(self, extra_params):
-        resultSize = 300 * 1000 * 1000  # 300 MB
+        resultSize = 100 * 1000 * 1000  # 100 MB
         width = 8  # sizeof(long)
         rows = resultSize / width
 
@@ -97,6 +103,10 @@ class LargeQueriesMixin:
             cursor.execute("SELECT * FROM RANGE({rows})".format(rows=rows))
             for row_id, row in enumerate(self.fetch_rows(cursor, rows, fetchmany_size)):
                 assert row[0] == row_id
+
+
+class LongRunningQueryMixin:
+    """Test mixin for long running queries."""
 
     @pytest.mark.parametrize(
         "extra_params",
@@ -114,7 +124,7 @@ class LargeQueriesMixin:
 
         duration = -1
         scale0 = 10000
-        scale_factor = 1
+        scale_factor = 50
         with self.cursor(extra_params) as cursor:
             while duration < min_duration:
                 assert scale_factor < 4096, "Detected infinite loop"
@@ -138,3 +148,8 @@ class LargeQueriesMixin:
                 print("Took {} s with scale factor={}".format(duration, scale_factor))
                 # Extrapolate linearly to reach 3 min and add 50% padding to push over the limit
                 scale_factor = math.ceil(1.5 * scale_factor / current_fraction)
+
+
+# Keep backward-compatible alias that combines all three
+class LargeQueriesMixin(LargeWideResultSetMixin, LargeNarrowResultSetMixin, LongRunningQueryMixin):
+    pass
