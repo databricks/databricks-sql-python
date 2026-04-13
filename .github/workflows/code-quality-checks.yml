@@ -21,17 +21,15 @@ jobs:
             dependency-version: "min"
           - python-version: "3.13"
             dependency-version: "min"
-    
+
     name: "Unit Tests (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
-    
+
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Setup JFrog
-        uses: ./.github/actions/setup-jfrog
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -47,6 +45,11 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
+      #----------------------------------------------
+      #  -----  configure JFrog PyPI proxy  -----
+      #----------------------------------------------
+      - name: Setup JFrog
+        uses: ./.github/actions/setup-jfrog
       - name: Configure Poetry for JFrog
         run: |
           poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
@@ -114,17 +117,15 @@ jobs:
             dependency-version: "min"
           - python-version: "3.13"
             dependency-version: "min"
-    
+
     name: "Unit Tests + PyArrow (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
-    
+
     steps:
       #----------------------------------------------
       #       check-out repo and set-up python
       #----------------------------------------------
       -   name: Check out repository
           uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
-      -   name: Setup JFrog
-          uses: ./.github/actions/setup-jfrog
       -   name: Set up python ${{ matrix.python-version }}
           id: setup-python
           uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
@@ -140,6 +141,11 @@ jobs:
             virtualenvs-create: true
             virtualenvs-in-project: true
             installer-parallel: true
+      #----------------------------------------------
+      #  -----  configure JFrog PyPI proxy  -----
+      #----------------------------------------------
+      -   name: Setup JFrog
+          uses: ./.github/actions/setup-jfrog
       -   name: Configure Poetry for JFrog
           run: |
             poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
@@ -210,8 +216,6 @@ jobs:
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Setup JFrog
-        uses: ./.github/actions/setup-jfrog
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -227,6 +231,11 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
+      #----------------------------------------------
+      #  -----  configure JFrog PyPI proxy  -----
+      #----------------------------------------------
+      - name: Setup JFrog
+        uses: ./.github/actions/setup-jfrog
       - name: Configure Poetry for JFrog
         run: |
           poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
@@ -272,8 +281,6 @@ jobs:
       #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Setup JFrog
-        uses: ./.github/actions/setup-jfrog
       - name: Set up python ${{ matrix.python-version }}
         id: setup-python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -289,6 +296,11 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
+      #----------------------------------------------
+      #  -----  configure JFrog PyPI proxy  -----
+      #----------------------------------------------
+      - name: Setup JFrog
+        uses: ./.github/actions/setup-jfrog
       - name: Configure Poetry for JFrog
         run: |
           poetry config repositories.jfrog https://databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple
