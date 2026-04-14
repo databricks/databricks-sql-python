@@ -87,6 +87,7 @@ class ClientTestSuite(unittest.TestCase):
         "server_hostname": "foo",
         "http_path": "dummy_path",
         "access_token": "tok",
+        "enable_telemetry": False,
     }
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
@@ -644,6 +645,7 @@ class TransactionTestSuite(unittest.TestCase):
         "server_hostname": "foo",
         "http_path": "dummy_path",
         "access_token": "tok",
+        "enable_telemetry": False,
     }
 
     def _setup_mock_session_with_http_client(self, mock_session):

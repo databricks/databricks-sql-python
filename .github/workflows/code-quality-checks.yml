@@ -78,7 +78,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           install-args: "--all-extras"
-          cache-path: ".venv-pyarrow"
           cache-suffix: "pyarrow-${{ matrix.dependency-version }}-"
       - name: Install Python tools for custom versions
         if: matrix.dependency-version != 'default'

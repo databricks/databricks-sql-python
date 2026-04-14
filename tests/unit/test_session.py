@@ -22,6 +22,7 @@ class TestSession:
         "server_hostname": "foo",
         "http_path": "dummy_path",
         "access_token": "tok",
+        "enable_telemetry": False,
     }
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
@@ -50,6 +51,7 @@ class TestSession:
                 "server_hostname": "foo",
                 "http_path": None,
                 "access_token": "tok",
+                "enable_telemetry": False,
             },
             {
                 "server_hostname": "foo",
@@ -57,6 +59,7 @@ class TestSession:
                 "_tls_client_cert_file": "something",
                 "_use_cert_as_auth": True,
                 "access_token": None,
+                "enable_telemetry": False,
             },
         ]
 
