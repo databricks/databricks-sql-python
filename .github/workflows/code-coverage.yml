@@ -1,13 +1,21 @@
-name: Code Coverage
+name: E2E Tests and Code Coverage
 
 permissions:
   contents: read
+  id-token: write
 
-on: [pull_request, workflow_dispatch]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   test-with-coverage:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     environment: azure-prod
     env:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
@@ -16,91 +24,29 @@ jobs:
       DATABRICKS_CATALOG: peco
       DATABRICKS_USER: ${{ secrets.TEST_PECO_SP_ID }}
     steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-      - name: Set up python
-        id: setup-python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.10"
-      #----------------------------------------------
-      #  -----  install system dependencies  -----
-      #----------------------------------------------
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libkrb5-dev
-      #----------------------------------------------
-      #  -----  install & configure poetry  -----
-      #----------------------------------------------
-      - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
         with:
-          version: "2.2.1"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-
-      #----------------------------------------------
-      #       load cached venv if cache exists
-      #----------------------------------------------
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-      #----------------------------------------------
-      # install your root project, if required
-      #----------------------------------------------
-      - name: Install Kerberos system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libkrb5-dev
-      - name: Install library
-        run: poetry install --no-interaction --all-extras
-      #----------------------------------------------
-      #    run parallel tests with coverage
-      #----------------------------------------------
-      - name: Run parallel tests with coverage
+          python-version: "3.10"
+          install-args: "--all-extras"
+      - name: Run all tests with coverage
         continue-on-error: false
         run: |
           poetry run pytest tests/unit tests/e2e \
-            -m "not serial" \
-            -n auto \
+            -n 4 \
+            --dist=loadgroup \
             --cov=src \
             --cov-report=xml \
             --cov-report=term \
             -v
-
-      #----------------------------------------------
-      #    run telemetry tests with coverage (isolated)
-      #----------------------------------------------
-      - name: Run telemetry tests with coverage (isolated)
-        continue-on-error: false
-        run: |
-          # Run test_concurrent_telemetry.py separately for isolation
-          poetry run pytest tests/e2e/test_concurrent_telemetry.py \
-            --cov=src \
-            --cov-append \
-            --cov-report=xml \
-            --cov-report=term \
-            -v
-          
-      #----------------------------------------------
-      #         check for coverage override
-      #----------------------------------------------
       - name: Check for coverage override
         id: override
         env:
@@ -116,9 +62,6 @@ jobs:
             echo "override=false" >> $GITHUB_OUTPUT
             echo "No coverage override found"
           fi
-      #----------------------------------------------
-      #         check coverage percentage
-      #----------------------------------------------
       - name: Check coverage percentage
         if: steps.override.outputs.override == 'false'
         run: |
@@ -127,20 +70,14 @@ jobs:
             echo "ERROR: Coverage file not found at $COVERAGE_FILE"
             exit 1
           fi
-          
-          # Install xmllint if not available
           if ! command -v xmllint &> /dev/null; then
             sudo apt-get update && sudo apt-get install -y libxml2-utils
           fi
-          
           COVERED=$(xmllint --xpath "string(//coverage/@lines-covered)" "$COVERAGE_FILE")
           TOTAL=$(xmllint --xpath "string(//coverage/@lines-valid)" "$COVERAGE_FILE")
           PERCENTAGE=$(python3 -c "covered=${COVERED}; total=${TOTAL}; print(round((covered/total)*100, 2))")
-          
           echo "Branch Coverage: $PERCENTAGE%"
           echo "Required Coverage: 85%"
-          
-          # Use Python to compare the coverage with 85
           python3 -c "import sys; sys.exit(0 if float('$PERCENTAGE') >= 85 else 1)"
           if [ $? -eq 1 ]; then
             echo "ERROR: Coverage is $PERCENTAGE%, which is less than the required 85%"
@@ -148,19 +85,14 @@ jobs:
           else
             echo "SUCCESS: Coverage is $PERCENTAGE%, which meets the required 85%"
           fi
-          
-      #----------------------------------------------
-      #         coverage enforcement summary
-      #----------------------------------------------
       - name: Coverage enforcement summary
         env:
           OVERRIDE: ${{ steps.override.outputs.override }}
           REASON: ${{ steps.override.outputs.reason }}
         run: |
           if [ "$OVERRIDE" == "true" ]; then
-            echo "⚠️ Coverage checks bypassed: $REASON"
+            echo "Coverage checks bypassed: $REASON"
             echo "Please ensure this override is justified and temporary"
           else
-            echo "✅ Coverage checks enforced - minimum 85% required"
+            echo "Coverage checks enforced - minimum 85% required"
           fi
-

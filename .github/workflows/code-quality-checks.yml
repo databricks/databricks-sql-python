@@ -4,95 +4,56 @@ on: [pull_request]
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   run-unit-tests:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
         dependency-version: ["default", "min"]
-        # Optimize matrix - test min/max on subset of Python versions
         exclude:
           - python-version: "3.12"
             dependency-version: "min"
           - python-version: "3.13"
             dependency-version: "min"
-    
+
     name: "Unit Tests (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
-    
+
     steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up python ${{ matrix.python-version }}
-        id: setup-python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
         with:
           python-version: ${{ matrix.python-version }}
-      #----------------------------------------------
-      #  -----  install & configure poetry  -----
-      #----------------------------------------------
-      - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
-        with:
-          version: "2.2.1"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-
-      #----------------------------------------------
-      #       load cached venv if cache exists
-      #----------------------------------------------
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-      #----------------------------------------------
-      # install your root project, if required
-      #----------------------------------------------
-      - name: Install library
-        run: poetry install --no-interaction
-      #----------------------------------------------
-      # override with custom dependency versions
-      #----------------------------------------------
+          cache-suffix: "${{ matrix.dependency-version }}-"
       - name: Install Python tools for custom versions
         if: matrix.dependency-version != 'default'
         run: poetry run pip install toml packaging
-
       - name: Generate requirements file
         if: matrix.dependency-version != 'default'
         run: |
           poetry run python scripts/dependency_manager.py ${{ matrix.dependency-version }} --output requirements-${{ matrix.dependency-version }}.txt
           echo "Generated requirements for ${{ matrix.dependency-version }} versions:"
           cat requirements-${{ matrix.dependency-version }}.txt
-
       - name: Override with custom dependency versions
         if: matrix.dependency-version != 'default'
         run: poetry run pip install -r requirements-${{ matrix.dependency-version }}.txt
-
-      #----------------------------------------------
-      #              run test suite
-      #----------------------------------------------
       - name: Show installed versions
         run: |
           echo "=== Dependency Version: ${{ matrix.dependency-version }} ==="
           poetry run pip list
-
       - name: Run tests
         run: poetry run python -m pytest tests/unit
+
   run-unit-tests-with-arrow:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
@@ -102,186 +63,73 @@ jobs:
             dependency-version: "min"
           - python-version: "3.13"
             dependency-version: "min"
-    
+
     name: "Unit Tests + PyArrow (Python ${{ matrix.python-version }}, ${{ matrix.dependency-version }} deps)"
-    
+
     steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
-      -   name: Check out repository
-          uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2
-      -   name: Set up python ${{ matrix.python-version }}
-          id: setup-python
-          uses: actions/setup-python@e9aba2c848f5ebd159c070c61ea2c4e2b122355e # v2
-          with:
-            python-version: ${{ matrix.python-version }}
-      #----------------------------------------------
-      #  -----  install & configure poetry  -----
-      #----------------------------------------------
-      -   name: Install Poetry
-          uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
-          with:
-            version: "2.2.1"
-            virtualenvs-create: true
-            virtualenvs-in-project: true
-            installer-parallel: true
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install Kerberos system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
+        with:
+          python-version: ${{ matrix.python-version }}
+          install-args: "--all-extras"
+          cache-suffix: "pyarrow-${{ matrix.dependency-version }}-"
+      - name: Install Python tools for custom versions
+        if: matrix.dependency-version != 'default'
+        run: poetry run pip install toml packaging
+      - name: Generate requirements file with pyarrow
+        if: matrix.dependency-version != 'default'
+        run: |
+          poetry run python scripts/dependency_manager.py ${{ matrix.dependency-version }} --output requirements-${{ matrix.dependency-version }}-arrow.txt
+          echo "Generated requirements for ${{ matrix.dependency-version }} versions with PyArrow:"
+          cat requirements-${{ matrix.dependency-version }}-arrow.txt
+      - name: Override with custom dependency versions
+        if: matrix.dependency-version != 'default'
+        run: poetry run pip install -r requirements-${{ matrix.dependency-version }}-arrow.txt
+      - name: Show installed versions
+        run: |
+          echo "=== Dependency Version: ${{ matrix.dependency-version }} with PyArrow ==="
+          poetry run pip list
+      - name: Run tests
+        run: poetry run python -m pytest tests/unit
 
-      #----------------------------------------------
-      #       load cached venv if cache exists
-      #----------------------------------------------
-      -   name: Load cached venv
-          id: cached-poetry-dependencies
-          uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-          with:
-            path: .venv-pyarrow
-            key: venv-pyarrow-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.dependency-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
-      -   name: Install dependencies
-          if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-          run: poetry install --no-interaction --no-root
-      #----------------------------------------------
-      # install your root project, if required
-      #----------------------------------------------
-      -   name: Install Kerberos system dependencies
-          run: |
-            sudo apt-get update
-            sudo apt-get install -y libkrb5-dev
-      -   name: Install library
-          run: poetry install --no-interaction --all-extras
-      #----------------------------------------------
-      # override with custom dependency versions
-      #----------------------------------------------
-      -   name: Install Python tools for custom versions
-          if: matrix.dependency-version != 'default'
-          run: poetry run pip install toml packaging
-
-      -   name: Generate requirements file with pyarrow
-          if: matrix.dependency-version != 'default'
-          run: |
-            poetry run python scripts/dependency_manager.py ${{ matrix.dependency-version }} --output requirements-${{ matrix.dependency-version }}-arrow.txt
-            echo "Generated requirements for ${{ matrix.dependency-version }} versions with PyArrow:"
-            cat requirements-${{ matrix.dependency-version }}-arrow.txt
-
-      -   name: Override with custom dependency versions
-          if: matrix.dependency-version != 'default'
-          run: poetry run pip install -r requirements-${{ matrix.dependency-version }}-arrow.txt
-      #----------------------------------------------
-      #              run test suite
-      #----------------------------------------------
-      -   name: Show installed versions
-          run: |
-            echo "=== Dependency Version: ${{ matrix.dependency-version }} with PyArrow ==="
-            poetry run pip list
-
-      -   name: Run tests
-          run: poetry run python -m pytest tests/unit
   check-linting:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up python ${{ matrix.python-version }}
-        id: setup-python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
         with:
           python-version: ${{ matrix.python-version }}
-      #----------------------------------------------
-      #  -----  install & configure poetry  -----
-      #----------------------------------------------
-      - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
-        with:
-          version: "2.2.1"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-
-      #----------------------------------------------
-      #       load cached venv if cache exists
-      #----------------------------------------------
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-      #----------------------------------------------
-      # install your root project, if required
-      #----------------------------------------------
-      - name: Install library
-        run: poetry install --no-interaction
-      #----------------------------------------------
-      #              black the code
-      #----------------------------------------------
       - name: Black
         run: poetry run black --check src
 
   check-types:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      #----------------------------------------------
-      #       check-out repo and set-up python
-      #----------------------------------------------
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Set up python ${{ matrix.python-version }}
-        id: setup-python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
         with:
           python-version: ${{ matrix.python-version }}
-      #----------------------------------------------
-      #  -----  install & configure poetry  -----
-      #----------------------------------------------
-      - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1
-        with:
-          version: "2.2.1"
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-
-      #----------------------------------------------
-      #       load cached venv if cache exists
-      #----------------------------------------------
-      - name: Load cached venv
-        id: cached-poetry-dependencies
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ github.event.repository.name }}-${{ hashFiles('**/poetry.lock') }}
-      #----------------------------------------------
-      # install dependencies if cache does not exist
-      #----------------------------------------------
-      - name: Install dependencies
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --no-root
-      #----------------------------------------------
-      # install your root project, if required
-      #----------------------------------------------
-      - name: Install library
-        run: poetry install --no-interaction
-      #----------------------------------------------
-      #              mypy the code
-      #----------------------------------------------
       - name: Mypy
         run: |
-          mkdir .mypy_cache # Workaround for bad error message "error: --install-types failed (no mypy cache directory)"; see https://github.com/python/mypy/issues/10768#issuecomment-2178450153
+          mkdir .mypy_cache
           poetry run mypy --install-types --non-interactive src

@@ -39,7 +39,7 @@ from tests.e2e.common.predicates import (
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
 from tests.e2e.common.core_tests import CoreTestMixin, SmokeTestMixin
-from tests.e2e.common.large_queries_mixin import LargeQueriesMixin
+from tests.e2e.common.large_queries_mixin import fetch_rows
 from tests.e2e.common.timestamp_tests import TimestampTestsMixin
 from tests.e2e.common.decimal_tests import DecimalTestsMixin
 from tests.e2e.common.retry_test_mixins import (
@@ -138,24 +138,89 @@ class PySQLPytestTestCase:
                 assert act[i] == exp[i]
 
 
-class TestPySQLLargeQueriesSuite(PySQLPytestTestCase, LargeQueriesMixin):
-    def get_some_rows(self, cursor, fetchmany_size):
-        row = cursor.fetchone()
-        if row:
-            return [row]
-        else:
-            return None
+class TestPySQLLargeWideResultSet(PySQLPytestTestCase):
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    @pytest.mark.parametrize("lz4_compression", [False, True])
+    def test_query_with_large_wide_result_set(self, extra_params, lz4_compression):
+        resultSize = 100 * 1000 * 1000  # 100 MB
+        width = 8192  # B
+        rows = resultSize // width
+        cols = width // 36
+        fetchmany_size = 10 * 1024 * 1024 // width
+        self.arraysize = 1000
+        with self.cursor(extra_params) as cursor:
+            cursor.connection.lz4_compression = lz4_compression
+            uuids = ", ".join(["uuid() uuid{}".format(i) for i in range(cols)])
+            cursor.execute(
+                "SELECT id, {uuids} FROM RANGE({rows})".format(
+                    uuids=uuids, rows=rows
+                )
+            )
+            assert lz4_compression == cursor.active_result_set.lz4_compressed
+            for row_id, row in enumerate(
+                fetch_rows(self, cursor, rows, fetchmany_size)
+            ):
+                assert row[0] == row_id
+                assert len(row[1]) == 36
 
+
+class TestPySQLLargeNarrowResultSet(PySQLPytestTestCase):
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    def test_query_with_large_narrow_result_set(self, extra_params):
+        resultSize = 100 * 1000 * 1000  # 100 MB
+        width = 8  # sizeof(long)
+        rows = resultSize / width
+        fetchmany_size = 10 * 1024 * 1024 // width
+        self.arraysize = 10000000
+        with self.cursor(extra_params) as cursor:
+            cursor.execute("SELECT * FROM RANGE({rows})".format(rows=rows))
+            for row_id, row in enumerate(
+                fetch_rows(self, cursor, rows, fetchmany_size)
+            ):
+                assert row[0] == row_id
+
+
+class TestPySQLLongRunningQuery(PySQLPytestTestCase):
+    @pytest.mark.parametrize("extra_params", [{}, {"use_sea": True}])
+    def test_long_running_query(self, extra_params):
+        """Incrementally increase query size until it takes at least 1 minute,
+        and asserts that the query completes successfully.
+        """
+        import math
+
+        minutes = 60
+        min_duration = 1 * minutes
+        duration = -1
+        scale0 = 10000
+        scale_factor = 50
+        with self.cursor(extra_params) as cursor:
+            while duration < min_duration:
+                assert scale_factor < 4096, "Detected infinite loop"
+                start = time.time()
+                cursor.execute(
+                    """SELECT count(*)
+                        FROM RANGE({scale}) x
+                        JOIN RANGE({scale0}) y
+                        ON from_unixtime(x.id * y.id, "yyyy-MM-dd") LIKE "%not%a%date%"
+                        """.format(
+                        scale=scale_factor * scale0, scale0=scale0
+                    )
+                )
+                (n,) = cursor.fetchone()
+                assert n == 0
+                duration = time.time() - start
+                current_fraction = duration / min_duration
+                print("Took {} s with scale factor={}".format(duration, scale_factor))
+                scale_factor = math.ceil(1.5 * scale_factor / current_fraction)
+
+
+class TestPySQLCloudFetch(PySQLPytestTestCase):
     @skipUnless(pysql_supports_arrow(), "needs arrow support")
     @pytest.mark.skip("This test requires a previously uploaded data set")
     def test_cloud_fetch(self):
-        # This test can take several minutes to run
         limits = [100000, 300000]
         threads = [10, 25]
         self.arraysize = 100000
-        # This test requires a large table with many rows to properly initiate cloud fetch.
-        # e2-dogfood host > hive_metastore catalog > main schema has such a table called store_sales.
-        # If this table is deleted or this test is run on a different host, a different table may need to be used.
         base_query = "SELECT * FROM store_sales WHERE ss_sold_date_sk = 2452234 "
         for num_limit, num_threads, lz4_compression in itertools.product(
             limits, threads, [True, False]
