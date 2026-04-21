@@ -616,21 +616,17 @@ class TestMstMetadata:
 class TestMstBlockedSql:
     """SQL introspection statements inside active transactions.
 
-    MSTCheckRule enforcement varies by SQL on Python/Thrift. Some SHOW/DESCRIBE
-    variants are blocked (throw + abort txn); others succeed silently — likely
-    because the Thrift path routes them through metadata RPCs that bypass
-    MSTCheckRule.
+    The server restricts MST to a specific allowlist of commands. The error
+    message from TRANSACTION_NOT_SUPPORTED.COMMAND is explicit:
+    "Only SELECT / INSERT / MERGE / UPDATE / DELETE / DESCRIBE TABLE are supported."
 
     Blocked (throw + abort txn):
-    - SHOW TABLES, SHOW SCHEMAS, SHOW CATALOGS, SHOW FUNCTIONS
-    - DESCRIBE TABLE EXTENDED
+    - SHOW COLUMNS, SHOW TABLES, SHOW SCHEMAS, SHOW CATALOGS, SHOW FUNCTIONS
+    - DESCRIBE QUERY, DESCRIBE TABLE EXTENDED
     - SELECT FROM information_schema
 
-    NOT blocked on Python/Thrift (succeed silently):
-    - SHOW COLUMNS, DESCRIBE TABLE, DESCRIBE QUERY
-
-    This differs from JDBC where all of these throw. Documented here so
-    regressions in either direction are caught.
+    Allowed:
+    - DESCRIBE TABLE (basic form — explicitly listed in server's allowlist)
     """
 
     def _assert_blocked_and_txn_aborted(self, mst_conn_params, fq_table, blocked_sql):
@@ -700,35 +696,27 @@ class TestMstBlockedSql:
             f"SELECT * FROM {mst_catalog}.information_schema.columns LIMIT 1",
         )
 
-    # ----- Not blocked on Python/Thrift (diverges from JDBC) -----
-
-    def test_show_columns_not_blocked_on_thrift(self, mst_conn_params, mst_table):
-        """SHOW COLUMNS IN <table> succeeds in MST on Python/Thrift.
-
-        Diverges from JDBC where it's blocked by MSTCheckRule.
-        """
+    def test_show_columns_blocked(self, mst_conn_params, mst_table):
+        """SHOW COLUMNS is blocked in MST (ShowDeltaTableColumnsCommand)."""
         fq_table, _ = mst_table
-        self._assert_not_blocked(
+        self._assert_blocked_and_txn_aborted(
             mst_conn_params, fq_table, f"SHOW COLUMNS IN {fq_table}"
         )
 
-    def test_describe_query_not_blocked_on_thrift(self, mst_conn_params, mst_table):
-        """DESCRIBE QUERY succeeds in MST on Python/Thrift.
-
-        Diverges from JDBC where it's blocked by MSTCheckRule.
-        """
+    def test_describe_query_blocked(self, mst_conn_params, mst_table):
+        """DESCRIBE QUERY is blocked in MST (DescribeQueryCommand)."""
         fq_table, _ = mst_table
-        self._assert_not_blocked(
+        self._assert_blocked_and_txn_aborted(
             mst_conn_params,
             fq_table,
             f"DESCRIBE QUERY SELECT * FROM {fq_table}",
         )
 
-    def test_describe_table_not_blocked_on_thrift(self, mst_conn_params, mst_table):
-        """DESCRIBE TABLE succeeds in MST on Python/Thrift.
-
-        Diverges from JDBC where it's blocked by MSTCheckRule.
-        """
+    # DESCRIBE TABLE is explicitly listed as an allowed command in the server's
+    # TRANSACTION_NOT_SUPPORTED.COMMAND error message:
+    # "Only SELECT / INSERT / MERGE / UPDATE / DELETE / DESCRIBE TABLE are supported."
+    def test_describe_table_not_blocked(self, mst_conn_params, mst_table):
+        """DESCRIBE TABLE succeeds in MST — explicitly allowed by the server."""
         fq_table, _ = mst_table
         self._assert_not_blocked(
             mst_conn_params, fq_table, f"DESCRIBE TABLE {fq_table}"
