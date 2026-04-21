@@ -69,16 +69,21 @@ class DependencyManager:
     def _extract_versions_from_specifier(self, spec_set_str):
         """Extract minimum version from a specifier set"""
         try:
-            # Handle caret (^) and tilde (~) constraints that packaging doesn't support
+            # Handle caret (^) and tilde (~, ~=) constraints that packaging doesn't
+            # support (Poetry ^, Poetry ~, and PEP 440 ~=).
             if spec_set_str.startswith('^'):
                 # ^1.2.3 means >=1.2.3, <2.0.0
                 min_version = spec_set_str[1:]  # Remove ^
                 return min_version, None
+            elif spec_set_str.startswith('~='):
+                # PEP 440 compatible release: ~=1.2.3 means >=1.2.3, <1.3.0
+                min_version = spec_set_str[2:]  # Remove ~=
+                return min_version, None
             elif spec_set_str.startswith('~'):
-                # ~1.2.3 means >=1.2.3, <1.3.0
+                # Poetry tilde: ~1.2.3 means >=1.2.3, <1.3.0
                 min_version = spec_set_str[1:]  # Remove ~
                 return min_version, None
-            
+
             spec_set = SpecifierSet(spec_set_str)
             min_version = None
             
