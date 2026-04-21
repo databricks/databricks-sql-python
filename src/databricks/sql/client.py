@@ -353,6 +353,7 @@ class Connection:
             host_url=self.session.host,
             batch_size=self.telemetry_batch_size,
             client_context=client_context,
+            extra_headers=self.session.get_spog_headers(),
         )
 
         self._telemetry_client = TelemetryClientFactory.get_telemetry_client(

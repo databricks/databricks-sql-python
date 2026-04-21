@@ -188,8 +188,9 @@ class SeaDatabricksClient(DatabricksClient):
             ValueError: If the warehouse ID cannot be extracted from the path
         """
 
-        warehouse_pattern = re.compile(r".*/warehouses/(.+)")
-        endpoint_pattern = re.compile(r".*/endpoints/(.+)")
+        # [^?&]+ stops at query params (e.g. ?o= for SPOG routing)
+        warehouse_pattern = re.compile(r".*/warehouses/([^?&]+)")
+        endpoint_pattern = re.compile(r".*/endpoints/([^?&]+)")
 
         for pattern in [warehouse_pattern, endpoint_pattern]:
             match = pattern.match(http_path)
