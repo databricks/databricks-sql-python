@@ -1,0 +1,74 @@
+# U2M Debug Trace — captures exact authorize URL, callback response, token endpoint, everything
+# Run ONE AT A TIME
+
+# ============================================================
+# Trace A: azure-oauth on Staging Legacy (staging scope) — PASSES
+# ============================================================
+cd ~/Desktop/databricks-sql-python && DATABRICKS_AZURE_TENANT_ID=4a67d088-db5c-48f1-9ff2-0aace800ae68 PYTHONPATH=src .venv/bin/python -c "
+import logging, os, time
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)-5s %(name)s: %(message)s',
+    handlers=[logging.FileHandler('/tmp/u2m_trace_legacy.log', mode='w'), logging.StreamHandler()])
+for n in ['urllib3.connectionpool', 'urllib3.response', 'thrift', 'pyarrow']:
+    logging.getLogger(n).setLevel(logging.WARNING)
+
+from databricks import sql
+print('\n=== Trace A: azure-oauth | Stg Legacy with staging scope ===')
+t0 = time.time()
+try:
+    conn = sql.connect(server_hostname='adb-7064161269814046.2.staging.azuredatabricks.net',
+        http_path='/sql/1.0/warehouses/e256699345d1ac74', auth_type='azure-oauth')
+    cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+    print(f'PASS ({time.time()-t0:.1f}s)')
+except Exception as e:
+    print(f'FAIL ({time.time()-t0:.1f}s)')
+    print(f'  {type(e).__name__}: {e}')
+print(f'\nFull log: /tmp/u2m_trace_legacy.log')
+"
+
+# ============================================================
+# Trace B: azure-oauth on Staging SPOG (staging scope) — FAILS
+# ============================================================
+cd ~/Desktop/databricks-sql-python && DATABRICKS_AZURE_TENANT_ID=4a67d088-db5c-48f1-9ff2-0aace800ae68 PYTHONPATH=src .venv/bin/python -c "
+import logging, os, time
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)-5s %(name)s: %(message)s',
+    handlers=[logging.FileHandler('/tmp/u2m_trace_spog.log', mode='w'), logging.StreamHandler()])
+for n in ['urllib3.connectionpool', 'urllib3.response', 'thrift', 'pyarrow']:
+    logging.getLogger(n).setLevel(logging.WARNING)
+
+from databricks import sql
+print('\n=== Trace B: azure-oauth | Stg SPOG with staging scope ===')
+t0 = time.time()
+try:
+    conn = sql.connect(server_hostname='dogfood-spog.staging.azuredatabricks.net',
+        http_path='/sql/1.0/warehouses/e256699345d1ac74?o=7064161269814046', auth_type='azure-oauth')
+    cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+    print(f'PASS ({time.time()-t0:.1f}s)')
+except Exception as e:
+    print(f'FAIL ({time.time()-t0:.1f}s)')
+    print(f'  {type(e).__name__}: {e}')
+print(f'\nFull log: /tmp/u2m_trace_spog.log')
+"
+
+# ============================================================
+# Trace C: databricks-oauth on Staging SPOG — PASSES (for comparison)
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+import logging, os, time
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)-5s %(name)s: %(message)s',
+    handlers=[logging.FileHandler('/tmp/u2m_trace_spog_inhouse.log', mode='w'), logging.StreamHandler()])
+for n in ['urllib3.connectionpool', 'urllib3.response', 'thrift', 'pyarrow']:
+    logging.getLogger(n).setLevel(logging.WARNING)
+
+from databricks import sql
+print('\n=== Trace C: databricks-oauth | Stg SPOG (InHouse scopes) ===')
+t0 = time.time()
+try:
+    conn = sql.connect(server_hostname='dogfood-spog.staging.azuredatabricks.net',
+        http_path='/sql/1.0/warehouses/e256699345d1ac74?o=7064161269814046', auth_type='databricks-oauth')
+    cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+    print(f'PASS ({time.time()-t0:.1f}s)')
+except Exception as e:
+    print(f'FAIL ({time.time()-t0:.1f}s)')
+    print(f'  {type(e).__name__}: {e}')
+print(f'\nFull log: /tmp/u2m_trace_spog_inhouse.log')
+"

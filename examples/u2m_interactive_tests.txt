@@ -1,0 +1,120 @@
+# Python SQL Connector — U2M Interactive Tests
+# Run each test ONE AT A TIME from your terminal (not background).
+# Each opens a browser window — login and wait for result.
+#
+# All 4 tests use the connector's NATIVE U2M (no SDK).
+# Code path: auth.py:31-44 → DatabricksOAuthProvider → authenticators.py:56-148
+#
+# cd ~/Desktop/databricks-sql-python before running.
+
+# ============================================================
+# Test 1: databricks-oauth on Legacy
+# Code: InHouseOAuthEndpointCollection → scopes: sql offline_access
+# Authorize: {host}/oidc/oauth2/v2.0/authorize
+# Expected: PASS
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 1: databricks-oauth | Legacy')
+conn = sql.connect(server_hostname='adb-7064161269814046.2.staging.azuredatabricks.net', http_path='/sql/1.0/warehouses/e256699345d1ac74', auth_type='databricks-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 2: databricks-oauth on SPOG
+# Code: InHouseOAuthEndpointCollection → scopes: sql offline_access
+# Authorize: {spog-host}/oidc/oauth2/v2.0/authorize
+# Expected: PASS or FAIL (server-side SPOG issue)
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 2: databricks-oauth | SPOG')
+conn = sql.connect(server_hostname='dogfood-spog.staging.azuredatabricks.net', http_path='/sql/1.0/warehouses/e256699345d1ac74?o=7064161269814046', auth_type='databricks-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 3: azure-oauth on Legacy
+# Code: AzureOAuthEndpointCollection → scopes: 2ff814a6.../user_impersonation offline_access
+# Authorize: {host}/oidc/oauth2/v2.0/authorize (with Azure client_id 96eecda7)
+# Expected: PASS or FAIL
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 3: azure-oauth | Legacy')
+conn = sql.connect(server_hostname='adb-7064161269814046.2.staging.azuredatabricks.net', http_path='/sql/1.0/warehouses/e256699345d1ac74', auth_type='azure-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 4: azure-oauth on SPOG
+# Code: AzureOAuthEndpointCollection → scopes: 2ff814a6.../user_impersonation offline_access
+# Authorize: {spog-host}/oidc/oauth2/v2.0/authorize (with Azure client_id 96eecda7)
+# Expected: PASS or FAIL
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 4: azure-oauth | SPOG')
+conn = sql.connect(server_hostname='dogfood-spog.staging.azuredatabricks.net', http_path='/sql/1.0/warehouses/e256699345d1ac74?o=7064161269814046', auth_type='azure-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 5: No auth params (default — falls through to databricks-oauth)
+# Code: auth.py:51-64 → same as databricks-oauth
+# Expected: PASS (same as Test 1)
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 5: default (no auth) | Legacy')
+conn = sql.connect(server_hostname='adb-7064161269814046.2.staging.azuredatabricks.net', http_path='/sql/1.0/warehouses/e256699345d1ac74')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 6: azure-oauth on SPOG with InHouse client_id override
+# Purpose: Isolate whether SPOG azure-oauth stuck is caused by
+#   the Azure client_id (96eecda7) or the Azure scopes.
+#   Uses azure-oauth (Azure scopes 4a67d088.../user_impersonation)
+#   but overrides client_id to databricks-sql-python (which worked in Test 2).
+# If PASS → problem is client_id 96eecda7 on SPOG
+# If STUCK → problem is Azure scopes on SPOG
+# ============================================================
+cd ~/Desktop/databricks-sql-python && DATABRICKS_AZURE_TENANT_ID=4a67d088-db5c-48f1-9ff2-0aace800ae68 PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 6: azure-oauth | SPOG with client_id=databricks-sql-python + staging scope')
+conn = sql.connect(server_hostname='dogfood-spog.staging.azuredatabricks.net', http_path='/sql/1.0/warehouses/e256699345d1ac74?o=7064161269814046', auth_type='azure-oauth', oauth_client_id='databricks-sql-python')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 7: azure-oauth on Staging Legacy with staging scope override
+# Purpose: Verify staging azure-oauth works with correct scope
+# Expected: PASS
+# ============================================================
+cd ~/Desktop/databricks-sql-python && DATABRICKS_AZURE_TENANT_ID=4a67d088-db5c-48f1-9ff2-0aace800ae68 PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 7: azure-oauth | Staging Legacy with staging scope')
+conn = sql.connect(server_hostname='adb-7064161269814046.2.staging.azuredatabricks.net', http_path='/sql/1.0/warehouses/e256699345d1ac74', auth_type='azure-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 8: azure-oauth on Prod Legacy (default scope 2ff814a6)
+# Purpose: Verify prod azure-oauth works with default scope
+# Expected: PASS
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 8: azure-oauth | Prod Legacy')
+conn = sql.connect(server_hostname='adb-6436897454825492.12.azuredatabricks.net', http_path='/sql/1.0/warehouses/00adc7b6c00429b8', auth_type='azure-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"

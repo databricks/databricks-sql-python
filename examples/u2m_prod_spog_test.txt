@@ -1,0 +1,40 @@
+# U2M Tests on Prod SPOG (peco.azuredatabricks.net)
+# Run each ONE AT A TIME from terminal.
+
+# ============================================================
+# Test 9: databricks-oauth on Prod SPOG
+# Scopes: sql offline_access (InHouse)
+# Expected: ? (prod SPOG flag may not be enabled)
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 9: databricks-oauth | Prod SPOG')
+conn = sql.connect(server_hostname='peco.azuredatabricks.net', http_path='/sql/1.0/warehouses/00adc7b6c00429b8?o=6436897454825492', auth_type='databricks-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 10: azure-oauth on Prod SPOG (default scope 2ff814a6)
+# Scopes: 2ff814a6.../user_impersonation offline_access
+# Expected: STUCK or FAIL (server-side SPOG issue)
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 10: azure-oauth | Prod SPOG')
+conn = sql.connect(server_hostname='peco.azuredatabricks.net', http_path='/sql/1.0/warehouses/00adc7b6c00429b8?o=6436897454825492', auth_type='azure-oauth')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
+
+# ============================================================
+# Test 11: default (no auth) on Prod SPOG
+# Falls through to databricks-oauth
+# ============================================================
+cd ~/Desktop/databricks-sql-python && PYTHONPATH=src .venv/bin/python -c "
+from databricks import sql
+print('Test 11: default (no auth) | Prod SPOG')
+conn = sql.connect(server_hostname='peco.azuredatabricks.net', http_path='/sql/1.0/warehouses/00adc7b6c00429b8?o=6436897454825492')
+cur = conn.cursor(); cur.execute('SELECT 1'); print('RESULT:', cur.fetchone()[0]); cur.close(); conn.close()
+print('PASS')
+"
