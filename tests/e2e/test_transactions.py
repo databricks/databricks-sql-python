@@ -102,6 +102,14 @@ def _get_row_count(mst_conn_params, fq_table):
             return cursor.fetchone()[0]
 
 
+def _get_ids(mst_conn_params, fq_table):
+    """Return the set of ids from a fresh connection."""
+    with sql.connect(**mst_conn_params) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT id FROM {fq_table}")
+            return {row[0] for row in cursor.fetchall()}
+
+
 # ==================== A. BASIC CORRECTNESS ====================
 
 
@@ -171,7 +179,7 @@ class TestMstCorrectness:
                 cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'txn2')")
             conn.rollback()
 
-        assert _get_row_count(mst_conn_params, fq_table) == 1
+        assert _get_ids(mst_conn_params, fq_table) == {1}
 
     def test_auto_start_after_rollback(self, mst_conn_params, mst_table):
         fq_table, _ = mst_table
@@ -185,7 +193,7 @@ class TestMstCorrectness:
                 cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'txn2')")
             conn.commit()
 
-        assert _get_row_count(mst_conn_params, fq_table) == 1
+        assert _get_ids(mst_conn_params, fq_table) == {2}
 
     def test_update_in_transaction(self, mst_conn_params, mst_table):
         fq_table, _ = mst_table
@@ -433,7 +441,7 @@ class TestMstApi:
 
     def test_commit_without_active_txn_throws(self, mst_conn_params):
         with sql.connect(**mst_conn_params) as conn:
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match=r"NO_ACTIVE_TRANSACTION"):
                 conn.commit()
 
     def test_set_autocommit_during_active_txn_throws(
