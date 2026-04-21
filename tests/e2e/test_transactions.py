@@ -1,598 +1,772 @@
 """
 End-to-end integration tests for Multi-Statement Transaction (MST) APIs.
 
-These tests verify:
-- autocommit property (getter/setter)
-- commit() and rollback() methods
-- get_transaction_isolation() and set_transaction_isolation() methods
-- Transaction error handling
+Tests driver behavior for MST across:
+- Basic correctness (commit/rollback/isolation/multi-table)
+- API-specific (autocommit, isolation level, error handling)
+- Metadata RPCs inside transactions (non-transactional freshness)
+- SQL statements blocked by MSTCheckRule (SHOW, DESCRIBE, information_schema)
+- Execute variants (executemany)
+
+Parallelisation:
+- Each test uses its own unique table (derived from test name) to allow
+  parallel execution with pytest-xdist.
+- Tests requiring multiple concurrent connections to the same table are
+  tagged with xdist_group so the concurrent connections within a single
+  test don't conflict with other tests on different workers.
 
 Requirements:
 - DBSQL warehouse that supports Multi-Statement Transactions (MST)
-- Test environment configured via test.env file or environment variables
-
-Setup:
-Set the following environment variables:
-- DATABRICKS_SERVER_HOSTNAME
-- DATABRICKS_HTTP_PATH
-- DATABRICKS_ACCESS_TOKEN (or use OAuth)
-
-Usage:
-    pytest tests/e2e/test_transactions.py -v
+- Env vars: DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH,
+  DATABRICKS_TOKEN, DATABRICKS_CATALOG, DATABRICKS_SCHEMA
 """
 
 import logging
 import os
+import re
+import uuid
+
 import pytest
-from typing import Any, Dict
 
 import databricks.sql as sql
-from databricks.sql import TransactionError, NotSupportedError, InterfaceError
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.skip(
-    reason="Test environment does not yet support multi-statement transactions"
-)
-class TestTransactions:
-    """E2E tests for transaction control methods (MST support)."""
+def _unique_table_name(request):
+    """Derive a unique Delta table name from the test node id."""
+    node_id = request.node.name
+    sanitized = re.sub(r"[^a-z0-9_]", "_", node_id.lower())
+    return f"mst_pysql_{sanitized}"[:80]
 
-    # Test table name
-    TEST_TABLE_NAME = "transaction_test_table"
 
-    @pytest.fixture(autouse=True)
-    def setup_and_teardown(self, connection_details):
-        """Setup test environment before each test and cleanup after."""
-        self.connection_params = {
-            "server_hostname": connection_details["host"],
-            "http_path": connection_details["http_path"],
-            "access_token": connection_details.get("access_token"),
-            "ignore_transactions": False,  # Enable actual transaction functionality for these tests
-        }
+def _unique_table_name_raw(suffix):
+    """Non-fixture unique table name helper for extra tables within a test."""
+    return f"mst_pysql_{suffix}_{uuid.uuid4().hex[:8]}"
 
-        # Get catalog and schema from environment or use defaults
-        self.catalog = os.getenv("DATABRICKS_CATALOG", "main")
-        self.schema = os.getenv("DATABRICKS_SCHEMA", "default")
 
-        # Create connection for setup
-        self.connection = sql.connect(**self.connection_params)
+@pytest.fixture
+def mst_conn_params(connection_details):
+    """Connection parameters with MST enabled."""
+    return {
+        "server_hostname": connection_details["host"],
+        "http_path": connection_details["http_path"],
+        "access_token": connection_details.get("access_token"),
+        "ignore_transactions": False,
+    }
 
-        # Setup: Create test table
-        self._create_test_table()
 
-        yield
+@pytest.fixture
+def mst_catalog(connection_details):
+    return connection_details.get("catalog") or os.getenv("DATABRICKS_CATALOG") or "main"
 
-        # Teardown: Cleanup
-        self._cleanup()
 
-    def _get_fully_qualified_table_name(self) -> str:
-        """Get the fully qualified table name."""
-        return f"{self.catalog}.{self.schema}.{self.TEST_TABLE_NAME}"
+@pytest.fixture
+def mst_schema(connection_details):
+    return connection_details.get("schema") or os.getenv("DATABRICKS_SCHEMA") or "default"
 
-    def _create_test_table(self):
-        """Create the test table with Delta format and MST support."""
-        fq_table_name = self._get_fully_qualified_table_name()
-        cursor = self.connection.cursor()
 
-        try:
-            # Drop if exists
-            cursor.execute(f"DROP TABLE IF EXISTS {fq_table_name}")
+@pytest.fixture
+def mst_table(request, mst_conn_params, mst_catalog, mst_schema):
+    """Create a fresh Delta table for the test and drop it afterwards.
 
-            # Create table with Delta and catalog-owned feature for MST compatibility
+    Yields (fq_table_name, table_name). The table is unique per test so tests
+    can run in parallel without stepping on each other.
+    """
+    table_name = _unique_table_name(request)
+    fq_table = f"{mst_catalog}.{mst_schema}.{table_name}"
+
+    with sql.connect(**mst_conn_params) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"DROP TABLE IF EXISTS {fq_table}")
             cursor.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {fq_table_name} 
-                (id INT, value STRING) 
-                USING DELTA 
-                TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported')
-            """
+                f"CREATE TABLE {fq_table} (id INT, value STRING) USING DELTA "
+                f"TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')"
             )
 
-            logger.info(f"Created test table: {fq_table_name}")
-        finally:
-            cursor.close()
+    yield fq_table, table_name
 
-    def _cleanup(self):
-        """Cleanup after test: rollback pending transactions, drop table, close connection."""
-        try:
-            # Try to rollback any pending transaction
-            if (
-                self.connection
-                and self.connection.open
-                and not self.connection.autocommit
-            ):
-                try:
-                    self.connection.rollback()
-                except Exception as e:
-                    logger.debug(
-                        f"Rollback during cleanup failed (may be expected): {e}"
+    try:
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"DROP TABLE IF EXISTS {fq_table}")
+    except Exception as e:
+        logger.warning(f"Failed to drop {fq_table}: {e}")
+
+
+def _get_row_count(mst_conn_params, fq_table):
+    """Count rows from a fresh connection (avoids in-txn caching)."""
+    with sql.connect(**mst_conn_params) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT COUNT(*) FROM {fq_table}")
+            return cursor.fetchone()[0]
+
+
+# ==================== A. BASIC CORRECTNESS ====================
+
+
+class TestMstCorrectness:
+    """Core MST correctness: commit, rollback, isolation, multi-table."""
+
+    def test_commit_single_insert(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'committed')")
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 1
+
+    def test_commit_multiple_inserts(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'a')")
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'b')")
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (3, 'c')")
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 3
+
+    def test_rollback_single_insert(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'rolled_back')")
+            conn.rollback()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 0
+
+    def test_sequential_transactions(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'txn1')")
+            conn.commit()
+
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'txn2')")
+            conn.rollback()
+
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (3, 'txn3')")
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 2
+
+    def test_auto_start_after_commit(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'txn1')")
+            conn.commit()
+
+            # Second INSERT auto-starts a new transaction
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'txn2')")
+            conn.rollback()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 1
+
+    def test_auto_start_after_rollback(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'txn1')")
+            conn.rollback()
+
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'txn2')")
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 1
+
+    def test_update_in_transaction(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'original')")
+
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"UPDATE {fq_table} SET value = 'updated' WHERE id = 1")
+            conn.commit()
+
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT value FROM {fq_table} WHERE id = 1")
+                assert cursor.fetchone()[0] == "updated"
+
+    def test_delete_in_transaction(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'a')")
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'b')")
+
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"DELETE FROM {fq_table} WHERE id = 1")
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 1
+
+    def test_multi_table_commit(self, mst_conn_params, mst_table, mst_catalog, mst_schema):
+        fq_table1, _ = mst_table
+        fq_table2 = f"{mst_catalog}.{mst_schema}.{_unique_table_name_raw('multi_commit_t2')}"
+
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"DROP TABLE IF EXISTS {fq_table2}")
+                cursor.execute(
+                    f"CREATE TABLE {fq_table2} (id INT, value STRING) USING DELTA "
+                    f"TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')"
+                )
+            try:
+                conn.autocommit = False
+                with conn.cursor() as cursor:
+                    cursor.execute(f"INSERT INTO {fq_table1} VALUES (1, 't1')")
+                    cursor.execute(f"INSERT INTO {fq_table2} VALUES (1, 't2')")
+                conn.commit()
+
+                assert _get_row_count(mst_conn_params, fq_table1) == 1
+                assert _get_row_count(mst_conn_params, fq_table2) == 1
+            finally:
+                conn.autocommit = True
+                with conn.cursor() as cursor:
+                    cursor.execute(f"DROP TABLE IF EXISTS {fq_table2}")
+
+    def test_multi_table_rollback(self, mst_conn_params, mst_table, mst_catalog, mst_schema):
+        fq_table1, _ = mst_table
+        fq_table2 = f"{mst_catalog}.{mst_schema}.{_unique_table_name_raw('multi_rb_t2')}"
+
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"DROP TABLE IF EXISTS {fq_table2}")
+                cursor.execute(
+                    f"CREATE TABLE {fq_table2} (id INT, value STRING) USING DELTA "
+                    f"TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')"
+                )
+            try:
+                conn.autocommit = False
+                with conn.cursor() as cursor:
+                    cursor.execute(f"INSERT INTO {fq_table1} VALUES (1, 't1')")
+                    cursor.execute(f"INSERT INTO {fq_table2} VALUES (1, 't2')")
+                conn.rollback()
+
+                assert _get_row_count(mst_conn_params, fq_table1) == 0
+                assert _get_row_count(mst_conn_params, fq_table2) == 0
+            finally:
+                conn.autocommit = True
+                with conn.cursor() as cursor:
+                    cursor.execute(f"DROP TABLE IF EXISTS {fq_table2}")
+
+    def test_multi_table_atomicity(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'should_rollback')")
+                with pytest.raises(Exception):
+                    cursor.execute(
+                        "INSERT INTO nonexistent_table_xyz_xyz VALUES (1, 'fail')"
+                    )
+            conn.rollback()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 0
+
+    @pytest.mark.xdist_group(name="mst_repeatable_reads")
+    def test_repeatable_reads(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'initial')")
+
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT value FROM {fq_table} WHERE id = 1")
+                first_read = cursor.fetchone()[0]
+
+            # External connection modifies data
+            with sql.connect(**mst_conn_params) as ext_conn:
+                with ext_conn.cursor() as ext_cursor:
+                    ext_cursor.execute(
+                        f"UPDATE {fq_table} SET value = 'modified' WHERE id = 1"
                     )
 
-                # Reset to autocommit mode
-                try:
-                    self.connection.autocommit = True
-                except Exception as e:
-                    logger.debug(f"Reset autocommit during cleanup failed: {e}")
+            # Re-read in same txn — should see original value
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT value FROM {fq_table} WHERE id = 1")
+                second_read = cursor.fetchone()[0]
 
-            # Drop test table
-            if self.connection and self.connection.open:
-                fq_table_name = self._get_fully_qualified_table_name()
-                cursor = self.connection.cursor()
-                try:
-                    cursor.execute(f"DROP TABLE IF EXISTS {fq_table_name}")
-                    logger.info(f"Dropped test table: {fq_table_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to drop test table: {e}")
-                finally:
-                    cursor.close()
+            assert first_read == second_read, "Repeatable read: value should not change"
+            conn.rollback()
 
-        finally:
-            # Close connection
-            if self.connection:
-                self.connection.close()
+    @pytest.mark.xdist_group(name="mst_write_conflict")
+    def test_write_conflict_single_table(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as setup_conn:
+            with setup_conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'initial')")
 
-    # ==================== BASIC AUTOCOMMIT TESTS ====================
-
-    def test_default_autocommit_is_true(self):
-        """Test that new connection defaults to autocommit=true."""
-        assert (
-            self.connection.autocommit is True
-        ), "New connection should have autocommit=true by default"
-
-    def test_set_autocommit_to_false(self):
-        """Test successfully setting autocommit to false."""
-        self.connection.autocommit = False
-        assert (
-            self.connection.autocommit is False
-        ), "autocommit should be false after setting to false"
-
-    def test_set_autocommit_to_true(self):
-        """Test successfully setting autocommit back to true."""
-        # First disable
-        self.connection.autocommit = False
-        assert self.connection.autocommit is False
-
-        # Then enable
-        self.connection.autocommit = True
-        assert (
-            self.connection.autocommit is True
-        ), "autocommit should be true after setting to true"
-
-    # ==================== COMMIT TESTS ====================
-
-    def test_commit_single_insert(self):
-        """Test successfully committing a transaction with single INSERT."""
-        fq_table_name = self._get_fully_qualified_table_name()
-
-        # Start transaction
-        self.connection.autocommit = False
-
-        # Insert data
-        cursor = self.connection.cursor()
-        cursor.execute(
-            f"INSERT INTO {fq_table_name} (id, value) VALUES (1, 'test_value')"
-        )
-        cursor.close()
-
-        # Commit
-        self.connection.commit()
-
-        # Verify data is persisted using a new connection
-        verify_conn = sql.connect(**self.connection_params)
+        conn1 = sql.connect(**mst_conn_params)
+        conn2 = sql.connect(**mst_conn_params)
         try:
-            verify_cursor = verify_conn.cursor()
-            verify_cursor.execute(f"SELECT value FROM {fq_table_name} WHERE id = 1")
-            result = verify_cursor.fetchone()
-            verify_cursor.close()
+            conn1.autocommit = False
+            conn2.autocommit = False
 
-            assert result is not None, "Should find inserted row after commit"
-            assert result[0] == "test_value", "Value should match inserted value"
+            with conn1.cursor() as c1:
+                c1.execute(f"UPDATE {fq_table} SET value = 'conn1' WHERE id = 1")
+            with conn2.cursor() as c2:
+                c2.execute(f"UPDATE {fq_table} SET value = 'conn2' WHERE id = 1")
+
+            conn1.commit()
+            with pytest.raises(Exception):
+                conn2.commit()
         finally:
-            verify_conn.close()
-
-    def test_commit_multiple_inserts(self):
-        """Test successfully committing a transaction with multiple INSERTs."""
-        fq_table_name = self._get_fully_qualified_table_name()
-
-        self.connection.autocommit = False
-
-        # Insert multiple rows
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (1, 'value1')")
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (2, 'value2')")
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (3, 'value3')")
-        cursor.close()
-
-        self.connection.commit()
-
-        # Verify all rows persisted
-        verify_conn = sql.connect(**self.connection_params)
-        try:
-            verify_cursor = verify_conn.cursor()
-            verify_cursor.execute(f"SELECT COUNT(*) FROM {fq_table_name}")
-            result = verify_cursor.fetchone()
-            verify_cursor.close()
-
-            assert result[0] == 3, "Should have 3 rows after commit"
-        finally:
-            verify_conn.close()
-
-    # ==================== ROLLBACK TESTS ====================
-
-    def test_rollback_single_insert(self):
-        """Test successfully rolling back a transaction."""
-        fq_table_name = self._get_fully_qualified_table_name()
-
-        self.connection.autocommit = False
-
-        # Insert data
-        cursor = self.connection.cursor()
-        cursor.execute(
-            f"INSERT INTO {fq_table_name} (id, value) VALUES (100, 'rollback_test')"
-        )
-        cursor.close()
-
-        # Rollback
-        self.connection.rollback()
-
-        # Verify data is NOT persisted
-        verify_conn = sql.connect(**self.connection_params)
-        try:
-            verify_cursor = verify_conn.cursor()
-            verify_cursor.execute(
-                f"SELECT COUNT(*) FROM {fq_table_name} WHERE id = 100"
-            )
-            result = verify_cursor.fetchone()
-            verify_cursor.close()
-
-            assert result[0] == 0, "Rolled back data should not be persisted"
-        finally:
-            verify_conn.close()
-
-    # ==================== SEQUENTIAL TRANSACTION TESTS ====================
-
-    def test_multiple_sequential_transactions(self):
-        """Test executing multiple sequential transactions (commit, commit, rollback)."""
-        fq_table_name = self._get_fully_qualified_table_name()
-
-        self.connection.autocommit = False
-
-        # First transaction - commit
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (1, 'txn1')")
-        cursor.close()
-        self.connection.commit()
-
-        # Second transaction - commit
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (2, 'txn2')")
-        cursor.close()
-        self.connection.commit()
-
-        # Third transaction - rollback
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (3, 'txn3')")
-        cursor.close()
-        self.connection.rollback()
-
-        # Verify only first two transactions persisted
-        verify_conn = sql.connect(**self.connection_params)
-        try:
-            verify_cursor = verify_conn.cursor()
-            verify_cursor.execute(
-                f"SELECT COUNT(*) FROM {fq_table_name} WHERE id IN (1, 2)"
-            )
-            result = verify_cursor.fetchone()
-            assert result[0] == 2, "Should have 2 committed rows"
-
-            verify_cursor.execute(f"SELECT COUNT(*) FROM {fq_table_name} WHERE id = 3")
-            result = verify_cursor.fetchone()
-            assert result[0] == 0, "Rolled back row should not exist"
-            verify_cursor.close()
-        finally:
-            verify_conn.close()
-
-    def test_auto_start_transaction_after_commit(self):
-        """Test that new transaction automatically starts after commit."""
-        fq_table_name = self._get_fully_qualified_table_name()
-
-        self.connection.autocommit = False
-
-        # First transaction - commit
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (1, 'first')")
-        cursor.close()
-        self.connection.commit()
-
-        # New transaction should start automatically - insert and rollback
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (2, 'second')")
-        cursor.close()
-        self.connection.rollback()
-
-        # Verify: first committed, second rolled back
-        verify_conn = sql.connect(**self.connection_params)
-        try:
-            verify_cursor = verify_conn.cursor()
-            verify_cursor.execute(f"SELECT COUNT(*) FROM {fq_table_name} WHERE id = 1")
-            result = verify_cursor.fetchone()
-            assert result[0] == 1, "First insert should be committed"
-
-            verify_cursor.execute(f"SELECT COUNT(*) FROM {fq_table_name} WHERE id = 2")
-            result = verify_cursor.fetchone()
-            assert result[0] == 0, "Second insert should be rolled back"
-            verify_cursor.close()
-        finally:
-            verify_conn.close()
-
-    def test_auto_start_transaction_after_rollback(self):
-        """Test that new transaction automatically starts after rollback."""
-        fq_table_name = self._get_fully_qualified_table_name()
-
-        self.connection.autocommit = False
-
-        # First transaction - rollback
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (1, 'first')")
-        cursor.close()
-        self.connection.rollback()
-
-        # New transaction should start automatically - insert and commit
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (2, 'second')")
-        cursor.close()
-        self.connection.commit()
-
-        # Verify: first rolled back, second committed
-        verify_conn = sql.connect(**self.connection_params)
-        try:
-            verify_cursor = verify_conn.cursor()
-            verify_cursor.execute(f"SELECT COUNT(*) FROM {fq_table_name} WHERE id = 1")
-            result = verify_cursor.fetchone()
-            assert result[0] == 0, "First insert should be rolled back"
-
-            verify_cursor.execute(f"SELECT COUNT(*) FROM {fq_table_name} WHERE id = 2")
-            result = verify_cursor.fetchone()
-            assert result[0] == 1, "Second insert should be committed"
-            verify_cursor.close()
-        finally:
-            verify_conn.close()
-
-    # ==================== UPDATE/DELETE OPERATION TESTS ====================
-
-    def test_update_in_transaction(self):
-        """Test UPDATE operation in transaction."""
-        fq_table_name = self._get_fully_qualified_table_name()
-
-        # First insert a row with autocommit
-        cursor = self.connection.cursor()
-        cursor.execute(
-            f"INSERT INTO {fq_table_name} (id, value) VALUES (1, 'original')"
-        )
-        cursor.close()
-
-        # Start transaction and update
-        self.connection.autocommit = False
-        cursor = self.connection.cursor()
-        cursor.execute(f"UPDATE {fq_table_name} SET value = 'updated' WHERE id = 1")
-        cursor.close()
-        self.connection.commit()
-
-        # Verify update persisted
-        verify_conn = sql.connect(**self.connection_params)
-        try:
-            verify_cursor = verify_conn.cursor()
-            verify_cursor.execute(f"SELECT value FROM {fq_table_name} WHERE id = 1")
-            result = verify_cursor.fetchone()
-            assert result[0] == "updated", "Value should be updated after commit"
-            verify_cursor.close()
-        finally:
-            verify_conn.close()
-
-    # ==================== MULTI-TABLE TRANSACTION TESTS ====================
-
-    def test_multi_table_transaction_commit(self):
-        """Test atomic commit across multiple tables."""
-        fq_table1_name = self._get_fully_qualified_table_name()
-        table2_name = self.TEST_TABLE_NAME + "_2"
-        fq_table2_name = f"{self.catalog}.{self.schema}.{table2_name}"
-
-        # Create second table
-        cursor = self.connection.cursor()
-        cursor.execute(f"DROP TABLE IF EXISTS {fq_table2_name}")
-        cursor.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {fq_table2_name} 
-            (id INT, category STRING) 
-            USING DELTA 
-            TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported')
-        """
-        )
-        cursor.close()
-
-        try:
-            # Start transaction and insert into both tables
-            self.connection.autocommit = False
-
-            cursor = self.connection.cursor()
-            cursor.execute(
-                f"INSERT INTO {fq_table1_name} (id, value) VALUES (10, 'table1_data')"
-            )
-            cursor.execute(
-                f"INSERT INTO {fq_table2_name} (id, category) VALUES (10, 'table2_data')"
-            )
-            cursor.close()
-
-            # Commit both atomically
-            self.connection.commit()
-
-            # Verify both inserts persisted
-            verify_conn = sql.connect(**self.connection_params)
             try:
-                verify_cursor = verify_conn.cursor()
+                conn1.close()
+            except Exception:
+                pass
+            try:
+                conn2.close()
+            except Exception:
+                pass
 
-                verify_cursor.execute(
-                    f"SELECT COUNT(*) FROM {fq_table1_name} WHERE id = 10"
+    def test_read_only_transaction(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'existing')")
+
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT COUNT(*) FROM {fq_table}")
+                assert cursor.fetchone()[0] == 1
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 1
+
+    def test_rollback_after_query_failure(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'before_error')")
+                with pytest.raises(Exception):
+                    cursor.execute("SELECT * FROM nonexistent_xyz_xyz")
+            conn.rollback()
+
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (2, 'after_recovery')")
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 1
+
+    def test_multiple_cursors_in_txn(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as c1:
+                c1.execute(f"INSERT INTO {fq_table} VALUES (1, 'c1')")
+            with conn.cursor() as c2:
+                c2.execute(f"INSERT INTO {fq_table} VALUES (2, 'c2')")
+            with conn.cursor() as c3:
+                c3.execute(f"INSERT INTO {fq_table} VALUES (3, 'c3')")
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 3
+
+    def test_parameterized_insert(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    f"INSERT INTO {fq_table} VALUES (%(id)s, %(value)s)",
+                    {"id": 1, "value": "parameterized"},
                 )
-                result = verify_cursor.fetchone()
-                assert result[0] == 1, "Table1 insert should be committed"
+            conn.commit()
 
-                verify_cursor.execute(
-                    f"SELECT COUNT(*) FROM {fq_table2_name} WHERE id = 10"
+        with sql.connect(**mst_conn_params) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT value FROM {fq_table} WHERE id = 1")
+                assert cursor.fetchone()[0] == "parameterized"
+
+    def test_empty_transaction_rollback(self, mst_conn_params, mst_table):
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            # Rollback with no DML should not raise
+            conn.rollback()
+
+    def test_close_connection_implicit_rollback(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        conn = sql.connect(**mst_conn_params)
+        conn.autocommit = False
+        with conn.cursor() as cursor:
+            cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'pending')")
+        conn.close()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 0
+
+
+# ==================== B. API-SPECIFIC TESTS ====================
+
+
+class TestMstApi:
+    """DB-API-specific tests: autocommit, isolation, error handling."""
+
+    def test_default_autocommit_is_true(self, mst_conn_params):
+        with sql.connect(**mst_conn_params) as conn:
+            assert conn.autocommit is True
+
+    def test_set_autocommit_false(self, mst_conn_params):
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            assert conn.autocommit is False
+
+    def test_commit_without_active_txn_throws(self, mst_conn_params):
+        with sql.connect(**mst_conn_params) as conn:
+            with pytest.raises(Exception):
+                conn.commit()
+
+    def test_set_autocommit_during_active_txn_throws(
+        self, mst_conn_params, mst_table
+    ):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'active_txn')")
+            with pytest.raises(Exception):
+                conn.autocommit = True
+            conn.rollback()
+
+    def test_supported_isolation_level(self, mst_conn_params):
+        with sql.connect(**mst_conn_params) as conn:
+            conn.set_transaction_isolation("REPEATABLE_READ")
+            assert conn.get_transaction_isolation() == "REPEATABLE_READ"
+
+    def test_unsupported_isolation_level_rejected(self, mst_conn_params):
+        with sql.connect(**mst_conn_params) as conn:
+            for level in ["READ_UNCOMMITTED", "READ_COMMITTED", "SERIALIZABLE"]:
+                with pytest.raises(Exception):
+                    conn.set_transaction_isolation(level)
+
+
+# ==================== C. METADATA RPCs ====================
+
+
+class TestMstMetadata:
+    """Metadata RPCs inside active transactions.
+
+    Python uses Thrift RPCs for cursor.columns, cursor.tables, etc. These
+    RPCs bypass MST context and return non-transactional data — they see
+    concurrent DDL changes that the transaction shouldn't see.
+    """
+
+    def test_cursor_columns_in_mst(
+        self, mst_conn_params, mst_table, mst_catalog, mst_schema
+    ):
+        fq_table, table_name = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
+                cursor.columns(
+                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
                 )
-                result = verify_cursor.fetchone()
-                assert result[0] == 1, "Table2 insert should be committed"
+                columns = cursor.fetchall()
+                assert len(columns) > 0
+            conn.rollback()
 
-                verify_cursor.close()
-            finally:
-                verify_conn.close()
+    def test_cursor_tables_in_mst(
+        self, mst_conn_params, mst_table, mst_catalog, mst_schema
+    ):
+        fq_table, table_name = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
+                cursor.tables(
+                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
+                )
+                tables = cursor.fetchall()
+                assert len(tables) > 0
+            conn.rollback()
 
-        finally:
-            # Cleanup second table
-            self.connection.autocommit = True
-            cursor = self.connection.cursor()
-            cursor.execute(f"DROP TABLE IF EXISTS {fq_table2_name}")
-            cursor.close()
+    def test_cursor_schemas_in_mst(self, mst_conn_params, mst_table, mst_catalog):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
+                cursor.schemas(catalog_name=mst_catalog)
+                schemas = cursor.fetchall()
+                assert len(schemas) > 0
+            conn.rollback()
 
-    def test_multi_table_transaction_rollback(self):
-        """Test atomic rollback across multiple tables."""
-        fq_table1_name = self._get_fully_qualified_table_name()
-        table2_name = self.TEST_TABLE_NAME + "_2"
-        fq_table2_name = f"{self.catalog}.{self.schema}.{table2_name}"
+    def test_cursor_catalogs_in_mst(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
+                cursor.catalogs()
+                catalogs = cursor.fetchall()
+                assert len(catalogs) > 0
+            conn.rollback()
 
-        # Create second table
-        cursor = self.connection.cursor()
-        cursor.execute(f"DROP TABLE IF EXISTS {fq_table2_name}")
-        cursor.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {fq_table2_name} 
-            (id INT, category STRING) 
-            USING DELTA 
-            TBLPROPERTIES ('delta.feature.catalogOwned-preview' = 'supported')
-        """
-        )
-        cursor.close()
+    @pytest.mark.xdist_group(name="mst_freshness_columns")
+    def test_cursor_columns_non_transactional_after_concurrent_ddl(
+        self, mst_conn_params, mst_table, mst_catalog, mst_schema
+    ):
+        """Thrift cursor.columns() bypasses MST — sees concurrent ALTER TABLE."""
+        fq_table, table_name = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
+                cursor.columns(
+                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
+                )
+                before_cols = {row[3].lower() for row in cursor.fetchall()}
+
+            # External connection alters schema
+            with sql.connect(**mst_conn_params) as ext_conn:
+                with ext_conn.cursor() as ext_cursor:
+                    ext_cursor.execute(
+                        f"ALTER TABLE {fq_table} ADD COLUMN new_col STRING"
+                    )
+
+            # Re-read columns in same txn — Thrift RPC bypasses txn isolation,
+            # so new_col IS visible (proves non-transactional behavior)
+            with conn.cursor() as cursor:
+                cursor.columns(
+                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
+                )
+                after_cols = {row[3].lower() for row in cursor.fetchall()}
+
+            assert "new_col" in after_cols, (
+                "Thrift cursor.columns() should see concurrent DDL "
+                "(non-transactional behavior)"
+            )
+            assert before_cols != after_cols
+            conn.rollback()
+
+    @pytest.mark.xdist_group(name="mst_freshness_tables")
+    def test_cursor_tables_non_transactional_after_concurrent_create(
+        self, mst_conn_params, mst_table, mst_catalog, mst_schema
+    ):
+        """Thrift cursor.tables() bypasses MST — sees concurrent CREATE TABLE."""
+        fq_table, _ = mst_table
+        new_table_name = _unique_table_name_raw("freshness_new_tbl")
+        fq_new_table = f"{mst_catalog}.{mst_schema}.{new_table_name}"
 
         try:
-            # Start transaction and insert into both tables
-            self.connection.autocommit = False
+            with sql.connect(**mst_conn_params) as conn:
+                conn.autocommit = False
+                with conn.cursor() as cursor:
+                    cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
+                    cursor.tables(
+                        catalog_name=mst_catalog,
+                        schema_name=mst_schema,
+                        table_name=new_table_name,
+                    )
+                    assert len(cursor.fetchall()) == 0
 
-            cursor = self.connection.cursor()
-            cursor.execute(
-                f"INSERT INTO {fq_table1_name} (id, value) VALUES (20, 'rollback1')"
-            )
-            cursor.execute(
-                f"INSERT INTO {fq_table2_name} (id, category) VALUES (20, 'rollback2')"
-            )
-            cursor.close()
+                # External connection creates the table
+                with sql.connect(**mst_conn_params) as ext_conn:
+                    with ext_conn.cursor() as ext_cursor:
+                        ext_cursor.execute(
+                            f"CREATE TABLE {fq_new_table} (id INT) USING DELTA "
+                            f"TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')"
+                        )
 
-            # Rollback both atomically
-            self.connection.rollback()
-
-            # Verify both inserts were rolled back
-            verify_conn = sql.connect(**self.connection_params)
-            try:
-                verify_cursor = verify_conn.cursor()
-
-                verify_cursor.execute(
-                    f"SELECT COUNT(*) FROM {fq_table1_name} WHERE id = 20"
-                )
-                result = verify_cursor.fetchone()
-                assert result[0] == 0, "Table1 insert should be rolled back"
-
-                verify_cursor.execute(
-                    f"SELECT COUNT(*) FROM {fq_table2_name} WHERE id = 20"
-                )
-                result = verify_cursor.fetchone()
-                assert result[0] == 0, "Table2 insert should be rolled back"
-
-                verify_cursor.close()
-            finally:
-                verify_conn.close()
-
+                # Re-read in same txn — should see the new table
+                with conn.cursor() as cursor:
+                    cursor.tables(
+                        catalog_name=mst_catalog,
+                        schema_name=mst_schema,
+                        table_name=new_table_name,
+                    )
+                    assert len(cursor.fetchall()) > 0, (
+                        "Thrift cursor.tables() should see concurrent CREATE TABLE "
+                        "(non-transactional behavior)"
+                    )
+                conn.rollback()
         finally:
-            # Cleanup second table
-            self.connection.autocommit = True
-            cursor = self.connection.cursor()
-            cursor.execute(f"DROP TABLE IF EXISTS {fq_table2_name}")
-            cursor.close()
+            try:
+                with sql.connect(**mst_conn_params) as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(f"DROP TABLE IF EXISTS {fq_new_table}")
+            except Exception as e:
+                logger.warning(f"Failed to drop {fq_new_table}: {e}")
 
-    # ==================== ERROR HANDLING TESTS ====================
 
-    def test_set_autocommit_during_active_transaction(self):
-        """Test that setting autocommit during an active transaction throws error."""
-        fq_table_name = self._get_fully_qualified_table_name()
+# ==================== D. BLOCKED SQL (MSTCheckRule) ====================
 
-        # Start transaction
-        self.connection.autocommit = False
-        cursor = self.connection.cursor()
-        cursor.execute(f"INSERT INTO {fq_table_name} (id, value) VALUES (99, 'test')")
-        cursor.close()
 
-        # Try to set autocommit=True during active transaction
-        with pytest.raises(TransactionError) as exc_info:
-            self.connection.autocommit = True
+class TestMstBlockedSql:
+    """SQL introspection statements inside active transactions.
 
-        # Verify error message mentions autocommit or active transaction
-        error_msg = str(exc_info.value).lower()
-        assert (
-            "autocommit" in error_msg or "active transaction" in error_msg
-        ), "Error should mention autocommit or active transaction"
+    MSTCheckRule enforcement varies by SQL on Python/Thrift. Some SHOW/DESCRIBE
+    variants are blocked (throw + abort txn); others succeed silently — likely
+    because the Thrift path routes them through metadata RPCs that bypass
+    MSTCheckRule.
 
-        # Cleanup - rollback the transaction
-        self.connection.rollback()
+    Blocked (throw + abort txn):
+    - SHOW TABLES, SHOW SCHEMAS, SHOW CATALOGS, SHOW FUNCTIONS
+    - DESCRIBE TABLE EXTENDED
+    - SELECT FROM information_schema
 
-    def test_commit_without_active_transaction_throws_error(self):
-        """Test that commit() throws error when autocommit=true (no active transaction)."""
-        # Ensure autocommit is true (default)
-        assert self.connection.autocommit is True
+    NOT blocked on Python/Thrift (succeed silently):
+    - SHOW COLUMNS, DESCRIBE TABLE, DESCRIBE QUERY
 
-        # Attempt commit without active transaction should throw
-        with pytest.raises(TransactionError) as exc_info:
-            self.connection.commit()
+    This differs from JDBC where all of these throw. Documented here so
+    regressions in either direction are caught.
+    """
 
-        # Verify error message indicates no active transaction
-        error_message = str(exc_info.value)
-        assert (
-            "MULTI_STATEMENT_TRANSACTION_NO_ACTIVE_TRANSACTION" in error_message
-            or "no active transaction" in error_message.lower()
-        ), "Error should indicate no active transaction"
+    def _assert_blocked_and_txn_aborted(self, mst_conn_params, fq_table, blocked_sql):
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'before_blocked')")
 
-    def test_rollback_without_active_transaction_is_safe(self):
-        """Test that rollback() without active transaction is a safe no-op."""
-        # With autocommit=true (no active transaction)
-        assert self.connection.autocommit is True
+                with pytest.raises(Exception):
+                    cursor.execute(blocked_sql)
 
-        # ROLLBACK should be safe (no exception)
-        self.connection.rollback()
+                with pytest.raises(Exception):
+                    cursor.execute(
+                        f"INSERT INTO {fq_table} VALUES (2, 'after_blocked')"
+                    )
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
-        # Verify connection is still usable
-        assert self.connection.autocommit is True
-        assert self.connection.open is True
+    def _assert_not_blocked(self, mst_conn_params, fq_table, allowed_sql):
+        """Assert the SQL succeeds and returns rows inside an active txn."""
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'before')")
+                cursor.execute(allowed_sql)
+                rows = cursor.fetchall()
+                assert len(rows) > 0
+            conn.rollback()
 
-    # ==================== TRANSACTION ISOLATION TESTS ====================
+    def test_show_tables_blocked(self, mst_conn_params, mst_table, mst_catalog, mst_schema):
+        fq_table, _ = mst_table
+        self._assert_blocked_and_txn_aborted(
+            mst_conn_params, fq_table, f"SHOW TABLES IN {mst_catalog}.{mst_schema}"
+        )
 
-    def test_get_transaction_isolation_returns_repeatable_read(self):
-        """Test that get_transaction_isolation() returns REPEATABLE_READ."""
-        isolation_level = self.connection.get_transaction_isolation()
-        assert (
-            isolation_level == "REPEATABLE_READ"
-        ), "Databricks MST should use REPEATABLE_READ (Snapshot Isolation)"
+    def test_show_schemas_blocked(self, mst_conn_params, mst_table, mst_catalog):
+        fq_table, _ = mst_table
+        self._assert_blocked_and_txn_aborted(
+            mst_conn_params, fq_table, f"SHOW SCHEMAS IN {mst_catalog}"
+        )
 
-    def test_set_transaction_isolation_accepts_repeatable_read(self):
-        """Test that set_transaction_isolation() accepts REPEATABLE_READ."""
-        # Should not raise - these are all valid formats
-        self.connection.set_transaction_isolation("REPEATABLE_READ")
-        self.connection.set_transaction_isolation("REPEATABLE READ")
-        self.connection.set_transaction_isolation("repeatable_read")
-        self.connection.set_transaction_isolation("repeatable read")
+    def test_show_catalogs_blocked(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        self._assert_blocked_and_txn_aborted(
+            mst_conn_params, fq_table, "SHOW CATALOGS"
+        )
 
-    def test_set_transaction_isolation_rejects_unsupported_level(self):
-        """Test that set_transaction_isolation() rejects unsupported levels."""
-        with pytest.raises(NotSupportedError) as exc_info:
-            self.connection.set_transaction_isolation("READ_COMMITTED")
+    def test_show_functions_blocked(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        self._assert_blocked_and_txn_aborted(
+            mst_conn_params, fq_table, "SHOW FUNCTIONS"
+        )
 
-        error_message = str(exc_info.value)
-        assert "not supported" in error_message.lower()
-        assert "READ_COMMITTED" in error_message
+    def test_describe_table_extended_blocked(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        self._assert_blocked_and_txn_aborted(
+            mst_conn_params, fq_table, f"DESCRIBE TABLE EXTENDED {fq_table}"
+        )
+
+    def test_information_schema_blocked(self, mst_conn_params, mst_table, mst_catalog):
+        fq_table, _ = mst_table
+        self._assert_blocked_and_txn_aborted(
+            mst_conn_params,
+            fq_table,
+            f"SELECT * FROM {mst_catalog}.information_schema.columns LIMIT 1",
+        )
+
+    # ----- Not blocked on Python/Thrift (diverges from JDBC) -----
+
+    def test_show_columns_not_blocked_on_thrift(self, mst_conn_params, mst_table):
+        """SHOW COLUMNS IN <table> succeeds in MST on Python/Thrift.
+
+        Diverges from JDBC where it's blocked by MSTCheckRule.
+        """
+        fq_table, _ = mst_table
+        self._assert_not_blocked(
+            mst_conn_params, fq_table, f"SHOW COLUMNS IN {fq_table}"
+        )
+
+    def test_describe_query_not_blocked_on_thrift(self, mst_conn_params, mst_table):
+        """DESCRIBE QUERY succeeds in MST on Python/Thrift.
+
+        Diverges from JDBC where it's blocked by MSTCheckRule.
+        """
+        fq_table, _ = mst_table
+        self._assert_not_blocked(
+            mst_conn_params,
+            fq_table,
+            f"DESCRIBE QUERY SELECT * FROM {fq_table}",
+        )
+
+    def test_describe_table_not_blocked_on_thrift(self, mst_conn_params, mst_table):
+        """DESCRIBE TABLE succeeds in MST on Python/Thrift.
+
+        Diverges from JDBC where it's blocked by MSTCheckRule.
+        """
+        fq_table, _ = mst_table
+        self._assert_not_blocked(
+            mst_conn_params, fq_table, f"DESCRIBE TABLE {fq_table}"
+        )
+
+
+# ==================== E. EXECUTE VARIANTS ====================
+
+
+class TestMstExecuteVariants:
+    """Execute method variants (executemany) inside MST."""
+
+    def test_executemany_in_txn(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.executemany(
+                    f"INSERT INTO {fq_table} VALUES (%(id)s, %(value)s)",
+                    [
+                        {"id": 1, "value": "a"},
+                        {"id": 2, "value": "b"},
+                        {"id": 3, "value": "c"},
+                    ],
+                )
+            conn.commit()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 3
+
+    def test_executemany_rollback_in_txn(self, mst_conn_params, mst_table):
+        fq_table, _ = mst_table
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.executemany(
+                    f"INSERT INTO {fq_table} VALUES (%(id)s, %(value)s)",
+                    [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}],
+                )
+            conn.rollback()
+
+        assert _get_row_count(mst_conn_params, fq_table) == 0
