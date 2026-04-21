@@ -156,12 +156,26 @@ class Session:
         params = parse_qs(query_string)
         org_id = params.get("o", [None])[0]
         if not org_id:
+            logger.debug(
+                "SPOG header extraction: http_path has query string but no ?o= param, "
+                "skipping x-databricks-org-id injection"
+            )
             return {}
 
         # Don't override if explicitly set
         if any(k == "x-databricks-org-id" for k, _ in existing_headers):
+            logger.debug(
+                "SPOG header extraction: x-databricks-org-id already set by caller, "
+                "not overriding with ?o=%s from http_path",
+                org_id,
+            )
             return {}
 
+        logger.debug(
+            "SPOG header extraction: injecting x-databricks-org-id=%s "
+            "(extracted from ?o= in http_path)",
+            org_id,
+        )
         return {"x-databricks-org-id": org_id}
 
     def get_spog_headers(self):
