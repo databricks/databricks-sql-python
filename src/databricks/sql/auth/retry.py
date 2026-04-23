@@ -231,11 +231,15 @@ class DatabricksRetryPolicy(Retry):
         # Include urllib3's current state in our __init__ params
         databricks_init_params["urllib3_kwargs"].update(**urllib3_init_params)  # type: ignore[attr-defined]
 
-        return type(self).__private_init__(
+        new_instance = type(self).__private_init__(
             retry_start_time=self._retry_start_time,
             command_type=self.command_type,
             **databricks_init_params,
         )
+        # Carry profiling state across retries
+        new_instance.thrift_method_name = getattr(self, "thrift_method_name", None)
+        new_instance.last_sql_statement = getattr(self, "last_sql_statement", None)
+        return new_instance
 
     @property
     def command_type(self) -> Optional[CommandType]:
@@ -294,9 +298,16 @@ class DatabricksRetryPolicy(Retry):
         else:
             proposed_wait = self.get_backoff_time()
 
-        proposed_wait = max(proposed_wait, self.delay_max)
+        proposed_wait = min(proposed_wait, self.delay_max)
         self.check_proposed_wait(proposed_wait)
-        logger.debug(f"Retrying after {proposed_wait} seconds")
+        logger.info(
+            "[PROFILE] urllib3_retry sleep=%.1fs, command=%s, method=%s, sql=%s, retry_after=%s",
+            proposed_wait,
+            self.command_type and self.command_type.value,
+            getattr(self, "thrift_method_name", "unknown"),
+            getattr(self, "last_sql_statement", None),
+            retry_after,
+        )
         time.sleep(proposed_wait)
         return True
 
@@ -358,6 +369,14 @@ class DatabricksRetryPolicy(Retry):
         if status_code // 100 <= 3:
             return False, "2xx/3xx codes are not retried"
 
+        logger.info(
+            "[PROFILE] should_retry: status=%d, command=%s, method=%s, sql=%s, evaluating_retry",
+            status_code,
+            self.command_type and self.command_type.value,
+            getattr(self, "thrift_method_name", "unknown"),
+            getattr(self, "last_sql_statement", None),
+        )
+
         if status_code == 400:
             return (
                 False,
@@ -415,6 +434,13 @@ class DatabricksRetryPolicy(Retry):
         # None of the above conditions applied. Eagerly retry.
         logger.debug(
             f"This request should be retried: {self.command_type and self.command_type.value}"
+        )
+        logger.info(
+            "[PROFILE] should_retry: status=%d, command=%s, method=%s, sql=%s, decision=True, reason=default_retry_policy",
+            status_code,
+            self.command_type and self.command_type.value,
+            getattr(self, "thrift_method_name", "unknown"),
+            getattr(self, "last_sql_statement", None),
         )
         return (
             True,
