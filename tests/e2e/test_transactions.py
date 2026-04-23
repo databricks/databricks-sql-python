@@ -624,17 +624,21 @@ class TestMstMetadata:
 class TestMstBlockedSql:
     """SQL introspection statements inside active transactions.
 
-    The server restricts MST to a specific allowlist of commands. The error
-    message from TRANSACTION_NOT_SUPPORTED.COMMAND is explicit:
+    The server restricts MST to an allowlist enforced by MSTCheckRule. The
+    TRANSACTION_NOT_SUPPORTED.COMMAND error originally advertised only:
     "Only SELECT / INSERT / MERGE / UPDATE / DELETE / DESCRIBE TABLE are supported."
 
+    The server has since broadened the allowlist to include SHOW COLUMNS
+    (ShowDeltaTableColumnsCommand), observed on current DBSQL warehouses.
+
     Blocked (throw + abort txn):
-    - SHOW COLUMNS, SHOW TABLES, SHOW SCHEMAS, SHOW CATALOGS, SHOW FUNCTIONS
+    - SHOW TABLES, SHOW SCHEMAS, SHOW CATALOGS, SHOW FUNCTIONS
     - DESCRIBE QUERY, DESCRIBE TABLE EXTENDED
     - SELECT FROM information_schema
 
     Allowed:
-    - DESCRIBE TABLE (basic form — explicitly listed in server's allowlist)
+    - DESCRIBE TABLE (basic form)
+    - SHOW COLUMNS
     """
 
     def _assert_blocked_and_txn_aborted(self, mst_conn_params, fq_table, blocked_sql):
@@ -704,10 +708,10 @@ class TestMstBlockedSql:
             f"SELECT * FROM {mst_catalog}.information_schema.columns LIMIT 1",
         )
 
-    def test_show_columns_blocked(self, mst_conn_params, mst_table):
-        """SHOW COLUMNS is blocked in MST (ShowDeltaTableColumnsCommand)."""
+    def test_show_columns_not_blocked(self, mst_conn_params, mst_table):
+        """SHOW COLUMNS succeeds in MST — allowed by the server's MSTCheckRule allowlist."""
         fq_table, _ = mst_table
-        self._assert_blocked_and_txn_aborted(
+        self._assert_not_blocked(
             mst_conn_params, fq_table, f"SHOW COLUMNS IN {fq_table}"
         )
 
