@@ -105,6 +105,7 @@ def conn_params() -> dict:
         "http_path": HTTP_PATH,
         "access_token": ACCESS_TOKEN,
         "_tls_no_verify": True,
+        "enable_telemetry": False,
     }
 
 

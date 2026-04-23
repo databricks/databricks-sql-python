@@ -23,6 +23,7 @@ with sql.connect(
     http_path=HTTP_PATH,
     access_token=ACCESS_TOKEN,
     _tls_no_verify=True,
+    enable_telemetry=False,
 ) as conn:
     print(f"Connected in {time.time() - t0:.2f}s")
 

@@ -33,6 +33,7 @@ def cleanup_table(table_name):
         http_path=HTTP_PATH,
         access_token=ACCESS_TOKEN,
         _tls_no_verify=True,
+        enable_telemetry=False,
     ) as conn:
         with conn.cursor() as cursor:
             # --- Clean up column tags ---
