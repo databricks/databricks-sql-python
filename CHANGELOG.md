@@ -1,5 +1,16 @@
 # Release History
 
+# 4.2.6 (2026-04-22)
+- Add SPOG routing support for account-level vanity URLs (databricks/databricks-sql-python#767 by @msrathore-db)
+- Fix dependency_manager: handle PEP 440 ~= compatible release syntax (databricks/databricks-sql-python#776 by @vikrantpuppala)
+- Bump thrift to fix deprecation warning (databricks/databricks-sql-python#733 by @Korijn)
+- Add AI coding agent detection to User-Agent header (databricks/databricks-sql-python#740 by @vikrantpuppala)
+- Add statement-level query_tags support for SEA backend (databricks/databricks-sql-python#754 by @sreekanth-db)
+- Update PyArrow concatenation of tables to use promote_options as default (databricks/databricks-sql-python#751 by @jprakash-db)
+- Fix float inference to use DoubleParameter (64-bit) instead of FloatParameter (databricks/databricks-sql-python#742 by @Shubhambhusate)
+- Allow specifying query_tags as a dict upon connection creation (databricks/databricks-sql-python#749 by @jiabin-hu)
+- Add query_tags parameter support for execute methods (databricks/databricks-sql-python#736 by @jiabin-hu)
+
 # 4.2.5 (2026-02-09)
 - Fix feature-flag endpoint retries in gov region (databricks/databricks-sql-python#735 by @samikshya-db)
 - Improve telemetry lifecycle management (databricks/databricks-sql-python#734 by @msrathore-db)
