@@ -46,7 +46,7 @@ CATALOG = _creds["CATALOG"]
 SCHEMA = _creds["SCHEMA"]
 # ============================================================
 
-NUM_TABLES = 64
+NUM_TABLES = 128
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "read_then_write")
 
 SELECT_TEMPLATE = """SELECT column_name, tag_name, tag_value
@@ -216,10 +216,12 @@ def worker(
 # Run one iteration
 # ---------------------------------------------------------------------------
 
-def run_iteration(iteration: int, num_threads: int) -> tuple:
+def run_iteration(iteration: int, num_threads: int, tables_per_iteration: int) -> tuple:
     table_queue = Queue()
-    for t in range(1, NUM_TABLES + 1):
-        table_queue.put(f"table{t}")
+    start = ((iteration - 1) * tables_per_iteration) % NUM_TABLES
+    for i in range(tables_per_iteration):
+        table_idx = start + i + 1
+        table_queue.put(f"table{table_idx}")
 
     results: list = []
     results_lock = threading.Lock()
@@ -485,9 +487,17 @@ def main():
         description="Profile read-from-information_schema then write-column-tag pattern"
     )
     parser.add_argument("--threads", type=int, required=True, help="Number of concurrent threads")
-    parser.add_argument("--iterations", type=int, required=True, help="Number of times to repeat the full sweep")
+    parser.add_argument("--iterations", type=int, required=True, help="Number of iterations")
+    parser.add_argument("--tables-per-iteration", type=int, default=None, help="Tables per iteration (default = --threads)")
     parser.add_argument("--validate", action="store_true", help="Quick validation: override to 1 iteration")
     args = parser.parse_args()
+
+    if args.tables_per_iteration is None:
+        args.tables_per_iteration = args.threads
+
+    if args.tables_per_iteration > NUM_TABLES:
+        print(f"Error: --tables-per-iteration {args.tables_per_iteration} exceeds NUM_TABLES={NUM_TABLES}")
+        sys.exit(1)
 
     if args.validate:
         args.iterations = 1
@@ -501,9 +511,9 @@ def main():
 
     profile_handler = setup_logging(log_path)
 
-    print(f"Profile (information_schema.column_tags): threads={args.threads}, iterations={args.iterations}")
-    print(f"SELECTs per iteration: {NUM_TABLES} (1 per table)")
-    print(f"Total SELECTs: {NUM_TABLES * args.iterations}")
+    print(f"Profile (information_schema.column_tags): threads={args.threads}, iterations={args.iterations}, tables_per_iteration={args.tables_per_iteration}")
+    print(f"SELECTs per iteration: {args.tables_per_iteration} (1 per table)")
+    print(f"Total SELECTs: {args.tables_per_iteration * args.iterations}")
     print(f"Output: {report_path}")
     print()
 
@@ -512,7 +522,7 @@ def main():
 
     for i in range(1, args.iterations + 1):
         print(f"Iteration {i}/{args.iterations}...", end=" ", flush=True)
-        results, duration = run_iteration(iteration=i, num_threads=args.threads)
+        results, duration = run_iteration(iteration=i, num_threads=args.threads, tables_per_iteration=args.tables_per_iteration)
         all_results.extend(results)
         iteration_durations.append(duration)
 

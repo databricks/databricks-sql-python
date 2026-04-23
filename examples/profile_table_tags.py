@@ -55,7 +55,7 @@ CATALOG = _creds["CATALOG"]
 SCHEMA = _creds["SCHEMA"]
 # ============================================================
 
-NUM_TABLES = 64
+NUM_TABLES = 128
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "table_tags")
 
 
@@ -230,11 +230,14 @@ def run_iteration(
     iteration: int,
     num_tags: int,
     num_threads: int,
+    tables_per_iteration: int,
 ) -> tuple:
-    """Run a single iteration: distribute 64 tables across threads."""
+    """Run a single iteration: tables_per_iteration tables distributed across threads."""
     table_queue = Queue()
-    for t in range(1, NUM_TABLES + 1):
-        table_queue.put(f"table{t}")
+    start = ((iteration - 1) * tables_per_iteration) % NUM_TABLES
+    for i in range(tables_per_iteration):
+        table_idx = start + i + 1
+        table_queue.put(f"table{table_idx}")
 
     alter_results: list = []
     results_lock = threading.Lock()
@@ -500,11 +503,19 @@ def generate_report(
 
 def main():
     parser = argparse.ArgumentParser(description="Profile SET TABLE TAGS performance")
-    parser.add_argument("--tags", type=int, required=True, help="Number of tags per ALTER command (1, 2, 4)")
-    parser.add_argument("--threads", type=int, required=True, help="Number of concurrent threads (1, 2, 4, 8, 16)")
-    parser.add_argument("--iterations", type=int, required=True, help="Number of times to repeat the full sweep")
+    parser.add_argument("--tags", type=int, required=True, help="Number of tags per ALTER command")
+    parser.add_argument("--threads", type=int, required=True, help="Number of concurrent threads")
+    parser.add_argument("--iterations", type=int, required=True, help="Number of iterations")
+    parser.add_argument("--tables-per-iteration", type=int, default=None, help="Tables per iteration (default = --threads)")
     parser.add_argument("--validate", action="store_true", help="Quick validation: override to 1 iteration, print result")
     args = parser.parse_args()
+
+    if args.tables_per_iteration is None:
+        args.tables_per_iteration = args.threads
+
+    if args.tables_per_iteration > NUM_TABLES:
+        print(f"Error: --tables-per-iteration {args.tables_per_iteration} exceeds NUM_TABLES={NUM_TABLES}")
+        sys.exit(1)
 
     if args.validate:
         args.iterations = 1
@@ -520,9 +531,9 @@ def main():
     # Logging
     profile_handler = setup_logging(log_path)
 
-    print(f"Profile (TABLE TAGS): tags={args.tags}, threads={args.threads}, iterations={args.iterations}")
-    print(f"ALTERs per iteration: {NUM_TABLES} (one per table)")
-    print(f"Total ALTERs: {NUM_TABLES * args.iterations}")
+    print(f"Profile (TABLE TAGS): tags={args.tags}, threads={args.threads}, iterations={args.iterations}, tables_per_iteration={args.tables_per_iteration}")
+    print(f"ALTERs per iteration: {args.tables_per_iteration} (one per table)")
+    print(f"Total ALTERs: {args.tables_per_iteration * args.iterations}")
     print(f"Output: {report_path}")
     print()
 
@@ -536,6 +547,7 @@ def main():
             iteration=i,
             num_tags=args.tags,
             num_threads=args.threads,
+            tables_per_iteration=args.tables_per_iteration,
         )
         all_results.extend(results)
         iteration_durations.append(duration)

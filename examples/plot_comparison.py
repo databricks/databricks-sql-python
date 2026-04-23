@@ -38,7 +38,7 @@ def parse_report(filepath):
 
     m = re.search(r"\*\*(ALTERs/sec|SELECTs/sec|Operations/sec)\*\*:\s*([\d.]+)", content)
     if m:
-        metrics["throughput"] = float(m.group(2))
+        metrics["throughput_ops"] = float(m.group(2))
 
     for pct in ["p50", "p90", "p95", "p99"]:
         m = re.search(rf"\|\s*{pct}\s*\|\s*([\d.]+)\s*\|", content)
@@ -64,6 +64,17 @@ def parse_report(filepath):
     m = re.search(r"\*\*Columns tagged per table\*\*:\s*(\d+)", content)
     if m:
         metrics["columns"] = int(m.group(1))
+
+    m = re.search(r"\*\*Tables per iteration\*\*:\s*(\d+)", content)
+    if m:
+        metrics["tables_per_iteration"] = int(m.group(1))
+
+    # Also match older reports that used "Tables": N
+    if "tables_per_iteration" not in metrics:
+        m = re.search(r"\*\*Total SELECTs\*\*:\s*(\d+)", content)
+        iters = metrics.get("iterations", 1)
+        if m and iters:
+            metrics["tables_per_iteration"] = int(float(m.group(1))) // iters
 
     m = re.search(r"\*\*Tags per ALTER\*\*:\s*(\d+)", content)
     if m:
@@ -111,17 +122,19 @@ def discover_reports():
 
             threads = metrics["threads"]
 
+            tbl = metrics.get("tables_per_iteration", "?")
+
             if report_type == "alter" and category == "column":
                 cols = metrics.get("columns", "?")
                 tags = metrics.get("tags", "?")
-                label = f"ALTER column tags (c={cols}, t={tags})"
+                label = f"ALTER column tags (columns={cols}, tags_per_column={tags}, tables={tbl})"
             elif report_type == "alter" and category == "table":
                 tags = metrics.get("tags", "?")
-                label = f"ALTER table tags (t={tags})"
+                label = f"ALTER table tags (tags={tags}, tables={tbl})"
             elif report_type == "info_schema" and category == "column":
-                label = "info_schema column_tags SELECT"
+                label = f"info_schema column_tags SELECT (tables={tbl})"
             elif report_type == "info_schema" and category == "table":
-                label = "info_schema table_tags SELECT"
+                label = f"info_schema table_tags SELECT (tables={tbl})"
             else:
                 continue
 
@@ -130,23 +143,24 @@ def discover_reports():
             if existing and metrics.get("iterations", 0) <= existing.get("iterations", 0):
                 continue
 
+            # Compute tables/sec from wall-clock and tables_per_iteration
+            tpi = metrics.get("tables_per_iteration")
+            wc = metrics.get("wall_clock_s")
+            if tpi and wc and wc > 0:
+                metrics["tables_per_sec"] = round(tpi / wc, 2)
+
             categories[category][label][threads] = metrics
             print(f"  [{category}] {label} threads={threads}: "
                   f"wall={metrics.get('wall_clock_s', '?')}s, "
                   f"p50={metrics.get('p50', '?')}ms, "
-                  f"throughput={metrics.get('throughput', '?')} ops/s "
+                  f"tables/s={metrics.get('tables_per_sec', '?')} "
                   f"[{fname}]")
 
     return categories
 
 
-def plot_category(category_name, series, output_path):
-    """Generate a 2x2 chart PNG for one category (column or table)."""
-    if not series:
-        print(f"  No data for {category_name}, skipping.")
-        return
-
-    # Color/style assignment
+def build_style_map(series):
+    """Assign colors and styles to series labels."""
     colors_info = ["#d62728", "#ff7f0e"]
     colors_alter = ["#1f77b4", "#2ca02c", "#9467bd", "#17becf", "#8c564b"]
     info_idx = 0
@@ -161,16 +175,20 @@ def plot_category(category_name, series, output_path):
             style_map[label] = {"color": colors_alter[alter_idx % len(colors_alter)], "marker": "s", "linestyle": "-"}
             alter_idx += 1
 
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    return style_map
 
-    chart_configs = [
-        (axes[0][0], "wall_clock_s", "Wall-Clock Time (seconds)", "Wall-Clock Time vs Thread Count"),
-        (axes[0][1], "throughput", "Operations / second", "Throughput vs Thread Count"),
-        (axes[1][0], "p50", "P50 Latency (ms)", "P50 Latency vs Thread Count"),
-        (axes[1][1], "p99", "P99 Latency (ms)", "P99 Latency vs Thread Count"),
-    ]
 
-    for ax, metric_key, ylabel, title in chart_configs:
+def plot_charts(series, style_map, chart_configs, suptitle, output_path):
+    """Generate a chart PNG with len(chart_configs) subplots."""
+    n = len(chart_configs)
+    cols = 2
+    rows = (n + 1) // 2
+    fig, axes = plt.subplots(rows, cols, figsize=(16, 6 * rows))
+    if rows == 1:
+        axes = [axes]
+
+    for idx, (metric_key, ylabel, title) in enumerate(chart_configs):
+        ax = axes[idx // cols][idx % cols]
         for label, thread_data in sorted(series.items()):
             threads = sorted(thread_data.keys())
             values = [thread_data[t].get(metric_key) for t in threads]
@@ -184,13 +202,49 @@ def plot_category(category_name, series, output_path):
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
 
-    title_label = "Column Tags" if category_name == "column" else "Table Tags"
-    plt.suptitle(f"SET TAGS Profiling: {title_label} — info_schema SELECT vs Direct ALTER",
-                 fontsize=14, fontweight="bold")
+    # Hide unused subplot if odd number of charts
+    if n % 2 == 1:
+        axes[rows - 1][1].set_visible(False)
+
+    plt.suptitle(suptitle, fontsize=14, fontweight="bold")
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Chart saved to: {output_path}")
+
+
+def plot_category(category_name, series, output_dir):
+    """Generate two PNGs per category: table-level comparison + individual operation detail."""
+    if not series:
+        print(f"  No data for {category_name}, skipping.")
+        return
+
+    style_map = build_style_map(series)
+    title_label = "Column Tags" if category_name == "column" else "Table Tags"
+
+    # Chart 1: Table-level comparison (apples-to-apples across approaches)
+    table_charts = [
+        ("wall_clock_s", "Wall-Clock Time (seconds)", "Wall-Clock Time vs Thread Count (Lower is better)"),
+        ("tables_per_sec", "Tables / second", "Tables Processed per Second vs Thread Count (Higher is better)"),
+    ]
+    plot_charts(
+        series, style_map, table_charts,
+        f"{title_label}: Table-Level Comparison — info_schema SELECT vs Direct ALTER",
+        os.path.join(output_dir, f"comparison_{category_name}_tags_tables.png"),
+    )
+
+    # Chart 2: Individual operation detail (per-op latency)
+    op_charts = [
+        ("throughput_ops", "Individual Operations / second", "Individual Op Throughput vs Thread Count (Higher is better)"),
+        ("p50", "P50 Latency per Op (ms)", "P50 Latency vs Thread Count (Lower is better)"),
+        ("p99", "P99 Latency per Op (ms)", "P99 Latency vs Thread Count (Lower is better)"),
+        ("max", "Max Latency per Op (ms)", "Max Latency vs Thread Count (Lower is better)"),
+    ]
+    plot_charts(
+        series, style_map, op_charts,
+        f"{title_label}: Individual Operation Detail",
+        os.path.join(output_dir, f"comparison_{category_name}_tags_ops.png"),
+    )
 
 
 if __name__ == "__main__":
@@ -202,14 +256,12 @@ if __name__ == "__main__":
     print(f"\nFound {total_series} series across {total_points} data points.\n")
 
     if "column" in categories:
-        print("Generating column tags chart...")
-        plot_category("column", categories["column"],
-                      os.path.join(RESULTS_DIR, "comparison_column_tags.png"))
+        print("Generating column tags charts...")
+        plot_category("column", categories["column"], RESULTS_DIR)
 
     if "table" in categories:
-        print("Generating table tags chart...")
-        plot_category("table", categories["table"],
-                      os.path.join(RESULTS_DIR, "comparison_table_tags.png"))
+        print("Generating table tags charts...")
+        plot_category("table", categories["table"], RESULTS_DIR)
 
     if not categories:
         print("No results found. Run experiments first.")

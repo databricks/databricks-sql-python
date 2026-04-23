@@ -55,7 +55,7 @@ CATALOG = _creds["CATALOG"]
 SCHEMA = _creds["SCHEMA"]
 # ============================================================
 
-NUM_TABLES = 64
+NUM_TABLES = 128  # total tables available (table1..table128)
 MAX_COLUMNS = 128  # tables always created with this many columns
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "column_tags")
 
@@ -279,11 +279,14 @@ def run_iteration(
     num_columns: int,
     num_tags: int,
     num_threads: int,
+    tables_per_iteration: int,
 ) -> tuple:
-    """Run a single iteration: distribute 20 tables across threads."""
+    """Run a single iteration: tables_per_iteration tables distributed across num_threads threads."""
     table_queue = Queue()
-    for t in range(1, NUM_TABLES + 1):
-        table_queue.put(f"table{t}")
+    start = ((iteration - 1) * tables_per_iteration) % NUM_TABLES
+    for i in range(tables_per_iteration):
+        table_idx = start + i + 1
+        table_queue.put(f"table{table_idx}")
 
     alter_results: list = []
     table_results: list = []
@@ -353,7 +356,7 @@ def generate_report(
     w(f"- **Server**: `{SERVER_HOSTNAME}`")
     w(f"- **HTTP Path**: `{HTTP_PATH}`")
     w(f"- **Catalog.Schema**: `{CATALOG}.{SCHEMA}`")
-    w(f"- **Tables**: {NUM_TABLES}")
+    w(f"- **Tables per iteration**: {args.tables_per_iteration}")
     w(f"- **Columns tagged per table**: {args.columns}")
     w(f"- **Tags per ALTER**: {args.tags}")
     w(f"- **Threads**: {args.threads}")
@@ -583,16 +586,24 @@ def generate_report(
 
 def main():
     parser = argparse.ArgumentParser(description="Profile SET COLUMN TAGS performance")
-    parser.add_argument("--columns", type=int, required=True, help="Number of columns to tag per table (1, 2, 4)")
-    parser.add_argument("--tags", type=int, required=True, help="Number of tags per ALTER command (1, 2, 4)")
-    parser.add_argument("--threads", type=int, required=True, help="Number of concurrent threads (1, 2, 4, 8, 16)")
-    parser.add_argument("--iterations", type=int, required=True, help="Number of times to repeat the full sweep")
+    parser.add_argument("--columns", type=int, required=True, help="Number of columns to tag per table")
+    parser.add_argument("--tags", type=int, required=True, help="Number of tags per ALTER command")
+    parser.add_argument("--threads", type=int, required=True, help="Number of concurrent threads")
+    parser.add_argument("--iterations", type=int, required=True, help="Number of iterations")
+    parser.add_argument("--tables-per-iteration", type=int, default=None, help="Tables to process per iteration (default = --threads, i.e. 1 table per thread)")
     parser.add_argument("--validate", action="store_true", help="Quick validation: override to 1 iteration, print result")
     parser.add_argument("--skip-setup", action="store_true", help="Skip table creation (tables already exist)")
     args = parser.parse_args()
 
+    if args.tables_per_iteration is None:
+        args.tables_per_iteration = args.threads
+
     if args.columns > MAX_COLUMNS:
         print(f"Error: --columns {args.columns} exceeds MAX_COLUMNS={MAX_COLUMNS}")
+        sys.exit(1)
+
+    if args.tables_per_iteration > NUM_TABLES:
+        print(f"Error: --tables-per-iteration {args.tables_per_iteration} exceeds NUM_TABLES={NUM_TABLES}")
         sys.exit(1)
 
     if args.validate:
@@ -609,9 +620,9 @@ def main():
     # Logging
     profile_handler = setup_logging(log_path)
 
-    print(f"Profile: columns={args.columns}, tags={args.tags}, threads={args.threads}, iterations={args.iterations}")
-    print(f"ALTERs per iteration: {NUM_TABLES * args.columns}")
-    print(f"Total ALTERs: {NUM_TABLES * args.columns * args.iterations}")
+    print(f"Profile: columns={args.columns}, tags={args.tags}, threads={args.threads}, iterations={args.iterations}, tables_per_iteration={args.tables_per_iteration}")
+    print(f"ALTERs per iteration: {args.tables_per_iteration * args.columns} ({args.tables_per_iteration} tables x {args.columns} columns)")
+    print(f"Total ALTERs: {args.tables_per_iteration * args.columns * args.iterations}")
     print(f"Output: {report_path}")
     print()
 
@@ -631,6 +642,7 @@ def main():
             num_columns=args.columns,
             num_tags=args.tags,
             num_threads=args.threads,
+            tables_per_iteration=args.tables_per_iteration,
         )
         all_alter_results.extend(alter_results)
         all_table_results.extend(table_results)
