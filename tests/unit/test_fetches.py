@@ -80,6 +80,7 @@ class FetchTests(unittest.TestCase):
             description,
             use_cloud_fetch=True,
             chunk_id=0,
+            timestamp_format=None,
         ):
             nonlocal batch_index
             results = FetchTests.make_arrow_queue(batch_list[batch_index])

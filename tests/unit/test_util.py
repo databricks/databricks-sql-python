@@ -2,8 +2,10 @@ import decimal
 import datetime
 from datetime import timezone, timedelta
 import pytest
+import pytz
 from databricks.sql.utils import (
     convert_to_assigned_datatypes_in_column_table,
+    parse_timestamp,
     ColumnTable,
     concat_table_chunks,
     serialize_query_tags,
@@ -224,3 +226,41 @@ class TestUtils:
         query_tags = {"key1": None, "key2": None, "key3": None}
         result = serialize_query_tags(query_tags)
         assert result == "key1,key2,key3"
+
+
+class TestParseTimestamp:
+    def test_no_format_uses_dateutil(self):
+        result = parse_timestamp("2023-12-31 12:30:00")
+        assert result == datetime.datetime(2023, 12, 31, 12, 30, 0)
+
+    def test_matching_format_uses_strptime(self):
+        fmt = "%Y-%m-%d %H:%M:%S.%f"
+        result = parse_timestamp("2023-12-31 12:30:00.123000", fmt)
+        assert result == datetime.datetime(2023, 12, 31, 12, 30, 0, 123000, tzinfo=pytz.UTC)
+
+    def test_non_matching_format_falls_back_to_dateutil(self):
+        fmt = "%Y-%m-%d %H:%M:%S.%f"
+        # This doesn't match the format, so should fall back to dateutil
+        result = parse_timestamp("08-Mar-2024 14:30:15", fmt)
+        assert result == datetime.datetime(2024, 3, 8, 14, 30, 15)
+
+    def test_convert_column_table_with_timestamp_format(self):
+        description = [
+            ("ts_col", "timestamp", None, None, None, None, None),
+        ]
+        column_table = [("2023-12-31 12:30:00.000000",)]
+        fmt = "%Y-%m-%d %H:%M:%S.%f"
+        result = convert_to_assigned_datatypes_in_column_table(
+            column_table, description, timestamp_format=fmt
+        )
+        assert result[0][0] == datetime.datetime(2023, 12, 31, 12, 30, 0, tzinfo=pytz.UTC)
+
+    def test_convert_column_table_without_timestamp_format(self):
+        description = [
+            ("ts_col", "timestamp", None, None, None, None, None),
+        ]
+        column_table = [("2023-12-31 12:30:00",)]
+        result = convert_to_assigned_datatypes_in_column_table(
+            column_table, description
+        )
+        assert result[0][0] == datetime.datetime(2023, 12, 31, 12, 30, 0)

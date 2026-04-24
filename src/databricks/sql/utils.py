@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 from enum import Enum
 import re
+import pytz
 
 import lz4.frame
 
@@ -53,6 +54,32 @@ def get_session_config_value(
     return None
 
 
+def parse_timestamp(
+    value: str, timestamp_format: Optional[str] = None
+) -> datetime.datetime:
+    """Parse a timestamp string into a datetime object.
+
+    If timestamp_format is provided, tries strptime first and falls back to
+    dateutil.parser.parse on ValueError. If timestamp_format is None, uses
+    dateutil.parser.parse directly.
+
+    Args:
+        value: The timestamp string to parse.
+        timestamp_format: An optional strptime-compatible format string.
+
+    Returns:
+        A datetime.datetime object.
+    """
+    if timestamp_format is not None:
+        try:
+            return datetime.datetime.strptime(value, timestamp_format).replace(
+                tzinfo=pytz.UTC
+            )
+        except ValueError:
+            return parser.parse(value)
+    return parser.parse(value)
+
+
 class ResultSetQueue(ABC):
     @abstractmethod
     def next_n_rows(self, num_rows: int):
@@ -81,6 +108,7 @@ class ThriftResultSetQueueFactory(ABC):
         http_client,
         lz4_compressed: bool = True,
         description: List[Tuple] = [],
+        timestamp_format: Optional[str] = None,
     ) -> ResultSetQueue:
         """
         Factory method to build a result set queue for Thrift backend.
@@ -93,6 +121,7 @@ class ThriftResultSetQueueFactory(ABC):
             description (List[List[Any]]): Hive table schema description.
             max_download_threads (int): Maximum number of downloader thread pool threads.
             ssl_options (SSLOptions): SSLOptions object for CloudFetchQueue
+            timestamp_format: Optional strptime-compatible format for timestamp parsing.
 
         Returns:
             ResultSetQueue
@@ -112,7 +141,7 @@ class ThriftResultSetQueueFactory(ABC):
             )
 
             converted_column_table = convert_to_assigned_datatypes_in_column_table(
-                column_table, description
+                column_table, description, timestamp_format=timestamp_format
             )
 
             return ColumnQueue(ColumnTable(converted_column_table, column_names))
@@ -760,7 +789,9 @@ def convert_decimals_in_arrow_table(table, description) -> "pyarrow.Table":
     return pyarrow.Table.from_arrays(new_columns, schema=new_schema)
 
 
-def convert_to_assigned_datatypes_in_column_table(column_table, description):
+def convert_to_assigned_datatypes_in_column_table(
+    column_table, description, timestamp_format=None
+):
 
     converted_column_table = []
     for i, col in enumerate(column_table):
@@ -774,7 +805,10 @@ def convert_to_assigned_datatypes_in_column_table(column_table, description):
             )
         elif description[i][1] == "timestamp":
             converted_column_table.append(
-                tuple((v if v is None else parser.parse(v)) for v in col)
+                tuple(
+                    (v if v is None else parse_timestamp(v, timestamp_format))
+                    for v in col
+                )
             )
         else:
             converted_column_table.append(col)
