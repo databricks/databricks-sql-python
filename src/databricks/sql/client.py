@@ -446,7 +446,8 @@ class Connection:
         self.close()
 
     def __del__(self):
-        if self.open:
+        initialized = hasattr(self, "session")
+        if initialized and self.open:
             logger.debug(
                 "Closing unclosed connection for session "
                 "{}".format(self.get_session_id_hex())
