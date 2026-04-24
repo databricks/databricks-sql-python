@@ -19,6 +19,7 @@ from databricks.sql.backend.sea.utils.constants import (
     WaitTimeout,
     MetadataCommands,
 )
+from databricks.sql.backend.sea.utils.metadata_mappings import MetadataColumnMappings
 from databricks.sql.backend.sea.utils.normalize import normalize_sea_type_to_thrift
 from databricks.sql.thrift_api.TCLIService import ttypes
 
@@ -703,7 +704,10 @@ class SeaDatabricksClient(DatabricksClient):
             async_op=False,
             enforce_embedded_schema_correctness=False,
         )
-        assert result is not None, "execute_command returned None in synchronous mode"
+        assert isinstance(
+            result, SeaResultSet
+        ), "Expected SeaResultSet from SEA backend"
+        result.prepare_metadata_columns(MetadataColumnMappings.CATALOG_COLUMNS)
         return result
 
     def get_schemas(
@@ -736,7 +740,10 @@ class SeaDatabricksClient(DatabricksClient):
             async_op=False,
             enforce_embedded_schema_correctness=False,
         )
-        assert result is not None, "execute_command returned None in synchronous mode"
+        assert isinstance(
+            result, SeaResultSet
+        ), "Expected SeaResultSet from SEA backend"
+        result.prepare_metadata_columns(MetadataColumnMappings.SCHEMA_COLUMNS)
         return result
 
     def get_tables(
@@ -777,12 +784,16 @@ class SeaDatabricksClient(DatabricksClient):
             async_op=False,
             enforce_embedded_schema_correctness=False,
         )
-        assert result is not None, "execute_command returned None in synchronous mode"
+        assert isinstance(
+            result, SeaResultSet
+        ), "Expected SeaResultSet from SEA backend"
 
         # Apply client-side filtering by table_types
         from databricks.sql.backend.sea.utils.filters import ResultSetFilter
 
         result = ResultSetFilter.filter_tables_by_type(result, table_types)
+
+        result.prepare_metadata_columns(MetadataColumnMappings.TABLE_COLUMNS)
 
         return result
 
@@ -824,5 +835,8 @@ class SeaDatabricksClient(DatabricksClient):
             async_op=False,
             enforce_embedded_schema_correctness=False,
         )
-        assert result is not None, "execute_command returned None in synchronous mode"
+        assert isinstance(
+            result, SeaResultSet
+        ), "Expected SeaResultSet from SEA backend"
+        result.prepare_metadata_columns(MetadataColumnMappings.COLUMN_COLUMNS)
         return result
