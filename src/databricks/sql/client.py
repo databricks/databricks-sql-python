@@ -94,6 +94,78 @@ NO_NATIVE_PARAMS: List = []
 # Transaction isolation level constants (extension to PEP 249)
 TRANSACTION_ISOLATION_LEVEL_REPEATABLE_READ = "REPEATABLE_READ"
 
+# All supported **kwargs for Connection.__init__. Used to warn on unknown params.
+KNOWN_KWARGS = frozenset(
+    [
+        # Authentication
+        "access_token",
+        "auth_type",
+        "username",
+        "password",
+        "credentials_provider",
+        "_use_cert_as_auth",
+        "oauth_client_id",
+        "oauth_redirect_port",
+        "oauth_scopes",
+        "experimental_oauth_persistence",
+        "identity_federation_client_id",
+        "azure_client_id",
+        "azure_client_secret",
+        "azure_tenant_id",
+        "azure_workspace_resource_id",
+        # TLS / SSL
+        "_enable_ssl",
+        "_tls_no_verify",
+        "_tls_verify_hostname",
+        "_tls_trusted_ca_file",
+        "_tls_client_cert_file",
+        "_tls_client_cert_key_file",
+        "_tls_client_cert_key_password",
+        # Connection
+        "_port",
+        "_connection_uri",
+        "_skip_routing_headers",
+        # Retry policy
+        "_retry_delay_min",
+        "_retry_delay_max",
+        "_retry_delay_default",
+        "_retry_stop_after_attempts_count",
+        "_retry_stop_after_attempts_duration",
+        "_retry_dangerous_codes",
+        "_retry_max_redirects",
+        "_enable_v3_retries",
+        # Socket / network
+        "_socket_timeout",
+        "_proxy_auth_method",
+        "_pool_connections",
+        "_pool_maxsize",
+        "pool_maxsize",
+        # User agent & telemetry
+        "user_agent_entry",
+        "_user_agent_entry",
+        "enable_telemetry",
+        "force_enable_telemetry",
+        "telemetry_batch_size",
+        "_telemetry_circuit_breaker_enabled",
+        # Query / result
+        "use_inline_params",
+        "enable_query_result_lz4_compression",
+        "use_cloud_fetch",
+        "max_download_threads",
+        "use_hybrid_disposition",
+        "staging_allowed_local_path",
+        # Data type / format
+        "_use_arrow_native_decimals",
+        "_use_arrow_native_timestamps",
+        "_disable_pandas",
+        # Behavior
+        "enable_metric_view_metadata",
+        "fetch_autocommit_from_server",
+        # Backend selection
+        "use_sea",
+    ]
+)
+
 
 class Connection:
     def __init__(
@@ -270,6 +342,14 @@ class Connection:
             server_hostname,
             http_path,
         )
+
+        unknown_params = set(kwargs.keys()) - KNOWN_KWARGS
+        if unknown_params:
+            logger.warning(
+                "Unsupported connection parameter(s) will be ignored: %s. "
+                "Check the Connection documentation for supported parameters.",
+                ", ".join(sorted(unknown_params)),
+            )
 
         if access_token:
             access_token_kv = {"access_token": access_token}
