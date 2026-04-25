@@ -1,6 +1,7 @@
 name: E2E Tests and Code Coverage
 
 permissions:
+
   contents: read
   id-token: write
 
