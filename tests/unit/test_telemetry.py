@@ -212,36 +212,63 @@ class TestTelemetryHelper:
         # Test None auth provider
         assert TelemetryHelper.get_auth_flow(None) is None
 
-    def test_token_federation_unwraps_to_inner_provider(self):
-        """Token federation should report the wrapped provider's mech and flow."""
-
-        def make_federation(inner):
-            fed = MagicMock(spec=TokenFederationProvider)
-            fed.external_provider = inner
-            return fed
-
-        # PAT wrapped by federation
-        pat_inner = AccessTokenAuthProvider("test-token")
-        fed_pat = make_federation(pat_inner)
-        assert TelemetryHelper.get_auth_mechanism(fed_pat) == AuthMech.PAT
-        assert TelemetryHelper.get_auth_flow(fed_pat) is None
-
-        # M2M (ExternalAuthProvider) wrapped by federation
-        m2m_inner = MagicMock(spec=ExternalAuthProvider)
-        fed_m2m = make_federation(m2m_inner)
-        assert TelemetryHelper.get_auth_mechanism(fed_m2m) == AuthMech.OTHER
-        assert TelemetryHelper.get_auth_flow(fed_m2m) == AuthFlow.CLIENT_CREDENTIALS
-
-        # OAuth (browser) wrapped by federation
-        oauth_inner = MagicMock(spec=DatabricksOAuthProvider)
-        oauth_inner._access_token = None
-        oauth_inner._refresh_token = None
-        fed_oauth = make_federation(oauth_inner)
-        assert TelemetryHelper.get_auth_mechanism(fed_oauth) == AuthMech.OAUTH
-        assert (
-            TelemetryHelper.get_auth_flow(fed_oauth)
-            == AuthFlow.BROWSER_BASED_AUTHENTICATION
+    def _make_real_federation(self, inner):
+        """Build a real TokenFederationProvider so attribute renames break tests."""
+        return TokenFederationProvider(
+            hostname="example.cloud.databricks.com",
+            external_provider=inner,
+            http_client=MagicMock(),
         )
+
+    def test_token_federation_unwraps_pat(self):
+        fed = self._make_real_federation(AccessTokenAuthProvider("test-token"))
+        assert TelemetryHelper.get_auth_mechanism(fed) == AuthMech.PAT
+        assert TelemetryHelper.get_auth_flow(fed) is None
+
+    def test_token_federation_unwraps_m2m(self):
+        fed = self._make_real_federation(MagicMock(spec=ExternalAuthProvider))
+        assert TelemetryHelper.get_auth_mechanism(fed) == AuthMech.OTHER
+        assert TelemetryHelper.get_auth_flow(fed) == AuthFlow.CLIENT_CREDENTIALS
+
+    def test_token_federation_unwraps_oauth_browser(self):
+        oauth = MagicMock(spec=DatabricksOAuthProvider)
+        oauth._access_token = None
+        oauth._refresh_token = None
+        fed = self._make_real_federation(oauth)
+        assert TelemetryHelper.get_auth_mechanism(fed) == AuthMech.OAUTH
+        assert TelemetryHelper.get_auth_flow(fed) == AuthFlow.BROWSER_BASED_AUTHENTICATION
+
+    def test_token_federation_unwraps_oauth_passthrough(self):
+        oauth = MagicMock(spec=DatabricksOAuthProvider)
+        oauth._access_token = "a"
+        oauth._refresh_token = "r"
+        fed = self._make_real_federation(oauth)
+        assert TelemetryHelper.get_auth_mechanism(fed) == AuthMech.OAUTH
+        assert TelemetryHelper.get_auth_flow(fed) == AuthFlow.TOKEN_PASSTHROUGH
+
+    def test_token_federation_payload_serialization(self):
+        """End-to-end: federated PAT must serialize as PAT in the connection-params payload."""
+        fed = self._make_real_federation(AccessTokenAuthProvider("test-token"))
+        params = DriverConnectionParameters(
+            http_path="/sql/1.0/warehouses/abc",
+            mode=DatabricksClientType.THRIFT,
+            host_info=HostDetails(host_url="https://example.cloud.databricks.com", port=443),
+            auth_mech=TelemetryHelper.get_auth_mechanism(fed),
+            auth_flow=TelemetryHelper.get_auth_flow(fed),
+        )
+        payload = json.loads(params.to_json())
+        assert payload["auth_mech"] == "PAT"
+        assert "auth_flow" not in payload  # None-valued fields are stripped
+
+    def test_token_federation_with_no_inner_provider(self):
+        """Federation with a None inner provider should not crash; both helpers return None."""
+        fed = TokenFederationProvider(
+            hostname="example.cloud.databricks.com",
+            external_provider=None,
+            http_client=MagicMock(),
+        )
+        assert TelemetryHelper.get_auth_mechanism(fed) is None
+        assert TelemetryHelper.get_auth_flow(fed) is None
 
 
 class TestTelemetryFactory:
