@@ -34,6 +34,7 @@ from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
     ExternalAuthProvider,
 )
+from databricks.sql.auth.token_federation import TokenFederationProvider
 import sys
 import platform
 import uuid
@@ -90,6 +91,8 @@ class TelemetryHelper:
 
         if not auth_provider:
             return None
+        if isinstance(auth_provider, TokenFederationProvider):
+            return TelemetryHelper.get_auth_mechanism(auth_provider.external_provider)
         if isinstance(auth_provider, AccessTokenAuthProvider):
             return AuthMech.PAT
         elif isinstance(auth_provider, DatabricksOAuthProvider):
@@ -105,6 +108,8 @@ class TelemetryHelper:
 
         if not auth_provider:
             return None
+        if isinstance(auth_provider, TokenFederationProvider):
+            return TelemetryHelper.get_auth_flow(auth_provider.external_provider)
         if isinstance(auth_provider, DatabricksOAuthProvider):
             if auth_provider._access_token and auth_provider._refresh_token:
                 return AuthFlow.TOKEN_PASSTHROUGH
