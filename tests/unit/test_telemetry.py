@@ -870,6 +870,38 @@ class TestConnectionParameterTelemetry:
             assert driver_params.async_poll_interval_millis == 2000
             assert driver_params.support_many_parameters is True
 
+    def test_federated_pat_populates_telemetry_as_pat(self, mock_setup_pools, mock_session):
+        """End-to-end: a TokenFederationProvider wrapping a PAT should report mech=PAT in the captured telemetry payload."""
+        federated_pat = TokenFederationProvider(
+            hostname="workspace.databricks.com",
+            external_provider=AccessTokenAuthProvider("token"),
+            http_client=MagicMock(),
+        )
+        mock_session_instance = MagicMock()
+        mock_session_instance.guid_hex = "test-session-fed-pat"
+        mock_session_instance.auth_provider = federated_pat
+        mock_session_instance.is_open = False
+        mock_session_instance.use_sea = False
+        mock_session_instance.port = 443
+        mock_session_instance.host = "workspace.databricks.com"
+        mock_session.return_value = mock_session_instance
+
+        with patch(
+            "databricks.sql.telemetry.telemetry_client.TelemetryClient.export_initial_telemetry_log"
+        ) as mock_export:
+            sql.connect(
+                server_hostname="workspace.databricks.com",
+                http_path="/sql/1.0/warehouses/test",
+                access_token="test-token",
+                enable_telemetry=True,
+                force_enable_telemetry=True,
+            )
+
+            mock_export.assert_called_once()
+            driver_params = mock_export.call_args.kwargs.get("driver_connection_params")
+            assert driver_params.auth_mech == AuthMech.PAT
+            assert driver_params.auth_flow is None
+
     def test_cf_proxy_fields_default_to_false_none(self, mock_setup_pools, mock_session):
         """Test that CloudFlare proxy fields default to False/None (not yet supported)."""
         mock_session_instance = MagicMock()
