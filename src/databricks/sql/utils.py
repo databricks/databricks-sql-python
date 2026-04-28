@@ -542,15 +542,21 @@ class ParamEscaper:
     _TIME_FORMAT = "%H:%M:%S.%f %z"
     _DATETIME_FORMAT = "{} {}".format(_DATE_FORMAT, _TIME_FORMAT)
 
-    def escape_args(self, parameters):
+        def escape_args(self, parameters):
         if isinstance(parameters, dict):
-            return {k: self.escape_item(v) for k, v in parameters.items()}
+            return {k: self.escape_inline_arg(v) for k, v in parameters.items()}
         elif isinstance(parameters, (list, tuple)):
-            return tuple(self.escape_item(x) for x in parameters)
+            return tuple(self.escape_inline_arg(x) for x in parameters)
         else:
             raise exc.ProgrammingError(
                 "Unsupported param format: {}".format(parameters)
             )
+
+    def escape_inline_arg(self, item):
+        if isinstance(item, (list, tuple)):
+            escaped_items = list(map(str, map(self.escape_item, item)))
+            return "(" + ",".join(escaped_items) + ")"
+        return self.escape_item(item)
 
     def escape_number(self, item):
         return item
