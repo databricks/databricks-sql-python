@@ -29,6 +29,7 @@ from databricks.sql.auth.authenticators import (
     DatabricksOAuthProvider,
     ExternalAuthProvider,
 )
+from databricks.sql.auth.token_federation import TokenFederationProvider
 from databricks import sql
 
 
@@ -210,6 +211,37 @@ class TestTelemetryHelper:
 
         # Test None auth provider
         assert TelemetryHelper.get_auth_flow(None) is None
+
+    def test_token_federation_unwraps_to_inner_provider(self):
+        """Token federation should report the wrapped provider's mech and flow."""
+
+        def make_federation(inner):
+            fed = MagicMock(spec=TokenFederationProvider)
+            fed.external_provider = inner
+            return fed
+
+        # PAT wrapped by federation
+        pat_inner = AccessTokenAuthProvider("test-token")
+        fed_pat = make_federation(pat_inner)
+        assert TelemetryHelper.get_auth_mechanism(fed_pat) == AuthMech.PAT
+        assert TelemetryHelper.get_auth_flow(fed_pat) is None
+
+        # M2M (ExternalAuthProvider) wrapped by federation
+        m2m_inner = MagicMock(spec=ExternalAuthProvider)
+        fed_m2m = make_federation(m2m_inner)
+        assert TelemetryHelper.get_auth_mechanism(fed_m2m) == AuthMech.OTHER
+        assert TelemetryHelper.get_auth_flow(fed_m2m) == AuthFlow.CLIENT_CREDENTIALS
+
+        # OAuth (browser) wrapped by federation
+        oauth_inner = MagicMock(spec=DatabricksOAuthProvider)
+        oauth_inner._access_token = None
+        oauth_inner._refresh_token = None
+        fed_oauth = make_federation(oauth_inner)
+        assert TelemetryHelper.get_auth_mechanism(fed_oauth) == AuthMech.OAUTH
+        assert (
+            TelemetryHelper.get_auth_flow(fed_oauth)
+            == AuthFlow.BROWSER_BASED_AUTHENTICATION
+        )
 
 
 class TestTelemetryFactory:
