@@ -9,7 +9,7 @@ from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, Request
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
-from databricks.sql.backend.sea.backend import SeaDatabricksClient
+from databricks.sql.backend.adbc.client import AdbcDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
@@ -123,14 +123,20 @@ class Session:
         """Create and return the appropriate backend client."""
         self.use_sea = kwargs.get("use_sea", False)
 
-        databricks_client_class: Type[DatabricksClient]
         if self.use_sea:
-            logger.debug("Creating SEA backend client")
-            databricks_client_class = SeaDatabricksClient
-        else:
-            logger.debug("Creating Thrift backend client")
-            databricks_client_class = ThriftDatabricksClient
+            logger.debug("Creating ADBC-Rust SEA backend client")
+            # The Rust kernel handles its own HTTP, auth, headers, and SSL — we
+            # only need to forward the connection params it understands.
+            adbc_args = {
+                "server_hostname": server_hostname,
+                "http_path": http_path,
+                "access_token": kwargs.get("access_token"),
+                "catalog": kwargs.get("catalog"),
+                "schema": kwargs.get("schema"),
+            }
+            return AdbcDatabricksClient(**adbc_args)
 
+        logger.debug("Creating Thrift backend client")
         common_args = {
             "server_hostname": server_hostname,
             "port": self.port,
@@ -142,7 +148,7 @@ class Session:
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }
-        return databricks_client_class(**common_args)
+        return ThriftDatabricksClient(**common_args)
 
     @staticmethod
     def _extract_spog_headers(http_path, existing_headers):
