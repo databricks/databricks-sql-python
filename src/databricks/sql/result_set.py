@@ -163,6 +163,14 @@ class ResultSet(ABC):
         """Fetch all remaining rows as an Arrow table."""
         pass
 
+    def _stop_heartbeat(self) -> None:
+        """
+        Stop any background heartbeat associated with this result set.
+
+        Base-class no-op; the Thrift result set overrides this.
+        """
+        return None
+
     def close(self) -> None:
         """
         Close the result set.
@@ -171,6 +179,10 @@ class ResultSet(ABC):
         been closed on the server for some other reason, issue a request to the server to close it.
         """
         try:
+            # Stop the heartbeat BEFORE close_command so the manager doesn't
+            # race against the close RPC over the same Thrift transport.
+            self._stop_heartbeat()
+
             if self.results is not None:
                 self.results.close()
             else:
@@ -222,6 +234,10 @@ class ThriftResultSet(ResultSet):
             :param has_more_rows: Whether there are more rows to fetch
         """
         self.num_chunks = 0
+        # Initialize before any code path that could call _stop_heartbeat
+        # (e.g. _fill_results_buffer below, if the initial fetch flips
+        # has_more_rows to False).
+        self._heartbeat_manager = None
 
         # Initialize ThriftResultSet-specific attributes
         self._use_cloud_fetch = use_cloud_fetch
@@ -270,6 +286,45 @@ class ThriftResultSet(ResultSet):
         if not self.results:
             self._fill_results_buffer()
 
+        # Start the background keepalive once the result set is fully
+        # constructed and we know the server still has more rows to deliver.
+        # This must happen AFTER the initial _fill_results_buffer above,
+        # because that call may flip has_more_rows to False.
+        if self._heartbeat_eligible():
+            from databricks.sql.backend.thrift_result_heartbeat_manager import (
+                ResultHeartbeatManager,
+            )
+
+            self._heartbeat_manager = ResultHeartbeatManager(
+                backend=self.backend,
+                op_handle=self.command_id.to_thrift_handle(),
+                interval_seconds=connection.heartbeat_interval_seconds,
+                statement_id_hex=self.command_id.to_hex_guid(),
+            )
+            self._heartbeat_manager.start()
+
+    def _heartbeat_eligible(self) -> bool:
+        if not getattr(self.connection, "enable_heartbeat", False):
+            return False
+        if self.has_been_closed_server_side:
+            return False
+        if not self.has_more_rows:
+            return False
+        # Defensive: command_id can be None in tests / mocks. Also,
+        # to_thrift_handle returns None for non-Thrift command IDs.
+        if self.command_id is None:
+            return False
+        return self.command_id.to_thrift_handle() is not None
+
+    def _stop_heartbeat(self) -> None:
+        manager = self._heartbeat_manager
+        if manager is None:
+            return
+        # Clear the attribute first so re-entry is a no-op even if stop()
+        # itself is slow.
+        self._heartbeat_manager = None
+        manager.stop()
+
     def _fill_results_buffer(self):
         results, has_more_rows, result_links_count = self.backend.fetch_results(
             command_id=self.command_id,
@@ -285,6 +340,13 @@ class ThriftResultSet(ResultSet):
         self.results = results
         self.has_more_rows = has_more_rows
         self.num_chunks += result_links_count
+
+        # Server has finished delivering rows for this statement — no point
+        # keeping the operation handle alive even if the local buffer still
+        # holds rows the consumer hasn't drained. Matches C# ADBC's stop at
+        # end-of-results inside ReadNextRecordBatchAsync.
+        if not has_more_rows:
+            self._stop_heartbeat()
 
     def _convert_columnar_table(self, table):
         column_names = [c[0] for c in self.description]

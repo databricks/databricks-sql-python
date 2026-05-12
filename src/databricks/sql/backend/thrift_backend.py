@@ -669,6 +669,20 @@ class ThriftDatabricksClient(DatabricksClient):
         )
         return self.make_request(self._client.GetOperationStatus, req)
 
+    def _heartbeat_poll(self, op_handle):
+        """
+        Single-shot GetOperationStatus for the result-set heartbeat. Bypasses
+        make_request() so a transient failure does NOT stall inside the
+        driver's long retry budget — ResultHeartbeatManager counts failures
+        itself and self-stops after MAX_CONSECUTIVE_FAILURES.
+        """
+        req = ttypes.TGetOperationStatusReq(
+            operationHandle=op_handle,
+            getProgressUpdate=False,
+        )
+        with self._request_lock:
+            return self._client.GetOperationStatus(req)
+
     def _create_arrow_table(self, t_row_set, lz4_compressed, schema_bytes, description):
         if t_row_set.columns is not None:
             (
