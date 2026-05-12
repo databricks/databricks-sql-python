@@ -264,6 +264,14 @@ class Connection:
         # (True by default)
         # use_cloud_fetch
         # Enable use of cloud fetch to extract large query results in parallel via cloud storage
+        # enable_heartbeat
+        # When True (default), each Thrift ResultSet that still has rows pending on the server
+        # spawns a daemon thread that periodically issues TGetOperationStatus against the
+        # operation handle to keep it alive past the warehouse's idle-eviction window
+        # (~20-25 min). Pass enable_heartbeat=False to opt out.
+        # heartbeat_interval_seconds
+        # Interval between heartbeat polls in seconds (default 60). Has no effect when
+        # enable_heartbeat is False.
 
         logger.debug(
             "Connection.__init__(server_hostname=%s, http_path=%s)",
@@ -295,6 +303,11 @@ class Connection:
         self.disable_pandas = kwargs.get("_disable_pandas", False)
         self.lz4_compression = kwargs.get("enable_query_result_lz4_compression", True)
         self.use_cloud_fetch = kwargs.get("use_cloud_fetch", True)
+        # Per-ResultSet background GetOperationStatus keepalive against
+        # server-side operation-handle idle eviction. See
+        # backend/thrift_result_heartbeat_manager.py for details.
+        self.enable_heartbeat = kwargs.get("enable_heartbeat", True)
+        self.heartbeat_interval_seconds = kwargs.get("heartbeat_interval_seconds", 60)
         self._cursors = []  # type: List[Cursor]
         self.telemetry_batch_size = kwargs.get(
             "telemetry_batch_size", TelemetryClientFactory.DEFAULT_BATCH_SIZE
