@@ -214,11 +214,11 @@ class KernelDatabricksClient(DatabricksClient):
 
         # Use the kernel's real server-issued session id, not a
         # synthetic UUID. Matches what the native SEA backend does.
-        self._session_id = SessionId.from_sea_session_id(
-            self._kernel_session.session_id
-        )
-        logger.info("Opened kernel-backed session %s", self._session_id)
-        return self._session_id
+        # Bind to a local first so mypy sees a non-Optional return.
+        session_id = SessionId.from_sea_session_id(self._kernel_session.session_id)
+        self._session_id = session_id
+        logger.info("Opened kernel-backed session %s", session_id)
+        return session_id
 
     def close_session(self, session_id: SessionId) -> None:
         if self._kernel_session is None:
@@ -229,7 +229,9 @@ class KernelDatabricksClient(DatabricksClient):
             try:
                 handle.close()
             except _kernel.KernelError as exc:
-                logger.warning("Error closing async handle during session close: %s", exc)
+                logger.warning(
+                    "Error closing async handle during session close: %s", exc
+                )
         self._async_handles.clear()
         try:
             self._kernel_session.close()
@@ -474,7 +476,9 @@ class KernelDatabricksClient(DatabricksClient):
             # Kernel's list_columns requires a catalog (SEA `SHOW
             # COLUMNS` cannot span catalogs). Surface the constraint
             # explicitly rather than letting the kernel error.
-            raise ProgrammingError("get_columns requires catalog_name on the kernel backend.")
+            raise ProgrammingError(
+                "get_columns requires catalog_name on the kernel backend."
+            )
         try:
             stream = self._kernel_session.metadata().list_columns(
                 catalog=catalog_name,

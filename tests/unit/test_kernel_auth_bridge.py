@@ -15,6 +15,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# The kernel backend's result_set + type_mapping modules transitively
+# import pyarrow; the connector's default-deps test job doesn't
+# install pyarrow, so importing the auth_bridge in that environment
+# would fail at module-collection time. Gate the whole module on
+# pyarrow availability — matches the convention the connector uses
+# for pyarrow-dependent tests.
+pytest.importorskip("pyarrow")
+
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     AuthProvider,
