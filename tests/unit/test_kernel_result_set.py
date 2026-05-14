@@ -8,8 +8,12 @@ from collections import deque
 from typing import Deque
 from unittest.mock import MagicMock
 
-import pyarrow as pa
 import pytest
+
+# pyarrow is an optional connector dep; the default-deps CI test
+# job runs without it. KernelResultSet imports pyarrow eagerly,
+# so the whole module must skip when pyarrow is unavailable.
+pa = pytest.importorskip("pyarrow")
 
 from databricks.sql.backend.kernel.result_set import KernelResultSet
 from databricks.sql.backend.types import CommandId, CommandState

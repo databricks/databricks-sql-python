@@ -66,6 +66,14 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
     ADBC / Thrift result paths produce.
     """
     return [
-        (field.name, _arrow_type_to_dbapi_string(field.type), None, None, None, None, None)
+        (
+            field.name,
+            _arrow_type_to_dbapi_string(field.type),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         for field in schema
     ]

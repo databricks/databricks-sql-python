@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-import pyarrow as pa
 import pytest
+
+# pyarrow is an optional connector dep; the default-deps CI test
+# job runs without it. The kernel backend itself imports pyarrow
+# at module load, so any test that touches the backend must skip
+# when pyarrow is unavailable.
+pa = pytest.importorskip("pyarrow")
 
 from databricks.sql.backend.kernel.type_mapping import (
     _arrow_type_to_dbapi_string,

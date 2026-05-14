@@ -144,7 +144,9 @@ class KernelResultSet(ResultSet):
         chunks: List[pyarrow.RecordBatch] = []
         if self._buffer and self._buffer_offset > 0:
             head = self._buffer.popleft()
-            chunks.append(head.slice(self._buffer_offset, head.num_rows - self._buffer_offset))
+            chunks.append(
+                head.slice(self._buffer_offset, head.num_rows - self._buffer_offset)
+            )
             self._buffer_offset = 0
         while self._buffer:
             chunks.append(self._buffer.popleft())
