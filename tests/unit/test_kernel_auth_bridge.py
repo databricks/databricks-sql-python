@@ -1,9 +1,12 @@
 """Unit tests for the kernel backend's auth bridge.
 
-The bridge translates the connector's ``AuthProvider`` hierarchy
-into ``databricks_sql_kernel.Session`` auth kwargs. PAT goes through
-the kernel's PAT path; everything else trampolines through the
-``External`` path with a Python callback.
+Phase 1 ships PAT only. Tests verify:
+  - PAT routes through ``auth_type='pat'``.
+  - ``TokenFederationProvider``-wrapped PAT also routes through
+    PAT (every provider built by ``get_python_sql_connector_auth_provider``
+    is federation-wrapped, so the naive isinstance check has to
+    look through the wrapper).
+  - Anything else raises ``NotSupportedError`` with a clear message.
 """
 
 from __future__ import annotations
@@ -12,38 +15,36 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
+from databricks.sql.auth.authenticators import (
+    AccessTokenAuthProvider,
+    AuthProvider,
+    DatabricksOAuthProvider,
+    ExternalAuthProvider,
+)
 from databricks.sql.backend.kernel.auth_bridge import (
     _extract_bearer_token,
     kernel_auth_kwargs,
 )
+from databricks.sql.exc import NotSupportedError
 
 
 class _FakeOAuthProvider(AuthProvider):
-    """Stand-in for OAuth/MSAL/federation providers — anything that
-    isn't ``AccessTokenAuthProvider``. Returns a counter-stamped
-    token so tests can prove the callback is invoked each call."""
-
-    def __init__(self):
-        self.calls = 0
+    """Stand-in for any non-PAT provider. The bridge should reject
+    these with NotSupportedError."""
 
     def add_headers(self, request_headers):
-        self.calls += 1
-        request_headers["Authorization"] = f"Bearer token-{self.calls}"
+        request_headers["Authorization"] = "Bearer oauth-token-xyz"
 
 
 class _MalformedProvider(AuthProvider):
-    """Provider that returns a non-Bearer Authorization header
-    (e.g. Basic auth). The bridge should reject this rather than
-    silently sending the wrong shape to the kernel."""
+    """Provider that returns a non-Bearer Authorization header."""
 
     def add_headers(self, request_headers):
         request_headers["Authorization"] = "Basic dXNlcjpwYXNz"
 
 
 class _SilentProvider(AuthProvider):
-    """Provider that writes nothing — represents misconfigured
-    auth or a placeholder. The bridge must surface this clearly."""
+    """Provider that writes nothing — misconfigured auth."""
 
     def add_headers(self, request_headers):
         pass
@@ -74,43 +75,53 @@ class TestKernelAuthKwargs:
         underlying ``AccessTokenAuthProvider``."""
         from databricks.sql.auth.token_federation import TokenFederationProvider
 
-        # TokenFederationProvider needs an http_client; a MagicMock
-        # is sufficient because we don't trigger any token exchange
-        # in the test (the cached-token path is never hit).
         base = AccessTokenAuthProvider("dapi-abc")
+        # TokenFederationProvider's __init__ requires an http_client
+        # to construct cleanly; for this unit test we only exercise
+        # the add_headers passthrough + the external_provider
+        # attribute. Bypass __init__ with __new__ and stash just
+        # the fields the bridge touches.
         federated = TokenFederationProvider.__new__(TokenFederationProvider)
         federated.external_provider = base
-        # The bridge only touches `add_headers` (delegated to the
-        # base) and `external_provider`. Other attrs would be set
-        # by __init__ but aren't exercised here.
         federated.add_headers = base.add_headers
         kwargs = kernel_auth_kwargs(federated)
         assert kwargs == {"auth_type": "pat", "access_token": "dapi-abc"}
 
-    def test_pat_with_silent_provider_raises(self):
+    def test_pat_with_silent_provider_raises_value_error(self):
         """An AccessTokenAuthProvider that produces no Authorization
         header is misconfigured; surface that at bridge-build time,
         not on the first kernel HTTP request."""
         broken = AccessTokenAuthProvider("dapi-x")
-        # Force the broken state by monkey-patching add_headers.
         broken.add_headers = lambda h: None  # type: ignore[method-assign]
         with pytest.raises(ValueError, match="Bearer"):
             kernel_auth_kwargs(broken)
 
-    def test_oauth_routes_to_external_trampoline(self):
-        provider = _FakeOAuthProvider()
-        kwargs = kernel_auth_kwargs(provider)
-        assert kwargs["auth_type"] == "external"
-        callback = kwargs["token_callback"]
-        assert callable(callback)
-        # First call -> token-1, second call -> token-2. Proves the
-        # callback delegates to the live auth_provider each time
-        # rather than caching.
-        assert callback() == "token-1"
-        assert callback() == "token-2"
-        assert provider.calls == 2
+    def test_generic_oauth_provider_raises_not_supported(self):
+        with pytest.raises(NotSupportedError, match="only supports PAT"):
+            kernel_auth_kwargs(_FakeOAuthProvider())
 
-    def test_external_callback_raises_on_missing_header(self):
-        kwargs = kernel_auth_kwargs(_SilentProvider())
-        with pytest.raises(RuntimeError, match="Bearer"):
-            kwargs["token_callback"]()
+    def test_external_credentials_provider_raises_not_supported(self):
+        """``ExternalAuthProvider`` wraps user-supplied
+        credentials_provider — kernel doesn't accept these today,
+        and the bridge surfaces that explicitly."""
+        # ExternalAuthProvider's __init__ calls the credentials
+        # provider; supply a noop one.
+        from databricks.sql.auth.authenticators import CredentialsProvider
+
+        class _NoopCreds(CredentialsProvider):
+            def auth_type(self):
+                return "noop"
+
+            def __call__(self, *args, **kwargs):
+                return lambda: {"Authorization": "Bearer noop"}
+
+        ext = ExternalAuthProvider(_NoopCreds())
+        with pytest.raises(NotSupportedError, match="only supports PAT"):
+            kernel_auth_kwargs(ext)
+
+    def test_silent_non_pat_provider_also_raises_not_supported(self):
+        """Even if a non-PAT provider produces no header, the bridge
+        rejects the type itself — we don't try to extract a token
+        from something we already know is unsupported."""
+        with pytest.raises(NotSupportedError):
+            kernel_auth_kwargs(_SilentProvider())
