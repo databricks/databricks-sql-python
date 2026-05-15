@@ -1,4 +1,4 @@
-"""E2E tests for ``use_sea=True`` (routes through the Rust kernel
+"""E2E tests for ``use_kernel=True`` (routes through the Rust kernel
 via the PyO3 ``databricks_sql_kernel`` module).
 
 PAT auth only. Anything else surfaces as ``NotSupportedError``
@@ -8,8 +8,8 @@ Skipped automatically when:
   - The standard ``DATABRICKS_SERVER_HOSTNAME`` / ``HTTP_PATH`` /
     ``TOKEN`` creds aren't set (existing connector convention).
   - ``databricks_sql_kernel`` isn't importable (the wheel hasn't
-    been installed; run ``pip install
-    'databricks-sql-connector[kernel]'`` or, for local dev,
+    been installed; run ``pip install databricks-sql-kernel`` or,
+    for local dev,
     ``cd databricks-sql-kernel/pyo3 && maturin develop --release``
     into this venv).
 
@@ -30,13 +30,13 @@ from databricks.sql.exc import DatabaseError
 # Skip the whole module unless the kernel wheel is importable.
 pytest.importorskip(
     "databricks_sql_kernel",
-    reason="use_sea=True requires the databricks-sql-kernel package",
+    reason="use_kernel=True requires the databricks-sql-kernel package",
 )
 
 
 @pytest.fixture(scope="module")
 def kernel_conn_params(connection_details):
-    """Live-cred check + connection params for use_sea=True.
+    """Live-cred check + connection params for use_kernel=True.
 
     Skips the module if any cred is missing rather than letting
     every test fail with a confusing connect-time error.
@@ -53,7 +53,7 @@ def kernel_conn_params(connection_details):
         "server_hostname": host,
         "http_path": http_path,
         "access_token": token,
-        "use_sea": True,
+        "use_kernel": True,
     }
 
 
@@ -68,7 +68,7 @@ def conn(kernel_conn_params):
         c.close()
 
 
-def test_connect_with_use_sea_opens_a_session(conn):
+def test_connect_with_use_kernel_opens_a_session(conn):
     assert conn.open, "connection should report open after connect()"
 
 

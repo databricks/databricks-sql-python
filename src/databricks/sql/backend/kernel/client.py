@@ -1,6 +1,6 @@
 """``DatabricksClient`` backed by the Rust kernel via PyO3.
 
-Routed when ``use_sea=True``. Constructor takes the connector's
+Routed when ``use_kernel=True``. Constructor takes the connector's
 already-built ``auth_provider`` and forwards everything else to the
 kernel's ``Session``. Every kernel call goes through this thin
 wrapper; this module is the single seam between the connector's
@@ -34,6 +34,7 @@ Phase 1 gaps documented in the integration design:
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
@@ -71,7 +72,7 @@ except ImportError as exc:  # pragma: no cover - import-time error surfaces clea
     # (doing so breaks `poetry lock`). Once published the install
     # hint will move to `pip install 'databricks-sql-connector[kernel]'`.
     raise ImportError(
-        "use_sea=True requires the databricks-sql-kernel package. Install it with:\n"
+        "use_kernel=True requires the databricks-sql-kernel package. Install it with:\n"
         "  pip install databricks-sql-kernel\n"
         "or for local development from the kernel repo:\n"
         "  cd databricks-sql-kernel/pyo3 && maturin develop --release"
@@ -176,7 +177,10 @@ class KernelDatabricksClient(DatabricksClient):
         self._session_id: Optional[SessionId] = None
         # Async-exec handles keyed by CommandId.guid. Populated by
         # ``execute_command(async_op=True)``; drained by ``close_command``.
+        # Guarded by ``_async_handles_lock`` so concurrent cursors on the
+        # same connection don't race on submit / close / close-session.
         self._async_handles: Dict[str, Any] = {}
+        self._async_handles_lock = threading.RLock()
 
     # ── Session lifecycle ──────────────────────────────────────────
 
@@ -226,14 +230,16 @@ class KernelDatabricksClient(DatabricksClient):
             return
         # Close any tracked async handles first so they fire their
         # server-side CloseStatement before the session goes away.
-        for handle in list(self._async_handles.values()):
+        with self._async_handles_lock:
+            handles_to_close = list(self._async_handles.values())
+            self._async_handles.clear()
+        for handle in handles_to_close:
             try:
                 handle.close()
             except _kernel.KernelError as exc:
                 logger.warning(
                     "Error closing async handle during session close: %s", exc
                 )
-        self._async_handles.clear()
         try:
             self._kernel_session.close()
         except _kernel.KernelError as exc:
@@ -280,7 +286,8 @@ class KernelDatabricksClient(DatabricksClient):
                 async_exec = stmt.submit()
                 command_id = CommandId.from_sea_statement_id(async_exec.statement_id)
                 cursor.active_command_id = command_id
-                self._async_handles[command_id.guid] = async_exec
+                with self._async_handles_lock:
+                    self._async_handles[command_id.guid] = async_exec
                 return None
             executed = stmt.execute()
         except _kernel.KernelError as exc:
@@ -300,7 +307,8 @@ class KernelDatabricksClient(DatabricksClient):
         return self._make_result_set(executed, cursor, command_id)
 
     def cancel_command(self, command_id: CommandId) -> None:
-        handle = self._async_handles.get(command_id.guid)
+        with self._async_handles_lock:
+            handle = self._async_handles.get(command_id.guid)
         if handle is None:
             # Sync-execute paths fully materialise the result before
             # ``execute_command`` returns, so by the time
@@ -314,7 +322,8 @@ class KernelDatabricksClient(DatabricksClient):
             raise _reraise_kernel_error(exc)
 
     def close_command(self, command_id: CommandId) -> None:
-        handle = self._async_handles.pop(command_id.guid, None)
+        with self._async_handles_lock:
+            handle = self._async_handles.pop(command_id.guid, None)
         if handle is None:
             logger.debug("close_command: no tracked handle for %s", command_id)
             return
@@ -324,7 +333,8 @@ class KernelDatabricksClient(DatabricksClient):
             raise _reraise_kernel_error(exc)
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
-        handle = self._async_handles.get(command_id.guid)
+        with self._async_handles_lock:
+            handle = self._async_handles.get(command_id.guid)
         if handle is None:
             # No tracked async handle means execute_command ran
             # sync and the result was materialised before returning;
@@ -347,7 +357,8 @@ class KernelDatabricksClient(DatabricksClient):
         command_id: CommandId,
         cursor: "Cursor",
     ) -> "ResultSet":
-        handle = self._async_handles.get(command_id.guid)
+        with self._async_handles_lock:
+            handle = self._async_handles.get(command_id.guid)
         if handle is None:
             raise ProgrammingError(
                 "get_execution_result called for an unknown command_id; "
@@ -438,16 +449,6 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_tables requires an open session.")
-        if table_types:
-            # Documented gap: native SEA backend filters here, but
-            # its filter is keyed on SeaResultSet. Day-1 we surface
-            # the unfiltered result; a small follow-up ports the
-            # filter to operate on KernelResultSet.
-            logger.warning(
-                "get_tables: client-side table_types filter not yet implemented "
-                "on the kernel backend; returning unfiltered rows for %r",
-                table_types,
-            )
         try:
             stream = self._kernel_session.metadata().list_tables(
                 catalog=catalog_name,
@@ -457,7 +458,27 @@ class KernelDatabricksClient(DatabricksClient):
             )
         except _kernel.KernelError as exc:
             raise _reraise_kernel_error(exc)
-        return self._make_result_set(stream, cursor, self._synthetic_command_id())
+        if not table_types:
+            return self._make_result_set(stream, cursor, self._synthetic_command_id())
+        # The kernel today returns the unfiltered ``SHOW TABLES`` shape
+        # regardless of ``table_types``. Drain to a single Arrow table
+        # and apply the same client-side filter the native SEA backend
+        # uses (column index 5 is TABLE_TYPE, case-sensitive). Cheap
+        # because metadata result sets are small.
+        from databricks.sql.backend.sea.utils.filters import ResultSetFilter
+
+        full_table = _drain_kernel_handle(stream)
+        filtered_table = ResultSetFilter._filter_arrow_table(
+            full_table,
+            column_name=full_table.schema.field(5).name,
+            allowed_values=table_types,
+            case_sensitive=True,
+        )
+        return self._make_result_set(
+            _StaticArrowHandle(filtered_table),
+            cursor,
+            self._synthetic_command_id(),
+        )
 
     def get_columns(
         self,
@@ -496,7 +517,7 @@ class KernelDatabricksClient(DatabricksClient):
     def max_download_threads(self) -> int:
         # CloudFetch parallelism lives kernel-side. This property is
         # consulted by Thrift code paths that don't run for
-        # use_sea=True; return a non-zero default so anything that
+        # use_kernel=True; return a non-zero default so anything that
         # peeks at it does not divide by zero.
         return 10
 
@@ -509,3 +530,52 @@ _STATE_TO_COMMAND_STATE: Dict[str, CommandState] = {
     "Cancelled": CommandState.CANCELLED,
     "Closed": CommandState.CLOSED,
 }
+
+
+def _drain_kernel_handle(handle: Any) -> Any:
+    """Drain a kernel ResultStream / ExecutedStatement into a single
+    ``pyarrow.Table``. Used by ``get_tables`` to apply a client-side
+    ``table_types`` filter on a metadata result; cheap because
+    metadata streams are small."""
+    import pyarrow
+
+    schema = handle.arrow_schema()
+    batches = []
+    while True:
+        batch = handle.fetch_next_batch()
+        if batch is None:
+            break
+        if batch.num_rows > 0:
+            batches.append(batch)
+    try:
+        handle.close()
+    except _kernel.KernelError:
+        pass
+    return pyarrow.Table.from_batches(batches, schema=schema)
+
+
+class _StaticArrowHandle:
+    """Duck-typed kernel handle that replays a pre-built
+    ``pyarrow.Table`` through ``arrow_schema()`` /
+    ``fetch_next_batch()`` / ``close()``. Used to wrap a
+    post-processed table (e.g., the ``table_types``-filtered output
+    of ``get_tables``) so it flows back through the normal
+    ``KernelResultSet`` path."""
+
+    def __init__(self, table: Any) -> None:
+        self._schema = table.schema
+        self._batches = list(table.to_batches())
+        self._idx = 0
+
+    def arrow_schema(self) -> Any:
+        return self._schema
+
+    def fetch_next_batch(self) -> Optional[Any]:
+        if self._idx >= len(self._batches):
+            return None
+        batch = self._batches[self._idx]
+        self._idx += 1
+        return batch
+
+    def close(self) -> None:
+        self._batches = []

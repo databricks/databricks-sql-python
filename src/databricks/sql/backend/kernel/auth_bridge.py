@@ -105,7 +105,7 @@ def kernel_auth_kwargs(auth_provider: AuthProvider) -> Dict[str, Any]:
         return {"auth_type": "pat", "access_token": token}
 
     raise NotSupportedError(
-        f"The kernel backend (use_sea=True) currently only supports PAT auth, "
-        f"but got {type(auth_provider).__name__}. Use use_sea=False (Thrift) "
-        "for OAuth / federation / custom credential providers."
+        f"The kernel backend (use_kernel=True) currently only supports PAT auth, "
+        f"but got {type(auth_provider).__name__}. Use the Thrift backend "
+        "(default) for OAuth / federation / custom credential providers."
     )

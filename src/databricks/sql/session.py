@@ -9,6 +9,7 @@ from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, Request
 from databricks.sql import __version__
 from databricks.sql import USER_AGENT_NAME
 from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
+from databricks.sql.backend.sea.backend import SeaDatabricksClient
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.types import SessionId, BackendType
 from databricks.sql.common.unified_http_client import UnifiedHttpClient
@@ -121,22 +122,21 @@ class Session:
     ) -> DatabricksClient:
         """Create and return the appropriate backend client."""
         self.use_sea = kwargs.get("use_sea", False)
+        self.use_kernel = kwargs.get("use_kernel", False)
 
-        if self.use_sea:
-            # `use_sea=True` now routes through the Rust kernel via
-            # PyO3. The native pure-Python SEA backend
-            # (`backend/sea/`) is no longer reachable through this
-            # flag; whether it's removed is tracked separately. See
-            # `docs/designs/pysql-kernel-integration.md` in the
-            # databricks-sql-kernel repo.
-            #
+        if self.use_kernel and self.use_sea:
+            raise ValueError(
+                "use_kernel and use_sea are mutually exclusive — pick one."
+            )
+
+        if self.use_kernel:
             # Lazy import so the connector doesn't ImportError at
             # startup when the kernel wheel isn't installed — the
             # error surfaces only when a caller actually requests
-            # use_sea=True.
+            # use_kernel=True.
             from databricks.sql.backend.kernel.client import KernelDatabricksClient
 
-            logger.debug("Creating kernel-backed client for use_sea=True")
+            logger.debug("Creating kernel-backed client for use_kernel=True")
             return KernelDatabricksClient(
                 server_hostname=server_hostname,
                 http_path=http_path,
@@ -148,7 +148,14 @@ class Session:
                 schema=kwargs.get("schema"),
             )
 
-        logger.debug("Creating Thrift backend client")
+        databricks_client_class: Type[DatabricksClient]
+        if self.use_sea:
+            logger.debug("Creating SEA backend client")
+            databricks_client_class = SeaDatabricksClient
+        else:
+            logger.debug("Creating Thrift backend client")
+            databricks_client_class = ThriftDatabricksClient
+
         common_args = {
             "server_hostname": server_hostname,
             "port": self.port,
@@ -160,7 +167,7 @@ class Session:
             "_use_arrow_native_complex_types": _use_arrow_native_complex_types,
             **kwargs,
         }
-        return ThriftDatabricksClient(**common_args)
+        return databricks_client_class(**common_args)
 
     @staticmethod
     def _extract_spog_headers(http_path, existing_headers):
