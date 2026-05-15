@@ -14,10 +14,6 @@ exception types, never the underlying kernel error.
 
 Phase 1 gaps documented in the integration design:
 
-- Parameter binding (``parameters=[TSparkParameter, ...]``) is not
-  yet supported — the PyO3 ``Statement`` doesn't expose
-  ``bind_param``. ``execute_command(parameters=[...])`` raises
-  ``NotSupportedError``.
 - ``query_tags`` on execute is not supported (kernel exposes
   ``statement_conf`` but PyO3 doesn't surface it).
 - ``get_tables`` with a non-empty ``table_types`` filter applies
@@ -262,11 +258,6 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> Union["ResultSet", None]:
         if self._kernel_session is None:
             raise InterfaceError("Cannot execute_command without an open session.")
-        if parameters:
-            raise NotSupportedError(
-                "Parameter binding is not yet supported on the kernel backend "
-                "(PyO3 Statement.bind_param lands in a follow-up PR)."
-            )
         if query_tags:
             raise NotSupportedError(
                 "Statement-level query_tags are not yet supported on the kernel backend."
@@ -275,6 +266,13 @@ class KernelDatabricksClient(DatabricksClient):
         stmt = self._kernel_session.statement()
         try:
             stmt.set_sql(operation)
+            if parameters:
+                # Lazy import — type_mapping touches pyarrow at
+                # module load; keep `execute_command` callable from
+                # contexts that don't yet need it.
+                from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
+
+                bind_tspark_params(stmt, parameters)
             if async_op:
                 async_exec = stmt.submit()
                 command_id = CommandId.from_sea_statement_id(async_exec.statement_id)

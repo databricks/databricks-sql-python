@@ -184,3 +184,69 @@ def test_bad_sql_surfaces_as_databaseerror(conn):
         # Structured fields copied off the kernel exception:
         assert getattr(err, "code", None) == "SqlError"
         assert getattr(err, "sql_state", None) == "42P01"
+
+
+# ── Parameter binding ─────────────────────────────────────────────
+
+
+def test_parameterized_query_round_trips(conn):
+    """Positional parameter binding via the kernel backend. The
+    connector's native parameter classes (IntegerParameter etc.)
+    serialize to TSparkParameter under the hood; the kernel
+    backend's mapper forwards them positionally to the kernel.
+    """
+    from databricks.sql.parameters.native import (
+        IntegerParameter,
+        StringParameter,
+        BooleanParameter,
+    )
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT ? AS i, ? AS s, ? AS b",
+            [
+                IntegerParameter(42),
+                StringParameter("alice"),
+                BooleanParameter(True),
+            ],
+        )
+        rows = cur.fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == 42
+        assert rows[0][1] == "alice"
+        assert rows[0][2] is True
+
+
+def test_parameterized_query_with_null(conn):
+    """`None` in the parameter list flows through as VoidParameter
+    → kernel TypedValue::Null."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT ? IS NULL AS is_null", [None])
+        rows = cur.fetchall()
+        assert rows[0][0] is True
+
+
+def test_parameterized_query_decimal(conn):
+    """DECIMAL parameters carry precision/scale in the SQL type
+    string ('DECIMAL(p,s)') — the kernel parser extracts them so
+    fractional digits survive the wire.
+
+    Uses the connector's auto-inference path
+    (`calculate_decimal_cast_string`) to derive precision/scale
+    from the value; the explicit-arg path
+    (`DecimalParameter(v, scale=, precision=)`) has a pre-existing
+    bug in this branch where the format-args are passed
+    `(scale, precision)` instead of `(precision, scale)` — out of
+    scope for this PR.
+    """
+    import decimal
+    from databricks.sql.parameters.native import DecimalParameter
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT ? AS d",
+            [DecimalParameter(decimal.Decimal("-123.45"))],
+        )
+        rows = cur.fetchall()
+        # Server echoes back as decimal.Decimal.
+        assert str(rows[0][0]) == "-123.45"
