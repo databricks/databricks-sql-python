@@ -104,9 +104,9 @@ _CODE_TO_EXCEPTION = {
 }
 
 
-def _reraise_kernel_error(exc: BaseException) -> "Error":
+def _reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     """Convert a ``databricks_sql_kernel.KernelError`` to a PEP 249
-    exception. Other exception types fall through unchanged.
+    exception.
 
     Kernel errors carry their structured attrs (``code``,
     ``message``, ``sql_state``, ``error_code``, ``query_id`` …) as
@@ -114,8 +114,6 @@ def _reraise_kernel_error(exc: BaseException) -> "Error":
     callers can branch on them without reaching back through
     ``__cause__``.
     """
-    if not isinstance(exc, _kernel.KernelError):
-        return exc  # type: ignore[return-value]
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
     new = cls(getattr(exc, "message", str(exc)))
@@ -130,10 +128,7 @@ def _reraise_kernel_error(exc: BaseException) -> "Error":
         "retryable",
         "query_id",
     ):
-        try:
-            setattr(new, attr, getattr(exc, attr))
-        except (AttributeError, TypeError):  # pragma: no cover - defensive
-            pass
+        setattr(new, attr, getattr(exc, attr, None))
     new.__cause__ = exc
     return new
 
@@ -161,13 +156,12 @@ class KernelDatabricksClient(DatabricksClient):
         schema: Optional[str] = None,
         http_headers=None,
         http_client=None,
-        _use_arrow_native_complex_types: Optional[bool] = True,
         **kwargs,
     ):
         # The connector hands us several fields the kernel doesn't
         # consume directly (ssl_options, http_headers, http_client,
-        # port, _use_arrow_native_complex_types). Kernel manages
-        # its own HTTP stack so we accept-and-ignore.
+        # port). Kernel manages its own HTTP stack so we
+        # accept-and-ignore.
         self._server_hostname = server_hostname
         self._http_path = http_path
         self._auth_provider = auth_provider
@@ -211,6 +205,13 @@ class KernelDatabricksClient(DatabricksClient):
             )
         except _kernel.KernelError as exc:
             raise _reraise_kernel_error(exc)
+        finally:
+            # Drop the raw access token from the instance once the
+            # kernel session is constructed (or failed). The kernel
+            # owns the credential from this point on; keeping a
+            # cleartext copy on a long-lived connector object risks
+            # accidental capture by pickling / debuggers / telemetry.
+            self._auth_kwargs.pop("access_token", None)
 
         # Use the kernel's real server-issued session id, not a
         # synthetic UUID. Matches what the native SEA backend does.
@@ -296,14 +297,7 @@ class KernelDatabricksClient(DatabricksClient):
 
         command_id = CommandId.from_sea_statement_id(executed.statement_id)
         cursor.active_command_id = command_id
-        return KernelResultSet(
-            connection=cursor.connection,
-            backend=self,
-            kernel_handle=executed,
-            command_id=command_id,
-            arraysize=cursor.arraysize,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-        )
+        return self._make_result_set(executed, cursor, command_id)
 
     def cancel_command(self, command_id: CommandId) -> None:
         handle = self._async_handles.get(command_id.guid)
@@ -363,22 +357,23 @@ class KernelDatabricksClient(DatabricksClient):
             stream = handle.await_result()
         except _kernel.KernelError as exc:
             raise _reraise_kernel_error(exc)
-        return KernelResultSet(
-            connection=cursor.connection,
-            backend=self,
-            kernel_handle=stream,
-            command_id=command_id,
-            arraysize=cursor.arraysize,
-            buffer_size_bytes=cursor.buffer_size_bytes,
-        )
+        return self._make_result_set(stream, cursor, command_id)
 
     # ── Metadata ───────────────────────────────────────────────────
 
-    def _metadata_result(self, stream, cursor, command_id):
+    def _make_result_set(
+        self,
+        kernel_handle: Any,
+        cursor: "Cursor",
+        command_id: CommandId,
+    ) -> "ResultSet":
+        """Build a ``KernelResultSet`` from any kernel handle. Used
+        by sync execute, ``get_execution_result``, and all metadata
+        paths to keep construction in one place."""
         return KernelResultSet(
             connection=cursor.connection,
             backend=self,
-            kernel_handle=stream,
+            kernel_handle=kernel_handle,
             command_id=command_id,
             arraysize=cursor.arraysize,
             buffer_size_bytes=cursor.buffer_size_bytes,
@@ -386,9 +381,14 @@ class KernelDatabricksClient(DatabricksClient):
 
     def _synthetic_command_id(self) -> CommandId:
         """Metadata calls don't produce a server statement id; mint
-        a synthetic one so the ``ResultSet`` still has a stable
-        identifier the cursor can attribute logs to."""
-        return CommandId.from_sea_statement_id(f"metadata-{uuid.uuid4()}")
+        a synthetic UUID so the ``ResultSet`` still has a stable
+        identifier the cursor can attribute logs to.
+
+        Plain ``uuid.uuid4().hex`` (no prefix) — anything that
+        consumes ``cursor.query_id`` downstream (telemetry, log
+        ingestion) sees a UUID-shaped string rather than a
+        connector-internal magic prefix it cannot parse."""
+        return CommandId.from_sea_statement_id(uuid.uuid4().hex)
 
     def get_catalogs(
         self,
@@ -403,7 +403,7 @@ class KernelDatabricksClient(DatabricksClient):
             stream = self._kernel_session.metadata().list_catalogs()
         except _kernel.KernelError as exc:
             raise _reraise_kernel_error(exc)
-        return self._metadata_result(stream, cursor, self._synthetic_command_id())
+        return self._make_result_set(stream, cursor, self._synthetic_command_id())
 
     def get_schemas(
         self,
@@ -423,7 +423,7 @@ class KernelDatabricksClient(DatabricksClient):
             )
         except _kernel.KernelError as exc:
             raise _reraise_kernel_error(exc)
-        return self._metadata_result(stream, cursor, self._synthetic_command_id())
+        return self._make_result_set(stream, cursor, self._synthetic_command_id())
 
     def get_tables(
         self,
@@ -457,7 +457,7 @@ class KernelDatabricksClient(DatabricksClient):
             )
         except _kernel.KernelError as exc:
             raise _reraise_kernel_error(exc)
-        return self._metadata_result(stream, cursor, self._synthetic_command_id())
+        return self._make_result_set(stream, cursor, self._synthetic_command_id())
 
     def get_columns(
         self,
@@ -488,7 +488,7 @@ class KernelDatabricksClient(DatabricksClient):
             )
         except _kernel.KernelError as exc:
             raise _reraise_kernel_error(exc)
-        return self._metadata_result(stream, cursor, self._synthetic_command_id())
+        return self._make_result_set(stream, cursor, self._synthetic_command_id())
 
     # ── Misc ───────────────────────────────────────────────────────
 

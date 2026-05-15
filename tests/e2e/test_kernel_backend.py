@@ -85,8 +85,10 @@ def test_select_one(conn):
 
 def test_drain_large_range_to_arrow(conn):
     """SELECT * FROM range(10000) drains as a pyarrow Table with
-    10000 rows. Exercises the CloudFetch / multi-batch path on the
-    kernel side."""
+    10000 rows. Exercises end-of-stream drain over multiple
+    ``fetch_next_batch`` calls; not large enough to cross a
+    CloudFetch chunk boundary — see test_driver for CloudFetch
+    coverage."""
     with conn.cursor() as cur:
         cur.execute("SELECT * FROM range(10000)")
         rows = cur.fetchall()
