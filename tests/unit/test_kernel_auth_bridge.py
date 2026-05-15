@@ -11,7 +11,7 @@ Phase 1 ships PAT only. Tests verify:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import Mock
 
 import pytest
 
@@ -78,18 +78,22 @@ class TestKernelAuthKwargs:
         the base provider in a ``TokenFederationProvider``, so the
         PAT case never reaches us unwrapped in practice. The bridge
         must look through the federation wrapper to find the
-        underlying ``AccessTokenAuthProvider``."""
+        underlying ``AccessTokenAuthProvider``.
+
+        Construct a real ``TokenFederationProvider`` (with a mock
+        http_client — `_exchange_token` never fires for a plain
+        ``dapi-…`` PAT because it isn't a JWT, so the mock is never
+        called). This exercises the real ``add_headers`` path the
+        bridge sees in production.
+        """
         from databricks.sql.auth.token_federation import TokenFederationProvider
 
         base = AccessTokenAuthProvider("dapi-abc")
-        # TokenFederationProvider's __init__ requires an http_client
-        # to construct cleanly; for this unit test we only exercise
-        # the add_headers passthrough + the external_provider
-        # attribute. Bypass __init__ with __new__ and stash just
-        # the fields the bridge touches.
-        federated = TokenFederationProvider.__new__(TokenFederationProvider)
-        federated.external_provider = base
-        federated.add_headers = base.add_headers
+        federated = TokenFederationProvider(
+            hostname="https://example.cloud.databricks.com",
+            external_provider=base,
+            http_client=Mock(),
+        )
         kwargs = kernel_auth_kwargs(federated)
         assert kwargs == {"auth_type": "pat", "access_token": "dapi-abc"}
 

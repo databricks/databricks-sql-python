@@ -10,16 +10,22 @@ The kernel surfaces two flavours of result-bearing handle:
   cancel.
 
 Both implement the same three methods this class actually calls:
-``arrow_schema() / fetch_next_batch() / fetch_all_arrow() / close()``.
-``KernelResultSet`` takes either via the ``kernel_handle`` parameter
-and treats them uniformly — the connector's ``ResultSet`` contract
-doesn't need to distinguish them.
+``arrow_schema() / fetch_next_batch() / close()``. ``KernelResultSet``
+takes either via the ``kernel_handle`` parameter and treats them
+uniformly — the connector's ``ResultSet`` contract doesn't need to
+distinguish them.
 
 Buffer shape mirrors the prior ADBC POC's ``AdbcResultSet``: a FIFO
 of pyarrow ``RecordBatch``es, fed one batch at a time from the
 kernel as the connector calls ``fetch*``. ``fetchmany(n)`` slices
 within a batch when ``n`` is smaller than the kernel's natural
 batch size; ``fetchall`` drains the whole stream.
+
+Note: ``buffer_size_bytes`` is accepted by the constructor for
+contract compatibility with the base ``ResultSet`` but is not
+consulted — the kernel backend currently caps buffering by rows
+pulled, not bytes. Memory ceilings should be controlled by the
+kernel-side batch sizing.
 """
 
 from __future__ import annotations
@@ -84,6 +90,11 @@ class KernelResultSet(ResultSet):
         # re-fetch from the kernel.
         self._buffer: Deque[pyarrow.RecordBatch] = deque()
         self._buffer_offset: int = 0
+        # Running count of rows currently buffered (sum of batch
+        # sizes minus the head-batch offset). Maintained by
+        # _pull_one_batch / _take_buffered / _drain so _buffered_rows
+        # stays O(1) instead of walking the deque.
+        self._buffered_count: int = 0
         self._exhausted: bool = False
 
     # ----- internal helpers -----
@@ -102,22 +113,19 @@ class KernelResultSet(ResultSet):
             return False
         if batch.num_rows > 0:
             self._buffer.append(batch)
+            self._buffered_count += batch.num_rows
         return True
 
     def _ensure_buffered(self, n_rows: int) -> int:
         """Pull batches until ``n_rows`` are buffered or the kernel
         is exhausted. Returns total rows currently buffered."""
-        while self._buffered_rows() < n_rows:
+        while self._buffered_count < n_rows:
             if not self._pull_one_batch():
                 break
-        return self._buffered_rows()
+        return self._buffered_count
 
     def _buffered_rows(self) -> int:
-        if not self._buffer:
-            return 0
-        first = self._buffer[0].num_rows - self._buffer_offset
-        rest = sum(b.num_rows for b in list(self._buffer)[1:])
-        return first + rest
+        return self._buffered_count
 
     def _take_buffered(self, n: int) -> pyarrow.Table:
         """Slice up to ``n`` rows out of the buffer; advances state."""
@@ -133,7 +141,9 @@ class KernelResultSet(ResultSet):
             if self._buffer_offset >= head.num_rows:
                 self._buffer.popleft()
                 self._buffer_offset = 0
-        self._next_row_index += n - remaining
+        taken = n - remaining
+        self._buffered_count -= taken
+        self._next_row_index += taken
         if not slices:
             return pyarrow.Table.from_batches([], schema=self._schema)
         return pyarrow.Table.from_batches(slices, schema=self._schema)
@@ -161,6 +171,7 @@ class KernelResultSet(ResultSet):
                 if batch.num_rows > 0:
                     chunks.append(batch)
         rows = sum(c.num_rows for c in chunks)
+        self._buffered_count = 0
         self._next_row_index += rows
         if not chunks:
             return pyarrow.Table.from_batches([], schema=self._schema)

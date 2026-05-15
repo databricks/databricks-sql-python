@@ -19,6 +19,7 @@ provider it builds).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional
 
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
@@ -29,6 +30,13 @@ logger = logging.getLogger(__name__)
 
 
 _BEARER_PREFIX = "Bearer "
+
+# Defense-in-depth: reject tokens containing ASCII control characters.
+# A token with embedded CR/LF/NUL would let a misbehaving HTTP stack
+# split or terminate the Authorization header line, opening a header-
+# injection sink. Real PATs and federation-exchanged tokens never
+# contain these.
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def _is_pat(auth_provider: AuthProvider) -> bool:
@@ -69,7 +77,13 @@ def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
         return None
     if not auth.startswith(_BEARER_PREFIX):
         return None
-    return auth[len(_BEARER_PREFIX) :]
+    token = auth[len(_BEARER_PREFIX) :]
+    if _CONTROL_CHAR_RE.search(token):
+        raise ValueError(
+            "Bearer token contains ASCII control characters; refusing to "
+            "forward it to the kernel auth bridge."
+        )
+    return token
 
 
 def kernel_auth_kwargs(auth_provider: AuthProvider) -> Dict[str, Any]:
