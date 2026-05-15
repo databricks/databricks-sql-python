@@ -115,7 +115,17 @@ class Connection:
 
         Parameters:
             :param use_sea: `bool`, optional (default is False)
-                Use the SEA backend instead of the Thrift backend.
+                Use the native pure-Python SEA backend instead of
+                the Thrift backend.
+            :param use_kernel: `bool`, optional (default is False)
+                Route the connection through the Rust kernel
+                (``databricks-sql-kernel`` via PyO3). Requires the
+                kernel wheel to be installed separately
+                (``pip install databricks-sql-kernel``); raises
+                ImportError otherwise. In active development —
+                PAT auth only today; OAuth / federation / external
+                credentials and native parameter binding land in
+                follow-ups. Mutually exclusive with ``use_sea``.
             :param use_hybrid_disposition: `bool`, optional (default is False)
                 Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.
@@ -1575,6 +1585,12 @@ class Cursor:
         Get columns corresponding to the catalog_name, schema_name, table_name and column_name.
 
         Names can contain % wildcards.
+
+        Note: on ``use_kernel=True``, ``catalog_name`` is required —
+        the kernel's underlying ``SHOW COLUMNS`` cannot span catalogs.
+        Passing ``catalog_name=None`` raises ``ProgrammingError``. The
+        Thrift and native SEA backends accept ``catalog_name=None``.
+
         :returns self
         """
         self._check_not_closed()

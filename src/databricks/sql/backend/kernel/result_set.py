@@ -226,7 +226,21 @@ class KernelResultSet(ResultSet):
             # level; log and swallow so the cursor's __del__ /
             # connection close path stays clean.
             logger.warning("Error closing kernel handle: %s", exc)
+        # Drop the entry from the backend's async-handle map (if
+        # present) — for async-submitted statements the handle is
+        # tracked there and the base ``ResultSet.close`` path would
+        # otherwise leave a stale entry pointing at a closed handle.
+        # No-op for the sync-execute and metadata paths, which never
+        # register in ``_async_handles``.
+        guid = getattr(self.command_id, "guid", None)
+        if guid is not None:
+            self.backend._async_handles_lock.acquire()
+            try:
+                self.backend._async_handles.pop(guid, None)
+            finally:
+                self.backend._async_handles_lock.release()
         self._buffer.clear()
+        self._buffered_count = 0
         self._kernel_handle = None
         self._exhausted = True
         self.has_been_closed_server_side = True
