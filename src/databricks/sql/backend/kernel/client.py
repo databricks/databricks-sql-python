@@ -55,6 +55,7 @@ from databricks.sql.backend.types import (
 from databricks.sql.exc import (
     InterfaceError,
     NotSupportedError,
+    OperationalError,
     ProgrammingError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -100,7 +101,15 @@ class KernelDatabricksClient(DatabricksClient):
         self._auth_provider = auth_provider
         self._catalog = catalog
         self._schema = schema
-        self._auth_kwargs = kernel_auth_kwargs(auth_provider)
+        # NB: don't call ``kernel_auth_kwargs`` here. That call
+        # materialises the bearer token in-process; keeping a
+        # cleartext copy on a long-lived connector object that may
+        # never have ``open_session`` invoked (test paths, error
+        # paths, lazy retries) widens the window where a debugger
+        # dump or accidental pickle could capture the credential.
+        # Resolved inside ``open_session`` instead, then immediately
+        # cleared once the kernel ``Session`` owns it.
+        #
         # Open ``databricks_sql_kernel.Session`` lazily in
         # ``open_session`` so the Session lifecycle gates the
         # underlying connection setup — same shape as Thrift's
@@ -136,25 +145,28 @@ class KernelDatabricksClient(DatabricksClient):
         session_conf: Optional[Dict[str, str]] = None
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
+        # Build auth kwargs here (not in ``__init__``) so the bearer
+        # token has the shortest possible in-process lifetime: a
+        # local kwargs dict is GC-eligible the moment this method
+        # returns, regardless of whether the kernel ``Session()``
+        # call succeeded or raised.
+        auth_kwargs = kernel_auth_kwargs(self._auth_provider)
         try:
-            try:
-                self._kernel_session = _kernel.Session(
-                    host=self._server_hostname,
-                    http_path=self._http_path,
-                    catalog=catalog or self._catalog,
-                    schema=schema or self._schema,
-                    session_conf=session_conf,
-                    **self._auth_kwargs,
-                )
-            except Exception as exc:
-                raise _wrap_kernel_exception("open_session", exc) from exc
+            self._kernel_session = _kernel.Session(
+                host=self._server_hostname,
+                http_path=self._http_path,
+                catalog=catalog or self._catalog,
+                schema=schema or self._schema,
+                session_conf=session_conf,
+                **auth_kwargs,
+            )
+        except Exception as exc:
+            raise _wrap_kernel_exception("open_session", exc) from exc
         finally:
-            # Drop the raw access token from the instance once the
-            # kernel session is constructed (or failed). The kernel
-            # owns the credential from this point on; keeping a
-            # cleartext copy on a long-lived connector object risks
-            # accidental capture by pickling / debuggers / telemetry.
-            self._auth_kwargs.pop("access_token", None)
+            # Best-effort scrub of the local dict before it goes out
+            # of scope. The kernel ``Session`` (if construction
+            # succeeded) now owns its own copy of the credential.
+            auth_kwargs.pop("access_token", None)
 
         # Use the kernel's real server-issued session id, not a
         # synthetic UUID. Matches what the native SEA backend does.
@@ -319,7 +331,7 @@ class KernelDatabricksClient(DatabricksClient):
             # the cursor's polling loop terminates with the right
             # exception class — matches the Thrift backend's
             # behaviour on TOperationState::ERROR_STATE.
-            raise _reraise_kernel_error(failure)
+            raise _reraise_kernel_error(failure) from failure
         return _STATE_TO_COMMAND_STATE.get(state, CommandState.FAILED)
 
     def get_execution_result(
@@ -455,15 +467,24 @@ class KernelDatabricksClient(DatabricksClient):
             # The kernel today returns the unfiltered ``SHOW TABLES``
             # shape regardless of ``table_types``. Drain to a single
             # Arrow table and apply the same client-side filter the
-            # native SEA backend uses (column index 5 is
-            # ``TABLE_TYPE``, case-sensitive). Cheap because metadata
-            # result sets are small.
+            # native SEA backend uses. The filter is **case-sensitive**
+            # — matches the SEA backend's documented behaviour, and
+            # mirrors how the warehouse reports the values
+            # (``TABLE`` / ``VIEW`` / ``SYSTEM_TABLE`` — uppercase).
+            # Look the column up by name rather than positional index
+            # so a future kernel reshape of ``SHOW TABLES`` doesn't
+            # silently filter the wrong column.
             from databricks.sql.backend.sea.utils.filters import ResultSetFilter
 
             full_table = _drain_kernel_handle(stream)
+            if "TABLE_TYPE" not in full_table.schema.names:
+                raise OperationalError(
+                    "kernel get_tables result is missing a TABLE_TYPE "
+                    f"column; got {full_table.schema.names!r}"
+                )
             filtered_table = ResultSetFilter._filter_arrow_table(
                 full_table,
-                column_name=full_table.schema.field(5).name,
+                column_name="TABLE_TYPE",
                 allowed_values=table_types,
                 case_sensitive=True,
             )

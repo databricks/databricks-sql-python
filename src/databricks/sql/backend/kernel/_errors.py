@@ -84,7 +84,12 @@ _CODE_TO_EXCEPTION = {
 def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     """Convert a ``databricks_sql_kernel.KernelError`` to a PEP 249
     exception with the kernel's structured attributes forwarded onto
-    the new instance."""
+    the new instance.
+
+    The returned exception is raised by callers with ``raise ... from
+    exc``; the ``from`` clause is what sets ``__cause__``, so we don't
+    touch it here.
+    """
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
     new = cls(getattr(exc, "message", str(exc)))
@@ -98,7 +103,6 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
         "query_id",
     ):
         setattr(new, attr, getattr(exc, attr, None))
-    new.__cause__ = exc
     return new
 
 

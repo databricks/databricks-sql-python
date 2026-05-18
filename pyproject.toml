@@ -46,10 +46,10 @@ pyarrow = ["pyarrow"]
 #     [tool.poetry.extras]
 #     kernel = ["databricks-sql-kernel"]
 #
-# Until then, install the kernel separately:
-#     pip install databricks-sql-kernel
-# or (local dev):
+# Until then, the wheel is not on PyPI and the only supported
+# install path is local dev:
 #     cd databricks-sql-kernel/pyo3 && maturin develop --release
+# (into the same venv as databricks-sql-connector).
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.1.2"

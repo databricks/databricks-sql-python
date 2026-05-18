@@ -99,12 +99,13 @@ from databricks.sql.exc import (
 )
 def test_code_to_exception_mapping(code, expected_cls):
     """Every entry in ``_CODE_TO_EXCEPTION`` maps to the documented
-    PEP 249 class."""
+    PEP 249 class. Cause chaining happens at the ``raise ... from exc``
+    call site, not inside ``_reraise_kernel_error`` — verified
+    separately by ``test_kernel_error_chains_through_wrap``."""
     err = _FakeKernelError(code=code, message=f"{code} boom")
     out = kernel_client._reraise_kernel_error(err)
     assert isinstance(out, expected_cls)
     assert "boom" in str(out)
-    assert out.__cause__ is err
 
 
 def test_unknown_code_falls_back_to_database_error():
@@ -129,6 +130,25 @@ def test_reraise_forwards_structured_attributes():
     for attr in ("error_code", "vendor_code", "http_status"):
         assert getattr(out, attr) is None
     assert out.retryable is False
+
+
+def test_kernel_error_chains_through_wrap():
+    """``raise wrap_kernel_exception(...) from exc`` is the call-site
+    pattern; ``__cause__`` must be set to the original ``KernelError``
+    so users can dig out the structured fields via ``e.__cause__``."""
+    src = _FakeKernelError(code="SqlError", message="boom", sql_state="42P01")
+    try:
+        try:
+            raise src
+        except Exception as exc:
+            from databricks.sql.backend.kernel._errors import wrap_kernel_exception
+
+            raise wrap_kernel_exception("test_site", exc) from exc
+    except DatabaseError as out:
+        assert out.__cause__ is src
+        assert getattr(out, "sql_state", None) == "42P01"
+    else:
+        raise AssertionError("expected DatabaseError")
 
 
 # ---------------------------------------------------------------------------

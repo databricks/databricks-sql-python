@@ -29,7 +29,12 @@ from databricks.sql.exc import NotSupportedError, ProgrammingError
 logger = logging.getLogger(__name__)
 
 
-_BEARER_PREFIX = "Bearer "
+# RFC 6750 §2.1 defines the Authorization scheme as case-insensitive.
+# The connector's auth providers all emit ``Bearer `` exactly today,
+# but we match leniently in case a federation proxy or future provider
+# normalises the casing differently — failing closed here would surface
+# as a confusing ``ProgrammingError`` from the bridge.
+_BEARER_PREFIX_LEN = len("Bearer ")
 
 # Defense-in-depth: reject tokens containing ASCII control characters.
 # A token with embedded CR/LF/NUL would let a misbehaving HTTP stack
@@ -75,9 +80,9 @@ def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
     auth = headers.get("Authorization")
     if not auth:
         return None
-    if not auth.startswith(_BEARER_PREFIX):
+    if not auth[:_BEARER_PREFIX_LEN].lower() == "bearer ":
         return None
-    token = auth[len(_BEARER_PREFIX) :]
+    token = auth[_BEARER_PREFIX_LEN:]
     if _CONTROL_CHAR_RE.search(token):
         raise ProgrammingError(
             "Bearer token contains ASCII control characters; refusing to "

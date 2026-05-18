@@ -223,11 +223,26 @@ class KernelResultSet(ResultSet):
         return self._convert_arrow_table(self._drain())
 
     def close(self) -> None:
-        """Close the underlying kernel handle. Idempotent — the
-        kernel's own ``close()`` is idempotent, and we guard against
-        repeated calls so partially-drained streams don't double-
-        decrement reference counts."""
+        """Close the underlying kernel handle and notify the backend.
+
+        Idempotent — the kernel's own ``close()`` is idempotent, and
+        we guard against repeated calls so partially-drained streams
+        don't double-decrement reference counts.
+
+        Skipped entirely when the parent connection is already
+        closed. A ``__del__``-driven close arriving after
+        connection-close would otherwise issue a kernel call into an
+        already-disposed session.
+        """
         if self._kernel_handle is None:
+            return
+        if not self.connection.open:
+            self._kernel_handle = None
+            self._buffer.clear()
+            self._buffered_count = 0
+            self._exhausted = True
+            self.has_been_closed_server_side = True
+            self.status = CommandState.CLOSED
             return
         try:
             self._kernel_handle.close()
@@ -242,11 +257,23 @@ class KernelResultSet(ResultSet):
         # otherwise leave a stale entry pointing at a closed handle.
         # No-op for the sync-execute and metadata paths, which never
         # register in ``_async_handles``.
+        backend = cast("KernelDatabricksClient", self.backend)
         guid = getattr(self.command_id, "guid", None)
         if guid is not None:
-            backend = cast("KernelDatabricksClient", self.backend)
             with backend._async_handles_lock:
                 backend._async_handles.pop(guid, None)
+        # Honor the base ``ResultSet`` contract: notify the backend
+        # so any cross-cutting bookkeeping (telemetry, command-state
+        # tracking) sees the close. Our own ``close_command`` is
+        # tolerant of unknown command_ids (no-op), so this is safe
+        # even though the per-handle close above already released
+        # server-side state.
+        try:
+            backend.close_command(self.command_id)
+        except Exception as exc:
+            logger.warning(
+                "backend.close_command from result-set close failed: %s", exc
+            )
         self._buffer.clear()
         self._buffered_count = 0
         self._kernel_handle = None
