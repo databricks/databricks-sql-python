@@ -233,7 +233,9 @@ class KernelDatabricksClient(DatabricksClient):
                 stmt.set_sql(operation)
                 if async_op:
                     async_exec = stmt.submit()
-                    command_id = CommandId.from_sea_statement_id(async_exec.statement_id)
+                    command_id = CommandId.from_sea_statement_id(
+                        async_exec.statement_id
+                    )
                     cursor.active_command_id = command_id
                     with self._async_handles_lock:
                         self._async_handles[command_id.guid] = async_exec
