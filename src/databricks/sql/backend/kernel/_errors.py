@@ -20,14 +20,23 @@ The PyO3 boundary can produce two flavours of exception:
 These primitives live in their own module so both ``client.py``
 (which orchestrates PyO3 calls) and ``result_set.py`` (which calls
 ``fetch_next_batch`` on the same kernel handles) can share them
-without ``result_set.py`` importing from ``client.py`` — that
-direction would be a layering violation.
+without ``result_set.py`` importing from ``client.py``.
+
+Usage at every PyO3 call site is a plain try/except:
+
+    try:
+        stmt.execute()
+    except Exception as exc:
+        raise wrap_kernel_exception("execute_command", exc) from exc
+
+The helper returns the mapped exception; callers raise it. Plain
+``try/except`` is preferred over a context manager: the control
+flow is visible at the call site, the helper is a pure function
+(trivial to test), and tracebacks don't carry an extra
+``__exit__`` frame.
 """
 
 from __future__ import annotations
-
-import contextlib
-from typing import Iterator
 
 from databricks.sql.exc import (
     DatabaseError,
@@ -93,32 +102,24 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     return new
 
 
-@contextlib.contextmanager
-def kernel_call(what: str) -> Iterator[None]:
-    """Context manager that wraps a span of PyO3 calls so any error
-    crossing the Python/Rust boundary surfaces as a PEP 249
-    exception.
+def wrap_kernel_exception(what: str, exc: BaseException) -> "Error":
+    """Map any exception from a PyO3 call site to a PEP 249 exception.
 
-    ``KernelError`` flows through ``reraise_kernel_error`` (the
-    structured-attribute path). Anything else is wrapped in
-    ``OperationalError`` so DB-API callers see a uniform exception
-    surface and never have to catch native Python exceptions to
-    handle a connector-level failure.
+    - ``KernelError`` → mapped class with structured attrs forwarded.
+    - Already-PEP-249 ``Error`` (e.g. raised by an inner caller that
+      already mapped) → passed through unchanged.
+    - Anything else (``TypeError`` / ``ValueError`` / etc. from PyO3
+      argument conversion, extension-internal errors) → wrapped in
+      ``OperationalError``.
 
-    ``what`` is a short tag used only in the ``OperationalError``
-    message for the non-``KernelError`` path; keep it caller-named
-    (e.g. ``"execute_command"``).
+    Returned, not raised — the caller decides whether to ``raise``
+    or ``raise ... from exc``. ``what`` is a short tag (the calling
+    method name) used only in the ``OperationalError`` message.
     """
-    try:
-        yield
-    except _kernel.KernelError as exc:
-        raise reraise_kernel_error(exc) from exc
-    except Error:
-        # Already a PEP 249 error (e.g. a nested ``kernel_call`` or
-        # the cursor-side guard re-raising one); let it propagate
-        # unchanged.
-        raise
-    except Exception as exc:
-        raise OperationalError(
-            f"Unexpected error from databricks_sql_kernel during {what}: {exc!r}"
-        ) from exc
+    if isinstance(exc, _kernel.KernelError):
+        return reraise_kernel_error(exc)
+    if isinstance(exc, Error):
+        return exc
+    return OperationalError(
+        f"Unexpected error from databricks_sql_kernel during {what}: {exc!r}"
+    )

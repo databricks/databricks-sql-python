@@ -41,8 +41,8 @@ from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
 from databricks.sql.backend.databricks_client import DatabricksClient
 from databricks.sql.backend.kernel._errors import (
     _kernel,
-    kernel_call as _kernel_call,
     reraise_kernel_error as _reraise_kernel_error,
+    wrap_kernel_exception as _wrap_kernel_exception,
 )
 from databricks.sql.backend.kernel.auth_bridge import kernel_auth_kwargs
 from databricks.sql.backend.kernel.result_set import KernelResultSet
@@ -137,7 +137,7 @@ class KernelDatabricksClient(DatabricksClient):
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
         try:
-            with _kernel_call("open_session"):
+            try:
                 self._kernel_session = _kernel.Session(
                     host=self._server_hostname,
                     http_path=self._http_path,
@@ -146,6 +146,8 @@ class KernelDatabricksClient(DatabricksClient):
                     session_conf=session_conf,
                     **self._auth_kwargs,
                 )
+            except Exception as exc:
+                raise _wrap_kernel_exception("open_session", exc) from exc
         finally:
             # Drop the raw access token from the instance once the
             # kernel session is constructed (or failed). The kernel
@@ -222,10 +224,12 @@ class KernelDatabricksClient(DatabricksClient):
                 "Statement-level query_tags are not yet supported on the kernel backend."
             )
 
-        with _kernel_call("execute_command"):
-            stmt = self._kernel_session.statement()
         try:
-            with _kernel_call("execute_command"):
+            stmt = self._kernel_session.statement()
+        except Exception as exc:
+            raise _wrap_kernel_exception("execute_command", exc) from exc
+        try:
+            try:
                 stmt.set_sql(operation)
                 if async_op:
                     async_exec = stmt.submit()
@@ -235,6 +239,8 @@ class KernelDatabricksClient(DatabricksClient):
                         self._async_handles[command_id.guid] = async_exec
                     return None
                 executed = stmt.execute()
+            except Exception as exc:
+                raise _wrap_kernel_exception("execute_command", exc) from exc
         finally:
             # ``Statement`` is a lifecycle owner separate from the
             # executed handle it produces. Drop it here so the
@@ -253,8 +259,10 @@ class KernelDatabricksClient(DatabricksClient):
         # can itself raise ``KernelError`` (or, in principle, a PyO3
         # native exception) — wrap the construction so callers see a
         # mapped PEP 249 exception.
-        with _kernel_call("execute_command"):
+        try:
             return self._make_result_set(executed, cursor, command_id)
+        except Exception as exc:
+            raise _wrap_kernel_exception("execute_command", exc) from exc
 
     def cancel_command(self, command_id: CommandId) -> None:
         with self._async_handles_lock:
@@ -266,8 +274,10 @@ class KernelDatabricksClient(DatabricksClient):
             # Match the Thrift backend's tolerant behaviour.
             logger.debug("cancel_command: no in-flight async handle for %s", command_id)
             return
-        with _kernel_call("cancel_command"):
+        try:
             handle.cancel()
+        except Exception as exc:
+            raise _wrap_kernel_exception("cancel_command", exc) from exc
 
     def close_command(self, command_id: CommandId) -> None:
         with self._async_handles_lock:
@@ -279,8 +289,10 @@ class KernelDatabricksClient(DatabricksClient):
         if handle is None:
             logger.debug("close_command: no tracked handle for %s", command_id)
             return
-        with _kernel_call("close_command"):
+        try:
             handle.close()
+        except Exception as exc:
+            raise _wrap_kernel_exception("close_command", exc) from exc
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         with self._async_handles_lock:
@@ -296,8 +308,10 @@ class KernelDatabricksClient(DatabricksClient):
             # ran sync and the result was materialised before
             # returning. Terminal by construction.
             return CommandState.SUCCEEDED
-        with _kernel_call("get_query_state"):
+        try:
             state, failure = handle.status()
+        except Exception as exc:
+            raise _wrap_kernel_exception("get_query_state", exc) from exc
         if state == "Failed" and failure is not None:
             # Surface server-reported failure as a database error so
             # the cursor's polling loop terminates with the right
@@ -318,8 +332,10 @@ class KernelDatabricksClient(DatabricksClient):
                 "get_execution_result called for an unknown command_id; "
                 "the kernel backend only tracks async-submitted statements."
             )
-        with _kernel_call("get_execution_result"):
+        try:
             stream = async_exec.await_result()
+        except Exception as exc:
+            raise _wrap_kernel_exception("get_execution_result", exc) from exc
         # The async-exec handle's role ends once it has produced the
         # ``ResultStream`` — keeping it around (and tracked in
         # ``_async_handles``) would leak the server-side
@@ -338,9 +354,11 @@ class KernelDatabricksClient(DatabricksClient):
                 exc,
             )
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
-        # can raise — keep that in the mapped-exception scope.
-        with _kernel_call("get_execution_result"):
+        # can raise — map that to PEP 249 too.
+        try:
             return self._make_result_set(stream, cursor, command_id)
+        except Exception as exc:
+            raise _wrap_kernel_exception("get_execution_result", exc) from exc
 
     # ── Metadata ───────────────────────────────────────────────────
 
@@ -382,9 +400,11 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_catalogs requires an open session.")
-        with _kernel_call("get_catalogs"):
+        try:
             stream = self._kernel_session.metadata().list_catalogs()
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
+        except Exception as exc:
+            raise _wrap_kernel_exception("get_catalogs", exc) from exc
 
     def get_schemas(
         self,
@@ -397,12 +417,14 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_schemas requires an open session.")
-        with _kernel_call("get_schemas"):
+        try:
             stream = self._kernel_session.metadata().list_schemas(
                 catalog=catalog_name,
                 schema_pattern=schema_name,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
+        except Exception as exc:
+            raise _wrap_kernel_exception("get_schemas", exc) from exc
 
     def get_tables(
         self,
@@ -417,7 +439,7 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_tables requires an open session.")
-        with _kernel_call("get_tables"):
+        try:
             stream = self._kernel_session.metadata().list_tables(
                 catalog=catalog_name,
                 schema_pattern=schema_name,
@@ -448,6 +470,8 @@ class KernelDatabricksClient(DatabricksClient):
                 cursor,
                 self._synthetic_command_id(),
             )
+        except Exception as exc:
+            raise _wrap_kernel_exception("get_tables", exc) from exc
 
     def get_columns(
         self,
@@ -469,7 +493,7 @@ class KernelDatabricksClient(DatabricksClient):
             raise ProgrammingError(
                 "get_columns requires catalog_name on the kernel backend."
             )
-        with _kernel_call("get_columns"):
+        try:
             stream = self._kernel_session.metadata().list_columns(
                 catalog=catalog_name,
                 schema_pattern=schema_name,
@@ -477,6 +501,8 @@ class KernelDatabricksClient(DatabricksClient):
                 column_pattern=column_name,
             )
             return self._make_result_set(stream, cursor, self._synthetic_command_id())
+        except Exception as exc:
+            raise _wrap_kernel_exception("get_columns", exc) from exc
 
     # ── Misc ───────────────────────────────────────────────────────
 

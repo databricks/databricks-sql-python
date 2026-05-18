@@ -36,7 +36,7 @@ from typing import Any, Deque, List, Optional, TYPE_CHECKING, cast
 
 import pyarrow
 
-from databricks.sql.backend.kernel._errors import kernel_call
+from databricks.sql.backend.kernel._errors import wrap_kernel_exception
 from databricks.sql.backend.kernel.type_mapping import description_from_arrow_schema
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.result_set import ResultSet
@@ -68,8 +68,10 @@ class KernelResultSet(ResultSet):
         arraysize: int,
         buffer_size_bytes: int,
     ):
-        with kernel_call("KernelResultSet.arrow_schema"):
+        try:
             schema = kernel_handle.arrow_schema()
+        except Exception as exc:
+            raise wrap_kernel_exception("KernelResultSet.arrow_schema", exc) from exc
         super().__init__(
             connection=connection,
             backend=backend,
@@ -107,8 +109,10 @@ class KernelResultSet(ResultSet):
         is exhausted."""
         if self._exhausted:
             return False
-        with kernel_call("fetch_next_batch"):
+        try:
             batch = self._kernel_handle.fetch_next_batch()
+        except Exception as exc:
+            raise wrap_kernel_exception("fetch_next_batch", exc) from exc
         if batch is None:
             self._exhausted = True
             self.has_more_rows = False
@@ -165,8 +169,10 @@ class KernelResultSet(ResultSet):
             chunks.append(self._buffer.popleft())
         if not self._exhausted:
             while True:
-                with kernel_call("fetch_next_batch"):
+                try:
                     batch = self._kernel_handle.fetch_next_batch()
+                except Exception as exc:
+                    raise wrap_kernel_exception("fetch_next_batch", exc) from exc
                 if batch is None:
                     self._exhausted = True
                     self.has_more_rows = False
