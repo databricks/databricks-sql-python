@@ -36,12 +36,14 @@ logger = logging.getLogger(__name__)
 # as a confusing ``ProgrammingError`` from the bridge.
 _BEARER_PREFIX_LEN = len("Bearer ")
 
-# Defense-in-depth: reject tokens containing ASCII control characters.
-# A token with embedded CR/LF/NUL would let a misbehaving HTTP stack
-# split or terminate the Authorization header line, opening a header-
-# injection sink. Real PATs and federation-exchanged tokens never
-# contain these.
-_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+# Defense-in-depth: reject tokens containing ASCII control characters
+# or whitespace. CR/LF/NUL in a token would let a misbehaving HTTP
+# stack split or terminate the Authorization header line, opening a
+# header-injection sink. Space (0x20) is included so leading-/
+# embedded-whitespace tokens (e.g. ``"Bearer  doubled-space-token"``,
+# tab-prefixed token) get rejected too — RFC 6750 §2.1 forbids
+# whitespace within the credential token itself.
+_TOKEN_REJECT_RE = re.compile(r"[\x00-\x20\x7f]")
 
 
 def _is_pat(auth_provider: AuthProvider) -> bool:
@@ -83,10 +85,10 @@ def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
     if not auth[:_BEARER_PREFIX_LEN].lower() == "bearer ":
         return None
     token = auth[_BEARER_PREFIX_LEN:]
-    if _CONTROL_CHAR_RE.search(token):
+    if _TOKEN_REJECT_RE.search(token):
         raise ProgrammingError(
-            "Bearer token contains ASCII control characters; refusing to "
-            "forward it to the kernel auth bridge."
+            "Bearer token contains ASCII control characters or whitespace; "
+            "refusing to forward it to the kernel auth bridge."
         )
     return token
 

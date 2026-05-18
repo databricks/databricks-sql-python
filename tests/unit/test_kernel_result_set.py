@@ -168,3 +168,29 @@ def test_close_swallows_handle_close_failures(int_schema):
     rs = _make_rs(handle)
     rs.close()  # must not raise
     assert rs.status == CommandState.CLOSED
+
+
+def test_close_skips_kernel_call_when_connection_already_closed(int_schema):
+    """``__del__``-driven close arriving after the parent connection
+    is already closed must not issue any kernel call (the kernel
+    session is disposed). The result set still marks itself
+    ``CLOSED`` locally so the close path stays idempotent."""
+    handle = _FakeKernelHandle(int_schema, [])
+    connection = MagicMock()
+    connection.open = False
+    backend = MagicMock()
+    rs = KernelResultSet(
+        connection=connection,
+        backend=backend,
+        kernel_handle=handle,
+        command_id=CommandId.from_sea_statement_id("conn-closed-test"),
+        arraysize=100,
+        buffer_size_bytes=1024,
+    )
+    rs.close()
+    # No kernel-side calls fired:
+    assert handle.closed is False
+    assert backend.close_command.called is False
+    # …but local state is still terminal so __del__ is idempotent:
+    assert rs.status == CommandState.CLOSED
+    assert rs.has_been_closed_server_side is True

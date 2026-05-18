@@ -170,8 +170,13 @@ class KernelDatabricksClient(DatabricksClient):
 
         # Use the kernel's real server-issued session id, not a
         # synthetic UUID. Matches what the native SEA backend does.
-        # Bind to a local first so mypy sees a non-Optional return.
-        session_id = SessionId.from_sea_session_id(self._kernel_session.session_id)
+        # ``session_id`` is a PyO3 attribute access — also wrapped so
+        # any conversion error surfaces as a mapped PEP 249 exception
+        # instead of bubbling raw from the boundary.
+        try:
+            session_id = SessionId.from_sea_session_id(self._kernel_session.session_id)
+        except Exception as exc:
+            raise _wrap_kernel_exception("open_session", exc) from exc
         self._session_id = session_id
         logger.info("Opened kernel-backed session %s", session_id)
         return session_id
@@ -330,8 +335,17 @@ class KernelDatabricksClient(DatabricksClient):
             # Surface server-reported failure as a database error so
             # the cursor's polling loop terminates with the right
             # exception class — matches the Thrift backend's
-            # behaviour on TOperationState::ERROR_STATE.
-            raise _reraise_kernel_error(failure) from failure
+            # behaviour on TOperationState::ERROR_STATE. Routed
+            # through ``_wrap_kernel_exception`` rather than
+            # ``_reraise_kernel_error`` directly so a non-
+            # ``KernelError``-shaped ``failure`` (kernel API drift —
+            # struct, dict, etc.) still produces a mapped PEP 249
+            # exception instead of a confusing
+            # ``TypeError: exception causes must derive from
+            # BaseException`` from the ``from`` clause.
+            if isinstance(failure, BaseException):
+                raise _wrap_kernel_exception("get_query_state", failure) from failure
+            raise _wrap_kernel_exception("get_query_state", Exception(repr(failure)))
         return _STATE_TO_COMMAND_STATE.get(state, CommandState.FAILED)
 
     def get_execution_result(

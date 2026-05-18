@@ -368,6 +368,26 @@ def test_get_query_state_raises_on_failed_state_with_failure():
         c.get_query_state(cid)
 
 
+def test_get_query_state_handles_non_baseexception_failure():
+    """If the kernel's status() ever returns a ``failure`` that isn't
+    a real ``KernelError`` (struct, dict, custom type — kernel API
+    drift), ``get_query_state`` must still surface a mapped PEP 249
+    exception. The naive ``raise ... from failure`` would raise
+    ``TypeError: exception causes must derive from BaseException``;
+    the wrap helper deals with it."""
+    c = _make_client()
+    fake_handle = MagicMock()
+    # ``failure`` is a plain dict (not BaseException) — simulates a
+    # kernel binding that exposes the failure as a structured value.
+    fake_handle.status.return_value = ("Failed", {"code": "Internal", "msg": "weird"})
+    cid = CommandId.from_sea_statement_id("xyz")
+    c._async_handles[cid.guid] = fake_handle
+    # Must surface as a PEP 249 exception (OperationalError via the
+    # wrap helper's fallback path), not TypeError.
+    with pytest.raises(OperationalError):
+        c.get_query_state(cid)
+
+
 def test_get_query_state_returns_state_when_no_failure():
     c = _make_client()
     fake_handle = MagicMock()

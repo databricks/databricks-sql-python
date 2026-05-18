@@ -73,6 +73,50 @@ class TestKernelAuthKwargs:
         kwargs = kernel_auth_kwargs(AccessTokenAuthProvider("dapi-xyz"))
         assert kwargs == {"auth_type": "pat", "access_token": "dapi-xyz"}
 
+    @pytest.mark.parametrize(
+        "scheme",
+        ["Bearer ", "bearer ", "BEARER ", "BeArEr "],
+        ids=["title", "lower", "upper", "mixed"],
+    )
+    def test_bearer_prefix_is_case_insensitive(self, scheme):
+        """RFC 6750 §2.1: the Authorization scheme is case-insensitive.
+        A provider that emits ``bearer`` (lower) or ``BEARER`` (upper)
+        must route through PAT, not fall through to a confusing
+        ``ProgrammingError`` from the missing-header check."""
+
+        class _CustomCaseProvider(AccessTokenAuthProvider):
+            def add_headers(self, request_headers):
+                request_headers["Authorization"] = f"{scheme}dapi-xyz"
+
+        kwargs = kernel_auth_kwargs(_CustomCaseProvider("dapi-xyz"))
+        assert kwargs == {"auth_type": "pat", "access_token": "dapi-xyz"}
+
+    @pytest.mark.parametrize(
+        "bad_token",
+        [
+            "dapi\x00null",  # NUL
+            "dapi\rfoo",  # CR
+            "dapi\nfoo",  # LF
+            "dapi\x7fdel",  # DEL
+            "dapi has space",  # space inside token
+            "dapi\tfoo",  # tab
+        ],
+        ids=["nul", "cr", "lf", "del", "space", "tab"],
+    )
+    def test_token_with_control_chars_or_whitespace_rejected(self, bad_token):
+        """Defense-in-depth: a Bearer token containing CR/LF/NUL would
+        let a misbehaving HTTP stack split or terminate the
+        Authorization header line. Space/tab are also rejected
+        because RFC 6750 forbids whitespace inside the credential
+        token. Surface as ``ProgrammingError`` at bridge-build time."""
+
+        class _BadTokenProvider(AccessTokenAuthProvider):
+            def add_headers(self, request_headers):
+                request_headers["Authorization"] = f"Bearer {bad_token}"
+
+        with pytest.raises(ProgrammingError, match="control characters or whitespace"):
+            kernel_auth_kwargs(_BadTokenProvider("ignored"))
+
     def test_federation_wrapped_pat_routes_to_kernel_pat(self):
         """``get_python_sql_connector_auth_provider`` always wraps
         the base provider in a ``TokenFederationProvider``, so the

@@ -251,23 +251,15 @@ class KernelResultSet(ResultSet):
             # level; log and swallow so the cursor's __del__ /
             # connection close path stays clean.
             logger.warning("Error closing kernel handle: %s", exc)
-        # Drop the entry from the backend's async-handle map (if
-        # present) — for async-submitted statements the handle is
-        # tracked there and the base ``ResultSet.close`` path would
-        # otherwise leave a stale entry pointing at a closed handle.
-        # No-op for the sync-execute and metadata paths, which never
-        # register in ``_async_handles``.
+        # Honor the base ``ResultSet`` contract: notify the backend.
+        # ``backend.close_command`` also drops the ``_async_handles``
+        # entry and records the guid in ``_closed_commands`` — no
+        # separate pop needed here. Sync-execute and metadata paths
+        # never registered in ``_async_handles`` to begin with, and
+        # ``get_execution_result`` pops the async path before the
+        # result set is even constructed (see the M1 fix), so this
+        # call is the single bookkeeping seam.
         backend = cast("KernelDatabricksClient", self.backend)
-        guid = getattr(self.command_id, "guid", None)
-        if guid is not None:
-            with backend._async_handles_lock:
-                backend._async_handles.pop(guid, None)
-        # Honor the base ``ResultSet`` contract: notify the backend
-        # so any cross-cutting bookkeeping (telemetry, command-state
-        # tracking) sees the close. Our own ``close_command`` is
-        # tolerant of unknown command_ids (no-op), so this is safe
-        # even though the per-handle close above already released
-        # server-side state.
         try:
             backend.close_command(self.command_id)
         except Exception as exc:
