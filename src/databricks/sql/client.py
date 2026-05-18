@@ -120,12 +120,16 @@ class Connection:
             :param use_kernel: `bool`, optional (default is False)
                 Route the connection through the Rust kernel
                 (``databricks-sql-kernel`` via PyO3). Requires the
-                kernel wheel to be installed separately
-                (``pip install databricks-sql-kernel``); raises
-                ImportError otherwise. In active development —
-                PAT auth only today; OAuth / federation / external
-                credentials and native parameter binding land in
-                follow-ups. Mutually exclusive with ``use_sea``.
+                kernel extension to be installed separately — the
+                wheel is not yet published on PyPI, so today the
+                only supported install path is a local
+                ``maturin develop --release`` build from the
+                ``databricks-sql-kernel`` repo into the same venv.
+                Raises ``ImportError`` if the extension is not
+                available. In active development — PAT auth only
+                today; OAuth / federation / external credentials
+                and native parameter binding land in follow-ups.
+                Mutually exclusive with ``use_sea``.
             :param use_hybrid_disposition: `bool`, optional (default is False)
                 Use the hybrid disposition instead of the inline disposition.
             :param server_hostname: Databricks instance host name.

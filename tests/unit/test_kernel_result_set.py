@@ -77,7 +77,8 @@ def int_schema():
 def test_description_built_from_kernel_schema(int_schema):
     handle = _FakeKernelHandle(int_schema, [])
     rs = _make_rs(handle)
-    assert rs.description == [("n", "bigint", None, None, None, None, None)]
+    # null_ok slot reflects pyarrow.Field.nullable (True by default).
+    assert rs.description == [("n", "bigint", None, None, None, None, True)]
 
 
 def test_fetchall_arrow_drains_all_batches(int_schema):

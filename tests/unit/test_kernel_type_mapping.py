@@ -65,9 +65,22 @@ def test_description_from_schema_preserves_field_names_and_order():
         ("name", "string"),
         ("created_at", "timestamp"),
     ]
-    # PEP 249 says all 7-tuples; the last 5 slots are None for the
-    # kernel backend (we don't report display_size / precision /
-    # scale / nullability).
+    # PEP 249 says 7-tuples. We don't report display_size /
+    # internal_size / precision / scale (all None); ``null_ok`` is
+    # taken from ``pyarrow.Field.nullable`` — True by default for
+    # schemas built from (name, type) pairs.
     for d in desc:
         assert len(d) == 7
-        assert d[2:] == (None, None, None, None, None)
+        assert d[2:] == (None, None, None, None, True)
+
+
+def test_description_from_schema_reports_non_nullable_fields():
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("name", pa.string(), nullable=True),
+        ]
+    )
+    desc = description_from_arrow_schema(schema)
+    assert desc[0][6] is False
+    assert desc[1][6] is True

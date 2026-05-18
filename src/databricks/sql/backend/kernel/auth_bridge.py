@@ -24,7 +24,7 @@ from typing import Any, Dict, Optional
 
 from databricks.sql.auth.authenticators import AccessTokenAuthProvider, AuthProvider
 from databricks.sql.auth.token_federation import TokenFederationProvider
-from databricks.sql.exc import NotSupportedError
+from databricks.sql.exc import NotSupportedError, ProgrammingError
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
         return None
     token = auth[len(_BEARER_PREFIX) :]
     if _CONTROL_CHAR_RE.search(token):
-        raise ValueError(
+        raise ProgrammingError(
             "Bearer token contains ASCII control characters; refusing to "
             "forward it to the kernel auth bridge."
         )
@@ -98,7 +98,7 @@ def kernel_auth_kwargs(auth_provider: AuthProvider) -> Dict[str, Any]:
     if _is_pat(auth_provider):
         token = _extract_bearer_token(auth_provider)
         if not token:
-            raise ValueError(
+            raise ProgrammingError(
                 "PAT auth provider did not produce a Bearer Authorization "
                 "header; cannot route through the kernel's PAT path"
             )

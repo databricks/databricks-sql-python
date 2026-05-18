@@ -67,15 +67,18 @@ logger = logging.getLogger(__name__)
 try:
     import databricks_sql_kernel as _kernel  # type: ignore[import-not-found]
 except ImportError as exc:  # pragma: no cover - import-time error surfaces clearly
-    # The `databricks-sql-kernel` wheel is not yet on PyPI, so we
-    # don't yet declare it as an optional extra in pyproject.toml
-    # (doing so breaks `poetry lock`). Once published the install
-    # hint will move to `pip install 'databricks-sql-connector[kernel]'`.
+    # The ``databricks-sql-kernel`` wheel is not yet on PyPI, so the
+    # dev-install path is the only working one today. ``pip install
+    # databricks-sql-kernel`` would either find nothing or pull a
+    # squatted package, so we deliberately do not suggest it. Once
+    # the wheel is published the hint will move to
+    # ``pip install 'databricks-sql-connector[kernel]'``.
     raise ImportError(
-        "use_kernel=True requires the databricks-sql-kernel package. Install it with:\n"
-        "  pip install databricks-sql-kernel\n"
-        "or for local development from the kernel repo:\n"
-        "  cd databricks-sql-kernel/pyo3 && maturin develop --release"
+        "use_kernel=True requires the databricks-sql-kernel extension, which "
+        "is not yet published on PyPI. Build and install it locally from the "
+        "databricks-sql-kernel repo:\n"
+        "  cd databricks-sql-kernel/pyo3 && maturin develop --release\n"
+        "(into the same venv as databricks-sql-connector)."
     ) from exc
 
 

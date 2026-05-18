@@ -31,7 +31,7 @@ from databricks.sql.backend.kernel.auth_bridge import (
     _extract_bearer_token,
     kernel_auth_kwargs,
 )
-from databricks.sql.exc import NotSupportedError
+from databricks.sql.exc import NotSupportedError, ProgrammingError
 
 
 class _FakeOAuthProvider(AuthProvider):
@@ -97,13 +97,14 @@ class TestKernelAuthKwargs:
         kwargs = kernel_auth_kwargs(federated)
         assert kwargs == {"auth_type": "pat", "access_token": "dapi-abc"}
 
-    def test_pat_with_silent_provider_raises_value_error(self):
+    def test_pat_with_silent_provider_raises_programming_error(self):
         """An AccessTokenAuthProvider that produces no Authorization
         header is misconfigured; surface that at bridge-build time,
-        not on the first kernel HTTP request."""
+        not on the first kernel HTTP request. ``ProgrammingError`` so
+        the bridge's error surface is uniformly PEP 249."""
         broken = AccessTokenAuthProvider("dapi-x")
         broken.add_headers = lambda h: None  # type: ignore[method-assign]
-        with pytest.raises(ValueError, match="Bearer"):
+        with pytest.raises(ProgrammingError, match="Bearer"):
             kernel_auth_kwargs(broken)
 
     def test_generic_oauth_provider_raises_not_supported(self):

@@ -61,9 +61,9 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
     """Build a PEP 249 ``description`` list from a pyarrow Schema.
 
     Each tuple is ``(name, type_code, display_size, internal_size,
-    precision, scale, null_ok)``. The kernel does not report the
-    last five so they're all ``None`` — same shape the existing
-    ADBC / Thrift result paths produce.
+    precision, scale, null_ok)``. ``null_ok`` is taken from
+    ``field.nullable``; the other four are not reported by the
+    kernel today.
     """
     return [
         (
@@ -73,7 +73,7 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
             None,
             None,
             None,
-            None,
+            field.nullable,
         )
         for field in schema
     ]
