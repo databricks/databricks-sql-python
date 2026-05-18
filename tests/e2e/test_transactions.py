@@ -29,6 +29,7 @@ import uuid
 import pytest
 
 import databricks.sql as sql
+from databricks.sql.exc import DatabaseError
 
 logger = logging.getLogger(__name__)
 
@@ -472,150 +473,78 @@ class TestMstApi:
 
 
 class TestMstMetadata:
-    """Metadata RPCs inside active transactions.
+    """Thrift metadata RPCs inside active transactions.
 
-    Python uses Thrift RPCs for cursor.columns, cursor.tables, etc. These
-    RPCs bypass MST context and return non-transactional data — they see
-    concurrent DDL changes that the transaction shouldn't see.
+    Python's cursor.columns/tables/schemas/catalogs map to Thrift
+    Get{Columns,Tables,Schemas,Catalogs} RPCs. The server's MST guard
+    rejects these RPCs with a "not supported within a multi-statement
+    transaction" error. The rejection happens before reaching the txn,
+    so the active transaction itself remains usable (unlike the SQL
+    forms in TestMstBlockedSql, which abort the txn).
     """
 
-    def test_cursor_columns_in_mst(
+    def _assert_metadata_rpc_blocked(self, mst_conn_params, fq_table, rpc):
+        """Assert the metadata RPC raises inside an active MST.
+
+        The Thrift Get* RPCs are rejected by the MST gateway before reaching
+        the transaction, so the txn itself remains usable — only the RPC
+        call fails.
+
+        `rpc` is a callable that takes a cursor and invokes the metadata
+        RPC under test.
+        """
+        with sql.connect(**mst_conn_params) as conn:
+            conn.autocommit = False
+            with conn.cursor() as cursor:
+                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'before_blocked')")
+
+                with pytest.raises(DatabaseError, match="multi-statement transaction"):
+                    rpc(cursor)
+            conn.rollback()
+
+    def test_cursor_columns_blocked(
         self, mst_conn_params, mst_table, mst_catalog, mst_schema
     ):
         fq_table, table_name = mst_table
-        with sql.connect(**mst_conn_params) as conn:
-            conn.autocommit = False
-            with conn.cursor() as cursor:
-                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
-                cursor.columns(
-                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
-                )
-                columns = cursor.fetchall()
-                assert len(columns) > 0
-            conn.rollback()
+        self._assert_metadata_rpc_blocked(
+            mst_conn_params,
+            fq_table,
+            lambda cursor: cursor.columns(
+                catalog_name=mst_catalog,
+                schema_name=mst_schema,
+                table_name=table_name,
+            ),
+        )
 
-    def test_cursor_tables_in_mst(
+    def test_cursor_tables_blocked(
         self, mst_conn_params, mst_table, mst_catalog, mst_schema
     ):
         fq_table, table_name = mst_table
-        with sql.connect(**mst_conn_params) as conn:
-            conn.autocommit = False
-            with conn.cursor() as cursor:
-                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
-                cursor.tables(
-                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
-                )
-                tables = cursor.fetchall()
-                assert len(tables) > 0
-            conn.rollback()
+        self._assert_metadata_rpc_blocked(
+            mst_conn_params,
+            fq_table,
+            lambda cursor: cursor.tables(
+                catalog_name=mst_catalog,
+                schema_name=mst_schema,
+                table_name=table_name,
+            ),
+        )
 
-    def test_cursor_schemas_in_mst(self, mst_conn_params, mst_table, mst_catalog):
+    def test_cursor_schemas_blocked(self, mst_conn_params, mst_table, mst_catalog):
         fq_table, _ = mst_table
-        with sql.connect(**mst_conn_params) as conn:
-            conn.autocommit = False
-            with conn.cursor() as cursor:
-                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
-                cursor.schemas(catalog_name=mst_catalog)
-                schemas = cursor.fetchall()
-                assert len(schemas) > 0
-            conn.rollback()
+        self._assert_metadata_rpc_blocked(
+            mst_conn_params,
+            fq_table,
+            lambda cursor: cursor.schemas(catalog_name=mst_catalog),
+        )
 
-    def test_cursor_catalogs_in_mst(self, mst_conn_params, mst_table):
+    def test_cursor_catalogs_blocked(self, mst_conn_params, mst_table):
         fq_table, _ = mst_table
-        with sql.connect(**mst_conn_params) as conn:
-            conn.autocommit = False
-            with conn.cursor() as cursor:
-                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
-                cursor.catalogs()
-                catalogs = cursor.fetchall()
-                assert len(catalogs) > 0
-            conn.rollback()
-
-    @pytest.mark.xdist_group(name="mst_freshness_columns")
-    def test_cursor_columns_non_transactional_after_concurrent_ddl(
-        self, mst_conn_params, mst_table, mst_catalog, mst_schema
-    ):
-        """Thrift cursor.columns() bypasses MST — sees concurrent ALTER TABLE."""
-        fq_table, table_name = mst_table
-        with sql.connect(**mst_conn_params) as conn:
-            conn.autocommit = False
-            with conn.cursor() as cursor:
-                cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
-                cursor.columns(
-                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
-                )
-                before_cols = {row[3].lower() for row in cursor.fetchall()}
-
-            # External connection alters schema
-            with sql.connect(**mst_conn_params) as ext_conn:
-                with ext_conn.cursor() as ext_cursor:
-                    ext_cursor.execute(
-                        f"ALTER TABLE {fq_table} ADD COLUMN new_col STRING"
-                    )
-
-            # Re-read columns in same txn — Thrift RPC bypasses txn isolation,
-            # so new_col IS visible (proves non-transactional behavior)
-            with conn.cursor() as cursor:
-                cursor.columns(
-                    catalog_name=mst_catalog, schema_name=mst_schema, table_name=table_name
-                )
-                after_cols = {row[3].lower() for row in cursor.fetchall()}
-
-            assert "new_col" in after_cols, (
-                "Thrift cursor.columns() should see concurrent DDL "
-                "(non-transactional behavior)"
-            )
-            assert before_cols != after_cols
-            conn.rollback()
-
-    @pytest.mark.xdist_group(name="mst_freshness_tables")
-    def test_cursor_tables_non_transactional_after_concurrent_create(
-        self, mst_conn_params, mst_table, mst_catalog, mst_schema
-    ):
-        """Thrift cursor.tables() bypasses MST — sees concurrent CREATE TABLE."""
-        fq_table, _ = mst_table
-        new_table_name = _unique_table_name_raw("freshness_new_tbl")
-        fq_new_table = f"{mst_catalog}.{mst_schema}.{new_table_name}"
-
-        try:
-            with sql.connect(**mst_conn_params) as conn:
-                conn.autocommit = False
-                with conn.cursor() as cursor:
-                    cursor.execute(f"INSERT INTO {fq_table} VALUES (1, 'test')")
-                    cursor.tables(
-                        catalog_name=mst_catalog,
-                        schema_name=mst_schema,
-                        table_name=new_table_name,
-                    )
-                    assert len(cursor.fetchall()) == 0
-
-                # External connection creates the table
-                with sql.connect(**mst_conn_params) as ext_conn:
-                    with ext_conn.cursor() as ext_cursor:
-                        ext_cursor.execute(
-                            f"CREATE TABLE {fq_new_table} (id INT) USING DELTA "
-                            f"TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported')"
-                        )
-
-                # Re-read in same txn — should see the new table
-                with conn.cursor() as cursor:
-                    cursor.tables(
-                        catalog_name=mst_catalog,
-                        schema_name=mst_schema,
-                        table_name=new_table_name,
-                    )
-                    assert len(cursor.fetchall()) > 0, (
-                        "Thrift cursor.tables() should see concurrent CREATE TABLE "
-                        "(non-transactional behavior)"
-                    )
-                conn.rollback()
-        finally:
-            try:
-                with sql.connect(**mst_conn_params) as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute(f"DROP TABLE IF EXISTS {fq_new_table}")
-            except Exception as e:
-                logger.warning(f"Failed to drop {fq_new_table}: {e}")
+        self._assert_metadata_rpc_blocked(
+            mst_conn_params,
+            fq_table,
+            lambda cursor: cursor.catalogs(),
+        )
 
 
 # ==================== D. BLOCKED SQL (MSTCheckRule) ====================
@@ -635,6 +564,7 @@ class TestMstBlockedSql:
     - SHOW TABLES, SHOW SCHEMAS, SHOW CATALOGS, SHOW FUNCTIONS
     - DESCRIBE QUERY, DESCRIBE TABLE EXTENDED
     - SELECT FROM information_schema
+    - Thrift Get{Catalogs,Schemas,Tables,Columns} RPCs (see TestMstMetadata)
 
     Allowed:
     - DESCRIBE TABLE (basic form)

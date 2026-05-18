@@ -8,6 +8,7 @@ from databricks.sql.thrift_api.TCLIService.ttypes import (
     THandleIdentifier,
 )
 from databricks.sql.backend.types import SessionId, BackendType
+from databricks.sql.common.agent import KNOWN_AGENTS
 from databricks.sql.session import Session
 
 import databricks.sql
@@ -97,7 +98,9 @@ class TestSession:
         assert kwargs["_tls_client_cert_key_password"] == "key password"
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_useragent_header(self, mock_client_class):
+    def test_useragent_header(self, mock_client_class, monkeypatch):
+        for env_var, _ in KNOWN_AGENTS:
+            monkeypatch.delenv(env_var, raising=False)
         databricks.sql.connect(**self.DUMMY_CONNECTION_ARGS)
 
         call_kwargs = mock_client_class.call_args[1]
