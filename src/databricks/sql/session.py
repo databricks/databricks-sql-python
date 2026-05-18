@@ -122,6 +122,31 @@ class Session:
     ) -> DatabricksClient:
         """Create and return the appropriate backend client."""
         self.use_sea = kwargs.get("use_sea", False)
+        self.use_kernel = kwargs.get("use_kernel", False)
+
+        if self.use_kernel and self.use_sea:
+            raise ValueError(
+                "use_kernel and use_sea are mutually exclusive — pick one."
+            )
+
+        if self.use_kernel:
+            # Lazy import so the connector doesn't ImportError at
+            # startup when the kernel wheel isn't installed — the
+            # error surfaces only when a caller actually requests
+            # use_kernel=True.
+            from databricks.sql.backend.kernel.client import KernelDatabricksClient
+
+            logger.debug("Creating kernel-backed client for use_kernel=True")
+            return KernelDatabricksClient(
+                server_hostname=server_hostname,
+                http_path=http_path,
+                http_headers=all_headers,
+                auth_provider=auth_provider,
+                ssl_options=self.ssl_options,
+                http_client=self.http_client,
+                catalog=kwargs.get("catalog"),
+                schema=kwargs.get("schema"),
+            )
 
         databricks_client_class: Type[DatabricksClient]
         if self.use_sea:
