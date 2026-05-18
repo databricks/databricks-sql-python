@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import Any, Deque, List, Optional, TYPE_CHECKING
+from typing import Any, Deque, List, Optional, TYPE_CHECKING, cast
 
 import pyarrow
 
@@ -234,11 +234,9 @@ class KernelResultSet(ResultSet):
         # register in ``_async_handles``.
         guid = getattr(self.command_id, "guid", None)
         if guid is not None:
-            self.backend._async_handles_lock.acquire()
-            try:
-                self.backend._async_handles.pop(guid, None)
-            finally:
-                self.backend._async_handles_lock.release()
+            backend = cast("KernelDatabricksClient", self.backend)
+            with backend._async_handles_lock:
+                backend._async_handles.pop(guid, None)
         self._buffer.clear()
         self._buffered_count = 0
         self._kernel_handle = None

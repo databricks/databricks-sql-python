@@ -27,11 +27,24 @@ import databricks.sql as sql
 from databricks.sql.exc import DatabaseError
 
 
-# Skip the whole module unless the kernel wheel is importable.
-pytest.importorskip(
+# Skip the whole module unless the kernel wheel is genuinely installed.
+# ``pytest.importorskip`` alone isn't enough: the kernel unit tests inject a
+# fake ``databricks_sql_kernel`` ModuleType into ``sys.modules`` so the
+# connector's import-time ``import databricks_sql_kernel`` succeeds without
+# the Rust extension. In the same pytest session that fake module is still
+# in ``sys.modules`` when this e2e file is collected, and importorskip
+# happily returns it. A real wheel exposes ``__file__`` (the compiled
+# extension on disk); the fake ModuleType does not.
+_kernel_mod = pytest.importorskip(
     "databricks_sql_kernel",
     reason="use_kernel=True requires the databricks-sql-kernel package",
 )
+if not getattr(_kernel_mod, "__file__", None):
+    pytest.skip(
+        "databricks_sql_kernel is a test stub (no __file__); "
+        "install the real wheel to run kernel e2e tests",
+        allow_module_level=True,
+    )
 
 
 @pytest.fixture(scope="module")
