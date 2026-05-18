@@ -36,6 +36,7 @@ from typing import Any, Deque, List, Optional, TYPE_CHECKING, cast
 
 import pyarrow
 
+from databricks.sql.backend.kernel._errors import kernel_call
 from databricks.sql.backend.kernel.type_mapping import description_from_arrow_schema
 from databricks.sql.backend.types import CommandId, CommandState
 from databricks.sql.result_set import ResultSet
@@ -67,7 +68,8 @@ class KernelResultSet(ResultSet):
         arraysize: int,
         buffer_size_bytes: int,
     ):
-        schema = kernel_handle.arrow_schema()
+        with kernel_call("KernelResultSet.arrow_schema"):
+            schema = kernel_handle.arrow_schema()
         super().__init__(
             connection=connection,
             backend=backend,
@@ -105,7 +107,8 @@ class KernelResultSet(ResultSet):
         is exhausted."""
         if self._exhausted:
             return False
-        batch = self._kernel_handle.fetch_next_batch()
+        with kernel_call("fetch_next_batch"):
+            batch = self._kernel_handle.fetch_next_batch()
         if batch is None:
             self._exhausted = True
             self.has_more_rows = False
@@ -162,7 +165,8 @@ class KernelResultSet(ResultSet):
             chunks.append(self._buffer.popleft())
         if not self._exhausted:
             while True:
-                batch = self._kernel_handle.fetch_next_batch()
+                with kernel_call("fetch_next_batch"):
+                    batch = self._kernel_handle.fetch_next_batch()
                 if batch is None:
                     self._exhausted = True
                     self.has_more_rows = False

@@ -36,9 +36,14 @@ from __future__ import annotations
 import logging
 import threading
 import uuid
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING, Union
 
 from databricks.sql.backend.databricks_client import DatabricksClient
+from databricks.sql.backend.kernel._errors import (
+    _kernel,
+    kernel_call as _kernel_call,
+    reraise_kernel_error as _reraise_kernel_error,
+)
 from databricks.sql.backend.kernel.auth_bridge import kernel_auth_kwargs
 from databricks.sql.backend.kernel.result_set import KernelResultSet
 from databricks.sql.backend.types import (
@@ -48,11 +53,8 @@ from databricks.sql.backend.types import (
     SessionId,
 )
 from databricks.sql.exc import (
-    DatabaseError,
-    Error,
     InterfaceError,
     NotSupportedError,
-    OperationalError,
     ProgrammingError,
 )
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -62,79 +64,6 @@ if TYPE_CHECKING:
     from databricks.sql.result_set import ResultSet
 
 logger = logging.getLogger(__name__)
-
-
-try:
-    import databricks_sql_kernel as _kernel  # type: ignore[import-not-found]
-except ImportError as exc:  # pragma: no cover - import-time error surfaces clearly
-    # The ``databricks-sql-kernel`` wheel is not yet on PyPI, so the
-    # dev-install path is the only working one today. ``pip install
-    # databricks-sql-kernel`` would either find nothing or pull a
-    # squatted package, so we deliberately do not suggest it. Once
-    # the wheel is published the hint will move to
-    # ``pip install 'databricks-sql-connector[kernel]'``.
-    raise ImportError(
-        "use_kernel=True requires the databricks-sql-kernel extension, which "
-        "is not yet published on PyPI. Build and install it locally from the "
-        "databricks-sql-kernel repo:\n"
-        "  cd databricks-sql-kernel/pyo3 && maturin develop --release\n"
-        "(into the same venv as databricks-sql-connector)."
-    ) from exc
-
-
-# ─── Error mapping ──────────────────────────────────────────────────────────
-
-
-# Map a kernel `code` slug to the PEP 249 exception class that best
-# captures it. The match isn't a perfect 1:1 — PEP 249 has a
-# narrower taxonomy than the kernel — so several kernel codes
-# collapse onto the same Python exception. This table is the only
-# place that mapping lives.
-_CODE_TO_EXCEPTION = {
-    "InvalidArgument": ProgrammingError,
-    "Unauthenticated": OperationalError,
-    "PermissionDenied": OperationalError,
-    "NotFound": ProgrammingError,
-    "ResourceExhausted": OperationalError,
-    "Unavailable": OperationalError,
-    "Timeout": OperationalError,
-    "Cancelled": OperationalError,
-    "DataLoss": DatabaseError,
-    "Internal": DatabaseError,
-    "InvalidStatementHandle": ProgrammingError,
-    "NetworkError": OperationalError,
-    "SqlError": DatabaseError,
-    "Unknown": DatabaseError,
-}
-
-
-def _reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
-    """Convert a ``databricks_sql_kernel.KernelError`` to a PEP 249
-    exception.
-
-    Kernel errors carry their structured attrs (``code``,
-    ``message``, ``sql_state``, ``error_code``, ``query_id`` …) as
-    plain attributes — we copy them onto the re-raised exception so
-    callers can branch on them without reaching back through
-    ``__cause__``.
-    """
-    code = getattr(exc, "code", "Unknown")
-    cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
-    new = cls(getattr(exc, "message", str(exc)))
-    # Forward the structured fields so connector users can read
-    # err.sql_state / err.query_id / etc. without a type-switch.
-    for attr in (
-        "code",
-        "sql_state",
-        "error_code",
-        "vendor_code",
-        "http_status",
-        "retryable",
-        "query_id",
-    ):
-        setattr(new, attr, getattr(exc, attr, None))
-    new.__cause__ = exc
-    return new
 
 
 # ─── Client ─────────────────────────────────────────────────────────────────
@@ -183,6 +112,12 @@ class KernelDatabricksClient(DatabricksClient):
         # Guarded by ``_async_handles_lock`` so concurrent cursors on the
         # same connection don't race on submit / close / close-session.
         self._async_handles: Dict[str, Any] = {}
+        # CommandId.guids of async commands that have already been
+        # closed (via ``close_command`` or ``close_session``). Lets
+        # ``get_query_state`` report ``CLOSED`` for them rather than
+        # the SUCCEEDED fall-through used for the never-tracked sync
+        # path. Same lock as ``_async_handles``.
+        self._closed_commands: Set[str] = set()
         self._async_handles_lock = threading.RLock()
 
     # ── Session lifecycle ──────────────────────────────────────────
@@ -202,16 +137,15 @@ class KernelDatabricksClient(DatabricksClient):
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
         try:
-            self._kernel_session = _kernel.Session(
-                host=self._server_hostname,
-                http_path=self._http_path,
-                catalog=catalog or self._catalog,
-                schema=schema or self._schema,
-                session_conf=session_conf,
-                **self._auth_kwargs,
-            )
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
+            with _kernel_call("open_session"):
+                self._kernel_session = _kernel.Session(
+                    host=self._server_hostname,
+                    http_path=self._http_path,
+                    catalog=catalog or self._catalog,
+                    schema=schema or self._schema,
+                    session_conf=session_conf,
+                    **self._auth_kwargs,
+                )
         finally:
             # Drop the raw access token from the instance once the
             # kernel session is constructed (or failed). The kernel
@@ -234,18 +168,24 @@ class KernelDatabricksClient(DatabricksClient):
         # Close any tracked async handles first so they fire their
         # server-side CloseStatement before the session goes away.
         with self._async_handles_lock:
-            handles_to_close = list(self._async_handles.values())
+            tracked = list(self._async_handles.items())
             self._async_handles.clear()
-        for handle in handles_to_close:
+            for guid, _ in tracked:
+                self._closed_commands.add(guid)
+        for _, handle in tracked:
+            # Per-handle close errors are non-fatal — PEP 249
+            # discourages raising from session close — so log and
+            # move on. Any non-KernelError that crosses the PyO3
+            # boundary also gets caught here for the same reason.
             try:
                 handle.close()
-            except _kernel.KernelError as exc:
+            except Exception as exc:
                 logger.warning(
                     "Error closing async handle during session close: %s", exc
                 )
         try:
             self._kernel_session.close()
-        except _kernel.KernelError as exc:
+        except Exception as exc:
             # Surface as a non-fatal warning — the kernel's Drop
             # impl will retry the close fire-and-forget. PEP 249
             # discourages raising from connection.close().
@@ -282,32 +222,39 @@ class KernelDatabricksClient(DatabricksClient):
                 "Statement-level query_tags are not yet supported on the kernel backend."
             )
 
-        stmt = self._kernel_session.statement()
+        with _kernel_call("execute_command"):
+            stmt = self._kernel_session.statement()
         try:
-            stmt.set_sql(operation)
-            if async_op:
-                async_exec = stmt.submit()
-                command_id = CommandId.from_sea_statement_id(async_exec.statement_id)
-                cursor.active_command_id = command_id
-                with self._async_handles_lock:
-                    self._async_handles[command_id.guid] = async_exec
-                return None
-            executed = stmt.execute()
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
+            with _kernel_call("execute_command"):
+                stmt.set_sql(operation)
+                if async_op:
+                    async_exec = stmt.submit()
+                    command_id = CommandId.from_sea_statement_id(async_exec.statement_id)
+                    cursor.active_command_id = command_id
+                    with self._async_handles_lock:
+                        self._async_handles[command_id.guid] = async_exec
+                    return None
+                executed = stmt.execute()
         finally:
             # ``Statement`` is a lifecycle owner separate from the
             # executed handle it produces. Drop it here so the
             # parent doesn't keep the handle alive longer than the
-            # caller expects.
+            # caller expects. Swallow all close errors (including
+            # PyO3 native exceptions) — a failed stmt.close() is
+            # not actionable for the caller.
             try:
                 stmt.close()
-            except _kernel.KernelError:
+            except Exception:
                 pass
 
         command_id = CommandId.from_sea_statement_id(executed.statement_id)
         cursor.active_command_id = command_id
-        return self._make_result_set(executed, cursor, command_id)
+        # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
+        # can itself raise ``KernelError`` (or, in principle, a PyO3
+        # native exception) — wrap the construction so callers see a
+        # mapped PEP 249 exception.
+        with _kernel_call("execute_command"):
+            return self._make_result_set(executed, cursor, command_id)
 
     def cancel_command(self, command_id: CommandId) -> None:
         with self._async_handles_lock:
@@ -319,34 +266,38 @@ class KernelDatabricksClient(DatabricksClient):
             # Match the Thrift backend's tolerant behaviour.
             logger.debug("cancel_command: no in-flight async handle for %s", command_id)
             return
-        try:
+        with _kernel_call("cancel_command"):
             handle.cancel()
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
 
     def close_command(self, command_id: CommandId) -> None:
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
+            if handle is not None:
+                # Record the close so ``get_query_state`` can report
+                # ``CLOSED`` (not ``SUCCEEDED``) for this command.
+                self._closed_commands.add(command_id.guid)
         if handle is None:
             logger.debug("close_command: no tracked handle for %s", command_id)
             return
-        try:
+        with _kernel_call("close_command"):
             handle.close()
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         with self._async_handles_lock:
             handle = self._async_handles.get(command_id.guid)
+            already_closed = command_id.guid in self._closed_commands
         if handle is None:
-            # No tracked async handle means execute_command ran
-            # sync and the result was materialised before returning;
-            # the command is terminal by construction.
+            if already_closed:
+                # We tracked this async handle and have since closed
+                # it; the command is no longer queryable on the
+                # server but the connector still has the id.
+                return CommandState.CLOSED
+            # No tracked async handle and never closed: execute_command
+            # ran sync and the result was materialised before
+            # returning. Terminal by construction.
             return CommandState.SUCCEEDED
-        try:
+        with _kernel_call("get_query_state"):
             state, failure = handle.status()
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
         if state == "Failed" and failure is not None:
             # Surface server-reported failure as a database error so
             # the cursor's polling loop terminates with the right
@@ -361,17 +312,35 @@ class KernelDatabricksClient(DatabricksClient):
         cursor: "Cursor",
     ) -> "ResultSet":
         with self._async_handles_lock:
-            handle = self._async_handles.get(command_id.guid)
-        if handle is None:
+            async_exec = self._async_handles.get(command_id.guid)
+        if async_exec is None:
             raise ProgrammingError(
                 "get_execution_result called for an unknown command_id; "
                 "the kernel backend only tracks async-submitted statements."
             )
+        with _kernel_call("get_execution_result"):
+            stream = async_exec.await_result()
+        # The async-exec handle's role ends once it has produced the
+        # ``ResultStream`` — keeping it around (and tracked in
+        # ``_async_handles``) would leak the server-side
+        # ``ExecutedAsyncStatement`` until ``close_session`` swept it
+        # up, since ``KernelResultSet.close`` only closes the stream
+        # it wraps. Drop tracking and fire-and-forget the close.
+        with self._async_handles_lock:
+            self._async_handles.pop(command_id.guid, None)
+            self._closed_commands.add(command_id.guid)
         try:
-            stream = handle.await_result()
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
-        return self._make_result_set(stream, cursor, command_id)
+            async_exec.close()
+        except Exception as exc:
+            logger.warning(
+                "Error closing async_exec after await_result for %s: %s",
+                command_id,
+                exc,
+            )
+        # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
+        # can raise — keep that in the mapped-exception scope.
+        with _kernel_call("get_execution_result"):
+            return self._make_result_set(stream, cursor, command_id)
 
     # ── Metadata ───────────────────────────────────────────────────
 
@@ -413,11 +382,9 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_catalogs requires an open session.")
-        try:
+        with _kernel_call("get_catalogs"):
             stream = self._kernel_session.metadata().list_catalogs()
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
-        return self._make_result_set(stream, cursor, self._synthetic_command_id())
+            return self._make_result_set(stream, cursor, self._synthetic_command_id())
 
     def get_schemas(
         self,
@@ -430,14 +397,12 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_schemas requires an open session.")
-        try:
+        with _kernel_call("get_schemas"):
             stream = self._kernel_session.metadata().list_schemas(
                 catalog=catalog_name,
                 schema_pattern=schema_name,
             )
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
-        return self._make_result_set(stream, cursor, self._synthetic_command_id())
+            return self._make_result_set(stream, cursor, self._synthetic_command_id())
 
     def get_tables(
         self,
@@ -452,36 +417,37 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_tables requires an open session.")
-        try:
+        with _kernel_call("get_tables"):
             stream = self._kernel_session.metadata().list_tables(
                 catalog=catalog_name,
                 schema_pattern=schema_name,
                 table_pattern=table_name,
                 table_types=table_types,
             )
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
-        if not table_types:
-            return self._make_result_set(stream, cursor, self._synthetic_command_id())
-        # The kernel today returns the unfiltered ``SHOW TABLES`` shape
-        # regardless of ``table_types``. Drain to a single Arrow table
-        # and apply the same client-side filter the native SEA backend
-        # uses (column index 5 is TABLE_TYPE, case-sensitive). Cheap
-        # because metadata result sets are small.
-        from databricks.sql.backend.sea.utils.filters import ResultSetFilter
+            if not table_types:
+                return self._make_result_set(
+                    stream, cursor, self._synthetic_command_id()
+                )
+            # The kernel today returns the unfiltered ``SHOW TABLES``
+            # shape regardless of ``table_types``. Drain to a single
+            # Arrow table and apply the same client-side filter the
+            # native SEA backend uses (column index 5 is
+            # ``TABLE_TYPE``, case-sensitive). Cheap because metadata
+            # result sets are small.
+            from databricks.sql.backend.sea.utils.filters import ResultSetFilter
 
-        full_table = _drain_kernel_handle(stream)
-        filtered_table = ResultSetFilter._filter_arrow_table(
-            full_table,
-            column_name=full_table.schema.field(5).name,
-            allowed_values=table_types,
-            case_sensitive=True,
-        )
-        return self._make_result_set(
-            _StaticArrowHandle(filtered_table),
-            cursor,
-            self._synthetic_command_id(),
-        )
+            full_table = _drain_kernel_handle(stream)
+            filtered_table = ResultSetFilter._filter_arrow_table(
+                full_table,
+                column_name=full_table.schema.field(5).name,
+                allowed_values=table_types,
+                case_sensitive=True,
+            )
+            return self._make_result_set(
+                _StaticArrowHandle(filtered_table),
+                cursor,
+                self._synthetic_command_id(),
+            )
 
     def get_columns(
         self,
@@ -503,16 +469,14 @@ class KernelDatabricksClient(DatabricksClient):
             raise ProgrammingError(
                 "get_columns requires catalog_name on the kernel backend."
             )
-        try:
+        with _kernel_call("get_columns"):
             stream = self._kernel_session.metadata().list_columns(
                 catalog=catalog_name,
                 schema_pattern=schema_name,
                 table_pattern=table_name,
                 column_pattern=column_name,
             )
-        except _kernel.KernelError as exc:
-            raise _reraise_kernel_error(exc)
-        return self._make_result_set(stream, cursor, self._synthetic_command_id())
+            return self._make_result_set(stream, cursor, self._synthetic_command_id())
 
     # ── Misc ───────────────────────────────────────────────────────
 
@@ -552,7 +516,10 @@ def _drain_kernel_handle(handle: Any) -> Any:
             batches.append(batch)
     try:
         handle.close()
-    except _kernel.KernelError:
+    except Exception:
+        # Non-fatal — the surrounding ``get_tables`` call has already
+        # captured the result data, and the handle's server-side
+        # state will be reaped by the kernel's Drop impl.
         pass
     return pyarrow.Table.from_batches(batches, schema=schema)
 

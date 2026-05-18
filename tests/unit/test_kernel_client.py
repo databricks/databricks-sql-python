@@ -395,3 +395,254 @@ def test_close_session_clears_async_handles_even_if_close_fails():
     assert c._async_handles == {}
     assert good.close.called
     assert bad.close.called
+
+
+def test_close_session_marks_swept_handles_as_closed():
+    """Close-session pre-populates ``_closed_commands`` for every
+    swept async handle so a subsequent ``get_query_state`` reports
+    ``CLOSED`` instead of falling through to the SUCCEEDED
+    sync-default."""
+    c = _make_client()
+    handle = MagicMock()
+    cid = CommandId.from_sea_statement_id("xyz")
+    c._async_handles[cid.guid] = handle
+    c._kernel_session = MagicMock()
+    c.close_session(MagicMock())
+    assert cid.guid in c._closed_commands
+
+
+# ---------------------------------------------------------------------------
+# CLOSED command-state for previously-tracked async handles (m3)
+# ---------------------------------------------------------------------------
+
+
+def test_get_query_state_returns_closed_after_close_command():
+    """After ``close_command`` on a tracked async handle, the
+    subsequent ``get_query_state`` lookup must report ``CLOSED``,
+    not fall through to the SUCCEEDED sync-default — the command
+    was tracked then closed; SUCCEEDED would lie about its history."""
+    c = _make_client()
+    handle = MagicMock()
+    cid = CommandId.from_sea_statement_id("async-1")
+    c._async_handles[cid.guid] = handle
+    c.close_command(cid)
+    assert handle.close.called
+    assert c.get_query_state(cid) == CommandState.CLOSED
+
+
+# ---------------------------------------------------------------------------
+# PyO3 native exceptions (M2) — non-KernelError wrapping
+# ---------------------------------------------------------------------------
+
+
+def test_pyo3_native_exception_wrapped_as_operational_error():
+    """A PyO3 boundary error that is *not* a ``KernelError`` (e.g.
+    ``TypeError`` from argument conversion) must surface as a PEP
+    249 exception, not propagate raw to connector callers."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    # Statement chain succeeds, but ``execute`` raises a raw
+    # ``TypeError`` (simulating PyO3 argument-conversion failure).
+    stmt = MagicMock()
+    stmt.execute.side_effect = TypeError("argument 'foo' must be str, not int")
+    c._kernel_session.statement.return_value = stmt
+    with pytest.raises(OperationalError, match="Unexpected error from databricks_sql_kernel"):
+        c.execute_command(
+            operation="SELECT 1",
+            session_id=MagicMock(),
+            max_rows=1,
+            max_bytes=1,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+
+
+def test_pyo3_native_exception_wrapped_for_metadata_calls():
+    """Same wrapping for every metadata method."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    md = c._kernel_session.metadata.return_value
+    md.list_catalogs.side_effect = ValueError("bad PyO3 arg")
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    with pytest.raises(OperationalError):
+        c.get_catalogs(
+            session_id=MagicMock(), max_rows=1, max_bytes=1, cursor=cursor
+        )
+
+
+# ---------------------------------------------------------------------------
+# Schema-on-construct race (M3) — KernelError during arrow_schema()
+# ---------------------------------------------------------------------------
+
+
+def test_kernel_error_during_result_set_construction_is_mapped():
+    """``KernelResultSet.__init__`` calls
+    ``kernel_handle.arrow_schema()`` which can itself raise a
+    ``KernelError``. The connector must catch that and surface a
+    mapped PEP 249 exception, not let the raw ``KernelError``
+    escape."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    md = c._kernel_session.metadata.return_value
+    bad_stream = MagicMock()
+    bad_stream.arrow_schema.side_effect = _FakeKernelError(
+        code="SqlError", message="schema unavailable"
+    )
+    md.list_catalogs.return_value = bad_stream
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+    with pytest.raises(DatabaseError, match="schema unavailable"):
+        c.get_catalogs(
+            session_id=MagicMock(), max_rows=1, max_bytes=1, cursor=cursor
+        )
+
+
+# ---------------------------------------------------------------------------
+# Async leak in get_execution_result (M1)
+# ---------------------------------------------------------------------------
+
+
+def test_get_execution_result_closes_async_exec_and_drops_tracking():
+    """The ``ExecutedAsyncStatement`` handle's role ends once it
+    produces a ``ResultStream`` via ``await_result()``. The client
+    must close the async_exec and drop the tracking entry there —
+    otherwise ``KernelResultSet.close()`` (which only closes the
+    stream) leaves the executed handle leaked server-side until
+    ``close_session`` sweeps."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    async_exec = MagicMock()
+    fake_stream = MagicMock()
+    fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    async_exec.await_result.return_value = fake_stream
+    cid = CommandId.from_sea_statement_id("async-leak-test")
+    c._async_handles[cid.guid] = async_exec
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    c.get_execution_result(cid, cursor=cursor)
+
+    # async_exec must be closed and dropped from tracking; the
+    # closed-commands set records it.
+    assert async_exec.close.called
+    assert cid.guid not in c._async_handles
+    assert cid.guid in c._closed_commands
+
+
+def test_get_execution_result_does_not_raise_on_async_exec_close_failure():
+    """A failure to close the async_exec is non-fatal — the result
+    stream has already been returned by ``await_result()`` and the
+    kernel's Drop will reap server-side state."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    async_exec = MagicMock()
+    fake_stream = MagicMock()
+    fake_stream.arrow_schema.return_value = pa.schema([("n", pa.int64())])
+    async_exec.await_result.return_value = fake_stream
+    async_exec.close.side_effect = _FakeKernelError(code="Unavailable")
+    cid = CommandId.from_sea_statement_id("async-close-fail")
+    c._async_handles[cid.guid] = async_exec
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    # Must not raise.
+    rs = c.get_execution_result(cid, cursor=cursor)
+    assert rs is not None
+    assert cid.guid not in c._async_handles
+
+
+# ---------------------------------------------------------------------------
+# get_tables table_types client-side filter (m2)
+# ---------------------------------------------------------------------------
+
+
+def _make_tables_stream() -> MagicMock:
+    """Build a fake stream that mimics the kernel's ``list_tables``
+    output shape (5 cols ending in TABLE_TYPE at index 5 — the
+    connector matches what SEA produces, which has 5 metadata cols
+    before TABLE_TYPE). Returns a fixed table with mixed table types
+    so the filter has something to discriminate."""
+    schema = pa.schema(
+        [
+            ("TABLE_CAT", pa.string()),
+            ("TABLE_SCHEM", pa.string()),
+            ("TABLE_NAME", pa.string()),
+            ("EXTRA_1", pa.string()),
+            ("EXTRA_2", pa.string()),
+            ("TABLE_TYPE", pa.string()),
+        ]
+    )
+    table = pa.table(
+        {
+            "TABLE_CAT": ["main", "main", "main"],
+            "TABLE_SCHEM": ["s", "s", "s"],
+            "TABLE_NAME": ["t1", "t2", "v1"],
+            "EXTRA_1": ["", "", ""],
+            "EXTRA_2": ["", "", ""],
+            "TABLE_TYPE": ["TABLE", "TABLE", "VIEW"],
+        },
+        schema=schema,
+    )
+    batches = table.to_batches()
+    stream = MagicMock()
+    stream.arrow_schema.return_value = schema
+    # First call returns the batch; second returns None (exhausted).
+    stream.fetch_next_batch.side_effect = batches + [None]
+    return stream
+
+
+def test_get_tables_with_table_types_filters_rows():
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    c._kernel_session.metadata.return_value.list_tables.return_value = (
+        _make_tables_stream()
+    )
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    rs = c.get_tables(
+        session_id=MagicMock(),
+        max_rows=10,
+        max_bytes=1,
+        cursor=cursor,
+        table_types=["TABLE"],
+    )
+    table = rs.fetchall_arrow()
+    assert table.num_rows == 2
+    assert set(table.column("TABLE_TYPE").to_pylist()) == {"TABLE"}
+
+
+def test_get_tables_without_table_types_returns_full_stream():
+    """No filter → kernel result flows through unchanged via the
+    normal ``KernelResultSet`` path (no drain-and-rewrap)."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    c._kernel_session.metadata.return_value.list_tables.return_value = (
+        _make_tables_stream()
+    )
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    rs = c.get_tables(
+        session_id=MagicMock(),
+        max_rows=10,
+        max_bytes=1,
+        cursor=cursor,
+        table_types=None,
+    )
+    table = rs.fetchall_arrow()
+    assert table.num_rows == 3
