@@ -77,8 +77,9 @@ def int_schema():
 def test_description_built_from_kernel_schema(int_schema):
     handle = _FakeKernelHandle(int_schema, [])
     rs = _make_rs(handle)
-    # null_ok slot reflects pyarrow.Field.nullable (True by default).
-    assert rs.description == [("n", "bigint", None, None, None, None, True)]
+    # `null_ok` slot is always `None` to match the Thrift backend's
+    # PEP-249 description shape.
+    assert rs.description == [("n", "bigint", None, None, None, None, None)]
 
 
 def test_fetchall_arrow_drains_all_batches(int_schema):
@@ -107,7 +108,11 @@ def test_fetchmany_arrow_slices_within_batch(int_schema):
 def test_fetchmany_arrow_spans_batch_boundary(int_schema):
     handle = _FakeKernelHandle(
         int_schema,
-        [_batch(int_schema, [1, 2]), _batch(int_schema, [3, 4]), _batch(int_schema, [5, 6])],
+        [
+            _batch(int_schema, [1, 2]),
+            _batch(int_schema, [3, 4]),
+            _batch(int_schema, [5, 6]),
+        ],
     )
     rs = _make_rs(handle)
     t = rs.fetchmany_arrow(5)

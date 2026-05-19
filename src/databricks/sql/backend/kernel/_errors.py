@@ -43,8 +43,8 @@ from databricks.sql.exc import (
     Error,
     OperationalError,
     ProgrammingError,
+    ServerOperationError,
 )
-
 
 try:
     import databricks_sql_kernel as _kernel  # type: ignore[import-not-found]
@@ -76,7 +76,12 @@ _CODE_TO_EXCEPTION = {
     "Internal": DatabaseError,
     "InvalidStatementHandle": ProgrammingError,
     "NetworkError": OperationalError,
-    "SqlError": DatabaseError,
+    # `SqlError` is a server-side query failure (syntax error, missing
+    # object, etc.) — exactly what the Thrift backend surfaces as
+    # `ServerOperationError`. Match Thrift's contract so user code that
+    # catches `ServerOperationError` (a subclass of `DatabaseError`)
+    # works equivalently with `use_kernel=True`.
+    "SqlError": ServerOperationError,
     "Unknown": DatabaseError,
 }
 

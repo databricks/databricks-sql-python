@@ -517,14 +517,13 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> "ResultSet":
         if self._kernel_session is None:
             raise InterfaceError("get_columns requires an open session.")
-        if not catalog_name:
-            # Kernel's list_columns requires a catalog (SEA `SHOW
-            # COLUMNS` cannot span catalogs). Surface the constraint
-            # explicitly rather than letting the kernel error.
-            raise ProgrammingError(
-                "get_columns requires catalog_name on the kernel backend."
-            )
         try:
+            # `catalog_name=None` is supported: the kernel issues
+            # `SHOW COLUMNS IN ALL CATALOGS` server-side and the
+            # response carries `catalogName` per row, so each result
+            # row's `TABLE_CAT` is correctly attributed. Matches the
+            # Thrift backend's `getColumns(null, …)` behaviour from
+            # the user's perspective.
             stream = self._kernel_session.metadata().list_columns(
                 catalog=catalog_name,
                 schema_pattern=schema_name,
