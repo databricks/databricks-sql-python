@@ -354,6 +354,16 @@ class ThriftDatabricksClient(DatabricksClient):
                 error_info.retry_delay, full_error_info_context
             )
         )
+        logger.info(
+            "[PROFILE] %s retry sleep=%.1fs, attempt=%d/%d, elapsed=%.1fs/%ds, http_code=%s",
+            error_info.method,
+            error_info.retry_delay,
+            attempt,
+            max_attempts,
+            elapsed,
+            max_duration_s,
+            error_info.http_code,
+        )
         time.sleep(error_info.retry_delay)
 
     # FUTURE: Consider moving to https://github.com/litl/backoff or
@@ -409,6 +419,14 @@ class ThriftDatabricksClient(DatabricksClient):
 
                 logger.debug("Sending request: {}(<REDACTED>)".format(this_method_name))
                 unsafe_logger.debug("Sending request: {}".format(request))
+
+                # Always set the method name and SQL text for profiling
+                if hasattr(self._transport, "retry_policy") and self._transport.retry_policy:
+                    self._transport.retry_policy.thrift_method_name = this_method_name
+                    sql_statement = getattr(request, "statement", None)
+                    self._transport.retry_policy.last_sql_statement = (
+                        sql_statement[:200] if sql_statement else None
+                    )
 
                 # These three lines are no-ops if the v3 retry policy is not in use
                 if self.enable_v3_retries:
@@ -506,6 +524,13 @@ class ThriftDatabricksClient(DatabricksClient):
 
         # use index-1 counting for logging/human consistency
         for attempt in range(1, max_attempts + 1):
+            logger.info(
+                "[PROFILE] %s attempt %d/%d (elapsed=%.3fs)",
+                getattr(method, "__name__", "unknown"),
+                attempt,
+                max_attempts,
+                get_elapsed(),
+            )
             # We have a lock here because .cancel can be called from a separate thread.
             # We do not want threads to be simultaneously sharing the Thrift Transport
             # because we use its state to determine retries
@@ -515,7 +540,12 @@ class ThriftDatabricksClient(DatabricksClient):
 
             # conditions: success, non-retry-able, no-attempts-left, no-time-left, delay+retry
             if not isinstance(response_or_error_info, RequestErrorInfo):
-                # log nothing here, presume that main request logging covers
+                logger.info(
+                    "[PROFILE] %s succeeded on attempt %d in %.3fs",
+                    getattr(method, "__name__", "unknown"),
+                    attempt,
+                    elapsed,
+                )
                 response = response_or_error_info
                 ThriftDatabricksClient._check_response_for_error(response, self._host)
                 return response
@@ -1058,6 +1088,14 @@ class ThriftDatabricksClient(DatabricksClient):
             resultRowLimit=row_limit,
         )
         resp = self.make_request(self._client.ExecuteStatement, req)
+
+        if resp.operationHandle:
+            _cmd_id = CommandId.from_thrift_handle(resp.operationHandle)
+            logger.info(
+                "[PROFILE] ExecuteStatement statement_id=%s, sql=%s",
+                _cmd_id,
+                operation[:200] if operation else None,
+            )
 
         if async_op:
             self._handle_execute_response_async(resp, cursor)
