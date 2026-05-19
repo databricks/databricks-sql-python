@@ -139,14 +139,16 @@ def test_bind_tspark_params_null_value():
 
 
 def test_bind_tspark_params_void_passes_through():
-    """VoidParameter sets type='VOID' with stringValue='None'; the
-    kernel parser ignores the value when type=VOID."""
+    """VoidParameter._tspark_param_value() returns Python None, so
+    on the wire ``param.value`` is None — the mapper forwards
+    value_str=None with type='VOID' and the kernel parser ignores
+    the value."""
     from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
 
-    p = _mk_param(type="VOID", value="None")
+    p = _mk_param(type="VOID", value=None)
     stmt = _RecordingStmt()
     bind_tspark_params(stmt, [p])
-    assert stmt.calls == [(1, "None", "VOID")]
+    assert stmt.calls == [(1, None, "VOID")]
 
 
 def test_bind_tspark_params_named_param_rejected():
@@ -182,4 +184,55 @@ def test_bind_tspark_params_empty_list_is_noop():
 
     stmt = _RecordingStmt()
     bind_tspark_params(stmt, [])
+    assert stmt.calls == []
+
+
+@pytest.mark.parametrize(
+    "sql_type",
+    ["ARRAY", "MAP", "STRUCT", "array", "Map(string,int)", "STRUCT<a:int>"],
+)
+def test_bind_tspark_params_compound_types_rejected(sql_type):
+    """ArrayParameter / MapParameter / StructParameter build a
+    TSparkParameter with value=None and the payload on
+    ``arguments`` — forwarding that would silently bind a typed
+    NULL, so reject up front."""
+    from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
+    from databricks.sql.exc import NotSupportedError
+
+    p = _mk_param(type=sql_type, value=None)
+    stmt = _RecordingStmt()
+    with pytest.raises(NotSupportedError, match="(?i)compound"):
+        bind_tspark_params(stmt, [p])
+    assert stmt.calls == []
+
+
+def test_bind_tspark_params_arguments_field_rejected():
+    """A TSparkParameter with ``arguments`` set is the compound
+    shape regardless of how the type string looks — also reject."""
+    from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
+    from databricks.sql.exc import NotSupportedError
+    from databricks.sql.thrift_api.TCLIService import ttypes
+
+    p = ttypes.TSparkParameter(ordinal=True, name=None, type="ARRAY")
+    p.value = None
+    p.arguments = [ttypes.TSparkParameterValueArg(type="INT")]
+    stmt = _RecordingStmt()
+    with pytest.raises(NotSupportedError, match="(?i)compound"):
+        bind_tspark_params(stmt, [p])
+    assert stmt.calls == []
+
+
+def test_bind_tspark_params_named_with_ordinal_none_rejected():
+    """Defensive: a TSparkParameter with a name and ordinal=None
+    (Thrift default) should also be rejected as a named binding —
+    not silently routed positionally with the name dropped."""
+    from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
+    from databricks.sql.exc import NotSupportedError
+    from databricks.sql.thrift_api.TCLIService import ttypes
+
+    p = ttypes.TSparkParameter(ordinal=None, name="my_param", type="INT")
+    p.value = ttypes.TSparkParameterValue(stringValue="42")
+    stmt = _RecordingStmt()
+    with pytest.raises(NotSupportedError, match="(?i)named"):
+        bind_tspark_params(stmt, [p])
     assert stmt.calls == []

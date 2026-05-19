@@ -42,6 +42,7 @@ from databricks.sql.backend.kernel._errors import (
 )
 from databricks.sql.backend.kernel.auth_bridge import kernel_auth_kwargs
 from databricks.sql.backend.kernel.result_set import KernelResultSet
+from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
 from databricks.sql.backend.types import (
     BackendType,
     CommandId,
@@ -240,13 +241,6 @@ class KernelDatabricksClient(DatabricksClient):
             try:
                 stmt.set_sql(operation)
                 if parameters:
-                    # Lazy import — type_mapping touches pyarrow at
-                    # module load; keep ``execute_command`` callable
-                    # from contexts that don't yet need it.
-                    from databricks.sql.backend.kernel.type_mapping import (
-                        bind_tspark_params,
-                    )
-
                     bind_tspark_params(stmt, parameters)
                 if async_op:
                     async_exec = stmt.submit()
