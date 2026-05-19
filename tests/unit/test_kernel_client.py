@@ -234,25 +234,57 @@ def test_open_session_rejects_double_open(monkeypatch):
         c.open_session(session_configuration=None, catalog=None, schema=None)
 
 
-def test_execute_command_rejects_parameters():
+def test_execute_command_forwards_parameters_to_bind_param():
+    """``execute_command(parameters=[...])`` routes each parameter
+    through ``bind_tspark_params`` onto the kernel statement before
+    ``execute()`` is called. Replaces the prior ``NotSupportedError``
+    rejection now that the kernel-side ``Statement.bind_param`` is
+    live (kernel PR #18)."""
+    from databricks.sql.thrift_api.TCLIService import ttypes
+
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
-    with pytest.raises(NotSupportedError, match="Parameter binding"):
-        c.execute_command(
-            operation="SELECT ?",
-            session_id=MagicMock(),
-            max_rows=1,
-            max_bytes=1,
-            lz4_compression=False,
-            cursor=cursor,
-            use_cloud_fetch=False,
-            parameters=[object()],  # any non-empty list
-            async_op=False,
-            enforce_embedded_schema_correctness=False,
-        )
+
+    # Stub the statement chain so we can observe bind_param calls
+    # without exercising the full ExecutedStatement → arrow_schema()
+    # path (that's covered elsewhere).
+    stmt = MagicMock()
+    stmt.bind_param = MagicMock()
+    stmt.execute.return_value = MagicMock(
+        statement_id="stmt-id",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c._kernel_session.statement.return_value = stmt
+
+    p1 = ttypes.TSparkParameter(ordinal=True, name=None, type="INT")
+    p1.value = ttypes.TSparkParameterValue(stringValue="42")
+    p2 = ttypes.TSparkParameter(ordinal=True, name=None, type="STRING")
+    p2.value = ttypes.TSparkParameterValue(stringValue="hello")
+
+    c.execute_command(
+        operation="SELECT ?, ?",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[p1, p2],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+
+    # bind_param was called once per TSparkParameter, in order, with
+    # 1-based ordinals.
+    assert stmt.bind_param.call_args_list == [
+        ((1, "42", "INT"), {}),
+        ((2, "hello", "STRING"), {}),
+    ]
+    # …and execute fired after binding.
+    assert stmt.execute.called
 
 
 def test_execute_command_rejects_query_tags():
