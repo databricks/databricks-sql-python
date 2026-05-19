@@ -65,16 +65,21 @@ def test_description_from_schema_preserves_field_names_and_order():
         ("name", "string"),
         ("created_at", "timestamp"),
     ]
-    # PEP 249 says 7-tuples. We don't report display_size /
-    # internal_size / precision / scale (all None); ``null_ok`` is
-    # taken from ``pyarrow.Field.nullable`` — True by default for
-    # schemas built from (name, type) pairs.
+    # PEP 249 7-tuples; we report column name and type only. PEP 249
+    # allows ``null_ok`` to be ``None`` and that's what the Thrift
+    # backend has always returned; match it so kernel-backed cursors
+    # are drop-in compatible. The Arrow ``field.nullable`` bit is still
+    # available via ``schema.field(i).nullable`` for callers that need
+    # the real value.
     for d in desc:
         assert len(d) == 7
-        assert d[2:] == (None, None, None, None, True)
+        assert d[2:] == (None, None, None, None, None)
 
 
-def test_description_from_schema_reports_non_nullable_fields():
+def test_description_null_ok_always_none_regardless_of_field_nullable():
+    # Match Thrift backend's behaviour: ``null_ok`` is ``None`` for
+    # every column even when the Arrow ``field.nullable`` bit is
+    # meaningful.
     schema = pa.schema(
         [
             pa.field("id", pa.int64(), nullable=False),
@@ -82,8 +87,8 @@ def test_description_from_schema_reports_non_nullable_fields():
         ]
     )
     desc = description_from_arrow_schema(schema)
-    assert desc[0][6] is False
-    assert desc[1][6] is True
+    assert desc[0][6] is None
+    assert desc[1][6] is None
 
 
 # ─── bind_tspark_params ──────────────────────────────────────────────────
@@ -94,7 +99,9 @@ def _mk_param(*, type, value, ordinal=True, name=None):
     from databricks.sql.thrift_api.TCLIService import ttypes
 
     p = ttypes.TSparkParameter(ordinal=ordinal, name=name, type=type)
-    p.value = ttypes.TSparkParameterValue(stringValue=value) if value is not None else None
+    p.value = (
+        ttypes.TSparkParameterValue(stringValue=value) if value is not None else None
+    )
     return p
 
 

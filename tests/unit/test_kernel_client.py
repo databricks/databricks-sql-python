@@ -70,8 +70,8 @@ from databricks.sql.exc import (
     NotSupportedError,
     OperationalError,
     ProgrammingError,
+    ServerOperationError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Error mapping
@@ -93,7 +93,14 @@ from databricks.sql.exc import (
         ("Internal", DatabaseError),
         ("InvalidStatementHandle", ProgrammingError),
         ("NetworkError", OperationalError),
-        ("SqlError", DatabaseError),
+        # `SqlError` is the kernel's slug for server-side query
+        # failures (syntax error, missing object, etc.) — exactly the
+        # case Thrift's backend surfaces as ``ServerOperationError``.
+        # Match Thrift so user code that catches the specific class
+        # works equivalently. ``ServerOperationError`` is itself a
+        # ``DatabaseError`` subclass, so existing catches of the base
+        # class are unaffected.
+        ("SqlError", ServerOperationError),
         ("Unknown", DatabaseError),
     ],
 )
@@ -309,20 +316,37 @@ def test_execute_command_rejects_query_tags():
         )
 
 
-def test_get_columns_requires_catalog():
+def test_get_columns_accepts_none_catalog():
+    """The kernel's `list_columns` honours `catalog=None` by issuing
+    `SHOW COLUMNS IN ALL CATALOGS` server-side. The connector should
+    pass `None` through rather than rejecting it, matching the Thrift
+    backend's `getColumns(null, …)` behaviour."""
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
-    with pytest.raises(ProgrammingError, match="catalog_name"):
-        c.get_columns(
-            session_id=MagicMock(),
-            max_rows=1,
-            max_bytes=1,
-            cursor=cursor,
-            catalog_name=None,
-        )
+    cursor.connection = MagicMock()
+    # `list_columns` returns a stream the result-set wrapper will try
+    # to call `arrow_schema()` on; give it a minimal fake.
+    fake_stream = MagicMock()
+    fake_stream.arrow_schema.return_value = MagicMock(__iter__=lambda self: iter([]))
+    c._kernel_session.metadata.return_value.list_columns.return_value = fake_stream
+
+    c.get_columns(
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        cursor=cursor,
+        catalog_name=None,
+    )
+    # `list_columns` should be called with catalog=None, not rejected.
+    c._kernel_session.metadata.return_value.list_columns.assert_called_once_with(
+        catalog=None,
+        schema_pattern=None,
+        table_pattern=None,
+        column_pattern=None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +545,9 @@ def test_pyo3_native_exception_wrapped_as_operational_error():
     stmt = MagicMock()
     stmt.execute.side_effect = TypeError("argument 'foo' must be str, not int")
     c._kernel_session.statement.return_value = stmt
-    with pytest.raises(OperationalError, match="Unexpected error from databricks_sql_kernel"):
+    with pytest.raises(
+        OperationalError, match="Unexpected error from databricks_sql_kernel"
+    ):
         c.execute_command(
             operation="SELECT 1",
             session_id=MagicMock(),
@@ -546,9 +572,7 @@ def test_pyo3_native_exception_wrapped_for_metadata_calls():
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
     with pytest.raises(OperationalError):
-        c.get_catalogs(
-            session_id=MagicMock(), max_rows=1, max_bytes=1, cursor=cursor
-        )
+        c.get_catalogs(session_id=MagicMock(), max_rows=1, max_bytes=1, cursor=cursor)
 
 
 # ---------------------------------------------------------------------------
@@ -574,9 +598,7 @@ def test_kernel_error_during_result_set_construction_is_mapped():
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
     with pytest.raises(DatabaseError, match="schema unavailable"):
-        c.get_catalogs(
-            session_id=MagicMock(), max_rows=1, max_bytes=1, cursor=cursor
-        )
+        c.get_catalogs(session_id=MagicMock(), max_rows=1, max_bytes=1, cursor=cursor)
 
 
 # ---------------------------------------------------------------------------

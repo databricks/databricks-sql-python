@@ -85,9 +85,11 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
     """Build a PEP 249 ``description`` list from a pyarrow Schema.
 
     Each tuple is ``(name, type_code, display_size, internal_size,
-    precision, scale, null_ok)``. ``null_ok`` is taken from
-    ``field.nullable``; the other four are not reported by the
-    kernel today.
+    precision, scale, null_ok)``. PEP 249 allows ``null_ok`` to be
+    either a bool or ``None``; the Thrift backend always reports
+    ``None``, so we match that here for drop-in parity. The actual
+    nullability bit is still available via ``schema.field(i).nullable``
+    for callers that want it from the Arrow schema directly.
     """
     return [
         (
@@ -97,7 +99,7 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
             None,
             None,
             None,
-            field.nullable,
+            None,
         )
         for field in schema
     ]
