@@ -94,6 +94,7 @@ class DatabricksRetryPolicy(Retry):
         stop_after_attempts_duration: float,
         delay_default: float,
         force_dangerous_codes: List[int],
+        respect_server_retry_after_header: bool = False,
         urllib3_kwargs: dict = {},
     ):
         # These values do not change from one command to the next
@@ -103,6 +104,7 @@ class DatabricksRetryPolicy(Retry):
         self.stop_after_attempts_duration = stop_after_attempts_duration
         self._delay_default = delay_default
         self.force_dangerous_codes = force_dangerous_codes
+        self.respect_server_retry_after_header = respect_server_retry_after_header
 
         # the urllib3 kwargs are a mix of configuration (some of which we override)
         # and counters like `total` or `connect` which may change between successive retries
@@ -202,6 +204,7 @@ class DatabricksRetryPolicy(Retry):
             stop_after_attempts_duration=self.stop_after_attempts_duration,
             delay_default=self.delay_default,
             force_dangerous_codes=self.force_dangerous_codes,
+            respect_server_retry_after_header=self.respect_server_retry_after_header,
             urllib3_kwargs={},
         )
 
@@ -323,7 +326,9 @@ class DatabricksRetryPolicy(Retry):
 
         return proposed_backoff
 
-    def should_retry(self, method: str, status_code: int) -> Tuple[bool, str]:
+    def should_retry(
+        self, method: str, status_code: int, has_retry_after: bool = False
+    ) -> Tuple[bool, str]:
         """This method encapsulates the connector's approach to retries.
 
         We always retry a request unless one of these conditions is met:
@@ -388,6 +393,15 @@ class DatabricksRetryPolicy(Retry):
         if not self._is_method_retryable(method):
             return False, "Only POST requests are retried"
 
+        # When respect_server_retry_after_header is enabled, only retry when the
+        # server explicitly signals it's safe via a Retry-After header. This prevents
+        # duplicate side effects for non-idempotent operations.
+        if self.respect_server_retry_after_header and not has_retry_after:
+            return (
+                False,
+                "respect_server_retry_after_header mode: no Retry-After header present",
+            )
+
         # Request failed, was an ExecuteStatement and the command may have reached the server
         if (
             self.command_type == CommandType.EXECUTE_STATEMENT
@@ -430,7 +444,7 @@ class DatabricksRetryPolicy(Retry):
         Logs a debug message if the request will be retried
         """
 
-        should_retry, msg = self.should_retry(method, status_code)
+        should_retry, msg = self.should_retry(method, status_code, has_retry_after)
 
         if should_retry:
             logger.debug(msg)

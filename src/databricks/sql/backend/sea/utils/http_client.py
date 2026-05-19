@@ -92,6 +92,9 @@ class SeaHttpClient:
         )
         self._retry_delay_default = kwargs.get("_retry_delay_default", 5.0)
         self.force_dangerous_codes = kwargs.get("_retry_dangerous_codes", [])
+        self._respect_server_retry_after_header = kwargs.get(
+            "_respect_server_retry_after_header", False
+        )
 
         # Connection pooling settings
         self.max_connections = kwargs.get("max_connections", 10)
@@ -116,6 +119,7 @@ class SeaHttpClient:
                 stop_after_attempts_duration=self._retry_stop_after_attempts_duration,
                 delay_default=self._retry_delay_default,
                 force_dangerous_codes=self.force_dangerous_codes,
+                respect_server_retry_after_header=self._respect_server_retry_after_header,
                 urllib3_kwargs=urllib3_kwargs,
             )
         else:
