@@ -91,6 +91,29 @@ def test_description_null_ok_always_none_regardless_of_field_nullable():
     assert desc[1][6] is None
 
 
+def test_description_uses_databricks_type_name_for_variant():
+    """VARIANT columns arrive over SEA as Arrow ``Utf8``; the kernel
+    annotates them with ``databricks.type_name=VARIANT`` so the
+    connector can recover the precise type for PEP-249 description.
+    Matches the Thrift backend, which exposes the same column as
+    ``variant``."""
+    schema = pa.schema(
+        [
+            pa.field(
+                "v",
+                pa.string(),
+                metadata={b"databricks.type_name": b"VARIANT"},
+            ),
+            # Plain Utf8 column without the metadata stays ``string``
+            # so we don't claim "variant" for everything.
+            pa.field("s", pa.string()),
+        ]
+    )
+    desc = description_from_arrow_schema(schema)
+    assert desc[0][1] == "variant"
+    assert desc[1][1] == "string"
+
+
 # ─── bind_tspark_params ──────────────────────────────────────────────────
 
 

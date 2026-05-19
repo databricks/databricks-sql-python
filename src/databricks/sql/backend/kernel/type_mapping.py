@@ -90,11 +90,23 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
     ``None``, so we match that here for drop-in parity. The actual
     nullability bit is still available via ``schema.field(i).nullable``
     for callers that want it from the Arrow schema directly.
+
+    ``type_code`` normally comes from the Arrow ``DataType`` via
+    ``_arrow_type_to_dbapi_string``, which collapses
+    Databricks-specific types into their nearest Arrow shape (e.g.
+    ``VARIANT`` → ``Utf8``). To recover the precise Databricks type
+    name, we consult the field's metadata first — the kernel writes
+    the server-reported type into ``databricks.type_name`` (see
+    ``databricks_sql_kernel::reader::metadata_keys``). Today only
+    ``VARIANT`` is special-cased here for parity with the Thrift
+    backend's behaviour; other precise types (``INTERVAL_*``,
+    ``GEOMETRY``, ``GEOGRAPHY``) collapse to their Arrow shape on
+    both backends and don't need a remap.
     """
     return [
         (
             field.name,
-            _arrow_type_to_dbapi_string(field.type),
+            _databricks_type_for_field(field),
             None,
             None,
             None,
@@ -103,6 +115,24 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
         )
         for field in schema
     ]
+
+
+def _databricks_type_for_field(field: pyarrow.Field) -> str:
+    """Pick the PEP 249 type code for a single field.
+
+    Consults the field's Arrow metadata under
+    ``databricks.type_name`` (written by the kernel from the SEA
+    response's column type) so types that collapse onto a generic
+    Arrow shape can still be distinguished. Today only ``VARIANT``
+    is mapped; everything else delegates to
+    ``_arrow_type_to_dbapi_string``.
+    """
+    md = field.metadata or {}
+    # `databricks.type_name` is bytes (Arrow metadata is always
+    # bytes); compare against bytes to avoid one encode per field.
+    if md.get(b"databricks.type_name") == b"VARIANT":
+        return "variant"
+    return _arrow_type_to_dbapi_string(field.type)
 
 
 def _tspark_param_value_str(param: ttypes.TSparkParameter) -> Any:
