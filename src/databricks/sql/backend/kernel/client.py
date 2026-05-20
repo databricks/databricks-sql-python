@@ -98,6 +98,17 @@ class KernelDatabricksClient(DatabricksClient):
         self._auth_provider = auth_provider
         self._catalog = catalog
         self._schema = schema
+        # ``_use_arrow_native_complex_types`` is the connector-side
+        # toggle for whether complex columns (ARRAY / MAP / STRUCT)
+        # are surfaced as native Arrow shapes or as compact JSON
+        # strings. The Thrift backend forwards it server-side
+        # (``complexTypesAsArrow``); the kernel doesn't have a wire
+        # equivalent, so we flip the kernel's client-side
+        # ``complex_types_as_json`` post-processor to match. Default
+        # ``True`` mirrors the connector's existing default.
+        self._use_arrow_native_complex_types = kwargs.get(
+            "_use_arrow_native_complex_types", True
+        )
         # NB: don't call ``kernel_auth_kwargs`` here. That call
         # materialises the bearer token in-process; keeping a
         # cleartext copy on a long-lived connector object that may
@@ -155,6 +166,7 @@ class KernelDatabricksClient(DatabricksClient):
                 catalog=catalog or self._catalog,
                 schema=schema or self._schema,
                 session_conf=session_conf,
+                complex_types_as_json=not self._use_arrow_native_complex_types,
                 **auth_kwargs,
             )
         except Exception as exc:
