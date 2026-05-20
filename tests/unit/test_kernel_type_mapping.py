@@ -114,6 +114,58 @@ def test_description_uses_databricks_type_name_for_variant():
     assert desc[1][1] == "string"
 
 
+@pytest.mark.parametrize(
+    "metadata_value, expected",
+    [
+        (b"ARRAY", "array"),
+        (b"MAP", "map"),
+        (b"STRUCT", "struct"),
+        # Lowercase / mixed case both fine — server may report either.
+        (b"array", "array"),
+        (b"Struct", "struct"),
+    ],
+)
+def test_description_recovers_complex_type_name_from_metadata(metadata_value, expected):
+    """When ``complex_types_as_json`` rewrites a complex column to
+    ``Utf8``, the kernel preserves the original SQL type name under
+    ``databricks.type_name``. ``description`` must report that name
+    (matching the Thrift backend's behaviour with
+    ``complexTypesAsArrow=False``), not the post-processed ``string``.
+    """
+    schema = pa.schema(
+        [
+            pa.field(
+                "c",
+                pa.string(),
+                metadata={b"databricks.type_name": metadata_value},
+            ),
+        ]
+    )
+    desc = description_from_arrow_schema(schema)
+    assert desc[0][1] == expected
+
+
+def test_description_passes_through_unknown_databricks_type_name():
+    """Server-reported names other than the handful we explicitly
+    recognise (VARIANT / ARRAY / MAP / STRUCT) defer to the Arrow
+    shape — the Arrow type is the authoritative source for primitives
+    and the kernel's own type mapping is conservative there. Confirms
+    we don't accidentally claim ``int`` from metadata when the Arrow
+    column is something concrete like ``int64``."""
+    schema = pa.schema(
+        [
+            pa.field(
+                "n",
+                pa.int64(),
+                metadata={b"databricks.type_name": b"INT"},
+            ),
+        ]
+    )
+    desc = description_from_arrow_schema(schema)
+    # `int64` Arrow → "bigint" via the existing arrow-type mapper.
+    assert desc[0][1] == "bigint"
+
+
 # ─── bind_tspark_params ──────────────────────────────────────────────────
 
 

@@ -146,6 +146,7 @@ class Session:
                 http_client=self.http_client,
                 catalog=kwargs.get("catalog"),
                 schema=kwargs.get("schema"),
+                _use_arrow_native_complex_types=_use_arrow_native_complex_types,
             )
 
         databricks_client_class: Type[DatabricksClient]

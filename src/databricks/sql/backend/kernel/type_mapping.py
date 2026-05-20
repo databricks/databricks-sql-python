@@ -123,15 +123,35 @@ def _databricks_type_for_field(field: pyarrow.Field) -> str:
     Consults the field's Arrow metadata under
     ``databricks.type_name`` (written by the kernel from the SEA
     response's column type) so types that collapse onto a generic
-    Arrow shape can still be distinguished. Today only ``VARIANT``
-    is mapped; everything else delegates to
-    ``_arrow_type_to_dbapi_string``.
+    Arrow shape can still be distinguished. This matters in two
+    cases:
+
+    - ``VARIANT`` (always ``Utf8`` on the wire — no Arrow shape
+      distinguishes it from ``STRING``).
+    - The ``complex_types_as_json`` post-processor rewrites
+      ``ARRAY`` / ``MAP`` / ``STRUCT`` columns to ``Utf8`` carrying
+      compact JSON text. The Thrift backend reports the original
+      SQL type in ``description`` even when ``complexTypesAsArrow``
+      is off and the wire payload is a JSON string; we match that
+      by recovering the type name from manifest metadata.
     """
     md = field.metadata or {}
     # `databricks.type_name` is bytes (Arrow metadata is always
     # bytes); compare against bytes to avoid one encode per field.
-    if md.get(b"databricks.type_name") == b"VARIANT":
-        return "variant"
+    type_name = md.get(b"databricks.type_name")
+    if type_name is not None:
+        # Lowercase to match the canonical SqlType slugs the Thrift
+        # backend produces (``"array"`` / ``"map"`` / ``"struct"`` /
+        # ``"variant"``). Other server-reported names (``"INT"`` etc.)
+        # would also pass through this branch but we deliberately
+        # don't honour them — the Arrow shape is the authoritative
+        # source for primitives, and the kernel's own type-name
+        # mapping (`map_databricks_type`) is conservative on some
+        # types (e.g. ``DECIMAL`` arrives as ``decimal`` on the
+        # Arrow side, which matches Thrift).
+        decoded = type_name.decode("ascii", errors="replace").lower()
+        if decoded in {"variant", "array", "map", "struct"}:
+            return decoded
     return _arrow_type_to_dbapi_string(field.type)
 
 
