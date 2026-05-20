@@ -1849,19 +1849,19 @@ files = [
 
 [[package]]
 name = "thrift"
-version = "0.22.0"
+version = "0.23.0"
 description = "Python bindings for the Apache Thrift RPC system"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "thrift-0.22.0.tar.gz", hash = "sha256:42e8276afbd5f54fe1d364858b6877bc5e5a4a5ed69f6a005b94ca4918fe1466"},
+    {file = "thrift-0.23.0.tar.gz", hash = "sha256:5f43448a92c36ed6a450048355d10e231a1787e4c28965f08fabac0eb978914c"},
 ]
 
 [package.extras]
-all = ["tornado (>=4.0)", "twisted"]
-tornado = ["tornado (>=4.0)"]
-twisted = ["twisted"]
+all = ["tornado (>=6.3.0)", "twisted (>=24.3.0)", "zope.interface (>=6.1)"]
+tornado = ["tornado (>=6.3.0)"]
+twisted = ["twisted (>=24.3.0)", "zope.interface (>=6.1)"]
 
 [[package]]
 name = "tomli"
@@ -1966,4 +1966,4 @@ pyarrow = ["pyarrow", "pyarrow", "pyarrow"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.8.0"
-content-hash = "d1739e84dcbd6e7ac311eb6fbb9cf87ad110491f7d954f07fdfc32b704b4413f"
+content-hash = "57acf6fd11366f2c4952f904e54084533866126686043525ef6ca5f2f1a73df6"
