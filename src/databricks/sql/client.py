@@ -1713,9 +1713,13 @@ class Cursor:
     def close(self) -> None:
         """Close cursor"""
         self.open = False
-        self.active_command_id = None
-        if self.active_result_set:
-            self._close_and_clear_active_result_set()
+        try:
+            if self.active_result_set:
+                self._close_and_clear_active_result_set()
+            elif self.active_command_id is not None:
+                self.backend.close_command(self.active_command_id)
+        finally:
+            self.active_command_id = None
 
     @property
     def query_id(self) -> Optional[str]:

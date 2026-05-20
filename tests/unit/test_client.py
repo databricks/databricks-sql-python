@@ -280,6 +280,33 @@ class ClientTestSuite(unittest.TestCase):
             cursor.close = mock_close
         mock_close.assert_called_once_with()
 
+    def test_close_closes_active_command_without_result_set(self):
+        mock_backend = Mock()
+        mock_command_id = Mock(spec=CommandId)
+        cursor = client.Cursor(Mock(), mock_backend)
+        cursor.active_command_id = mock_command_id
+
+        cursor.close()
+
+        mock_backend.close_command.assert_called_once_with(mock_command_id)
+        self.assertIsNone(cursor.active_command_id)
+        self.assertIsNone(cursor.active_result_set)
+
+    def test_close_delegates_to_active_result_set_without_double_closing_command(self):
+        mock_backend = Mock()
+        mock_result_set = Mock()
+        mock_command_id = Mock(spec=CommandId)
+        cursor = client.Cursor(Mock(), mock_backend)
+        cursor.active_result_set = mock_result_set
+        cursor.active_command_id = mock_command_id
+
+        cursor.close()
+
+        mock_result_set.close.assert_called_once_with()
+        mock_backend.close_command.assert_not_called()
+        self.assertIsNone(cursor.active_command_id)
+        self.assertIsNone(cursor.active_result_set)
+
     def dict_product(self, dicts):
         """
         Generate cartesion product of values in input dictionary, outputting a dictionary
