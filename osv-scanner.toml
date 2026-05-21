@@ -1,0 +1,18 @@
+# OSV-Scanner suppressions for the databricks-sql-python security gate.
+#
+# Each entry suppresses a CVE that is a documented ecosystem false
+# positive against an artifact we ship. Every entry has a justification.
+#
+# Trade-off worth noting: [[IgnoredVulns]] entries are CVE-id global --
+# they ignore the CVE across all packages OSV reports it against, not
+# just the artifact we have in mind. The alternative
+# ([[PackageOverrides]] with `vulnerability.ignore = true`) is
+# per-package but blanket-ignores ALL vulnerabilities on that package,
+# which is much worse. OSV-Scanner v2.3.8 does NOT support an
+# intersection ("this CVE on this package only").
+#
+# See google.github.io/osv-scanner/configuration/ for the schema.
+#
+# This file starts empty -- populate iteratively as the first scan run
+# surfaces real false positives. Do not pre-populate with speculative
+# suppressions.
