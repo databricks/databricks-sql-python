@@ -194,15 +194,6 @@ jobs:
           owner: databricks
           repositories: databricks-driver-test
 
-      - name: Generate GitHub App Token (public repo)
-        id: public-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
-        with:
-          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
-          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
-          owner: databricks
-          repositories: databricks-sql-python
-
       - name: Sanitize PR title
         id: sanitize
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
@@ -235,7 +226,11 @@ jobs:
         if: steps.changed.outputs.python != 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
-          github-token: ${{ steps.public-token.outputs.token }}
+          # Default workflow token, not the App token — same rationale
+          # as the failure handler below. We don't want a missing-secret
+          # state to silently swallow the green check for path-filtered
+          # no-op runs.
+          github-token: ${{ github.token }}
           script: |
             await github.rest.checks.create({
               owner: context.repo.owner,
@@ -255,7 +250,15 @@ jobs:
         if: failure() && steps.changed.outputs.python == 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
-          github-token: ${{ steps.public-token.outputs.token }}
+          # Use the default workflow token, not the App token. The
+          # App-token-generating step is the *most likely* thing to
+          # fail (missing/rotated secrets, App uninstalled), and using
+          # it here means a token-generation failure also kills this
+          # handler — leaving the gate silently green on the stale
+          # synthetic-success from skip-integration-tests-pr. The
+          # default token has checks:write (declared on this job)
+          # which is all we need.
+          github-token: ${{ github.token }}
           script: |
             await github.rest.checks.create({
               owner: context.repo.owner,
@@ -316,20 +319,13 @@ jobs:
             echo "No driver files changed — will auto-pass"
           fi
 
-      - name: Generate GitHub App Token (public repo)
-        id: public-token
-        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
-        with:
-          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
-          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
-          owner: databricks
-          repositories: databricks-sql-python
-
       - name: Auto-pass (no driver changes)
         if: steps.changed.outputs.changed != 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
-          github-token: ${{ steps.public-token.outputs.token }}
+          # Default workflow token — see the trigger-tests-pr job's
+          # equivalent step above for the rationale.
+          github-token: ${{ github.token }}
           script: |
             await github.rest.checks.create({
               owner: context.repo.owner,
@@ -392,7 +388,9 @@ jobs:
         if: failure() && steps.changed.outputs.changed == 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
-          github-token: ${{ steps.public-token.outputs.token }}
+          # Use the default workflow token, not the App token — see
+          # the rationale in the trigger-tests-pr job above.
+          github-token: ${{ github.token }}
           script: |
             await github.rest.checks.create({
               owner: context.repo.owner,
