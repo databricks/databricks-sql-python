@@ -22,4 +22,9 @@ the ``use_kernel=True`` branch.
 
 See ``docs/designs/pysql-kernel-integration.md`` in
 ``databricks-sql-kernel`` for the full integration design.
+
+Cross-repo integration tests for this backend run via the proxy-based
+harness in ``databricks/databricks-driver-test`` (suite name
+``Python Proxy Tests``). They're previewable on a PR with the
+``integration-test`` label and gate the merge queue.
 """
