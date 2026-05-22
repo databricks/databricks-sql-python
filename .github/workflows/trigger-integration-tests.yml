@@ -1,0 +1,409 @@
+name: Trigger Integration Tests
+
+# Dispatches the proxy-based integration test suite in
+# databricks/databricks-driver-test to run against this PR's commit.
+#
+# Mirrors the canonical pattern in adbc-drivers/databricks. The model:
+#
+#   - On a normal PR event (open / push / reopen / non-IT label) we
+#     post a `success` Python Proxy Tests check immediately so the
+#     required check doesn't block the PR. The real tests are gated
+#     in the merge queue.
+#   - When a maintainer adds the `integration-test` label we dispatch
+#     the suite as a preview — useful for catching regressions before
+#     merge queue time.
+#   - Pushing new commits to the PR auto-removes the label so a
+#     subsequent labelled run requires a fresh maintainer review.
+#   - On the `merge_group` event the suite runs as the real required
+#     gate. Only PRs whose tests dispatch (or auto-pass when no driver
+#     files changed) can proceed to `main`.
+#
+# Required external setup (outside this workflow):
+#
+#   1. `integration-test` label exists in this repo (one-off; created
+#      separately).
+#   2. `INTEGRATION_TEST_APP_ID` / `INTEGRATION_TEST_PRIVATE_KEY` repo
+#      secrets installed for the dispatcher GitHub App (write access
+#      to databricks/databricks-driver-test).
+#   3. Merge queue enabled on `main` branch protection AND
+#      `Python Proxy Tests` listed as a required status check. Without
+#      this the merge-queue job is dead code and ITs run only on
+#      explicit label.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  merge_group:  # Trigger when added to merge queue
+
+jobs:
+  # =============================================================================
+  # Security: Auto-remove label when new commits are pushed
+  # =============================================================================
+  remove-label-on-new-commit:
+    if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check if integration-test label exists
+        id: check-label
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            const hasLabel = labels.includes('integration-test');
+            console.log(`integration-test label exists: ${hasLabel}`);
+            return hasLabel;
+
+      - name: Remove integration-test label
+        if: steps.check-label.outputs.result == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'integration-test'
+              });
+              console.log('Removed integration-test label');
+            } catch (error) {
+              if (error.status === 404) {
+                console.log('Label already removed or does not exist');
+              } else {
+                throw error;
+              }
+            }
+
+      - name: Comment on PR about label removal
+        if: steps.check-label.outputs.result == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const isFromFork = pr.head.repo.full_name !== pr.base.repo.full_name;
+            const repoType = isFromFork ? '**fork PR**' : 'PR';
+
+            const body = [
+              'Integration test approval reset.',
+              '',
+              `New commits were pushed to this ${repoType}. The \`integration-test\` label has been automatically removed for security.`,
+              '',
+              '**A maintainer must re-review the changes and re-add the label to trigger tests again.**',
+              '',
+              `Latest commit: ${pr.head.sha.substring(0, 7)}`
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+  # =============================================================================
+  # For PRs: Always pass the Python Proxy Tests check on non-label events.
+  # The real run happens in the merge queue (or via explicit label preview).
+  # Without this, a required `Python Proxy Tests` check would block every
+  # PR that doesn't bother labelling.
+  # =============================================================================
+  skip-integration-tests-pr:
+    if: github.event_name == 'pull_request' && github.event.action != 'labeled'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Skip Python Proxy Tests
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Python Proxy Tests',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Skipped on PR — runs in merge queue',
+                summary: 'Python Proxy Tests are skipped on PRs and run as a required gate in the merge queue. Add the `integration-test` label to preview them on this PR.'
+              }
+            });
+
+  # =============================================================================
+  # For PRs: Dispatch real tests when integration-test label is added.
+  # Only dispatches when driver source files changed; otherwise posts
+  # an auto-pass check so the gate isn't artificially red.
+  # =============================================================================
+  trigger-tests-pr:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'labeled' &&
+      contains(github.event.pull_request.labels.*.name, 'integration-test')
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      checks: write
+    steps:
+      - name: Detect changed driver paths
+        id: changed
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100
+            });
+            const names = files.map(f => f.filename);
+            // Driver source + the workflow itself + pyproject.toml
+            // (dep bumps can break the integration suite). Anything
+            // under tests/unit/ doesn't need IT, but tests/e2e/ does.
+            const sourceChanged = names.some(f =>
+              f.startsWith('src/') ||
+              f.startsWith('tests/e2e/') ||
+              f === 'pyproject.toml' ||
+              f === 'poetry.lock'
+            );
+            const workflowChanged = names.some(f =>
+              f.startsWith('.github/workflows/')
+            );
+            const runPython = sourceChanged || workflowChanged;
+            if (workflowChanged) console.log('Workflow files changed — triggering ITs');
+            if (sourceChanged) console.log('Driver source files changed — triggering ITs');
+            core.setOutput('python', runPython.toString());
+
+      - name: Generate GitHub App Token (internal repo)
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-driver-test
+
+      - name: Generate GitHub App Token (public repo)
+        id: public-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-sql-python
+
+      - name: Sanitize PR title
+        id: sanitize
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          result-encoding: string
+          script: |
+            // Remove characters that could break the dispatch JSON or
+            // enable injection of extra fields via a crafted title.
+            const title = context.payload.pull_request.title || '';
+            return title.replace(/[\\"\n\r\t]/g, ' ').substring(0, 200);
+
+      - name: Dispatch Python tests to internal repo
+        if: steps.changed.outputs.python == 'true'
+        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: databricks/databricks-driver-test
+          event-type: python-pr-test
+          client-payload: |
+            {
+              "pr_number": "${{ github.event.pull_request.number }}",
+              "commit_sha": "${{ github.event.pull_request.head.sha }}",
+              "pr_repo": "${{ github.repository }}",
+              "pr_url": "${{ github.event.pull_request.html_url }}",
+              "pr_title": "${{ steps.sanitize.outputs.result }}",
+              "pr_author": "${{ github.event.pull_request.user.login }}"
+            }
+
+      - name: Pass Python Proxy Tests check (no driver changes)
+        if: steps.changed.outputs.python != 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ steps.public-token.outputs.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Python Proxy Tests',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Skipped — no driver changes',
+                summary: 'No Python driver source files changed; skipping integration tests.'
+              }
+            });
+
+      - name: Fail check on dispatch error
+        if: failure() && steps.changed.outputs.python == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ steps.public-token.outputs.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Python Proxy Tests',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: 'failure',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Failed — error dispatching tests',
+                summary: 'An error occurred while dispatching Python integration tests. Check the workflow run logs.'
+              }
+            });
+
+      - name: Comment on PR
+        if: steps.changed.outputs.python == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'Integration tests triggered. [View workflow run](https://github.com/databricks/databricks-driver-test/actions/workflows/python-proxy-tests.yml).'
+            });
+
+  # =============================================================================
+  # For Merge Queue: Real gate. Dispatch tests when driver files changed;
+  # otherwise auto-pass so the queue isn't blocked.
+  # =============================================================================
+  merge-queue-python:
+    if: github.event_name == 'merge_group'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if driver files changed
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          if echo "$CHANGED" | grep -qE "^(src/|tests/e2e/|pyproject\.toml|poetry\.lock|\.github/workflows/)"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Driver files changed — will dispatch tests"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No driver files changed — will auto-pass"
+          fi
+
+      - name: Generate GitHub App Token (public repo)
+        id: public-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-sql-python
+
+      - name: Auto-pass (no driver changes)
+        if: steps.changed.outputs.changed != 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ steps.public-token.outputs.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Python Proxy Tests',
+              head_sha: '${{ github.event.merge_group.head_sha }}',
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Skipped — no driver changes',
+                summary: 'No Python driver source files changed.'
+              }
+            });
+
+      - name: Extract PR number from merge queue ref
+        if: steps.changed.outputs.changed == 'true'
+        id: extract-pr
+        env:
+          MERGE_QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          # GitHub names the queue branch as
+          # `gh-readonly-queue/<base>/pr-<N>-<sha>` — extract N so the
+          # dispatched payload links back to the originating PR.
+          if [[ "$MERGE_QUEUE_REF" =~ pr-([0-9]+) ]]; then
+            echo "pr_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "Error: failed to extract PR number from merge group ref: '$MERGE_QUEUE_REF'" >&2
+            exit 1
+          fi
+
+      - name: Generate GitHub App Token (internal repo)
+        if: steps.changed.outputs.changed == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-driver-test
+
+      - name: Dispatch Python tests
+        if: steps.changed.outputs.changed == 'true'
+        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: databricks/databricks-driver-test
+          event-type: python-pr-test
+          client-payload: |
+            {
+              "pr_number": "${{ steps.extract-pr.outputs.pr_number }}",
+              "commit_sha": "${{ github.event.merge_group.head_sha }}",
+              "pr_repo": "${{ github.repository }}",
+              "pr_url": "${{ github.server_url }}/${{ github.repository }}/pull/${{ steps.extract-pr.outputs.pr_number }}",
+              "pr_title": "Merge queue validation",
+              "pr_author": "merge-queue"
+            }
+
+      - name: Fail check on dispatch error
+        if: failure() && steps.changed.outputs.changed == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ steps.public-token.outputs.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Python Proxy Tests',
+              head_sha: '${{ github.event.merge_group.head_sha }}',
+              status: 'completed',
+              conclusion: 'failure',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Failed — error dispatching tests',
+                summary: 'An error occurred while dispatching Python integration tests. Check the workflow run logs.'
+              }
+            });
