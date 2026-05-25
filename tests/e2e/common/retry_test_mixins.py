@@ -15,6 +15,58 @@ from databricks.sql.exc import (
     SessionAlreadyClosedError,
     UnsafeToRetryError,
 )
+from databricks.sql.telemetry.telemetry_client import (
+    NoopTelemetryClient,
+    TelemetryClientFactory,
+    _TelemetryClientHolder,
+)
+
+
+@contextmanager
+def _isolated_from_telemetry():
+    # Tests that mock urllib3 globally (via _get_conn / _validate_conn) also
+    # intercept background telemetry pushes from the shared
+    # TelemetryClientFactory executor — inflating mock.call_count and breaking
+    # assertions like `call_count == 6`. Drain the factory and force any new
+    # connection to use NoopTelemetryClient for the duration of the test.
+    with TelemetryClientFactory._lock:
+        saved_clients = TelemetryClientFactory._clients
+        saved_executor = TelemetryClientFactory._executor
+        saved_initialized = TelemetryClientFactory._initialized
+        for holder in list(saved_clients.values()):
+            try:
+                holder.client.close()
+            except Exception:
+                pass
+        if saved_executor is not None:
+            try:
+                TelemetryClientFactory._stop_flush_thread()
+                saved_executor.shutdown(wait=True)
+            except Exception:
+                pass
+        TelemetryClientFactory._clients = {}
+        TelemetryClientFactory._executor = None
+        TelemetryClientFactory._initialized = False
+
+    def _install_noop(*args, host_url=None, **kwargs):
+        host_url = TelemetryClientFactory.getHostUrlSafely(host_url)
+        with TelemetryClientFactory._lock:
+            TelemetryClientFactory._clients[host_url] = _TelemetryClientHolder(
+                NoopTelemetryClient()
+            )
+
+    try:
+        with patch.object(
+            TelemetryClientFactory,
+            "initialize_telemetry_client",
+            staticmethod(_install_noop),
+        ):
+            yield
+    finally:
+        with TelemetryClientFactory._lock:
+            TelemetryClientFactory._clients = saved_clients
+            TelemetryClientFactory._executor = saved_executor
+            TelemetryClientFactory._initialized = saved_initialized
 
 
 class Client429ResponseMixin:
@@ -253,7 +305,7 @@ class PySQLRetryTestsMixin:
     @patch("databricks.sql.telemetry.telemetry_client.TelemetryClient._send_telemetry")
     def test_oserror_retries(self, mock_send_telemetry, extra_params):
         """If a network error occurs during make_request, the request is retried according to policy"""
-        with patch(
+        with _isolated_from_telemetry(), patch(
             "urllib3.connectionpool.HTTPSConnectionPool._validate_conn",
         ) as mock_validate_conn:
             mock_validate_conn.side_effect = OSError("Some arbitrary network error")
@@ -278,7 +330,9 @@ class PySQLRetryTestsMixin:
         THEN the connector issues six request (original plus five retries)
             before raising an exception
         """
-        with mocked_server_response(status=429, headers={"Retry-After": "0"}) as mock_obj:
+        with _isolated_from_telemetry(), mocked_server_response(
+            status=429, headers={"Retry-After": "0"}
+        ) as mock_obj:
             with pytest.raises(MaxRetryError) as cm:
                 extra_params = {**extra_params, **self._retry_policy}
                 with self.connection(extra_params=extra_params) as conn:
@@ -302,7 +356,7 @@ class PySQLRetryTestsMixin:
         retry_policy["_retry_delay_min"] = 1
 
         time_start = time.time()
-        with mocked_server_response(
+        with _isolated_from_telemetry(), mocked_server_response(
             status=429, headers={"Retry-After": "8"}
         ) as mock_obj:
             with pytest.raises(RequestError) as cm:
