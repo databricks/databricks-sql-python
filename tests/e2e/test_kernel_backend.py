@@ -241,6 +241,34 @@ def test_parameterized_query_with_null(conn):
         assert rows[0][0] is True
 
 
+def test_parameterized_query_named_params(conn):
+    """Named parameter binding via the kernel backend. The
+    connector passes ``parameters={name: value}`` dicts (DB-API
+    style); the kernel forwards them through ``bind_named_param``
+    so the SEA wire payload sets ``StatementParameter.name`` (the
+    spec-required public form per canonical proto).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT :n AS n, :s AS s, :b AS b",
+            {"n": 42, "s": "alice", "b": True},
+        )
+        rows = cur.fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == 42
+        assert rows[0][1] == "alice"
+        assert rows[0][2] is True
+
+
+def test_parameterized_query_named_param_with_null(conn):
+    """``None`` value in a named binding flows through as
+    VoidParameter → kernel ``TypedValue::Null``."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT :x IS NULL AS is_null", {"x": None})
+        rows = cur.fetchall()
+        assert rows[0][0] is True
+
+
 def test_parameterized_query_decimal(conn):
     """DECIMAL parameters carry precision/scale in the SQL type
     string ('DECIMAL(p,s)') — the kernel parser extracts them so

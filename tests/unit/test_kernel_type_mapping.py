@@ -145,6 +145,63 @@ def test_description_recovers_complex_type_name_from_metadata(metadata_value, ex
     assert desc[0][1] == expected
 
 
+@pytest.mark.parametrize(
+    "arrow_type, expected_precision, expected_scale",
+    [
+        (pa.decimal128(10, 2), 10, 2),
+        (pa.decimal128(38, 0), 38, 0),
+        (pa.decimal128(38, 18), 38, 18),
+        # Decimal256 — kernel doesn't emit it today (server uses
+        # `Decimal128` exclusively), but the extraction helper handles
+        # any pyarrow decimal type via `is_decimal`. Locking in the
+        # contract.
+        (pa.decimal256(76, 38), 76, 38),
+    ],
+)
+def test_description_extracts_decimal_precision_scale(
+    arrow_type, expected_precision, expected_scale
+):
+    """PEP 249 description slots 4/5 (precision, scale) must be
+    populated for DECIMAL columns. The Thrift backend reports them;
+    kernel must match. Without extraction, SQLAlchemy / pandas-read-sql
+    can't tell ``DECIMAL(10,2)`` from ``DECIMAL(38,18)``."""
+    schema = pa.schema([("amount", arrow_type)])
+    desc = description_from_arrow_schema(schema)
+    assert len(desc) == 1
+    d = desc[0]
+    assert d[0] == "amount"
+    assert d[1] == "decimal"
+    # Slots 2/3 (display_size, internal_size) stay None; the Thrift
+    # backend doesn't populate them either, and matching is more
+    # valuable than introducing new info.
+    assert d[2] is None
+    assert d[3] is None
+    # Slots 4/5 are the precision/scale this test exists to lock in.
+    assert d[4] == expected_precision
+    assert d[5] == expected_scale
+    # Slot 6 (null_ok) stays None — see the parity rationale in
+    # `test_description_null_ok_always_none_regardless_of_field_nullable`.
+    assert d[6] is None
+
+
+def test_description_non_decimal_columns_have_none_precision_scale():
+    """Companion to the decimal test: non-decimal columns must report
+    ``(None, None)`` in slots 4/5. Catches a regression where the
+    helper accidentally extracts precision from non-decimal Arrow
+    types (e.g. ``Time64`` fractional-second precision)."""
+    schema = pa.schema(
+        [
+            ("i", pa.int64()),
+            ("s", pa.string()),
+            ("ts", pa.timestamp("us")),
+        ]
+    )
+    desc = description_from_arrow_schema(schema)
+    for d in desc:
+        assert d[4] is None, f"precision must be None for {d[1]}, got {d[4]}"
+        assert d[5] is None, f"scale must be None for {d[1]}, got {d[5]}"
+
+
 def test_description_passes_through_unknown_databricks_type_name():
     """Server-reported names other than the handful we explicitly
     recognise (VARIANT / ARRAY / MAP / STRUCT) defer to the Arrow
@@ -182,14 +239,21 @@ def _mk_param(*, type, value, ordinal=True, name=None):
 
 class _RecordingStmt:
     """Stand-in for the kernel `Statement` pyclass — records every
-    `bind_param` call so tests can assert the (ordinal, value, type)
-    triples the mapper forwarded."""
+    `bind_param` / `bind_named_param` call so tests can assert the
+    triples the mapper forwarded.
+
+    Positional calls land in `calls` as `(ordinal, value, type)`;
+    named calls land in `named_calls` as `(name, value, type)`."""
 
     def __init__(self):
         self.calls = []
+        self.named_calls = []
 
     def bind_param(self, ordinal, value_str, sql_type):
         self.calls.append((ordinal, value_str, sql_type))
+
+    def bind_named_param(self, name, value_str, sql_type):
+        self.named_calls.append((name, value_str, sql_type))
 
 
 def test_bind_tspark_params_forwards_each_param_positionally():
@@ -233,19 +297,37 @@ def test_bind_tspark_params_void_passes_through():
     assert stmt.calls == [(1, None, "VOID")]
 
 
-def test_bind_tspark_params_named_param_rejected():
-    """The kernel doesn't accept named bindings on the SEA wire;
-    surface that at the connector layer so the user gets a pointed
-    error instead of a server-side rejection."""
+def test_bind_tspark_params_named_param_forwarded():
+    """Named bindings route through `bind_named_param` so the SEA
+    wire payload sets `StatementParameter.name` (the spec-required
+    public form per canonical proto)."""
     from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
-    from databricks.sql.exc import NotSupportedError
 
     p = _mk_param(type="INT", value="42", ordinal=False, name="my_param")
     stmt = _RecordingStmt()
-    with pytest.raises(NotSupportedError, match="(?i)named"):
-        bind_tspark_params(stmt, [p])
-    # Nothing should have been forwarded before the rejection.
+    bind_tspark_params(stmt, [p])
+    assert stmt.named_calls == [("my_param", "42", "INT")]
+    # Positional path untouched — no ordinal consumed.
     assert stmt.calls == []
+
+
+def test_bind_tspark_params_named_does_not_consume_positional_ordinal():
+    """When the list mixes positional and named params, the positional
+    ordinal counter must skip past named bindings — the named entry
+    doesn't take ordinal slot 2."""
+    from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
+
+    params = [
+        _mk_param(type="INT", value="1", ordinal=True),
+        _mk_param(type="INT", value="2", ordinal=False, name="n"),
+        _mk_param(type="INT", value="3", ordinal=True),
+    ]
+    stmt = _RecordingStmt()
+    bind_tspark_params(stmt, params)
+    # Positional indices are 1 and 2 (not 1 and 3) — named binding
+    # doesn't claim an ordinal slot.
+    assert stmt.calls == [(1, "1", "INT"), (2, "3", "INT")]
+    assert stmt.named_calls == [("n", "2", "INT")]
 
 
 def test_bind_tspark_params_missing_type_defaults_to_string():
@@ -304,17 +386,16 @@ def test_bind_tspark_params_arguments_field_rejected():
     assert stmt.calls == []
 
 
-def test_bind_tspark_params_named_with_ordinal_none_rejected():
+def test_bind_tspark_params_named_with_ordinal_none_routes_named():
     """Defensive: a TSparkParameter with a name and ordinal=None
-    (Thrift default) should also be rejected as a named binding —
-    not silently routed positionally with the name dropped."""
+    (Thrift default) still routes via `bind_named_param` — `ordinal`
+    being `not True` is enough to flag the binding as named."""
     from databricks.sql.backend.kernel.type_mapping import bind_tspark_params
-    from databricks.sql.exc import NotSupportedError
     from databricks.sql.thrift_api.TCLIService import ttypes
 
     p = ttypes.TSparkParameter(ordinal=None, name="my_param", type="INT")
     p.value = ttypes.TSparkParameterValue(stringValue="42")
     stmt = _RecordingStmt()
-    with pytest.raises(NotSupportedError, match="(?i)named"):
-        bind_tspark_params(stmt, [p])
+    bind_tspark_params(stmt, [p])
+    assert stmt.named_calls == [("my_param", "42", "INT")]
     assert stmt.calls == []
