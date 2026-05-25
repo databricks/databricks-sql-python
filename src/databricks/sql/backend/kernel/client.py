@@ -129,6 +129,15 @@ class KernelDatabricksClient(DatabricksClient):
         # Guarded by ``_async_handles_lock`` so concurrent cursors on the
         # same connection don't race on submit / close / close-session.
         self._async_handles: Dict[str, Any] = {}
+        # Parent ``Statement`` objects kept alive alongside async handles.
+        # On the kernel, ``Statement.close()`` flips the validity flag on
+        # the produced executed handle (see kernel
+        # ``statement::mutable::close``), so we cannot close the
+        # Statement immediately after ``submit()`` as we do for sync
+        # ``execute()``. Instead retain it here and close it in
+        # ``close_command`` / ``close_session`` after the async handle
+        # has finished its work.
+        self._async_statements: Dict[str, Any] = {}
         # CommandId.guids of async commands that have already been
         # closed (via ``close_command`` or ``close_session``). Lets
         # ``get_query_state`` report ``CLOSED`` for them rather than
@@ -167,6 +176,16 @@ class KernelDatabricksClient(DatabricksClient):
                 schema=schema or self._schema,
                 session_conf=session_conf,
                 complex_types_as_json=not self._use_arrow_native_complex_types,
+                # Pyarrow's Python bindings cannot decode Arrow's
+                # ``month_interval`` type at all (id 21 — raises
+                # ``KeyError`` from ``.as_py``, ``to_pylist``,
+                # ``cast(string)``, and ``to_pandas``). Ask the kernel
+                # to stringify INTERVAL / DURATION columns server-side
+                # so result sets containing interval columns are
+                # decodable on the Python side. Matches the Thrift
+                # backend's surface (interval columns arrive as
+                # strings).
+                intervals_as_string=True,
                 **auth_kwargs,
             )
         except Exception as exc:
@@ -197,7 +216,9 @@ class KernelDatabricksClient(DatabricksClient):
         # server-side CloseStatement before the session goes away.
         with self._async_handles_lock:
             tracked = list(self._async_handles.items())
+            tracked_stmts = list(self._async_statements.items())
             self._async_handles.clear()
+            self._async_statements.clear()
             for guid, _ in tracked:
                 self._closed_commands.add(guid)
         for _, handle in tracked:
@@ -210,6 +231,16 @@ class KernelDatabricksClient(DatabricksClient):
             except Exception as exc:
                 logger.warning(
                     "Error closing async handle during session close: %s", exc
+                )
+        # Now drop the parent Statements that were keeping those handles
+        # alive. Same non-fatal close semantics — close errors are not
+        # actionable at session-close time.
+        for _, stmt in tracked_stmts:
+            try:
+                stmt.close()
+            except Exception as exc:
+                logger.warning(
+                    "Error closing async statement during session close: %s", exc
                 )
         try:
             self._kernel_session.close()
@@ -249,6 +280,11 @@ class KernelDatabricksClient(DatabricksClient):
             stmt = self._kernel_session.statement()
         except Exception as exc:
             raise _wrap_kernel_exception("execute_command", exc) from exc
+        # ``async_op`` keeps ``stmt`` alive (tracked in
+        # ``_async_statements`` and closed by ``close_command``); the sync
+        # path drops it in finally. ``close_stmt`` is the post-success
+        # decision flag — it stays True on sync, flips to False on async.
+        close_stmt = True
         try:
             try:
                 stmt.set_sql(operation)
@@ -262,21 +298,26 @@ class KernelDatabricksClient(DatabricksClient):
                     cursor.active_command_id = command_id
                     with self._async_handles_lock:
                         self._async_handles[command_id.guid] = async_exec
+                        # Closing the kernel ``Statement`` invalidates the
+                        # async handle (see kernel validity flag). Retain
+                        # the Statement here and close it on
+                        # ``close_command`` / ``close_session``.
+                        self._async_statements[command_id.guid] = stmt
+                    close_stmt = False
                     return None
                 executed = stmt.execute()
             except Exception as exc:
                 raise _wrap_kernel_exception("execute_command", exc) from exc
         finally:
-            # ``Statement`` is a lifecycle owner separate from the
-            # executed handle it produces. Drop it here so the
-            # parent doesn't keep the handle alive longer than the
-            # caller expects. Swallow all close errors (including
-            # PyO3 native exceptions) — a failed stmt.close() is
-            # not actionable for the caller.
-            try:
-                stmt.close()
-            except Exception:
-                pass
+            if close_stmt:
+                # Sync path: ``Statement`` is a lifecycle owner separate
+                # from the executed handle. Drop it here so the parent
+                # doesn't outlive its caller. Swallow close errors —
+                # they're not actionable.
+                try:
+                    stmt.close()
+                except Exception:
+                    pass
 
         command_id = CommandId.from_sea_statement_id(executed.statement_id)
         cursor.active_command_id = command_id
@@ -307,17 +348,34 @@ class KernelDatabricksClient(DatabricksClient):
     def close_command(self, command_id: CommandId) -> None:
         with self._async_handles_lock:
             handle = self._async_handles.pop(command_id.guid, None)
+            stmt = self._async_statements.pop(command_id.guid, None)
             if handle is not None:
                 # Record the close so ``get_query_state`` can report
                 # ``CLOSED`` (not ``SUCCEEDED``) for this command.
                 self._closed_commands.add(command_id.guid)
         if handle is None:
             logger.debug("close_command: no tracked handle for %s", command_id)
+            # Still drop the parent Statement if somehow tracked without
+            # the handle — keeps the invariant clean even on bookkeeping
+            # races.
+            if stmt is not None:
+                try:
+                    stmt.close()
+                except Exception:
+                    pass
             return
         try:
             handle.close()
         except Exception as exc:
             raise _wrap_kernel_exception("close_command", exc) from exc
+        finally:
+            # Now safe to close the parent Statement — the executed
+            # handle has finished its lifecycle.
+            if stmt is not None:
+                try:
+                    stmt.close()
+                except Exception:
+                    pass
 
     def get_query_state(self, command_id: CommandId) -> CommandState:
         with self._async_handles_lock:
@@ -378,6 +436,7 @@ class KernelDatabricksClient(DatabricksClient):
         # it wraps. Drop tracking and fire-and-forget the close.
         with self._async_handles_lock:
             self._async_handles.pop(command_id.guid, None)
+            stmt = self._async_statements.pop(command_id.guid, None)
             self._closed_commands.add(command_id.guid)
         try:
             async_exec.close()
@@ -387,6 +446,18 @@ class KernelDatabricksClient(DatabricksClient):
                 command_id,
                 exc,
             )
+        # The parent Statement is no longer needed once the async handle
+        # has produced its ResultStream. Close to release server-side
+        # tracking; matches the sync path's eager Statement close.
+        if stmt is not None:
+            try:
+                stmt.close()
+            except Exception as exc:
+                logger.warning(
+                    "Error closing async statement after await_result for %s: %s",
+                    command_id,
+                    exc,
+                )
         # ``KernelResultSet.__init__`` calls ``arrow_schema()`` which
         # can raise — map that to PEP 249 too.
         try:

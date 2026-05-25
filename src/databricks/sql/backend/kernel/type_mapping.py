@@ -21,7 +21,7 @@ binding without an intermediate Python-typed round-trip.
 
 from __future__ import annotations
 
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 import pyarrow
 
@@ -102,6 +102,14 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
     backend's behaviour; other precise types (``INTERVAL_*``,
     ``GEOMETRY``, ``GEOGRAPHY``) collapse to their Arrow shape on
     both backends and don't need a remap.
+
+    ``precision`` / ``scale`` are extracted from ``Decimal128Type`` /
+    ``Decimal256Type`` so DECIMAL columns expose the same
+    ``(precision, scale)`` pair the Thrift backend reports. The Arrow
+    schema carries these on the type itself; without this extraction
+    the kernel-backend description would silently drop them, breaking
+    parity for any consumer (SQLAlchemy, pandas-read-sql, etc.) that
+    reads slots 4/5 to know how to display or round decimal values.
     """
     return [
         (
@@ -109,12 +117,30 @@ def description_from_arrow_schema(schema: pyarrow.Schema) -> List[Tuple]:
             _databricks_type_for_field(field),
             None,
             None,
-            None,
-            None,
+            *_precision_scale_for_arrow_type(field.type),
             None,
         )
         for field in schema
     ]
+
+
+def _precision_scale_for_arrow_type(
+    arrow_type: pyarrow.DataType,
+) -> Tuple[Optional[int], Optional[int]]:
+    """Extract PEP 249 ``(precision, scale)`` from an Arrow type.
+
+    Only Arrow's decimal types carry both; every other type collapses
+    to ``(None, None)`` to match the Thrift backend's behaviour. Future
+    extensions (e.g. fractional-second precision from
+    ``Time64Type`` / ``Timestamp``) can land here without touching the
+    description builder above.
+    """
+    if pyarrow.types.is_decimal(arrow_type):
+        # Decimal128Type / Decimal256Type both expose `.precision` and
+        # `.scale`. The cast is for the type checker — pyarrow's
+        # `DataType` base type doesn't declare them.
+        return arrow_type.precision, arrow_type.scale  # type: ignore[attr-defined]
+    return None, None
 
 
 def _databricks_type_for_field(field: pyarrow.Field) -> str:
@@ -173,12 +199,10 @@ def _tspark_param_value_str(param: ttypes.TSparkParameter) -> Any:
 def bind_tspark_params(kernel_stmt, parameters: List[ttypes.TSparkParameter]) -> None:
     """Bind a list of ``TSparkParameter`` onto a kernel ``Statement``.
 
-    The kernel expects positional bindings only (SEA v0 doesn't
-    accept named bindings on the wire). The connector's
+    Both positional and named bindings are supported. The connector's
     ``TSparkParameter`` has an ``ordinal: bool`` flag; ``True`` means
-    "treat as positional in source-list order". Named-binding
-    parameters surface as ``NotSupportedError`` so the user gets a
-    clear message instead of a server-side rejection.
+    "treat as positional in source-list order", otherwise the
+    parameter is bound by name via ``Statement.bind_named_param``.
 
     Compound types (``ARRAY`` / ``MAP`` / ``STRUCT``) build a
     ``TSparkParameter`` with the payload on ``arguments`` and
@@ -186,19 +210,8 @@ def bind_tspark_params(kernel_stmt, parameters: List[ttypes.TSparkParameter]) ->
     NULL. Reject up front with ``NotSupportedError`` so callers get
     a clear message instead of silent data loss.
     """
-    for i, param in enumerate(parameters, start=1):
-        # ``ordinal`` on connector-native params is a bool (True for
-        # positional, False for named). Thrift defaults to ``None``;
-        # treat any non-True value with a name as a named binding so
-        # a future caller that forgets to set ordinal=True still gets
-        # rejected instead of silently dropping the name.
-        name = getattr(param, "name", None)
-        if name and getattr(param, "ordinal", None) is not True:
-            raise NotSupportedError(
-                f"Named parameter binding (got name={name!r}) is not yet "
-                "supported on the kernel backend; pass parameters positionally."
-            )
-
+    positional_index = 0
+    for param in parameters:
         sql_type = param.type or "STRING"
         # Compound types put their payload on ``arguments``, not
         # ``value``. The kernel parser doesn't accept them yet, and
@@ -214,7 +227,12 @@ def bind_tspark_params(kernel_stmt, parameters: List[ttypes.TSparkParameter]) ->
             )
 
         value_str = _tspark_param_value_str(param)
-        # The kernel takes 1-based ordinals; `i` is already that.
-        # Errors from the kernel side (bad literal, unsupported type,
-        # etc.) come up as KernelError and bubble through normally.
-        kernel_stmt.bind_param(i, value_str, sql_type)
+        # ``ordinal`` on connector-native params is a bool. ``True``
+        # → positional (assign the next 1-based ordinal). Anything
+        # else with a name → named binding.
+        name = getattr(param, "name", None)
+        if name and getattr(param, "ordinal", None) is not True:
+            kernel_stmt.bind_named_param(name, value_str, sql_type)
+        else:
+            positional_index += 1
+            kernel_stmt.bind_param(positional_index, value_str, sql_type)
