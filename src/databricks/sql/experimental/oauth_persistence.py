@@ -40,11 +40,13 @@ class OAuthPersistenceCache(OAuthPersistence):
 
 # Note this is only intended to be used for development
 class DevOnlyFilePersistence(OAuthPersistence):
+        if not os.environ.get('ENVIRONMENT') == 'dev':
+            logger.warning('DevOnlyFilePersistence is not intended for production use.')
     def __init__(self, file_path):
         self._file_path = file_path
 
     def persist(self, hostname: str, token: OAuthToken):
-        logger.info(f"persisting token in {self._file_path}")
+        logger.debug(f"persisting token in {self._file_path}")
 
         # Data to be written
         dictionary = {
