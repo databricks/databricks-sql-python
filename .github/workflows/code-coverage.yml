@@ -11,6 +11,19 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Serialise E2E runs per ref so a force-push (or a fast follow-up commit)
+# on a PR cancels the previous run instead of racing it against shared
+# warehouse state (Delta tables, UC Volume files, etc.).
+#
+# Pushes to main are NOT cancelled — each merge commit needs its own clean
+# CI signal so a regression on commit N doesn't get hidden by commit N+1
+# arriving seconds later. (Concurrent main runs can still collide on shared
+# state, but that's the cost of preserving per-commit signal; the
+# uuid-suffix conventions in the e2e tests are what keep them isolated.)
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test-with-coverage:
     runs-on:
