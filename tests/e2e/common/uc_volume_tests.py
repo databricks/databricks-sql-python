@@ -1,5 +1,6 @@
 import os
 import tempfile
+from uuid import uuid4
 
 import pytest
 import databricks.sql as sql
@@ -40,12 +41,16 @@ class PySQLUCVolumeTestSuiteMixin:
         with open(fh, "wb") as fp:
             fp.write(original_text)
 
+        # Unique per-run path so concurrent CI jobs sharing the same volume
+        # don't step on each other's PUT/GET/REMOVE.
+        volume_path = f"/Volumes/{catalog}/{schema}/e2etests/life_cycle_{uuid4().hex[:8]}.csv"
+
         with self.connection(
             extra_params={"staging_allowed_local_path": temp_path}
         ) as conn:
 
             cursor = conn.cursor()
-            query = f"PUT '{temp_path}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv' OVERWRITE"
+            query = f"PUT '{temp_path}' INTO '{volume_path}' OVERWRITE"
             cursor.execute(query)
 
         # GET should succeed
@@ -56,7 +61,7 @@ class PySQLUCVolumeTestSuiteMixin:
             extra_params={"staging_allowed_local_path": new_temp_path}
         ) as conn:
             cursor = conn.cursor()
-            query = f"GET '/Volumes/{catalog}/{schema}/e2etests/file1.csv' TO '{new_temp_path}'"
+            query = f"GET '{volume_path}' TO '{new_temp_path}'"
             cursor.execute(query)
 
         with open(new_fh, "rb") as fp:
@@ -66,7 +71,7 @@ class PySQLUCVolumeTestSuiteMixin:
 
         # REMOVE should succeed
 
-        remove_query = f"REMOVE '/Volumes/{catalog}/{schema}/e2etests/file1.csv'"
+        remove_query = f"REMOVE '{volume_path}'"
 
         # Use minimal retry settings to fail fast
         extra_params = {
@@ -84,7 +89,7 @@ class PySQLUCVolumeTestSuiteMixin:
                 Error, match="Staging operation over HTTP was unsuccessful: 404"
             ):
                 cursor = conn.cursor()
-                query = f"GET '/Volumes/{catalog}/{schema}/e2etests/file1.csv' TO '{new_temp_path}'"
+                query = f"GET '{volume_path}' TO '{new_temp_path}'"
                 cursor.execute(query)
 
         os.remove(temp_path)
@@ -151,19 +156,22 @@ class PySQLUCVolumeTestSuiteMixin:
         with open(fh, "wb") as fp:
             fp.write(original_text)
 
+        # Unique per-run path so a concurrent CI job's REMOVE doesn't delete
+        # our file between the two PUTs and silently turn the expected
+        # FILE_IN_STAGING_PATH_ALREADY_EXISTS into a successful PUT.
+        volume_path = f"/Volumes/{catalog}/{schema}/e2etests/put_conflict_{uuid4().hex[:8]}.csv"
+
         def perform_put():
             with self.connection(
                 extra_params={"staging_allowed_local_path": temp_path}
             ) as conn:
                 cursor = conn.cursor()
-                query = f"PUT '{temp_path}' INTO '/Volumes/{catalog}/{schema}/e2etests/file1.csv'"
+                query = f"PUT '{temp_path}' INTO '{volume_path}'"
                 cursor.execute(query)
 
         def perform_remove():
             try:
-                remove_query = (
-                    f"REMOVE '/Volumes/{catalog}/{schema}/e2etests/file1.csv'"
-                )
+                remove_query = f"REMOVE '{volume_path}'"
 
                 with self.connection(
                     extra_params={"staging_allowed_local_path": "/"}

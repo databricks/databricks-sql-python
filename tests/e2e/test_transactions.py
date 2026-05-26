@@ -35,10 +35,17 @@ logger = logging.getLogger(__name__)
 
 
 def _unique_table_name(request):
-    """Derive a unique Delta table name from the test node id."""
+    """Derive a unique Delta table name from the test node id.
+
+    The uuid suffix keeps tables unique across concurrent CI jobs that
+    share the same warehouse/catalog — without it, two runs racing on
+    the same test name collide on CREATE/DROP.
+    """
     node_id = request.node.name
     sanitized = re.sub(r"[^a-z0-9_]", "_", node_id.lower())
-    return f"mst_pysql_{sanitized}"[:80]
+    suffix = uuid.uuid4().hex[:8]
+    # Reserve room for the 9-char "_{suffix}" tail so total stays <= 80.
+    return f"mst_pysql_{sanitized}"[:71] + f"_{suffix}"
 
 
 def _unique_table_name_raw(suffix):
