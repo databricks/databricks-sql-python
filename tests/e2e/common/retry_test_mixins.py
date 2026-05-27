@@ -17,6 +17,7 @@ from databricks.sql.exc import (
 )
 from databricks.sql.telemetry.telemetry_client import (
     NoopTelemetryClient,
+    TelemetryClient,
     TelemetryClientFactory,
     _TelemetryClientHolder,
 )
@@ -27,8 +28,22 @@ def _isolated_from_telemetry():
     # Tests that mock urllib3 globally (via _get_conn / _validate_conn) also
     # intercept background telemetry pushes from the shared
     # TelemetryClientFactory executor — inflating mock.call_count and breaking
-    # assertions like `call_count == 6`. Drain the factory and force any new
-    # connection to use NoopTelemetryClient for the duration of the test.
+    # assertions like `call_count == 6`. Three layers of defence:
+    #
+    #   1. Drain TelemetryClientFactory and override initialize_telemetry_client
+    #      so new connections install NoopTelemetryClient (which submits nothing).
+    #   2. Patch TelemetryClient._send_telemetry to a no-op as a backstop — covers
+    #      any real TelemetryClient instance that slips in (e.g. a stale module-
+    #      global, a code path that bypasses initialize_telemetry_client, or
+    #      anything created before this context entered).
+    #   3. Patch TelemetryClient._export_event to a no-op so even if a real
+    #      client receives an event, the event never reaches the queue and the
+    #      flush logic never fires.
+    #
+    # Without layer 2/3 we have observed `/telemetry-ext` requests showing up
+    # in merge_group runs (concurrent CI load on the warehouse stresses paths
+    # that single-test runs don't hit), inflating retry-test counts and
+    # producing flaky AssertionErrors.
     with TelemetryClientFactory._lock:
         saved_clients = TelemetryClientFactory._clients
         saved_executor = TelemetryClientFactory._executor
@@ -55,11 +70,21 @@ def _isolated_from_telemetry():
                 NoopTelemetryClient()
             )
 
+    def _noop_send(self, events):
+        return None
+
+    def _noop_export(self, event):
+        return None
+
     try:
         with patch.object(
             TelemetryClientFactory,
             "initialize_telemetry_client",
             staticmethod(_install_noop),
+        ), patch.object(
+            TelemetryClient, "_send_telemetry", _noop_send
+        ), patch.object(
+            TelemetryClient, "_export_event", _noop_export
         ):
             yield
     finally:

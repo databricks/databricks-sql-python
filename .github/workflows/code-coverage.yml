@@ -16,18 +16,23 @@ on:
 # the merge has already happened and the coverage check has no power
 # to block. Hence we deliberately don't subscribe to `push:main`.
 #
-# Serialise E2E runs per ref so a force-push (or a fast follow-up commit)
-# on a PR cancels the previous run instead of racing it against shared
-# warehouse state (Delta tables, UC Volume files, etc.).
-#
-# Merge-queue runs are NOT cancelled — each queue entry needs its own
-# clean CI signal so a regression on entry N doesn't get hidden by
-# entry N+1 arriving seconds later. (Concurrent queue runs can still
-# collide on shared warehouse state, but that's the cost of preserving
-# per-entry signal; the uuid-suffix conventions in the e2e tests are
-# what keep them isolated.)
+# Concurrency groups:
+#   - pull_request: per-ref + cancel-in-progress. A force-push or fast
+#     follow-up commit on a PR cancels the previous run instead of
+#     racing it against shared warehouse state (Delta tables, UC Volume
+#     files, telemetry endpoints, etc.).
+#   - merge_group: serialised globally with a fixed group name. The
+#     warehouse can't tolerate two parallel queue entries hammering
+#     telemetry / retry paths simultaneously — we have observed flaky
+#     retry-test failures (extra `/telemetry-ext` retries inflating
+#     mock.call_count) under that load. Running queue entries one at a
+#     time costs queue throughput (one entry at a time, ~17 min each)
+#     but keeps signal trustworthy. cancel-in-progress is off so each
+#     entry gets a complete run.
+#   - workflow_dispatch: shares the merge_group group; manual triggers
+#     are rare enough that serialising them with the queue is fine.
 concurrency:
-  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.event_name == 'pull_request' && format('e2e-pr-{0}', github.ref) || 'e2e-mq-serial' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
