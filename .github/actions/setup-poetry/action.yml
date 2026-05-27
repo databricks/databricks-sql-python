@@ -17,12 +17,21 @@ inputs:
     description: Extra suffix for the cache key to avoid collisions across job variants
     required: false
     default: ""
+  configure-cargo:
+    description: |
+      Forwarded to setup-jfrog. Set to "true" for jobs that also need
+      Cargo configured against the JFrog crates proxy (e.g. anything
+      that builds a Rust extension via maturin).
+    required: false
+    default: "false"
 
 runs:
   using: composite
   steps:
     - name: Setup JFrog
       uses: ./.github/actions/setup-jfrog
+      with:
+        configure-cargo: ${{ inputs.configure-cargo }}
 
     - name: Set up python ${{ inputs.python-version }}
       id: setup-python

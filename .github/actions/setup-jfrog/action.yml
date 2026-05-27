@@ -1,5 +1,15 @@
 name: Setup JFrog OIDC
-description: Obtain a JFrog access token via GitHub OIDC and configure pip to use JFrog PyPI proxy
+description: Obtain a JFrog access token via GitHub OIDC and configure pip / cargo to use JFrog package proxies
+
+inputs:
+  configure-cargo:
+    description: |
+      Write ~/.cargo/config.toml + credentials.toml pointing at the
+      Databricks JFrog Cargo proxy. Required for any job that runs
+      `cargo` on `databricks-protected-runner-group`, where direct
+      access to index.crates.io is blocked. Off by default because
+      most jobs in this repo are Python-only.
+    default: "false"
 
 runs:
   using: composite
@@ -30,3 +40,34 @@ runs:
         set -euo pipefail
         echo "PIP_INDEX_URL=https://gha-service-account:${JFROG_ACCESS_TOKEN}@databricks.jfrog.io/artifactory/api/pypi/db-pypi/simple" >> "$GITHUB_ENV"
         echo "pip configured to use JFrog registry"
+
+    - name: Configure Cargo
+      if: inputs.configure-cargo == 'true'
+      shell: bash
+      # databricks-protected-runner-group blocks direct egress to
+      # index.crates.io, so cargo must route through JFrog's
+      # db-cargo-remote proxy. Mirrors the recipe used in
+      # databricks-odbc's setup-jfrog action.
+      #
+      # Note: JFrog's Cargo proxy quarantines crates released within
+      # the last 7 days. If a fresh dependency version isn't yet
+      # mirrored, the build will fail until JFrog ingests it — bump
+      # Cargo.lock to an older version or wait it out.
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.cargo
+        cat > ~/.cargo/config.toml << 'EOF'
+        [source.crates-io]
+        replace-with = "jfrog"
+        [source.jfrog]
+        registry = "sparse+https://databricks.jfrog.io/artifactory/api/cargo/db-cargo-remote/index/"
+        [registries.jfrog]
+        index = "sparse+https://databricks.jfrog.io/artifactory/api/cargo/db-cargo-remote/index/"
+        credential-provider = ["cargo:token"]
+        EOF
+        cat > ~/.cargo/credentials.toml << EOF
+        [registries.jfrog]
+        token = "Bearer ${JFROG_ACCESS_TOKEN}"
+        EOF
+        echo "CARGO_REGISTRIES_JFROG_TOKEN=Bearer ${JFROG_ACCESS_TOKEN}" >> "$GITHUB_ENV"
+        echo "Cargo configured to use JFrog registry"
