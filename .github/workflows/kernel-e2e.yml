@@ -20,18 +20,17 @@ name: Kernel E2E Tests
 #   - merge_group fires the real gate — dispatches when kernel-relevant
 #     files changed, auto-passes otherwise.
 #
-# Required external setup:
-#   1. `kernel-e2e` label exists in this repo.
-#   2. `INTEGRATION_TEST_APP_ID` / `INTEGRATION_TEST_PRIVATE_KEY`
-#      secrets exist (already installed for the proxy-tests workflow).
-#      The GitHub App's repo allowlist must include
-#      `databricks/databricks-sql-kernel` — extend the existing App
-#      config; do not create a new App.
-#   3. `KERNEL_REV` file at the repo root containing a 40-char kernel
-#      commit SHA.
-#   4. `azure-prod` environment exposes DATABRICKS_HOST /
-#      TEST_PECO_WAREHOUSE_HTTP_PATH / DATABRICKS_TOKEN
-#      (already configured for code-coverage.yml).
+# External setup that this workflow depends on (already in place,
+# documented here for future debugging):
+#   - `kernel-e2e` label exists in this repo.
+#   - `INTEGRATION_TEST_APP_ID` / `INTEGRATION_TEST_PRIVATE_KEY`
+#     secrets are installed and the App's repo allowlist includes
+#     `databricks/databricks-sql-kernel`.
+#   - `KERNEL_REV` file at the repo root pins the kernel commit SHA.
+#   - `azure-prod` environment exposes DATABRICKS_HOST /
+#     TEST_PECO_WAREHOUSE_HTTP_PATH / DATABRICKS_TOKEN.
+#   - `Kernel E2E` is listed as a required status check on the
+#     `main` ruleset, so merge queue waits for it.
 
 on:
   pull_request:
