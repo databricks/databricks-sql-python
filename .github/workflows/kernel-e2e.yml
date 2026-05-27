@@ -1,0 +1,354 @@
+name: Kernel E2E Tests
+
+# Runs tests/e2e/test_kernel_backend.py against a real Databricks
+# warehouse with a freshly-built databricks-sql-kernel wheel.
+#
+# The kernel is a private repo with no published artifact. We pin a
+# kernel SHA in the `KERNEL_REV` file at the repo root, check the
+# kernel out via a GitHub App token, and run `maturin develop` to
+# install the wheel into the same venv as the connector. Bumping
+# `KERNEL_REV` is the only way to pick up a new kernel version —
+# this keeps the connector ↔ kernel pair bisectable.
+#
+# Gate semantics mirror trigger-integration-tests.yml:
+#   - Plain PR events post a synthetic-success check so the required
+#     "Kernel E2E" check doesn't block PRs that don't touch the kernel
+#     path. Real tests run in the merge queue.
+#   - `kernel-e2e` label triggers a preview run on the PR. The label
+#     is auto-removed on `synchronize` for the same security reason
+#     trigger-integration-tests.yml does it.
+#   - merge_group fires the real gate — dispatches when kernel-relevant
+#     files changed, auto-passes otherwise.
+#
+# Required external setup:
+#   1. `kernel-e2e` label exists in this repo.
+#   2. `INTEGRATION_TEST_APP_ID` / `INTEGRATION_TEST_PRIVATE_KEY`
+#      secrets exist (already installed for the proxy-tests workflow).
+#      The GitHub App's repo allowlist must include
+#      `databricks/databricks-sql-kernel` — extend the existing App
+#      config; do not create a new App.
+#   3. `KERNEL_REV` file at the repo root containing a 40-char kernel
+#      commit SHA.
+#   4. `azure-prod` environment exposes DATABRICKS_HOST /
+#      TEST_PECO_WAREHOUSE_HTTP_PATH / DATABRICKS_TOKEN
+#      (already configured for code-coverage.yml).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  merge_group:
+
+permissions:
+  contents: read
+
+# Cancel in-flight kernel-e2e runs on PR pushes — the warehouse state
+# is shared with code-coverage.yml so we already pay this cost there.
+# Don't cancel on main / merge_group; each commit needs its own signal.
+concurrency:
+  group: kernel-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ───────────────────────────────────────────────────────────────
+  # Security: auto-remove `kernel-e2e` label on new commits, same as
+  # trigger-integration-tests.yml.
+  # ───────────────────────────────────────────────────────────────
+  remove-label-on-new-commit:
+    if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Remove kernel-e2e label
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            if (!labels.includes('kernel-e2e')) {
+              console.log('Label not present, nothing to remove.');
+              return;
+            }
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'kernel-e2e'
+              });
+              console.log('Removed kernel-e2e label.');
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+  # ───────────────────────────────────────────────────────────────
+  # Synthetic success on every non-label PR event so the required
+  # "Kernel E2E" check doesn't permablock PRs that don't touch kernel
+  # code. Real run happens in the merge queue (or via explicit label).
+  # ───────────────────────────────────────────────────────────────
+  skip-kernel-e2e-pr:
+    if: github.event_name == 'pull_request' && github.event.action != 'labeled'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Post synthetic-success check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Kernel E2E',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Skipped on PR — runs in merge queue',
+                summary: 'Kernel E2E is skipped on PRs and runs as a required gate in the merge queue. Add the `kernel-e2e` label to preview on this PR.'
+              }
+            });
+
+  # ───────────────────────────────────────────────────────────────
+  # Detect whether kernel-relevant files changed. Used by both the
+  # labelled PR path and the merge-queue path to decide between
+  # "really run the suite" and "auto-pass the check".
+  # ───────────────────────────────────────────────────────────────
+  detect-changes:
+    if: |
+      github.event_name == 'merge_group' ||
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'labeled' &&
+       contains(github.event.pull_request.labels.*.name, 'kernel-e2e'))
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    outputs:
+      run_tests: ${{ steps.changed.outputs.run_tests }}
+      head_sha: ${{ steps.refs.outputs.head_sha }}
+      pr_number: ${{ steps.refs.outputs.pr_number }}
+    steps:
+      - name: Resolve head SHA + PR number
+        id: refs
+        env:
+          MERGE_QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            if (context.eventName === 'pull_request') {
+              core.setOutput('head_sha', context.payload.pull_request.head.sha);
+              core.setOutput('pr_number', String(context.payload.pull_request.number));
+              return;
+            }
+            // merge_group — extract PR # from gh-readonly-queue/<base>/pr-<N>-<sha>
+            const ref = process.env.MERGE_QUEUE_REF || '';
+            const m = ref.match(/pr-(\d+)/);
+            if (!m) core.setFailed(`could not extract pr number from ${ref}`);
+            core.setOutput('head_sha', context.payload.merge_group.head_sha);
+            core.setOutput('pr_number', m ? m[1] : '');
+
+      - name: Check out repo at head SHA
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ steps.refs.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Detect kernel-relevant changes
+        id: changed
+        env:
+          HEAD_SHA: ${{ steps.refs.outputs.head_sha }}
+          BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+        run: |
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$CHANGED"
+          # Run when the connector kernel backend, kernel e2e tests,
+          # this workflow, the kernel revision pin, or core deps move.
+          if echo "$CHANGED" | grep -qE "^(src/databricks/sql/backend/kernel/|tests/e2e/test_kernel_backend\.py|tests/unit/test_kernel_|\.github/workflows/kernel-e2e\.yml|KERNEL_REV|pyproject\.toml|poetry\.lock)"; then
+            echo "run_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ───────────────────────────────────────────────────────────────
+  # Real test job. Builds the kernel wheel from the pinned SHA and
+  # runs the connector's kernel e2e suite against the dogfood
+  # warehouse.
+  # ───────────────────────────────────────────────────────────────
+  run-kernel-e2e:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run_tests == 'true'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    # azure-prod holds the warehouse secrets. Fork PRs are paused at
+    # "approval required" — same model as code-coverage.yml.
+    environment: azure-prod
+    permissions:
+      contents: read
+      checks: write
+    env:
+      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - name: Check out connector
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.detect-changes.outputs.head_sha }}
+
+      - name: Read pinned kernel SHA
+        id: kernel-rev
+        run: |
+          if [[ ! -f KERNEL_REV ]]; then
+            echo "::error::KERNEL_REV file missing"
+            exit 1
+          fi
+          REV=$(tr -d '[:space:]' < KERNEL_REV)
+          if [[ ! "$REV" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::KERNEL_REV must be a 40-char commit SHA, got: $REV"
+            exit 1
+          fi
+          echo "rev=$REV" >> "$GITHUB_OUTPUT"
+          echo "Pinned kernel SHA: $REV"
+
+      - name: Generate GitHub App token (kernel repo read access)
+        id: app-token
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        with:
+          app-id: ${{ secrets.INTEGRATION_TEST_APP_ID }}
+          private-key: ${{ secrets.INTEGRATION_TEST_PRIVATE_KEY }}
+          owner: databricks
+          repositories: databricks-sql-kernel
+
+      - name: Check out kernel at pinned SHA
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: databricks/databricks-sql-kernel
+          ref: ${{ steps.kernel-rev.outputs.rev }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: databricks-sql-kernel
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.10"
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+
+      - name: Cache cargo build artifacts (keyed on kernel SHA)
+        uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+        with:
+          workspaces: databricks-sql-kernel
+          # Keying on the kernel SHA means each pinned version gets a
+          # warm cache; bumping KERNEL_REV invalidates and rewarms.
+          key: kernel-${{ steps.kernel-rev.outputs.rev }}
+
+      - name: Install Kerberos system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libkrb5-dev
+
+      - name: Setup Poetry + connector deps
+        uses: ./.github/actions/setup-poetry
+        with:
+          python-version: "3.10"
+          install-args: "--all-extras"
+          cache-suffix: "kernel-e2e-"
+
+      - name: Install maturin into the poetry venv
+        run: poetry run pip install 'maturin>=1.5,<2.0'
+
+      - name: Build + install kernel wheel into poetry venv
+        working-directory: databricks-sql-kernel/pyo3
+        # `maturin develop` builds the extension and installs it into
+        # whichever Python is on PATH. `poetry run` resolves to the
+        # connector's .venv, so the wheel lands where pytest will
+        # import it.
+        run: poetry run maturin develop --release
+
+      - name: Smoke-check kernel import
+        run: |
+          poetry run python -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel module has no __file__ — wheel install failed'; print('kernel ok:', k.__file__)"
+
+      - name: Run kernel e2e tests
+        run: poetry run pytest tests/e2e/test_kernel_backend.py -v
+
+      - name: Post Kernel E2E check (success)
+        if: success() && github.event_name == 'merge_group'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Kernel E2E',
+              head_sha: '${{ needs.detect-changes.outputs.head_sha }}',
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Kernel E2E passed',
+                summary: 'tests/e2e/test_kernel_backend.py ran green against the pinned kernel SHA.'
+              }
+            });
+
+      - name: Post Kernel E2E check (failure)
+        if: failure() && github.event_name == 'merge_group'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Kernel E2E',
+              head_sha: '${{ needs.detect-changes.outputs.head_sha }}',
+              status: 'completed',
+              conclusion: 'failure',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Kernel E2E failed',
+                summary: 'See workflow logs for details.'
+              }
+            });
+
+  # ───────────────────────────────────────────────────────────────
+  # Auto-pass the Kernel E2E check in the merge queue when no kernel-
+  # relevant files changed.
+  # ───────────────────────────────────────────────────────────────
+  auto-pass-merge-queue:
+    needs: detect-changes
+    if: github.event_name == 'merge_group' && needs.detect-changes.outputs.run_tests != 'true'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    permissions:
+      checks: write
+    steps:
+      - name: Auto-pass
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Kernel E2E',
+              head_sha: '${{ github.event.merge_group.head_sha }}',
+              status: 'completed',
+              conclusion: 'success',
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Skipped — no kernel-relevant changes',
+                summary: 'No files under src/databricks/sql/backend/kernel/, tests/e2e/test_kernel_backend.py, KERNEL_REV, pyproject.toml, or poetry.lock changed.'
+              }
+            });
