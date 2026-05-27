@@ -5,21 +5,27 @@ permissions:
   id-token: write
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  merge_group:
   workflow_dispatch:
 
+# `pull_request` gives the PR author fast feedback as they iterate.
+# `merge_group` runs the same suite against the queue's transient
+# branch (current main + the queued PR diff, freshly merged) and is
+# the run that actually protects main — by the time `push:main` fires,
+# the merge has already happened and the coverage check has no power
+# to block. Hence we deliberately don't subscribe to `push:main`.
+#
 # Serialise E2E runs per ref so a force-push (or a fast follow-up commit)
 # on a PR cancels the previous run instead of racing it against shared
 # warehouse state (Delta tables, UC Volume files, etc.).
 #
-# Pushes to main are NOT cancelled — each merge commit needs its own clean
-# CI signal so a regression on commit N doesn't get hidden by commit N+1
-# arriving seconds later. (Concurrent main runs can still collide on shared
-# state, but that's the cost of preserving per-commit signal; the
-# uuid-suffix conventions in the e2e tests are what keep them isolated.)
+# Merge-queue runs are NOT cancelled — each queue entry needs its own
+# clean CI signal so a regression on entry N doesn't get hidden by
+# entry N+1 arriving seconds later. (Concurrent queue runs can still
+# collide on shared warehouse state, but that's the cost of preserving
+# per-entry signal; the uuid-suffix conventions in the e2e tests are
+# what keep them isolated.)
 concurrency:
   group: e2e-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -63,6 +69,11 @@ jobs:
       - name: Check for coverage override
         id: override
         env:
+          # PR_BODY is empty on `merge_group` (no pull_request payload).
+          # That's intentional — coverage overrides are an author-time
+          # escape hatch, not a queue-time bypass, so the queue run
+          # always enforces the threshold regardless of the PR's
+          # SKIP_COVERAGE_CHECK marker.
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           OVERRIDE_COMMENT=$(echo "$PR_BODY" | grep -E "SKIP_COVERAGE_CHECK\s*=" || echo "")
