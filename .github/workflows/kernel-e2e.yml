@@ -40,6 +40,12 @@ on:
 
 permissions:
   contents: read
+  # id-token: write is needed by .github/actions/setup-jfrog (OIDC
+  # exchange with JFrog for the connector's PyPI mirror). Declared
+  # workflow-wide so the labelled-PR / merge-queue jobs that invoke
+  # setup-poetry inherit it. Individual jobs still scope down to the
+  # minimum they actually use (checks: write etc.).
+  id-token: write
 
 # Cancel in-flight kernel-e2e runs on PR pushes — the warehouse state
 # is shared with code-coverage.yml so we already pay this cost there.
@@ -193,6 +199,10 @@ jobs:
     permissions:
       contents: read
       checks: write
+      # OIDC token exchange with JFrog inside setup-poetry. A job-level
+      # permissions block fully overrides workflow-level, so this must
+      # be redeclared here even though the workflow declares it too.
+      id-token: write
     env:
       DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_HTTP_PATH: ${{ secrets.TEST_PECO_WAREHOUSE_HTTP_PATH }}
