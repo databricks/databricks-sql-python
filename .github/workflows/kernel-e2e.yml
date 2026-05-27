@@ -163,6 +163,9 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ steps.refs.outputs.head_sha }}
+          # Full history so `git diff BASE_SHA HEAD_SHA` resolves both
+          # commits regardless of how far base has diverged. The repo
+          # is small enough that depth 0 costs only a few seconds.
           fetch-depth: 0
 
       - name: Detect kernel-relevant changes
@@ -245,11 +248,10 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           path: databricks-sql-kernel
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.10"
-
+      # `setup-poetry` below runs `actions/setup-python` internally
+      # with the matching version, so we don't repeat it here. We do
+      # set up the Rust toolchain + cargo cache before maturin so they
+      # are on PATH when the kernel build step runs.
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
 
@@ -266,12 +268,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libkrb5-dev
 
-      - name: Setup Poetry + connector deps
+      - name: Setup Poetry + connector deps (and Cargo via JFrog)
         uses: ./.github/actions/setup-poetry
         with:
           python-version: "3.10"
           install-args: "--all-extras"
           cache-suffix: "kernel-e2e-"
+          # databricks-protected-runner-group blocks index.crates.io;
+          # route cargo through the JFrog db-cargo-remote proxy so
+          # maturin's cargo invocation below can resolve deps.
+          configure-cargo: "true"
 
       - name: Install maturin into the connector venv
         # The connector's poetry venv is in-project (.venv at repo
@@ -298,14 +304,23 @@ jobs:
         run: $CONNECTOR_VENV_PY -m maturin develop --release
 
       - name: Smoke-check kernel import
+        # Use the same interpreter we built the wheel with, so a wheel
+        # accidentally installed into the wrong venv would be visible
+        # here rather than masked by `poetry run python` re-resolving.
         run: |
-          poetry run python -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel module has no __file__ — wheel install failed'; print('kernel ok:', k.__file__)"
+          $CONNECTOR_VENV_PY -c "import databricks_sql_kernel as k; assert k.__file__, 'kernel module has no __file__ — wheel install failed'; print('kernel ok:', k.__file__)"
 
       - name: Run kernel e2e tests
         run: poetry run pytest tests/e2e/test_kernel_backend.py -v
 
+      # Post a Kernel E2E check on both the labeled-PR and merge-queue
+      # paths so the named check on the PR reflects the latest real
+      # run (overwriting the synthetic-success check that
+      # skip-kernel-e2e-pr posted on the initial open). Without this
+      # the PR would still show synthetic-success even after a real
+      # labeled run failed.
       - name: Post Kernel E2E check (success)
-        if: success() && github.event_name == 'merge_group'
+        if: success()
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           github-token: ${{ github.token }}
@@ -325,7 +340,7 @@ jobs:
             });
 
       - name: Post Kernel E2E check (failure)
-        if: failure() && github.event_name == 'merge_group'
+        if: failure()
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           github-token: ${{ github.token }}
