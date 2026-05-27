@@ -1324,9 +1324,23 @@ class ResultSet:
         """
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+
+        # Hold 0-row chunks aside instead of concatenating them with real chunks.
+        # CloudFetchQueue may emit a placeholder empty table whose schema does
+        # not match the real downloaded chunks; pyarrow.concat_tables with
+        # promote_options="default" would silently merge it in as phantom
+        # columns.
+        partial_result_chunks: List["pyarrow.Table"] = []
+        zero_row_table: Optional["pyarrow.Table"] = None
+        n_remaining_rows = size
+
         results = self.results.next_n_rows(size)
-        n_remaining_rows = size - results.num_rows
-        self._next_row_index += results.num_rows
+        if results.num_rows == 0:
+            zero_row_table = results
+        else:
+            partial_result_chunks.append(results)
+            n_remaining_rows -= results.num_rows
+            self._next_row_index += results.num_rows
 
         while (
             n_remaining_rows > 0
@@ -1335,13 +1349,17 @@ class ResultSet:
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
-            results = pyarrow.concat_tables(
-                [results, partial_results], promote_options="default"
-            )
+            if partial_results.num_rows == 0:
+                continue
+            partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
-        return results
+        if not partial_result_chunks:
+            return zero_row_table
+        return pyarrow.concat_tables(
+            partial_result_chunks, promote_options="default"
+        )
 
     def merge_columnar(self, result1, result2):
         """
@@ -1387,18 +1405,31 @@ class ResultSet:
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
+        # See ``fetchmany_arrow`` for why 0-row chunks are held aside rather than
+        # concatenated with the real chunks.
+        partial_result_chunks: List["pyarrow.Table"] = []
+        zero_row_table: Optional["pyarrow.Table"] = None
+
         results = self.results.remaining_rows()
-        self._next_row_index += results.num_rows
+        if results.num_rows == 0:
+            zero_row_table = results
+        else:
+            partial_result_chunks.append(results)
+            self._next_row_index += results.num_rows
 
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
-            results = pyarrow.concat_tables(
-                [results, partial_results], promote_options="default"
-            )
+            if partial_results.num_rows == 0:
+                continue
+            partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
 
-        return results
+        if not partial_result_chunks:
+            return zero_row_table
+        return pyarrow.concat_tables(
+            partial_result_chunks, promote_options="default"
+        )
 
     def fetchall_columnar(self):
         """Fetch all (remaining) rows of a query result, returning them as a Columnar table."""
