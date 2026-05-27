@@ -6,8 +6,8 @@ name: Trigger Integration Tests
 # Mirrors the canonical pattern in adbc-drivers/databricks. The model:
 #
 #   - On a normal PR event (open / push / reopen / non-IT label) we
-#     post a `success` Python Proxy Tests check immediately so the
-#     required check doesn't block the PR. The real tests are gated
+#     post `success` Python Proxy Tests checks immediately so the
+#     required checks don't block the PR. The real tests are gated
 #     in the merge queue.
 #   - When a maintainer adds the `integration-test` label we dispatch
 #     the suite as a preview — useful for catching regressions before
@@ -18,6 +18,15 @@ name: Trigger Integration Tests
 #     gate. Only PRs whose tests dispatch (or auto-pass when no driver
 #     files changed) can proceed to `main`.
 #
+# Check-run names: databricks-driver-test's python-proxy-tests.yml is
+# a `mode: [thrift, kernel]` matrix that posts two named checks per
+# run — `Python Proxy Tests / thrift` and `Python Proxy Tests / kernel`.
+# Every synthetic-success / auto-pass / dispatch-failure step below
+# posts both names so the matrix legs always have a matching baseline
+# check on the PR. The list of modes lives in the `MODES` constant
+# at the top of each script block; keep it in sync with the matrix
+# axis in databricks-driver-test/.github/workflows/python-proxy-tests.yml.
+#
 # Required external setup (outside this workflow):
 #
 #   1. `integration-test` label exists in this repo (one-off; created
@@ -25,10 +34,13 @@ name: Trigger Integration Tests
 #   2. `INTEGRATION_TEST_APP_ID` / `INTEGRATION_TEST_PRIVATE_KEY` repo
 #      secrets installed for the dispatcher GitHub App (write access
 #      to databricks/databricks-driver-test).
-#   3. Merge queue enabled on `main` branch protection AND
-#      `Python Proxy Tests` listed as a required status check. Without
-#      this the merge-queue job is dead code and ITs run only on
-#      explicit label.
+#   3. Merge queue enabled on `main` branch protection AND BOTH
+#      `Python Proxy Tests / thrift` and `Python Proxy Tests / kernel`
+#      listed as required status checks. Without this the merge-queue
+#      job is dead code and ITs run only on explicit label. The legacy
+#      `Python Proxy Tests` (no mode suffix) check is no longer posted
+#      by any workflow and must be removed from the required-checks
+#      list when this change lands.
 
 on:
   pull_request:
@@ -106,10 +118,11 @@ jobs:
             });
 
   # =============================================================================
-  # For PRs: Always pass the Python Proxy Tests check on non-label events.
-  # The real run happens in the merge queue (or via explicit label preview).
-  # Without this, a required `Python Proxy Tests` check would block every
-  # PR that doesn't bother labelling.
+  # For PRs: Always pass the per-mode Python Proxy Tests checks on
+  # non-label events. The real run happens in the merge queue (or via
+  # explicit label preview). Without this, the required
+  # `Python Proxy Tests / thrift` and `Python Proxy Tests / kernel`
+  # checks would block every PR that doesn't bother labelling.
   # =============================================================================
   skip-integration-tests-pr:
     if: github.event_name == 'pull_request' && github.event.action != 'labeled'
@@ -124,19 +137,22 @@ jobs:
         with:
           github-token: ${{ github.token }}
           script: |
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Python Proxy Tests',
-              head_sha: context.payload.pull_request.head.sha,
-              status: 'completed',
-              conclusion: 'success',
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'Skipped on PR — runs in merge queue',
-                summary: 'Python Proxy Tests are skipped on PRs and run as a required gate in the merge queue. Add the `integration-test` label to preview them on this PR.'
-              }
-            });
+            const MODES = ['thrift', 'kernel'];
+            for (const mode of MODES) {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: `Python Proxy Tests / ${mode}`,
+                head_sha: context.payload.pull_request.head.sha,
+                status: 'completed',
+                conclusion: 'success',
+                completed_at: new Date().toISOString(),
+                output: {
+                  title: 'Skipped on PR — runs in merge queue',
+                  summary: `Python Proxy Tests (${mode}) are skipped on PRs and run as a required gate in the merge queue. Add the \`integration-test\` label to preview them on this PR.`
+                }
+              });
+            }
 
   # =============================================================================
   # For PRs: Dispatch real tests when integration-test label is added.
@@ -232,19 +248,22 @@ jobs:
           # no-op runs.
           github-token: ${{ github.token }}
           script: |
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Python Proxy Tests',
-              head_sha: context.payload.pull_request.head.sha,
-              status: 'completed',
-              conclusion: 'success',
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'Skipped — no driver changes',
-                summary: 'No Python driver source files changed; skipping integration tests.'
-              }
-            });
+            const MODES = ['thrift', 'kernel'];
+            for (const mode of MODES) {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: `Python Proxy Tests / ${mode}`,
+                head_sha: context.payload.pull_request.head.sha,
+                status: 'completed',
+                conclusion: 'success',
+                completed_at: new Date().toISOString(),
+                output: {
+                  title: 'Skipped — no driver changes',
+                  summary: `No Python driver source files changed; skipping ${mode} integration tests.`
+                }
+              });
+            }
 
       - name: Fail check on dispatch error
         if: failure() && steps.changed.outputs.python == 'true'
@@ -260,19 +279,22 @@ jobs:
           # which is all we need.
           github-token: ${{ github.token }}
           script: |
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Python Proxy Tests',
-              head_sha: context.payload.pull_request.head.sha,
-              status: 'completed',
-              conclusion: 'failure',
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'Failed — error dispatching tests',
-                summary: 'An error occurred while dispatching Python integration tests. Check the workflow run logs.'
-              }
-            });
+            const MODES = ['thrift', 'kernel'];
+            for (const mode of MODES) {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: `Python Proxy Tests / ${mode}`,
+                head_sha: context.payload.pull_request.head.sha,
+                status: 'completed',
+                conclusion: 'failure',
+                completed_at: new Date().toISOString(),
+                output: {
+                  title: 'Failed — error dispatching tests',
+                  summary: `An error occurred while dispatching Python integration tests (${mode}). Check the workflow run logs.`
+                }
+              });
+            }
 
       - name: Comment on PR
         if: steps.changed.outputs.python == 'true'
@@ -327,19 +349,22 @@ jobs:
           # equivalent step above for the rationale.
           github-token: ${{ github.token }}
           script: |
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Python Proxy Tests',
-              head_sha: '${{ github.event.merge_group.head_sha }}',
-              status: 'completed',
-              conclusion: 'success',
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'Skipped — no driver changes',
-                summary: 'No Python driver source files changed.'
-              }
-            });
+            const MODES = ['thrift', 'kernel'];
+            for (const mode of MODES) {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: `Python Proxy Tests / ${mode}`,
+                head_sha: '${{ github.event.merge_group.head_sha }}',
+                status: 'completed',
+                conclusion: 'success',
+                completed_at: new Date().toISOString(),
+                output: {
+                  title: 'Skipped — no driver changes',
+                  summary: `No Python driver source files changed (${mode}).`
+                }
+              });
+            }
 
       - name: Extract PR number from merge queue ref
         if: steps.changed.outputs.changed == 'true'
@@ -392,16 +417,19 @@ jobs:
           # the rationale in the trigger-tests-pr job above.
           github-token: ${{ github.token }}
           script: |
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Python Proxy Tests',
-              head_sha: '${{ github.event.merge_group.head_sha }}',
-              status: 'completed',
-              conclusion: 'failure',
-              completed_at: new Date().toISOString(),
-              output: {
-                title: 'Failed — error dispatching tests',
-                summary: 'An error occurred while dispatching Python integration tests. Check the workflow run logs.'
-              }
-            });
+            const MODES = ['thrift', 'kernel'];
+            for (const mode of MODES) {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: `Python Proxy Tests / ${mode}`,
+                head_sha: '${{ github.event.merge_group.head_sha }}',
+                status: 'completed',
+                conclusion: 'failure',
+                completed_at: new Date().toISOString(),
+                output: {
+                  title: 'Failed — error dispatching tests',
+                  summary: `An error occurred while dispatching Python integration tests (${mode}). Check the workflow run logs.`
+                }
+              });
+            }
