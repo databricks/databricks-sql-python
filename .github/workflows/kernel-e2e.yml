@@ -254,6 +254,13 @@ jobs:
       # are on PATH when the kernel build step runs.
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+        with:
+          # Disable the bundled Swatinem/rust-cache invocation; it tries
+          # `cargo metadata` from the connector repo root (no Cargo.toml)
+          # and dumps a scary-looking exit-101 stack into the log even
+          # though the action ignores it. We run our own rust-cache step
+          # below with the correct workspaces path.
+          cache: false
 
       - name: Cache cargo build artifacts (keyed on kernel SHA)
         uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
