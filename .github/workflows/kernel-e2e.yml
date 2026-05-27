@@ -290,12 +290,12 @@ jobs:
 
       - name: Build + install kernel wheel into connector venv
         working-directory: databricks-sql-kernel/pyo3
-        # `--interpreter $CONNECTOR_VENV_PY` pins maturin to the
-        # connector venv even though we're cwd'd inside the kernel's
-        # own pyproject tree. `python -m maturin` invokes the
-        # maturin we just installed into that same venv, sidestepping
-        # the nested-poetry-project detection entirely.
-        run: $CONNECTOR_VENV_PY -m maturin develop --release --interpreter $CONNECTOR_VENV_PY
+        # `maturin develop` builds the extension against — and installs
+        # it into — whichever python invoked it. Calling it via
+        # `$CONNECTOR_VENV_PY -m maturin` from inside the kernel's
+        # pyo3/ tree is what targets the connector venv without
+        # tripping poetry's nested-project detection.
+        run: $CONNECTOR_VENV_PY -m maturin develop --release
 
       - name: Smoke-check kernel import
         run: |
