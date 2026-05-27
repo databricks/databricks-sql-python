@@ -273,16 +273,29 @@ jobs:
           install-args: "--all-extras"
           cache-suffix: "kernel-e2e-"
 
-      - name: Install maturin into the poetry venv
-        run: poetry run pip install 'maturin>=1.5,<2.0'
+      - name: Install maturin into the connector venv
+        # The connector's poetry venv is in-project (.venv at repo
+        # root). The kernel's pyo3/ subtree carries its own
+        # pyproject.toml — running `poetry run …` from inside it
+        # makes poetry create a *second* venv next to the kernel
+        # source, which won't have maturin or the connector
+        # installed. We side-step that by resolving the connector
+        # venv's python here and calling maturin via its absolute
+        # path for the build step.
+        run: |
+          poetry run pip install 'maturin>=1.5,<2.0'
+          VENV_PY=$(poetry run python -c "import sys; print(sys.executable)")
+          echo "CONNECTOR_VENV_PY=$VENV_PY" >> "$GITHUB_ENV"
+          echo "Using connector venv python: $VENV_PY"
 
-      - name: Build + install kernel wheel into poetry venv
+      - name: Build + install kernel wheel into connector venv
         working-directory: databricks-sql-kernel/pyo3
-        # `maturin develop` builds the extension and installs it into
-        # whichever Python is on PATH. `poetry run` resolves to the
-        # connector's .venv, so the wheel lands where pytest will
-        # import it.
-        run: poetry run maturin develop --release
+        # `--interpreter $CONNECTOR_VENV_PY` pins maturin to the
+        # connector venv even though we're cwd'd inside the kernel's
+        # own pyproject tree. `python -m maturin` invokes the
+        # maturin we just installed into that same venv, sidestepping
+        # the nested-poetry-project detection entirely.
+        run: $CONNECTOR_VENV_PY -m maturin develop --release --interpreter $CONNECTOR_VENV_PY
 
       - name: Smoke-check kernel import
         run: |
