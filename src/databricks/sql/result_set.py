@@ -245,6 +245,7 @@ class ThriftResultSet(ResultSet):
                 statement_id=execute_response.command_id.to_hex_guid(),
                 chunk_id=self.num_chunks,
                 http_client=connection.http_client,
+                timestamp_format=connection.non_arrow_timestamp_format,
             )
             if t_row_set.resultLinks:
                 self.num_chunks += len(t_row_set.resultLinks)
@@ -281,6 +282,7 @@ class ThriftResultSet(ResultSet):
             description=self.description,
             use_cloud_fetch=self._use_cloud_fetch,
             chunk_id=self.num_chunks,
+            timestamp_format=self.connection.non_arrow_timestamp_format,
         )
         self.results = results
         self.has_more_rows = has_more_rows

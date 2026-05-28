@@ -11,6 +11,8 @@ import logging
 from dateutil import parser
 from typing import Callable, Dict, Optional
 
+from databricks.sql.utils import parse_timestamp
+
 logger = logging.getLogger(__name__)
 
 
@@ -162,6 +164,9 @@ class SqlTypeConverter:
                 precision = kwargs.get("precision", None)
                 scale = kwargs.get("scale", None)
                 return converter_func(value, precision, scale)
+            elif sql_type == SqlType.TIMESTAMP:
+                timestamp_format = kwargs.get("timestamp_format", None)
+                return parse_timestamp(value, timestamp_format)
             else:
                 return converter_func(value)
         except Exception as e:
