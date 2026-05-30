@@ -306,10 +306,21 @@ class ThriftResultSet(ResultSet):
         """
         if size < 0:
             raise ValueError("size argument for fetchmany is %s but must be >= 0", size)
+
+        # Hold 0-row chunks aside instead of appending them to ``partial_result_chunks``.
+        # CloudFetchQueue may return a placeholder empty table whose schema does not
+        # match the real downloaded chunks; concatenating it would corrupt the result.
+        partial_result_chunks: List["pyarrow.Table"] = []
+        zero_row_table: Optional["pyarrow.Table"] = None
+        n_remaining_rows = size
+
         results = self.results.next_n_rows(size)
-        partial_result_chunks = [results]
-        n_remaining_rows = size - results.num_rows
-        self._next_row_index += results.num_rows
+        if results.num_rows == 0:
+            zero_row_table = results
+        else:
+            partial_result_chunks.append(results)
+            n_remaining_rows -= results.num_rows
+            self._next_row_index += results.num_rows
 
         while (
             n_remaining_rows > 0
@@ -318,10 +329,14 @@ class ThriftResultSet(ResultSet):
         ):
             self._fill_results_buffer()
             partial_results = self.results.next_n_rows(n_remaining_rows)
+            if partial_results.num_rows == 0:
+                continue
             partial_result_chunks.append(partial_results)
             n_remaining_rows -= partial_results.num_rows
             self._next_row_index += partial_results.num_rows
 
+        if not partial_result_chunks:
+            partial_result_chunks.append(zero_row_table)
         return concat_table_chunks(partial_result_chunks)
 
     def fetchmany_columnar(self, size: int):
@@ -351,14 +366,29 @@ class ThriftResultSet(ResultSet):
 
     def fetchall_arrow(self) -> "pyarrow.Table":
         """Fetch all (remaining) rows of a query result, returning them as a PyArrow table."""
+        # Hold 0-row chunks aside instead of appending them to ``partial_result_chunks``.
+        # CloudFetchQueue may return a placeholder empty table whose schema does not
+        # match the real downloaded chunks; concatenating it would corrupt the result.
+        partial_result_chunks: List = []
+        zero_row_table: Optional["pyarrow.Table"] = None
+
         results = self.results.remaining_rows()
-        self._next_row_index += results.num_rows
-        partial_result_chunks = [results]
+        if results.num_rows == 0:
+            zero_row_table = results
+        else:
+            partial_result_chunks.append(results)
+            self._next_row_index += results.num_rows
+
         while not self.has_been_closed_server_side and self.has_more_rows:
             self._fill_results_buffer()
             partial_results = self.results.remaining_rows()
+            if partial_results.num_rows == 0:
+                continue
             partial_result_chunks.append(partial_results)
             self._next_row_index += partial_results.num_rows
+
+        if not partial_result_chunks:
+            partial_result_chunks.append(zero_row_table)
 
         result_table = concat_table_chunks(partial_result_chunks)
         # If PyArrow is installed and we have a ColumnTable result, convert it to PyArrow Table
