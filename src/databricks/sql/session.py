@@ -73,10 +73,10 @@ class Session:
         base_headers = [("User-Agent", self.useragent_header)]
         all_headers = (http_headers or []) + base_headers
 
-        # Extract ?o=<workspaceId> from http_path for SPOG routing.
-        # On SPOG hosts, the httpPath contains ?o=<workspaceId> which routes Thrift
-        # requests via the URL. For SEA, telemetry, and feature flags (which use
-        # separate endpoints), we inject x-databricks-org-id as an HTTP header.
+        # Extract workspace context from http_path for SPOG routing.
+        # On SPOG hosts, the http_path can contain either ?o=<workspaceId> or an
+        # all-purpose-compute /o/<workspaceId>/ path segment. For SEA, telemetry,
+        # and feature flags, we inject x-databricks-org-id as an HTTP header.
         self._spog_headers = self._extract_spog_headers(http_path, all_headers)
         if self._spog_headers:
             all_headers = all_headers + list(self._spog_headers.items())
@@ -197,8 +197,8 @@ class Session:
         if not http_path:
             return {}
 
-        # Caller already set the header — never override.
-        if any(k == "x-databricks-org-id" for k, _ in existing_headers):
+        # Caller already set the header; never override. Header names are case-insensitive.
+        if any(k.lower() == "x-databricks-org-id" for k, _ in existing_headers):
             logger.debug(
                 "SPOG header extraction: x-databricks-org-id already set by caller, "
                 "not extracting from http_path"
@@ -239,7 +239,7 @@ class Session:
         return {"x-databricks-org-id": org_id}
 
     def get_spog_headers(self):
-        """Returns SPOG routing headers (x-databricks-org-id) if ?o= was in http_path."""
+        """Returns extracted SPOG routing headers (x-databricks-org-id), if any."""
         return dict(self._spog_headers)
 
     def open(self):

@@ -268,6 +268,13 @@ class TestSpogHeaders:
         )
         assert result == {}
 
+    def test_explicit_header_takes_precedence_case_insensitively(self):
+        existing = [("X-Databricks-Org-Id", "explicit-value")]
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=6051921418418893", existing
+        )
+        assert result == {}
+
     def test_multiple_query_params(self):
         result = Session._extract_spog_headers(
             "/sql/1.0/warehouses/abc123?o=12345&extra=val", []
