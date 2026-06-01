@@ -148,11 +148,13 @@ class UnifiedHttpClient:
             "num_pools": self.config.pool_connections,
             "maxsize": self.config.pool_maxsize,
             "retries": self._retry_policy,
-            "timeout": urllib3.Timeout(
-                connect=self.config.socket_timeout, read=self.config.socket_timeout
-            )
-            if self.config.socket_timeout
-            else None,
+            "timeout": (
+                urllib3.Timeout(
+                    connect=self.config.socket_timeout, read=self.config.socket_timeout
+                )
+                if self.config.socket_timeout
+                else None
+            ),
             "ssl_context": ssl_context,
         }
 

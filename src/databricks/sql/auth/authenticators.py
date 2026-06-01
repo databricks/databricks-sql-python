@@ -33,12 +33,10 @@ class CredentialsProvider(abc.ABC):
     for authenticating requests to Databricks REST APIs"""
 
     @abc.abstractmethod
-    def auth_type(self) -> str:
-        ...
+    def auth_type(self) -> str: ...
 
     @abc.abstractmethod
-    def __call__(self, *args, **kwargs) -> HeaderFactory:
-        ...
+    def __call__(self, *args, **kwargs) -> HeaderFactory: ...
 
 
 # Private API: this is an evolving interface and it will change in the future.
@@ -109,7 +107,7 @@ class DatabricksOAuthProvider(AuthProvider):
             if self._access_token and self._refresh_token:
                 self._update_token_if_expired()
             else:
-                (access_token, refresh_token) = self.oauth_manager.get_tokens(
+                access_token, refresh_token = self.oauth_manager.get_tokens(
                     hostname=self._hostname, scope=self._scopes_as_str
                 )
                 self._access_token = access_token
@@ -231,9 +229,9 @@ class AzureServicePrincipalCredentialProvider(CredentialsProvider):
             }
 
             if self.azure_workspace_resource_id:
-                headers[
-                    self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER
-                ] = self.azure_workspace_resource_id
+                headers[self.DATABRICKS_AZURE_WORKSPACE_RESOURCE_ID_HEADER] = (
+                    self.azure_workspace_resource_id
+                )
 
             return headers
 
