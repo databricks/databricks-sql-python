@@ -202,8 +202,8 @@ class SimpleHttpResponse:
         self.reason = "Mocked Response"
         self.version = 11
         # urllib3 >= 2.3 reads `version_string` off the raw httplib response in
-        # HTTPConnectionPool._make_request. Older urllib3 (incl. the 2.2.x pinned
-        # in CI) never touches it, so this is a harmless forward-compat shim.
+        # HTTPConnectionPool._make_request. 5.0.0 pins urllib3 >= 2.7, so this
+        # attribute is always read; the shim keeps the mock response compatible.
         self.version_string = "HTTP/1.1"
         self.length = 0
         self.length_remaining = 0

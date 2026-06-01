@@ -27,7 +27,10 @@ class EndpointTest(unittest.TestCase):
         ]
 
         for expected_type, host in param_list:
-            with self.subTest(expected_type or "None", expected_type=expected_type):
+            with self.subTest(
+                expected_type.value if expected_type else "None",
+                expected_type=expected_type.value if expected_type else None,
+            ):
                 self.assertEqual(infer_cloud_from_host(host), expected_type)
                 self.assertEqual(
                     infer_cloud_from_host(f"https://{host}/to/path"), expected_type
@@ -97,7 +100,7 @@ class EndpointTest(unittest.TestCase):
             expected_scopes,
             expected_scope2,
         ) in param_list:
-            with self.subTest(cloud_type):
+            with self.subTest(cloud_type.value):
                 endpoint = get_oauth_endpoints(host, use_azure_auth)
                 self.assertEqual(
                     endpoint.get_authorization_url(host), expected_auth_url
