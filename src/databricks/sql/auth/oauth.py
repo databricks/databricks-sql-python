@@ -43,9 +43,11 @@ class Token:
                 self.access_token, options={"verify_signature": False}
             )
             exp_time = decoded_token.get("exp")
+            if exp_time is None:
+                return False
             current_time = time.time()
             buffer_time = 30  # 30 seconds buffer
-            return bool(exp_time) and (exp_time - buffer_time) <= current_time
+            return (exp_time - buffer_time) <= current_time
         except Exception as e:
             logger.error("Failed to decode token: %s", e)
             raise e
