@@ -134,7 +134,7 @@ class OAuthManager:
             try:
                 with HTTPServer(("", port), handler) as httpd:
                     redirect_url = OAuthManager.__get_redirect_url(port)
-                    (auth_req_uri, _, _) = client.prepare_authorization_request(
+                    auth_req_uri, _, _ = client.prepare_authorization_request(
                         authorization_url=auth_url,
                         redirect_url=redirect_url,
                         scope=scope,
@@ -269,7 +269,7 @@ class OAuthManager:
         auth_url = self.idp_endpoint.get_authorization_url(hostname)
 
         state = OAuthManager.__token_urlsafe(16)
-        (verifier, challenge) = OAuthManager.__get_challenge()
+        verifier, challenge = OAuthManager.__get_challenge()
         client = oauthlib.oauth2.WebApplicationClient(self.client_id)
 
         try:
