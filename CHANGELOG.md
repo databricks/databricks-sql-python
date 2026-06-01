@@ -1,5 +1,28 @@
 # Release History
 
+# 5.0.0 (TBD)
+
+**Breaking changes — security & language-version cleanup.**
+
+- Minimum Python is now **3.10** (was 3.8). Python 3.8 (EOL 2024-10) and 3.9 (EOL 2025-10) are no longer supported. Users on these versions should stay on the 4.x line.
+- Bumped `urllib3` to the **2.x** series (was `>=1.26`). Customers pinning `urllib3<2` must either lift the pin or stay on the 4.x line. urllib3 2.x requires Python 3.10+.
+- Bumped several other runtime dependency floors to versions that clear all open CVEs in `poetry.lock`:
+  - `requests`: `>=2.18.1` → `>=2.33.0`
+  - `pyjwt`: `>=2.0` → `>=2.12.0`
+  - `pyarrow`: `>=14.0.1` / `>=18.0.0` / `>=22.0.0` (Python-version-gated blocks) → `>=23.0.1` everywhere
+  - `urllib3`: `>=1.26` → `>=2.7.0,<3.0.0`
+- Bumped dev dependencies for the same reason:
+  - `pytest`: `^7.1.2` → `^9.0.3`
+  - `black`: `^22.3.0` → `^26.3.1` (codebase has been reformatted in a single commit; downstream forks should expect to reformat once on the merge)
+- Transitive cleanups (no `pyproject.toml` change, lockfile only):
+  - `cryptography` 45.0.6 → 48.0.0
+  - `idna` 3.10 → 3.16
+  - `python-dotenv` 1.0.1 → 1.2.2
+
+**Migration**: For most users, `pip install -U databricks-sql-connector` is the only required change. Users on Python 3.9 must update their interpreter before upgrading. Users with hard pins on `urllib3<2` must lift the pin before upgrading.
+
+**OSV-Scanner status**: 25 → 0 advisories on `poetry.lock`.
+
 # 4.2.6 (2026-04-22)
 - Add SPOG routing support for account-level vanity URLs (databricks/databricks-sql-python#767 by @msrathore-db)
 - Fix dependency_manager: handle PEP 440 ~= compatible release syntax (databricks/databricks-sql-python#776 by @vikrantpuppala)
