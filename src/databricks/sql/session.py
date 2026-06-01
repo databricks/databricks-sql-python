@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Dict, Tuple, List, Optional, Any, Type
 
 from databricks.sql.thrift_api.TCLIService import ttypes
@@ -72,10 +73,10 @@ class Session:
         base_headers = [("User-Agent", self.useragent_header)]
         all_headers = (http_headers or []) + base_headers
 
-        # Extract ?o=<workspaceId> from http_path for SPOG routing.
-        # On SPOG hosts, the httpPath contains ?o=<workspaceId> which routes Thrift
-        # requests via the URL. For SEA, telemetry, and feature flags (which use
-        # separate endpoints), we inject x-databricks-org-id as an HTTP header.
+        # Extract workspace context from http_path for SPOG routing.
+        # On SPOG hosts, the http_path can contain either ?o=<workspaceId> or an
+        # all-purpose-compute /o/<workspaceId>/ path segment. For SEA, telemetry,
+        # and feature flags, we inject x-databricks-org-id as an HTTP header.
         self._spog_headers = self._extract_spog_headers(http_path, all_headers)
         if self._spog_headers:
             all_headers = all_headers + list(self._spog_headers.items())
@@ -170,42 +171,76 @@ class Session:
         }
         return databricks_client_class(**common_args)
 
+    # All-purpose-compute Thrift http_path:
+    # [/]sql/protocolv1/o/<workspace-id>/<cluster-id>[/...][?...]
+    _ORG_ID_RE = re.compile(r"^[0-9]+$")
+    _CLUSTER_PATH_ORG_ID_RE = re.compile(r"^/?sql/protocolv1/o/([0-9]+)/[^/?]+")
+
     @staticmethod
     def _extract_spog_headers(http_path, existing_headers):
-        """Extract ?o=<workspaceId> from http_path and return as a header dict for SPOG routing."""
-        if not http_path or "?" not in http_path:
+        """Extract the workspace ID from http_path for SPOG routing and return it
+        as an ``x-databricks-org-id`` header dict.
+
+        Two sources are inspected, in priority order:
+          1. ``?o=<workspace-id>`` query parameter in http_path (warehouse paths
+             typically encode the workspace this way on SPOG).
+          2. ``/sql/protocolv1/o/<workspace-id>/<cluster-id>`` path segment
+             (all-purpose compute paths embed the workspace in the path itself).
+
+        An explicit ``x-databricks-org-id`` already set by the caller wins over
+        both. Returns an empty dict when no workspace ID can be determined.
+
+        On SPOG (Custom URL) hosts this header is required for non-Thrift
+        endpoints — telemetry, feature flags, SEA — to be routed to the right
+        workspace. Without it, PoPP falls back to default routing and
+        workspace-scoped requests are redirected to ``/login``.
+        """
+        if not http_path:
             return {}
 
-        from urllib.parse import parse_qs
-
-        query_string = http_path.split("?", 1)[1]
-        params = parse_qs(query_string)
-        org_id = params.get("o", [None])[0]
-        if not org_id:
+        # Caller already set the header; never override. Header names are case-insensitive.
+        if any(k.lower() == "x-databricks-org-id" for k, _ in existing_headers):
             logger.debug(
-                "SPOG header extraction: http_path has query string but no ?o= param, "
+                "SPOG header extraction: x-databricks-org-id already set by caller, "
+                "not extracting from http_path"
+            )
+            return {}
+
+        org_id = None
+        source = None
+
+        if "?" in http_path:
+            from urllib.parse import parse_qs
+
+            query_string = http_path.split("?", 1)[1]
+            params = parse_qs(query_string)
+            value = params.get("o", [None])[0]
+            if value and Session._ORG_ID_RE.fullmatch(value):
+                org_id = value
+                source = "?o= in http_path"
+
+        if org_id is None:
+            cluster_match = Session._CLUSTER_PATH_ORG_ID_RE.match(http_path)
+            if cluster_match:
+                org_id = cluster_match.group(1)
+                source = "cluster path segment"
+
+        if org_id is None:
+            logger.debug(
+                "SPOG header extraction: no workspace ID found in http_path, "
                 "skipping x-databricks-org-id injection"
             )
             return {}
 
-        # Don't override if explicitly set
-        if any(k == "x-databricks-org-id" for k, _ in existing_headers):
-            logger.debug(
-                "SPOG header extraction: x-databricks-org-id already set by caller, "
-                "not overriding with ?o=%s from http_path",
-                org_id,
-            )
-            return {}
-
         logger.debug(
-            "SPOG header extraction: injecting x-databricks-org-id=%s "
-            "(extracted from ?o= in http_path)",
+            "SPOG header extraction: injecting x-databricks-org-id=%s (extracted from %s)",
             org_id,
+            source,
         )
         return {"x-databricks-org-id": org_id}
 
     def get_spog_headers(self):
-        """Returns SPOG routing headers (x-databricks-org-id) if ?o= was in http_path."""
+        """Returns extracted SPOG routing headers (x-databricks-org-id), if any."""
         return dict(self._spog_headers)
 
     def open(self):

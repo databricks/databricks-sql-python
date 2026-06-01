@@ -162,7 +162,10 @@ class TestSession:
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
     def test_configuration_passthrough(self, mock_client_class):
-        mock_session_config = {"ANSI_MODE": "FALSE", "QUERY_TAGS": "team:engineering,project:data-pipeline"}
+        mock_session_config = {
+            "ANSI_MODE": "FALSE",
+            "QUERY_TAGS": "team:engineering,project:data-pipeline",
+        }
         databricks.sql.connect(
             session_configuration=mock_session_config, **self.DUMMY_CONNECTION_ARGS
         )
@@ -218,10 +221,15 @@ class TestSession:
         )
 
         call_kwargs = mock_client_class.return_value.open_session.call_args[1]
-        assert call_kwargs["session_configuration"]["QUERY_TAGS"] == "team:data-eng,project:etl"
+        assert (
+            call_kwargs["session_configuration"]["QUERY_TAGS"]
+            == "team:data-eng,project:etl"
+        )
 
     @patch("%s.session.ThriftDatabricksClient" % PACKAGE_NAME)
-    def test_query_tags_dict_takes_precedence_over_session_config(self, mock_client_class):
+    def test_query_tags_dict_takes_precedence_over_session_config(
+        self, mock_client_class
+    ):
         databricks.sql.connect(
             query_tags={"team": "new-team"},
             session_configuration={"QUERY_TAGS": "team:old-team,other:value"},
@@ -242,9 +250,7 @@ class TestSpogHeaders:
         assert result == {"x-databricks-org-id": "6051921418418893"}
 
     def test_no_query_param_returns_empty(self):
-        result = Session._extract_spog_headers(
-            "/sql/1.0/warehouses/abc123", []
-        )
+        result = Session._extract_spog_headers("/sql/1.0/warehouses/abc123", [])
         assert result == {}
 
     def test_no_o_param_returns_empty(self):
@@ -268,8 +274,79 @@ class TestSpogHeaders:
         )
         assert result == {}
 
+    def test_explicit_header_takes_precedence_case_insensitively(self):
+        existing = [("X-Databricks-Org-Id", "explicit-value")]
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=6051921418418893", existing
+        )
+        assert result == {}
+
     def test_multiple_query_params(self):
         result = Session._extract_spog_headers(
             "/sql/1.0/warehouses/abc123?o=12345&extra=val", []
         )
         assert result == {"x-databricks-org-id": "12345"}
+
+    def test_non_numeric_query_param_returns_empty(self):
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=abc123", []
+        )
+        assert result == {}
+
+    def test_control_char_query_param_returns_empty(self):
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=123%0D%0AX-Injected:%20yes", []
+        )
+        assert result == {}
+
+    def test_empty_query_param_returns_empty(self):
+        result = Session._extract_spog_headers(
+            "/sql/1.0/warehouses/abc123?o=", []
+        )
+        assert result == {}
+
+    def test_extracts_org_id_from_cluster_path_segment(self):
+        # All-purpose-compute path embeds workspace ID in /o/<wsid>/<cluster>.
+        # Without ?o=, the driver must still set x-databricks-org-id so that
+        # telemetry and other non-Thrift requests route to the right workspace
+        # on SPOG hosts.
+        result = Session._extract_spog_headers(
+            "sql/protocolv1/o/6051921418418893/0528-220959-uzmcn1qt", []
+        )
+        assert result == {"x-databricks-org-id": "6051921418418893"}
+
+    def test_extracts_org_id_from_cluster_path_with_leading_slash(self):
+        result = Session._extract_spog_headers(
+            "/sql/protocolv1/o/6051921418418893/0528-220959-uzmcn1qt", []
+        )
+        assert result == {"x-databricks-org-id": "6051921418418893"}
+
+    def test_query_param_wins_over_cluster_path_segment(self):
+        # When both forms are present, ?o= takes precedence.
+        result = Session._extract_spog_headers(
+            "sql/protocolv1/o/111/0528-220959-uzmcn1qt?o=222", []
+        )
+        assert result == {"x-databricks-org-id": "222"}
+
+    def test_explicit_header_wins_over_cluster_path_segment(self):
+        existing = [("x-databricks-org-id", "from-caller")]
+        result = Session._extract_spog_headers(
+            "sql/protocolv1/o/111/0528-220959-uzmcn1qt", existing
+        )
+        assert result == {}
+
+    def test_nested_cluster_path_prefix_returns_empty(self):
+        result = Session._extract_spog_headers(
+            "evil/sql/protocolv1/o/999/0528-220959-uzmcn1qt", []
+        )
+        assert result == {}
+
+    def test_incomplete_cluster_path_returns_empty(self):
+        result = Session._extract_spog_headers("sql/protocolv1/o/999/", [])
+        assert result == {}
+
+    def test_warehouse_path_without_query_param_returns_empty(self):
+        # Regression guard: the new cluster-path regex must not accidentally
+        # match warehouse paths (which never embed the workspace ID).
+        result = Session._extract_spog_headers("/sql/1.0/warehouses/abc123", [])
+        assert result == {}
