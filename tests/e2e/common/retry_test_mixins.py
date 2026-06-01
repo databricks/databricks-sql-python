@@ -187,6 +187,7 @@ class SimpleHttpResponse:
         self.msg = self.headers  # For urllib3~=1.0.0 compatibility
         self.reason = "Mocked Response"
         self.version = 11
+        self.version_string = "HTTP/1.1"  # urllib3 v2.x reads this attribute
         self.length = 0
         self.length_remaining = 0
         self._redirect_location = redirect_location

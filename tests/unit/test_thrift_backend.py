@@ -596,7 +596,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
 
     def test_handle_execute_response_checks_operation_state_in_direct_results(self):
         for resp_type in self.execute_response_types:
-            with self.subTest(resp_type=resp_type):
+            with self.subTest(resp_type=resp_type.__name__):
                 t_execute_resp = resp_type(
                     status=self.okay_status,
                     directResults=ttypes.TSparkDirectResults(
@@ -687,10 +687,12 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
         for op_state_resp, exec_resp_type in itertools.product(
-            [error_resp, closed_resp], self.execute_response_types
+            [("error_resp", error_resp), ("closed_resp", closed_resp)],
+            self.execute_response_types,
         ):
+            op_state_label, op_state_resp = op_state_resp
             with self.subTest(
-                op_state_resp=op_state_resp, exec_resp_type=exec_resp_type
+                op_state_resp=op_state_label, exec_resp_type=exec_resp_type.__name__
             ):
                 tcli_service_instance = tcli_service_class.return_value
                 t_execute_resp = exec_resp_type(
@@ -850,8 +852,10 @@ class ThriftBackendTestSuite(unittest.TestCase):
                 operationHandle=self.operation_handle,
             )
 
-            for error_resp in [resp_1, resp_2, resp_3, resp_4]:
-                with self.subTest(error_resp=error_resp):
+            for resp_idx, error_resp in enumerate(
+                [resp_1, resp_2, resp_3, resp_4], start=1
+            ):
+                with self.subTest(error_resp=f"resp_{resp_idx}"):
                     thrift_backend = ThriftDatabricksClient(
                         "foobar",
                         443,
@@ -874,7 +878,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         tcli_service_instance = tcli_service_class.return_value
 
         for resp_type in self.execute_response_types:
-            with self.subTest(resp_type=resp_type):
+            with self.subTest(resp_type=resp_type.__name__):
 
                 execute_resp = resp_type(
                     status=self.okay_status,
@@ -937,7 +941,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         )
 
         for resp_type in self.execute_response_types:
-            with self.subTest(resp_type=resp_type):
+            with self.subTest(resp_type=resp_type.__name__):
                 execute_resp = resp_type(
                     status=self.okay_status,
                     directResults=direct_results_message,
@@ -1041,7 +1045,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         for has_more_rows, resp_type in itertools.product(
             [True, False], self.execute_response_types
         ):
-            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
+            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type.__name__):
                 tcli_service_instance = tcli_service_class.return_value
                 results_mock = Mock()
                 results_mock.startRowOffset = 0
@@ -1087,7 +1091,7 @@ class ThriftBackendTestSuite(unittest.TestCase):
         for has_more_rows, resp_type in itertools.product(
             [True, False], self.execute_response_types
         ):
-            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type):
+            with self.subTest(has_more_rows=has_more_rows, resp_type=resp_type.__name__):
                 tcli_service_instance = tcli_service_class.return_value
                 results_mock = MagicMock()
                 results_mock.startRowOffset = 0
