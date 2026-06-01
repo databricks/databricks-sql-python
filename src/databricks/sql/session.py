@@ -173,7 +173,8 @@ class Session:
 
     # All-purpose-compute Thrift http_path:
     # [/]sql/protocolv1/o/<workspace-id>/<cluster-id>[/...][?...]
-    _CLUSTER_PATH_ORG_ID_RE = re.compile(r"(?:^|/)sql/protocolv1/o/(\d+)/[^/?]+")
+    _ORG_ID_RE = re.compile(r"^[0-9]+$")
+    _CLUSTER_PATH_ORG_ID_RE = re.compile(r"^/?sql/protocolv1/o/([0-9]+)/[^/?]+")
 
     @staticmethod
     def _extract_spog_headers(http_path, existing_headers):
@@ -214,12 +215,12 @@ class Session:
             query_string = http_path.split("?", 1)[1]
             params = parse_qs(query_string)
             value = params.get("o", [None])[0]
-            if value:
+            if value and Session._ORG_ID_RE.fullmatch(value):
                 org_id = value
                 source = "?o= in http_path"
 
         if org_id is None:
-            cluster_match = Session._CLUSTER_PATH_ORG_ID_RE.search(http_path)
+            cluster_match = Session._CLUSTER_PATH_ORG_ID_RE.match(http_path)
             if cluster_match:
                 org_id = cluster_match.group(1)
                 source = "cluster path segment"
