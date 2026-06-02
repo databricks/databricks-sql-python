@@ -102,7 +102,7 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
     # TODO : unify all the auth mechanisms with the Python SDK
 
     auth_type = kwargs.get("auth_type")
-    (client_id, redirect_port_range) = get_client_id_and_redirect_port(
+    client_id, redirect_port_range = get_client_id_and_redirect_port(
         auth_type == AuthType.AZURE_OAUTH.value
     )
 
@@ -124,9 +124,11 @@ def get_python_sql_connector_auth_provider(hostname: str, http_client, **kwargs)
         azure_client_secret=kwargs.get("azure_client_secret"),
         azure_tenant_id=kwargs.get("azure_tenant_id"),
         azure_workspace_resource_id=kwargs.get("azure_workspace_resource_id"),
-        oauth_redirect_port_range=[kwargs["oauth_redirect_port"]]
-        if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
-        else redirect_port_range,
+        oauth_redirect_port_range=(
+            [kwargs["oauth_redirect_port"]]
+            if kwargs.get("oauth_client_id") and kwargs.get("oauth_redirect_port")
+            else redirect_port_range
+        ),
         oauth_persistence=kwargs.get("experimental_oauth_persistence"),
         credentials_provider=kwargs.get("credentials_provider"),
         identity_federation_client_id=kwargs.get("identity_federation_client_id"),

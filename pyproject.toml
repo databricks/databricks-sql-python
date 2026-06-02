@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databricks-sql-connector"
-version = "4.2.6"
+version = "5.0.0"
 description = "Databricks SQL Connector for Python"
 authors = ["Databricks <databricks-sql-connector-maintainers@databricks.com>"]
 license = "Apache-2.0"
@@ -9,27 +9,27 @@ packages = [{ include = "databricks", from = "src" }]
 include = ["CHANGELOG.md"]
 
 [tool.poetry.dependencies]
-python = "^3.8.0"
+python = "^3.10"
 thrift = ">=0.22.0,<0.24.0"
 pandas = [
-    { version = ">=1.2.5,<4.0.0", python = ">=3.8,<3.13" },
+    { version = ">=1.2.5,<4.0.0", python = ">=3.10,<3.13" },
     { version = ">=2.2.3,<4.0.0", python = ">=3.13" }
 ]
 lz4 = [
-    { version = "^4.0.2", python = ">=3.8,<3.14" },
+    { version = "^4.0.2", python = ">=3.10,<3.14" },
     { version = "^4.4.5", python = ">=3.14" }
 ]
-requests = "^2.18.1"
+requests = "^2.33.0"
 oauthlib = "^3.1.0"
 openpyxl = "^3.0.10"
-urllib3 = ">=1.26"
+urllib3 = ">=2.7.0,<3.0.0"
 python-dateutil = "^2.8.0"
 pyarrow = [
-    { version = ">=14.0.1", python = ">=3.8,<3.13", optional=true },
-    { version = ">=18.0.0", python = ">=3.13,<3.14", optional=true },
-    { version = ">=22.0.0", python = ">=3.14", optional=true }
+    { version = ">=23.0.1", python = ">=3.10,<3.13", optional=true },
+    { version = ">=23.0.1", python = ">=3.13,<3.14", optional=true },
+    { version = ">=23.0.1", python = ">=3.14", optional=true }
 ]
-pyjwt = "^2.0.0"
+pyjwt = "^2.12.0"
 pybreaker = "^1.0.0"
 requests-kerberos = {version = "^0.15.0", optional = true}
 
@@ -52,15 +52,15 @@ pyarrow = ["pyarrow"]
 # (into the same venv as databricks-sql-connector).
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.1.2"
+pytest = "^9.0.3"
 mypy = "^1.10.1"
 pylint = ">=2.12.0"
-black = "^22.3.0"
+black = "^26.3.1"
 pytest-dotenv = "^0.5.2"
 pytest-cov = "^4.0.0"
 pytest-xdist = "^3.0.0"
 numpy = [
-    { version = ">=1.16.6", python = ">=3.8,<3.11" },
+    { version = ">=1.16.6", python = ">=3.10,<3.11" },
     { version = ">=1.23.4", python = ">=3.11" },
 ]
 

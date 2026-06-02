@@ -340,9 +340,9 @@ class Connection:
                 http_path=http_path,
                 port=kwargs.get("_port", 443),
                 client_context=client_context,
-                user_agent=self.session.useragent_header
-                if hasattr(self, "session")
-                else None,
+                user_agent=(
+                    self.session.useragent_header if hasattr(self, "session") else None
+                ),
                 enable_telemetry=enable_telemetry,
             )
             raise e
@@ -390,9 +390,11 @@ class Connection:
 
         driver_connection_params = DriverConnectionParameters(
             http_path=http_path,
-            mode=DatabricksClientType.SEA
-            if self.session.use_sea
-            else DatabricksClientType.THRIFT,
+            mode=(
+                DatabricksClientType.SEA
+                if self.session.use_sea
+                else DatabricksClientType.THRIFT
+            ),
             host_info=HostDetails(host_url=server_hostname, port=self.session.port),
             auth_mech=TelemetryHelper.get_auth_mechanism(self.session.auth_provider),
             auth_flow=TelemetryHelper.get_auth_flow(self.session.auth_provider),
