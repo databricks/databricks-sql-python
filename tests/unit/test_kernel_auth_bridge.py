@@ -262,3 +262,60 @@ class TestKernelOAuthU2M:
             "client_id": "custom-client",
             "redirect_port": 8030,
         }
+
+    @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_u2m_forwards_scopes(self, auth_type):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {"auth_type": auth_type, "oauth_scopes": ["all-apis", "offline_access"]},
+        )
+        assert kwargs["oauth_scopes"] == ["all-apis", "offline_access"]
+
+
+class TestKernelAuthAmbiguity:
+    """Conflicting auth signals must fail loudly at session-open rather
+    than silently resolving to one flow (which would surface later as a
+    confusing 401 against the wrong principal)."""
+
+    def test_credentials_provider_plus_m2m_is_rejected(self):
+        def _creds_provider():
+            return lambda: {"Authorization": "Bearer x"}
+
+        with pytest.raises(NotSupportedError, match="Ambiguous auth"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {
+                    "oauth_client_id": "id",
+                    "oauth_client_secret": "sec",
+                    "credentials_provider": _creds_provider,
+                },
+            )
+
+    @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_u2m_auth_type_plus_client_secret_is_rejected(self, auth_type):
+        # User asked for U2M (browser) but also passed a secret (M2M).
+        # Don't silently route M2M against the wrong principal.
+        with pytest.raises(NotSupportedError, match="Ambiguous auth"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {
+                    "auth_type": auth_type,
+                    "oauth_client_id": "id",
+                    "oauth_client_secret": "sec",
+                },
+            )
+
+
+class TestKernelScopesNormalization:
+    def test_unknown_scope_type_raises(self):
+        # A non-str/list/tuple oauth_scopes is a caller error; fail loudly
+        # rather than silently dropping to default scopes.
+        with pytest.raises(ProgrammingError, match="oauth_scopes must be"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {
+                    "oauth_client_id": "id",
+                    "oauth_client_secret": "sec",
+                    "oauth_scopes": 123,
+                },
+            )

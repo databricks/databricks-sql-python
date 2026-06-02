@@ -211,6 +211,14 @@ class KernelDatabricksClient(DatabricksClient):
             auth_kwargs.pop("access_token", None)
             auth_kwargs.pop("client_secret", None)
             tls_kwargs.pop("tls_client_key", None)
+            # Also scrub the long-lived copy. ``self._auth_options``
+            # outlives this method (it's set in ``__init__`` and the
+            # connector object can live for the whole connection), so a
+            # retained ``oauth_client_secret`` would be exposed to
+            # ``vars(conn)`` / pickle / a debugger dump for far longer
+            # than the credential needs to exist. The kernel now owns
+            # the secret, so drop ours.
+            self._auth_options.pop("oauth_client_secret", None)
 
         # Use the kernel's real server-issued session id, not a
         # synthetic UUID. Matches what the native SEA backend does.
@@ -665,7 +673,8 @@ def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
     Mappings (note the inverted booleans — the connector expresses
     *verify*, the kernel expresses *skip*):
 
-    - ``tls_verify=False``          → ``tls_skip_verify=True``
+    - ``tls_verify=False``          → ``tls_skip_verify=True`` **and**
+      ``tls_skip_hostname_verify=True``
     - ``tls_verify_hostname=False`` → ``tls_skip_hostname_verify=True``
     - ``tls_trusted_ca_file``       → ``tls_ca_cert`` (PEM bytes)
     - ``tls_client_cert_file`` (+ key file) → ``tls_client_cert`` /
@@ -680,10 +689,16 @@ def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
     kwargs: Dict[str, Any] = {}
 
     # Inverted booleans. Emit only the insecure (skip) direction so the
-    # default secure path stays implicit.
+    # default secure path stays implicit. ``tls_verify=False`` disables
+    # all chain validation, which subsumes hostname verification — so we
+    # also emit ``tls_skip_hostname_verify`` to match ``SSLOptions``'s
+    # own semantics (``create_ssl_context`` sets ``check_hostname=False``
+    # whenever ``tls_verify`` is False). Without this the kernel could
+    # still attempt a hostname check the connector considers disabled.
     if getattr(ssl_options, "tls_verify", True) is False:
         kwargs["tls_skip_verify"] = True
-    if getattr(ssl_options, "tls_verify_hostname", True) is False:
+        kwargs["tls_skip_hostname_verify"] = True
+    elif getattr(ssl_options, "tls_verify_hostname", True) is False:
         kwargs["tls_skip_hostname_verify"] = True
 
     ca_file = getattr(ssl_options, "tls_trusted_ca_file", None)
@@ -716,14 +731,23 @@ def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
 
 def _read_pem_bytes(path: str, label: str) -> bytes:
     """Read a PEM file into bytes, mapping IO errors to a clear
-    ``ProgrammingError`` that names the offending TLS option."""
+    ``ProgrammingError`` that names the offending TLS option. An empty
+    file is rejected here too — otherwise it reaches the kernel as
+    empty PEM and surfaces as a cryptic ``no certificates found`` /
+    parse error far from the misconfigured path."""
     try:
         with open(path, "rb") as f:
-            return f.read()
+            data = f.read()
     except OSError as exc:
         raise ProgrammingError(
             f"Failed to read {label} '{path}' for the kernel TLS config: {exc}"
         ) from exc
+    if not data.strip():
+        raise ProgrammingError(
+            f"{label} '{path}' is empty; expected PEM-encoded content for the "
+            "kernel TLS config."
+        )
+    return data
 
 
 def _drain_kernel_handle(handle: Any) -> Any:

@@ -127,6 +127,13 @@ def kernel_auth_kwargs(
 
     Resolution order:
 
+    0. **Ambiguity guards** — reject conflicting auth signals *before*
+       resolving, so an ambiguous request fails loudly at session-open
+       rather than silently picking one flow (and failing later as a
+       confusing 401 against the wrong principal):
+       - a custom ``credentials_provider`` *and* M2M kwargs together;
+       - a U2M ``auth_type`` (``databricks-oauth`` / ``azure-oauth``)
+         *and* ``oauth_client_secret`` together.
     1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
        both present → forward raw creds to the kernel's ``oauth-m2m``.
     2. **PAT** — the built provider is (or wraps) an
@@ -140,14 +147,37 @@ def kernel_auth_kwargs(
 
     M2M is checked before PAT so that a workload passing both an
     access token *and* M2M creds resolves to the (refreshing) M2M path
-    rather than a static token.
+    rather than a static token. (Token + M2M is not treated as
+    ambiguous: a PAT is often present as ambient config the caller
+    didn't intend as the primary credential, whereas an explicit
+    ``oauth_client_secret`` is unambiguous M2M intent.)
     """
     opts = auth_options or {}
 
-    # 1. OAuth M2M — raw client-credentials pair forwarded to the kernel.
     client_id = opts.get("oauth_client_id")
     client_secret = opts.get("oauth_client_secret")
-    if client_id and client_secret:
+    auth_type = opts.get("auth_type")
+    has_m2m = bool(client_id and client_secret)
+
+    # 0. Ambiguity guards — fail before any flow is chosen.
+    if client_secret and opts.get("credentials_provider") is not None:
+        raise NotSupportedError(
+            "Ambiguous auth on use_kernel=True: both a custom "
+            "credentials_provider and oauth_client_secret were provided. "
+            "Pass exactly one — oauth_client_id + oauth_client_secret for "
+            "kernel-managed M2M, or use the Thrift backend (default) for "
+            "credentials_provider."
+        )
+    if client_secret and auth_type in ("databricks-oauth", "azure-oauth"):
+        raise NotSupportedError(
+            f"Ambiguous auth on use_kernel=True: auth_type={auth_type!r} selects "
+            "the U2M browser flow, but oauth_client_secret was also provided "
+            "(machine-to-machine). Drop oauth_client_secret for U2M, or drop "
+            "auth_type for M2M."
+        )
+
+    # 1. OAuth M2M — raw client-credentials pair forwarded to the kernel.
+    if has_m2m:
         kwargs: Dict[str, Any] = {
             "auth_type": "oauth-m2m",
             "client_id": client_id,
@@ -169,7 +199,6 @@ def kernel_auth_kwargs(
         return {"auth_type": "pat", "access_token": token}
 
     # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
-    auth_type = opts.get("auth_type")
     if auth_type in ("databricks-oauth", "azure-oauth"):
         kwargs = {"auth_type": "oauth-u2m"}
         if client_id:
@@ -220,4 +249,10 @@ def _normalize_scopes(scopes: Any) -> Optional[list]:
     if isinstance(scopes, (list, tuple)):
         parts = [str(s) for s in scopes if s]
         return parts or None
-    return None
+    # Anything else (int, dict, bool, …) is a caller error. Fail loudly
+    # rather than silently dropping the scopes to None and surprising
+    # the user with default scopes.
+    raise ProgrammingError(
+        f"oauth_scopes must be a list/tuple of strings or a space-delimited "
+        f"string, got {type(scopes).__name__}."
+    )
