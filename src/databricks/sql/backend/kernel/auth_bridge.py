@@ -1,19 +1,38 @@
-"""Translate the connector's ``AuthProvider`` into ``databricks_sql_kernel``
-``Session`` auth kwargs.
+"""Translate the connector's auth configuration into
+``databricks_sql_kernel`` ``Session`` auth kwargs.
 
-This phase ships PAT only. The kernel-side PyO3 binding accepts
-``auth_type='pat'``; OAuth / federation / custom credentials
-providers are reserved but not yet wired in either layer. Non-PAT
-auth raises ``NotSupportedError`` from this bridge so the failure
-surfaces at session-open time with a clear message rather than
-deep inside the kernel.
+Three auth shapes are supported on the kernel path:
 
-Token extraction goes through ``AuthProvider.add_headers({})``
-rather than touching auth-provider-specific attributes, so the
-bridge works uniformly for every PAT shape — including
-``AccessTokenAuthProvider`` wrapped in ``TokenFederationProvider``
-(which ``get_python_sql_connector_auth_provider`` does for every
-provider it builds).
+- **PAT** — extracted from the built ``AuthProvider`` (works for
+  ``AccessTokenAuthProvider``, including the ``TokenFederationProvider``
+  wrapper that ``get_python_sql_connector_auth_provider`` always
+  applies). Maps to the kernel's ``auth_type='pat'``.
+- **OAuth M2M** — when the caller passes ``oauth_client_id`` +
+  ``oauth_client_secret``, the *raw* credentials are forwarded to the
+  kernel's ``auth_type='oauth-m2m'`` and the kernel owns the full
+  token lifecycle (acquire + refresh via workspace OIDC
+  client-credentials). We forward the raw pair rather than reusing the
+  connector's own OAuth provider because the kernel re-mints tokens
+  itself and the client secret is not recoverable from a built
+  provider.
+- **OAuth U2M** — for ``auth_type`` ``databricks-oauth`` /
+  ``azure-oauth`` (the browser authorization-code flow), the optional
+  ``oauth_client_id`` / ``oauth_redirect_port`` are forwarded to the
+  kernel's ``auth_type='oauth-u2m'`` and the kernel runs the browser
+  flow itself.
+
+A user-supplied custom ``credentials_provider`` is **rejected** on the
+kernel path with ``NotSupportedError``: it's an opaque token source
+with no extractable raw credentials, so the kernel can't own the
+lifecycle. Such callers should pass ``oauth_client_id`` /
+``oauth_client_secret`` (M2M) instead. Anything else non-PAT also
+raises ``NotSupportedError`` so the failure surfaces at session-open
+with a clear message rather than deep inside the kernel.
+
+The M2M / U2M decisions are driven by the *raw* connect() kwargs
+(``auth_options``), not the built ``AuthProvider`` — the secret is
+consumed and discarded during provider construction, so it can only be
+read from the original kwargs.
 """
 
 from __future__ import annotations
@@ -93,15 +112,53 @@ def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
     return token
 
 
-def kernel_auth_kwargs(auth_provider: AuthProvider) -> Dict[str, Any]:
+def kernel_auth_kwargs(
+    auth_provider: AuthProvider,
+    auth_options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Build the kwargs passed to ``databricks_sql_kernel.Session(...)``.
 
-    PAT (including ``TokenFederationProvider``-wrapped PAT) routes
-    through the kernel's PAT path. Anything else raises
-    ``NotSupportedError`` — the kernel binding doesn't accept OAuth
-    today, and routing OAuth through PAT would silently break
-    token refresh during long-running sessions.
+    ``auth_options`` carries the raw connect() kwargs relevant to auth
+    (``auth_type``, ``oauth_client_id``, ``oauth_client_secret``,
+    ``oauth_redirect_port``, ``credentials_provider``). They drive the
+    OAuth decisions because the OAuth secret is consumed during
+    ``AuthProvider`` construction and can't be read back off the built
+    provider.
+
+    Resolution order:
+
+    1. **OAuth M2M** — ``oauth_client_id`` + ``oauth_client_secret``
+       both present → forward raw creds to the kernel's ``oauth-m2m``.
+    2. **PAT** — the built provider is (or wraps) an
+       ``AccessTokenAuthProvider`` → extract the bearer token.
+    3. **OAuth U2M** — ``auth_type`` is ``databricks-oauth`` /
+       ``azure-oauth`` → forward optional ``oauth_client_id`` /
+       ``oauth_redirect_port`` to the kernel's ``oauth-u2m``.
+    4. **Custom credentials_provider** → ``NotSupportedError`` (opaque
+       token source; no raw creds for the kernel to own).
+    5. Anything else → ``NotSupportedError``.
+
+    M2M is checked before PAT so that a workload passing both an
+    access token *and* M2M creds resolves to the (refreshing) M2M path
+    rather than a static token.
     """
+    opts = auth_options or {}
+
+    # 1. OAuth M2M — raw client-credentials pair forwarded to the kernel.
+    client_id = opts.get("oauth_client_id")
+    client_secret = opts.get("oauth_client_secret")
+    if client_id and client_secret:
+        kwargs: Dict[str, Any] = {
+            "auth_type": "oauth-m2m",
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
+        scopes = _normalize_scopes(opts.get("oauth_scopes"))
+        if scopes is not None:
+            kwargs["oauth_scopes"] = scopes
+        return kwargs
+
+    # 2. PAT (including TokenFederationProvider-wrapped PAT).
     if _is_pat(auth_provider):
         token = _extract_bearer_token(auth_provider)
         if not token:
@@ -111,8 +168,56 @@ def kernel_auth_kwargs(auth_provider: AuthProvider) -> Dict[str, Any]:
             )
         return {"auth_type": "pat", "access_token": token}
 
+    # 3. OAuth U2M — browser authorization-code flow; the kernel runs it.
+    auth_type = opts.get("auth_type")
+    if auth_type in ("databricks-oauth", "azure-oauth"):
+        kwargs = {"auth_type": "oauth-u2m"}
+        if client_id:
+            kwargs["client_id"] = client_id
+        redirect_port = opts.get("oauth_redirect_port")
+        if redirect_port is not None:
+            kwargs["redirect_port"] = int(redirect_port)
+        scopes = _normalize_scopes(opts.get("oauth_scopes"))
+        if scopes is not None:
+            kwargs["oauth_scopes"] = scopes
+        return kwargs
+
+    # 4. Custom credentials_provider — the connector's primary M2M path
+    #    on Thrift/SEA, but unusable on the kernel: it's an opaque token
+    #    source with no extractable client_id/secret, so the kernel
+    #    can't own the token lifecycle. Point the caller at the raw
+    #    M2M kwargs instead.
+    if opts.get("credentials_provider") is not None:
+        raise NotSupportedError(
+            "use_kernel=True does not support a custom credentials_provider. "
+            "For OAuth machine-to-machine auth, pass oauth_client_id and "
+            "oauth_client_secret so the kernel can manage the token lifecycle "
+            "directly; or use the Thrift backend (default) with "
+            "credentials_provider."
+        )
+
+    # 5. Everything else.
     raise NotSupportedError(
-        f"The kernel backend (use_kernel=True) currently only supports PAT auth, "
-        f"but got {type(auth_provider).__name__}. Use the Thrift backend "
-        "(default) for OAuth / federation / custom credential providers."
+        f"use_kernel=True supports PAT, OAuth M2M (oauth_client_id + "
+        f"oauth_client_secret), and OAuth U2M (auth_type='databricks-oauth' / "
+        f"'azure-oauth'), but got {type(auth_provider).__name__} with "
+        f"auth_type={auth_type!r}. Use the Thrift backend (default) for other "
+        "auth flows."
     )
+
+
+def _normalize_scopes(scopes: Any) -> Optional[list]:
+    """Normalise an ``oauth_scopes`` value to a list of strings, or
+    ``None`` to let the kernel apply its defaults.
+
+    Accepts a list/tuple of strings or a single space-delimited string
+    (the shape ``DatabricksOAuthProvider`` stores internally)."""
+    if scopes is None:
+        return None
+    if isinstance(scopes, str):
+        parts = scopes.split()
+        return parts or None
+    if isinstance(scopes, (list, tuple)):
+        parts = [str(s) for s in scopes if s]
+        return parts or None
+    return None

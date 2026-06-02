@@ -89,13 +89,21 @@ class KernelDatabricksClient(DatabricksClient):
         http_client=None,
         **kwargs,
     ):
-        # The connector hands us several fields the kernel doesn't
-        # consume directly (ssl_options, http_headers, http_client,
-        # port). Kernel manages its own HTTP stack so we
-        # accept-and-ignore.
+        # ``ssl_options`` is translated to the kernel's ``tls_*``
+        # Session kwargs in ``open_session`` (custom CA, verify
+        # toggles, mTLS client cert/key). ``http_headers`` /
+        # ``http_client`` / ``port`` are still accept-and-ignore — the
+        # kernel manages its own HTTP stack.
         self._server_hostname = server_hostname
         self._http_path = http_path
         self._auth_provider = auth_provider
+        self._ssl_options = ssl_options
+        # Raw auth-relevant connect() kwargs (auth_type,
+        # oauth_client_id/secret, redirect port, credentials_provider).
+        # The kernel auth bridge needs these to build OAuth kwargs — the
+        # OAuth secret is consumed during ``auth_provider`` construction
+        # and isn't recoverable from the built provider.
+        self._auth_options = kwargs.get("auth_options") or {}
         self._catalog = catalog
         self._schema = schema
         # ``_use_arrow_native_complex_types`` is the connector-side
@@ -167,7 +175,10 @@ class KernelDatabricksClient(DatabricksClient):
         # local kwargs dict is GC-eligible the moment this method
         # returns, regardless of whether the kernel ``Session()``
         # call succeeded or raised.
-        auth_kwargs = kernel_auth_kwargs(self._auth_provider)
+        auth_kwargs = kernel_auth_kwargs(self._auth_provider, self._auth_options)
+        # Translate the connector's SSLOptions into the kernel's
+        # ``tls_*`` Session kwargs. Empty when TLS is left at defaults.
+        tls_kwargs = _kernel_tls_kwargs(self._ssl_options)
         try:
             self._kernel_session = _kernel.Session(
                 host=self._server_hostname,
@@ -187,14 +198,19 @@ class KernelDatabricksClient(DatabricksClient):
                 # strings).
                 intervals_as_string=True,
                 **auth_kwargs,
+                **tls_kwargs,
             )
         except Exception as exc:
             raise _wrap_kernel_exception("open_session", exc) from exc
         finally:
-            # Best-effort scrub of the local dict before it goes out
+            # Best-effort scrub of the local dicts before they go out
             # of scope. The kernel ``Session`` (if construction
-            # succeeded) now owns its own copy of the credential.
+            # succeeded) now owns its own copies. ``access_token``
+            # (PAT), ``client_secret`` (M2M), and the mTLS client key
+            # bytes are all credential material.
             auth_kwargs.pop("access_token", None)
+            auth_kwargs.pop("client_secret", None)
+            tls_kwargs.pop("tls_client_key", None)
 
         # Use the kernel's real server-issued session id, not a
         # synthetic UUID. Matches what the native SEA backend does.
@@ -636,6 +652,78 @@ _STATE_TO_COMMAND_STATE: Dict[str, CommandState] = {
     "Cancelled": CommandState.CANCELLED,
     "Closed": CommandState.CLOSED,
 }
+
+
+def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
+    """Translate the connector's ``SSLOptions`` into the kernel
+    ``Session``'s ``tls_*`` kwargs.
+
+    Only non-default settings are emitted, so a stock TLS config
+    produces an empty dict (kernel keeps its secure default: validate
+    the system trust store, verify chain + hostname).
+
+    Mappings (note the inverted booleans — the connector expresses
+    *verify*, the kernel expresses *skip*):
+
+    - ``tls_verify=False``          → ``tls_skip_verify=True``
+    - ``tls_verify_hostname=False`` → ``tls_skip_hostname_verify=True``
+    - ``tls_trusted_ca_file``       → ``tls_ca_cert`` (PEM bytes)
+    - ``tls_client_cert_file`` (+ key file) → ``tls_client_cert`` /
+      ``tls_client_key`` (PEM bytes) for mutual TLS.
+
+    The connector's certificate files are read into bytes here because
+    the kernel's pyo3 surface takes in-memory PEM, not paths.
+    """
+    if ssl_options is None:
+        return {}
+
+    kwargs: Dict[str, Any] = {}
+
+    # Inverted booleans. Emit only the insecure (skip) direction so the
+    # default secure path stays implicit.
+    if getattr(ssl_options, "tls_verify", True) is False:
+        kwargs["tls_skip_verify"] = True
+    if getattr(ssl_options, "tls_verify_hostname", True) is False:
+        kwargs["tls_skip_hostname_verify"] = True
+
+    ca_file = getattr(ssl_options, "tls_trusted_ca_file", None)
+    if ca_file:
+        kwargs["tls_ca_cert"] = _read_pem_bytes(ca_file, "tls_trusted_ca_file")
+
+    cert_file = getattr(ssl_options, "tls_client_cert_file", None)
+    key_file = getattr(ssl_options, "tls_client_cert_key_file", None)
+    if cert_file:
+        # The kernel pairs cert + key for mutual TLS; a cert without a
+        # key (or vice versa) is rejected kernel-side. The connector's
+        # SSLOptions allows a combined cert+key file (key_file None), so
+        # fall back to the cert file for the key in that case.
+        kwargs["tls_client_cert"] = _read_pem_bytes(cert_file, "tls_client_cert_file")
+        kwargs["tls_client_key"] = _read_pem_bytes(
+            key_file or cert_file, "tls_client_cert_key_file"
+        )
+        # The kernel has no surface for an encrypted client key today.
+        # Reject loudly rather than hand the kernel a key it can't
+        # decrypt (which would fail with an opaque TLS parse error).
+        if getattr(ssl_options, "tls_client_cert_key_password", None):
+            raise NotSupportedError(
+                "use_kernel=True does not support a password-protected mTLS "
+                "client key (tls_client_cert_key_password). Provide an "
+                "unencrypted PEM key, or use the Thrift backend (default)."
+            )
+
+    return kwargs
+
+
+def _read_pem_bytes(path: str, label: str) -> bytes:
+    """Read a PEM file into bytes, mapping IO errors to a clear
+    ``ProgrammingError`` that names the offending TLS option."""
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError as exc:
+        raise ProgrammingError(
+            f"Failed to read {label} '{path}' for the kernel TLS config: {exc}"
+        ) from exc
 
 
 def _drain_kernel_handle(handle: Any) -> Any:

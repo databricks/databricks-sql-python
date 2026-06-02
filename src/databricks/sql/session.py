@@ -138,6 +138,21 @@ class Session:
             from databricks.sql.backend.kernel.client import KernelDatabricksClient
 
             logger.debug("Creating kernel-backed client for use_kernel=True")
+            # Forward the raw auth-relevant connect() kwargs so the
+            # kernel auth bridge can build OAuth kwargs from the
+            # original credentials. The OAuth client secret is consumed
+            # and discarded during ``auth_provider`` construction, so it
+            # can only be read from these raw kwargs — not the built
+            # provider. These are kernel-only; the Thrift / SEA backends
+            # are unaffected.
+            kernel_auth_options = {
+                "auth_type": kwargs.get("auth_type"),
+                "oauth_client_id": kwargs.get("oauth_client_id"),
+                "oauth_client_secret": kwargs.get("oauth_client_secret"),
+                "oauth_redirect_port": kwargs.get("oauth_redirect_port"),
+                "oauth_scopes": kwargs.get("oauth_scopes"),
+                "credentials_provider": kwargs.get("credentials_provider"),
+            }
             return KernelDatabricksClient(
                 server_hostname=server_hostname,
                 http_path=http_path,
@@ -148,6 +163,7 @@ class Session:
                 catalog=kwargs.get("catalog"),
                 schema=kwargs.get("schema"),
                 _use_arrow_native_complex_types=_use_arrow_native_complex_types,
+                auth_options=kernel_auth_options,
             )
 
         databricks_client_class: Type[DatabricksClient]
