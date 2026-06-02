@@ -956,3 +956,62 @@ class TestKernelTlsEmptyCaFile:
         ca.write_bytes(b"   \n")
         with pytest.raises(ProgrammingError, match="is empty"):
             kernel_client._kernel_tls_kwargs(SSLOptions(tls_trusted_ca_file=str(ca)))
+
+
+# ---------------------------------------------------------------------------
+# Retry translation: connector _retry_* -> kernel Session retry kwargs.
+# ---------------------------------------------------------------------------
+
+
+class TestKernelRetryKwargs:
+    """``_kernel_retry_kwargs`` maps the connector's ``_retry_*`` tuning
+    onto the kernel ``Session``'s ``retry_*`` kwargs, rounding float
+    seconds to whole seconds and forwarding the total-attempts count
+    1:1 (the kernel does the retries-after-first conversion)."""
+
+    def test_empty_options_emit_no_kwargs(self):
+        assert kernel_client._kernel_retry_kwargs({}) == {}
+
+    def test_all_options_mapped(self):
+        out = kernel_client._kernel_retry_kwargs(
+            {
+                "retry_delay_min": 2.0,
+                "retry_delay_max": 90.0,
+                "retry_stop_after_attempts_count": 10,
+                "retry_stop_after_attempts_duration": 600.0,
+            }
+        )
+        assert out == {
+            "retry_min_wait_secs": 2,
+            "retry_max_wait_secs": 90,
+            "retry_max_attempts": 10,
+            "retry_overall_timeout_secs": 600,
+        }
+
+    def test_count_forwarded_one_to_one(self):
+        # Total-attempts count is passed verbatim; the kernel converts
+        # to retries-after-first internally (so 1 means a single attempt).
+        out = kernel_client._kernel_retry_kwargs({"retry_stop_after_attempts_count": 1})
+        assert out == {"retry_max_attempts": 1}
+
+    def test_float_seconds_rounded(self):
+        out = kernel_client._kernel_retry_kwargs(
+            {"retry_delay_min": 2.4, "retry_delay_max": 2.6}
+        )
+        assert out == {"retry_min_wait_secs": 2, "retry_max_wait_secs": 3}
+
+    def test_subsecond_delay_floored_to_one(self):
+        # A positive sub-second delay (the connector allows 0.1) must
+        # not round down to 0 — that would turn backoff into busy-retry.
+        out = kernel_client._kernel_retry_kwargs({"retry_delay_min": 0.1})
+        assert out == {"retry_min_wait_secs": 1}
+
+    def test_only_set_keys_emitted(self):
+        out = kernel_client._kernel_retry_kwargs({"retry_delay_max": 30.0})
+        assert out == {"retry_max_wait_secs": 30}
+
+    def test_retry_delay_default_has_no_mapping(self):
+        # _retry_delay_default isn't forwarded by session.py and isn't a
+        # recognised key here — it has no kernel equivalent.
+        out = kernel_client._kernel_retry_kwargs({"retry_delay_default": 5.0})
+        assert out == {}

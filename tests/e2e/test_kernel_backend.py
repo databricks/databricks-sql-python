@@ -26,7 +26,6 @@ import pytest
 import databricks.sql as sql
 from databricks.sql.exc import DatabaseError
 
-
 # Skip the whole module unless the kernel wheel is genuinely installed.
 # ``pytest.importorskip`` alone isn't enough: the kernel unit tests inject a
 # fake ``databricks_sql_kernel`` ModuleType into ``sys.modules`` so the
@@ -181,6 +180,46 @@ def test_session_configuration_round_trips(kernel_conn_params):
             rows = cur.fetchall()
             kv = {r[0]: r[1] for r in rows}
             assert kv.get("ANSI_MODE") == "false", f"got {rows!r}"
+
+
+def test_retry_params_accepted_end_to_end(kernel_conn_params):
+    """The connector's `_retry_*` tuning kwargs are translated to the
+    kernel `Session`'s `retry_*` kwargs and accepted end-to-end. We
+    can't easily force a retry against a live warehouse, so this is a
+    smoke test: a connection configured with explicit retry params
+    opens and runs a query successfully (proving the kwargs reach and
+    are accepted by the kernel)."""
+    params = dict(kernel_conn_params)
+    params.update(
+        _retry_delay_min=2,
+        _retry_delay_max=30,
+        _retry_stop_after_attempts_count=4,
+        _retry_stop_after_attempts_duration=120,
+    )
+    with sql.connect(**params) as c:
+        with c.cursor() as cur:
+            cur.execute("SELECT 1 AS n")
+            assert cur.fetchall()[0][0] == 1
+
+
+def test_enable_metric_view_metadata_lists_metric_view_table_type(kernel_conn_params):
+    """`enable_metric_view_metadata=True` injects the
+    `spark.sql.thriftserver.metadata.metricview.enabled` session conf,
+    which the kernel now passes through (verbatim) so the server
+    surfaces `METRIC_VIEW` in `cursor.tables()`'s table-type column.
+
+    We assert the connection opens and `tables()` runs; the kernel
+    already lists `METRIC_VIEW` among its table types, and the conf
+    enables the server side. Not asserting a specific metric view
+    exists in the catalog (workspace-dependent)."""
+    params = dict(kernel_conn_params)
+    params["enable_metric_view_metadata"] = True
+    with sql.connect(**params) as c:
+        with c.cursor() as cur:
+            # Smoke: the conf was accepted (no SqlError on open) and a
+            # metadata call works with it set.
+            cur.tables()
+            cur.fetchall()
 
 
 # ── Error mapping ─────────────────────────────────────────────────

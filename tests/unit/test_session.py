@@ -408,3 +408,61 @@ class TestKernelAuthProviderBypass:
         # PAT path: a minimal AccessTokenAuthProvider, not the
         # federation-wrapped connector provider.
         assert isinstance(sess.auth_provider, AccessTokenAuthProvider)
+
+
+class TestKernelRetryOptionsThreading:
+    """The connector's ``_retry_*`` kwargs must be forwarded into the
+    kernel client's ``retry_options`` on the use_kernel path (the kernel
+    owns the retry loop). Stubs ``_create_backend`` so the kernel client
+    is never imported — wheel-independent — and inspects the
+    ``retry_options`` dict session.py builds by patching the kernel
+    client and capturing its call args.
+    """
+
+    PACKAGE = "databricks.sql"
+
+    def test_retry_kwargs_threaded_into_kernel_client(self):
+        import sys
+        import types
+
+        # The lazy ``from databricks.sql.backend.kernel.client import
+        # KernelDatabricksClient`` triggers ``import databricks_sql_kernel``
+        # at module load; the unit-test job has no Rust wheel, so inject
+        # a fake module (scoped via patch.dict) before connect() runs.
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        # Patch the kernel client class (imported lazily inside
+        # _create_backend) and the provider builder; capture the kwargs
+        # session.py passes to the kernel client.
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+                _retry_delay_min=2.0,
+                _retry_delay_max=90.0,
+                _retry_stop_after_attempts_count=10,
+                _retry_stop_after_attempts_duration=600.0,
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                opts = kwargs["retry_options"]
+                assert opts["retry_delay_min"] == 2.0
+                assert opts["retry_delay_max"] == 90.0
+                assert opts["retry_stop_after_attempts_count"] == 10
+                assert opts["retry_stop_after_attempts_duration"] == 600.0
+            finally:
+                conn.close()
