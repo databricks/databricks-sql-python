@@ -1,5 +1,14 @@
 # Release History
 
+# 4.2.7 (2026-06-02)
+- Add experimental Rust kernel backend behind the `use_kernel=True` flag — routes through the Rust kernel via PyO3 with OAuth (M2M/U2M), TLS/mTLS, Geometry, complex types, parameter binding, and Thrift-backend surface parity (databricks/databricks-sql-python#787, #789, #793, #795, #803, #819 by @vikrantpuppala)
+- Extract SPOG org-id from cluster http_path for non-Thrift requests (databricks/databricks-sql-python#817 by @msrathore-db)
+- Remove empty chunks in CloudFetch concatenation (databricks/databricks-sql-python#814 by @jprakash-db)
+- Add `_retry_server_directed_only` mode for Retry-After header compliance (databricks/databricks-sql-python#756 by @sd-db)
+- Bump thrift to 0.23.0 (databricks/databricks-sql-python#796 by @leoromanovsky)
+- Allow pandas 3.x in dependency constraints (databricks/databricks-sql-python#768 by @moomindani)
+- Telemetry: unwrap TokenFederationProvider to report inner auth mechanism/flow (databricks/databricks-sql-python#781 by @samikshya-db)
+
 # 4.2.6 (2026-04-22)
 - Add SPOG routing support for account-level vanity URLs (databricks/databricks-sql-python#767 by @msrathore-db)
 - Fix dependency_manager: handle PEP 440 ~= compatible release syntax (databricks/databricks-sql-python#776 by @vikrantpuppala)
