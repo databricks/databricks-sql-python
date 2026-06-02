@@ -1,5 +1,12 @@
 # Release History
 
+# 4.2.7 (2026-05-21)
+- Add experimental Rust kernel backend (opt-in via `use_kernel=True`) — routes execution through the Databricks SQL kernel via PyO3, with TSparkParameter binding, Thrift backend feature parity, and `_use_arrow_native_complex_types` support (databricks/databricks-sql-python#787, #789, #793, #795 by @vikrantpuppala)
+- Add opt-in `_respect_server_retry_after_header` retry mode that only retries 429/503 when the server sends a `Retry-After` header — prevents duplicate side effects for non-idempotent operations (databricks/databricks-sql-python#756 by @sd-db)
+- Allow pandas 3.x in dependency constraints (databricks/databricks-sql-python#768 by @moomindani)
+- Telemetry: unwrap `TokenFederationProvider` to report inner auth mechanism/flow (databricks/databricks-sql-python#781 by @samikshya-db)
+- Test fixes for MST metadata expectations and User-Agent env leak (databricks/databricks-sql-python#788 by @vikrantpuppala)
+
 # 4.2.6 (2026-04-22)
 - Add SPOG routing support for account-level vanity URLs (databricks/databricks-sql-python#767 by @msrathore-db)
 - Fix dependency_manager: handle PEP 440 ~= compatible release syntax (databricks/databricks-sql-python#776 by @vikrantpuppala)
