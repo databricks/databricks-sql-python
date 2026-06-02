@@ -146,6 +146,39 @@ def test_description_recovers_complex_type_name_from_metadata(metadata_value, ex
 
 
 @pytest.mark.parametrize(
+    "metadata_value, expected",
+    [
+        (b"GEOGRAPHY", "geography"),
+        (b"GEOMETRY", "geometry"),
+        # Case-insensitive, matching the variant/complex handling.
+        (b"geography", "geography"),
+        (b"Geometry", "geometry"),
+    ],
+)
+def test_description_recovers_geospatial_type_name_from_metadata(
+    metadata_value, expected
+):
+    """GEOGRAPHY / GEOMETRY columns arrive over SEA as Arrow ``Utf8``
+    (WKT/WKB text); the kernel annotates them with
+    ``databricks.type_name`` so ``description`` reports the precise
+    geospatial type rather than collapsing to ``string``."""
+    schema = pa.schema(
+        [
+            pa.field(
+                "g",
+                pa.string(),
+                metadata={b"databricks.type_name": metadata_value},
+            ),
+            # Plain Utf8 without the metadata stays ``string``.
+            pa.field("s", pa.string()),
+        ]
+    )
+    desc = description_from_arrow_schema(schema)
+    assert desc[0][1] == expected
+    assert desc[1][1] == "string"
+
+
+@pytest.mark.parametrize(
     "arrow_type, expected_precision, expected_scale",
     [
         (pa.decimal128(10, 2), 10, 2),
