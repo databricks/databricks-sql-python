@@ -350,3 +350,63 @@ class TestSpogHeaders:
         # match warehouse paths (which never embed the workspace ID).
         result = Session._extract_spog_headers("/sql/1.0/warehouses/abc123", [])
         assert result == {}
+
+
+class TestKernelAuthProviderBypass:
+    """Regression guards for the use_kernel auth-provider handling.
+
+    On use_kernel=True the connector must NOT build its own OAuth
+    provider — doing so eagerly runs the U2M browser flow / M2M token
+    exchange at connect() time (before use_kernel is even consulted),
+    which both opens a browser and races the kernel's own auth. The
+    kernel owns auth from the raw kwargs instead. See session.py.
+
+    These exercise ``Session.__init__``'s provider-selection logic
+    directly: ``_create_backend`` is stubbed to a no-op so the kernel
+    client (and its ``import databricks_sql_kernel``) is never touched,
+    keeping the tests independent of whether the Rust wheel is installed
+    in the unit-test job. We assert on the resulting ``session.auth_provider``
+    and that the connector's provider builder was not called.
+    """
+
+    PACKAGE = "databricks.sql"
+
+    def _build_session(self, **extra):
+        """Construct a Session with use_kernel=True and a stubbed
+        backend, returning (session, mock_get_provider)."""
+        with patch(
+            "%s.session.Session._create_backend" % self.PACKAGE
+        ) as mock_backend, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ) as mock_get_provider:
+            mock_backend.return_value = MagicMock()
+            sess = Session(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                http_client=MagicMock(),
+                http_headers=[],
+                use_kernel=True,
+                enable_telemetry=False,
+                **extra,
+            )
+            return sess, mock_get_provider
+
+    def test_use_kernel_m2m_does_not_build_connector_provider(self):
+        sess, mock_get_provider = self._build_session(
+            oauth_client_id="sp-uuid", oauth_client_secret="shh"
+        )
+        # The connector's provider builder (which would fire the eager
+        # OAuth flow) must never be called on the kernel path...
+        mock_get_provider.assert_not_called()
+        # ...and with no access_token, auth_provider is None (M2M
+        # resolves in-kernel from the raw kwargs).
+        assert sess.auth_provider is None
+
+    def test_use_kernel_pat_builds_minimal_access_token_provider(self):
+        from databricks.sql.auth.authenticators import AccessTokenAuthProvider
+
+        sess, mock_get_provider = self._build_session(access_token="dapi-xyz")
+        mock_get_provider.assert_not_called()
+        # PAT path: a minimal AccessTokenAuthProvider, not the
+        # federation-wrapped connector provider.
+        assert isinstance(sess.auth_provider, AccessTokenAuthProvider)

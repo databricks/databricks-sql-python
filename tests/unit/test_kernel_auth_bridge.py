@@ -1,12 +1,17 @@
 """Unit tests for the kernel backend's auth bridge.
 
-Phase 1 ships PAT only. Tests verify:
+Tests verify:
   - PAT routes through ``auth_type='pat'``.
   - ``TokenFederationProvider``-wrapped PAT also routes through
     PAT (every provider built by ``get_python_sql_connector_auth_provider``
     is federation-wrapped, so the naive isinstance check has to
     look through the wrapper).
-  - Anything else raises ``NotSupportedError`` with a clear message.
+  - OAuth M2M (``oauth_client_id`` + ``oauth_client_secret``) routes
+    through ``auth_type='oauth-m2m'`` with the raw creds forwarded.
+  - OAuth U2M (``auth_type='databricks-oauth'`` / ``'azure-oauth'``)
+    routes through ``auth_type='oauth-u2m'``.
+  - A custom ``credentials_provider`` and any other non-PAT shape raise
+    ``NotSupportedError`` with a clear, actionable message.
 """
 
 from __future__ import annotations
@@ -24,8 +29,6 @@ import pytest
 from databricks.sql.auth.authenticators import (
     AccessTokenAuthProvider,
     AuthProvider,
-    DatabricksOAuthProvider,
-    ExternalAuthProvider,
 )
 from databricks.sql.backend.kernel.auth_bridge import (
     _extract_bearer_token,
@@ -152,27 +155,26 @@ class TestKernelAuthKwargs:
             kernel_auth_kwargs(broken)
 
     def test_generic_oauth_provider_raises_not_supported(self):
-        with pytest.raises(NotSupportedError, match="only supports PAT"):
+        # No auth_options → a non-PAT provider with no M2M/U2M signal
+        # falls through to the generic "other auth flows" rejection.
+        with pytest.raises(NotSupportedError, match="Use the Thrift backend"):
             kernel_auth_kwargs(_FakeOAuthProvider())
 
     def test_external_credentials_provider_raises_not_supported(self):
-        """``ExternalAuthProvider`` wraps user-supplied
-        credentials_provider — kernel doesn't accept these today,
-        and the bridge surfaces that explicitly."""
-        # ExternalAuthProvider's __init__ calls the credentials
-        # provider; supply a noop one.
-        from databricks.sql.auth.authenticators import CredentialsProvider
+        """A user-supplied ``credentials_provider`` is the connector's
+        primary M2M path on Thrift/SEA, but it's an opaque token source
+        with no extractable raw creds — the kernel can't own the token
+        lifecycle, so the bridge rejects it and points at the
+        ``oauth_client_id`` / ``oauth_client_secret`` M2M kwargs."""
 
-        class _NoopCreds(CredentialsProvider):
-            def auth_type(self):
-                return "noop"
+        def _creds_provider():
+            return lambda: {"Authorization": "Bearer noop"}
 
-            def __call__(self, *args, **kwargs):
-                return lambda: {"Authorization": "Bearer noop"}
-
-        ext = ExternalAuthProvider(_NoopCreds())
-        with pytest.raises(NotSupportedError, match="only supports PAT"):
-            kernel_auth_kwargs(ext)
+        with pytest.raises(NotSupportedError, match="oauth_client_secret"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {"credentials_provider": _creds_provider},
+            )
 
     def test_silent_non_pat_provider_also_raises_not_supported(self):
         """Even if a non-PAT provider produces no header, the bridge
@@ -180,3 +182,140 @@ class TestKernelAuthKwargs:
         from something we already know is unsupported."""
         with pytest.raises(NotSupportedError):
             kernel_auth_kwargs(_SilentProvider())
+
+
+class TestKernelOAuthM2M:
+    def test_m2m_forwards_raw_client_credentials(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {"oauth_client_id": "sp-uuid", "oauth_client_secret": "shh"},
+        )
+        assert kwargs == {
+            "auth_type": "oauth-m2m",
+            "client_id": "sp-uuid",
+            "client_secret": "shh",
+        }
+
+    def test_m2m_includes_scopes_when_provided(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp-uuid",
+                "oauth_client_secret": "shh",
+                "oauth_scopes": ["all-apis", "sql"],
+            },
+        )
+        assert kwargs["oauth_scopes"] == ["all-apis", "sql"]
+
+    def test_m2m_normalizes_space_delimited_scopes(self):
+        # DatabricksOAuthProvider stores scopes as a single
+        # space-delimited string; the bridge splits it to a list.
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "oauth_client_id": "sp",
+                "oauth_client_secret": "s",
+                "oauth_scopes": "all-apis sql",
+            },
+        )
+        assert kwargs["oauth_scopes"] == ["all-apis", "sql"]
+
+    def test_m2m_takes_precedence_over_pat(self):
+        # A workload passing both a token and M2M creds resolves to the
+        # refreshing M2M path, not the static token.
+        kwargs = kernel_auth_kwargs(
+            AccessTokenAuthProvider("dapi-xyz"),
+            {"oauth_client_id": "id", "oauth_client_secret": "sec"},
+        )
+        assert kwargs["auth_type"] == "oauth-m2m"
+
+    def test_client_id_without_secret_does_not_trigger_m2m(self):
+        # Only oauth_client_id (the U2M custom-client case) must NOT be
+        # mistaken for M2M; with a PAT provider it routes to PAT.
+        kwargs = kernel_auth_kwargs(
+            AccessTokenAuthProvider("dapi-xyz"),
+            {"oauth_client_id": "id"},
+        )
+        assert kwargs == {"auth_type": "pat", "access_token": "dapi-xyz"}
+
+
+class TestKernelOAuthU2M:
+    @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_u2m_routes_to_kernel_u2m(self, auth_type):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {"auth_type": auth_type},
+        )
+        assert kwargs == {"auth_type": "oauth-u2m"}
+
+    def test_u2m_forwards_client_id_and_redirect_port(self):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {
+                "auth_type": "databricks-oauth",
+                "oauth_client_id": "custom-client",
+                "oauth_redirect_port": 8030,
+            },
+        )
+        assert kwargs == {
+            "auth_type": "oauth-u2m",
+            "client_id": "custom-client",
+            "redirect_port": 8030,
+        }
+
+    @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_u2m_forwards_scopes(self, auth_type):
+        kwargs = kernel_auth_kwargs(
+            _FakeOAuthProvider(),
+            {"auth_type": auth_type, "oauth_scopes": ["all-apis", "offline_access"]},
+        )
+        assert kwargs["oauth_scopes"] == ["all-apis", "offline_access"]
+
+
+class TestKernelAuthAmbiguity:
+    """Conflicting auth signals must fail loudly at session-open rather
+    than silently resolving to one flow (which would surface later as a
+    confusing 401 against the wrong principal)."""
+
+    def test_credentials_provider_plus_m2m_is_rejected(self):
+        def _creds_provider():
+            return lambda: {"Authorization": "Bearer x"}
+
+        with pytest.raises(NotSupportedError, match="Ambiguous auth"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {
+                    "oauth_client_id": "id",
+                    "oauth_client_secret": "sec",
+                    "credentials_provider": _creds_provider,
+                },
+            )
+
+    @pytest.mark.parametrize("auth_type", ["databricks-oauth", "azure-oauth"])
+    def test_u2m_auth_type_plus_client_secret_is_rejected(self, auth_type):
+        # User asked for U2M (browser) but also passed a secret (M2M).
+        # Don't silently route M2M against the wrong principal.
+        with pytest.raises(NotSupportedError, match="Ambiguous auth"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {
+                    "auth_type": auth_type,
+                    "oauth_client_id": "id",
+                    "oauth_client_secret": "sec",
+                },
+            )
+
+
+class TestKernelScopesNormalization:
+    def test_unknown_scope_type_raises(self):
+        # A non-str/list/tuple oauth_scopes is a caller error; fail loudly
+        # rather than silently dropping to default scopes.
+        with pytest.raises(ProgrammingError, match="oauth_scopes must be"):
+            kernel_auth_kwargs(
+                _FakeOAuthProvider(),
+                {
+                    "oauth_client_id": "id",
+                    "oauth_client_secret": "sec",
+                    "oauth_scopes": 123,
+                },
+            )

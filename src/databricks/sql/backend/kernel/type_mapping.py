@@ -154,6 +154,9 @@ def _databricks_type_for_field(field: pyarrow.Field) -> str:
 
     - ``VARIANT`` (always ``Utf8`` on the wire — no Arrow shape
       distinguishes it from ``STRING``).
+    - ``GEOGRAPHY`` / ``GEOMETRY`` (also ``Utf8`` on the wire — the
+      server returns WKT/WKB text; only the manifest metadata marks
+      them as geospatial).
     - The ``complex_types_as_json`` post-processor rewrites
       ``ARRAY`` / ``MAP`` / ``STRUCT`` columns to ``Utf8`` carrying
       compact JSON text. The Thrift backend reports the original
@@ -176,7 +179,14 @@ def _databricks_type_for_field(field: pyarrow.Field) -> str:
         # types (e.g. ``DECIMAL`` arrives as ``decimal`` on the
         # Arrow side, which matches Thrift).
         decoded = type_name.decode("ascii", errors="replace").lower()
-        if decoded in {"variant", "array", "map", "struct"}:
+        if decoded in {
+            "variant",
+            "array",
+            "map",
+            "struct",
+            "geography",
+            "geometry",
+        }:
             return decoded
     return _arrow_type_to_dbapi_string(field.type)
 

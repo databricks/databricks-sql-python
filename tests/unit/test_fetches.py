@@ -14,6 +14,34 @@ from databricks.sql.backend.thrift_backend import ThriftDatabricksClient
 from databricks.sql.result_set import ThriftResultSet
 
 
+class _StubArrowQueue:
+    """Minimal queue that hands back a pre-built pyarrow.Table once.
+
+    Used to inject a schemaless / wrong-schema placeholder that the real
+    ArrowQueue would never produce — this is what CloudFetchQueue emits
+    when ``self.table is None`` and ``schema_bytes`` is missing.
+    """
+
+    def __init__(self, table):
+        self._table = table
+        self._consumed = False
+
+    def _take(self):
+        if self._consumed:
+            return self._table.slice(0, 0)
+        self._consumed = True
+        return self._table
+
+    def next_n_rows(self, num_rows):
+        return self._take()
+
+    def remaining_rows(self):
+        return self._take()
+
+    def close(self):
+        pass
+
+
 @pytest.mark.skipif(pa is None, reason="PyArrow is not installed")
 class FetchTests(unittest.TestCase):
     """
@@ -103,6 +131,39 @@ class FetchTests(unittest.TestCase):
                 status=None,
                 has_been_closed_server_side=False,
                 description=description,
+                lz4_compressed=True,
+                is_staging_operation=False,
+            ),
+            thrift_client=mock_thrift_backend,
+        )
+        return rs
+
+    @staticmethod
+    def make_dummy_result_set_from_queue_list(queue_list, description=None):
+        """Like make_dummy_result_set_from_batch_list but yields pre-built queues.
+
+        Lets tests inject queues whose returned tables have an arbitrary schema
+        (or no schema at all) — needed to reproduce the CloudFetch placeholder
+        case that ``ArrowQueue`` would never produce.
+        """
+        queue_index = 0
+
+        def fetch_results(**_):
+            nonlocal queue_index
+            q = queue_list[queue_index]
+            queue_index += 1
+            return q, queue_index < len(queue_list), 0
+
+        mock_thrift_backend = Mock(spec=ThriftDatabricksClient)
+        mock_thrift_backend.fetch_results = fetch_results
+
+        rs = ThriftResultSet(
+            connection=Mock(),
+            execute_response=ExecuteResponse(
+                command_id=None,
+                status=None,
+                has_been_closed_server_side=False,
+                description=description or [],
                 lz4_compressed=True,
                 is_staging_operation=False,
             ),
@@ -266,6 +327,68 @@ class FetchTests(unittest.TestCase):
         batch_list_2 = [[]]
         dummy_result_set = self.make_dummy_result_set_from_batch_list(batch_list_2)
         self.assertEqual(dummy_result_set.fetchone(), None)
+
+    # Regression tests for fetchmany_arrow / fetchall_arrow handling of
+    # the schemaless CloudFetch placeholder.
+    def test_fetchall_arrow_drops_mismatched_empty_placeholder(self):
+        # First fetch_results() call hands back a 0-row placeholder whose
+        # schema does not match the real chunks. The second call
+        # hands back real data.
+        placeholder = pa.Table.from_pydict(
+            {"stale_col": []}, schema=pa.schema({"stale_col": pa.string()})
+        )
+        _, real_table = self.make_arrow_table([[1], [2], [3]])
+        rs = self.make_dummy_result_set_from_queue_list(
+            [_StubArrowQueue(placeholder), _StubArrowQueue(real_table)],
+            description=[("col0", "integer", None, None, None, None, None)],
+        )
+
+        result = rs.fetchall_arrow()
+
+        self.assertEqual(result.num_rows, 3)
+        self.assertEqual(result.schema.names, ["col0"])
+        self.assertEqual(result.column(0).to_pylist(), [1, 2, 3])
+
+    def test_fetchall_arrow_all_empty_returns_zero_row_table(self):
+        # Every queue call returns the schemaless placeholder — the
+        # call site should fall back to zero_row_table without crashing.
+        placeholder = pa.Table.from_pydict({})
+        rs = self.make_dummy_result_set_from_queue_list(
+            [_StubArrowQueue(placeholder)],
+        )
+
+        result = rs.fetchall_arrow()
+
+        self.assertIsInstance(result, pa.Table)
+        self.assertEqual(result.num_rows, 0)
+
+    def test_fetchmany_arrow_drops_mismatched_empty_placeholder(self):
+        # See ``test_fetchall_arrow_drops_mismatched_empty_placeholder``.
+        placeholder = pa.Table.from_pydict(
+            {"stale_col": []}, schema=pa.schema({"stale_col": pa.string()})
+        )
+        _, real_table = self.make_arrow_table([[1], [2], [3]])
+        rs = self.make_dummy_result_set_from_queue_list(
+            [_StubArrowQueue(placeholder), _StubArrowQueue(real_table)],
+            description=[("col0", "integer", None, None, None, None, None)],
+        )
+
+        result = rs.fetchmany_arrow(3)
+
+        self.assertEqual(result.num_rows, 3)
+        self.assertEqual(result.schema.names, ["col0"])
+        self.assertEqual(result.column(0).to_pylist(), [1, 2, 3])
+
+    def test_fetchmany_arrow_all_empty_returns_zero_row_table(self):
+        placeholder = pa.Table.from_pydict({})
+        rs = self.make_dummy_result_set_from_queue_list(
+            [_StubArrowQueue(placeholder)],
+        )
+
+        result = rs.fetchmany_arrow(10)
+
+        self.assertIsInstance(result, pa.Table)
+        self.assertEqual(result.num_rows, 0)
 
 
 if __name__ == "__main__":

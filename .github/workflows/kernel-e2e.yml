@@ -178,7 +178,7 @@ jobs:
           echo "$CHANGED"
           # Run when the connector kernel backend, kernel e2e tests,
           # this workflow, the kernel revision pin, or core deps move.
-          if echo "$CHANGED" | grep -qE "^(src/databricks/sql/backend/kernel/|tests/e2e/test_kernel_backend\.py|tests/unit/test_kernel_|\.github/workflows/kernel-e2e\.yml|KERNEL_REV|pyproject\.toml|poetry\.lock)"; then
+          if echo "$CHANGED" | grep -qE "^(src/databricks/sql/backend/kernel/|src/databricks/sql/session\.py|tests/e2e/test_kernel_backend\.py|tests/e2e/test_kernel_tls\.py|tests/unit/test_kernel_|\.github/workflows/kernel-e2e\.yml|KERNEL_REV|pyproject\.toml|poetry\.lock)"; then
             echo "run_tests=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_tests=false" >> "$GITHUB_OUTPUT"
@@ -319,6 +319,58 @@ jobs:
       - name: Run kernel e2e tests
         run: poetry run pytest tests/e2e/test_kernel_backend.py -v
 
+      # ── TLS e2e through an intercepting proxy ───────────────────────
+      # mitmproxy re-signs every TLS connection with its own CA. The
+      # connector tests (tests/e2e/test_kernel_tls.py) prove the whole
+      # stack — sql.connect(use_kernel=True, _tls_*=...) → SSLOptions →
+      # kernel handshake — trusts the CA / accepts no-verify / rejects
+      # by default. The kernel wheel is already built above, BEFORE any
+      # proxy is in scope, so cargo's JFrog registry fetch was never
+      # routed through (and broken by) mitmproxy.
+      - name: Start mitmproxy
+        run: |
+          docker run -d --name mitmproxy \
+            -p 8080:8080 \
+            mitmproxy/mitmproxy:12.2.1@sha256:743b6cdc817211d64bc269f5defacca8d14e76e647fc474e5c7244dbcb645141 \
+            mitmdump --set stream_large_bodies=0
+          for i in $(seq 1 15); do
+            if docker exec mitmproxy test -f /home/mitmproxy/.mitmproxy/mitmproxy-ca-cert.pem 2>/dev/null; then
+              echo "mitmproxy CA cert is ready"
+              break
+            fi
+            echo "Waiting for mitmproxy CA cert... ($i/15)"
+            sleep 1
+          done
+
+      - name: Extract mitmproxy CA certificate
+        run: |
+          docker cp mitmproxy:/home/mitmproxy/.mitmproxy/mitmproxy-ca-cert.pem /tmp/mitmproxy-ca-cert.pem
+          echo "MITMPROXY_CA_CERT=/tmp/mitmproxy-ca-cert.pem" >> "$GITHUB_ENV"
+          echo "Extracted mitmproxy CA cert:"
+          openssl x509 -in /tmp/mitmproxy-ca-cert.pem -noout -subject -issuer
+
+      - name: Run kernel TLS e2e tests
+        # HTTPS_PROXY is scoped to THIS step so only the test's own HTTP
+        # traffic flows through mitmproxy — not cargo / pip / anything
+        # the earlier build steps needed from the JFrog registry.
+        env:
+          HTTPS_PROXY: http://localhost:8080
+        run: poetry run pytest tests/e2e/test_kernel_tls.py -v
+
+      - name: Verify traffic flowed through mitmproxy
+        if: always()
+        run: |
+          echo "=== mitmproxy logs (tail) ==="
+          docker logs mitmproxy 2>&1 | tail -50
+          echo "=== checking for proxied-connection entries ==="
+          docker logs mitmproxy 2>&1 \
+            | grep -i "CONNECT\|clientconnect\|<<" \
+            || (echo "FAIL: no traffic in mitmproxy logs — proxy was not used" && exit 1)
+
+      - name: Cleanup mitmproxy
+        if: always()
+        run: docker rm -f mitmproxy 2>/dev/null || true
+
       # Post a Kernel E2E check on both the labeled-PR and merge-queue
       # paths so the named check on the PR reflects the latest real
       # run (overwriting the synthetic-success check that
@@ -341,7 +393,7 @@ jobs:
               completed_at: new Date().toISOString(),
               output: {
                 title: 'Kernel E2E passed',
-                summary: 'tests/e2e/test_kernel_backend.py ran green against the pinned kernel SHA.'
+                summary: 'test_kernel_backend.py and the mitmproxy-backed test_kernel_tls.py ran green against the pinned kernel SHA.'
               }
             });
 

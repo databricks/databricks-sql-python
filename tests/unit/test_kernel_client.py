@@ -778,3 +778,181 @@ def test_get_tables_without_table_types_returns_full_stream():
     )
     table = rs.fetchall_arrow()
     assert table.num_rows == 3
+
+
+# ---------------------------------------------------------------------------
+# TLS translation: SSLOptions -> kernel Session tls_* kwargs.
+# ---------------------------------------------------------------------------
+
+
+class TestKernelTlsKwargs:
+    """``_kernel_tls_kwargs`` maps the connector's ``SSLOptions`` onto
+    the kernel ``Session`` ``tls_*`` kwargs, reading cert files into
+    PEM bytes and inverting the verify→skip booleans."""
+
+    def _ssl_options(self, **overrides):
+        from databricks.sql.types import SSLOptions
+
+        return SSLOptions(**overrides)
+
+    def test_default_ssl_options_emit_no_tls_kwargs(self):
+        # Stock TLS (verify on, no custom CA) → kernel keeps its secure
+        # default, so we emit nothing.
+        assert kernel_client._kernel_tls_kwargs(self._ssl_options()) == {}
+
+    def test_none_ssl_options_emit_no_tls_kwargs(self):
+        assert kernel_client._kernel_tls_kwargs(None) == {}
+
+    def test_verify_off_maps_to_skip_verify_and_hostname(self):
+        # tls_verify=False disables all chain validation, which subsumes
+        # hostname verification — so both skip flags are emitted, matching
+        # SSLOptions.create_ssl_context (check_hostname=False when
+        # tls_verify is False).
+        out = kernel_client._kernel_tls_kwargs(self._ssl_options(tls_verify=False))
+        assert out == {
+            "tls_skip_verify": True,
+            "tls_skip_hostname_verify": True,
+        }
+
+    def test_hostname_verify_off_maps_to_skip_hostname(self):
+        # Only hostname verification off (chain still validated) → just
+        # the hostname skip, no tls_skip_verify.
+        out = kernel_client._kernel_tls_kwargs(
+            self._ssl_options(tls_verify_hostname=False)
+        )
+        assert out == {"tls_skip_hostname_verify": True}
+
+    def test_custom_ca_file_read_as_bytes(self, tmp_path):
+        ca = tmp_path / "ca.pem"
+        ca.write_bytes(b"-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n")
+        out = kernel_client._kernel_tls_kwargs(
+            self._ssl_options(tls_trusted_ca_file=str(ca))
+        )
+        assert out["tls_ca_cert"] == ca.read_bytes()
+
+    def test_mtls_cert_and_key_read_as_bytes(self, tmp_path):
+        cert = tmp_path / "client.crt"
+        key = tmp_path / "client.key"
+        cert.write_bytes(b"CERTBYTES")
+        key.write_bytes(b"KEYBYTES")
+        out = kernel_client._kernel_tls_kwargs(
+            self._ssl_options(
+                tls_client_cert_file=str(cert),
+                tls_client_cert_key_file=str(key),
+            )
+        )
+        assert out["tls_client_cert"] == b"CERTBYTES"
+        assert out["tls_client_key"] == b"KEYBYTES"
+
+    def test_mtls_cert_only_falls_back_to_cert_for_key(self, tmp_path):
+        # SSLOptions allows a combined cert+key file (key_file None);
+        # the kernel needs both, so we reuse the cert file for the key.
+        combined = tmp_path / "combined.pem"
+        combined.write_bytes(b"COMBINED")
+        out = kernel_client._kernel_tls_kwargs(
+            self._ssl_options(tls_client_cert_file=str(combined))
+        )
+        assert out["tls_client_cert"] == b"COMBINED"
+        assert out["tls_client_key"] == b"COMBINED"
+
+    def test_encrypted_client_key_rejected(self, tmp_path):
+        cert = tmp_path / "client.crt"
+        cert.write_bytes(b"CERT")
+        with pytest.raises(NotSupportedError, match="password-protected"):
+            kernel_client._kernel_tls_kwargs(
+                self._ssl_options(
+                    tls_client_cert_file=str(cert),
+                    tls_client_cert_key_password="hunter2",
+                )
+            )
+
+    def test_missing_ca_file_raises_programming_error(self):
+        with pytest.raises(ProgrammingError, match="tls_trusted_ca_file"):
+            kernel_client._kernel_tls_kwargs(
+                self._ssl_options(tls_trusted_ca_file="/no/such/ca.pem")
+            )
+
+
+# ---------------------------------------------------------------------------
+# Secret hygiene: oauth_client_secret must not be retained or leak.
+# ---------------------------------------------------------------------------
+
+
+class TestKernelSecretHygiene:
+    """The new ``oauth_client_secret`` M2M kwarg is credential material.
+    Verify it's scrubbed after ``open_session`` and never exposed via
+    the connector's ``repr`` / ``vars`` or through a mapped exception."""
+
+    _SECRET = "super-secret-m2m-value"
+
+    def _client_with_m2m(self, monkeypatch, captured):
+        def fake_session(**kw):
+            captured.update(kw)
+            sess = MagicMock()
+            sess.session_id = "sess-id"
+            return sess
+
+        monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+        return kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            auth_options={
+                "oauth_client_id": "sp-uuid",
+                "oauth_client_secret": self._SECRET,
+            },
+        )
+
+    def test_secret_forwarded_then_scrubbed_from_auth_options(self, monkeypatch):
+        captured = {}
+        c = self._client_with_m2m(monkeypatch, captured)
+        c.open_session(session_configuration=None, catalog=None, schema=None)
+
+        # Forwarded to the kernel Session as client_secret...
+        assert captured.get("client_secret") == self._SECRET
+        # ...but not retained on the long-lived connector.
+        assert "oauth_client_secret" not in c._auth_options
+
+    def test_secret_absent_from_repr_and_vars_after_open(self, monkeypatch):
+        captured = {}
+        c = self._client_with_m2m(monkeypatch, captured)
+        c.open_session(session_configuration=None, catalog=None, schema=None)
+
+        assert self._SECRET not in repr(c)
+        assert self._SECRET not in str(vars(c))
+
+    def test_secret_not_in_mapped_open_session_exception(self, monkeypatch):
+        # If the kernel Session constructor raises with the secret in its
+        # message/args, the mapped PEP-249 exception must still be raised
+        # (we don't assert the kernel scrubs its own error — that's the
+        # kernel's job — but we confirm the connector's scrub still runs
+        # via the finally block even on the failure path).
+        def boom_session(**kw):
+            raise RuntimeError("kernel open failed")
+
+        monkeypatch.setattr(kernel_client._kernel, "Session", boom_session)
+        c = kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            auth_options={
+                "oauth_client_id": "sp-uuid",
+                "oauth_client_secret": self._SECRET,
+            },
+        )
+        with pytest.raises(Exception):
+            c.open_session(session_configuration=None, catalog=None, schema=None)
+        # Scrubbed even though open_session raised (finally block).
+        assert "oauth_client_secret" not in c._auth_options
+
+
+class TestKernelTlsEmptyCaFile:
+    def test_empty_ca_file_raises_programming_error(self, tmp_path):
+        from databricks.sql.types import SSLOptions
+
+        ca = tmp_path / "empty.pem"
+        ca.write_bytes(b"   \n")
+        with pytest.raises(ProgrammingError, match="is empty"):
+            kernel_client._kernel_tls_kwargs(SSLOptions(tls_trusted_ca_file=str(ca)))
