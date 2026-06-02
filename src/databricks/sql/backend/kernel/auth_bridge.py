@@ -30,9 +30,12 @@ raises ``NotSupportedError`` so the failure surfaces at session-open
 with a clear message rather than deep inside the kernel.
 
 The M2M / U2M decisions are driven by the *raw* connect() kwargs
-(``auth_options``), not the built ``AuthProvider`` — the secret is
-consumed and discarded during provider construction, so it can only be
-read from the original kwargs.
+(``auth_options``), not a built ``AuthProvider``. On the kernel path
+the connector deliberately does **not** build its own OAuth provider
+(that would eagerly run the U2M browser flow / M2M token exchange at
+connect() time, before the kernel is consulted), so ``auth_provider``
+is either a minimal PAT provider or ``None`` and the OAuth credentials
+are available only from the raw kwargs.
 """
 
 from __future__ import annotations
@@ -65,7 +68,7 @@ _BEARER_PREFIX_LEN = len("Bearer ")
 _TOKEN_REJECT_RE = re.compile(r"[\x00-\x20\x7f]")
 
 
-def _is_pat(auth_provider: AuthProvider) -> bool:
+def _is_pat(auth_provider: Optional[AuthProvider]) -> bool:
     """Return True iff this provider ultimately wraps an
     ``AccessTokenAuthProvider``.
 
@@ -84,7 +87,7 @@ def _is_pat(auth_provider: AuthProvider) -> bool:
     return False
 
 
-def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
+def _extract_bearer_token(auth_provider: Optional[AuthProvider]) -> Optional[str]:
     """Pull the current bearer token out of an ``AuthProvider``.
 
     The connector's ``AuthProvider.add_headers`` mutates a header
@@ -92,10 +95,12 @@ def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
     Going through that public surface keeps us insulated from
     provider-specific internals.
 
-    Returns ``None`` if the provider did not write an Authorization
-    header or wrote a non-Bearer scheme — neither is representable
-    in the kernel's PAT auth surface.
+    Returns ``None`` if there is no provider, the provider did not
+    write an Authorization header, or it wrote a non-Bearer scheme —
+    none of which is representable in the kernel's PAT auth surface.
     """
+    if auth_provider is None:
+        return None
     headers: Dict[str, str] = {}
     auth_provider.add_headers(headers)
     auth = headers.get("Authorization")
@@ -113,7 +118,7 @@ def _extract_bearer_token(auth_provider: AuthProvider) -> Optional[str]:
 
 
 def kernel_auth_kwargs(
-    auth_provider: AuthProvider,
+    auth_provider: Optional[AuthProvider],
     auth_options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the kwargs passed to ``databricks_sql_kernel.Session(...)``.
@@ -225,13 +230,18 @@ def kernel_auth_kwargs(
             "credentials_provider."
         )
 
-    # 5. Everything else.
+    # 5. Everything else (including no usable credentials at all —
+    #    ``auth_provider`` is None on the kernel path when no access
+    #    token was supplied and no OAuth kwargs resolved above).
+    provider_desc = (
+        type(auth_provider).__name__ if auth_provider is not None else "no credentials"
+    )
     raise NotSupportedError(
-        f"use_kernel=True supports PAT, OAuth M2M (oauth_client_id + "
-        f"oauth_client_secret), and OAuth U2M (auth_type='databricks-oauth' / "
-        f"'azure-oauth'), but got {type(auth_provider).__name__} with "
-        f"auth_type={auth_type!r}. Use the Thrift backend (default) for other "
-        "auth flows."
+        f"use_kernel=True requires PAT (access_token), OAuth M2M "
+        f"(oauth_client_id + oauth_client_secret), or OAuth U2M "
+        f"(auth_type='databricks-oauth' / 'azure-oauth'), but got "
+        f"{provider_desc} with auth_type={auth_type!r}. Use the Thrift "
+        "backend (default) for other auth flows."
     )
 
 

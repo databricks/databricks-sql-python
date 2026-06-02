@@ -5,6 +5,7 @@ from typing import Dict, Tuple, List, Optional, Any, Type
 from databricks.sql.thrift_api.TCLIService import ttypes
 from databricks.sql.types import SSLOptions
 from databricks.sql.auth.auth import get_python_sql_connector_auth_provider
+from databricks.sql.auth.authenticators import AccessTokenAuthProvider
 from databricks.sql.auth.common import ClientContext
 from databricks.sql.exc import SessionAlreadyClosedError, DatabaseError, RequestError
 from databricks.sql import __version__
@@ -96,10 +97,30 @@ class Session:
         # Use the provided HTTP client (created in Connection)
         self.http_client = http_client
 
-        # Create auth provider with HTTP client context
-        self.auth_provider = get_python_sql_connector_auth_provider(
-            server_hostname, http_client=self.http_client, **kwargs
-        )
+        # Create auth provider with HTTP client context.
+        #
+        # On the kernel path the kernel owns the entire auth lifecycle
+        # (it acquires/refreshes OAuth tokens itself from the raw
+        # credentials — see the kernel auth bridge). We must NOT build
+        # the connector's own provider here: for OAuth it would eagerly
+        # run the U2M browser flow / M2M token exchange at connect()
+        # time (``get_auth_provider`` invokes ``_initial_get_token`` in
+        # the provider constructor), racing — and conflicting with — the
+        # kernel's auth before ``use_kernel`` is even consulted.
+        #
+        # So for ``use_kernel`` we hand the bridge only a minimal PAT
+        # provider when an ``access_token`` is present, and ``None``
+        # otherwise (OAuth M2M/U2M resolve purely from the raw kwargs
+        # the bridge reads). The Thrift / SEA backends are unchanged.
+        if kwargs.get("use_kernel", False):
+            access_token = kwargs.get("access_token")
+            self.auth_provider = (
+                AccessTokenAuthProvider(access_token) if access_token else None
+            )
+        else:
+            self.auth_provider = get_python_sql_connector_auth_provider(
+                server_hostname, http_client=self.http_client, **kwargs
+            )
 
         self.backend = self._create_backend(
             server_hostname,
@@ -140,11 +161,11 @@ class Session:
             logger.debug("Creating kernel-backed client for use_kernel=True")
             # Forward the raw auth-relevant connect() kwargs so the
             # kernel auth bridge can build OAuth kwargs from the
-            # original credentials. The OAuth client secret is consumed
-            # and discarded during ``auth_provider`` construction, so it
-            # can only be read from these raw kwargs — not the built
-            # provider. These are kernel-only; the Thrift / SEA backends
-            # are unaffected.
+            # original credentials. On this path we intentionally did
+            # NOT build the connector's own OAuth provider (see __init__
+            # above), so these raw kwargs are the only source of the
+            # OAuth client id/secret. These are kernel-only; the Thrift
+            # / SEA backends are unaffected.
             kernel_auth_options = {
                 "auth_type": kwargs.get("auth_type"),
                 "oauth_client_id": kwargs.get("oauth_client_id"),
