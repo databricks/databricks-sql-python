@@ -1,7 +1,7 @@
 # Release History
 
 # 4.2.7 (2026-06-02)
-- Add experimental Rust kernel backend behind the `use_kernel=True` flag — routes through the Rust kernel via PyO3 with OAuth (M2M/U2M), TLS/mTLS, Geometry, complex types, parameter binding, and Thrift-backend surface parity (databricks/databricks-sql-python#787, #789, #793, #795, #803, #819 by @vikrantpuppala)
+- Add experimental Rust kernel backend behind the `use_kernel=True` flag — routes through the Rust kernel via PyO3 with OAuth (M2M/U2M), TLS/mTLS, Geometry, complex types, parameter binding, retry/backoff params, and Thrift-backend surface parity (databricks/databricks-sql-python#787, #789, #793, #795, #803, #819, #820 by @vikrantpuppala)
 - Extract SPOG org-id from cluster http_path for non-Thrift requests (databricks/databricks-sql-python#817 by @msrathore-db)
 - Remove empty chunks in CloudFetch concatenation (databricks/databricks-sql-python#814 by @jprakash-db)
 - Add `_retry_server_directed_only` mode for Retry-After header compliance (databricks/databricks-sql-python#756 by @sd-db)
