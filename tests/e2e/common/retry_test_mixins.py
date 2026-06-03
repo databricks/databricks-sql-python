@@ -77,6 +77,9 @@ def _isolated_from_telemetry():
         return None
 
     try:
+        def _noop_send_with_unified_client(self, *args, **kwargs):
+            return None
+
         with patch.object(
             TelemetryClientFactory,
             "initialize_telemetry_client",
@@ -85,6 +88,17 @@ def _isolated_from_telemetry():
             TelemetryClient, "_send_telemetry", _noop_send
         ), patch.object(
             TelemetryClient, "_export_event", _noop_export
+        ), patch.object(
+            # Backstop layer 4: no-op the actual HTTP boundary. _send_telemetry
+            # only suppresses NEW submissions; a future already submitted (e.g. by
+            # the holder.client.close() flush above, which runs before these
+            # patches apply) still calls _send_with_unified_client on a background
+            # thread and would hit the network inside the test's urllib3 mock.
+            # Patching the HTTP method itself closes that already-submitted-future
+            # gap for any caller of this helper.
+            TelemetryClient,
+            "_send_with_unified_client",
+            _noop_send_with_unified_client,
         ):
             yield
     finally:
@@ -187,6 +201,10 @@ class SimpleHttpResponse:
         self.msg = self.headers  # For urllib3~=1.0.0 compatibility
         self.reason = "Mocked Response"
         self.version = 11
+        # urllib3 >= 2.3 reads `version_string` off the raw httplib response in
+        # HTTPConnectionPool._make_request. Older urllib3 (incl. the 2.2.x pinned
+        # in CI) never touches it, so this is a harmless forward-compat shim.
+        self.version_string = "HTTP/1.1"
         self.length = 0
         self.length_remaining = 0
         self._redirect_location = redirect_location
@@ -288,6 +306,22 @@ class PySQLRetryTestsMixin:
         "_retry_stop_after_attempts_count": 5,
         "_retry_stop_after_attempts_duration": 30,
         "_retry_delay_default": 0.5,
+        # Disable telemetry on every retry-count test. These tests patch urllib3
+        # globally (HTTPSConnectionPool._get_conn / _validate_conn) and assert the
+        # connection's own request was retried exactly N times. With telemetry on
+        # (the default), the same connection makes two kinds of side-channel HTTP
+        # calls through the same mocked pool that inflate the count and flake the
+        # assertion:
+        #   1. A synchronous feature-flag GET during Connection.__init__
+        #      (is_telemetry_enabled -> FeatureFlagsContext._refresh_flags), and
+        #   2. Async telemetry POSTs to /telemetry-ext from the background executor
+        #      and the periodic flush thread.
+        # enable_telemetry=False short-circuits is_telemetry_enabled before the
+        # feature-flag fetch and installs a NoopTelemetryClient, removing both
+        # sources at their origin without changing the retry behavior under test.
+        # Every test in this mixin merges _retry_policy into its connection params,
+        # so setting it here covers them all. See also _isolated_from_telemetry().
+        "enable_telemetry": False,
     }
 
     @pytest.mark.parametrize(
