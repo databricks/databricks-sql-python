@@ -174,6 +174,23 @@ class Session:
                 "oauth_scopes": kwargs.get("oauth_scopes"),
                 "credentials_provider": kwargs.get("credentials_provider"),
             }
+            # Forward the connector's retry-tuning kwargs so the kernel's
+            # own retry policy honours them (the kernel owns the retry
+            # loop on this path). Only the keys with a kernel counterpart
+            # are passed; `_retry_delay_default` is intentionally omitted
+            # (the kernel's no-Retry-After backoff is exponential from
+            # its min-wait, so a flat default delay has no equivalent).
+            # Kernel-only; Thrift / SEA are unaffected.
+            kernel_retry_options = {
+                "retry_delay_min": kwargs.get("_retry_delay_min"),
+                "retry_delay_max": kwargs.get("_retry_delay_max"),
+                "retry_stop_after_attempts_count": kwargs.get(
+                    "_retry_stop_after_attempts_count"
+                ),
+                "retry_stop_after_attempts_duration": kwargs.get(
+                    "_retry_stop_after_attempts_duration"
+                ),
+            }
             return KernelDatabricksClient(
                 server_hostname=server_hostname,
                 http_path=http_path,
@@ -185,6 +202,7 @@ class Session:
                 schema=kwargs.get("schema"),
                 _use_arrow_native_complex_types=_use_arrow_native_complex_types,
                 auth_options=kernel_auth_options,
+                retry_options=kernel_retry_options,
             )
 
         databricks_client_class: Type[DatabricksClient]

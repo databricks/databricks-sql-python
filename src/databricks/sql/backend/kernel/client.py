@@ -104,6 +104,11 @@ class KernelDatabricksClient(DatabricksClient):
         # OAuth secret is consumed during ``auth_provider`` construction
         # and isn't recoverable from the built provider.
         self._auth_options = kwargs.get("auth_options") or {}
+        # Connector retry-tuning kwargs (the ``_retry_*`` family),
+        # forwarded so the kernel's own retry loop honours them. Mapped
+        # to the kernel ``Session``'s ``retry_*`` kwargs in
+        # ``open_session`` via ``_kernel_retry_kwargs``.
+        self._retry_options = kwargs.get("retry_options") or {}
         self._catalog = catalog
         self._schema = schema
         # ``_use_arrow_native_complex_types`` is the connector-side
@@ -179,6 +184,9 @@ class KernelDatabricksClient(DatabricksClient):
         # Translate the connector's SSLOptions into the kernel's
         # ``tls_*`` Session kwargs. Empty when TLS is left at defaults.
         tls_kwargs = _kernel_tls_kwargs(self._ssl_options)
+        # Translate the connector's ``_retry_*`` kwargs into the kernel's
+        # ``retry_*`` Session kwargs. Empty when retry is left at defaults.
+        retry_kwargs = _kernel_retry_kwargs(self._retry_options)
         try:
             self._kernel_session = _kernel.Session(
                 host=self._server_hostname,
@@ -199,6 +207,7 @@ class KernelDatabricksClient(DatabricksClient):
                 intervals_as_string=True,
                 **auth_kwargs,
                 **tls_kwargs,
+                **retry_kwargs,
             )
         except Exception as exc:
             raise _wrap_kernel_exception("open_session", exc) from exc
@@ -725,6 +734,66 @@ def _kernel_tls_kwargs(ssl_options) -> Dict[str, Any]:
                 "client key (tls_client_cert_key_password). Provide an "
                 "unencrypted PEM key, or use the Thrift backend (default)."
             )
+
+    return kwargs
+
+
+def _kernel_retry_kwargs(retry_options: Dict[str, Any]) -> Dict[str, Any]:
+    """Translate the connector's ``_retry_*`` tuning into the kernel
+    ``Session``'s ``retry_*`` kwargs.
+
+    Only knobs the caller actually set are emitted, so an untuned
+    connection produces an empty dict (kernel keeps its default policy:
+    1s/60s backoff, 6 total attempts, 900s budget).
+
+    Mappings (connector → kernel):
+
+    - ``retry_delay_min`` (float secs) → ``retry_min_wait_secs``
+    - ``retry_delay_max`` (float secs) → ``retry_max_wait_secs``
+    - ``retry_stop_after_attempts_count`` (int, **total** attempts) →
+      ``retry_max_attempts`` (1:1 — the kernel converts to its
+      retries-after-first internally)
+    - ``retry_stop_after_attempts_duration`` (float secs) →
+      ``retry_overall_timeout_secs``
+
+    The connector expresses delays/durations as **floats in seconds**;
+    the kernel takes **whole seconds** (``u64``). We round to the
+    nearest second, with a floor of 1s for any positive sub-second
+    value so a configured delay never collapses to "no wait".
+
+    ``_retry_delay_default`` has no kernel counterpart and is ignored:
+    the kernel's no-``Retry-After`` backoff is exponential from
+    ``retry_min_wait``, which already plays that role.
+    """
+    kwargs: Dict[str, Any] = {}
+
+    def _secs(value: Any) -> Optional[int]:
+        if value is None:
+            return None
+        rounded = round(float(value))
+        # Never round a positive delay down to 0 — that would turn a
+        # configured backoff into a busy-retry. Floor at 1s.
+        if rounded <= 0 and float(value) > 0:
+            return 1
+        return rounded
+
+    min_wait = _secs(retry_options.get("retry_delay_min"))
+    if min_wait is not None:
+        kwargs["retry_min_wait_secs"] = min_wait
+
+    max_wait = _secs(retry_options.get("retry_delay_max"))
+    if max_wait is not None:
+        kwargs["retry_max_wait_secs"] = max_wait
+
+    count = retry_options.get("retry_stop_after_attempts_count")
+    if count is not None:
+        # Total-attempts count, forwarded 1:1; the kernel converts to
+        # its retries-after-first representation.
+        kwargs["retry_max_attempts"] = int(count)
+
+    duration = _secs(retry_options.get("retry_stop_after_attempts_duration"))
+    if duration is not None:
+        kwargs["retry_overall_timeout_secs"] = duration
 
     return kwargs
 
