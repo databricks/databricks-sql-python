@@ -476,3 +476,52 @@ class TestKernelRetryOptionsThreading:
                 assert opts["retry_stop_after_attempts_duration"] == 600.0
             finally:
                 conn.close()
+
+
+class TestKernelUserAgentForwarding:
+    """user_agent_entry must reach the kernel on the use_kernel path —
+    session.py folds it into the composed User-Agent and includes it in
+    all_headers, which is passed to the kernel client as http_headers.
+    Guards against a regression where session.py stops folding it under
+    use_kernel=True (which would silently drop partner attribution)."""
+
+    PACKAGE = "databricks.sql"
+
+    def test_user_agent_entry_reaches_kernel_client_http_headers(self):
+        import sys
+        import types
+
+        pytest.importorskip(
+            "pyarrow", reason="kernel client module imports pyarrow at load"
+        )
+
+        fake = types.ModuleType("databricks_sql_kernel")
+        fake.KernelError = type("KernelError", (Exception,), {})
+        fake.Session = MagicMock()
+
+        with patch.dict(sys.modules, {"databricks_sql_kernel": fake}), patch(
+            "databricks.sql.backend.kernel.client.KernelDatabricksClient"
+        ) as mock_kernel_client, patch(
+            "%s.session.get_python_sql_connector_auth_provider" % self.PACKAGE
+        ):
+            instance = mock_kernel_client.return_value
+            instance.open_session.return_value = SessionId(
+                BackendType.SEA, "sess-id", None
+            )
+
+            conn = databricks.sql.connect(
+                server_hostname="foo",
+                http_path="/sql/1.0/warehouses/abc",
+                use_kernel=True,
+                access_token="dapi-xyz",
+                enable_telemetry=False,
+                user_agent_entry="my-partner-app",
+            )
+            try:
+                _, kwargs = mock_kernel_client.call_args
+                # http_headers carries a User-Agent that embeds the entry.
+                headers = dict(kwargs["http_headers"])
+                ua = headers.get("User-Agent", "")
+                assert "my-partner-app" in ua, f"UA was {ua!r}"
+            finally:
+                conn.close()

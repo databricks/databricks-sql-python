@@ -1077,3 +1077,30 @@ class TestKernelHttpHeadersForwarding:
         # keeps its defaults).
         captured = self._open_capturing(monkeypatch, [])
         assert "http_headers" not in captured
+
+    def test_authorization_and_org_id_dropped_before_forwarding(self, monkeypatch):
+        # The connector must NOT forward Authorization / x-databricks-org-id
+        # to the kernel — the kernel manages both (and warns per request
+        # if it sees them). Double-walls the kernel's own skip.
+        headers = [
+            ("Authorization", "Bearer should-not-forward"),
+            ("X-Databricks-Org-Id", "12345"),
+            ("User-Agent", "PyDatabricksSqlConnector/4.0 (e)"),
+            ("X-Keep", "yes"),
+        ]
+        captured = self._open_capturing(monkeypatch, headers)
+        fwd = captured.get("http_headers")
+        names = {n.lower() for n, _ in fwd}
+        assert "authorization" not in names
+        assert "x-databricks-org-id" not in names
+        # Non-reserved headers (incl. User-Agent) still forwarded.
+        assert ("User-Agent", "PyDatabricksSqlConnector/4.0 (e)") in fwd
+        assert ("X-Keep", "yes") in fwd
+
+    def test_only_reserved_headers_omits_kwarg(self, monkeypatch):
+        # If the only headers are reserved ones, nothing is forwarded
+        # and the kwarg is omitted entirely.
+        captured = self._open_capturing(
+            monkeypatch, [("Authorization", "Bearer x"), ("x-databricks-org-id", "1")]
+        )
+        assert "http_headers" not in captured

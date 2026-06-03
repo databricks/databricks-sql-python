@@ -63,6 +63,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Headers the kernel manages itself and that the connector must NOT
+# forward via ``http_headers`` (lower-cased for case-insensitive match):
+# ``authorization`` (the kernel applies the auth provider's token) and
+# ``x-databricks-org-id`` (the kernel re-derives it from the ``?o=`` in
+# http_path). Forwarding either is redundant and trips the kernel's
+# per-request skip-and-warn.
+_KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
+
 
 # ─── Client ─────────────────────────────────────────────────────────────────
 
@@ -181,28 +189,45 @@ class KernelDatabricksClient(DatabricksClient):
         session_conf: Optional[Dict[str, str]] = None
         if session_configuration:
             session_conf = {k: str(v) for k, v in session_configuration.items()}
-        # Build auth kwargs here (not in ``__init__``) so the bearer
-        # token has the shortest possible in-process lifetime: a
-        # local kwargs dict is GC-eligible the moment this method
-        # returns, regardless of whether the kernel ``Session()``
-        # call succeeded or raised.
-        auth_kwargs = kernel_auth_kwargs(self._auth_provider, self._auth_options)
-        # Translate the connector's SSLOptions into the kernel's
-        # ``tls_*`` Session kwargs. Empty when TLS is left at defaults.
-        tls_kwargs = _kernel_tls_kwargs(self._ssl_options)
-        # Translate the connector's ``_retry_*`` kwargs into the kernel's
-        # ``retry_*`` Session kwargs. Empty when retry is left at defaults.
-        retry_kwargs = _kernel_retry_kwargs(self._retry_options)
-        # Forward caller / connector HTTP headers. The kernel applies
-        # them on every request (its own Authorization / org-id win); a
-        # caller ``User-Agent`` is appended to the kernel's base UA. Only
-        # pass the kwarg when there's something to send.
-        http_headers_kwargs: Dict[str, Any] = {}
-        if self._http_headers:
-            http_headers_kwargs["http_headers"] = [
-                (str(k), str(v)) for k, v in self._http_headers
-            ]
+        # The kwarg builds run INSIDE the try so the ``finally`` scrub
+        # below always fires — including when ``kernel_auth_kwargs``
+        # itself raises mid-build (e.g. an OAuth token-exchange failure
+        # while the M2M secret is in hand). Pre-declared empty so the
+        # ``finally`` can reference them unconditionally even on an early
+        # raise. Building here (not in ``__init__``) keeps the bearer
+        # token's in-process lifetime as short as possible.
+        auth_kwargs: Dict[str, Any] = {}
+        tls_kwargs: Dict[str, Any] = {}
         try:
+            auth_kwargs = kernel_auth_kwargs(self._auth_provider, self._auth_options)
+            # Translate the connector's SSLOptions into the kernel's
+            # ``tls_*`` Session kwargs. Empty when TLS is at defaults.
+            tls_kwargs = _kernel_tls_kwargs(self._ssl_options)
+            # Translate the connector's ``_retry_*`` kwargs into the
+            # kernel's ``retry_*`` kwargs. Empty when at defaults.
+            retry_kwargs = _kernel_retry_kwargs(self._retry_options)
+            # Forward caller / connector HTTP headers. The kernel applies
+            # them on every request; a caller ``User-Agent`` is appended
+            # to the kernel's base UA. Only pass the kwarg when there's
+            # something to send.
+            #
+            # We drop ``Authorization`` and ``x-databricks-org-id`` here,
+            # before they reach the kernel, for two reasons: (1) the
+            # kernel manages both itself (auth from the provider; org-id
+            # re-derived from the ``?o=`` in http_path), so forwarding
+            # them is redundant; (2) the kernel skips-and-warns those two
+            # names on every request, so forwarding the SPOG org-id the
+            # connector always injects would spam a warning per request.
+            # This double-walls the kernel's own reserved-name skip.
+            http_headers_kwargs: Dict[str, Any] = {}
+            if self._http_headers:
+                forwarded = [
+                    (str(k), str(v))
+                    for k, v in self._http_headers
+                    if str(k).lower() not in _KERNEL_MANAGED_HEADERS
+                ]
+                if forwarded:
+                    http_headers_kwargs["http_headers"] = forwarded
             self._kernel_session = _kernel.Session(
                 host=self._server_hostname,
                 http_path=self._http_path,
