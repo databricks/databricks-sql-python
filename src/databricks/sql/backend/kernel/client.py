@@ -91,13 +91,19 @@ class KernelDatabricksClient(DatabricksClient):
     ):
         # ``ssl_options`` is translated to the kernel's ``tls_*``
         # Session kwargs in ``open_session`` (custom CA, verify
-        # toggles, mTLS client cert/key). ``http_headers`` /
-        # ``http_client`` / ``port`` are still accept-and-ignore — the
-        # kernel manages its own HTTP stack.
+        # toggles, mTLS client cert/key). ``http_headers`` is forwarded
+        # to the kernel as custom request headers (it carries the
+        # connector's composed ``User-Agent`` + any caller headers + the
+        # SPOG ``x-databricks-org-id``). ``http_client`` / ``port`` are
+        # still accept-and-ignore — the kernel manages its own HTTP
+        # stack.
         self._server_hostname = server_hostname
         self._http_path = http_path
         self._auth_provider = auth_provider
         self._ssl_options = ssl_options
+        # Caller / connector HTTP headers (list of (name, value) pairs).
+        # Forwarded to the kernel Session in ``open_session``.
+        self._http_headers = http_headers or []
         # Raw auth-relevant connect() kwargs (auth_type,
         # oauth_client_id/secret, redirect port, credentials_provider).
         # The kernel auth bridge needs these to build OAuth kwargs — the
@@ -187,6 +193,15 @@ class KernelDatabricksClient(DatabricksClient):
         # Translate the connector's ``_retry_*`` kwargs into the kernel's
         # ``retry_*`` Session kwargs. Empty when retry is left at defaults.
         retry_kwargs = _kernel_retry_kwargs(self._retry_options)
+        # Forward caller / connector HTTP headers. The kernel applies
+        # them on every request (its own Authorization / org-id win); a
+        # caller ``User-Agent`` is appended to the kernel's base UA. Only
+        # pass the kwarg when there's something to send.
+        http_headers_kwargs: Dict[str, Any] = {}
+        if self._http_headers:
+            http_headers_kwargs["http_headers"] = [
+                (str(k), str(v)) for k, v in self._http_headers
+            ]
         try:
             self._kernel_session = _kernel.Session(
                 host=self._server_hostname,
@@ -208,6 +223,7 @@ class KernelDatabricksClient(DatabricksClient):
                 **auth_kwargs,
                 **tls_kwargs,
                 **retry_kwargs,
+                **http_headers_kwargs,
             )
         except Exception as exc:
             raise _wrap_kernel_exception("open_session", exc) from exc
@@ -304,10 +320,6 @@ class KernelDatabricksClient(DatabricksClient):
     ) -> Union["ResultSet", None]:
         if self._kernel_session is None:
             raise InterfaceError("Cannot execute_command without an open session.")
-        if query_tags:
-            raise NotSupportedError(
-                "Statement-level query_tags are not yet supported on the kernel backend."
-            )
 
         try:
             stmt = self._kernel_session.statement()
@@ -321,6 +333,13 @@ class KernelDatabricksClient(DatabricksClient):
         try:
             try:
                 stmt.set_sql(operation)
+                if query_tags:
+                    # Per-statement query tags. The kernel serialises the
+                    # dict (None value -> bare key) into the SEA
+                    # `query_tags` statement conf. ``query_tags`` is
+                    # already ``Dict[str, Optional[str]]`` from the
+                    # connector, which the kernel accepts directly.
+                    stmt.set_query_tags(query_tags)
                 if parameters:
                     bind_tspark_params(stmt, parameters)
                 if async_op:
