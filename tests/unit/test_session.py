@@ -413,10 +413,15 @@ class TestKernelAuthProviderBypass:
 class TestKernelRetryOptionsThreading:
     """The connector's ``_retry_*`` kwargs must be forwarded into the
     kernel client's ``retry_options`` on the use_kernel path (the kernel
-    owns the retry loop). Stubs ``_create_backend`` so the kernel client
-    is never imported — wheel-independent — and inspects the
-    ``retry_options`` dict session.py builds by patching the kernel
-    client and capturing its call args.
+    owns the retry loop). Captures the kwargs session.py passes by
+    patching ``KernelDatabricksClient`` and inspecting its call args.
+
+    Patching ``KernelDatabricksClient`` requires importing
+    ``databricks.sql.backend.kernel.client``, which imports pyarrow at
+    module load — so this test is skipped when pyarrow is absent (the
+    no-pyarrow CI tier), matching the other kernel tests. The Rust wheel
+    is still faked via sys.modules so the kernel extension itself isn't
+    needed.
     """
 
     PACKAGE = "databricks.sql"
@@ -424,6 +429,11 @@ class TestKernelRetryOptionsThreading:
     def test_retry_kwargs_threaded_into_kernel_client(self):
         import sys
         import types
+
+        pytest.importorskip(
+            "pyarrow",
+            reason="kernel client module imports pyarrow at load",
+        )
 
         # The lazy ``from databricks.sql.backend.kernel.client import
         # KernelDatabricksClient`` triggers ``import databricks_sql_kernel``
