@@ -332,26 +332,43 @@ def test_execute_command_forwards_parameters_to_bind_param():
     assert stmt.execute.called
 
 
-def test_execute_command_rejects_query_tags():
+def test_execute_command_forwards_query_tags():
+    """Statement-level query_tags are forwarded to the kernel statement
+    via set_query_tags (the kernel serialises them into the SEA
+    query_tags conf). Previously rejected with NotSupportedError; now
+    wired (kernel PR adding Statement.set_query_tags)."""
     c = _make_client()
     c._kernel_session = MagicMock()
     cursor = MagicMock()
     cursor.arraysize = 100
     cursor.buffer_size_bytes = 1024
-    with pytest.raises(NotSupportedError, match="query_tags"):
-        c.execute_command(
-            operation="SELECT 1",
-            session_id=MagicMock(),
-            max_rows=1,
-            max_bytes=1,
-            lz4_compression=False,
-            cursor=cursor,
-            use_cloud_fetch=False,
-            parameters=[],
-            async_op=False,
-            enforce_embedded_schema_correctness=False,
-            query_tags={"team": "x"},
-        )
+
+    stmt = MagicMock()
+    stmt.set_sql = MagicMock()
+    stmt.set_query_tags = MagicMock()
+    stmt.execute.return_value = MagicMock(
+        statement_id="stmt-id",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c._kernel_session.statement.return_value = stmt
+
+    tags = {"team": "platform", "production": None}
+    c.execute_command(
+        operation="SELECT 1",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+        query_tags=tags,
+    )
+
+    stmt.set_query_tags.assert_called_once_with(tags)
+    assert stmt.execute.called
 
 
 def test_get_columns_accepts_none_catalog():
@@ -1015,3 +1032,75 @@ class TestKernelRetryKwargs:
         # recognised key here — it has no kernel equivalent.
         out = kernel_client._kernel_retry_kwargs({"retry_delay_default": 5.0})
         assert out == {}
+
+
+class TestKernelHttpHeadersForwarding:
+    """http_headers (the connector's caller headers + composed
+    User-Agent + SPOG org-id) are forwarded to the kernel Session as the
+    ``http_headers`` kwarg. The kernel applies them per request (its own
+    Authorization / org-id win; a caller User-Agent is appended to the
+    kernel base UA)."""
+
+    def _open_capturing(self, monkeypatch, http_headers):
+        captured = {}
+
+        def fake_session(**kw):
+            captured.update(kw)
+            sess = MagicMock()
+            sess.session_id = "sess-id"
+            return sess
+
+        monkeypatch.setattr(kernel_client._kernel, "Session", fake_session)
+        c = kernel_client.KernelDatabricksClient(
+            server_hostname="example.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/abc",
+            auth_provider=AccessTokenAuthProvider("dapi-test"),
+            ssl_options=None,
+            http_headers=http_headers,
+        )
+        c.open_session(session_configuration=None, catalog=None, schema=None)
+        return captured
+
+    def test_http_headers_forwarded_to_kernel_session(self, monkeypatch):
+        headers = [
+            ("User-Agent", "PyDatabricksSqlConnector/4.0 (myentry)"),
+            ("X-Custom", "v1"),
+        ]
+        captured = self._open_capturing(monkeypatch, headers)
+        assert captured.get("http_headers") == [
+            ("User-Agent", "PyDatabricksSqlConnector/4.0 (myentry)"),
+            ("X-Custom", "v1"),
+        ]
+
+    def test_no_http_headers_omits_kwarg(self, monkeypatch):
+        # Empty/none headers → the kwarg isn't passed at all (kernel
+        # keeps its defaults).
+        captured = self._open_capturing(monkeypatch, [])
+        assert "http_headers" not in captured
+
+    def test_authorization_and_org_id_dropped_before_forwarding(self, monkeypatch):
+        # The connector must NOT forward Authorization / x-databricks-org-id
+        # to the kernel — the kernel manages both (and warns per request
+        # if it sees them). Double-walls the kernel's own skip.
+        headers = [
+            ("Authorization", "Bearer should-not-forward"),
+            ("X-Databricks-Org-Id", "12345"),
+            ("User-Agent", "PyDatabricksSqlConnector/4.0 (e)"),
+            ("X-Keep", "yes"),
+        ]
+        captured = self._open_capturing(monkeypatch, headers)
+        fwd = captured.get("http_headers")
+        names = {n.lower() for n, _ in fwd}
+        assert "authorization" not in names
+        assert "x-databricks-org-id" not in names
+        # Non-reserved headers (incl. User-Agent) still forwarded.
+        assert ("User-Agent", "PyDatabricksSqlConnector/4.0 (e)") in fwd
+        assert ("X-Keep", "yes") in fwd
+
+    def test_only_reserved_headers_omits_kwarg(self, monkeypatch):
+        # If the only headers are reserved ones, nothing is forwarded
+        # and the kwarg is omitted entirely.
+        captured = self._open_capturing(
+            monkeypatch, [("Authorization", "Bearer x"), ("x-databricks-org-id", "1")]
+        )
+        assert "http_headers" not in captured

@@ -332,3 +332,32 @@ def test_parameterized_query_decimal(conn):
         rows = cur.fetchall()
         # Server echoes back as decimal.Decimal.
         assert str(rows[0][0]) == "-123.45"
+
+
+def test_query_tags_round_trip(kernel_conn_params):
+    """Per-statement query_tags are forwarded to the kernel and accepted
+    by the server. Smoke-level: a malformed query_tags conf would fail
+    the execute. (query.history ingestion lag makes a sync tag-readback
+    assertion infeasible.)"""
+    with sql.connect(**kernel_conn_params) as c:
+        with c.cursor() as cur:
+            cur.execute(
+                "SELECT 1 AS n",
+                query_tags={"team": "platform", "production": None},
+            )
+            assert cur.fetchall()[0][0] == 1
+
+
+def test_user_agent_entry_and_http_headers_round_trip(kernel_conn_params):
+    """A connection with user_agent_entry (folded into the connector's
+    User-Agent, then appended to the kernel base UA) and a custom HTTP
+    header opens and queries cleanly. Replacing the kernel base UA would
+    break the SEA result disposition (HTTP 400); appending preserves it
+    — this exercises that end-to-end."""
+    params = dict(kernel_conn_params)
+    params["user_agent_entry"] = "kernel-e2e-app"
+    params["http_headers"] = [("X-Kernel-E2E", "yes")]
+    with sql.connect(**params) as c:
+        with c.cursor() as cur:
+            cur.execute("SELECT 1 AS n")
+            assert cur.fetchall()[0][0] == 1
