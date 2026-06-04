@@ -1,0 +1,34 @@
+# Unit tests for the migrated PR-review bot (scripts/reviewer_bot + scripts/shared).
+#
+# Pure-logic tests — no secrets, no model calls, no Claude Agent SDK install
+# (the SDK import is guarded, so the tests run with just pytest, which the
+# connector's poetry dev-deps already provide). Runs only when the bot code
+# changes, so it doesn't add load to every connector PR.
+name: Reviewer Bot Unit Tests
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/shared/**'
+      - 'scripts/reviewer_bot/**'
+      - '.github/workflows/reviewer-bot-unit-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Reviewer Bot Unit Tests
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: linux-ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
+        with:
+          python-version: "3.11"
+      - name: Run reviewer-bot + shared unit tests
+        run: poetry run python -m pytest scripts/reviewer_bot/tests scripts/shared/tests
