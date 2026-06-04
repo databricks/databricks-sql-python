@@ -77,16 +77,48 @@ _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 _STAGING_VERBS = ("PUT", "GET", "REMOVE")
 
 
+def _strip_leading_sql_comments(sql: str) -> str:
+    """Strip leading whitespace and SQL comments (``-- …`` line and
+    ``/* … */`` block, possibly several) from ``sql``, returning the
+    remainder.
+
+    Needed so staging detection sees the real leading verb: a
+    comment-prefixed staging op (``-- upload\\nPUT …`` or
+    ``/* c */ PUT …``, common in ETL scripts) must still be classified
+    as staging, or it would slip past the guard into the silent-no-op
+    bug. Block comments do not nest in Databricks SQL, so a simple
+    scan-to-``*/`` is correct.
+    """
+    i = 0
+    n = len(sql)
+    while i < n:
+        if sql[i].isspace():
+            i += 1
+        elif sql.startswith("--", i):
+            # Line comment: skip to end of line (or string).
+            nl = sql.find("\n", i)
+            i = n if nl == -1 else nl + 1
+        elif sql.startswith("/*", i):
+            # Block comment: skip to closing */ (or end if unterminated).
+            close = sql.find("*/", i + 2)
+            i = n if close == -1 else close + 2
+        else:
+            break
+    return sql[i:]
+
+
 def _is_staging_statement(operation: str) -> bool:
     """True iff ``operation`` is a volume/staging statement (PUT / GET /
     REMOVE).
 
-    Matches the leading token only, so a normal query that merely
-    *contains* the word (e.g. ``SELECT 'GET' AS x``) isn't misflagged.
+    Strips leading whitespace + SQL comments first (so a comment-
+    prefixed staging op is still caught), then matches the leading token
+    only — so a normal query that merely *contains* the word (e.g.
+    ``SELECT 'GET' AS x``) isn't misflagged.
     """
-    stripped = operation.lstrip()
+    stripped = _strip_leading_sql_comments(operation)
     # First whitespace-delimited token, uppercased.
-    verb = stripped.split(None, 1)[0].upper() if stripped else ""
+    verb = stripped.split(None, 1)[0].upper() if stripped.strip() else ""
     return verb in _STAGING_VERBS
 
 
@@ -495,6 +527,17 @@ class KernelDatabricksClient(DatabricksClient):
         statement was in flight), ``False`` otherwise so ``Cursor`` can
         emit its "no executing command" warning. Safe to call from
         another thread.
+
+        Tolerant by design: ``cursor.cancel()`` is a best-effort
+        PEP-249 method (callers don't expect it to raise), so a cancel
+        failure is logged and swallowed rather than propagated. This
+        also covers the early-cancel window — a cancel arriving before
+        the kernel has observed the server statement id is a no-op in
+        the kernel canceller, but if it ever raised (e.g. a transport
+        hiccup on the cancel RPC) we must not surface that out of
+        ``cancel()``. We still return ``True`` (a canceller was present
+        and we attempted it) so ``Cursor`` doesn't emit the misleading
+        "no executing command" warning.
         """
         with self._sync_cancellers_lock:
             canceller = self._sync_cancellers.get(id(cursor))
@@ -502,8 +545,13 @@ class KernelDatabricksClient(DatabricksClient):
             return False
         try:
             canceller.cancel()
-        except Exception as exc:
-            raise _wrap_kernel_exception("cancel_running_cursor", exc) from exc
+        except Exception:
+            logger.warning(
+                "cancel_running_cursor: best-effort cancel of in-flight "
+                "sync statement failed; swallowing (cursor.cancel() is "
+                "tolerant by PEP-249 contract)",
+                exc_info=True,
+            )
         return True
 
     def close_command(self, command_id: CommandId) -> None:

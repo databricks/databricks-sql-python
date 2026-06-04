@@ -458,10 +458,21 @@ def test_staging_operation_raises_not_supported(operation):
         ("PUT '/f' INTO '/v'", True),
         ("get '/v' to '/f'", True),
         ("REMOVE '/v'", True),
+        # Comment-prefixed staging ops MUST still be caught — otherwise
+        # they slip into the silent-no-op bug this guard exists to close
+        # (regression: review #1 on PR #825). ETL scripts commonly
+        # prefix statements with comments.
+        ("-- upload the file\nPUT '/f' INTO '/v'", True),
+        ("/* staging */ PUT '/f' INTO '/v'", True),
+        ("/* c1 */\n  -- c2\n  get '/v' to '/f'", True),  # mixed, multiple
+        ("   \n\t PUT '/f' INTO '/v'", True),  # leading whitespace only
         ("SELECT 'GET' AS x", False),  # word appears but not leading verb
         ("SELECT * FROM puts", False),
+        ("-- PUT in a comment\nSELECT 1", False),  # verb only in comment
+        ("/* PUT */ SELECT 1", False),
         ("INSERT INTO t VALUES (1)", False),
         ("", False),
+        ("-- just a comment", False),  # comment only, no statement
     ],
 )
 def test_is_staging_statement(operation, is_staging):
@@ -492,6 +503,25 @@ def test_cancel_running_cursor_returns_false_when_none_registered():
     Cursor can emit its 'no executing command' warning."""
     c = _make_client()
     assert c.cancel_running_cursor(MagicMock()) is False
+
+
+def test_cancel_running_cursor_swallows_cancel_errors():
+    """cursor.cancel() is best-effort (PEP-249); a failing canceller
+    (e.g. an early cancel before the statement id is observed, or a
+    transport hiccup on the cancel RPC) must NOT propagate out of
+    cancel(). It's swallowed+logged, and we still return True so the
+    Cursor doesn't emit the misleading 'no executing command' warning
+    (regression: review #2 on PR #825)."""
+    c = _make_client()
+    cursor = MagicMock()
+    canceller = MagicMock()
+    canceller.cancel.side_effect = RuntimeError("cancel RPC failed")
+    with c._sync_cancellers_lock:
+        c._sync_cancellers[id(cursor)] = canceller
+
+    # Does not raise, returns True (a canceller was present + attempted).
+    assert c.cancel_running_cursor(cursor) is True
+    canceller.cancel.assert_called_once_with()
 
 
 def test_execute_command_registers_and_clears_sync_canceller():

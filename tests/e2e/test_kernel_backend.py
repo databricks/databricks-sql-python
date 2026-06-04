@@ -413,6 +413,18 @@ def test_staging_put_raises_not_supported(conn):
             cur.execute("PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'")
 
 
+def test_comment_prefixed_staging_put_raises_not_supported(conn):
+    """A comment-prefixed staging op (common in ETL scripts) must also
+    fail loud — the leading-verb detection strips SQL comments first, so
+    it can't slip past into the silent-no-op bug (PR #825 review #1)."""
+    with conn.cursor() as cur:
+        with pytest.raises(NotSupportedError, match="staging"):
+            cur.execute(
+                "-- upload the daily extract\n"
+                "PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'"
+            )
+
+
 # ── Error fidelity — diagnostic-info reaches .context ─────────────
 
 
