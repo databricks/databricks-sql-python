@@ -160,20 +160,38 @@ def test_kernel_logs_reach_python_logging(kernel_conn_params, caplog):
         "expected log records under the 'databricks.sql.kernel' logger; "
         "the kernel tracing -> Python logging bridge did not deliver any"
     )
-    # The core kernel logger (not just the .pyo3 child) must be present:
+    # The core kernel logger (not just any child) must be present — this
+    # is the customer-facing contract.
     assert any(
         r.name == "databricks.sql.kernel" for r in kernel_records
     ), "expected core kernel records on the exact 'databricks.sql.kernel' logger"
-    # The pyo3 boundary breadcrumb must surface under the .pyo3 child:
-    assert any(
-        r.name == "databricks.sql.kernel.pyo3" for r in kernel_records
-    ), "expected pyo3-boundary records on 'databricks.sql.kernel.pyo3'"
+    # The pyo3-boundary breadcrumb (`databricks.sql.kernel.pyo3`) is a
+    # nice-to-have, but the exact sub-target is a kernel-internal naming
+    # detail — assert softly so a benign kernel change to the boundary
+    # breadcrumbs doesn't break the connector e2e suite.
+    if not any(r.name == "databricks.sql.kernel.pyo3" for r in kernel_records):
+        import warnings
+
+        warnings.warn(
+            "no 'databricks.sql.kernel.pyo3' boundary records seen; "
+            "the kernel may have changed its pyo3 breadcrumb target",
+            stacklevel=2,
+        )
 
 
 def test_kernel_log_level_is_respected(kernel_conn_params, caplog):
-    """At WARNING, the chatty DEBUG kernel records are filtered out
-    before reaching Python — proving level control works (and that
-    filtering happens, not that everything is forwarded unconditionally)."""
+    """At WARNING on the kernel logger, no DEBUG/INFO kernel records reach
+    `caplog.records` — i.e. level control on `databricks.sql.kernel`
+    behaves like any other Python logger.
+
+    Scope note: `caplog.at_level` sets the logger's level and attaches a
+    handler, so this asserts the *effective* outcome a customer sees
+    (sub-threshold records don't surface), not specifically that the Rust
+    side suppressed them at source. A DEBUG record that crossed the FFI
+    would still be dropped by Python's level check before reaching
+    `caplog`. Source-side suppression (and its per-record FFI cost
+    avoidance) is covered by the kernel-side filtering, not asserted
+    here."""
     with caplog.at_level(logging.WARNING, logger="databricks.sql.kernel"):
         c = sql.connect(**kernel_conn_params)
         try:
