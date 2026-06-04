@@ -127,6 +127,73 @@ def test_fetchall_arrow(conn):
         assert table.column_names == ["a", "b"]
 
 
+# ─── Logging (Rust kernel -> Python logging bridge) ──────────────────────────
+#
+# Layer 3 of the logger-name drift guard (see also the Rust tests
+# `klog::tests::klog_emits_contract_target` and
+# `logging::tests::kernel_target_matches_contract` in the kernel repo).
+# Asserts the *customer-facing* contract end-to-end: kernel logs reach
+# Python `logging` under the `databricks.sql.kernel` logger, respect the
+# level set on it, and the pyo3 boundary surfaces under
+# `databricks.sql.kernel.pyo3`. If the kernel's tracing target or the
+# pyo3-log wiring ever drifts, these fail.
+
+import logging
+
+
+def test_kernel_logs_reach_python_logging(kernel_conn_params, caplog):
+    """A query at DEBUG produces records on the `databricks.sql.kernel`
+    logger — proving the tracing -> log -> pyo3-log -> logging chain."""
+    with caplog.at_level(logging.DEBUG, logger="databricks.sql.kernel"):
+        c = sql.connect(**kernel_conn_params)
+        try:
+            with c.cursor() as cur:
+                cur.execute("SELECT 1 AS a")
+                cur.fetchall()
+        finally:
+            c.close()
+
+    kernel_records = [
+        r for r in caplog.records if r.name.startswith("databricks.sql.kernel")
+    ]
+    assert kernel_records, (
+        "expected log records under the 'databricks.sql.kernel' logger; "
+        "the kernel tracing -> Python logging bridge did not deliver any"
+    )
+    # The core kernel logger (not just the .pyo3 child) must be present:
+    assert any(
+        r.name == "databricks.sql.kernel" for r in kernel_records
+    ), "expected core kernel records on the exact 'databricks.sql.kernel' logger"
+    # The pyo3 boundary breadcrumb must surface under the .pyo3 child:
+    assert any(
+        r.name == "databricks.sql.kernel.pyo3" for r in kernel_records
+    ), "expected pyo3-boundary records on 'databricks.sql.kernel.pyo3'"
+
+
+def test_kernel_log_level_is_respected(kernel_conn_params, caplog):
+    """At WARNING, the chatty DEBUG kernel records are filtered out
+    before reaching Python — proving level control works (and that
+    filtering happens, not that everything is forwarded unconditionally)."""
+    with caplog.at_level(logging.WARNING, logger="databricks.sql.kernel"):
+        c = sql.connect(**kernel_conn_params)
+        try:
+            with c.cursor() as cur:
+                cur.execute("SELECT 1 AS a")
+                cur.fetchall()
+        finally:
+            c.close()
+
+    debug_records = [
+        r
+        for r in caplog.records
+        if r.name.startswith("databricks.sql.kernel") and r.levelno < logging.WARNING
+    ]
+    assert not debug_records, (
+        "DEBUG/INFO kernel records leaked through at WARNING level: "
+        f"{[(r.name, r.levelname, r.getMessage()) for r in debug_records]}"
+    )
+
+
 # ── Metadata ──────────────────────────────────────────────────────
 
 

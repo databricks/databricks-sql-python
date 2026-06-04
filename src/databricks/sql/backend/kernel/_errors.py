@@ -57,6 +57,17 @@ except ImportError as exc:  # pragma: no cover - same hint as client.py
         "(into the same venv as databricks-sql-connector)."
     ) from exc
 
+# Route the kernel's Rust-side logs into Python's ``logging`` as soon as
+# the extension loads. The kernel emits under the ``databricks.sql.kernel``
+# logger (a child of the connector's ``databricks.sql`` namespace), so a
+# customer who configures ``databricks.sql`` logging gets kernel logs for
+# free with no extra setup. ``init_logging`` is idempotent on the Rust
+# side; ``getattr`` guards against an older kernel wheel that predates the
+# function so ``use_kernel=True`` still works (just without kernel logs).
+_kernel_init_logging = getattr(_kernel, "init_logging", None)
+if _kernel_init_logging is not None:
+    _kernel_init_logging()
+
 
 # Map a kernel `code` slug to the PEP 249 exception class that best
 # captures it. The match isn't a perfect 1:1 — PEP 249 has a
