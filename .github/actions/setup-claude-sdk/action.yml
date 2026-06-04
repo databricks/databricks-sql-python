@@ -1,0 +1,54 @@
+# Copyright (c) 2025 ADBC Drivers Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+
+# Install the Claude Agent SDK (pip) + the Claude Code CLI (npm) that the bots
+# now spawn, via Databricks' internal JFrog mirror. The protected runner group
+# is egress-blocked from pypi.org and registry.npmjs.org, so this configures
+# both package managers through JFrog (same mechanism as setup-jfrog / the
+# sdk-smoke workflow, which is verified working end-to-end against the gateway).
+#
+# Requires `id-token: write` on the calling job (for the JFrog OIDC exchange).
+# Idempotent w.r.t. a prior setup-jfrog step (re-exchanging the token + re-
+# setting PIP_INDEX_URL is harmless).
+name: Setup Claude Agent SDK
+description: Install claude-agent-sdk (pip) + Claude Code CLI (npm) via the internal JFrog mirror.
+
+inputs:
+  requirements-file:
+    description: >-
+      Path to the SDK requirements file, relative to the job working directory
+      ($GITHUB_WORKSPACE — composite `run:` steps always execute there, not at
+      the caller's working-directory). Defaults to scripts/requirements-sdk.txt,
+      correct when the repo is checked out at the workspace root (e.g. the
+      reviewer bots). Workflows that check the repo into a subdir (the engineer
+      bots use `path: internal-repo`) MUST pass the prefixed path, e.g.
+      internal-repo/scripts/requirements-sdk.txt.
+    required: false
+    default: scripts/requirements-sdk.txt
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node (for the Claude Code CLI the SDK spawns)
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: '20'
+
+    - name: Configure JFrog (pip + npm internal mirror)
+      uses: ./.github/actions/setup-jfrog
+      with:
+        configure-pip: 'true'
+        configure-npm: 'true'
+
+    - name: Install claude-agent-sdk + Claude Code CLI
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        # Install the SDK from the documented requirements file (not a bare
+        # `pip install claude-agent-sdk`) so CI and local docs share one
+        # dependency source and future pins land in a single place. (Review)
+        pip install -r "${{ inputs.requirements-file }}"
+        npm i -g @anthropic-ai/claude-code
+        echo "claude CLI: $(command -v claude || echo 'NOT FOUND')"
