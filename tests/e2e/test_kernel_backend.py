@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 import databricks.sql as sql
-from databricks.sql.exc import DatabaseError
+from databricks.sql.exc import DatabaseError, NotSupportedError, ServerOperationError
 
 # Skip the whole module unless the kernel wheel is genuinely installed.
 # ``pytest.importorskip`` alone isn't enough: the kernel unit tests inject a
@@ -361,3 +361,120 @@ def test_user_agent_entry_and_http_headers_round_trip(kernel_conn_params):
         with c.cursor() as cur:
             cur.execute("SELECT 1 AS n")
             assert cur.fetchall()[0][0] == 1
+
+
+# ── Parameter parity (tz-aware timestamp, scientific decimal) ──────
+
+
+def test_tz_aware_timestamp_parameter_binds(conn):
+    """A tz-aware datetime parameter (datetime with tzinfo) binds on
+    the kernel path and resolves to the correct UTC instant. Previously
+    rejected at bind on kernel; works on Thrift. (kernel #121)"""
+    import datetime
+
+    tzdt = datetime.datetime(
+        2026,
+        5,
+        15,
+        18,
+        0,
+        0,
+        tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)),
+    )
+    with conn.cursor() as cur:
+        cur.execute("SELECT ? AS ts", [tzdt])
+        ts = cur.fetchall()[0][0]
+        # 18:00 +05:30 == 12:30 UTC.
+        assert (ts.hour, ts.minute) == (12, 30)
+
+
+def test_scientific_notation_decimal_parameter_binds(conn):
+    """A Decimal whose str() is exponential (e.g. 1E-7) binds on the
+    kernel path. Previously rejected at bind; the server/Thrift accept
+    scientific-notation decimal literals. (kernel #121)"""
+    import decimal
+    from databricks.sql.parameters.native import DecimalParameter
+
+    with conn.cursor() as cur:
+        # 1E+2 == 100, round-trips cleanly at scale 0.
+        cur.execute("SELECT ? AS d", [DecimalParameter(decimal.Decimal("1E+2"))])
+        assert int(cur.fetchall()[0][0]) == 100
+
+
+# ── Staging / volume — fail loud, not silent no-op ────────────────
+
+
+def test_staging_put_raises_not_supported(conn):
+    """A PUT (volume/staging) statement fails loud on the kernel path
+    rather than silently no-opping (which would make ETL ingest
+    stale/missing data). (CUJ-gap audit)"""
+    with conn.cursor() as cur:
+        with pytest.raises(NotSupportedError, match="staging"):
+            cur.execute("PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'")
+
+
+def test_comment_prefixed_staging_put_raises_not_supported(conn):
+    """A comment-prefixed staging op (common in ETL scripts) must also
+    fail loud — the leading-verb detection strips SQL comments first, so
+    it can't slip past into the silent-no-op bug (PR #825 review #1)."""
+    with conn.cursor() as cur:
+        with pytest.raises(NotSupportedError, match="staging"):
+            cur.execute(
+                "-- upload the daily extract\n"
+                "PUT '/tmp/x.csv' INTO '/Volumes/main/default/v/x.csv'"
+            )
+
+
+# ── Error fidelity — diagnostic-info reaches .context ─────────────
+
+
+def test_server_error_exposes_diagnostic_info_context(conn):
+    """A server-side query failure surfaces as ServerOperationError
+    with the Spark diagnostic context in ``.context['diagnostic-info']``
+    — Thrift parity (kernel #121 forwards diagnostic_info across pyo3;
+    the connector populates .context)."""
+    with conn.cursor() as cur:
+        with pytest.raises(ServerOperationError) as exc_info:
+            cur.execute("SELECT * FROM definitely_not_a_table_xyz_kernel_e2e")
+        err = exc_info.value
+        # context shape matches Thrift; diagnostic-info may be None if
+        # the server didn't attach one, but the KEY must exist.
+        assert "diagnostic-info" in err.context
+        assert "operation-id" in err.context
+
+
+# ── Sync cancel (cursor.cancel() from another thread) ─────────────
+
+
+def test_sync_cancel_interrupts_blocking_execute(conn):
+    """cursor.cancel() from another thread cancels a long-running
+    blocking execute() on the kernel path. Previously a silent no-op
+    (active_command_id was None until execute returned). (kernel #121
+    StatementCanceller + connector cancel_running_cursor wiring)"""
+    import threading
+    import time
+
+    cur = conn.cursor()
+
+    # The kernel publishes the server statement id once the initial
+    # POST returns — within the server's default wait window (~10s).
+    # Cancel after that so the canceller has an id to target; a cancel
+    # before then is a no-op by design (id not yet known). Pick a query
+    # that runs well past this so the cancel lands mid-flight.
+    def cancel_after_delay():
+        time.sleep(15.0)
+        cur.cancel()
+
+    t = threading.Thread(target=cancel_after_delay)
+    t.start()
+    try:
+        # Cancel should make execute() raise rather than run to
+        # completion — proving the server-side statement was cancelled.
+        with pytest.raises(Exception):
+            cur.execute(
+                "SELECT count(*) FROM range(0, 1000000000000) "
+                "WHERE pow(rand(), 2) < 0.5 AND sqrt(id) > 1"
+            )
+    finally:
+        t.join()
+        cur.close()

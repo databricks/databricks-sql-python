@@ -97,7 +97,23 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
     """
     code = getattr(exc, "code", "Unknown")
     cls = _CODE_TO_EXCEPTION.get(code, DatabaseError)
-    new = cls(getattr(exc, "message", str(exc)))
+
+    # For ServerOperationError, reproduce the Thrift backend's
+    # ``context`` dict so callers that read
+    # ``err.context["diagnostic-info"]`` (the Spark stack trace) /
+    # ``err.context["operation-id"]`` get the same shape on the kernel
+    # path. ``diagnostic_info`` is forwarded from the kernel error (it
+    # now crosses the PyO3 boundary; older wheels return ``None`` via
+    # ``getattr``, so this degrades gracefully). Matches
+    # thrift_backend.py's ServerOperationError construction.
+    context = None
+    if cls is ServerOperationError:
+        context = {
+            "operation-id": getattr(exc, "query_id", None),
+            "diagnostic-info": getattr(exc, "diagnostic_info", None),
+        }
+    new = cls(getattr(exc, "message", str(exc)), context)
+
     for attr in (
         "code",
         "sql_state",
@@ -106,6 +122,12 @@ def reraise_kernel_error(exc: "_kernel.KernelError") -> "Error":
         "http_status",
         "retryable",
         "query_id",
+        # Extended server status now forwarded across the PyO3 boundary
+        # (kernel #121). ``getattr(..., None)`` keeps this forward-safe
+        # against an older wheel that doesn't set these attrs.
+        "display_message",
+        "diagnostic_info",
+        "error_details_json",
     ):
         setattr(new, attr, getattr(exc, attr, None))
     return new
