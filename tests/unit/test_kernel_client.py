@@ -41,6 +41,9 @@ class _FakeKernelError(Exception):
         message: str = "boom",
         sql_state: Optional[str] = None,
         query_id: Optional[str] = None,
+        diagnostic_info: Optional[str] = None,
+        display_message: Optional[str] = None,
+        error_details_json: Optional[str] = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -51,6 +54,11 @@ class _FakeKernelError(Exception):
         self.http_status = None
         self.retryable = False
         self.query_id = query_id
+        # Extended server status forwarded across the PyO3 boundary
+        # (kernel #121). Defaults None so existing tests are unaffected.
+        self.diagnostic_info = diagnostic_info
+        self.display_message = display_message
+        self.error_details_json = error_details_json
 
 
 _fake_kernel_module = types.ModuleType("databricks_sql_kernel")
@@ -137,6 +145,40 @@ def test_reraise_forwards_structured_attributes():
     for attr in ("error_code", "vendor_code", "http_status"):
         assert getattr(out, attr) is None
     assert out.retryable is False
+
+
+def test_reraise_forwards_extended_status_attributes():
+    """display_message / diagnostic_info / error_details_json now cross
+    the PyO3 boundary (kernel #121) and must be forwarded onto the
+    re-raised exception so callers can read them."""
+    err = _FakeKernelError(
+        code="SqlError",
+        message="boom",
+        diagnostic_info="org.apache.spark...stack",
+        display_message="user-facing msg",
+        error_details_json='{"k":1}',
+    )
+    out = kernel_client._reraise_kernel_error(err)
+    assert out.diagnostic_info == "org.apache.spark...stack"
+    assert out.display_message == "user-facing msg"
+    assert out.error_details_json == '{"k":1}'
+
+
+def test_server_operation_error_populates_context_like_thrift():
+    """A SqlError maps to ServerOperationError; its ``context`` must
+    carry ``diagnostic-info`` (the Spark stack trace) and
+    ``operation-id``, matching the Thrift backend so callers reading
+    ``err.context["diagnostic-info"]`` work identically on use_kernel."""
+    err = _FakeKernelError(
+        code="SqlError",
+        message="table not found",
+        query_id="q-123",
+        diagnostic_info="org.apache.spark...stack",
+    )
+    out = kernel_client._reraise_kernel_error(err)
+    assert isinstance(out, ServerOperationError)
+    assert out.context["diagnostic-info"] == "org.apache.spark...stack"
+    assert out.context["operation-id"] == "q-123"
 
 
 def test_kernel_error_chains_through_wrap():
@@ -369,6 +411,135 @@ def test_execute_command_forwards_query_tags():
 
     stmt.set_query_tags.assert_called_once_with(tags)
     assert stmt.execute.called
+
+
+# ---------------------------------------------------------------------------
+# Staging / volume operations — fail loud (not silently no-op)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "PUT '/local/f.csv' INTO '/Volumes/c/s/v/f.csv'",
+        "  put '/local/f' into '/Volumes/...'",  # leading ws + lowercase
+        "GET '/Volumes/c/s/v/f' TO '/local/f'",
+        "REMOVE '/Volumes/c/s/v/f'",
+    ],
+)
+def test_staging_operation_raises_not_supported(operation):
+    """Volume/staging PUT/GET/REMOVE must FAIL LOUD on the kernel path
+    (the kernel can't perform the presigned-URL transfer; silently
+    no-opping would make ETL ingest stale/missing data)."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    with pytest.raises(NotSupportedError, match="staging"):
+        c.execute_command(
+            operation=operation,
+            session_id=MagicMock(),
+            max_rows=1,
+            max_bytes=1,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "operation, is_staging",
+    [
+        ("PUT '/f' INTO '/v'", True),
+        ("get '/v' to '/f'", True),
+        ("REMOVE '/v'", True),
+        ("SELECT 'GET' AS x", False),  # word appears but not leading verb
+        ("SELECT * FROM puts", False),
+        ("INSERT INTO t VALUES (1)", False),
+        ("", False),
+    ],
+)
+def test_is_staging_statement(operation, is_staging):
+    assert kernel_client._is_staging_statement(operation) is is_staging
+
+
+# ---------------------------------------------------------------------------
+# Sync cancel wiring (cursor.cancel() during a blocking execute())
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_running_cursor_fires_registered_canceller():
+    """A canceller registered for a cursor (as execute_command does
+    before the blocking call) is fired by cancel_running_cursor, which
+    returns True."""
+    c = _make_client()
+    cursor = MagicMock()
+    canceller = MagicMock()
+    with c._sync_cancellers_lock:
+        c._sync_cancellers[id(cursor)] = canceller
+
+    assert c.cancel_running_cursor(cursor) is True
+    canceller.cancel.assert_called_once_with()
+
+
+def test_cancel_running_cursor_returns_false_when_none_registered():
+    """No in-flight sync statement for this cursor -> False so the
+    Cursor can emit its 'no executing command' warning."""
+    c = _make_client()
+    assert c.cancel_running_cursor(MagicMock()) is False
+
+
+def test_execute_command_registers_and_clears_sync_canceller():
+    """The sync execute() path registers a StatementCanceller keyed by
+    the cursor before blocking, and clears it in the finally — so a
+    concurrent cancel can reach it mid-flight, and it doesn't leak."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    canceller = MagicMock()
+    stmt = MagicMock()
+    stmt.canceller.return_value = canceller
+    seen_during_execute = {}
+
+    def fake_execute():
+        # The canceller is registered *during* the blocking execute.
+        with c._sync_cancellers_lock:
+            seen_during_execute["registered"] = (
+                c._sync_cancellers.get(id(cursor)) is canceller
+            )
+        return MagicMock(
+            statement_id="stmt-id",
+            arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+        )
+
+    stmt.execute.side_effect = fake_execute
+    c._kernel_session.statement.return_value = stmt
+
+    c.execute_command(
+        operation="SELECT 1",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+
+    assert seen_during_execute["registered"] is True
+    # Cleared after execute returns — no leak.
+    with c._sync_cancellers_lock:
+        assert id(cursor) not in c._sync_cancellers
 
 
 def test_get_columns_accepts_none_catalog():

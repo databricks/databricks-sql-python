@@ -71,6 +71,24 @@ logger = logging.getLogger(__name__)
 # per-request skip-and-warn.
 _KERNEL_MANAGED_HEADERS = frozenset({"authorization", "x-databricks-org-id"})
 
+# Leading verbs of SQL volume/staging statements. Detected by the
+# leading token (case-insensitive) so the kernel backend can fail loud
+# on staging ops it can't service — see ``execute_command``.
+_STAGING_VERBS = ("PUT", "GET", "REMOVE")
+
+
+def _is_staging_statement(operation: str) -> bool:
+    """True iff ``operation`` is a volume/staging statement (PUT / GET /
+    REMOVE).
+
+    Matches the leading token only, so a normal query that merely
+    *contains* the word (e.g. ``SELECT 'GET' AS x``) isn't misflagged.
+    """
+    stripped = operation.lstrip()
+    # First whitespace-delimited token, uppercased.
+    verb = stripped.split(None, 1)[0].upper() if stripped else ""
+    return verb in _STAGING_VERBS
+
 
 # ─── Client ─────────────────────────────────────────────────────────────────
 
@@ -172,6 +190,17 @@ class KernelDatabricksClient(DatabricksClient):
         # path. Same lock as ``_async_handles``.
         self._closed_commands: Set[str] = set()
         self._async_handles_lock = threading.RLock()
+        # Sync-execute cancellers keyed by ``id(cursor)``. A blocking
+        # ``execute()`` sets ``cursor.active_command_id`` only AFTER it
+        # returns, so a concurrent ``cursor.cancel()`` (the documented
+        # cross-thread PEP-249 shape) has no command id to target while
+        # the query runs. We register a detached kernel
+        # ``StatementCanceller`` here just before the blocking call and
+        # drop it after; ``cancel_running_cursor`` (invoked by
+        # ``Cursor.cancel`` when there's no command id yet) fires it.
+        # Guarded by its own lock — cancel can race execute teardown.
+        self._sync_cancellers: Dict[int, Any] = {}
+        self._sync_cancellers_lock = threading.RLock()
 
     # ── Session lifecycle ──────────────────────────────────────────
 
@@ -354,6 +383,24 @@ class KernelDatabricksClient(DatabricksClient):
         # ``_async_statements`` and closed by ``close_command``); the sync
         # path drops it in finally. ``close_stmt`` is the post-success
         # decision flag — it stays True on sync, flips to False on async.
+        # Volume/staging (PUT/GET/REMOVE) is not supported on the kernel
+        # path: the kernel returns the staging control row as a normal
+        # result set (``KernelResultSet.is_staging_operation`` is always
+        # False), so the connector's ``_handle_staging_operation`` never
+        # fires and NO file is transferred. Rather than silently no-op
+        # (the Thrift path performs the presigned-URL upload/download),
+        # fail loud at the call site so ETL scripts don't ingest
+        # stale/missing data. Detected by the leading SQL verb — the
+        # only signal available pre-execute, since the kernel exposes no
+        # staging marker today.
+        if _is_staging_statement(operation):
+            raise NotSupportedError(
+                "Volume / staging operations (PUT / GET / REMOVE) are not "
+                "supported on the kernel backend (use_kernel=True); the file "
+                "transfer would silently not happen. Use the Thrift backend "
+                "for staging operations."
+            )
+
         close_stmt = True
         try:
             try:
@@ -382,10 +429,23 @@ class KernelDatabricksClient(DatabricksClient):
                         self._async_statements[command_id.guid] = stmt
                     close_stmt = False
                     return None
+                # Register a detached canceller BEFORE the blocking
+                # execute so a concurrent ``cursor.cancel()`` can reach
+                # the running statement (its server id is populated mid-
+                # execute). Keyed by ``id(cursor)`` since no command id
+                # exists yet. Dropped in the finally.
+                try:
+                    with self._sync_cancellers_lock:
+                        self._sync_cancellers[id(cursor)] = stmt.canceller()
+                except Exception:
+                    # Canceller is best-effort; never block execute on it.
+                    pass
                 executed = stmt.execute()
             except Exception as exc:
                 raise _wrap_kernel_exception("execute_command", exc) from exc
         finally:
+            with self._sync_cancellers_lock:
+                self._sync_cancellers.pop(id(cursor), None)
             if close_stmt:
                 # Sync path: ``Statement`` is a lifecycle owner separate
                 # from the executed handle. Drop it here so the parent
@@ -421,6 +481,30 @@ class KernelDatabricksClient(DatabricksClient):
             handle.cancel()
         except Exception as exc:
             raise _wrap_kernel_exception("cancel_command", exc) from exc
+
+    def cancel_running_cursor(self, cursor: "Cursor") -> bool:
+        """Cancel an in-flight SYNC ``execute()`` on ``cursor``.
+
+        Invoked by ``Cursor.cancel()`` when ``active_command_id`` is
+        still ``None`` — i.e. a blocking ``execute()`` hasn't returned,
+        so the command id isn't set yet but the server statement may be
+        running. Fires the detached ``StatementCanceller`` registered in
+        ``execute_command`` before the blocking call.
+
+        Returns ``True`` if a canceller was found and fired (the
+        statement was in flight), ``False`` otherwise so ``Cursor`` can
+        emit its "no executing command" warning. Safe to call from
+        another thread.
+        """
+        with self._sync_cancellers_lock:
+            canceller = self._sync_cancellers.get(id(cursor))
+        if canceller is None:
+            return False
+        try:
+            canceller.cancel()
+        except Exception as exc:
+            raise _wrap_kernel_exception("cancel_running_cursor", exc) from exc
+        return True
 
     def close_command(self, command_id: CommandId) -> None:
         with self._async_handles_lock:

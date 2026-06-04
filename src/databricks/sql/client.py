@@ -1704,11 +1704,22 @@ class Cursor:
         """
         if self.active_command_id is not None:
             self.backend.cancel_command(self.active_command_id)
-        else:
-            logger.warning(
-                "Attempting to cancel a command, but there is no "
-                "currently executing command"
-            )
+            return
+        # No command id yet. A backend whose synchronous ``execute()``
+        # blocks without first publishing a command id (the kernel
+        # backend) may still have a server statement in flight. Such a
+        # backend exposes ``cancel_running_cursor(cursor)`` -> bool to
+        # cancel it; it returns True if something was actually
+        # cancelled. Opt-in via getattr so the Thrift / SEA backends
+        # (which set ``active_command_id`` before blocking) are
+        # unaffected.
+        cancel_running_cursor = getattr(self.backend, "cancel_running_cursor", None)
+        if cancel_running_cursor is not None and cancel_running_cursor(self):
+            return
+        logger.warning(
+            "Attempting to cancel a command, but there is no "
+            "currently executing command"
+        )
 
     def close(self) -> None:
         """Close cursor"""

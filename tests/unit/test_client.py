@@ -371,12 +371,45 @@ class ClientTestSuite(unittest.TestCase):
     def test_cancel_command_will_issue_warning_for_cancel_with_no_executing_command(
         self, logger_instance
     ):
-        mock_thrift_backend = Mock()
+        # Backends like Thrift/SEA set active_command_id before blocking
+        # and do NOT define ``cancel_running_cursor``. Use ``spec`` so the
+        # mock doesn't auto-advertise that opt-in hook (a bare ``Mock()``
+        # returns a truthy Mock for any attribute).
+        mock_thrift_backend = Mock(spec=["cancel_command"])
         cursor = client.Cursor(Mock(), mock_thrift_backend)
         cursor.cancel()
 
         self.assertTrue(logger_instance.warning.called)
         self.assertFalse(mock_thrift_backend.cancel_command.called)
+
+    @patch("databricks.sql.client.logger")
+    def test_cancel_routes_to_cancel_running_cursor_when_no_command_id(
+        self, logger_instance
+    ):
+        """When there's no active_command_id (a blocking sync execute()
+        hasn't published one), cancel() routes to the backend's opt-in
+        ``cancel_running_cursor`` hook (the kernel backend). If the hook
+        cancels something (returns True), no warning is emitted."""
+        backend = Mock(spec=["cancel_command", "cancel_running_cursor"])
+        backend.cancel_running_cursor.return_value = True
+        cursor = client.Cursor(Mock(), backend)
+        cursor.cancel()
+
+        backend.cancel_running_cursor.assert_called_once_with(cursor)
+        self.assertFalse(backend.cancel_command.called)
+        self.assertFalse(logger_instance.warning.called)
+
+    @patch("databricks.sql.client.logger")
+    def test_cancel_warns_when_hook_finds_nothing_in_flight(self, logger_instance):
+        """If the hook returns False (nothing was in flight), the
+        existing 'no executing command' warning still fires."""
+        backend = Mock(spec=["cancel_command", "cancel_running_cursor"])
+        backend.cancel_running_cursor.return_value = False
+        cursor = client.Cursor(Mock(), backend)
+        cursor.cancel()
+
+        backend.cancel_running_cursor.assert_called_once_with(cursor)
+        self.assertTrue(logger_instance.warning.called)
 
     def test_version_is_canonical(self):
         version = databricks.sql.__version__
@@ -510,7 +543,7 @@ class ClientTestSuite(unittest.TestCase):
 
         expected_values = [["val1", 321, 52.32], ["val2", 2321, 252.32]]
 
-        for (row, expected) in zip(data, expected_values):
+        for row, expected in zip(data, expected_values):
             self.assertEqual(row.first_col, expected[0])
             self.assertEqual(row.second_col, expected[1])
             self.assertEqual(row.third_col, expected[2])
