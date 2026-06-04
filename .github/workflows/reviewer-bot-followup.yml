@@ -1,0 +1,117 @@
+name: Reviewer Bot — Follow-up
+
+on:
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  # The workflow GITHUB_TOKEN is not used to interact with the PR — we mint a
+  # dedicated peco-review-bot App installation token and use that everywhere.
+  # Required App permissions on the installation (NOT this workflow):
+  #   Pull requests: Read & Write — posting inline replies
+  #   Issues:        Read & Write — comment plumbing
+  #   Contents:      Read & Write — resolveReviewThread mutation
+  #     (Pull-requests:write is NOT sufficient for the resolve mutation;
+  #     GitHub gates it behind Contents.)
+  contents: read
+  id-token: write   # JFrog OIDC exchange for the SDK/CLI install (setup-claude-sdk)
+
+jobs:
+  followup:
+    # SECURITY: skip fork PRs — keep DATABRICKS_TOKEN out of untrusted code's
+    # reach. Mirrors the guard in reviewer-bot.yml.
+    if: github.event.pull_request.head.repo.fork == false && github.event.pull_request.state == 'open'
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: [linux-ubuntu-latest]
+    timeout-minutes: 10
+    steps:
+      - name: Mint review-bot App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.REVIEW_BOT_APP_ID }}
+          private-key: ${{ secrets.REVIEW_BOT_APP_PRIVATE_KEY }}
+
+      - name: Cheap pre-checkout filter
+        id: filter
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TRIGGER_ID: ${{ github.event.comment.id }}
+          IN_REPLY_TO: ${{ github.event.comment.in_reply_to_id }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Cheap filters first — skip the expensive checkout / python setup
+          # when the event is already known to be irrelevant. The Python entry
+          # point repeats these checks (defense in depth), so being slightly
+          # over-permissive here is safe.
+          #
+          # Filter 1: must be a reply to another inline comment.
+          if [ -z "$IN_REPLY_TO" ] || [ "$IN_REPLY_TO" = "null" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=no in_reply_to_id (top-level review comment, not a thread reply)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Filter 2: skip our own follow-up AND reconcile replies (loop
+          # prevention). MARKER-based — never login-based.
+          if printf '%s' "$COMMENT_BODY" | grep -q '<!-- pr-review-bot:v1 followup'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=trigger comment is itself a bot follow-up (loop prevention)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s' "$COMMENT_BODY" | grep -q '<!-- pr-review-bot:v1 reconcile -->'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=trigger comment is itself a bot reconcile reply (loop prevention)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Announce skip in step summary
+        if: steps.filter.outputs.skip == 'true'
+        run: |
+          {
+            echo "## Reviewer Bot — Follow-up"
+            echo ""
+            echo "**Skipped:** ${{ steps.filter.outputs.reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout
+        if: steps.filter.outputs.skip != 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          # The followup reads this checkout via read_paths/grep, so the
+          # persisted GITHUB_TOKEN must NOT sit in .git/config. The followup
+          # only POSTS replies via the minted App token.
+          persist-credentials: false
+
+      - name: Setup Python
+        if: steps.filter.outputs.skip != 'true'
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.11'
+
+      - name: Setup Claude Agent SDK + CLI
+        if: steps.filter.outputs.skip != 'true'
+        uses: ./.github/actions/setup-claude-sdk
+
+      - name: Run follow-up agent
+        if: steps.filter.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TRIGGER_COMMENT_ID: ${{ github.event.comment.id }}
+          # PR SHA range — used by followup.py to restrict `git show` to commits
+          # actually in this PR (allowlist for SHA-diff verification).
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          MODEL_ENDPOINT: ${{ secrets.MODEL_ENDPOINT }}
+          DRY_RUN: 'false'
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          python -m scripts.reviewer_bot.followup
