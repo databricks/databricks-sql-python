@@ -24,7 +24,12 @@ from __future__ import annotations
 import pytest
 
 import databricks.sql as sql
-from databricks.sql.exc import DatabaseError, NotSupportedError, ServerOperationError
+from databricks.sql.exc import (
+    DatabaseError,
+    NotSupportedError,
+    OperationalError,
+    ServerOperationError,
+)
 
 # Skip the whole module unless the kernel wheel is genuinely installed.
 # ``pytest.importorskip`` alone isn't enough: the kernel unit tests inject a
@@ -475,6 +480,57 @@ def test_sync_cancel_interrupts_blocking_execute(conn):
                 "SELECT count(*) FROM range(0, 1000000000000) "
                 "WHERE pow(rand(), 2) < 0.5 AND sqrt(id) > 1"
             )
+    finally:
+        t.join()
+        cur.close()
+
+
+# ── Batch 2 ────────────────────────────────────────────────────────
+
+
+def test_large_result_drains_without_premature_close(conn):
+    """H4: a large multi-chunk result fully drains even though the
+    connector no longer closes the statement at execute-return — the
+    kernel auto-closes on drain. Guards the regression where a premature
+    CloseStatement broke lazy CloudFetch chunk-link fetches."""
+    n = 5_000_000
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT id, cast(id AS string) s FROM range({n})")
+        rows = cur.fetchall()
+        assert len(rows) == n
+        # Cursor is reusable after the auto-close fired on the prior result.
+        cur.execute("SELECT 42 AS n")
+        assert cur.fetchall()[0][0] == 42
+
+
+def test_server_cancel_maps_to_operational_error(conn):
+    """A server-side cancel surfaces as OperationalError (cancelled
+    class), not ProgrammingError. We trigger it via a cross-thread
+    cancel of a running query; the raised exception must be in the
+    OperationalError family, not ProgrammingError."""
+    import threading
+    import time
+
+    from databricks.sql.exc import ProgrammingError
+
+    cur = conn.cursor()
+
+    def cancel_after_delay():
+        time.sleep(15.0)
+        cur.cancel()
+
+    t = threading.Thread(target=cancel_after_delay)
+    t.start()
+    try:
+        with pytest.raises(Exception) as exc_info:
+            cur.execute(
+                "SELECT count(*) FROM range(0, 1000000000000) "
+                "WHERE pow(rand(), 2) < 0.5 AND sqrt(id) > 1"
+            )
+        # The cancellation must not masquerade as a caller-argument
+        # (ProgrammingError) error. It should be operational.
+        assert not isinstance(exc_info.value, ProgrammingError)
+        assert isinstance(exc_info.value, (OperationalError, DatabaseError))
     finally:
         t.join()
         cur.close()

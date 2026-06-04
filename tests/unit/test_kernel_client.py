@@ -572,6 +572,74 @@ def test_execute_command_registers_and_clears_sync_canceller():
         assert id(cursor) not in c._sync_cancellers
 
 
+def test_sync_execute_does_not_close_statement_on_success():
+    """H4: on a successful sync execute(), the connector must NOT close
+    the parent kernel Statement — the kernel now auto-closes the server
+    statement when the result stream drains (with the executed handle's
+    Drop as backstop). A premature close() here broke lazy CloudFetch
+    chunk-link fetches for large paginated-link results."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    stmt = MagicMock()
+    stmt.execute.return_value = MagicMock(
+        statement_id="stmt-id",
+        arrow_schema=MagicMock(return_value=pa.schema([("x", pa.int64())])),
+    )
+    c._kernel_session.statement.return_value = stmt
+
+    c.execute_command(
+        operation="SELECT 1",
+        session_id=MagicMock(),
+        max_rows=1,
+        max_bytes=1,
+        lz4_compression=False,
+        cursor=cursor,
+        use_cloud_fetch=False,
+        parameters=[],
+        async_op=False,
+        enforce_embedded_schema_correctness=False,
+    )
+
+    # The kernel owns the statement lifecycle post-execute; connector
+    # leaves it alone (kernel auto-close-on-drain + Drop backstop).
+    stmt.close.assert_not_called()
+
+
+def test_sync_execute_closes_statement_on_failure():
+    """On the error path (execute raised, no executed handle / result
+    set produced), the connector still closes the parent Statement so
+    it isn't leaked."""
+    c = _make_client()
+    c._kernel_session = MagicMock()
+    cursor = MagicMock()
+    cursor.arraysize = 100
+    cursor.buffer_size_bytes = 1024
+
+    stmt = MagicMock()
+    stmt.execute.side_effect = RuntimeError("boom")
+    c._kernel_session.statement.return_value = stmt
+
+    with pytest.raises(Exception):
+        c.execute_command(
+            operation="SELECT 1",
+            session_id=MagicMock(),
+            max_rows=1,
+            max_bytes=1,
+            lz4_compression=False,
+            cursor=cursor,
+            use_cloud_fetch=False,
+            parameters=[],
+            async_op=False,
+            enforce_embedded_schema_correctness=False,
+        )
+
+    stmt.close.assert_called_once_with()
+
+
 def test_get_columns_accepts_none_catalog():
     """The kernel's `list_columns` honours `catalog=None` by issuing
     `SHOW COLUMNS IN ALL CATALOGS` server-side. The connector should
