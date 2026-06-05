@@ -473,16 +473,29 @@ class KernelDatabricksClient(DatabricksClient):
                     # Canceller is best-effort; never block execute on it.
                     pass
                 executed = stmt.execute()
+                # Execute succeeded: the kernel now owns the statement
+                # lifecycle. It auto-closes the server statement when the
+                # result stream is fully drained (``ExecutedStatement::
+                # next_batch`` end-of-stream), with the executed handle's
+                # ``Drop`` as the backstop for partial/abandoned reads.
+                # So we must NOT close ``stmt`` here: a premature
+                # ``CloseStatement`` at execute-return broke lazy
+                # CloudFetch chunk-link fetches (``get_result_chunks``
+                # against the live statement) for large paginated-link
+                # results. Closing here is left ONLY for the error path
+                # below, where no executed handle / result set was
+                # produced to reap it.
+                close_stmt = False
             except Exception as exc:
                 raise _wrap_kernel_exception("execute_command", exc) from exc
         finally:
             with self._sync_cancellers_lock:
                 self._sync_cancellers.pop(id(cursor), None)
             if close_stmt:
-                # Sync path: ``Statement`` is a lifecycle owner separate
-                # from the executed handle. Drop it here so the parent
-                # doesn't outlive its caller. Swallow close errors —
-                # they're not actionable.
+                # Reached only when ``stmt.execute()`` did not succeed
+                # (or async, which flipped the flag earlier): no executed
+                # handle owns the statement, so close it here to avoid a
+                # leak. Swallow close errors — not actionable.
                 try:
                     stmt.close()
                 except Exception:
