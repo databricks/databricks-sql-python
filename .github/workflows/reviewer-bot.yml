@@ -1,0 +1,126 @@
+name: Reviewer Bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: string
+      dry_run:
+        description: 'Print what would be posted instead of posting'
+        required: false
+        default: 'true'
+        type: string
+
+permissions:
+  # The workflow GITHUB_TOKEN is not used to interact with the PR — we mint a
+  # dedicated peco-review-bot App installation token and use that everywhere.
+  # Required App permissions on the installation (NOT this workflow):
+  #   Pull requests: Read & Write — posting findings + replies
+  #   Issues:        Read & Write — review status updates
+  #   Contents:      Read & Write — resolveReviewThread mutation
+  #     (Pull-requests:write is NOT sufficient for the resolve mutation;
+  #     GitHub gates it behind Contents.)
+  contents: read
+  id-token: write   # JFrog OIDC exchange for the SDK/CLI install (setup-claude-sdk)
+
+jobs:
+  review:
+    # SECURITY: the fork == false guard keeps DATABRICKS_TOKEN + the App token
+    # out of untrusted fork code. Do not remove without alternative isolation.
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.draft == false && github.event.pull_request.head.repo.fork == false)
+    runs-on:
+      group: databricks-protected-runner-group
+      labels: [linux-ubuntu-latest]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          # The reviewer reads this checkout via its read_paths/grep tools, so
+          # the persisted GITHUB_TOKEN must NOT sit in .git/config (it would be
+          # readable + leakable into a posted review). The bot posts via the
+          # minted App token, not the checkout's git creds.
+          persist-credentials: false
+
+      - name: Mint review-bot App token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.REVIEW_BOT_APP_ID }}
+          private-key: ${{ secrets.REVIEW_BOT_APP_PRIVATE_KEY }}
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.11'
+
+      - name: Resolve trigger inputs
+        id: inputs
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW_PR="${{ inputs.pr_number }}"
+            DRY_RUN="${{ inputs.dry_run }}"
+          else
+            RAW_PR="${{ github.event.pull_request.number }}"
+            DRY_RUN="false"
+          fi
+          if ! [[ "$RAW_PR" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid pr_number '$RAW_PR'"; exit 1
+          fi
+          HEAD_SHA=$(gh pr view "$RAW_PR" --repo "${{ github.repository }}" \
+            --json headRefOid -q .headRefOid)
+          echo "pr_number=$RAW_PR" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Claude Agent SDK + CLI
+        uses: ./.github/actions/setup-claude-sdk
+
+      - name: Checkout PR head into a SEPARATE dir for exploration (workflow_dispatch)
+        # On `pull_request` the initial checkout is already refs/pull/N/merge, so
+        # the reviewer's read_paths/grep explore the files under review (and the
+        # fork guard gates untrusted code). On `workflow_dispatch` the initial
+        # checkout is the dispatched ref (default branch) while the review targets
+        # inputs.pr_number — so check the PR head into a SEPARATE `pr-head/` dir
+        # and read its CONTENT via REVIEW_CONTENT_ROOT below.
+        #
+        # SECURITY: do NOT re-point the primary tree. `Run review bot` still runs
+        # scripts/reviewer_bot/* from the primary (trusted, default-branch)
+        # checkout; only the PR's file *content* is read out of pr-head/. The
+        # job's if: exempts workflow_dispatch from the fork guard, so swapping
+        # the primary tree would execute a fork PR's own bot code with secrets in
+        # scope. Reading content is safe (read_paths/grep enforce
+        # path-escape/.git/symlink guards); executing its code is not.
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ steps.inputs.outputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: pr-head
+
+      - name: Run review bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.inputs.outputs.head_sha }}
+          # Where the bot READS PR-head content from (repo rules, read_paths/grep).
+          # Set ONLY on workflow_dispatch (primary tree = trusted default branch,
+          # PR head in pr-head/). On `pull_request` it's empty, so the bot reads
+          # its own merge-ref checkout (fork-gated). Bot code always runs from
+          # the primary trusted checkout.
+          REVIEW_CONTENT_ROOT: ${{ github.event_name == 'workflow_dispatch' && format('{0}/pr-head', github.workspace) || '' }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          MODEL_ENDPOINT: ${{ secrets.MODEL_ENDPOINT }}
+          DRY_RUN: ${{ steps.inputs.outputs.dry_run }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          python -m scripts.reviewer_bot.run_review
