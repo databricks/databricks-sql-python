@@ -482,9 +482,9 @@ class KernelDatabricksClient(DatabricksClient):
                 # ``CloseStatement`` at execute-return broke lazy
                 # CloudFetch chunk-link fetches (``get_result_chunks``
                 # against the live statement) for large paginated-link
-                # results — the H4 gap. Closing here is left ONLY for the
-                # error path below, where no executed handle / result set
-                # was produced to reap it.
+                # results. Closing here is left ONLY for the error path
+                # below, where no executed handle / result set was
+                # produced to reap it.
                 close_stmt = False
             except Exception as exc:
                 raise _wrap_kernel_exception("execute_command", exc) from exc

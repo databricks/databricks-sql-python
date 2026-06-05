@@ -574,9 +574,9 @@ def test_sync_cancel_interrupts_blocking_execute(conn):
 
 
 def test_large_result_drains_without_premature_close(conn):
-    """H4: a large multi-chunk result fully drains even though the
-    connector no longer closes the statement at execute-return — the
-    kernel auto-closes on drain. Guards the regression where a premature
+    """A large multi-chunk result fully drains even though the connector
+    no longer closes the statement at execute-return — the kernel
+    auto-closes on drain. Guards the regression where a premature
     CloseStatement broke lazy CloudFetch chunk-link fetches."""
     n = 5_000_000
     with conn.cursor() as cur:

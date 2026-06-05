@@ -573,8 +573,8 @@ def test_execute_command_registers_and_clears_sync_canceller():
 
 
 def test_sync_execute_does_not_close_statement_on_success():
-    """H4: on a successful sync execute(), the connector must NOT close
-    the parent kernel Statement — the kernel now auto-closes the server
+    """On a successful sync execute(), the connector must NOT close the
+    parent kernel Statement — the kernel now auto-closes the server
     statement when the result stream drains (with the executed handle's
     Drop as backstop). A premature close() here broke lazy CloudFetch
     chunk-link fetches for large paginated-link results."""
