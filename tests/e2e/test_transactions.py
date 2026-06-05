@@ -565,17 +565,19 @@ class TestMstBlockedSql:
     "Only SELECT / INSERT / MERGE / UPDATE / DELETE / DESCRIBE TABLE are supported."
 
     The server has since broadened the allowlist to include SHOW COLUMNS
-    (ShowDeltaTableColumnsCommand), observed on current DBSQL warehouses.
+    (ShowDeltaTableColumnsCommand) and DESCRIBE QUERY (DescribeQueryCommand),
+    observed on current DBSQL warehouses.
 
     Blocked (throw + abort txn):
     - SHOW TABLES, SHOW SCHEMAS, SHOW CATALOGS, SHOW FUNCTIONS
-    - DESCRIBE QUERY, DESCRIBE TABLE EXTENDED
+    - DESCRIBE TABLE EXTENDED
     - SELECT FROM information_schema
     - Thrift Get{Catalogs,Schemas,Tables,Columns} RPCs (see TestMstMetadata)
 
     Allowed:
     - DESCRIBE TABLE (basic form)
     - SHOW COLUMNS
+    - DESCRIBE QUERY
     """
 
     def _assert_blocked_and_txn_aborted(self, mst_conn_params, fq_table, blocked_sql):
@@ -652,10 +654,14 @@ class TestMstBlockedSql:
             mst_conn_params, fq_table, f"SHOW COLUMNS IN {fq_table}"
         )
 
-    def test_describe_query_blocked(self, mst_conn_params, mst_table):
-        """DESCRIBE QUERY is blocked in MST (DescribeQueryCommand)."""
+    def test_describe_query_not_blocked(self, mst_conn_params, mst_table):
+        """DESCRIBE QUERY succeeds in MST — now allowed by the server's MSTCheckRule allowlist.
+
+        Previously blocked (DescribeQueryCommand), the server has since broadened
+        the allowlist to include it, mirroring the earlier SHOW COLUMNS change.
+        """
         fq_table, _ = mst_table
-        self._assert_blocked_and_txn_aborted(
+        self._assert_not_blocked(
             mst_conn_params,
             fq_table,
             f"DESCRIBE QUERY SELECT * FROM {fq_table}",
