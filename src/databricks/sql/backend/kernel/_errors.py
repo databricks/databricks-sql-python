@@ -38,6 +38,8 @@ flow is visible at the call site, the helper is a pure function
 
 from __future__ import annotations
 
+import logging
+
 from databricks.sql.exc import (
     DatabaseError,
     Error,
@@ -56,6 +58,31 @@ except ImportError as exc:  # pragma: no cover - same hint as client.py
         "  cd databricks-sql-kernel/pyo3 && maturin develop --release\n"
         "(into the same venv as databricks-sql-connector)."
     ) from exc
+
+# Route the kernel's Rust-side logs into Python's ``logging`` as soon as
+# the extension loads. The kernel emits under the ``databricks.sql.kernel``
+# logger (a child of the connector's ``databricks.sql`` namespace), so a
+# customer who configures ``databricks.sql`` logging gets kernel logs for
+# free with no extra setup.
+#
+# This is a best-effort, non-essential feature: it must never take down
+# ``use_kernel=True`` for a process. ``getattr`` guards against an older
+# kernel wheel that predates the function. The ``try`` guards against the
+# call itself throwing — note ``except BaseException`` is deliberate: a
+# panic raised across the PyO3 boundary surfaces as
+# ``pyo3_runtime.PanicException``, which derives from ``BaseException``
+# (not ``Exception``), so a narrower clause would let it escape module
+# import and fail every kernel-backed connection. The kernel side is
+# idempotent and returns rather than panics on a double install, but we
+# do not rely on that here — the guard holds regardless of the Rust impl.
+_kernel_init_logging = getattr(_kernel, "init_logging", None)
+if _kernel_init_logging is not None:
+    try:
+        _kernel_init_logging()
+    except BaseException as exc:  # noqa: BLE001 - see comment above re: PanicException
+        logging.getLogger(__name__).debug(
+            "kernel log bridge init failed; continuing without it: %r", exc
+        )
 
 
 # Map a kernel `code` slug to the PEP 249 exception class that best
