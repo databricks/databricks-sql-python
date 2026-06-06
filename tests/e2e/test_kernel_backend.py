@@ -21,9 +21,12 @@ Run from the connector repo root:
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 import databricks.sql as sql
+from databricks.sql.backend.types import CommandState
 from databricks.sql.exc import (
     DatabaseError,
     NotSupportedError,
@@ -250,6 +253,165 @@ def test_metadata_columns(conn):
         )
         rows = cur.fetchall()
         assert len(rows) > 0
+
+
+# ── Metadata filter normalization (batch 3) ───────────────────────
+
+
+def test_schemas_with_empty_string_filter_matches_all(conn):
+    """An empty-string schema pattern normalizes to match-all rather
+    than raising ``ProgrammingError`` (kernel rejects ``""``) — locks
+    ``_none_if_blank`` on the pattern args."""
+    with conn.cursor() as cur:
+        cur.schemas(catalog_name="main", schema_name="")
+        rows = cur.fetchall()
+        assert len(rows) > 0
+
+
+def test_tables_table_types_filter_is_case_insensitive(conn):
+    """Lowercase ``table_types=['view']`` / uppercase ``['TABLE']``
+    each match the right object regardless of case — locks the
+    kernel-side case-insensitive ``table_types`` match (batch-3 kernel
+    B2) end-to-end plus the connector drain removal (the filter now
+    runs kernel-side, not client-side).
+
+    Self-contained: creates a table + a view over it in the session's
+    default (writable) schema, scopes the lookup to a unique name
+    prefix, and drops both afterward — no dependency on which
+    workspace schemas happen to contain views."""
+    sfx = str(uuid4()).replace("-", "_")
+    tbl = f"dbsql_kernel_tt_t_{sfx}"
+    vw = f"dbsql_kernel_tt_v_{sfx}"
+    name_pat = f"dbsql_kernel_tt_%_{sfx}"
+    with conn.cursor() as cur:
+        cur.execute("SELECT current_catalog(), current_schema()")
+        cat, sch = cur.fetchall()[0]
+        try:
+            cur.execute(f"CREATE TABLE {tbl} (n INT)")
+            cur.execute(f"CREATE VIEW {vw} AS SELECT * FROM {tbl}")
+
+            def _names_and_types():
+                rows = cur.fetchall()
+                cols = [d[0] for d in cur.description]
+                ni, ti = cols.index("TABLE_NAME"), cols.index("TABLE_TYPE")
+                return {(r[ni], r[ti]) for r in rows}
+
+            # Lowercase 'view' must match the VIEW (and only it).
+            cur.tables(
+                catalog_name=cat,
+                schema_name=sch,
+                table_name=name_pat,
+                table_types=["view"],
+            )
+            assert _names_and_types() == {(vw, "VIEW")}
+
+            # Uppercase 'TABLE' must match the TABLE (and only it).
+            cur.tables(
+                catalog_name=cat,
+                schema_name=sch,
+                table_name=name_pat,
+                table_types=["TABLE"],
+            )
+            assert _names_and_types() == {(tbl, "TABLE")}
+        finally:
+            cur.execute(f"DROP VIEW IF EXISTS {vw}")
+            cur.execute(f"DROP TABLE IF EXISTS {tbl}")
+
+
+# ── Cursor-state tracking (batch 3) ───────────────────────────────
+
+
+def test_metadata_call_publishes_active_command_id(conn):
+    """A metadata call leaves the cursor pointing at the command that
+    produced the current result set (Thrift parity) — ``query_id`` is
+    populated rather than stale/None after ``catalogs()``."""
+    with conn.cursor() as cur:
+        cur.catalogs()
+        cur.fetchall()
+        assert cur.active_command_id is not None
+        assert cur.query_id is not None
+
+
+def test_dml_rowcount_wiring_does_not_break_dml(conn):
+    """The ``num_modified_rows`` → ``cursor.rowcount`` wiring must not
+    break DML execution, and ``rowcount`` is a well-formed int.
+
+    The affected-row count itself is only surfaced when the warehouse
+    reports ``num_modified_rows`` (absent on some warehouses, including
+    parts of dogfood — then ``rowcount`` stays at its ``-1`` default,
+    matching the Thrift backend). The positive-count mapping is locked
+    by the unit test; here we assert the path runs end-to-end and the
+    rows really landed. Self-contained in the writable default schema."""
+    sfx = str(uuid4()).replace("-", "_")
+    tbl = f"dbsql_kernel_rc_{sfx}"
+    with conn.cursor() as cur:
+        try:
+            cur.execute(f"CREATE TABLE {tbl} (n INT)")
+            cur.execute(f"INSERT INTO {tbl} VALUES (1), (2), (3)")
+            # rowcount is a real int (>= -1); never a MagicMock / None /
+            # crash from the getattr wiring.
+            assert isinstance(cur.rowcount, int)
+            assert (
+                cur.rowcount == 3 or cur.rowcount == -1
+            ), f"unexpected rowcount {cur.rowcount!r}"
+            # The INSERT genuinely modified the table.
+            cur.execute(f"SELECT COUNT(*) FROM {tbl}")
+            assert cur.fetchall()[0][0] == 3
+        finally:
+            cur.execute(f"DROP TABLE IF EXISTS {tbl}")
+
+
+# ── Async execution: state + result come from the server (attach-by-id) ──
+
+
+def test_async_execute_polls_and_fetches_result(conn):
+    """The full async CUJ: ``execute_async`` → poll
+    ``get_query_state`` → ``get_async_execution_result``. State and
+    result are read from the server by re-attaching to the statement
+    id (no connector-side state)."""
+    with conn.cursor() as cur:
+        cur.execute_async("SELECT 7 AS n")
+        cur.get_async_execution_result()  # polls to terminal, fetches
+        rows = cur.fetchall()
+        assert rows[0][0] == 7
+        assert cur.get_query_state() in (
+            CommandState.SUCCEEDED,
+            CommandState.CLOSED,
+        )
+
+
+def test_async_get_execution_result_is_re_callable(conn):
+    """``get_async_execution_result`` re-attaches by id on each call,
+    so fetching the same async command twice both succeed — the
+    connector never relied on a one-shot retained handle (Thrift-parity
+    re-fetch)."""
+    with conn.cursor() as cur:
+        cur.execute_async("SELECT 11 AS n")
+        cur.get_async_execution_result()
+        first = cur.fetchall()
+        # Second fetch of the same command must also succeed.
+        cur.get_async_execution_result()
+        second = cur.fetchall()
+        assert first[0][0] == 11
+        assert second[0][0] == 11
+
+
+def test_async_result_resumable_from_a_fresh_cursor(conn):
+    """The async command id is the only thing needed to fetch the
+    result — a *different* cursor that never submitted it can adopt the
+    id and retrieve the result, proving state/results come from the
+    server (attach-by-id), not connector-side per-cursor tracking."""
+    with conn.cursor() as submitter:
+        submitter.execute_async("SELECT 13 AS n")
+        command_id = submitter.active_command_id
+        assert command_id is not None
+
+    # A brand-new cursor adopts the id and fetches.
+    with conn.cursor() as resumer:
+        resumer.active_command_id = command_id
+        resumer.get_async_execution_result()
+        rows = resumer.fetchall()
+        assert rows[0][0] == 13
 
 
 # ── Session configuration ─────────────────────────────────────────
